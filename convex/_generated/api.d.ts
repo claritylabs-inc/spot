@@ -11,11 +11,13 @@
 import type * as admin from "../admin.js";
 import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
+import type * as linq from "../linq.js";
 import type * as messages from "../messages.js";
 import type * as openphone from "../openphone.js";
 import type * as policies from "../policies.js";
 import type * as process from "../process.js";
 import type * as send from "../send.js";
+import type * as sendLinq from "../sendLinq.js";
 import type * as upload from "../upload.js";
 import type * as users from "../users.js";
 
@@ -29,11 +31,13 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   http: typeof http;
   ingest: typeof ingest;
+  linq: typeof linq;
   messages: typeof messages;
   openphone: typeof openphone;
   policies: typeof policies;
   process: typeof process;
   send: typeof send;
+  sendLinq: typeof sendLinq;
   upload: typeof upload;
   users: typeof users;
 }>;

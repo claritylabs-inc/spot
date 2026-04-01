@@ -38,14 +38,16 @@ export const webhook = httpAction(async (ctx, request) => {
     return new Response("ok", { status: 200 });
   }
 
-  const { userId, state, uploadToken, isNewUser } = result;
+  const { userId, state, uploadToken, linqChatId, isNewUser } = result;
 
   // Route — all async via scheduler
+  // Pass linqChatId so process actions can route replies through Linq if available
   if (isNewUser) {
     await ctx.scheduler.runAfter(0, internal.process.sendWelcome, {
       userId,
       phone: from,
       uploadToken,
+      linqChatId,
     });
   } else if (state === "awaiting_category") {
     await ctx.scheduler.runAfter(0, internal.process.handleCategorySelection, {
@@ -56,6 +58,7 @@ export const webhook = httpAction(async (ctx, request) => {
       hasAttachment: media.length > 0,
       mediaUrl: media.length > 0 ? media[0].url : undefined,
       mediaType: media.length > 0 ? media[0].type : undefined,
+      linqChatId,
     });
   } else if (state === "awaiting_policy") {
     if (media.length > 0) {
@@ -65,6 +68,7 @@ export const webhook = httpAction(async (ctx, request) => {
           mediaUrl: attachment.url,
           mediaType: attachment.type || "application/pdf",
           phone: from,
+          linqChatId,
         });
       }
     } else {
@@ -73,6 +77,7 @@ export const webhook = httpAction(async (ctx, request) => {
         phone: from,
         input: text,
         uploadToken,
+        linqChatId,
       });
     }
   } else {
@@ -83,6 +88,7 @@ export const webhook = httpAction(async (ctx, request) => {
           mediaUrl: attachment.url,
           mediaType: attachment.type || "application/pdf",
           phone: from,
+          linqChatId,
         });
       }
     } else {
@@ -91,6 +97,7 @@ export const webhook = httpAction(async (ctx, request) => {
         question: text,
         phone: from,
         uploadToken,
+        linqChatId,
       });
     }
   }

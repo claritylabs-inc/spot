@@ -71,6 +71,7 @@ export const ingestMessage = internalMutation({
       body: args.text,
       hasAttachment: args.hasAttachment,
       openPhoneId: args.openPhoneId,
+      channel: "openphone",
       timestamp: Date.now(),
     });
 
@@ -78,6 +79,73 @@ export const ingestMessage = internalMutation({
       userId: user._id,
       state: user.state || "active",
       uploadToken: user.uploadToken || "",
+      linqChatId: user.linqChatId,
+      isNewUser,
+    };
+  },
+});
+
+// Phase 2 (Linq): Find or create user by linqChatId or phone, log message.
+export const ingestLinqMessage = internalMutation({
+  args: {
+    messageId: v.string(),
+    from: v.string(), // phone number from Linq
+    text: v.string(),
+    hasAttachment: v.boolean(),
+    linqChatId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Try to find user by linqChatId first, then by phone
+    let user = await ctx.db
+      .query("users")
+      .withIndex("by_linq_chat_id", (q) => q.eq("linqChatId", args.linqChatId))
+      .first();
+
+    if (!user) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_phone", (q) => q.eq("phone", args.from))
+        .first();
+    }
+
+    let isNewUser = false;
+    if (!user) {
+      const now = Date.now();
+      const userId = await ctx.db.insert("users", {
+        phone: args.from,
+        state: "awaiting_category",
+        uploadToken: generateToken(),
+        linqChatId: args.linqChatId,
+        lastActiveAt: now,
+        createdAt: now,
+      });
+      user = (await ctx.db.get(userId))!;
+      isNewUser = true;
+    } else {
+      // Update linqChatId if user exists but didn't have one
+      const patch: any = { lastActiveAt: Date.now() };
+      if (!user.linqChatId) {
+        patch.linqChatId = args.linqChatId;
+      }
+      await ctx.db.patch(user._id, patch);
+    }
+
+    // Log inbound message
+    await ctx.db.insert("messages", {
+      userId: user._id,
+      direction: "inbound",
+      body: args.text,
+      hasAttachment: args.hasAttachment,
+      openPhoneId: args.messageId, // reuse field for dedup
+      channel: "linq",
+      timestamp: Date.now(),
+    });
+
+    return {
+      userId: user._id,
+      state: user.state || "active",
+      uploadToken: user.uploadToken || "",
+      linqChatId: user.linqChatId || args.linqChatId,
       isNewUser,
     };
   },

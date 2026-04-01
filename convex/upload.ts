@@ -49,6 +49,40 @@ function buildPolicySummary(applied: any): string {
   return parts.join("\n");
 }
 
+// Channel-aware send helper for upload notifications
+async function sendNotification(
+  ctx: any,
+  userId: any,
+  phone: string,
+  body: string,
+  linqChatId?: string
+) {
+  let usedChannel = "openphone";
+
+  if (linqChatId) {
+    try {
+      await ctx.runAction(internal.sendLinq.sendLinqMessage, {
+        chatId: linqChatId,
+        body,
+      });
+      usedChannel = "linq";
+    } catch (err) {
+      console.error("Linq send failed in upload, falling back to OpenPhone:", err);
+      await ctx.runAction(internal.send.sendSms, { to: phone, body });
+    }
+  } else {
+    await ctx.runAction(internal.send.sendSms, { to: phone, body });
+  }
+
+  await ctx.runMutation(internal.messages.log, {
+    userId,
+    direction: "outbound" as const,
+    body,
+    hasAttachment: false,
+    channel: usedChannel,
+  });
+}
+
 export const processUploadedPolicy = internalAction({
   args: {
     userId: v.id("users"),
@@ -56,6 +90,12 @@ export const processUploadedPolicy = internalAction({
     phone: v.string(),
   },
   handler: async (ctx, args) => {
+    // Look up user to check for linqChatId
+    const user = await ctx.runQuery(internal.users.getByPhone, {
+      phone: args.phone,
+    });
+    const linqChatId = user?.linqChatId;
+
     try {
       // Get the PDF from storage
       const blob = await ctx.storage.get(args.storageId);
@@ -64,75 +104,83 @@ export const processUploadedPolicy = internalAction({
       const buffer = await blob.arrayBuffer();
       const pdfBase64 = Buffer.from(buffer).toString("base64");
 
-      // Classify
-      const { documentType } = await classifyDocumentType(pdfBase64);
+      // Ack + classification + optimistic extraction — all in parallel
+      const [, classifyResult, policyExtractResult] = await Promise.all([
+        sendNotification(ctx, args.userId, args.phone, "Got your upload — reading through it now", linqChatId),
+        classifyDocumentType(pdfBase64),
+        extractFromPdf(pdfBase64).catch(() => null),
+      ]);
 
-      // Create policy record
-      const policyId = await ctx.runMutation(internal.policies.create, {
-        userId: args.userId,
-        category: "other",
-        documentType,
-        pdfStorageId: args.storageId,
-      });
+      const { documentType } = classifyResult;
 
-      // Extract
       let extracted: any;
       let applied: any;
 
       if (documentType === "quote") {
-        const result = await extractQuoteFromPdf(pdfBase64);
-        extracted = result.extracted;
+        // Quote: create record + quote extraction in parallel
+        const [policyId, quoteResult] = await Promise.all([
+          ctx.runMutation(internal.policies.create, {
+            userId: args.userId, category: "other", documentType, pdfStorageId: args.storageId,
+          }),
+          extractQuoteFromPdf(pdfBase64),
+        ]);
+        extracted = quoteResult.extracted;
         applied = applyExtractedQuote(extracted);
+        var finalPolicyId = policyId;
       } else {
-        const result = await extractFromPdf(pdfBase64);
-        extracted = result.extracted;
-        applied = applyExtracted(extracted);
+        // Policy: extraction already done in parallel
+        const policyId = await ctx.runMutation(internal.policies.create, {
+          userId: args.userId, category: "other", documentType, pdfStorageId: args.storageId,
+        });
+        if (policyExtractResult) {
+          extracted = policyExtractResult.extracted;
+          applied = applyExtracted(extracted);
+        } else {
+          const result = await extractFromPdf(pdfBase64);
+          extracted = result.extracted;
+          applied = applyExtracted(extracted);
+        }
+        var finalPolicyId = policyId;
       }
 
       const detectedCategory = detectCategory(applied);
 
-      // Update policy
-      await ctx.runMutation(internal.policies.updateExtracted, {
-        policyId,
-        carrier: applied.carrier || undefined,
-        policyNumber: applied.policyNumber || undefined,
-        effectiveDate: applied.effectiveDate || undefined,
-        expirationDate: applied.expirationDate || undefined,
-        premium: applied.premium || undefined,
-        insuredName: applied.insuredName || undefined,
-        coverages: applied.coverages || undefined,
-        rawExtracted: applied,
-        category: detectedCategory,
-        status: "ready",
-      });
-
-      // Move user to active
-      await ctx.runMutation(internal.users.updateState, {
-        userId: args.userId,
-        state: "active",
-      });
+      // Finalize: update policy + user state in parallel
+      await Promise.all([
+        ctx.runMutation(internal.policies.updateExtracted, {
+          policyId: finalPolicyId,
+          carrier: applied.carrier || undefined,
+          policyNumber: applied.policyNumber || undefined,
+          effectiveDate: applied.effectiveDate || undefined,
+          expirationDate: applied.expirationDate || undefined,
+          premium: applied.premium || undefined,
+          insuredName: applied.insuredName || undefined,
+          coverages: applied.coverages || undefined,
+          rawExtracted: applied,
+          category: detectedCategory,
+          status: "ready",
+        }),
+        ctx.runMutation(internal.users.updateState, {
+          userId: args.userId,
+          state: "active",
+        }),
+      ]);
 
       // Text them the summary
       const summary = buildPolicySummary(applied);
       const docLabel = documentType === "quote" ? "quote" : "policy";
       const msg = `Got your ${detectedCategory} ${docLabel}! Here's the breakdown:\n\n${summary}\n\nAsk me anything about your coverage.`;
 
-      await ctx.runAction(internal.send.sendSms, {
-        to: args.phone,
-        body: msg,
-      });
-      await ctx.runMutation(internal.messages.log, {
-        userId: args.userId,
-        direction: "outbound",
-        body: msg,
-        hasAttachment: false,
-      });
+      await sendNotification(ctx, args.userId, args.phone, msg, linqChatId);
     } catch (error: any) {
       console.error("Upload processing failed:", error);
-      await ctx.runAction(internal.send.sendSms, {
-        to: args.phone,
-        body: "I had trouble reading that document. Try uploading again — make sure it's a PDF.",
-      });
+      await sendNotification(
+        ctx,
+        args.userId,
+        args.phone,
+        "I had trouble reading that document. Try uploading again — make sure it's a PDF.",
+        linqChatId
+      );
     }
   },
 });

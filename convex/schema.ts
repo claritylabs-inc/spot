@@ -8,11 +8,13 @@ export default defineSchema({
     state: v.optional(v.string()), // "new" | "awaiting_category" | "awaiting_policy" | "active"
     preferredCategory: v.optional(v.string()),
     uploadToken: v.optional(v.string()),
+    linqChatId: v.optional(v.string()), // Linq chat ID for ongoing conversation
     lastActiveAt: v.number(),
     createdAt: v.number(),
   })
     .index("by_phone", ["phone"])
-    .index("by_upload_token", ["uploadToken"]),
+    .index("by_upload_token", ["uploadToken"])
+    .index("by_linq_chat_id", ["linqChatId"]),
 
   policies: defineTable({
     userId: v.id("users"),
@@ -46,6 +48,7 @@ export default defineSchema({
     body: v.string(),
     hasAttachment: v.boolean(),
     openPhoneId: v.optional(v.string()),
+    channel: v.optional(v.string()), // "openphone" | "linq"
     timestamp: v.number(),
   })
     .index("by_user", ["userId"])

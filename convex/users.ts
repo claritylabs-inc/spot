@@ -11,6 +11,13 @@ function generateToken(): string {
   return token;
 }
 
+export const get = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.userId);
+  },
+});
+
 export const getByPhone = internalQuery({
   args: { phone: v.string() },
   handler: async (ctx, args) => {
