@@ -6,9 +6,9 @@ A messaging-first insurance policy vault. Users text a phone number (via iMessag
 
 **Brand name:** Spot
 **Parent company:** Clarity Labs (claritylabs.inc)
-**Convex prod deployment:** `cool-leopard-641` (team: claritylabs)
+**Convex prod deployment:** `cheery-giraffe-339` (team: claritylabs, project: sms-experiment)
 **Convex dev deployment:** `kindhearted-labrador-258`
-**Convex dashboard:** https://dashboard.convex.dev/d/cool-leopard-641
+**Convex dashboard:** https://dashboard.convex.dev/d/cheery-giraffe-339
 
 ---
 
@@ -206,7 +206,7 @@ sms-experiment/
 
 ## Environment Variables (Convex)
 
-All env vars are set in the Convex dashboard, not locally. Use `--deployment kindhearted-labrador-258` for dev.
+All env vars are set in the Convex dashboard, not locally. Prod: `cheery-giraffe-339`. Dev: `kindhearted-labrador-258` (currently cleared — copy from prod if needed).
 
 | Variable | Description |
 |----------|-------------|
@@ -237,7 +237,7 @@ npm run dev:frontend
 npm run dev:all
 ```
 
-There is no local Convex — `npm run dev` syncs to the cloud dev deployment (`kindhearted-labrador-258`).
+There is no local Convex — `npm run dev` syncs to the dev deployment (`kindhearted-labrador-258`). Production is `cheery-giraffe-339`.
 
 ### Testing the messaging flow
 1. **Linq (primary):** Text anything to (347) 307-4526 via iMessage
