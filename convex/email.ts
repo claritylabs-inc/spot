@@ -198,6 +198,7 @@ export const createPendingEmail = internalMutation({
     htmlBody: v.string(),
     ccEmail: v.optional(v.string()),
     purpose: v.string(),
+    coiPdfStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("pendingEmails", {
@@ -277,5 +278,69 @@ export const getPendingEmailById = internalQuery({
   args: { pendingEmailId: v.id("pendingEmails") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.pendingEmailId);
+  },
+});
+
+// ── Email Thread Tracking ──
+
+export const createEmailThread = internalMutation({
+  args: {
+    userId: v.id("users"),
+    pendingEmailId: v.id("pendingEmails"),
+    outboundMessageId: v.string(),
+    recipientEmail: v.string(),
+    recipientName: v.optional(v.string()),
+    subject: v.string(),
+    fromAddress: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    return await ctx.db.insert("emailThreads", {
+      ...args,
+      status: "active",
+      lastActivityAt: now,
+      createdAt: now,
+    });
+  },
+});
+
+export const getThreadByFromAddress = internalQuery({
+  args: { fromAddress: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("emailThreads")
+      .withIndex("by_from_address", (q) => q.eq("fromAddress", args.fromAddress))
+      .first();
+  },
+});
+
+export const getThreadByOutboundMessageId = internalQuery({
+  args: { outboundMessageId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("emailThreads")
+      .withIndex("by_outbound_message_id", (q) => q.eq("outboundMessageId", args.outboundMessageId))
+      .first();
+  },
+});
+
+export const updateThreadActivity = internalMutation({
+  args: { threadId: v.id("emailThreads") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.threadId, { lastActivityAt: Date.now() });
+  },
+});
+
+export const buildEmailReplyHtml = internalQuery({
+  args: { body: v.string() },
+  handler: async (_ctx, args) => {
+    // Simple wrapper for reply emails
+    return `<!DOCTYPE html>
+<html><body style="font-family:system-ui,-apple-system,sans-serif;color:#111827;line-height:1.6;margin:0;padding:20px;">
+<div style="max-width:600px;">${args.body.replace(/\n/g, "<br>")}</div>
+<p style="font-size:12px;color:#8a8578;margin-top:24px;border-top:1px solid #e5e2dc;padding-top:12px;">
+  Sent by Spot, powered by <a href="https://claritylabs.inc" style="color:#8a8578;">Clarity Labs</a>
+</p>
+</body></html>`;
   },
 });

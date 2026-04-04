@@ -66,6 +66,7 @@ export default defineSchema({
     htmlBody: v.string(),
     ccEmail: v.optional(v.string()), // user's email for CC
     purpose: v.string(), // "proof_of_insurance" | "coverage_details" | "coi" | "general_info"
+    coiPdfStorageId: v.optional(v.id("_storage")), // generated COI PDF attachment
     status: v.string(), // "awaiting_confirmation" | "scheduled" | "sent" | "cancelled" | "undone"
     scheduledFunctionId: v.optional(v.string()), // Convex scheduler ID for delayed send (stored as string)
     createdAt: v.number(),
@@ -82,6 +83,23 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_status_trigger", ["status", "triggerDate"]),
+
+  // Email thread tracking — maps outbound emails to users so inbound replies route correctly
+  emailThreads: defineTable({
+    userId: v.id("users"),
+    pendingEmailId: v.id("pendingEmails"),
+    outboundMessageId: v.string(), // Resend message_id from the sent email (e.g. "<abc123@resend.dev>")
+    recipientEmail: v.string(),
+    recipientName: v.optional(v.string()),
+    subject: v.string(),
+    fromAddress: v.string(), // e.g. "spot+abc123@spot.claritylabs.inc"
+    status: v.string(), // "active" | "closed"
+    lastActivityAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_from_address", ["fromAddress"])
+    .index("by_user", ["userId"])
+    .index("by_outbound_message_id", ["outboundMessageId"]),
 
   // Dedup lock table — prevents duplicate webhook processing
   webhookLocks: defineTable({

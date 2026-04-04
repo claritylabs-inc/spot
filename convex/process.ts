@@ -26,6 +26,7 @@ import {
   buildCoverageDetailEmail,
   buildCoiEmail,
 } from "./email";
+import { generateCoiPdf, buildCoiInput } from "./coiGenerator";
 
 // ── Helpers ──
 
@@ -1093,7 +1094,7 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
           }),
 
           generate_coi: tool({
-            description: "Generate and send a Certificate of Insurance summary via email. This is an informational summary, not an official ACORD certificate.",
+            description: "Generate and send a Certificate of Insurance (ACORD-style PDF) via email. The PDF is attached to the email alongside an HTML summary.",
             inputSchema: z.object({
               recipientEmail: z.string().email(),
               recipientName: z.string(),
@@ -1112,6 +1113,12 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               const userName = user.name || targetPolicy.insuredName || "Policyholder";
               const emailContent = buildCoiEmail(targetPolicy, input.recipientName, input.purpose, userName);
 
+              // Generate ACORD-style COI PDF
+              const coiInput = buildCoiInput(targetPolicy, input.recipientName, input.purpose, userName, user.email);
+              const pdfBytes = await generateCoiPdf(coiInput);
+              const pdfBlob = new Blob([Buffer.from(pdfBytes)], { type: "application/pdf" });
+              const coiPdfStorageId = await ctx.storage.store(pdfBlob);
+
               const peId = await ctx.runMutation(internal.email.createPendingEmail, {
                 userId: args.userId,
                 recipientEmail: input.recipientEmail,
@@ -1120,6 +1127,7 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
                 htmlBody: emailContent.html,
                 ccEmail: user.email,
                 purpose: "coi",
+                coiPdfStorageId,
               });
 
               pendingEmailCreated = true;

@@ -9,9 +9,11 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as coiGenerator from "../coiGenerator.js";
 import type * as crons from "../crons.js";
 import type * as email from "../email.js";
 import type * as emailActions from "../emailActions.js";
+import type * as emailWebhook from "../emailWebhook.js";
 import type * as http from "../http.js";
 import type * as imageUtils from "../imageUtils.js";
 import type * as imessageBridge from "../imessageBridge.js";
@@ -37,9 +39,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  coiGenerator: typeof coiGenerator;
   crons: typeof crons;
   email: typeof email;
   emailActions: typeof emailActions;
+  emailWebhook: typeof emailWebhook;
   http: typeof http;
   imageUtils: typeof imageUtils;
   imessageBridge: typeof imessageBridge;
