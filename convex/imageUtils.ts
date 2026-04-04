@@ -1,6 +1,8 @@
 "use node";
 
 import { PDFDocument } from "pdf-lib";
+import { generateText } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -18,9 +20,6 @@ export function isImageMimeType(mimeType: string): boolean {
 /**
  * Embed an image (JPEG or PNG) into a single-page PDF.
  * Returns base64-encoded PDF string ready for cl-sdk extraction.
- *
- * pdf-lib natively supports JPEG and PNG embedding.
- * For HEIC/WebP, the caller should use Claude vision instead of extraction.
  */
 export async function embedImageInPdf(
   imageBuffer: ArrayBuffer,
@@ -43,7 +42,6 @@ export async function embedImageInPdf(
   const imgWidth = image.width;
   const imgHeight = image.height;
 
-  // Scale to fit A4 if needed
   const A4_WIDTH = 595;
   const A4_HEIGHT = 842;
   let pageWidth = imgWidth;
@@ -64,7 +62,6 @@ export async function embedImageInPdf(
 
 /**
  * Returns true if this image type can be embedded in a PDF via pdf-lib (JPEG/PNG).
- * HEIC and WebP require vision-based processing instead.
  */
 export function canEmbedInPdf(mimeType: string): boolean {
   const lower = mimeType.toLowerCase();
@@ -73,74 +70,45 @@ export function canEmbedInPdf(mimeType: string): boolean {
 
 /**
  * Classify whether an image is a document photo or a contextual question.
- * Uses Claude Haiku vision for speed/cost.
+ * Uses Claude Haiku via Vercel AI SDK for speed/cost.
  */
 export async function classifyMediaIntent(
   imageBase64: string,
   userText: string,
-  anthropicApiKey: string,
+  _anthropicApiKey: string, // kept for backward compat but unused — AI SDK uses ANTHROPIC_API_KEY env var
   mimeType: string = "image/jpeg"
 ): Promise<"document" | "question"> {
-  const mediaMime = mimeType.includes("png") ? "image/png" : "image/jpeg";
-
-  const userContent: Array<Record<string, unknown>> = [
-    {
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: mediaMime,
-        data: imageBase64,
-      },
-    },
-  ];
-
-  if (userText) {
-    userContent.push({
-      type: "text",
-      text: `The user sent this message along with the image: "${userText}"`,
-    });
-  } else {
-    userContent.push({
-      type: "text",
-      text: "No text was sent with the image.",
-    });
-  }
+  const mediaMime = mimeType.includes("png") ? "image/png" as const : "image/jpeg" as const;
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicApiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 16,
-        system:
-          "You are classifying an image sent to an insurance assistant. Respond with ONLY 'document' or 'question'. 'document' = photo of an insurance document, policy page, declarations page, insurance card, or any official insurance paperwork. 'question' = everything else (screenshots, photos of damage, general images the user wants to discuss).",
-        messages: [
-          {
-            role: "user",
-            content: userContent,
-          },
-        ],
-      }),
+    const anthropic = createAnthropic();
+    const { text } = await generateText({
+      model: anthropic("claude-haiku-4-5-20251001"),
+      system: "You are classifying an image sent to an insurance assistant. Respond with ONLY 'document' or 'question'. 'document' = photo of an insurance document, policy page, declarations page, insurance card, or any official insurance paperwork. 'question' = everything else (screenshots, photos of damage, general images the user wants to discuss).",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              image: imageBase64,
+              mediaType: mediaMime,
+            },
+            {
+              type: "text",
+              text: userText
+                ? `The user sent this message along with the image: "${userText}"`
+                : "No text was sent with the image.",
+            },
+          ],
+        },
+      ],
+      maxOutputTokens: 16,
     });
 
-    if (!response.ok) {
-      console.error(`classifyMediaIntent failed: ${response.status}`);
-      return "document"; // Default to document on failure
-    }
-
-    const data = (await response.json()) as {
-      content: Array<{ type: string; text?: string }>;
-    };
-    const text = data.content?.[0]?.text?.trim().toLowerCase() ?? "";
-
-    return text.includes("question") ? "question" : "document";
+    return text.trim().toLowerCase().includes("question") ? "question" : "document";
   } catch (err) {
     console.error("classifyMediaIntent error:", err);
-    return "document";
+    return "document"; // Default to document on failure
   }
 }

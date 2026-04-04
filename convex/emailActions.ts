@@ -49,7 +49,7 @@ export const sendEmailNow = internalAction({
       return;
     }
 
-    // Generate a thread-specific from address so replies route back to this thread
+    // Generate a thread-specific from address so replies route back
     const threadId = generateThreadId();
     const emailDomain = process.env.RESEND_EMAIL_DOMAIN || "spot.claritylabs.inc";
     const fromAddress = `spot+${threadId}@${emailDomain}`;
@@ -70,6 +70,7 @@ export const sendEmailNow = internalAction({
         }
       }
 
+      // Send as plaintext email (htmlBody field contains plaintext content)
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -81,8 +82,8 @@ export const sendEmailNow = internalAction({
           to: [pending.recipientEmail],
           cc: pending.ccEmail ? [pending.ccEmail] : undefined,
           subject: pending.subject,
-          html: pending.htmlBody,
-          reply_to: fromAddress, // replies come back to Spot, not the user
+          text: pending.htmlBody, // plaintext content
+          reply_to: fromAddress,
           ...(attachments.length > 0 ? { attachments } : {}),
         }),
       });
@@ -95,7 +96,6 @@ export const sendEmailNow = internalAction({
       const result = await response.json();
       const resendMessageId = result.id || "";
 
-      // Update pending email status
       await ctx.runMutation(internal.email.updatePendingEmailStatus, {
         pendingEmailId: args.pendingEmailId,
         status: "sent",
@@ -112,7 +112,6 @@ export const sendEmailNow = internalAction({
         fromAddress,
       });
 
-      // Log the email send
       await ctx.runMutation(internal.messages.log, {
         userId: pending.userId,
         direction: "outbound",
@@ -132,19 +131,92 @@ export const sendEmailNow = internalAction({
   },
 });
 
+// ── Generate AI-written email body ──
+
+export const generateEmailBody = internalAction({
+  args: {
+    purpose: v.string(), // "proof_of_insurance" | "coverage_details" | "coi" | "general_info"
+    recipientName: v.string(),
+    recipientEmail: v.string(),
+    userName: v.string(),
+    userEmail: v.optional(v.string()),
+    policyData: v.any(), // rawExtracted policy data
+    customMessage: v.optional(v.string()),
+    coverageNames: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const anthropic = createAnthropic();
+    const raw = args.policyData;
+
+    // Build a rich context from rawExtracted data
+    const policyContext = [
+      `Policy Number: ${raw.policyNumber || "N/A"}`,
+      `Insurer/Underwriter: ${raw.security || raw.carrierLegalName || raw.carrier || "N/A"}`,
+      `Broker/Producer: ${raw.broker || raw.brokerAgency || raw.mga || "N/A"}`,
+      `Named Insured: ${raw.insuredName || args.userName}`,
+      raw.insuredAddress ? `Insured Address: ${raw.insuredAddress.street1 || ""}, ${raw.insuredAddress.city || ""}, ${raw.insuredAddress.state || ""} ${raw.insuredAddress.zip || ""}` : "",
+      `Effective Date: ${raw.effectiveDate || "N/A"}`,
+      `Expiration Date: ${raw.expirationDate || "N/A"}`,
+      `Premium: ${raw.premium || "N/A"}`,
+      `Policy Type: ${raw.policyTypes?.[0] || raw.declarations?.formType || "N/A"}`,
+      raw.summary ? `Summary: ${raw.summary}` : "",
+    ].filter(Boolean).join("\n");
+
+    const coverageLines = (raw.coverages || []).map((c: any) =>
+      `- ${c.name}: Limit ${c.limit || "N/A"}, Deductible ${c.deductible || "N/A"}`
+    ).join("\n");
+
+    const purposeDescriptions: Record<string, string> = {
+      proof_of_insurance: `Write a brief, professional plaintext email providing proof of insurance. Include the key policy details: carrier/insurer, policy number, named insured, coverage period, and main coverages with limits. Keep it natural — like a real person wrote it, not a template.`,
+      coverage_details: `Write a brief, professional plaintext email detailing the requested coverages${args.coverageNames?.length ? ` (specifically: ${args.coverageNames.join(", ")})` : ""}. Include limits, deductibles, and what's covered. Keep it natural.`,
+      coi: `Write a brief, professional plaintext email accompanying a Certificate of Insurance (attached as PDF). Mention the key details: insurer, policy number, insured name, coverage period. The COI PDF has the full details — the email should be a concise cover note.`,
+      general_info: `Write a brief, professional plaintext email with the requested insurance information. Keep it natural and helpful.`,
+    };
+
+    const prompt = `${purposeDescriptions[args.purpose] || purposeDescriptions.general_info}
+
+${args.customMessage ? `The user wants to convey: ${args.customMessage}` : ""}
+
+Policy details:
+${policyContext}
+
+Coverages:
+${coverageLines || "No coverages on file"}
+
+Write the email addressed to ${args.recipientName}. Sign it with:
+
+—
+Spot, on behalf of ${args.userName}
+Powered by Clarity Labs
+
+Rules:
+- Plaintext only. No HTML, no markdown formatting, no bullet symbols.
+- Use line breaks for readability.
+- Be concise and professional but warm — not corporate template-speak.
+- Include only relevant policy details for the purpose.
+- Do NOT include the subject line in the body.`;
+
+    const { text } = await generateText({
+      model: anthropic("claude-sonnet-4-6"),
+      prompt,
+      maxOutputTokens: 500,
+    });
+
+    return text;
+  },
+});
+
 // ── Handle inbound email reply ──
 
 export const handleInboundEmail = internalAction({
   args: {
-    resendEmailId: v.string(), // The received email's ID from Resend webhook
-    from: v.string(), // Sender (the recipient who replied)
-    to: v.array(v.string()), // Recipient addresses (our spot+xxx address)
+    resendEmailId: v.string(),
+    from: v.string(),
+    to: v.array(v.string()),
     subject: v.string(),
   },
   handler: async (ctx, args) => {
-    // Step 1: Find the thread by matching the to address
     const toAddress = args.to.find((addr) => addr.includes("spot+")) || args.to[0] || "";
-    // Extract just the email part (strip display name if present)
     const emailMatch = toAddress.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+/);
     const cleanTo = emailMatch ? emailMatch[0].toLowerCase() : toAddress.toLowerCase();
 
@@ -157,18 +229,15 @@ export const handleInboundEmail = internalAction({
       return;
     }
 
-    // Step 2: Fetch full email content from Resend API
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      console.error("RESEND_API_KEY not set, can't fetch inbound email");
+      console.error("RESEND_API_KEY not set");
       return;
     }
 
     const emailResponse = await fetch(
       `https://api.resend.com/emails/receiving/${args.resendEmailId}`,
-      {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }
+      { headers: { Authorization: `Bearer ${apiKey}` } },
     );
 
     if (!emailResponse.ok) {
@@ -178,23 +247,15 @@ export const handleInboundEmail = internalAction({
 
     const emailData = await emailResponse.json();
     const replyText = emailData.text || "";
-    const replyHtml = emailData.html || "";
     const inboundMessageId = emailData.message_id || "";
     const senderName = args.from.replace(/<.*>/, "").trim() || thread.recipientEmail;
 
-    // Step 3: Load user + policies
     const user = await ctx.runQuery(internal.users.get, { userId: thread.userId });
-    if (!user) {
-      console.error(`User ${thread.userId} not found for email thread`);
-      return;
-    }
+    if (!user) return;
 
-    const policies = await ctx.runQuery(internal.policies.getByUser, {
-      userId: thread.userId,
-    });
+    const policies = await ctx.runQuery(internal.policies.getByUser, { userId: thread.userId });
     const readyPolicies = policies.filter((p: any) => p.status === "ready");
 
-    // Log the inbound email as a message
     await ctx.runMutation(internal.messages.log, {
       userId: thread.userId,
       direction: "inbound",
@@ -203,20 +264,7 @@ export const handleInboundEmail = internalAction({
       channel: "email",
     });
 
-    // Update thread activity
-    await ctx.runMutation(internal.email.updateThreadActivity, {
-      threadId: thread._id,
-    });
-
-    // Step 4: Use Claude to decide if Spot can answer or should ask the user
-    const sdkPrompt = buildAgentSystemPrompt({
-      platform: "email",
-      intent: "direct",
-      companyName: "Spot",
-      agentName: "Spot",
-      siteUrl: "https://secure.claritylabs.inc",
-      coiHandling: "ignore",
-    });
+    await ctx.runMutation(internal.email.updateThreadActivity, { threadId: thread._id });
 
     // Build document context
     const policyDocs: any[] = [];
@@ -235,21 +283,9 @@ export const handleInboundEmail = internalAction({
         sections: raw.document?.sections || raw.sections || [],
       };
       if (p.documentType === "quote") {
-        quoteDocs.push({
-          ...base,
-          type: "quote" as const,
-          quoteNumber: raw.quoteNumber || p.policyNumber || "",
-          proposedEffectiveDate: raw.proposedEffectiveDate || p.effectiveDate,
-          proposedExpirationDate: raw.proposedExpirationDate || p.expirationDate,
-        });
+        quoteDocs.push({ ...base, type: "quote" as const, quoteNumber: raw.quoteNumber || p.policyNumber || "", proposedEffectiveDate: raw.proposedEffectiveDate || p.effectiveDate, proposedExpirationDate: raw.proposedExpirationDate || p.expirationDate });
       } else {
-        policyDocs.push({
-          ...base,
-          type: "policy" as const,
-          policyNumber: raw.policyNumber || p.policyNumber || "",
-          effectiveDate: raw.effectiveDate || p.effectiveDate || "",
-          expirationDate: raw.expirationDate || p.expirationDate || "",
-        });
+        policyDocs.push({ ...base, type: "policy" as const, policyNumber: raw.policyNumber || p.policyNumber || "", effectiveDate: raw.effectiveDate || p.effectiveDate || "", expirationDate: raw.expirationDate || p.expirationDate || "" });
       }
     }
 
@@ -258,21 +294,23 @@ export const handleInboundEmail = internalAction({
     const systemPrompt = `You are Spot, an insurance assistant replying to an email thread on behalf of a policyholder.
 
 Context:
-- You originally sent an email about the policyholder's insurance (subject: "${thread.subject}") to ${senderName} (${thread.recipientEmail}).
-- ${senderName} has now replied to that email.
-- The policyholder's name is ${user.name || "the insured"}.
+- You originally sent an email (subject: "${thread.subject}") to ${senderName} (${thread.recipientEmail}).
+- ${senderName} has replied.
+- The policyholder is ${user.name || "the insured"}.
 
-${sdkPrompt}
-
-Here are the policyholder's insurance documents:
 ${documentContext}
 
 Your job:
-1. If the reply asks a question about coverage, limits, dates, or anything in the policy data — answer it directly and professionally. Keep it concise and email-appropriate (not texting tone).
-2. If you CAN answer confidently, respond with: {"action":"reply","message":"your reply text","summary":"one-line summary for the policyholder"}
-3. If you CANNOT answer (the question is outside the policy data, requires the policyholder's input, or is about something you don't have info on), respond with: {"action":"escalate","summary":"what they're asking about"}
+1. If you can answer from the policy data, reply directly. Keep it professional but natural — plaintext, like a real person.
+2. If you CAN answer, respond with: {"action":"reply","message":"your reply text","summary":"one-line summary"}
+3. If you CANNOT answer, respond with: {"action":"escalate","summary":"what they're asking about"}
 
-Respond with ONLY the JSON object, no other text.`;
+Sign replies with:
+—
+Spot, on behalf of ${user.name || "the policyholder"}
+Powered by Clarity Labs
+
+Respond with ONLY the JSON object.`;
 
     const anthropic = createAnthropic();
     const { text: aiResponse } = await generateText({
@@ -282,69 +320,43 @@ Respond with ONLY the JSON object, no other text.`;
       maxOutputTokens: 600,
     });
 
-    // Parse Claude's decision
     let decision: { action: string; message?: string; summary: string };
     try {
       decision = JSON.parse(aiResponse.trim());
     } catch {
-      // If parsing fails, escalate to user
-      decision = { action: "escalate", summary: `${senderName} replied to the insurance email but I couldn't process their message` };
+      decision = { action: "escalate", summary: `${senderName} replied but I couldn't process their message` };
     }
 
-    // Step 5: Act on the decision
-
-    // Helper to send text to user via their channel
     const sendTextToUser = async (body: string) => {
       if (user.linqChatId) {
         try {
-          await ctx.runAction(internal.sendLinq.sendLinqMessage, {
-            chatId: user.linqChatId,
-            body,
-          });
-          await ctx.runMutation(internal.messages.log, {
-            userId: thread.userId, direction: "outbound", body, hasAttachment: false, channel: "linq",
-          });
+          await ctx.runAction(internal.sendLinq.sendLinqMessage, { chatId: user.linqChatId, body });
+          await ctx.runMutation(internal.messages.log, { userId: thread.userId, direction: "outbound", body, hasAttachment: false, channel: "linq" });
           return;
         } catch (_) {}
       }
       if (user.imessageSender) {
         try {
-          await ctx.runAction(internal.sendBridge.sendBridgeMessage, {
-            to: user.imessageSender,
-            body,
-          });
-          await ctx.runMutation(internal.messages.log, {
-            userId: thread.userId, direction: "outbound", body, hasAttachment: false, channel: "imessage_bridge",
-          });
+          await ctx.runAction(internal.sendBridge.sendBridgeMessage, { to: user.imessageSender, body });
+          await ctx.runMutation(internal.messages.log, { userId: thread.userId, direction: "outbound", body, hasAttachment: false, channel: "imessage_bridge" });
           return;
         } catch (_) {}
       }
       await ctx.runAction(internal.send.sendSms, { to: user.phone, body });
-      await ctx.runMutation(internal.messages.log, {
-        userId: thread.userId, direction: "outbound", body, hasAttachment: false, channel: "openphone",
-      });
+      await ctx.runMutation(internal.messages.log, { userId: thread.userId, direction: "outbound", body, hasAttachment: false, channel: "openphone" });
     };
 
     if (decision.action === "reply" && decision.message) {
-      // Spot can answer — reply to the email thread and notify the user
-      const emailDomain = process.env.RESEND_EMAIL_DOMAIN || "spot.claritylabs.inc";
-
       const replyResponse = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: `Spot <${thread.fromAddress}>`,
           to: [thread.recipientEmail],
           cc: user.email ? [user.email] : undefined,
           subject: thread.subject.startsWith("Re:") ? thread.subject : `Re: ${thread.subject}`,
-          html: `<div style="font-family:system-ui,-apple-system,sans-serif;color:#111827;line-height:1.6;">${decision.message.replace(/\n/g, "<br>")}</div><p style="font-size:12px;color:#8a8578;margin-top:24px;border-top:1px solid #e5e2dc;padding-top:12px;">Sent by Spot, powered by <a href="https://claritylabs.inc" style="color:#8a8578;">Clarity Labs</a></p>`,
-          headers: {
-            "In-Reply-To": inboundMessageId,
-            "References": `${thread.outboundMessageId} ${inboundMessageId}`,
-          },
+          text: decision.message, // plaintext
+          headers: { "In-Reply-To": inboundMessageId, "References": `${thread.outboundMessageId} ${inboundMessageId}` },
         }),
       });
 
@@ -352,24 +364,15 @@ Respond with ONLY the JSON object, no other text.`;
         console.error(`Failed to send reply: ${await replyResponse.text()}`);
       }
 
-      // Log the outbound reply
       await ctx.runMutation(internal.messages.log, {
-        userId: thread.userId,
-        direction: "outbound",
+        userId: thread.userId, direction: "outbound",
         body: `[Email reply to ${senderName}] ${decision.message.slice(0, 300)}`,
-        hasAttachment: false,
-        channel: "email",
+        hasAttachment: false, channel: "email",
       });
 
-      // Text the user a summary
-      await sendTextToUser(
-        `Heads up — ${senderName} replied to the insurance email and asked about ${decision.summary}. I replied with the info from your policy.`
-      );
+      await sendTextToUser(`Heads up — ${senderName} replied to the insurance email and asked about ${decision.summary}. I replied with the info from your policy.`);
     } else {
-      // Can't answer — escalate to user via text
-      await sendTextToUser(
-        `${senderName} replied to the insurance email I sent them. They're asking: ${decision.summary}\n\nWant me to respond, or would you rather handle it?`
-      );
+      await sendTextToUser(`${senderName} replied to the insurance email I sent them. They're asking: ${decision.summary}\n\nWant me to respond, or would you rather handle it?`);
     }
   },
 });

@@ -21,11 +21,6 @@ import {
   embedImageInPdf,
   classifyMediaIntent,
 } from "./imageUtils";
-import {
-  buildProofOfInsuranceEmail,
-  buildCoverageDetailEmail,
-  buildCoiEmail,
-} from "./email";
 import { generateCoiPdf, buildCoiInput } from "./coiGenerator";
 
 // ── Helpers ──
@@ -1108,7 +1103,7 @@ CRITICAL email rules:
             userContent.push({
               type: "image",
               image: imageBase64,
-              mimeType: "image/jpeg",
+              mediaType: "image/jpeg",
             });
           }
         } catch (_) {}
@@ -1159,7 +1154,7 @@ CRITICAL email rules:
         maxOutputTokens,
         tools: {
           send_email: tool({
-            description: "Send an email with policy information to someone (landlord, lender, agent, etc). The user will be CC'd on the email. Always confirm with the user before sending unless they explicitly ask you to just send it.",
+            description: "Send an email with policy information to someone (landlord, lender, agent, etc). The user will be CC'd. Always confirm before sending.",
             inputSchema: z.object({
               recipientEmail: z.string().email().describe("Recipient's email address"),
               recipientName: z.string().optional().describe("Recipient's name"),
@@ -1179,38 +1174,37 @@ CRITICAL email rules:
                   : readyPolicies[0];
                 if (!targetPolicy) return { success: false, reason: "no_policy", message: "No policy found" };
 
-                let emailContent: { subject: string; html: string };
                 const userName = user.name || targetPolicy.insuredName || "Policyholder";
+                const raw = targetPolicy.rawExtracted || targetPolicy;
+                const insurer = raw.security || raw.carrierLegalName || raw.carrier || "Insurer";
 
-                switch (input.purpose) {
-                  case "proof_of_insurance":
-                    emailContent = buildProofOfInsuranceEmail(targetPolicy, userName);
-                    break;
-                  case "coi":
-                    emailContent = buildCoiEmail(
-                      targetPolicy,
-                      input.recipientName || "Recipient",
-                      input.customMessage || "General purpose",
-                      userName
-                    );
-                    break;
-                  case "coverage_details":
-                    emailContent = buildCoverageDetailEmail(
-                      targetPolicy,
-                      input.coverageNames || [],
-                      input.customMessage
-                    );
-                    break;
-                  default:
-                    emailContent = buildProofOfInsuranceEmail(targetPolicy, userName);
-                }
+                // Generate AI-written plaintext email body
+                const emailBody = await ctx.runAction(internal.emailActions.generateEmailBody, {
+                  purpose: input.purpose,
+                  recipientName: input.recipientName || "Recipient",
+                  recipientEmail: input.recipientEmail,
+                  userName,
+                  userEmail: user.email,
+                  policyData: raw,
+                  customMessage: input.customMessage,
+                  coverageNames: input.coverageNames,
+                });
+
+                // Build subject line
+                const subjectPrefixes: Record<string, string> = {
+                  proof_of_insurance: `Proof of Insurance — ${insurer} Policy ${raw.policyNumber || ""}`,
+                  coverage_details: `Coverage Details — ${insurer}`,
+                  coi: `Certificate of Insurance — ${insurer}`,
+                  general_info: `Insurance Information — ${insurer}`,
+                };
+                const subject = (subjectPrefixes[input.purpose] || subjectPrefixes.general_info).trim();
 
                 const peId = await ctx.runMutation(internal.email.createPendingEmail, {
                   userId: args.userId,
                   recipientEmail: input.recipientEmail,
                   recipientName: input.recipientName,
-                  subject: emailContent.subject,
-                  htmlBody: emailContent.html,
+                  subject,
+                  htmlBody: emailBody, // plaintext stored in htmlBody field
                   ccEmail: user.email,
                   purpose: input.purpose,
                 });
@@ -1219,14 +1213,8 @@ CRITICAL email rules:
                 pendingEmailId = peId;
 
                 if (user.autoSendEmails) {
-                  await ctx.runMutation(internal.email.scheduleEmailSend, {
-                    pendingEmailId: peId,
-                  });
-                  return {
-                    success: true,
-                    autoSent: true,
-                    message: `Email scheduled to ${input.recipientEmail} (auto-send is on). It will be delivered shortly.`,
-                  };
+                  await ctx.runMutation(internal.email.scheduleEmailSend, { pendingEmailId: peId });
+                  return { success: true, autoSent: true, message: `Email scheduled to ${input.recipientEmail} (auto-send is on).` };
                 }
 
                 return {
@@ -1234,7 +1222,7 @@ CRITICAL email rules:
                   awaitingConfirmation: true,
                   emailNotSentYet: true,
                   recipientEmail: input.recipientEmail,
-                  subject: emailContent.subject,
+                  subject,
                   message: `EMAIL NOT SENT YET. Drafted to ${input.recipientEmail}. You MUST ask the user to reply "send" to confirm. Do NOT say the email was sent.`,
                 };
               } catch (err: any) {
@@ -1245,7 +1233,7 @@ CRITICAL email rules:
           }),
 
           generate_coi: tool({
-            description: "Generate and send a Certificate of Insurance (ACORD-style PDF) via email. The PDF is attached to the email alongside an HTML summary.",
+            description: "Generate and send a Certificate of Insurance (ACORD-style PDF) via email. The PDF uses the correct Producer (broker) and Insurer (underwriter) from the policy.",
             inputSchema: z.object({
               recipientEmail: z.string().email(),
               recipientName: z.string(),
@@ -1263,19 +1251,34 @@ CRITICAL email rules:
                 if (!targetPolicy) return { success: false, reason: "no_policy", message: "No policy found" };
 
                 const userName = user.name || targetPolicy.insuredName || "Policyholder";
-                const emailContent = buildCoiEmail(targetPolicy, input.recipientName, input.purpose, userName);
+                const raw = targetPolicy.rawExtracted || targetPolicy;
+                const insurer = raw.security || raw.carrierLegalName || raw.carrier || "Insurer";
 
-                const coiInput = buildCoiInput(targetPolicy, input.recipientName, input.purpose, userName, user.email);
+                // Generate ACORD-style COI PDF with correct Producer/Insurer
+                const coiInput = buildCoiInput(targetPolicy, input.recipientName, input.purpose, userName);
                 const pdfBytes = await generateCoiPdf(coiInput);
                 const pdfBlob = new Blob([Buffer.from(pdfBytes)], { type: "application/pdf" });
                 const coiPdfStorageId = await ctx.storage.store(pdfBlob);
+
+                // Generate AI-written plaintext cover email for the COI
+                const emailBody = await ctx.runAction(internal.emailActions.generateEmailBody, {
+                  purpose: "coi",
+                  recipientName: input.recipientName,
+                  recipientEmail: input.recipientEmail,
+                  userName,
+                  userEmail: user.email,
+                  policyData: raw,
+                  customMessage: input.purpose,
+                });
+
+                const subject = `Certificate of Insurance — ${insurer} Policy ${raw.policyNumber || ""}`.trim();
 
                 const peId = await ctx.runMutation(internal.email.createPendingEmail, {
                   userId: args.userId,
                   recipientEmail: input.recipientEmail,
                   recipientName: input.recipientName,
-                  subject: emailContent.subject,
-                  htmlBody: emailContent.html,
+                  subject,
+                  htmlBody: emailBody,
                   ccEmail: user.email,
                   purpose: "coi",
                   coiPdfStorageId,
@@ -1286,7 +1289,7 @@ CRITICAL email rules:
 
                 if (user.autoSendEmails) {
                   await ctx.runMutation(internal.email.scheduleEmailSend, { pendingEmailId: peId });
-                  return { success: true, autoSent: true, message: `COI summary sent to ${input.recipientEmail}.` };
+                  return { success: true, autoSent: true, message: `COI sent to ${input.recipientEmail}.` };
                 }
 
                 return {

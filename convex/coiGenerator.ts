@@ -2,24 +2,25 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // ── ACORD-style COI PDF Generator ──
-// Generates a professional Certificate of Insurance PDF that mirrors the standard ACORD 25 layout.
-// Not an official ACORD form (those are copyrighted), but follows the same structure and fields.
+// Uses rawExtracted data fields properly:
+//   Producer = broker/brokerAgency (who sold/placed the insurance)
+//   Insurer = security/carrierLegalName (actual underwriting company)
 
 interface CoiInput {
-  // Certificate info
-  certificateDate: string; // date of issue
-  // Producer / agent (Spot acts as the sender)
-  producerName: string; // "Spot by Clarity Labs"
-  producerAddress: string;
-  producerPhone: string;
-  producerEmail: string;
+  certificateDate: string;
+  // Producer = the broker/agency
+  producerName: string; // broker or brokerAgency from rawExtracted
+  producerAddress?: string;
+  producerPhone?: string;
+  producerEmail?: string;
+  // Insurer = the actual underwriting company
+  insurerName: string; // security or carrierLegalName from rawExtracted
   // Insured
   insuredName: string;
   insuredAddress?: string;
-  // Policy details
-  carrier: string;
+  // Policy
   policyNumber: string;
-  policyType: string; // e.g. "General Liability", "Auto", "Homeowners (HO-3)"
+  policyType: string;
   effectiveDate: string;
   expirationDate: string;
   // Coverages
@@ -31,24 +32,14 @@ interface CoiInput {
   // Certificate holder
   holderName: string;
   holderAddress?: string;
-  // Purpose
-  purpose?: string; // e.g. "Apartment Lease at 123 Main St"
+  purpose?: string;
 }
 
-const NAVY = rgb(0.067, 0.094, 0.153); // #111827
-const GRAY = rgb(0.54, 0.514, 0.47); // #8a8578
-const LIGHT_BG = rgb(0.98, 0.973, 0.957); // #faf8f4
+const NAVY = rgb(0.067, 0.094, 0.153);
+const GRAY = rgb(0.54, 0.514, 0.47);
+const LIGHT_BG = rgb(0.98, 0.973, 0.957);
 const WHITE = rgb(1, 1, 1);
-const BORDER = rgb(0.898, 0.886, 0.863); // #e5e2dc
-
-function drawLine(page: any, x: number, y: number, width: number) {
-  page.drawLine({
-    start: { x, y },
-    end: { x: x + width, y },
-    thickness: 0.5,
-    color: BORDER,
-  });
-}
+const BORDER = rgb(0.898, 0.886, 0.863);
 
 function drawBox(page: any, x: number, y: number, w: number, h: number, fill?: any) {
   page.drawRectangle({
@@ -61,41 +52,27 @@ function drawBox(page: any, x: number, y: number, w: number, h: number, fill?: a
 
 export async function generateCoiPdf(input: CoiInput): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const page = doc.addPage([612, 792]); // US Letter
+  const page = doc.addPage([612, 792]);
   const helvetica = await doc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await doc.embedFont(StandardFonts.HelveticaBold);
   const fontSize = 8;
   const labelSize = 6.5;
 
-  const margin = 36; // 0.5 inch
+  const margin = 36;
   const pageWidth = 612 - 2 * margin;
   let y = 792 - margin;
 
   // ── Header ──
   drawBox(page, margin, y - 50, pageWidth, 50, LIGHT_BG);
   page.drawText("CERTIFICATE OF LIABILITY INSURANCE", {
-    x: margin + 8,
-    y: y - 20,
-    size: 14,
-    font: helveticaBold,
-    color: NAVY,
+    x: margin + 8, y: y - 20, size: 14, font: helveticaBold, color: NAVY,
   });
   page.drawText(`DATE (MM/DD/YYYY): ${input.certificateDate}`, {
-    x: margin + pageWidth - 180,
-    y: y - 20,
-    size: fontSize,
-    font: helvetica,
-    color: NAVY,
+    x: margin + pageWidth - 180, y: y - 20, size: fontSize, font: helvetica, color: NAVY,
   });
   page.drawText(
     "THIS CERTIFICATE IS ISSUED AS A MATTER OF INFORMATION ONLY AND CONFERS NO RIGHTS UPON THE CERTIFICATE HOLDER.",
-    {
-      x: margin + 8,
-      y: y - 38,
-      size: 5.5,
-      font: helvetica,
-      color: GRAY,
-    }
+    { x: margin + 8, y: y - 38, size: 5.5, font: helvetica, color: GRAY }
   );
   y -= 58;
 
@@ -104,43 +81,49 @@ export async function generateCoiPdf(input: CoiInput): Promise<Uint8Array> {
   drawBox(page, margin, y - 80, halfWidth, 80);
   drawBox(page, margin + halfWidth, y - 80, halfWidth, 80);
 
-  // Producer
+  // Producer = broker/agency
   page.drawText("PRODUCER", { x: margin + 4, y: y - 10, size: labelSize, font: helveticaBold, color: GRAY });
   page.drawText(input.producerName, { x: margin + 4, y: y - 22, size: fontSize, font: helveticaBold, color: NAVY });
-  page.drawText(input.producerAddress, { x: margin + 4, y: y - 34, size: fontSize, font: helvetica, color: NAVY });
-  page.drawText(`Phone: ${input.producerPhone}`, { x: margin + 4, y: y - 48, size: fontSize, font: helvetica, color: NAVY });
-  page.drawText(`Email: ${input.producerEmail}`, { x: margin + 4, y: y - 60, size: fontSize, font: helvetica, color: NAVY });
+  if (input.producerAddress) {
+    page.drawText(input.producerAddress, { x: margin + 4, y: y - 34, size: fontSize, font: helvetica, color: NAVY });
+  }
+  if (input.producerPhone) {
+    page.drawText(`Phone: ${input.producerPhone}`, { x: margin + 4, y: y - 48, size: fontSize, font: helvetica, color: NAVY });
+  }
+  if (input.producerEmail) {
+    page.drawText(`Email: ${input.producerEmail}`, { x: margin + 4, y: y - 60, size: fontSize, font: helvetica, color: NAVY });
+  }
 
   // Insured
   const ix = margin + halfWidth + 4;
   page.drawText("INSURED", { x: ix, y: y - 10, size: labelSize, font: helveticaBold, color: GRAY });
   page.drawText(input.insuredName, { x: ix, y: y - 22, size: fontSize, font: helveticaBold, color: NAVY });
   if (input.insuredAddress) {
-    page.drawText(input.insuredAddress, { x: ix, y: y - 34, size: fontSize, font: helvetica, color: NAVY });
+    // Split long addresses across lines
+    const addrLines = input.insuredAddress.split(",").map(s => s.trim());
+    addrLines.forEach((line, i) => {
+      page.drawText(line, { x: ix, y: y - 34 - (i * 12), size: fontSize, font: helvetica, color: NAVY });
+    });
   }
   y -= 88;
 
-  // ── Insurer row ──
+  // ── Insurer row — uses security/carrierLegalName ──
   drawBox(page, margin, y - 30, pageWidth, 30);
   page.drawText("INSURER(S) AFFORDING COVERAGE", { x: margin + 4, y: y - 10, size: labelSize, font: helveticaBold, color: GRAY });
-  page.drawText(`INSURER A: ${input.carrier}`, { x: margin + 4, y: y - 24, size: fontSize, font: helvetica, color: NAVY });
+  page.drawText(`INSURER A: ${input.insurerName}`, { x: margin + 4, y: y - 24, size: fontSize, font: helveticaBold, color: NAVY });
   y -= 38;
 
-  // ── Policy details row ──
+  // ── Policy details ──
   drawBox(page, margin, y - 50, pageWidth, 50, LIGHT_BG);
   page.drawText("COVERAGES", { x: margin + 4, y: y - 10, size: labelSize, font: helveticaBold, color: GRAY });
-  page.drawText(
-    "CERTIFICATE NUMBER:                                                                    REVISION NUMBER:",
-    { x: margin + 100, y: y - 10, size: labelSize, font: helvetica, color: GRAY }
-  );
 
   const policyY = y - 26;
   page.drawText("TYPE OF INSURANCE", { x: margin + 4, y: policyY, size: labelSize, font: helveticaBold, color: GRAY });
   page.drawText("POLICY NUMBER", { x: margin + 160, y: policyY, size: labelSize, font: helveticaBold, color: GRAY });
   page.drawText("POLICY EFF", { x: margin + 310, y: policyY, size: labelSize, font: helveticaBold, color: GRAY });
   page.drawText("POLICY EXP", { x: margin + 390, y: policyY, size: labelSize, font: helveticaBold, color: GRAY });
-  page.drawText("LIMITS", { x: margin + 470, y: policyY, size: labelSize, font: helveticaBold, color: GRAY });
-  drawLine(page, margin, policyY - 4, pageWidth);
+
+  page.drawLine({ start: { x: margin, y: policyY - 4 }, end: { x: margin + pageWidth, y: policyY - 4 }, thickness: 0.5, color: BORDER });
 
   page.drawText(input.policyType, { x: margin + 4, y: policyY - 16, size: fontSize, font: helveticaBold, color: NAVY });
   page.drawText(input.policyNumber, { x: margin + 160, y: policyY - 16, size: fontSize, font: helvetica, color: NAVY });
@@ -149,25 +132,20 @@ export async function generateCoiPdf(input: CoiInput): Promise<Uint8Array> {
   y -= 58;
 
   // ── Coverages grid ──
-  const coverageHeaderY = y;
-  drawBox(page, margin, coverageHeaderY - 18, pageWidth, 18, LIGHT_BG);
-  page.drawText("COVERAGE", { x: margin + 4, y: coverageHeaderY - 12, size: labelSize, font: helveticaBold, color: GRAY });
-  page.drawText("LIMIT", { x: margin + 320, y: coverageHeaderY - 12, size: labelSize, font: helveticaBold, color: GRAY });
-  page.drawText("DEDUCTIBLE", { x: margin + 440, y: coverageHeaderY - 12, size: labelSize, font: helveticaBold, color: GRAY });
+  drawBox(page, margin, y - 18, pageWidth, 18, LIGHT_BG);
+  page.drawText("COVERAGE", { x: margin + 4, y: y - 12, size: labelSize, font: helveticaBold, color: GRAY });
+  page.drawText("LIMIT", { x: margin + 320, y: y - 12, size: labelSize, font: helveticaBold, color: GRAY });
+  page.drawText("DEDUCTIBLE", { x: margin + 440, y: y - 12, size: labelSize, font: helveticaBold, color: GRAY });
 
-  y = coverageHeaderY - 18;
+  y -= 18;
   const maxCoverages = Math.min(input.coverages.length, 20);
   for (let i = 0; i < maxCoverages; i++) {
     const c = input.coverages[i];
     const rowH = 16;
     drawBox(page, margin, y - rowH, pageWidth, rowH);
     page.drawText(c.name.slice(0, 50), { x: margin + 4, y: y - 11, size: fontSize, font: helvetica, color: NAVY });
-    if (c.limit) {
-      page.drawText(c.limit.slice(0, 30), { x: margin + 320, y: y - 11, size: fontSize, font: helvetica, color: NAVY });
-    }
-    if (c.deductible) {
-      page.drawText(c.deductible.slice(0, 20), { x: margin + 440, y: y - 11, size: fontSize, font: helvetica, color: NAVY });
-    }
+    if (c.limit) page.drawText(c.limit.slice(0, 30), { x: margin + 320, y: y - 11, size: fontSize, font: helvetica, color: NAVY });
+    if (c.deductible) page.drawText(c.deductible.slice(0, 20), { x: margin + 440, y: y - 11, size: fontSize, font: helvetica, color: NAVY });
     y -= rowH;
   }
   y -= 8;
@@ -178,9 +156,7 @@ export async function generateCoiPdf(input: CoiInput): Promise<Uint8Array> {
     page.drawText("DESCRIPTION OF OPERATIONS / LOCATIONS / VEHICLES", {
       x: margin + 4, y: y - 10, size: labelSize, font: helveticaBold, color: GRAY,
     });
-    page.drawText(input.purpose, {
-      x: margin + 4, y: y - 26, size: fontSize, font: helvetica, color: NAVY,
-    });
+    page.drawText(input.purpose, { x: margin + 4, y: y - 26, size: fontSize, font: helvetica, color: NAVY });
     y -= 48;
   }
 
@@ -212,21 +188,46 @@ export async function generateCoiPdf(input: CoiInput): Promise<Uint8Array> {
 }
 
 /**
- * Build a CoiInput from policy data.
+ * Build CoiInput from rawExtracted policy data.
+ * Uses correct field mapping:
+ *   Producer = broker/brokerAgency (who placed the insurance)
+ *   Insurer = security/carrierLegalName (the actual underwriter)
  */
 export function buildCoiInput(
   policy: any,
   holderName: string,
   purpose: string,
   userName: string,
-  userEmail?: string
 ): CoiInput {
   const today = new Date();
   const dateStr = `${(today.getMonth() + 1).toString().padStart(2, "0")}/${today.getDate().toString().padStart(2, "0")}/${today.getFullYear()}`;
 
+  // rawExtracted is stored on the policy record — use it for rich field access
+  const raw = policy.rawExtracted || policy;
+
+  // Producer = broker (who sold/placed the insurance)
+  const producerName = raw.broker || raw.brokerAgency || raw.mga || raw.carrier || "Producer";
+
+  // Insurer = security/carrierLegalName (actual underwriting company)
+  // The `security` field is the actual insurer. `carrier` is often the broker/brand name.
+  const insurerName = raw.security || raw.carrierLegalName || raw.carrier || "Insurer";
+
+  // Build insured address string
+  let insuredAddress: string | undefined;
+  if (raw.insuredAddress) {
+    const a = raw.insuredAddress;
+    insuredAddress = [a.street1, a.city, a.state, a.zip].filter(Boolean).join(", ");
+  }
+
+  // Policy type — use declarations form type or policyTypes for a friendly label
+  const formType = raw.declarations?.formType || "";
+  const policyTypeLabel = formType
+    ? `${policy.category || "Insurance"} (${formType})`
+    : policy.category || "Insurance";
+
   const coverages: CoiInput["coverages"] = [];
-  if (policy.coverages && Array.isArray(policy.coverages)) {
-    for (const c of policy.coverages) {
+  if (raw.coverages && Array.isArray(raw.coverages)) {
+    for (const c of raw.coverages) {
       coverages.push({
         name: c.name || c.type || "Coverage",
         limit: c.limit || c.limitPerOccurrence || c.limitPerPerson || "",
@@ -237,16 +238,17 @@ export function buildCoiInput(
 
   return {
     certificateDate: dateStr,
-    producerName: "Spot by Clarity Labs",
-    producerAddress: "claritylabs.inc",
-    producerPhone: "(929) 443-0153",
-    producerEmail: userEmail || "spot@spot.claritylabs.inc",
-    insuredName: policy.insuredName || userName,
-    carrier: policy.carrier || "Insurance Carrier",
-    policyNumber: policy.policyNumber || "",
-    policyType: policy.category || "General",
-    effectiveDate: policy.effectiveDate || "",
-    expirationDate: policy.expirationDate || "",
+    producerName,
+    producerAddress: undefined, // Could be enriched from raw data if available
+    producerPhone: undefined,
+    producerEmail: undefined,
+    insurerName,
+    insuredName: raw.insuredName || userName,
+    insuredAddress,
+    policyNumber: raw.policyNumber || policy.policyNumber || "",
+    policyType: policyTypeLabel,
+    effectiveDate: raw.effectiveDate || policy.effectiveDate || "",
+    expirationDate: raw.expirationDate || policy.expirationDate || "",
     coverages,
     holderName,
     purpose,
