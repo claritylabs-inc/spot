@@ -55,7 +55,8 @@ async function sendNotification(
   userId: any,
   phone: string,
   body: string,
-  linqChatId?: string
+  linqChatId?: string,
+  imessageSender?: string
 ) {
   let usedChannel = "openphone";
 
@@ -68,6 +69,17 @@ async function sendNotification(
       usedChannel = "linq";
     } catch (err) {
       console.error("Linq send failed in upload, falling back to OpenPhone:", err);
+      await ctx.runAction(internal.send.sendSms, { to: phone, body });
+    }
+  } else if (imessageSender) {
+    try {
+      await ctx.runAction(internal.sendBridge.sendBridgeMessage, {
+        to: imessageSender,
+        body,
+      });
+      usedChannel = "imessage-bridge";
+    } catch (err) {
+      console.error("Bridge send failed in upload, falling back to OpenPhone:", err);
       await ctx.runAction(internal.send.sendSms, { to: phone, body });
     }
   } else {
@@ -90,11 +102,12 @@ export const processUploadedPolicy = internalAction({
     phone: v.string(),
   },
   handler: async (ctx, args) => {
-    // Look up user to check for linqChatId
+    // Look up user to check for linqChatId or imessageSender
     const user = await ctx.runQuery(internal.users.getByPhone, {
       phone: args.phone,
     });
     const linqChatId = user?.linqChatId;
+    const imessageSender = user?.imessageSender;
 
     try {
       // Get the PDF from storage
@@ -106,7 +119,7 @@ export const processUploadedPolicy = internalAction({
 
       // Ack + classification + optimistic extraction — all in parallel
       const [, classifyResult, policyExtractResult] = await Promise.all([
-        sendNotification(ctx, args.userId, args.phone, "Got your upload — reading through it now", linqChatId),
+        sendNotification(ctx, args.userId, args.phone, "Got your upload — reading through it now", linqChatId, imessageSender),
         classifyDocumentType(pdfBase64),
         extractFromPdf(pdfBase64).catch(() => null),
       ]);
@@ -171,7 +184,7 @@ export const processUploadedPolicy = internalAction({
       const docLabel = documentType === "quote" ? "quote" : "policy";
       const msg = `Got your ${detectedCategory} ${docLabel}! Here's the breakdown:\n\n${summary}\n\nAsk me anything about your coverage.`;
 
-      await sendNotification(ctx, args.userId, args.phone, msg, linqChatId);
+      await sendNotification(ctx, args.userId, args.phone, msg, linqChatId, imessageSender);
     } catch (error: any) {
       console.error("Upload processing failed:", error);
       await sendNotification(
@@ -179,7 +192,8 @@ export const processUploadedPolicy = internalAction({
         args.userId,
         args.phone,
         "I had trouble reading that document. Try uploading again — make sure it's a PDF.",
-        linqChatId
+        linqChatId,
+        imessageSender
       );
     }
   },

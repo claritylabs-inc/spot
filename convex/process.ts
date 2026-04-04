@@ -78,13 +78,14 @@ function parseCategoryInput(input: string): "auto" | "tenant" | "other" | null {
   return null;
 }
 
-// Channel-aware send: tries Linq first, falls back to OpenPhone
+// Channel-aware send: tries Linq first, then iMessage bridge, falls back to OpenPhone
 async function sendAndLog(
   ctx: any,
   userId: any,
   phone: string,
   body: string,
-  linqChatId?: string
+  linqChatId?: string,
+  imessageSender?: string
 ) {
   let usedChannel = "openphone";
 
@@ -97,6 +98,17 @@ async function sendAndLog(
       usedChannel = "linq";
     } catch (err) {
       console.error("Linq send failed, falling back to OpenPhone:", err);
+      await ctx.runAction(internal.send.sendSms, { to: phone, body });
+    }
+  } else if (imessageSender) {
+    try {
+      await ctx.runAction(internal.sendBridge.sendBridgeMessage, {
+        to: imessageSender,
+        body,
+      });
+      usedChannel = "imessage-bridge";
+    } catch (err) {
+      console.error("Bridge send failed, falling back to OpenPhone:", err);
       await ctx.runAction(internal.send.sendSms, { to: phone, body });
     }
   } else {
@@ -121,11 +133,12 @@ async function sendBurst(
   userId: any,
   phone: string,
   messages: string[],
-  linqChatId?: string
+  linqChatId?: string,
+  imessageSender?: string
 ) {
   for (let i = 0; i < messages.length; i++) {
     if (i > 0) await sleep(800 + Math.random() * 700); // 0.8–1.5s pause
-    await sendAndLog(ctx, userId, phone, messages[i], linqChatId);
+    await sendAndLog(ctx, userId, phone, messages[i], linqChatId, imessageSender);
   }
 }
 
@@ -142,13 +155,23 @@ export const sendWelcome = internalAction({
     phone: v.string(),
     uploadToken: v.string(),
     linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Start typing indicator for Linq users
+    // Start typing indicator for iMessage channels
     if (args.linqChatId) {
       try {
         await ctx.runAction(internal.sendLinq.startTyping, {
           chatId: args.linqChatId,
+        });
+      } catch (_) {
+        // typing indicator is best-effort
+      }
+    } else if (args.imessageSender) {
+      try {
+        await ctx.runAction(internal.sendBridge.startTyping, {
+          to: args.imessageSender,
+          duration: 5,
         });
       } catch (_) {
         // typing indicator is best-effort
@@ -159,7 +182,7 @@ export const sendWelcome = internalAction({
       "Hey! This is Spot 👋",
       "I can go through your insurance policy and tell you exactly what you're covered for",
       "Is it auto, renters, or something else?",
-    ], args.linqChatId);
+    ], args.linqChatId, args.imessageSender);
   },
 });
 
@@ -173,6 +196,7 @@ export const handleCategorySelection = internalAction({
     mediaUrl: v.optional(v.string()),
     mediaType: v.optional(v.string()),
     linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.hasAttachment && args.mediaUrl) {
@@ -186,6 +210,7 @@ export const handleCategorySelection = internalAction({
         mediaType: args.mediaType || "application/pdf",
         phone: args.phone,
         linqChatId: args.linqChatId,
+        imessageSender: args.imessageSender,
       });
       return;
     }
@@ -198,7 +223,8 @@ export const handleCategorySelection = internalAction({
         args.userId,
         args.phone,
         `Haha no worries, is it auto, renters, or something else?`,
-        args.linqChatId
+        args.linqChatId,
+        args.imessageSender
       );
       return;
     }
@@ -216,18 +242,18 @@ export const handleCategorySelection = internalAction({
     };
     const label = labels[category];
 
-    if (args.linqChatId) {
-      // Linq (iMessage) — ask for attachment directly, no upload link yet
+    if (args.linqChatId || args.imessageSender) {
+      // iMessage channel (Linq or bridge) — ask for attachment directly, no upload link yet
       if (category === "other") {
         await sendBurst(ctx, args.userId, args.phone, [
           "Works for me",
           "Just send me the PDF right here and I'll take a look",
-        ], args.linqChatId);
+        ], args.linqChatId, args.imessageSender);
       } else {
         await sendBurst(ctx, args.userId, args.phone, [
           `${label}, got it`,
           "Just send me the PDF right here and I'll go through it",
-        ], args.linqChatId);
+        ], args.linqChatId, args.imessageSender);
       }
     } else {
       // OpenPhone (SMS) — send upload link since MMS is unreliable for PDFs
@@ -265,6 +291,7 @@ export const nudgeForPolicy = internalAction({
     input: v.string(),
     uploadToken: v.string(),
     linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const category = parseCategoryInput(args.input);
@@ -274,13 +301,14 @@ export const nudgeForPolicy = internalAction({
         state: "awaiting_policy",
         preferredCategory: category,
       });
-      if (args.linqChatId) {
+      if (args.linqChatId || args.imessageSender) {
         await sendAndLog(
           ctx,
           args.userId,
           args.phone,
           "No problem — just send me that PDF right here",
-          args.linqChatId
+          args.linqChatId,
+          args.imessageSender
         );
       } else {
         const link = getUploadLink(args.uploadToken);
@@ -294,15 +322,16 @@ export const nudgeForPolicy = internalAction({
       return;
     }
 
-    if (args.linqChatId) {
-      // Linq user — check if they're asking to retry
+    if (args.linqChatId || args.imessageSender) {
+      // iMessage user (Linq or bridge) — check if they're asking to retry
       if (isRetryIntent(args.input)) {
         await sendAndLog(
           ctx,
           args.userId,
           args.phone,
           "No worries, go ahead and send it again — just drop the PDF right here",
-          args.linqChatId
+          args.linqChatId,
+          args.imessageSender
         );
       } else {
         // First nudge: ask for iMessage attachment, mention web upload as backup
@@ -310,7 +339,7 @@ export const nudgeForPolicy = internalAction({
         await sendBurst(ctx, args.userId, args.phone, [
           "I'll need to see the policy first — just send me the PDF right here",
           `Or if that's not working, you can upload it here instead:\n${link}`,
-        ], args.linqChatId);
+        ], args.linqChatId, args.imessageSender);
       }
     } else {
       const link = getUploadLink(args.uploadToken);
@@ -333,12 +362,15 @@ export const processPolicy = internalAction({
     mediaType: v.string(),
     phone: v.string(),
     linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const isImessageChannel = !!(args.linqChatId || args.imessageSender);
+
     try {
       // Step 1: Ack + download in parallel (independent)
       const [, downloadResponse] = await Promise.all([
-        sendAndLog(ctx, args.userId, args.phone, "Got it — reading through your document now", args.linqChatId),
+        sendAndLog(ctx, args.userId, args.phone, "Got it — reading through your document now", args.linqChatId, args.imessageSender),
         fetch(args.mediaUrl),
       ]);
 
@@ -356,9 +388,14 @@ export const processPolicy = internalAction({
       const { documentType } = classifyResult;
 
       // Step 3: Create record + progress message + typing — all in parallel
-      const startTypingIfLinq = args.linqChatId
-        ? ctx.runAction(internal.sendLinq.startTyping, { chatId: args.linqChatId }).catch(() => {})
-        : Promise.resolve();
+      let startTypingPromise: Promise<any>;
+      if (args.linqChatId) {
+        startTypingPromise = ctx.runAction(internal.sendLinq.startTyping, { chatId: args.linqChatId }).catch(() => {});
+      } else if (args.imessageSender) {
+        startTypingPromise = ctx.runAction(internal.sendBridge.startTyping, { to: args.imessageSender, duration: 5 }).catch(() => {});
+      } else {
+        startTypingPromise = Promise.resolve();
+      }
 
       let extracted: any;
       let applied: any;
@@ -369,8 +406,8 @@ export const processPolicy = internalAction({
           ctx.runMutation(internal.policies.create, {
             userId: args.userId, category: "other", documentType, pdfStorageId: storageId,
           }).then((id) => ({ policyId: id })),
-          sendAndLog(ctx, args.userId, args.phone, "Looks like a quote — pulling out the details", args.linqChatId),
-          startTypingIfLinq,
+          sendAndLog(ctx, args.userId, args.phone, "Looks like a quote — pulling out the details", args.linqChatId, args.imessageSender),
+          startTypingPromise,
           extractQuoteFromPdf(pdfBase64),
         ]);
         extracted = quoteResult.extracted;
@@ -382,8 +419,8 @@ export const processPolicy = internalAction({
           ctx.runMutation(internal.policies.create, {
             userId: args.userId, category: "other", documentType, pdfStorageId: storageId,
           }),
-          sendAndLog(ctx, args.userId, args.phone, "Found your policy — pulling out coverages and limits", args.linqChatId),
-          startTypingIfLinq,
+          sendAndLog(ctx, args.userId, args.phone, "Found your policy — pulling out coverages and limits", args.linqChatId, args.imessageSender),
+          startTypingPromise,
         ]);
 
         if (policyExtractResult) {
@@ -400,9 +437,14 @@ export const processPolicy = internalAction({
       const detectedCategory = detectCategory(applied);
 
       // Step 4: Finalize — update policy + user state + stop typing in parallel
-      const stopTypingIfLinq = args.linqChatId
-        ? ctx.runAction(internal.sendLinq.stopTyping, { chatId: args.linqChatId }).catch(() => {})
-        : Promise.resolve();
+      let stopTypingPromise: Promise<any>;
+      if (args.linqChatId) {
+        stopTypingPromise = ctx.runAction(internal.sendLinq.stopTyping, { chatId: args.linqChatId }).catch(() => {});
+      } else if (args.imessageSender) {
+        stopTypingPromise = ctx.runAction(internal.sendBridge.stopTyping, { to: args.imessageSender }).catch(() => {});
+      } else {
+        stopTypingPromise = Promise.resolve();
+      }
 
       await Promise.all([
         ctx.runMutation(internal.policies.updateExtracted, {
@@ -422,7 +464,7 @@ export const processPolicy = internalAction({
           userId: args.userId,
           state: "active",
         }),
-        stopTypingIfLinq,
+        stopTypingPromise,
       ]);
 
       // Step 5: Send summary
@@ -433,7 +475,7 @@ export const processPolicy = internalAction({
         `Ok here's what ${isQuote ? "that quote" : "you're covered for"}`,
         summary,
         "That's the main stuff — ask me anything about it",
-      ], args.linqChatId);
+      ], args.linqChatId, args.imessageSender);
     } catch (error: any) {
       console.error("Policy processing failed:", error);
 
@@ -444,16 +486,22 @@ export const processPolicy = internalAction({
             chatId: args.linqChatId,
           });
         } catch (_) {}
+      } else if (args.imessageSender) {
+        try {
+          await ctx.runAction(internal.sendBridge.stopTyping, {
+            to: args.imessageSender,
+          });
+        } catch (_) {}
       }
 
-      if (args.linqChatId) {
-        // Linq user — suggest retry, offer web upload as backup
+      if (isImessageChannel) {
+        // iMessage user — suggest retry, offer web upload as backup
         const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
         const link = user?.uploadToken ? getUploadLink(user.uploadToken) : null;
         await sendBurst(ctx, args.userId, args.phone, [
           "Hmm I couldn't read that one — try sending it again as a PDF",
           ...(link ? [`Or you can upload it here instead:\n${link}`] : []),
-        ], args.linqChatId);
+        ], args.linqChatId, args.imessageSender);
       } else {
         await sendAndLog(
           ctx,
@@ -475,8 +523,11 @@ export const handleQuestion = internalAction({
     phone: v.string(),
     uploadToken: v.string(),
     linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const isImessageChannel = !!(args.linqChatId || args.imessageSender);
+
     try {
       const policies = await ctx.runQuery(internal.policies.getByUser, {
         userId: args.userId,
@@ -491,16 +542,24 @@ export const handleQuestion = internalAction({
           args.userId,
           args.phone,
           `I don't have a policy from you yet, drop one here and I'll check it out\n\n${link}`,
-          args.linqChatId
+          args.linqChatId,
+          args.imessageSender
         );
         return;
       }
 
-      // Start typing indicator for Linq users
+      // Start typing indicator for iMessage channels
       if (args.linqChatId) {
         try {
           await ctx.runAction(internal.sendLinq.startTyping, {
             chatId: args.linqChatId,
+          });
+        } catch (_) {}
+      } else if (args.imessageSender) {
+        try {
+          await ctx.runAction(internal.sendBridge.startTyping, {
+            to: args.imessageSender,
+            duration: 5,
           });
         } catch (_) {}
       }
@@ -570,8 +629,8 @@ Rules:
 
       const { context: documentContext } = buildDocumentContext(policyDocs, quoteDocs, args.question);
 
-      // Use higher maxOutputTokens for Linq (iMessage has no char limit)
-      const maxOutputTokens = args.linqChatId ? 800 : 400;
+      // Use higher maxOutputTokens for iMessage channels (no char limit)
+      const maxOutputTokens = isImessageChannel ? 800 : 400;
 
       const anthropic = createAnthropic();
       const { text } = await generateText({
@@ -588,11 +647,17 @@ Rules:
             chatId: args.linqChatId,
           });
         } catch (_) {}
+      } else if (args.imessageSender) {
+        try {
+          await ctx.runAction(internal.sendBridge.stopTyping, {
+            to: args.imessageSender,
+          });
+        } catch (_) {}
       }
 
       // Only truncate for OpenPhone (SMS char limit)
-      const reply = args.linqChatId ? text : text.slice(0, 1550);
-      await sendAndLog(ctx, args.userId, args.phone, reply, args.linqChatId);
+      const reply = isImessageChannel ? text : text.slice(0, 1550);
+      await sendAndLog(ctx, args.userId, args.phone, reply, args.linqChatId, args.imessageSender);
     } catch (error: any) {
       console.error("Question handling failed:", error);
 
@@ -603,6 +668,12 @@ Rules:
             chatId: args.linqChatId,
           });
         } catch (_) {}
+      } else if (args.imessageSender) {
+        try {
+          await ctx.runAction(internal.sendBridge.stopTyping, {
+            to: args.imessageSender,
+          });
+        } catch (_) {}
       }
 
       await sendAndLog(
@@ -610,7 +681,8 @@ Rules:
         args.userId,
         args.phone,
         "My bad, something broke. Try asking again?",
-        args.linqChatId
+        args.linqChatId,
+        args.imessageSender
       );
     }
   },

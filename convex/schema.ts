@@ -9,12 +9,14 @@ export default defineSchema({
     preferredCategory: v.optional(v.string()),
     uploadToken: v.optional(v.string()),
     linqChatId: v.optional(v.string()), // Linq chat ID for ongoing conversation
+    imessageSender: v.optional(v.string()), // iMessage bridge sender (phone or email)
     lastActiveAt: v.number(),
     createdAt: v.number(),
   })
     .index("by_phone", ["phone"])
     .index("by_upload_token", ["uploadToken"])
-    .index("by_linq_chat_id", ["linqChatId"]),
+    .index("by_linq_chat_id", ["linqChatId"])
+    .index("by_imessage_sender", ["imessageSender"]),
 
   policies: defineTable({
     userId: v.id("users"),

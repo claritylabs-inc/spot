@@ -150,3 +150,72 @@ export const ingestLinqMessage = internalMutation({
     };
   },
 });
+
+// Phase 2 (iMessage Bridge): Find or create user by imessageSender or phone, log message.
+export const ingestBridgeMessage = internalMutation({
+  args: {
+    messageId: v.string(),
+    from: v.string(), // phone number or email from bridge
+    text: v.string(),
+    hasAttachment: v.boolean(),
+    imessageSender: v.string(), // original sender identifier
+  },
+  handler: async (ctx, args) => {
+    // Try to find user by imessageSender first
+    let user = await ctx.db
+      .query("users")
+      .withIndex("by_imessage_sender", (q) => q.eq("imessageSender", args.imessageSender))
+      .first();
+
+    // Then try by phone (if sender is a phone number)
+    if (!user) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_phone", (q) => q.eq("phone", args.from))
+        .first();
+    }
+
+    let isNewUser = false;
+    if (!user) {
+      const now = Date.now();
+      // Use sender as phone if it looks like a phone, otherwise generate a placeholder
+      const isPhone = /^\+?\d[\d\s()-]{6,}$/.test(args.from.trim());
+      const userId = await ctx.db.insert("users", {
+        phone: isPhone ? args.from : `imbridge_${args.imessageSender}`,
+        state: "awaiting_category",
+        uploadToken: generateToken(),
+        imessageSender: args.imessageSender,
+        lastActiveAt: now,
+        createdAt: now,
+      });
+      user = (await ctx.db.get(userId))!;
+      isNewUser = true;
+    } else {
+      // Update imessageSender if user exists but didn't have one
+      const patch: any = { lastActiveAt: Date.now() };
+      if (!user.imessageSender) {
+        patch.imessageSender = args.imessageSender;
+      }
+      await ctx.db.patch(user._id, patch);
+    }
+
+    // Log inbound message
+    await ctx.db.insert("messages", {
+      userId: user._id,
+      direction: "inbound",
+      body: args.text,
+      hasAttachment: args.hasAttachment,
+      openPhoneId: args.messageId, // reuse field for dedup
+      channel: "imessage-bridge",
+      timestamp: Date.now(),
+    });
+
+    return {
+      userId: user._id,
+      state: user.state || "active",
+      uploadToken: user.uploadToken || "",
+      imessageSender: user.imessageSender || args.imessageSender,
+      isNewUser,
+    };
+  },
+});
