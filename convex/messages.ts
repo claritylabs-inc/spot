@@ -65,3 +65,16 @@ export const getByUser = internalQuery({
       .collect();
   },
 });
+
+// Get recent messages for conversation context (last N messages, newest first)
+export const getRecentByUser = internalQuery({
+  args: { userId: v.id("users"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(args.limit || 20);
+    return messages.reverse(); // return in chronological order
+  },
+});

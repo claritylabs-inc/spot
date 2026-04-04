@@ -725,12 +725,13 @@ export const handleEmailConfirmation = internalAction({
       return;
     }
 
-    // Confirm: send, yes, go, /send
-    const confirmWords = ["send", "yes", "yeah", "yep", "go", "ok", "sure", "do it", "confirm", "/send", "/yes"];
-    const cancelWords = ["cancel", "no", "nah", "nope", "don't", "stop", "/cancel", "/no"];
-    const undoWords = ["undo", "/undo"];
+    // Match confirmation/cancellation/undo — use .includes() so "yup all good" matches "good", "yup", etc.
+    const confirmWords = ["send", "yes", "yeah", "yep", "yup", "go", "ok", "okay", "sure", "do it", "confirm", "good", "looks good", "all good", "sounds good", "go ahead", "ship it", "fire away"];
+    const cancelWords = ["cancel", "don't", "stop", "never mind", "nevermind", "scratch that"];
+    const hardNo = ["no", "nah", "nope"]; // only match if the entire message is just "no"
+    const undoWords = ["undo"];
 
-    if (pending.status === "scheduled" && undoWords.some(w => clean === w || clean.startsWith(w))) {
+    if (pending.status === "scheduled" && undoWords.some(w => clean.includes(w))) {
       // Undo a scheduled email
       await ctx.runMutation(internal.email.cancelPendingEmail, {
         pendingEmailId: pending._id,
@@ -743,7 +744,7 @@ export const handleEmailConfirmation = internalAction({
       return;
     }
 
-    if (cancelWords.some(w => clean === w || clean.startsWith(w))) {
+    if (cancelWords.some(w => clean.includes(w)) || hardNo.some(w => clean === w)) {
       await ctx.runMutation(internal.email.cancelPendingEmail, {
         pendingEmailId: pending._id,
       });
@@ -755,7 +756,7 @@ export const handleEmailConfirmation = internalAction({
       return;
     }
 
-    if (confirmWords.some(w => clean === w || clean.startsWith(w))) {
+    if (confirmWords.some(w => clean.includes(w))) {
       // Schedule with 20s undo window
       await ctx.runMutation(internal.email.scheduleEmailSend, {
         pendingEmailId: pending._id,
@@ -848,8 +849,33 @@ export const handleQuestion = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      // Check for undo command (quick path — user might reply "undo" after email sent)
       const clean = args.question.toLowerCase().trim();
+
+      // /debug command — dump current state for troubleshooting
+      if (clean === "/debug" || clean === "debug") {
+        const [dbUser, dbPolicies, dbPending, dbReminders] = await Promise.all([
+          ctx.runQuery(internal.users.get, { userId: args.userId }),
+          ctx.runQuery(internal.policies.getByUser, { userId: args.userId }),
+          ctx.runQuery(internal.email.getPendingForUser, { userId: args.userId }),
+          ctx.runQuery(internal.reminders.getByUser, { userId: args.userId }),
+        ]);
+        const debugInfo = [
+          `🔧 Debug Info`,
+          `State: ${dbUser?.state || "unknown"}`,
+          `Email: ${dbUser?.email || "not set"}`,
+          `Auto-send: ${dbUser?.autoSendEmails ? "on" : "off"}`,
+          `Policies: ${dbPolicies.length} (${dbPolicies.filter((p: any) => p.status === "ready").length} ready)`,
+          ...dbPolicies.map((p: any) => `  · ${p.category} — ${p.carrier || "?"} — ${p.status}`),
+          `Pending email: ${dbPending ? `${dbPending.status} → ${dbPending.recipientEmail}` : "none"}`,
+          `Reminders: ${dbReminders.length} (${dbReminders.filter((r: any) => r.status === "pending").length} pending)`,
+          `Channel: ${dbUser?.linqChatId ? "linq" : dbUser?.imessageSender ? "imessage_bridge" : "openphone"}`,
+          `Upload token: ${dbUser?.uploadToken || "none"}`,
+        ].join("\n");
+        await sendAndLog(ctx, args.userId, args.phone, debugInfo, args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      // Check for undo command (quick path — user might reply "undo" after email sent)
       if (clean === "undo" || clean === "/undo") {
         const pending = await ctx.runQuery(internal.email.getPendingForUser, {
           userId: args.userId,
@@ -863,9 +889,10 @@ export const handleQuestion = internalAction({
         }
       }
 
-      const [policies, user] = await Promise.all([
+      const [policies, user, recentMessages] = await Promise.all([
         ctx.runQuery(internal.policies.getByUser, { userId: args.userId }),
         ctx.runQuery(internal.users.get, { userId: args.userId }),
+        ctx.runQuery(internal.messages.getRecentByUser, { userId: args.userId, limit: 20 }),
       ]);
 
       const readyPolicies = policies.filter((p: any) => p.status === "ready");
@@ -967,10 +994,29 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
       const isImChannel = !!(args.linqChatId || args.imessageSender);
       const maxOutputTokens = isImChannel ? 800 : 400;
 
-      // Build user message content — include image if present
+      // Build conversation history from recent messages (gives Claude context of prior exchanges)
+      const conversationMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+      for (const msg of recentMessages) {
+        // Skip system-generated messages (email logs, etc.)
+        if (msg.body.startsWith("[Email")) continue;
+        const role = msg.direction === "inbound" ? "user" as const : "assistant" as const;
+        // Collapse consecutive same-role messages
+        const last = conversationMessages[conversationMessages.length - 1];
+        if (last && last.role === role) {
+          last.content += "\n" + msg.body;
+        } else {
+          conversationMessages.push({ role, content: msg.body });
+        }
+      }
+
+      // Ensure conversation starts with user and alternates properly
+      // Remove trailing messages — the current question will be the final user message
+      // Keep last ~15 messages for context without blowing up the prompt
+      const trimmedHistory = conversationMessages.slice(-15);
+
+      // Build the final user message content (may include image)
       const userContent: any[] = [];
 
-      // Check for image context (sent with this message or user's last image)
       const imageId = args.imageStorageId || user?.lastImageId;
       if (imageId) {
         try {
@@ -984,17 +1030,31 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               mimeType: "image/jpeg",
             });
           }
-        } catch (_) {
-          // Image not available — skip
-        }
-        // Clear lastImageId after using it (so it doesn't leak into unrelated questions)
-        if (!args.imageStorageId && user?.lastImageId) {
-          // Only clear if we're using the stored last image (not a freshly sent one)
-          // Don't clear here — let it persist for follow-up questions about the same image
-        }
+        } catch (_) {}
       }
 
       userContent.push({ type: "text", text: args.question });
+
+      // Build messages array: history + current question
+      // Filter history to exclude the current message (it was already logged before handleQuestion runs)
+      const aiMessages: any[] = [];
+      for (const msg of trimmedHistory) {
+        // Skip if this is the current inbound message (last user message = current question)
+        aiMessages.push(msg);
+      }
+      // Remove the last entry if it duplicates the current question
+      if (aiMessages.length > 0 && aiMessages[aiMessages.length - 1].role === "user") {
+        const lastBody = aiMessages[aiMessages.length - 1].content.trim().toLowerCase();
+        if (lastBody === args.question.trim().toLowerCase()) {
+          aiMessages.pop();
+        }
+      }
+      // Ensure the conversation doesn't start with assistant
+      while (aiMessages.length > 0 && aiMessages[0].role === "assistant") {
+        aiMessages.shift();
+      }
+      // Add the current question as the final user message
+      aiMessages.push({ role: "user", content: userContent });
 
       // Define tools
       const anthropic = createAnthropic();
@@ -1003,10 +1063,16 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
       let pendingEmailCreated = false;
       let pendingEmailId: any = null;
 
+      // Also include pending email context if there's one awaiting confirmation
+      const pendingEmailCtx = await ctx.runQuery(internal.email.getPendingForUser, { userId: args.userId });
+      const pendingEmailNote = pendingEmailCtx
+        ? `\n\nPENDING EMAIL: There is a pending email to ${pendingEmailCtx.recipientEmail} (subject: "${pendingEmailCtx.subject}", status: ${pendingEmailCtx.status}). If the user seems to be confirming or asking about this email, tell them to reply "send" to confirm or "cancel" to stop.`
+        : "";
+
       const result = await generateText({
         model: anthropic("claude-sonnet-4-6"),
-        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}`,
-        messages: [{ role: "user", content: userContent }],
+        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${pendingEmailNote}`,
+        messages: aiMessages,
         maxOutputTokens,
         tools: {
           send_email: tool({
