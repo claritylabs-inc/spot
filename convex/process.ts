@@ -1050,8 +1050,10 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
       // Build conversation history from recent messages (gives Claude context of prior exchanges)
       const conversationMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
       for (const msg of recentMessages) {
-        // Skip system-generated messages (email logs, etc.)
+        // Skip empty messages, system-generated messages, and debug output
+        if (!msg.body || msg.body.trim() === "") continue;
         if (msg.body.startsWith("[Email")) continue;
+        if (msg.body.startsWith("🔧 Debug")) continue;
         const role = msg.direction === "inbound" ? "user" as const : "assistant" as const;
         // Collapse consecutive same-role messages
         const last = conversationMessages[conversationMessages.length - 1];
@@ -1089,15 +1091,16 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
       userContent.push({ type: "text", text: args.question });
 
       // Build messages array: history + current question
-      // Filter history to exclude the current message (it was already logged before handleQuestion runs)
       const aiMessages: any[] = [];
       for (const msg of trimmedHistory) {
-        // Skip if this is the current inbound message (last user message = current question)
+        // Double-check: skip any messages with empty content
+        if (typeof msg.content === "string" && msg.content.trim() === "") continue;
         aiMessages.push(msg);
       }
       // Remove the last entry if it duplicates the current question
       if (aiMessages.length > 0 && aiMessages[aiMessages.length - 1].role === "user") {
-        const lastBody = aiMessages[aiMessages.length - 1].content.trim().toLowerCase();
+        const lastBody = (typeof aiMessages[aiMessages.length - 1].content === "string"
+          ? aiMessages[aiMessages.length - 1].content : "").trim().toLowerCase();
         if (lastBody === args.question.trim().toLowerCase()) {
           aiMessages.pop();
         }
