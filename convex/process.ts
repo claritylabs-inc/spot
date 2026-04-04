@@ -1198,6 +1198,39 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               return { success: true, link, message: `Upload link: ${link}` };
             },
           }),
+
+          reextract_policy: tool({
+            description: "Re-extract a policy from its original PDF using the latest extraction pipeline. Use when the user asks to re-extract, reprocess, re-read, or refresh their policy data.",
+            inputSchema: z.object({
+              policyId: z.string().optional().describe("Policy ID to re-extract. If omitted, re-extracts all policies."),
+            }),
+            execute: async (input) => {
+              const toReextract = input.policyId
+                ? readyPolicies.filter((p: any) => p._id === input.policyId)
+                : readyPolicies;
+              if (toReextract.length === 0) return { success: false, message: "No policies found to re-extract" };
+
+              const withPdf = toReextract.filter((p: any) => p.pdfStorageId);
+              if (withPdf.length === 0) return { success: false, message: "No stored PDFs found — the original documents may not have been saved" };
+
+              // Schedule re-extraction for each policy
+              for (const policy of withPdf) {
+                await ctx.runAction(internal.process.reextractPolicy, {
+                  policyId: policy._id,
+                  pdfStorageId: policy.pdfStorageId!,
+                  userId: args.userId,
+                  phone: args.phone,
+                  linqChatId: args.linqChatId,
+                  imessageSender: args.imessageSender,
+                });
+              }
+
+              return {
+                success: true,
+                message: `Re-extracting ${withPdf.length} ${withPdf.length === 1 ? "policy" : "policies"} with the latest pipeline. The user will get updated summaries shortly.`,
+              };
+            },
+          }),
         },
         stopWhen: stepCountIs(5),
       });
@@ -1247,6 +1280,92 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
         args.linqChatId,
         args.imessageSender
       );
+    }
+  },
+});
+
+// ── Re-extraction ──
+
+export const reextractPolicy = internalAction({
+  args: {
+    policyId: v.id("policies"),
+    pdfStorageId: v.id("_storage"),
+    userId: v.id("users"),
+    phone: v.string(),
+    linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Set policy back to processing
+      await ctx.runMutation(internal.policies.updateExtracted, {
+        policyId: args.policyId,
+        status: "processing",
+      });
+
+      // Get the stored PDF
+      const blob = await ctx.storage.get(args.pdfStorageId);
+      if (!blob) {
+        await ctx.runMutation(internal.policies.updateExtracted, {
+          policyId: args.policyId,
+          status: "failed",
+        });
+        await sendAndLog(ctx, args.userId, args.phone, "Couldn't find the original PDF — try uploading it again", args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      const buffer = await blob.arrayBuffer();
+      const pdfBase64 = Buffer.from(buffer).toString("base64");
+
+      // Re-run extraction with latest pipeline
+      const [classifyResult, extractResult] = await Promise.all([
+        classifyDocumentType(pdfBase64),
+        extractFromPdf(pdfBase64, { concurrency: 3 }).catch(() => null),
+      ]);
+
+      const { documentType } = classifyResult;
+
+      let applied: any;
+      if (documentType === "quote") {
+        const quoteResult = await extractQuoteFromPdf(pdfBase64, { concurrency: 3 });
+        applied = sanitizeNulls(applyExtractedQuote(quoteResult.extracted));
+      } else if (extractResult) {
+        applied = sanitizeNulls(applyExtracted(extractResult.extracted));
+      } else {
+        const result = await extractFromPdf(pdfBase64, { concurrency: 3 });
+        applied = sanitizeNulls(applyExtracted(result.extracted));
+      }
+
+      const detectedCategory = detectCategory(applied);
+
+      await ctx.runMutation(internal.policies.updateExtracted, {
+        policyId: args.policyId,
+        carrier: applied.carrier || undefined,
+        policyNumber: applied.policyNumber || undefined,
+        effectiveDate: applied.effectiveDate || undefined,
+        expirationDate: applied.expirationDate || undefined,
+        premium: applied.premium || undefined,
+        insuredName: applied.insuredName || undefined,
+        summary: applied.summary || undefined,
+        coverages: applied.coverages || undefined,
+        rawExtracted: applied,
+        category: detectedCategory,
+        policyTypes: applied.policyTypes || undefined,
+        status: "ready",
+      });
+
+      const summary = buildPolicySummary(applied, detectedCategory);
+      await sendBurst(ctx, args.userId, args.phone, [
+        "Re-extracted your policy with the latest pipeline — here's the updated breakdown",
+        summary,
+      ], args.linqChatId, args.imessageSender);
+    } catch (error: any) {
+      console.error("Re-extraction failed:", error);
+      await ctx.runMutation(internal.policies.updateExtracted, {
+        policyId: args.policyId,
+        status: "failed",
+      });
+      await sendAndLog(ctx, args.userId, args.phone, "Had trouble re-extracting that policy — try uploading it again?", args.linqChatId, args.imessageSender);
     }
   },
 });
