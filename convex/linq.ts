@@ -102,8 +102,8 @@ export const webhook = httpAction(async (ctx, request) => {
     return new Response("duplicate", { status: 200 });
   }
 
-  // Send read receipt immediately — "Seen" shows up on sender's iMessage
-  ctx.runAction(internal.sendLinq.markRead, { chatId }).catch(() => {});
+  // Send read receipt — scheduled to avoid dangling promise in httpAction
+  await ctx.scheduler.runAfter(0, internal.sendLinq.markRead, { chatId });
 
   // Phase 2: Ingest message
   const result = await ctx.runMutation(internal.ingest.ingestLinqMessage, {
