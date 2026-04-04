@@ -1020,76 +1020,77 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               policyId: z.string().optional().describe("Specific policy ID if user has multiple"),
             }),
             execute: async (input) => {
-              if (!user?.email) {
-                return { success: false, reason: "no_email", message: "User doesn't have an email on file. Use request_email to ask for it first." };
-              }
+              try {
+                if (!user?.email) {
+                  return { success: false, reason: "no_email", message: "User doesn't have an email on file. Use request_email to ask for it first." };
+                }
 
-              // Pick the policy
-              const targetPolicy = input.policyId
-                ? readyPolicies.find((p: any) => p._id === input.policyId)
-                : readyPolicies[0];
-              if (!targetPolicy) return { success: false, reason: "no_policy", message: "No policy found" };
+                const targetPolicy = input.policyId
+                  ? readyPolicies.find((p: any) => p._id === input.policyId)
+                  : readyPolicies[0];
+                if (!targetPolicy) return { success: false, reason: "no_policy", message: "No policy found" };
 
-              // Build email based on purpose
-              let emailContent: { subject: string; html: string };
-              const userName = user.name || targetPolicy.insuredName || "Policyholder";
+                let emailContent: { subject: string; html: string };
+                const userName = user.name || targetPolicy.insuredName || "Policyholder";
 
-              switch (input.purpose) {
-                case "proof_of_insurance":
-                  emailContent = buildProofOfInsuranceEmail(targetPolicy, userName);
-                  break;
-                case "coi":
-                  emailContent = buildCoiEmail(
-                    targetPolicy,
-                    input.recipientName || "Recipient",
-                    input.customMessage || "General purpose",
-                    userName
-                  );
-                  break;
-                case "coverage_details":
-                  emailContent = buildCoverageDetailEmail(
-                    targetPolicy,
-                    input.coverageNames || [],
-                    input.customMessage
-                  );
-                  break;
-                default:
-                  emailContent = buildProofOfInsuranceEmail(targetPolicy, userName);
-              }
+                switch (input.purpose) {
+                  case "proof_of_insurance":
+                    emailContent = buildProofOfInsuranceEmail(targetPolicy, userName);
+                    break;
+                  case "coi":
+                    emailContent = buildCoiEmail(
+                      targetPolicy,
+                      input.recipientName || "Recipient",
+                      input.customMessage || "General purpose",
+                      userName
+                    );
+                    break;
+                  case "coverage_details":
+                    emailContent = buildCoverageDetailEmail(
+                      targetPolicy,
+                      input.coverageNames || [],
+                      input.customMessage
+                    );
+                    break;
+                  default:
+                    emailContent = buildProofOfInsuranceEmail(targetPolicy, userName);
+                }
 
-              // Create pending email
-              const peId = await ctx.runMutation(internal.email.createPendingEmail, {
-                userId: args.userId,
-                recipientEmail: input.recipientEmail,
-                recipientName: input.recipientName,
-                subject: emailContent.subject,
-                htmlBody: emailContent.html,
-                ccEmail: user.email,
-                purpose: input.purpose,
-              });
-
-              pendingEmailCreated = true;
-              pendingEmailId = peId;
-
-              // If autoSend is on, schedule immediately (no confirmation, no undo)
-              if (user.autoSendEmails) {
-                await ctx.runMutation(internal.email.scheduleEmailSend, {
-                  pendingEmailId: peId,
+                const peId = await ctx.runMutation(internal.email.createPendingEmail, {
+                  userId: args.userId,
+                  recipientEmail: input.recipientEmail,
+                  recipientName: input.recipientName,
+                  subject: emailContent.subject,
+                  htmlBody: emailContent.html,
+                  ccEmail: user.email,
+                  purpose: input.purpose,
                 });
+
+                pendingEmailCreated = true;
+                pendingEmailId = peId;
+
+                if (user.autoSendEmails) {
+                  await ctx.runMutation(internal.email.scheduleEmailSend, {
+                    pendingEmailId: peId,
+                  });
+                  return {
+                    success: true,
+                    autoSent: true,
+                    message: `Email scheduled to ${input.recipientEmail} (auto-send is on). It will be delivered shortly.`,
+                  };
+                }
+
                 return {
                   success: true,
-                  autoSent: true,
-                  message: `Email scheduled to ${input.recipientEmail} (auto-send is on). It will be delivered shortly.`,
+                  awaitingConfirmation: true,
+                  recipientEmail: input.recipientEmail,
+                  subject: emailContent.subject,
+                  message: `Email drafted to ${input.recipientEmail}. Ask the user to confirm.`,
                 };
+              } catch (err: any) {
+                console.error("send_email tool error:", err);
+                return { success: false, message: `Failed to draft email: ${err.message || "unknown error"}` };
               }
-
-              return {
-                success: true,
-                awaitingConfirmation: true,
-                recipientEmail: input.recipientEmail,
-                subject: emailContent.subject,
-                message: `Email drafted to ${input.recipientEmail}. Ask the user to confirm.`,
-              };
             },
           }),
 
@@ -1102,48 +1103,52 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               policyId: z.string().optional(),
             }),
             execute: async (input) => {
-              if (!user?.email) {
-                return { success: false, reason: "no_email", message: "User doesn't have an email on file. Use request_email first." };
+              try {
+                if (!user?.email) {
+                  return { success: false, reason: "no_email", message: "User doesn't have an email on file. Use request_email first." };
+                }
+                const targetPolicy = input.policyId
+                  ? readyPolicies.find((p: any) => p._id === input.policyId)
+                  : readyPolicies[0];
+                if (!targetPolicy) return { success: false, reason: "no_policy", message: "No policy found" };
+
+                const userName = user.name || targetPolicy.insuredName || "Policyholder";
+                const emailContent = buildCoiEmail(targetPolicy, input.recipientName, input.purpose, userName);
+
+                const coiInput = buildCoiInput(targetPolicy, input.recipientName, input.purpose, userName, user.email);
+                const pdfBytes = await generateCoiPdf(coiInput);
+                const pdfBlob = new Blob([Buffer.from(pdfBytes)], { type: "application/pdf" });
+                const coiPdfStorageId = await ctx.storage.store(pdfBlob);
+
+                const peId = await ctx.runMutation(internal.email.createPendingEmail, {
+                  userId: args.userId,
+                  recipientEmail: input.recipientEmail,
+                  recipientName: input.recipientName,
+                  subject: emailContent.subject,
+                  htmlBody: emailContent.html,
+                  ccEmail: user.email,
+                  purpose: "coi",
+                  coiPdfStorageId,
+                });
+
+                pendingEmailCreated = true;
+                pendingEmailId = peId;
+
+                if (user.autoSendEmails) {
+                  await ctx.runMutation(internal.email.scheduleEmailSend, { pendingEmailId: peId });
+                  return { success: true, autoSent: true, message: `COI summary sent to ${input.recipientEmail}.` };
+                }
+
+                return {
+                  success: true,
+                  awaitingConfirmation: true,
+                  recipientEmail: input.recipientEmail,
+                  message: `COI email drafted for ${input.recipientName} at ${input.recipientEmail}. Ask user to confirm.`,
+                };
+              } catch (err: any) {
+                console.error("generate_coi tool error:", err);
+                return { success: false, message: `Failed to generate COI: ${err.message || "unknown error"}` };
               }
-              const targetPolicy = input.policyId
-                ? readyPolicies.find((p: any) => p._id === input.policyId)
-                : readyPolicies[0];
-              if (!targetPolicy) return { success: false, reason: "no_policy", message: "No policy found" };
-
-              const userName = user.name || targetPolicy.insuredName || "Policyholder";
-              const emailContent = buildCoiEmail(targetPolicy, input.recipientName, input.purpose, userName);
-
-              // Generate ACORD-style COI PDF
-              const coiInput = buildCoiInput(targetPolicy, input.recipientName, input.purpose, userName, user.email);
-              const pdfBytes = await generateCoiPdf(coiInput);
-              const pdfBlob = new Blob([Buffer.from(pdfBytes)], { type: "application/pdf" });
-              const coiPdfStorageId = await ctx.storage.store(pdfBlob);
-
-              const peId = await ctx.runMutation(internal.email.createPendingEmail, {
-                userId: args.userId,
-                recipientEmail: input.recipientEmail,
-                recipientName: input.recipientName,
-                subject: emailContent.subject,
-                htmlBody: emailContent.html,
-                ccEmail: user.email,
-                purpose: "coi",
-                coiPdfStorageId,
-              });
-
-              pendingEmailCreated = true;
-              pendingEmailId = peId;
-
-              if (user.autoSendEmails) {
-                await ctx.runMutation(internal.email.scheduleEmailSend, { pendingEmailId: peId });
-                return { success: true, autoSent: true, message: `COI summary sent to ${input.recipientEmail}.` };
-              }
-
-              return {
-                success: true,
-                awaitingConfirmation: true,
-                recipientEmail: input.recipientEmail,
-                message: `COI email drafted for ${input.recipientName} at ${input.recipientEmail}. Ask user to confirm.`,
-              };
             },
           }),
 
@@ -1182,11 +1187,16 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               reason: z.string().describe("Why the email is needed — shown to the user"),
             }),
             execute: async (_input) => {
-              await ctx.runMutation(internal.users.updateState, {
-                userId: args.userId,
-                state: "awaiting_email",
-              });
-              return { success: true, message: "Ask the user for their email address now." };
+              try {
+                await ctx.runMutation(internal.users.updateState, {
+                  userId: args.userId,
+                  state: "awaiting_email",
+                });
+                return { success: true, message: "Ask the user for their email address now." };
+              } catch (err: any) {
+                console.error("request_email tool error:", err);
+                return { success: false, message: `Failed to request email: ${err.message || "unknown error"}` };
+              }
             },
           }),
 
@@ -1194,8 +1204,13 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
             description: "Send the user their upload link so they can add another policy",
             inputSchema: z.object({}),
             execute: async () => {
-              const link = getUploadLink(args.uploadToken);
-              return { success: true, link, message: `Upload link: ${link}` };
+              try {
+                const link = getUploadLink(args.uploadToken);
+                return { success: true, link, message: `Upload link: ${link}` };
+              } catch (err: any) {
+                console.error("send_upload_link tool error:", err);
+                return { success: false, message: `Failed to generate upload link: ${err.message || "unknown error"}` };
+              }
             },
           }),
 
@@ -1205,30 +1220,34 @@ When sending emails, ALWAYS ask for confirmation before sending unless the user 
               policyId: z.string().optional().describe("Policy ID to re-extract. If omitted, re-extracts all policies."),
             }),
             execute: async (input) => {
-              const toReextract = input.policyId
-                ? readyPolicies.filter((p: any) => p._id === input.policyId)
-                : readyPolicies;
-              if (toReextract.length === 0) return { success: false, message: "No policies found to re-extract" };
+              try {
+                const toReextract = input.policyId
+                  ? readyPolicies.filter((p: any) => p._id === input.policyId)
+                  : readyPolicies;
+                if (toReextract.length === 0) return { success: false, message: "No policies found to re-extract" };
 
-              const withPdf = toReextract.filter((p: any) => p.pdfStorageId);
-              if (withPdf.length === 0) return { success: false, message: "No stored PDFs found — the original documents may not have been saved" };
+                const withPdf = toReextract.filter((p: any) => p.pdfStorageId);
+                if (withPdf.length === 0) return { success: false, message: "No stored PDFs found — the original documents may not have been saved" };
 
-              // Schedule re-extraction for each policy
-              for (const policy of withPdf) {
-                await ctx.runAction(internal.process.reextractPolicy, {
-                  policyId: policy._id,
-                  pdfStorageId: policy.pdfStorageId!,
-                  userId: args.userId,
-                  phone: args.phone,
-                  linqChatId: args.linqChatId,
-                  imessageSender: args.imessageSender,
-                });
+                for (const policy of withPdf) {
+                  await ctx.runAction(internal.process.reextractPolicy, {
+                    policyId: policy._id,
+                    pdfStorageId: policy.pdfStorageId!,
+                    userId: args.userId,
+                    phone: args.phone,
+                    linqChatId: args.linqChatId,
+                    imessageSender: args.imessageSender,
+                  });
+                }
+
+                return {
+                  success: true,
+                  message: `Re-extracting ${withPdf.length} ${withPdf.length === 1 ? "policy" : "policies"} with the latest pipeline. The user will get updated summaries shortly.`,
+                };
+              } catch (err: any) {
+                console.error("reextract_policy tool error:", err);
+                return { success: false, message: `Failed to re-extract: ${err.message || "unknown error"}` };
               }
-
-              return {
-                success: true,
-                message: `Re-extracting ${withPdf.length} ${withPdf.length === 1 ? "policy" : "policies"} with the latest pipeline. The user will get updated summaries shortly.`,
-              };
             },
           }),
         },
