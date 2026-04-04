@@ -62,3 +62,33 @@ export const updateExtracted = internalMutation({
     await ctx.db.patch(policyId, fields);
   },
 });
+
+export const updateInsuranceSlip = internalMutation({
+  args: {
+    policyId: v.id("policies"),
+    insuranceSlipStorageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.policyId, {
+      insuranceSlipStorageId: args.insuranceSlipStorageId,
+    });
+  },
+});
+
+/** Get the most recent ready auto or homeowners policy for a user. */
+export const getLatestAutoOrHome = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const policies = await ctx.db
+      .query("policies")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .collect();
+    return policies.find(
+      (p) =>
+        p.status === "ready" &&
+        (p.category === "auto" || p.category === "homeowners") &&
+        !p.insuranceSlipStorageId
+    ) ?? null;
+  },
+});

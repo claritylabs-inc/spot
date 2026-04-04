@@ -189,6 +189,10 @@ export const processUploadedPolicy = internalAction({
 
       const detectedCategory = detectCategory(applied);
 
+      // For auto/home policies, ask about existing insurance slip
+      const isSlipEligible = documentType !== "quote" &&
+        (detectedCategory === "auto" || detectedCategory === "homeowners");
+
       // Finalize: update policy + user state in parallel
       await Promise.all([
         ctx.runMutation(internal.policies.updateExtracted, {
@@ -208,16 +212,21 @@ export const processUploadedPolicy = internalAction({
         }),
         ctx.runMutation(internal.users.updateState, {
           userId: args.userId,
-          state: "active",
+          state: isSlipEligible ? "awaiting_insurance_slip" : "active",
         }),
       ]);
 
       // Text them the summary
       const summary = buildPolicySummary(applied);
       const docLabel = documentType === "quote" ? "quote" : "policy";
-      const msg = `Got your ${detectedCategory} ${docLabel}! Here's the breakdown:\n\n${summary}\n\nAsk me anything about your coverage.`;
 
-      await sendNotification(ctx, args.userId, args.phone, msg, linqChatId, imessageSender);
+      if (isSlipEligible) {
+        const msg = `Got your ${detectedCategory} ${docLabel}! Here's the breakdown:\n\n${summary}\n\nDo you have an existing insurance slip for this? If so, send it over and I'll save it. Otherwise just say no and I can generate one for you anytime.`;
+        await sendNotification(ctx, args.userId, args.phone, msg, linqChatId, imessageSender);
+      } else {
+        const msg = `Got your ${detectedCategory} ${docLabel}! Here's the breakdown:\n\n${summary}\n\nAsk me anything about your coverage.`;
+        await sendNotification(ctx, args.userId, args.phone, msg, linqChatId, imessageSender);
+      }
     } catch (error: any) {
       console.error("Upload processing failed:", error);
       await sendNotification(

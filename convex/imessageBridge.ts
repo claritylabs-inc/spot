@@ -128,6 +128,15 @@ export const webhook = httpAction(async (ctx, request) => {
         imessageSender,
       }
     );
+  } else if (state === "awaiting_insurance_slip") {
+    // Bridge doesn't support attachments yet — handle text only
+    await ctx.scheduler.runAfter(0, internal.process.handleInsuranceSlipResponse, {
+      userId,
+      phone,
+      input: text,
+      uploadToken,
+      imessageSender,
+    });
   } else if (state === "awaiting_policy") {
     if (hasAttachments) {
       // Phase 1: text only — if there's text, process it; otherwise nudge

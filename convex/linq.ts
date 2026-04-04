@@ -159,6 +159,26 @@ export const webhook = httpAction(async (ctx, request) => {
       input: text,
       linqChatId,
     });
+  } else if (state === "awaiting_insurance_slip") {
+    if (hasAttachment) {
+      for (const attachment of mediaParts) {
+        await ctx.scheduler.runAfter(0, internal.process.processInsuranceSlip, {
+          userId,
+          mediaUrl: attachment.url || "",
+          mediaType: attachment.mime_type || "application/pdf",
+          phone,
+          linqChatId,
+        });
+      }
+    } else {
+      await ctx.scheduler.runAfter(0, internal.process.handleInsuranceSlipResponse, {
+        userId,
+        phone,
+        input: text,
+        uploadToken,
+        linqChatId,
+      });
+    }
   } else if (state === "awaiting_policy") {
     if (hasAttachment) {
       for (const attachment of mediaParts) {

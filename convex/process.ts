@@ -579,6 +579,10 @@ async function processExtractionPipeline(
     ? ctx.runAction(internal.sendLinq.stopTyping, { chatId: args.linqChatId }).catch(() => {})
     : Promise.resolve();
 
+  // For auto/home policies, transition to awaiting_insurance_slip instead of active
+  const isSlipEligible = !documentType.includes("quote") &&
+    (detectedCategory === "auto" || detectedCategory === "homeowners");
+
   await Promise.all([
     ctx.runMutation(internal.policies.updateExtracted, {
       policyId: finalPolicyId,
@@ -597,7 +601,7 @@ async function processExtractionPipeline(
     }),
     ctx.runMutation(internal.users.updateState, {
       userId: args.userId,
-      state: "active",
+      state: isSlipEligible ? "awaiting_insurance_slip" : "active",
     }),
     stopTypingIfLinq,
   ]);
@@ -605,11 +609,19 @@ async function processExtractionPipeline(
   const summary = buildPolicySummary(applied, detectedCategory);
   const isQuote = documentType === "quote";
 
-  await sendBurst(ctx, args.userId, args.phone, [
-    `Ok here's what ${isQuote ? "that quote" : "you're covered for"}`,
-    summary,
-    "That's the main stuff — ask me anything about it, or I can send proof of insurance / set a reminder for you",
-  ], args.linqChatId, args.imessageSender);
+  if (isSlipEligible) {
+    await sendBurst(ctx, args.userId, args.phone, [
+      `Ok here's what you're covered for`,
+      summary,
+      "Do you have an existing insurance slip for this? If so, send it over and I'll save it. Otherwise just say no and I can generate one for you anytime.",
+    ], args.linqChatId, args.imessageSender);
+  } else {
+    await sendBurst(ctx, args.userId, args.phone, [
+      `Ok here's what ${isQuote ? "that quote" : "you're covered for"}`,
+      summary,
+      "That's the main stuff — ask me anything about it, or I can send proof of insurance / set a reminder for you",
+    ], args.linqChatId, args.imessageSender);
+  }
 }
 
 // ── Policy Processing (PDF path — unchanged but now delegates to shared pipeline) ──
@@ -672,6 +684,157 @@ export const processPolicy = internalAction({
           "Hmm I couldn't read that one, can you try again? PDF works best",
         );
       }
+    }
+  },
+});
+
+// ── Insurance Slip Upload Handlers ──
+
+/** Handle text response when user is in awaiting_insurance_slip state. */
+export const handleInsuranceSlipResponse = internalAction({
+  args: {
+    userId: v.id("users"),
+    phone: v.string(),
+    input: v.string(),
+    uploadToken: v.string(),
+    linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const clean = args.input.toLowerCase().trim();
+    const skipWords = ["no", "nah", "nope", "skip", "don't have one", "dont have one", "no thanks", "not right now", "later", "maybe later", "i don't", "i dont", "none", "n"];
+
+    if (skipWords.some((w) => clean === w || clean.includes(w))) {
+      await ctx.runMutation(internal.users.updateState, {
+        userId: args.userId,
+        state: "active",
+      });
+      await sendAndLog(
+        ctx,
+        args.userId,
+        args.phone,
+        "No worries — I can generate one for you anytime, just ask! What else can I help with?",
+        args.linqChatId,
+        args.imessageSender
+      );
+      return;
+    }
+
+    const yesWords = ["yes", "yeah", "yep", "yup", "sure", "ok", "okay", "i do", "got one", "have one"];
+    if (yesWords.some((w) => clean === w || clean.includes(w))) {
+      // They said yes but didn't attach — prompt them to send it
+      if (args.linqChatId || args.imessageSender) {
+        await sendAndLog(
+          ctx,
+          args.userId,
+          args.phone,
+          "Send it over — just drop the photo or PDF right here",
+          args.linqChatId,
+          args.imessageSender
+        );
+      } else {
+        const link = getUploadLink(args.uploadToken);
+        await sendAndLog(
+          ctx,
+          args.userId,
+          args.phone,
+          `You can upload it here:\n${link}`,
+        );
+      }
+      return;
+    }
+
+    // Anything else — treat as skipping and go to active
+    await ctx.runMutation(internal.users.updateState, {
+      userId: args.userId,
+      state: "active",
+    });
+    await ctx.runAction(internal.process.handleQuestion, {
+      userId: args.userId,
+      question: args.input,
+      phone: args.phone,
+      uploadToken: args.uploadToken,
+      linqChatId: args.linqChatId,
+      imessageSender: args.imessageSender,
+    });
+  },
+});
+
+/** Process an insurance slip attachment (PDF or image) and save it on the policy. */
+export const processInsuranceSlip = internalAction({
+  args: {
+    userId: v.id("users"),
+    mediaUrl: v.string(),
+    mediaType: v.string(),
+    phone: v.string(),
+    linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Find the most recent auto/home policy without a slip
+      const policy = await ctx.runQuery(internal.policies.getLatestAutoOrHome, {
+        userId: args.userId,
+      });
+
+      if (!policy) {
+        // No eligible policy — go to active and treat as normal media
+        await ctx.runMutation(internal.users.updateState, {
+          userId: args.userId,
+          state: "active",
+        });
+        await ctx.runAction(internal.process.processMedia, {
+          userId: args.userId,
+          mediaUrl: args.mediaUrl,
+          mediaType: args.mediaType,
+          phone: args.phone,
+          linqChatId: args.linqChatId,
+          imessageSender: args.imessageSender,
+        });
+        return;
+      }
+
+      // Download and store the slip
+      const downloadResponse = await fetch(args.mediaUrl);
+      const buffer = await downloadResponse.arrayBuffer();
+      const blob = new Blob([new Uint8Array(buffer)], { type: args.mediaType });
+      const storageId = await ctx.storage.store(blob);
+
+      // Save the slip on the policy and transition to active
+      await Promise.all([
+        ctx.runMutation(internal.policies.updateInsuranceSlip, {
+          policyId: policy._id,
+          insuranceSlipStorageId: storageId,
+        }),
+        ctx.runMutation(internal.users.updateState, {
+          userId: args.userId,
+          state: "active",
+        }),
+      ]);
+
+      const label = policy.category === "auto" ? "auto" : "homeowners";
+      await sendAndLog(
+        ctx,
+        args.userId,
+        args.phone,
+        `Got it — saved your ${label} insurance slip. I'll use this instead of generating one. Ask me anything about your coverage!`,
+        args.linqChatId,
+        args.imessageSender
+      );
+    } catch (error: any) {
+      console.error("Insurance slip processing failed:", error);
+      await ctx.runMutation(internal.users.updateState, {
+        userId: args.userId,
+        state: "active",
+      });
+      await sendAndLog(
+        ctx,
+        args.userId,
+        args.phone,
+        "Hmm I had trouble saving that — you can try again later or just ask me to generate one. What else can I help with?",
+        args.linqChatId,
+        args.imessageSender
+      );
     }
   },
 });

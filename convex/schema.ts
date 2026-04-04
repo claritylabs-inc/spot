@@ -36,6 +36,7 @@ export default defineSchema({
     coverages: v.optional(v.any()),
     rawExtracted: v.optional(v.any()),
     pdfStorageId: v.optional(v.id("_storage")),
+    insuranceSlipStorageId: v.optional(v.id("_storage")), // existing insurance slip (auto/home) uploaded by user
     status: v.union(
       v.literal("processing"),
       v.literal("ready"),
