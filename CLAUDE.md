@@ -76,6 +76,7 @@ sms-experiment/
 │   ├── users.ts                # User CRUD + upload token + email + lastImageId + public mutations for upload page
 │   ├── policies.ts             # Policy CRUD (create, updateExtracted, getByUser, getById)
 │   ├── upload.ts               # Web upload flow — processes PDFs uploaded via the upload page
+│   ├── contacts.ts             # Contact CRUD — auto-learned from email sends, name search
 │   ├── admin.ts                # Admin utilities (deleteUserByPhone for testing)
 │   ├── convex.config.ts        # Convex app config (empty, no components)
 │   └── _generated/             # Auto-generated Convex types and API
@@ -170,6 +171,16 @@ sms-experiment/
 | triggerDate | number | Timestamp when to send the reminder text |
 | daysBefore | number | How many days before expiration (typically 30) |
 | status | string | `"pending"` \| `"sent"` \| `"cancelled"` |
+| createdAt | number | Timestamp |
+
+### `contacts`
+| Field | Type | Description |
+|-------|------|-------------|
+| userId | Id\<"users"\> | Owner (indexed) |
+| name | string | Contact name (e.g. "John", "Sarah") |
+| email | string | Contact email (indexed with userId for uniqueness) |
+| label | string? | Optional role label (e.g. "landlord", "property manager", "agent") |
+| lastUsedAt | number | Last time this contact was emailed |
 | createdAt | number | Timestamp |
 
 ### `webhookLocks`
@@ -297,6 +308,13 @@ sms-experiment/
 4. Enters `awaiting_merge_confirm` flow (same as Flow 12)
 5. If no candidates: lists all policies and confirms they're all separate
 
+### Flow 14: Saved Contacts
+1. **Auto-learn:** When an email is sent successfully (via Resend), the recipient's name + email is auto-saved via `contacts.upsert` (deduped by email per user)
+2. **Lookup:** When user says "send proof to John", Claude's `lookup_contact` tool searches saved contacts by name/label
+3. **System prompt context:** All saved contacts are included in the agentic Q&A system prompt so Claude can match names immediately
+4. **`/contacts` command:** Lists all saved contacts with names, labels, and emails
+5. Contacts can also have role labels (e.g. "landlord", "property manager") for natural-language matching
+
 ### Nudge Flow (text message while `"awaiting_policy"`)
 - Recognizes retry intent ("try again", "retry", "resend") and re-prompts for PDF/photo
 - Checks if it's a category change
@@ -412,7 +430,9 @@ This deletes the user, all their messages, and all their policies.
 
 18. **Partial policy detection** — `isPartialPolicy()` heuristic detects incomplete extractions (e.g., just a declarations page). Checks for missing coverages, minimal field counts. Prompts user to send the full policy document.
 
-19. **Intelligent policy merge with confirmation** — After extraction, `findMatchingPolicy` checks for existing policies with the same carrier/policy number or carrier/category. If matched, enters `awaiting_merge_confirm` state. On confirmation, PDFs are merged, re-extracted, and the duplicate record is removed. `/merge` command provides manual cleanup.
+19. **Saved contacts from email sends** — Every successful email send auto-saves the recipient as a contact via `contacts.upsert` (deduped by email per user). Contacts are loaded into the agentic Q&A system prompt and a `lookup_contact` tool lets Claude resolve names like "John" or "my landlord" to email addresses without re-asking. `/contacts` command lists all saved contacts.
+
+20. **Intelligent policy merge with confirmation** — After extraction, `findMatchingPolicy` checks for existing policies with the same carrier/policy number or carrier/category. If matched, enters `awaiting_merge_confirm` state. On confirmation, PDFs are merged, re-extracted, and the duplicate record is removed. `/merge` command provides manual cleanup.
 
 ---
 

@@ -112,6 +112,13 @@ export const sendEmailNow = internalAction({
         fromAddress,
       });
 
+      // Auto-save recipient as a contact
+      await ctx.runMutation(internal.contacts.upsert, {
+        userId: pending.userId,
+        name: pending.recipientName || pending.recipientEmail,
+        email: pending.recipientEmail,
+      });
+
       await ctx.runMutation(internal.messages.log, {
         userId: pending.userId,
         direction: "outbound",

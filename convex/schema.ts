@@ -104,6 +104,18 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_outbound_message_id", ["outboundMessageId"]),
 
+  // Saved contacts — auto-learned from email sends
+  contacts: defineTable({
+    userId: v.id("users"),
+    name: v.string(), // contact name (e.g. "John", "my landlord")
+    email: v.string(), // contact email
+    label: v.optional(v.string()), // optional role label (e.g. "landlord", "property manager", "agent")
+    lastUsedAt: v.number(), // last time this contact was emailed
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_email", ["userId", "email"]),
+
   // Dedup lock table — prevents duplicate webhook processing
   webhookLocks: defineTable({
     openPhoneId: v.string(),

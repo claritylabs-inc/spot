@@ -1491,6 +1491,31 @@ export const handleQuestion = internalAction({
     try {
       const clean = args.question.toLowerCase().trim();
 
+      // /contacts command — list saved contacts
+      if (clean === "/contacts" || clean === "contacts" || clean === "my contacts") {
+        const contacts = await ctx.runQuery(internal.contacts.getByUser, {
+          userId: args.userId,
+        });
+
+        if (contacts.length === 0) {
+          await sendAndLog(ctx, args.userId, args.phone,
+            "No saved contacts yet. When you send an email through me, I'll automatically save the recipient so you can use their name next time.",
+            args.linqChatId, args.imessageSender);
+          return;
+        }
+
+        const contactList = contacts.map((c: any, i: number) =>
+          `${i + 1}. ${c.name}${c.label ? ` (${c.label})` : ""} — ${c.email}`
+        ).join("\n");
+
+        await sendBurst(ctx, args.userId, args.phone, [
+          `Your saved contacts:`,
+          contactList,
+          "Just mention a name when you want to send something — like \"send proof to John\"",
+        ], args.linqChatId, args.imessageSender);
+        return;
+      }
+
       // /merge command — scan all policies for merge candidates
       if (clean === "/merge" || clean === "merge my policies") {
         const allPolicies = await ctx.runQuery(internal.policies.getByUser, {
@@ -1817,9 +1842,15 @@ CRITICAL email rules:
         ? `\n\nPENDING EMAIL: There is a pending email to ${pendingEmailCtx.recipientEmail} (subject: "${pendingEmailCtx.subject}", status: ${pendingEmailCtx.status}). If the user seems to be confirming or asking about this email, tell them to reply "send" to confirm or "cancel" to stop.`
         : "";
 
+      // Load saved contacts
+      const savedContacts = await ctx.runQuery(internal.contacts.getByUser, { userId: args.userId });
+      const contactsNote = savedContacts.length > 0
+        ? `\n\nSAVED CONTACTS:\n${savedContacts.map((c: any) => `· ${c.name}${c.label ? ` (${c.label})` : ""} — ${c.email}`).join("\n")}\nWhen the user mentions a contact by name (e.g. "send it to John"), use the lookup_contact tool to find their email. If a match is found, use it directly without asking for the email again.`
+        : "";
+
       const result = await generateText({
         model: anthropic("claude-sonnet-4-6"),
-        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${pendingEmailNote}`,
+        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${pendingEmailNote}${contactsNote}`,
         messages: aiMessages,
         maxOutputTokens,
         tools: {
@@ -2015,6 +2046,34 @@ CRITICAL email rules:
               // This prevents state change from happening mid-tool-use before Claude's text response is sent
               emailRequested = true;
               return { success: true, message: "Ask the user for their email address now. The system will handle the state change." };
+            },
+          }),
+
+          lookup_contact: tool({
+            description: "Look up a saved contact by name. Use this when the user mentions a person by name (e.g. 'send it to John', 'email my landlord'). Returns matching contacts with their email addresses.",
+            inputSchema: z.object({
+              name: z.string().describe("The name or role to search for (e.g. 'John', 'landlord', 'property manager')"),
+            }),
+            execute: async (input) => {
+              try {
+                const matches = await ctx.runQuery(internal.contacts.searchByName, {
+                  userId: args.userId,
+                  name: input.name,
+                });
+                if (matches.length === 0) {
+                  return { found: false, message: `No saved contact matching "${input.name}". Ask the user for the email address.` };
+                }
+                return {
+                  found: true,
+                  contacts: matches.map((c: any) => ({
+                    name: c.name,
+                    email: c.email,
+                    label: c.label || null,
+                  })),
+                };
+              } catch (err: any) {
+                return { found: false, message: `Error looking up contact: ${err.message}` };
+              }
             },
           }),
 
