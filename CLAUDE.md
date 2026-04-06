@@ -18,11 +18,15 @@ A messaging-first insurance policy vault. Users text a phone number (via iMessag
 |-------|-----------|
 | Backend / DB | Convex (TypeScript, serverless, real-time) |
 | Messaging (primary) | Linq API v3 — iMessage, RCS, SMS via single API |
+| Messaging (iMessage) | iMessage bridge — direct iMessage delivery |
 | Messaging (fallback) | OpenPhone API — SMS only |
 | Document AI | `@claritylabs/cl-sdk` v1.4 (classify, extract, enrich, agent prompts, personal lines, sanitizeNulls) |
-| LLM | `@ai-sdk/anthropic` (Claude claude-sonnet-4-6 via Vercel AI SDK with tool_use) |
-| Vision AI | Claude Haiku 4.5 (image classification) + Claude Sonnet 4.6 (image Q&A via AI SDK) |
-| Email | Resend API — transactional emails with 20s undo window |
+| LLM (tool use) | DeepSeek V3 via `@ai-sdk/deepseek` — agentic Q&A with function calling |
+| LLM (reasoning) | Kimi K2.5 via `@ai-sdk/moonshotai` — analysis, email writing |
+| LLM (classification) | Claude Haiku via `@ai-sdk/anthropic` — fast classification |
+| LLM (fallback) | Claude Sonnet via `@ai-sdk/anthropic` — automatic fallback for all tasks |
+| Model config | `convex/models.ts` — centralized getModel(task) with `generateTextWithFallback` |
+| Email | Resend API — transactional emails, inbound webhooks, thread tracking |
 | Frontend | Next.js 15 + React 19 (upload page + redirect) |
 | PDF parsing | `pdf-lib` (image→PDF conversion, multi-doc PDF merging, COI generation) |
 
@@ -342,9 +346,12 @@ All env vars are set in the Convex dashboard, not locally. Prod: `cheery-giraffe
 | `OPENPHONE_API_KEY` | OpenPhone API key |
 | `OPENPHONE_PHONE_NUMBER_ID` | Phone number ID to send from (currently `PN3iSAb7ZR`) |
 | `OPENPHONE_WEBHOOK_SECRET` | Webhook signature verification (not currently validated in code) |
-| `ANTHROPIC_API_KEY` | Claude API key for CL SDK + Q&A + vision classification |
+| `DEEPSEEK_API_KEY` | DeepSeek V3 — primary for agentic Q&A with tool use |
+| `MOONSHOTAI_API_KEY` | Kimi K2.5 — analysis, email writing, comparisons |
+| `ANTHROPIC_API_KEY` | Claude Haiku (classification) + Sonnet (fallback) + CL SDK |
 | `RESEND_API_KEY` | Resend API key for transactional email sending |
 | `RESEND_FROM_EMAIL` | From address for emails (default: `Spot <spot@spot.claritylabs.inc>`) |
+| `RESEND_EMAIL_DOMAIN` | Email domain for thread-specific addresses (default: `spot.claritylabs.inc`) |
 
 The Next.js frontend needs `NEXT_PUBLIC_CONVEX_URL` in `.env.local` (set automatically by `npx convex dev`).
 
