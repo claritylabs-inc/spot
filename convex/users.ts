@@ -127,6 +127,30 @@ export const setPendingMerge = internalMutation({
   },
 });
 
+export const setActiveApplication = internalMutation({
+  args: {
+    userId: v.id("users"),
+    activeApplicationId: v.optional(v.id("applications")),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, {
+      activeApplicationId: args.activeApplicationId,
+    });
+  },
+});
+
+export const setAutoFillApplications = internalMutation({
+  args: {
+    userId: v.id("users"),
+    autoFillApplications: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, {
+      autoFillApplications: args.autoFillApplications,
+    });
+  },
+});
+
 export const clearPendingMerge = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {

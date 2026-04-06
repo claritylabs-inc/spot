@@ -6,7 +6,7 @@ export default defineSchema({
     phone: v.string(),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
-    state: v.optional(v.string()), // "awaiting_category" | "awaiting_policy" | "awaiting_email" | "awaiting_email_confirm" | "awaiting_insurance_slip" | "awaiting_merge_confirm" | "active"
+    state: v.optional(v.string()), // "awaiting_category" | "awaiting_policy" | "awaiting_email" | "awaiting_email_confirm" | "awaiting_insurance_slip" | "awaiting_merge_confirm" | "awaiting_app_questions" | "awaiting_app_confirm" | "active"
     preferredCategory: v.optional(v.string()),
     uploadToken: v.optional(v.string()),
     linqChatId: v.optional(v.string()), // Linq chat ID for ongoing conversation
@@ -15,6 +15,8 @@ export default defineSchema({
     autoSendEmails: v.optional(v.boolean()), // skip confirmation for email actions
     pendingMergePolicyId: v.optional(v.id("policies")), // existing policy to merge into
     pendingMergeStorageId: v.optional(v.id("_storage")), // new PDF waiting to be merged
+    activeApplicationId: v.optional(v.id("applications")), // currently active application being filled
+    autoFillApplications: v.optional(v.boolean()), // skip confirmation for application filling (/autofill on)
     lastActiveAt: v.number(),
     createdAt: v.number(),
   })
@@ -115,6 +117,25 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_email", ["userId", "email"]),
+
+  // Insurance applications — tracks uploaded applications being filled
+  applications: defineTable({
+    userId: v.id("users"),
+    pdfStorageId: v.id("_storage"), // original application PDF
+    filledPdfStorageId: v.optional(v.id("_storage")), // filled application PDF
+    status: v.string(), // "extracting" | "answering" | "confirming" | "filling" | "ready" | "failed"
+    // Extracted questions/fields from the application
+    fields: v.optional(v.any()), // Array<{ id: string, question: string, section?: string, type: "text"|"date"|"number"|"boolean"|"choice", choices?: string[], required: boolean }>
+    // Answers: auto-filled from policies + user-provided
+    answers: v.optional(v.any()), // Record<fieldId, { value: string, source: "policy"|"user"|"confirmed", policyId?: string }>
+    // Tracking which batch of questions we're on
+    currentBatch: v.optional(v.number()), // 0-indexed batch number
+    totalBatches: v.optional(v.number()),
+    // Metadata
+    applicationTitle: v.optional(v.string()), // e.g. "ACORD 125 - Commercial Insurance Application"
+    carrier: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   // Dedup lock table — prevents duplicate webhook processing
   webhookLocks: defineTable({

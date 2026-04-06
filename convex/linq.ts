@@ -166,6 +166,20 @@ export const webhook = httpAction(async (ctx, request) => {
       input: text,
       linqChatId,
     });
+  } else if (state === "awaiting_app_questions") {
+    await ctx.scheduler.runAfter(0, internal.process.handleAppQuestions, {
+      userId,
+      phone,
+      input: text,
+      linqChatId,
+    });
+  } else if (state === "awaiting_app_confirm") {
+    await ctx.scheduler.runAfter(0, internal.process.handleAppConfirmation, {
+      userId,
+      phone,
+      input: text,
+      linqChatId,
+    });
   } else if (state === "awaiting_insurance_slip") {
     if (hasAttachment) {
       await ctx.scheduler.runAfter(0, internal.process.processInsuranceSlip, {

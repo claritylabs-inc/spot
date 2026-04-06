@@ -657,6 +657,23 @@ export const processMultipleMedia = internalAction({
   },
 });
 
+// ── Application detection helper ──
+
+async function isApplicationForm(pdfBase64: string): Promise<boolean> {
+  try {
+    const anthropic = createAnthropic();
+    const result = await generateText({
+      model: anthropic("claude-haiku-4-5-20251001"),
+      system: "You classify insurance documents. Respond with ONLY 'application' or 'not_application'. An insurance application is a form to be filled out to APPLY for insurance coverage (e.g. ACORD forms, carrier-specific application forms with blank fields to fill in). A policy, quote, declaration page, or certificate is NOT an application.",
+      prompt: `Classify this PDF (first 20KB of base64): ${pdfBase64.slice(0, 20000)}`,
+      maxOutputTokens: 10,
+    });
+    return result.text.trim().toLowerCase().includes("application");
+  } catch (_) {
+    return false;
+  }
+}
+
 // ── Internal extraction pipeline (shared by processPolicy and processMedia) ──
 
 async function processExtractionPipeline(
@@ -670,10 +687,28 @@ async function processExtractionPipeline(
     imessageSender?: string;
   }
 ) {
-  const [classifyResult, policyExtractResult] = await Promise.all([
+  // Run classification, extraction, and application detection in parallel
+  const [classifyResult, policyExtractResult, isApp] = await Promise.all([
     classifyDocumentType(args.pdfBase64),
     extractFromPdf(args.pdfBase64, { concurrency: 3 }).catch(() => null),
+    isApplicationForm(args.pdfBase64),
   ]);
+
+  // If it's an application form, redirect to application flow
+  if (isApp) {
+    const appId = await ctx.runMutation(internal.applications.create, {
+      userId: args.userId,
+      pdfStorageId: args.pdfStorageId,
+    });
+    await ctx.scheduler.runAfter(0, internal.applicationActions.extractApplicationFields, {
+      applicationId: appId,
+      userId: args.userId,
+      phone: args.phone,
+      linqChatId: args.linqChatId,
+      imessageSender: args.imessageSender,
+    });
+    return;
+  }
 
   const { documentType } = classifyResult;
 
@@ -1475,6 +1510,396 @@ export const handleEmailCollection = internalAction({
   },
 });
 
+// ── Application Question Handler (state: "awaiting_app_questions") ──
+
+export const handleAppQuestions = internalAction({
+  args: {
+    userId: v.id("users"),
+    phone: v.string(),
+    input: v.string(),
+    linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const clean = args.input.toLowerCase().trim();
+
+    // Check for /autofill toggle
+    if (clean === "/autofill on") {
+      await ctx.runMutation(internal.users.setAutoFillApplications, {
+        userId: args.userId,
+        autoFillApplications: true,
+      });
+      await sendAndLog(ctx, args.userId, args.phone,
+        "Auto-fill is on — I'll skip confirmations for pre-filled answers from now on",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+    if (clean === "/autofill off") {
+      await ctx.runMutation(internal.users.setAutoFillApplications, {
+        userId: args.userId,
+        autoFillApplications: false,
+      });
+      await sendAndLog(ctx, args.userId, args.phone,
+        "Auto-fill is off — I'll ask you to confirm pre-filled answers",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    // Allow cancellation
+    if (clean === "cancel" || clean === "/cancel" || clean === "stop") {
+      const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
+      if (user?.activeApplicationId) {
+        await ctx.runMutation(internal.applications.updateStatus, {
+          applicationId: user.activeApplicationId,
+          status: "failed",
+        });
+      }
+      await ctx.runMutation(internal.users.updateState, {
+        userId: args.userId,
+        state: "active",
+      });
+      await ctx.runMutation(internal.users.setActiveApplication, {
+        userId: args.userId,
+        activeApplicationId: undefined,
+      });
+      await sendAndLog(ctx, args.userId, args.phone,
+        "No problem — cancelled the application. Let me know if you want to try again",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    // Get the active application
+    const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
+    if (!user?.activeApplicationId) {
+      await ctx.runMutation(internal.users.updateState, {
+        userId: args.userId,
+        state: "active",
+      });
+      await sendAndLog(ctx, args.userId, args.phone,
+        "Looks like there's no active application. Send me an application PDF and I'll help you fill it out",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    const app = await ctx.runQuery(internal.applications.getById, {
+      applicationId: user.activeApplicationId,
+    });
+    if (!app) {
+      await ctx.runMutation(internal.users.updateState, {
+        userId: args.userId,
+        state: "active",
+      });
+      await sendAndLog(ctx, args.userId, args.phone,
+        "Something went wrong with the application. Send it again and I'll start over",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    const fields = (app.fields || []) as Array<{
+      id: string;
+      question: string;
+      section?: string;
+      type: string;
+      choices?: string[];
+      required: boolean;
+    }>;
+    const answers = (app.answers || {}) as Record<string, { value: string; source: string }>;
+    const currentBatch = app.currentBatch || 0;
+
+    // Get unanswered fields
+    const unansweredRequired = fields.filter((f) => f.required && !answers[f.id]);
+    const unansweredOptional = fields.filter((f) => !f.required && !answers[f.id]);
+    const unanswered = [...unansweredRequired, ...unansweredOptional];
+
+    const BATCH_SIZE = 5;
+
+    // If user confirms pre-filled data ("yes", "looks good", etc.)
+    const confirmWords = ["yes", "yeah", "yep", "yup", "correct", "looks good", "looks right", "good", "ok", "okay", "sure", "confirm", "confirmed", "right"];
+    const isConfirm = confirmWords.some((w) => clean === w || clean === w + "!");
+
+    if (isConfirm) {
+      // Mark all policy-sourced answers as confirmed
+      const updatedAnswers = { ...answers };
+      for (const [fieldId, ans] of Object.entries(updatedAnswers)) {
+        if (ans.source === "policy") {
+          updatedAnswers[fieldId] = { ...ans, source: "confirmed" };
+        }
+      }
+
+      if (unanswered.length === 0) {
+        // All fields answered — proceed to filling
+        await ctx.runMutation(internal.applications.updateAnswers, {
+          applicationId: app._id,
+          answers: updatedAnswers,
+          status: "confirming",
+        });
+        await ctx.runMutation(internal.users.updateState, {
+          userId: args.userId,
+          state: "awaiting_app_confirm",
+        });
+        await sendAndLog(ctx, args.userId, args.phone,
+          "All fields are filled. Ready for me to generate the completed application? (yes/no)",
+          args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      // Start asking unanswered questions
+      await ctx.runMutation(internal.applications.updateAnswers, {
+        applicationId: app._id,
+        answers: updatedAnswers,
+        currentBatch: 0,
+      });
+
+      const batch = unanswered.slice(0, BATCH_SIZE);
+      const batchText = batch.map((f, i) =>
+        `${i + 1}. ${f.question}${f.choices ? ` (${f.choices.join(", ")})` : ""}${f.type === "boolean" ? " (yes/no)" : ""}`
+      ).join("\n");
+
+      await sendAndLog(ctx, args.userId, args.phone,
+        `${unanswered.length} questions to go. Here are the first ${batch.length}:\n\n${batchText}\n\nReply with your answers numbered (e.g. "1. John Smith, 2. 01/15/1990...")`,
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    // Parse numbered answers from user input
+    const answerLines = args.input.split(/\n/).map((l) => l.trim()).filter(Boolean);
+    const parsedAnswers: Array<{ index: number; value: string }> = [];
+
+    for (const line of answerLines) {
+      // Match patterns like "1. answer", "1: answer", "1) answer", or just process sequentially
+      const match = line.match(/^(\d+)[.):]\s*(.+)/);
+      if (match) {
+        parsedAnswers.push({ index: parseInt(match[1]) - 1, value: match[2].trim() });
+      } else if (answerLines.length === 1 && unanswered.length > 0) {
+        // Single answer without numbering — applies to first unanswered in current batch
+        parsedAnswers.push({ index: 0, value: line.trim() });
+      }
+    }
+
+    // If user sent a correction for pre-filled data (e.g. "name should be John Doe")
+    if (parsedAnswers.length === 0 && !isConfirm) {
+      // Use Claude to interpret the correction
+      const anthropic = createAnthropic();
+      const currentAnswersSummary = Object.entries(answers)
+        .map(([fieldId, ans]) => {
+          const field = fields.find((f) => f.id === fieldId);
+          return `${field?.question || fieldId}: ${ans.value} (source: ${ans.source})`;
+        })
+        .join("\n");
+
+      const batchStart = currentBatch * BATCH_SIZE;
+      const currentBatchFields = unanswered.slice(batchStart, batchStart + BATCH_SIZE);
+
+      const result = await generateText({
+        model: anthropic("claude-sonnet-4-6"),
+        system: `You are helping fill an insurance application. The user is responding to questions or correcting pre-filled answers.
+
+Current fields and answers:
+${currentAnswersSummary}
+
+Current batch of unanswered questions:
+${currentBatchFields.map((f, i) => `${i + 1}. [${f.id}] ${f.question}`).join("\n")}
+
+All unanswered fields:
+${unanswered.map((f) => `[${f.id}] ${f.question}`).join("\n")}
+
+Parse the user's response and return a JSON object with field updates.
+If they're correcting a pre-filled answer, identify which field and the new value.
+If they're answering batch questions, map answers to field IDs.
+Respond ONLY with valid JSON: {"updates": [{"fieldId": "...", "value": "..."}]}
+If you can't parse their intent, respond with: {"updates": [], "clarification": "..."}`,
+        prompt: args.input,
+        maxOutputTokens: 500,
+      });
+
+      try {
+        const parsed = JSON.parse(result.text);
+        if (parsed.updates && parsed.updates.length > 0) {
+          const updatedAnswers = { ...answers };
+          for (const update of parsed.updates) {
+            updatedAnswers[update.fieldId] = { value: update.value, source: "user" };
+          }
+          await ctx.runMutation(internal.applications.updateAnswers, {
+            applicationId: app._id,
+            answers: updatedAnswers,
+          });
+
+          // Recalculate unanswered
+          const stillUnanswered = fields.filter((f) => !updatedAnswers[f.id]);
+          if (stillUnanswered.length === 0) {
+            await ctx.runMutation(internal.users.updateState, {
+              userId: args.userId,
+              state: "awaiting_app_confirm",
+            });
+            await ctx.runMutation(internal.applications.updateAnswers, {
+              applicationId: app._id,
+              answers: updatedAnswers,
+              status: "confirming",
+            });
+            await sendAndLog(ctx, args.userId, args.phone,
+              "Got it — all fields are now filled. Ready for me to generate the completed application? (yes/no)",
+              args.linqChatId, args.imessageSender);
+          } else {
+            await sendAndLog(ctx, args.userId, args.phone,
+              `Updated! ${stillUnanswered.length} fields left to go`,
+              args.linqChatId, args.imessageSender);
+          }
+          return;
+        }
+
+        if (parsed.clarification) {
+          await sendAndLog(ctx, args.userId, args.phone,
+            parsed.clarification,
+            args.linqChatId, args.imessageSender);
+          return;
+        }
+      } catch (_) {
+        // Fall through to generic response
+      }
+
+      await sendAndLog(ctx, args.userId, args.phone,
+        "I didn't quite get that. Reply with numbered answers (e.g. \"1. John Smith\") or say \"cancel\" to stop",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    // Apply parsed answers to the current batch
+    if (parsedAnswers.length > 0) {
+      const batchStart = currentBatch * BATCH_SIZE;
+      const currentBatchFields = unanswered.slice(batchStart, batchStart + BATCH_SIZE);
+      const updatedAnswers = { ...answers };
+
+      for (const pa of parsedAnswers) {
+        if (pa.index >= 0 && pa.index < currentBatchFields.length) {
+          const field = currentBatchFields[pa.index];
+          updatedAnswers[field.id] = { value: pa.value, source: "user" };
+        }
+      }
+
+      // Check remaining unanswered after this batch
+      const nowUnanswered = fields.filter((f) => !updatedAnswers[f.id]);
+
+      if (nowUnanswered.length === 0) {
+        // All done — move to confirmation
+        await ctx.runMutation(internal.applications.updateAnswers, {
+          applicationId: app._id,
+          answers: updatedAnswers,
+          currentBatch: currentBatch + 1,
+          status: "confirming",
+        });
+
+        // If autofill is on, skip confirmation
+        if (user.autoFillApplications) {
+          await ctx.scheduler.runAfter(0, internal.applicationActions.fillApplicationPdf, {
+            applicationId: app._id,
+            userId: args.userId,
+            phone: args.phone,
+            linqChatId: args.linqChatId,
+            imessageSender: args.imessageSender,
+          });
+          return;
+        }
+
+        await ctx.runMutation(internal.users.updateState, {
+          userId: args.userId,
+          state: "awaiting_app_confirm",
+        });
+        await sendAndLog(ctx, args.userId, args.phone,
+          "All fields are filled. Ready for me to generate the completed application? (yes/no)",
+          args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      // More questions — send next batch
+      const nextBatchStart = 0; // Recalculate from remaining unanswered
+      const nextBatch = nowUnanswered.slice(0, BATCH_SIZE);
+      const newBatchNum = currentBatch + 1;
+
+      await ctx.runMutation(internal.applications.updateAnswers, {
+        applicationId: app._id,
+        answers: updatedAnswers,
+        currentBatch: newBatchNum,
+      });
+
+      const batchText = nextBatch.map((f, i) =>
+        `${i + 1}. ${f.question}${f.choices ? ` (${f.choices.join(", ")})` : ""}${f.type === "boolean" ? " (yes/no)" : ""}`
+      ).join("\n");
+
+      await sendAndLog(ctx, args.userId, args.phone,
+        `Got it! ${nowUnanswered.length} left:\n\n${batchText}`,
+        args.linqChatId, args.imessageSender);
+    }
+  },
+});
+
+// ── Application Confirmation Handler (state: "awaiting_app_confirm") ──
+
+export const handleAppConfirmation = internalAction({
+  args: {
+    userId: v.id("users"),
+    phone: v.string(),
+    input: v.string(),
+    linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const clean = args.input.toLowerCase().trim();
+
+    // Allow cancel
+    if (clean === "cancel" || clean === "/cancel" || clean === "no") {
+      const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
+      if (user?.activeApplicationId) {
+        await ctx.runMutation(internal.applications.updateStatus, {
+          applicationId: user.activeApplicationId,
+          status: "failed",
+        });
+      }
+      await ctx.runMutation(internal.users.updateState, {
+        userId: args.userId,
+        state: "active",
+      });
+      await ctx.runMutation(internal.users.setActiveApplication, {
+        userId: args.userId,
+        activeApplicationId: undefined,
+      });
+      await sendAndLog(ctx, args.userId, args.phone,
+        "No problem — cancelled the application",
+        args.linqChatId, args.imessageSender);
+      return;
+    }
+
+    // Confirm — generate the filled PDF
+    const confirmWords = ["yes", "yeah", "yep", "yup", "go", "sure", "do it", "okay", "ok", "send it", "generate", "fill it"];
+    if (confirmWords.some((w) => clean === w || clean === w + "!")) {
+      const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
+      if (!user?.activeApplicationId) {
+        await ctx.runMutation(internal.users.updateState, {
+          userId: args.userId,
+          state: "active",
+        });
+        await sendAndLog(ctx, args.userId, args.phone,
+          "Something went wrong — no active application found",
+          args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      await ctx.scheduler.runAfter(0, internal.applicationActions.fillApplicationPdf, {
+        applicationId: user.activeApplicationId,
+        userId: args.userId,
+        phone: args.phone,
+        linqChatId: args.linqChatId,
+        imessageSender: args.imessageSender,
+      });
+      return;
+    }
+
+    // Unrecognized
+    await sendAndLog(ctx, args.userId, args.phone,
+      "Want me to generate the filled application? (yes/no)",
+      args.linqChatId, args.imessageSender);
+  },
+});
+
 // ── Conversational Q&A (Agentic — with tool_use) ──
 
 export const handleQuestion = internalAction({
@@ -1491,7 +1916,55 @@ export const handleQuestion = internalAction({
     try {
       const clean = args.question.toLowerCase().trim();
 
-      // /contacts command — list saved contacts
+      // /help command — list all available commands
+      if (clean === "/help" || clean === "help" || clean === "commands") {
+        const helpText = [
+          "Here's what I can do:",
+          "",
+          "/help — show this list",
+          "/contacts — view your saved contacts",
+          "/merge — scan for duplicate policies to merge",
+          "/apply — start filling an insurance application",
+          "/autosend on/off — toggle email send confirmation",
+          "/autofill on/off — toggle application fill confirmation",
+          "/debug — show current account state",
+          "/logs — show recent message history",
+          "/undo — cancel a recently sent email",
+          "",
+          "You can also just text me naturally — ask about your policy, send me docs, or ask me to email someone",
+        ].join("\n");
+        await sendAndLog(ctx, args.userId, args.phone, helpText, args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      // /apply command — prompt to send an application
+      if (clean === "/apply" || clean === "fill application" || clean === "fill an application") {
+        // Check if there's already an active application
+        const activeApp = await ctx.runQuery(internal.applications.getActiveByUser, {
+          userId: args.userId,
+        });
+        if (activeApp) {
+          await sendAndLog(ctx, args.userId, args.phone,
+            "You already have an application in progress. Say \"cancel\" to stop it, or keep answering the questions",
+            args.linqChatId, args.imessageSender);
+          return;
+        }
+
+        const isImChannel = !!(args.linqChatId || args.imessageSender);
+        if (isImChannel) {
+          await sendAndLog(ctx, args.userId, args.phone,
+            "Send me the application PDF and I'll help you fill it out. I can pre-fill from your existing policies",
+            args.linqChatId, args.imessageSender);
+        } else {
+          const link = getUploadLink(args.uploadToken);
+          await sendAndLog(ctx, args.userId, args.phone,
+            `Upload your application PDF here and I'll help you fill it out:\n\n${link}`,
+            args.linqChatId, args.imessageSender);
+        }
+        return;
+      }
+
+      // /contacts command — view your saved contacts
       if (clean === "/contacts" || clean === "contacts" || clean === "my contacts") {
         const contacts = await ctx.runQuery(internal.contacts.getByUser, {
           userId: args.userId,
@@ -1708,6 +2181,8 @@ Actions you can take:
 - Set expiration reminders so the user gets a heads up before their policy lapses
 - Send the user their upload link if they want to add another policy
 - If the user doesn't have an email on file and they want to send an email, use the request_email tool first
+- Email a completed insurance application to someone using send_application (only if one has been filled)
+- If the user asks to fill an application, tell them to send the application PDF or say /apply
 
 CRITICAL email rules:
 - When an email tool returns "awaitingConfirmation", the email has NOT been sent yet. It is DRAFTED and waiting for the user to confirm.
@@ -1848,9 +2323,16 @@ CRITICAL email rules:
         ? `\n\nSAVED CONTACTS:\n${savedContacts.map((c: any) => `· ${c.name}${c.label ? ` (${c.label})` : ""} — ${c.email}`).join("\n")}\nWhen the user mentions a contact by name (e.g. "send it to John"), use the lookup_contact tool to find their email. If a match is found, use it directly without asking for the email again.`
         : "";
 
+      // Check for completed applications
+      const userApps = await ctx.runQuery(internal.applications.getByUser, { userId: args.userId });
+      const readyApp = userApps.find((a: any) => a.status === "ready" && a.filledPdfStorageId);
+      const appNote = readyApp
+        ? `\n\nCOMPLETED APPLICATION: The user has a filled "${readyApp.applicationTitle || "insurance application"}" ready to send. If they ask to send/email the application, use the send_application tool.`
+        : "";
+
       const result = await generateText({
         model: anthropic("claude-sonnet-4-6"),
-        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${pendingEmailNote}${contactsNote}`,
+        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${pendingEmailNote}${contactsNote}${appNote}`,
         messages: aiMessages,
         maxOutputTokens,
         tools: {
@@ -2087,6 +2569,74 @@ CRITICAL email rules:
               } catch (err: any) {
                 console.error("send_upload_link tool error:", err);
                 return { success: false, message: `Failed to generate upload link: ${err.message || "unknown error"}` };
+              }
+            },
+          }),
+
+          send_application: tool({
+            description: "Email a filled insurance application to someone. Use when the user asks to send/email their completed application. Only works if there's a completed application (status: ready).",
+            inputSchema: z.object({
+              recipientEmail: z.string().email().describe("Recipient's email address"),
+              recipientName: z.string().optional().describe("Recipient's name"),
+              customMessage: z.string().optional().describe("Optional message to include"),
+            }),
+            execute: async (input) => {
+              try {
+                if (!user?.email) {
+                  return { success: false, reason: "no_email", message: "User doesn't have an email on file. Use request_email to ask for it first." };
+                }
+
+                // Find the most recent ready application
+                const apps = await ctx.runQuery(internal.applications.getByUser, {
+                  userId: args.userId,
+                });
+                const readyApp = apps.find((a: any) => a.status === "ready" && a.filledPdfStorageId);
+                if (!readyApp) {
+                  return { success: false, message: "No completed application found. The user needs to fill one out first." };
+                }
+
+                // Generate email body
+                const emailBody = await ctx.runAction(internal.emailActions.generateEmailBody, {
+                  purpose: "general_info",
+                  recipientName: input.recipientName || "Recipient",
+                  recipientEmail: input.recipientEmail,
+                  userName: user.name || "Policyholder",
+                  userEmail: user.email,
+                  policyData: { applicationTitle: readyApp.applicationTitle, carrier: readyApp.carrier },
+                  customMessage: input.customMessage || `Please find the completed ${readyApp.applicationTitle || "insurance application"} attached.`,
+                });
+
+                const subject = `${readyApp.applicationTitle || "Insurance Application"} — ${readyApp.carrier || "Completed"}`.trim();
+
+                const peId = await ctx.runMutation(internal.email.createPendingEmail, {
+                  userId: args.userId,
+                  recipientEmail: input.recipientEmail,
+                  recipientName: input.recipientName,
+                  subject,
+                  htmlBody: emailBody,
+                  ccEmail: user.email,
+                  purpose: "general_info",
+                  coiPdfStorageId: readyApp.filledPdfStorageId,
+                });
+
+                pendingEmailCreated = true;
+                pendingEmailId = peId;
+
+                if (user.autoSendEmails) {
+                  await ctx.runMutation(internal.email.scheduleEmailSend, { pendingEmailId: peId });
+                  return { success: true, autoSent: true, message: `Application emailed to ${input.recipientEmail}.` };
+                }
+
+                return {
+                  success: true,
+                  awaitingConfirmation: true,
+                  emailNotSentYet: true,
+                  recipientEmail: input.recipientEmail,
+                  message: `EMAIL NOT SENT YET. Application email drafted to ${input.recipientEmail}. Ask the user to confirm.`,
+                };
+              } catch (err: any) {
+                console.error("send_application tool error:", err);
+                return { success: false, message: `Failed: ${err.message || "unknown error"}` };
               }
             },
           }),

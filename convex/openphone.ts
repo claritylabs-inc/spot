@@ -79,6 +79,18 @@ export const webhook = httpAction(async (ctx, request) => {
       phone: from,
       input: text,
     });
+  } else if (state === "awaiting_app_questions") {
+    await ctx.scheduler.runAfter(0, internal.process.handleAppQuestions, {
+      userId,
+      phone: from,
+      input: text,
+    });
+  } else if (state === "awaiting_app_confirm") {
+    await ctx.scheduler.runAfter(0, internal.process.handleAppConfirmation, {
+      userId,
+      phone: from,
+      input: text,
+    });
   } else if (state === "awaiting_insurance_slip") {
     if (media.length > 0) {
       await ctx.scheduler.runAfter(0, internal.process.processInsuranceSlip, {
