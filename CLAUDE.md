@@ -20,7 +20,7 @@ A messaging-first insurance policy vault. Users text a phone number (via iMessag
 | Messaging (primary) | Linq API v3 — iMessage, RCS, SMS via single API |
 | Messaging (iMessage) | iMessage bridge — direct iMessage delivery |
 | Messaging (fallback) | OpenPhone API — SMS only |
-| Document AI | `@claritylabs/cl-sdk` v1.4 (classify, extract, enrich, agent prompts, personal lines, sanitizeNulls) |
+| Document AI | `@claritylabs/cl-sdk` v0.1 (classify, extract, enrich, agent prompts, personal lines, sanitizeNulls) |
 | LLM (tool use) | DeepSeek V3 via `@ai-sdk/deepseek` — agentic Q&A with function calling |
 | LLM (reasoning) | Kimi K2.5 via `@ai-sdk/moonshotai` — analysis, email writing |
 | LLM (classification) | Claude Haiku via `@ai-sdk/anthropic` — fast classification |

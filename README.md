@@ -21,16 +21,16 @@ Spot is a messaging-first insurance assistant by [Clarity Labs](https://clarityl
               └───────────┴───────┬───┴──────────────┘
                                   ▼
                     Convex Backend (TypeScript, serverless)
-              ┌──────────────────────────────────────────────┐
-              │  Webhook dedup → Ingest → State machine       │
-              │  CL SDK (classify + extract + enrich)         │
-              │  Multi-model AI (DeepSeek/Kimi/Claude/Haiku)  │
-              │  Agentic Q&A with tool_use (8 tools)          │
+              ┌────────────────────────────────────────────────┐
+              │  Webhook dedup → Ingest → State machine        │
+              │  CL SDK (classify + extract + enrich)          │
+              │  Multi-model AI (DeepSeek/Kimi/Claude/Haiku)   │
+              │  Agentic Q&A with tool_use (8 tools)           │
               │  Proactive intelligence (health checks, gaps)  │
               │  Email sending (Resend) + thread tracking      │
               │  COI PDF generation (ACORD-style via pdf-lib)  │
               │  Per-user agent memory                         │
-              └──────────────────────────────────────────────┘
+              └────────────────────────────────────────────────┘
                       │              │              │
               Convex DB        File Storage    Scheduled Jobs
            (10 tables)        (PDFs, images)   (reminders, alerts)
@@ -46,7 +46,7 @@ Spot is a messaging-first insurance assistant by [Clarity Labs](https://clarityl
 | Messaging (primary) | [Linq API v3](https://linqapp.com) — iMessage, RCS, SMS via single API |
 | Messaging (iMessage) | iMessage bridge — direct iMessage delivery |
 | Messaging (fallback) | [OpenPhone API](https://www.openphone.com) — SMS |
-| Document AI | `@claritylabs/cl-sdk` v1.4 — classify, extract, enrich, personal lines, sanitizeNulls |
+| Document AI | `@claritylabs/cl-sdk` v0.1 — classify, extract, enrich, personal lines, sanitizeNulls |
 | LLM (tool use) | DeepSeek V3 via `@ai-sdk/deepseek` — agentic Q&A with function calling |
 | LLM (reasoning) | Kimi K2.5 via `@ai-sdk/moonshotai` — analysis, email writing, comparisons |
 | LLM (classification) | Claude Haiku via `@ai-sdk/anthropic` — fast image/document classification |
