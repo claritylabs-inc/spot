@@ -11,6 +11,8 @@
 import type * as admin from "../admin.js";
 import type * as applicationActions from "../applicationActions.js";
 import type * as applications from "../applications.js";
+import type * as backfill from "../backfill.js";
+import type * as backfillHelpers from "../backfillHelpers.js";
 import type * as coiGenerator from "../coiGenerator.js";
 import type * as contacts from "../contacts.js";
 import type * as conversationTurns from "../conversationTurns.js";
@@ -53,6 +55,8 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   applicationActions: typeof applicationActions;
   applications: typeof applications;
+  backfill: typeof backfill;
+  backfillHelpers: typeof backfillHelpers;
   coiGenerator: typeof coiGenerator;
   contacts: typeof contacts;
   conversationTurns: typeof conversationTurns;
