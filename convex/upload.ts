@@ -80,13 +80,14 @@ export const processUploadedPolicy = internalAction({
       const pdfBase64 = Buffer.from(buffer).toString("base64");
 
       // Ack + SDK extraction in parallel
-      const [, { document: extractedDoc, chunks }] = await Promise.all([
+      const [, extractionResult] = await Promise.all([
         sendNotification(ctx, args.userId, args.phone, "Got your upload — reading through it now", linqChatId, imessageSender),
         getExtractor().extract(pdfBase64),
       ]);
 
+      const { document: extractedDoc, chunks } = extractionResult;
       const document: any = extractedDoc;
-      const applied = documentToUpdateFields(document);
+      const applied = documentToUpdateFields(document, extractionResult);
       const detectedCategory = applied.category;
       const documentType = document.type;
       const isQuote = documentType === "quote";

@@ -591,7 +591,7 @@ async function processExtractionPipeline(
   const { document: extractedDoc, chunks } = extractionResult;
   const document: any = extractedDoc;
   const documentType = document.type; // "policy" | "quote"
-  const applied = documentToUpdateFields(document);
+  const applied = documentToUpdateFields(document, extractionResult);
   const detectedCategory = applied.category;
 
   const startTypingIfLinq = args.linqChatId
@@ -1106,9 +1106,10 @@ export const executePolicyMerge = internalAction({
       const mergedBlob = new Blob([Buffer.from(mergedBase64, "base64")], { type: "application/pdf" });
       const mergedStorageId = await ctx.storage.store(mergedBlob);
 
-      // Re-extract from the merged document using SDK v0.5.0 pipeline
-      const { document: mergedDoc, chunks: mergedChunks } = await getExtractor().extract(mergedBase64);
-      const applied = documentToUpdateFields(mergedDoc);
+      // Re-extract from the merged document
+      const mergeResult = await getExtractor().extract(mergedBase64);
+      const { document: mergedDoc, chunks: mergedChunks } = mergeResult;
+      const applied = documentToUpdateFields(mergedDoc, mergeResult);
       const detectedCategory = applied.category;
 
       // Update the existing policy with merged data, delete the duplicate
@@ -2657,11 +2658,12 @@ export const reextractPolicy = internalAction({
       const buffer = await blob.arrayBuffer();
       const pdfBase64 = Buffer.from(buffer).toString("base64");
 
-      // Re-run extraction with SDK v0.5.0 pipeline
+      // Re-run extraction with latest SDK pipeline
       await sendAndLog(ctx, args.userId, args.phone, "Running it through the latest extraction — pulling out coverages and limits", args.linqChatId, args.imessageSender);
 
-      const { document: reDoc, chunks: reChunks } = await getExtractor().extract(pdfBase64);
-      const applied = documentToUpdateFields(reDoc);
+      const reResult = await getExtractor().extract(pdfBase64);
+      const { document: reDoc, chunks: reChunks } = reResult;
+      const applied = documentToUpdateFields(reDoc, reResult);
 
       // Stop typing before sending results
       if (args.linqChatId) {

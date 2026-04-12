@@ -1,6 +1,6 @@
 "use node";
 /**
- * SDK Adapter — bridges Vercel AI SDK to CL SDK v0.5.0's callback-based API.
+ * SDK Adapter — bridges Vercel AI SDK to CL SDK v0.10.0's callback-based API.
  *
  * Provides: cached pipeline instances, Convex storage implementations,
  * InsuranceDocument helpers, contact extraction, and document context builder.
@@ -502,7 +502,7 @@ export function detectCategory(doc: any): string {
  * Map an InsuranceDocument to the flat fields expected by policies.updateExtracted.
  * This bridges the rich SDK type to the existing Convex mutation shape.
  */
-export function documentToUpdateFields(doc: any) {
+export function documentToUpdateFields(doc: any, extractionResult?: any) {
   const isPolicy = doc.type === "policy";
   return {
     carrier: doc.carrier || undefined,
@@ -515,6 +515,17 @@ export function documentToUpdateFields(doc: any) {
     policyTypes: doc.policyTypes || undefined,
     rawExtracted: sanitizeNulls(doc),
     category: detectCategory(doc),
+    ...(extractionResult?.reviewReport
+      ? { extractionReport: sanitizeNulls(extractionResult.reviewReport) }
+      : {}),
+    ...(extractionResult?.tokenUsage
+      ? {
+          extractionUsage: sanitizeNulls({
+            tokenUsage: extractionResult.tokenUsage,
+            usageReporting: extractionResult.usageReporting,
+          }),
+        }
+      : {}),
   };
 }
 

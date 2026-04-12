@@ -35,8 +35,9 @@ export const backfillPolicy = internalAction({
       const pdfBase64 = Buffer.from(buffer).toString("base64");
 
       console.log(`[backfill] Extracting policy ${args.policyId}...`);
-      const { document, chunks } = await getExtractor().extract(pdfBase64);
-      const applied = documentToUpdateFields(document);
+      const extractionResult = await getExtractor().extract(pdfBase64);
+      const { document, chunks } = extractionResult;
+      const applied = documentToUpdateFields(document, extractionResult);
 
       // Update policy with new InsuranceDocument format
       await ctx.runMutation(internal.policies.updateExtracted, {

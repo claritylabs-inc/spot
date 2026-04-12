@@ -34,7 +34,7 @@ export const extractApplicationFields = internalAction({
 
       // Use SDK application pipeline with full Convex-backed stores
       const pipeline = getAppPipeline(ctx, args.userId);
-      const { state } = await pipeline.processApplication({
+      const { state, reviewReport } = await pipeline.processApplication({
         pdfBase64,
         applicationId: args.applicationId as string,
       });
@@ -48,6 +48,7 @@ export const extractApplicationFields = internalAction({
         title: state.title,
         applicationType: state.applicationType ?? undefined,
         status: state.status === "complete" ? "ready" : state.status,
+        reviewReport: reviewReport ? sanitizeNulls(reviewReport) : undefined,
       });
 
       // Build summary message

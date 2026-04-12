@@ -43,6 +43,8 @@ export default defineSchema({
     pdfStorageId: v.optional(v.id("_storage")),
     insuranceSlipStorageId: v.optional(v.id("_storage")), // existing insurance slip (auto/home) uploaded by user
     analysis: v.optional(v.any()), // health check: { strengths[], gaps[], exclusionHighlights[], lowLimits[], naturalSummary, generatedAt }
+    extractionReport: v.optional(v.any()), // CL SDK v0.10 ExtractionReviewReport — review rounds, form inventory, quality gate status
+    extractionUsage: v.optional(v.any()), // CL SDK v0.10 { tokenUsage, usageReporting: { modelCalls, callsWithUsage, callsMissingUsage } }
     status: v.union(
       v.literal("processing"),
       v.literal("ready"),
@@ -133,6 +135,7 @@ export default defineSchema({
     title: v.optional(v.string()), // application title
     applicationType: v.optional(v.string()), // detected application type
     carrier: v.optional(v.string()),
+    reviewReport: v.optional(v.any()), // CL SDK v0.10 ApplicationQualityReport — quality issues, rounds, gate status
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   }).index("by_user", ["userId"]),

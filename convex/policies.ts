@@ -51,6 +51,8 @@ export const updateExtracted = internalMutation({
     rawExtracted: v.optional(v.any()),
     category: v.optional(v.string()),
     policyTypes: v.optional(v.array(v.string())),
+    extractionReport: v.optional(v.any()),
+    extractionUsage: v.optional(v.any()),
     status: v.union(
       v.literal("processing"),
       v.literal("ready"),
