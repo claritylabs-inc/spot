@@ -5,7 +5,7 @@
  *
  * Run via: npx convex run backfill:backfillAllPolicies
  */
-import { internalAction } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { sanitizeNulls } from "@claritylabs/cl-sdk";
@@ -83,7 +83,7 @@ export const backfillPolicy = internalAction({
 });
 
 /** Backfill all policies. Schedules each one as a separate action to avoid timeouts. */
-export const backfillAllPolicies = internalAction({
+export const backfillAllPolicies = action({
   handler: async (ctx) => {
     const policies = await ctx.runQuery(internal.backfillHelpers.getAllPoliciesWithPdf);
     console.log(`[backfill] Found ${policies.length} policies to backfill`);
