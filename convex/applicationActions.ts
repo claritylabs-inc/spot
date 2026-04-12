@@ -52,7 +52,7 @@ export const extractApplicationFields = internalAction({
 
       // Build summary message
       const totalFields = state.fields.length;
-      const autoFilledCount = state.fields.filter((f) => f.value).length;
+      const autoFilledCount = state.fields.filter((f: any) => f.value).length;
       const remainingCount = totalFields - autoFilledCount;
 
       const messages: string[] = [
@@ -62,9 +62,9 @@ export const extractApplicationFields = internalAction({
 
       if (autoFilledCount > 0) {
         const preFilledSummary = state.fields
-          .filter((f) => f.value)
+          .filter((f: any) => f.value)
           .slice(0, 8)
-          .map((f) => `· ${f.label}: ${f.value}`)
+          .map((f: any) => `· ${f.label}: ${f.value}`)
           .join("\n");
 
         messages.push(

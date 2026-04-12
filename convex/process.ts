@@ -588,7 +588,8 @@ async function processExtractionPipeline(
     return;
   }
 
-  const { document, chunks } = extractionResult;
+  const { document: extractedDoc, chunks } = extractionResult;
+  const document: any = extractedDoc;
   const documentType = document.type; // "policy" | "quote"
   const applied = documentToUpdateFields(document);
   const detectedCategory = applied.category;

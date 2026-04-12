@@ -115,11 +115,10 @@ export function createConvexDocumentStore(
 ): DocumentStore {
   return {
     async save(doc: InsuranceDocument): Promise<void> {
-      // Find existing policy by document ID or create new
       const policies = await ctx.runQuery(internal.policies.getByUser, { userId });
       const existing = policies.find((p: any) => {
         const raw = p.rawExtracted as any;
-        return raw?.id === doc.id;
+        return raw?.id === (doc as any).id;
       });
       if (existing) {
         const fields = documentToUpdateFields(doc);
@@ -129,15 +128,14 @@ export function createConvexDocumentStore(
           status: "ready" as const,
         });
       }
-      // If no existing match, doc was already created via the extraction pipeline
     },
 
     async get(id: string): Promise<InsuranceDocument | null> {
       const policies = await ctx.runQuery(internal.policies.getByUser, { userId });
       for (const p of policies) {
-        const raw = p.rawExtracted as InsuranceDocument;
-        if (raw?.id === id) return raw;
-        if (p._id === id) return raw || null;
+        const raw = p.rawExtracted as any;
+        if (!raw) continue;
+        if (raw.id === id || p._id === id) return raw as InsuranceDocument;
       }
       return null;
     },
@@ -147,26 +145,25 @@ export function createConvexDocumentStore(
       const results: InsuranceDocument[] = [];
       for (const p of policies) {
         if (p.status !== "ready") continue;
-        const raw = p.rawExtracted as InsuranceDocument;
+        const raw = p.rawExtracted as any;
         if (!raw) continue;
-        // Apply filters
         if (filters.type && raw.type !== filters.type) continue;
         if (filters.carrier && !raw.carrier?.toLowerCase().includes(filters.carrier.toLowerCase())) continue;
         if (filters.insuredName && !raw.insuredName?.toLowerCase().includes(filters.insuredName.toLowerCase())) continue;
         if (filters.policyNumber && raw.type === "policy") {
-          if ((raw as any).policyNumber !== filters.policyNumber) continue;
+          if (raw.policyNumber !== filters.policyNumber) continue;
         }
         if (filters.quoteNumber && raw.type === "quote") {
-          if ((raw as any).quoteNumber !== filters.quoteNumber) continue;
+          if (raw.quoteNumber !== filters.quoteNumber) continue;
         }
-        results.push(raw);
+        results.push(raw as InsuranceDocument);
       }
       return results;
     },
 
     async delete(id: string): Promise<void> {
       const policies = await ctx.runQuery(internal.policies.getByUser, { userId });
-      const match = policies.find((p: any) => p._id === id || p.rawExtracted?.id === id);
+      const match = policies.find((p: any) => p._id === id || (p.rawExtracted as any)?.id === id);
       if (match) {
         await ctx.runMutation(internal.policies.remove, { policyId: match._id });
       }
@@ -494,7 +491,7 @@ function detectCategoryKeyword(doc: InsuranceDocument): string {
 }
 
 /** Detect category from an InsuranceDocument. */
-export function detectCategory(doc: InsuranceDocument): string {
+export function detectCategory(doc: any): string {
   if (doc.policyTypes && doc.policyTypes.length > 0) {
     return detectCategoryFromPolicyTypes(doc.policyTypes);
   }
@@ -505,7 +502,7 @@ export function detectCategory(doc: InsuranceDocument): string {
  * Map an InsuranceDocument to the flat fields expected by policies.updateExtracted.
  * This bridges the rich SDK type to the existing Convex mutation shape.
  */
-export function documentToUpdateFields(doc: InsuranceDocument) {
+export function documentToUpdateFields(doc: any) {
   const isPolicy = doc.type === "policy";
   return {
     carrier: doc.carrier || undefined,
@@ -535,7 +532,7 @@ interface ExtractedContact {
  * claimsContacts, producer, insurer.
  */
 export function extractContactsFromDocument(
-  doc: InsuranceDocument
+  doc: any
 ): ExtractedContact[] {
   const contacts: ExtractedContact[] = [];
 
@@ -612,7 +609,7 @@ export function extractContactsFromDocument(
  * Replaces the removed buildDocumentContext() from CL SDK v0.2.
  */
 export function buildDocumentContextFromDocs(
-  documents: InsuranceDocument[]
+  documents: any[]
 ): string {
   if (documents.length === 0) return "No documents on file.";
 
@@ -772,7 +769,7 @@ export function buildDocumentContextFromDocs(
 // ── Partial Policy Detection ──
 
 /** Check if an InsuranceDocument looks like a partial/incomplete extraction. */
-export function isPartialPolicy(doc: InsuranceDocument): boolean {
+export function isPartialPolicy(doc: any): boolean {
   const hasCoverages = doc.coverages && doc.coverages.length > 0;
   const hasCarrier = !!doc.carrier;
   const hasInsuredName = !!doc.insuredName;
@@ -798,7 +795,7 @@ export function isPartialPolicy(doc: InsuranceDocument): boolean {
 }
 
 /** Build a human-readable summary from an InsuranceDocument. */
-export function buildPolicySummary(doc: InsuranceDocument): string {
+export function buildPolicySummary(doc: any): string {
   const parts: string[] = [];
   if (doc.carrier) parts.push(`Carrier: ${doc.carrier}`);
   if (doc.type === "policy" && (doc as any).policyNumber) {
