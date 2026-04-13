@@ -1455,6 +1455,38 @@ export const handleEmailCollection = internalAction({
   },
 });
 
+// ── Application Cancel Helper ──
+
+const APP_CANCEL_PHRASES = [
+  "cancel", "/cancel", "stop", "quit", "exit", "nevermind", "never mind",
+  "forget it", "forget this", "nvm", "i'm done", "im done", "done with this",
+  "don't want", "dont want", "no thanks", "not interested", "skip this",
+];
+
+function isCancelIntent(input: string): boolean {
+  const clean = input.toLowerCase().trim();
+  return APP_CANCEL_PHRASES.some((p) => clean === p || clean.startsWith(p + " "));
+}
+
+async function cancelActiveApplication(
+  ctx: any, userId: any, phone: string, linqChatId?: string, imessageSender?: string
+) {
+  const user = await ctx.runQuery(internal.users.get, { userId });
+  if (user?.activeApplicationId) {
+    await ctx.runMutation(internal.applications.updateStatus, {
+      applicationId: user.activeApplicationId,
+      status: "failed",
+    });
+  }
+  await ctx.runMutation(internal.users.updateState, { userId, state: "active" });
+  await ctx.runMutation(internal.users.setActiveApplication, {
+    userId, activeApplicationId: undefined,
+  });
+  await sendAndLog(ctx, userId, phone,
+    "No problem — cancelled the application. Let me know if you want to try again",
+    linqChatId, imessageSender);
+}
+
 // ── Application Question Handler (state: "awaiting_app_questions") ──
 
 export const handleAppQuestions = internalAction({
@@ -1490,26 +1522,14 @@ export const handleAppQuestions = internalAction({
       return;
     }
 
-    // Allow cancellation
-    if (clean === "cancel" || clean === "/cancel" || clean === "stop") {
-      const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
-      if (user?.activeApplicationId) {
-        await ctx.runMutation(internal.applications.updateStatus, {
-          applicationId: user.activeApplicationId,
-          status: "failed",
-        });
-      }
-      await ctx.runMutation(internal.users.updateState, {
-        userId: args.userId,
-        state: "active",
-      });
-      await ctx.runMutation(internal.users.setActiveApplication, {
-        userId: args.userId,
-        activeApplicationId: undefined,
-      });
-      await sendAndLog(ctx, args.userId, args.phone,
-        "No problem — cancelled the application. Let me know if you want to try again",
-        args.linqChatId, args.imessageSender);
+    // Allow cancellation — broad intent matching
+    const cancelPhrases = [
+      "cancel", "/cancel", "stop", "quit", "exit", "nevermind", "never mind",
+      "forget it", "forget this", "nvm", "i'm done", "im done", "done with this",
+      "don't want", "dont want", "no thanks", "not interested", "skip this",
+    ];
+    if (cancelPhrases.some((p) => clean === p || clean.startsWith(p + " "))) {
+      await cancelActiveApplication(ctx, args.userId, args.phone, args.linqChatId, args.imessageSender);
       return;
     }
 
@@ -1789,26 +1809,9 @@ export const handleAppConfirmation = internalAction({
   handler: async (ctx, args) => {
     const clean = args.input.toLowerCase().trim();
 
-    // Allow cancel
-    if (clean === "cancel" || clean === "/cancel" || clean === "no") {
-      const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
-      if (user?.activeApplicationId) {
-        await ctx.runMutation(internal.applications.updateStatus, {
-          applicationId: user.activeApplicationId,
-          status: "failed",
-        });
-      }
-      await ctx.runMutation(internal.users.updateState, {
-        userId: args.userId,
-        state: "active",
-      });
-      await ctx.runMutation(internal.users.setActiveApplication, {
-        userId: args.userId,
-        activeApplicationId: undefined,
-      });
-      await sendAndLog(ctx, args.userId, args.phone,
-        "No problem — cancelled the application",
-        args.linqChatId, args.imessageSender);
+    // Allow cancel — broad intent matching
+    if (clean === "no" || isCancelIntent(clean)) {
+      await cancelActiveApplication(ctx, args.userId, args.phone, args.linqChatId, args.imessageSender);
       return;
     }
 
