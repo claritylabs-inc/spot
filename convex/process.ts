@@ -323,6 +323,7 @@ export const processMedia = internalAction({
       await ctx.runMutation(internal.users.updateLastImageId, {
         userId: args.userId,
         lastImageId: storageId,
+        lastImageMimeType: args.mediaType,
       });
 
       // Classify: is this a document photo or a contextual question?
@@ -365,6 +366,7 @@ export const processMedia = internalAction({
           uploadToken: user?.uploadToken || "",
           linqChatId: args.linqChatId,
           imageStorageId: storageId,
+          imageMimeType: args.mediaType,
         });
       }
     } catch (error: any) {
@@ -420,6 +422,7 @@ export const processMultipleMedia = internalAction({
         await ctx.runMutation(internal.users.updateLastImageId, {
           userId: args.userId,
           lastImageId: storageId,
+          lastImageMimeType: d.mimeType,
         });
 
         // Classify intent
@@ -453,6 +456,7 @@ export const processMultipleMedia = internalAction({
             uploadToken: user?.uploadToken || "",
             linqChatId: args.linqChatId,
             imageStorageId: storageId,
+            imageMimeType: d.mimeType,
           });
         }
         return;
@@ -1076,7 +1080,7 @@ export const handleClearConfirmation = internalAction({
         `Done — deleted ${count} ${count === 1 ? "policy" : "policies"} and cancelled any reminders.`,
         isImChannel
           ? "Send me a new policy PDF or photo whenever you're ready"
-          : `Upload a new policy here: ${process.env.NEXT_PUBLIC_APP_URL || "https://secure.claritylabs.inc"}/upload/${user?.uploadToken}`,
+          : `Upload a new policy here: ${process.env.NEXT_PUBLIC_APP_URL || "https://spot.claritylabs.inc"}/app/${user?.uploadToken}`,
       ], args.linqChatId, args.imessageSender);
     } else if (denyExact.some((w) => clean === w)) {
       await ctx.runMutation(internal.users.updateState, {
@@ -1830,6 +1834,7 @@ export const handleQuestion = internalAction({
     linqChatId: v.optional(v.string()),
     imessageSender: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
+    imageMimeType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     try {
@@ -2105,7 +2110,7 @@ export const handleQuestion = internalAction({
         intent: "direct",
         companyName: "Spot",
         agentName: "Spot",
-        siteUrl: "https://secure.claritylabs.inc",
+        siteUrl: "https://spot.claritylabs.inc",
         coiHandling: "ignore",
       });
 
@@ -2179,19 +2184,50 @@ Proactive awareness:
 
       // Build the final user message content (may include image)
       const userContent: any[] = [];
+      let attachmentAnalysis = "";
 
       const imageId = args.imageStorageId || user?.lastImageId;
+      const imageMime = args.imageMimeType || user?.lastImageMimeType || "image/jpeg";
       if (imageId) {
         try {
           const imageBlob = await ctx.storage.get(imageId);
           if (imageBlob) {
             const imageBuffer = await imageBlob.arrayBuffer();
             const imageBase64 = Buffer.from(imageBuffer).toString("base64");
+
+            // Add raw image to user message for the model to see
             userContent.push({
               type: "image",
               image: imageBase64,
-              mediaType: "image/jpeg",
+              mediaType: imageMime,
             });
+
+            // Use SDK query agent to interpret the attachment with policy context
+            try {
+              const queryAgent = getQueryAgent(ctx, args.userId);
+              const queryResult = await queryAgent.query({
+                question: args.question,
+                attachments: [{
+                  kind: "image",
+                  name: "user-photo",
+                  mimeType: imageMime,
+                  base64: imageBase64,
+                }],
+              });
+              const qr = queryResult as any;
+              if (qr.answer) {
+                attachmentAnalysis = `\n\nATTACHMENT ANALYSIS (from document intelligence):\n${qr.answer}`;
+                if (qr.citations && qr.citations.length > 0) {
+                  const citationNotes = qr.citations
+                    .map((c: any) => `[${c.field || c.documentType || "doc"}]: "${c.quote}"`)
+                    .join("\n");
+                  attachmentAnalysis += `\n\nRelevant policy excerpts:\n${citationNotes}`;
+                }
+              }
+            } catch (sdkErr) {
+              console.warn("SDK query agent attachment interpretation failed, continuing without:", sdkErr);
+              // Non-fatal — the model still sees the raw image
+            }
           }
         } catch (_) {}
       }
@@ -2259,7 +2295,7 @@ Proactive awareness:
 
       const result = await generateTextWithFallback({
         model: getModel("qa"),
-        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${memoryBlock}${analysisNote}${pendingEmailNote}${contactsNote}${appNote}`,
+        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}${attachmentAnalysis}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${memoryBlock}${analysisNote}${pendingEmailNote}${contactsNote}${appNote}`,
         messages: aiMessages,
         maxOutputTokens,
         tools: {

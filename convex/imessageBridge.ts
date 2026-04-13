@@ -200,8 +200,8 @@ export const webhook = httpAction(async (ctx, request) => {
       // Attachment-only in active state — nudge to use upload link (phase 1: no attachment support)
       const user = await ctx.runQuery(internal.users.get, { userId });
       const token = user?.uploadToken || uploadToken;
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://secure.claritylabs.inc";
-      const link = `${baseUrl}/upload/${token}`;
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spot.claritylabs.inc";
+      const link = `${baseUrl}/app/${token}`;
       // We can't process attachments yet, suggest the upload page
       await ctx.scheduler.runAfter(0, internal.process.nudgeForPolicy, {
         userId,

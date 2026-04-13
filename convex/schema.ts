@@ -12,6 +12,7 @@ export default defineSchema({
     linqChatId: v.optional(v.string()), // Linq chat ID for ongoing conversation
     imessageSender: v.optional(v.string()), // iMessage bridge sender (phone or email)
     lastImageId: v.optional(v.id("_storage")), // most recent image for contextual vision Q&A
+    lastImageMimeType: v.optional(v.string()), // MIME type of lastImageId (e.g. "image/jpeg", "image/png")
     autoSendEmails: v.optional(v.boolean()), // skip confirmation for email actions
     pendingMergePolicyId: v.optional(v.id("policies")), // existing policy to merge into
     pendingMergeStorageId: v.optional(v.id("_storage")), // new PDF waiting to be merged

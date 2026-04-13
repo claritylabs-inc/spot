@@ -97,9 +97,13 @@ export const updateLastImageId = internalMutation({
   args: {
     userId: v.id("users"),
     lastImageId: v.id("_storage"),
+    lastImageMimeType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.userId, { lastImageId: args.lastImageId });
+    await ctx.db.patch(args.userId, {
+      lastImageId: args.lastImageId,
+      ...(args.lastImageMimeType ? { lastImageMimeType: args.lastImageMimeType } : {}),
+    });
   },
 });
 
