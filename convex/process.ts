@@ -25,7 +25,6 @@ import {
   documentToUpdateFields,
   detectCategory,
   extractContactsFromDocument,
-  buildDocumentContextFromDocs,
   isPartialPolicy,
   buildPolicySummary,
   makeEmbedText,
@@ -2202,24 +2201,79 @@ Proactive awareness:
 - Don't be pushy about gaps — mention them once when relevant, not repeatedly.
 `;
 
-      // Build document context from InsuranceDocument objects stored in rawExtracted
-      const documents: InsuranceDocument[] = readyPolicies
-        .map((p: any) => p.rawExtracted as InsuranceDocument)
-        .filter(Boolean);
-      const documentContext = buildDocumentContextFromDocs(documents);
+      // Lightweight policy index for the tool-calling LLM (which policies exist, for routing)
+      const policyIndex = readyPolicies.map((p: any, i: number) => {
+        const doc = p.rawExtracted as any;
+        const parts = [`Policy ${i + 1}: ${doc?.type || "policy"}`];
+        if (p.carrier) parts.push(`Carrier: ${p.carrier}`);
+        if (p.policyNumber) parts.push(`#${p.policyNumber}`);
+        if (p.category) parts.push(`Category: ${p.category}`);
+        if (p.effectiveDate && p.expirationDate) parts.push(`${p.effectiveDate} to ${p.expirationDate}`);
+        return parts.join(" | ");
+      }).join("\n");
 
       const isImChannel = !!(args.linqChatId || args.imessageSender);
       const maxOutputTokens = isImChannel ? 800 : 400;
 
-      // Build conversation history from recent messages (gives Claude context of prior exchanges)
+      // Use SDK query agent (RAG with vector search) for grounded answers
+      let ragContext = "";
+      const imageId = args.imageStorageId || user?.lastImageId;
+      const imageMime = args.imageMimeType || user?.lastImageMimeType || "image/jpeg";
+      const userContent: any[] = [];
+
+      try {
+        const queryAgent = getQueryAgent(ctx, args.userId);
+
+        // Build attachments array (image if present)
+        const attachments: any[] = [];
+        if (imageId) {
+          try {
+            const imageBlob = await ctx.storage.get(imageId);
+            if (imageBlob) {
+              const imageBuffer = await imageBlob.arrayBuffer();
+              const imageBase64 = Buffer.from(imageBuffer).toString("base64");
+              userContent.push({
+                type: "image",
+                image: imageBase64,
+                mediaType: imageMime,
+              });
+              attachments.push({
+                kind: "image",
+                name: "user-photo",
+                mimeType: imageMime,
+                base64: imageBase64,
+              });
+            }
+          } catch (_) {}
+        }
+
+        const queryResult = await queryAgent.query({
+          question: args.question,
+          ...(attachments.length > 0 ? { attachments } : {}),
+        });
+        const qr = queryResult as any;
+        if (qr.answer) {
+          ragContext = `\n\nDOCUMENT INTELLIGENCE (grounded answer from policy data):\n${qr.answer}`;
+          if (qr.citations && qr.citations.length > 0) {
+            const citationNotes = qr.citations
+              .map((c: any) => `[${c.field || c.documentType || "doc"}]: "${c.quote}"`)
+              .join("\n");
+            ragContext += `\n\nRelevant policy excerpts:\n${citationNotes}`;
+          }
+        }
+      } catch (sdkErr) {
+        console.warn("SDK query agent failed, continuing with policy index only:", sdkErr);
+      }
+
+      userContent.push({ type: "text", text: args.question });
+
+      // Build conversation history from recent messages
       const conversationMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
       for (const msg of recentMessages) {
-        // Skip empty messages, system-generated messages, and debug output
         if (!msg.body || msg.body.trim() === "") continue;
         if (msg.body.startsWith("[Email")) continue;
         if (msg.body.startsWith("🔧 Debug")) continue;
         const role = msg.direction === "inbound" ? "user" as const : "assistant" as const;
-        // Collapse consecutive same-role messages
         const last = conversationMessages[conversationMessages.length - 1];
         if (last && last.role === role) {
           last.content += "\n" + msg.body;
@@ -2227,63 +2281,7 @@ Proactive awareness:
           conversationMessages.push({ role, content: msg.body });
         }
       }
-
-      // Ensure conversation starts with user and alternates properly
-      // Remove trailing messages — the current question will be the final user message
-      // Keep last ~15 messages for context without blowing up the prompt
       const trimmedHistory = conversationMessages.slice(-15);
-
-      // Build the final user message content (may include image)
-      const userContent: any[] = [];
-      let attachmentAnalysis = "";
-
-      const imageId = args.imageStorageId || user?.lastImageId;
-      const imageMime = args.imageMimeType || user?.lastImageMimeType || "image/jpeg";
-      if (imageId) {
-        try {
-          const imageBlob = await ctx.storage.get(imageId);
-          if (imageBlob) {
-            const imageBuffer = await imageBlob.arrayBuffer();
-            const imageBase64 = Buffer.from(imageBuffer).toString("base64");
-
-            // Add raw image to user message for the model to see
-            userContent.push({
-              type: "image",
-              image: imageBase64,
-              mediaType: imageMime,
-            });
-
-            // Use SDK query agent to interpret the attachment with policy context
-            try {
-              const queryAgent = getQueryAgent(ctx, args.userId);
-              const queryResult = await queryAgent.query({
-                question: args.question,
-                attachments: [{
-                  kind: "image",
-                  name: "user-photo",
-                  mimeType: imageMime,
-                  base64: imageBase64,
-                }],
-              });
-              const qr = queryResult as any;
-              if (qr.answer) {
-                attachmentAnalysis = `\n\nATTACHMENT ANALYSIS (from document intelligence):\n${qr.answer}`;
-                if (qr.citations && qr.citations.length > 0) {
-                  const citationNotes = qr.citations
-                    .map((c: any) => `[${c.field || c.documentType || "doc"}]: "${c.quote}"`)
-                    .join("\n");
-                  attachmentAnalysis += `\n\nRelevant policy excerpts:\n${citationNotes}`;
-                }
-              }
-            } catch (sdkErr) {
-              console.warn("SDK query agent attachment interpretation failed, continuing without:", sdkErr);
-              // Non-fatal — the model still sees the raw image
-            }
-          }
-        } catch (_) {}
-      }
-
-      userContent.push({ type: "text", text: args.question });
 
       // Build messages array: history + current question
       const aiMessages: any[] = [];
@@ -2346,7 +2344,7 @@ Proactive awareness:
 
       const result = await generateTextWithFallback({
         model: getModel("qa"),
-        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nHere are the user's insurance documents:\n${documentContext}${attachmentAnalysis}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${memoryBlock}${analysisNote}${pendingEmailNote}${contactsNote}${appNote}`,
+        system: `${complianceGuardrails}\n\n${sdkPrompt}\n\nPolicies on file:\n${policyIndex}${ragContext}\n\nUser's email on file: ${user?.email || "none"}\nUser's name: ${user?.name || "Unknown"}${memoryBlock}${analysisNote}${pendingEmailNote}${contactsNote}${appNote}`,
         messages: aiMessages,
         maxOutputTokens,
         tools: {
