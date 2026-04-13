@@ -14,10 +14,10 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
  * generateText/tool calls work identically regardless of provider.
  *
  * Env vars needed:
- *   DEEPSEEK_API_KEY — DeepSeek V3 (primary for tool-calling Q&A)
- *   MOONSHOTAI_API_KEY — Kimi K2.5 (reasoning tasks)
+ *   OPENAI_API_KEY — GPT-5.4 Mini (primary for Q&A, extraction, reasoning)
  *   ANTHROPIC_API_KEY — Claude Haiku (classification), Claude Sonnet (fallback)
- *   OPENAI_API_KEY — GPT models (optional)
+ *   MOONSHOTAI_API_KEY — Kimi K2.5 (optional, legacy)
+ *   DEEPSEEK_API_KEY — DeepSeek V3 (optional, legacy)
  *   GOOGLE_GENERATIVE_AI_API_KEY — Gemini models (optional)
  */
 
@@ -73,32 +73,23 @@ export type ModelTask =
  * Model configuration — change these to swap providers/models per task.
  *
  * Current strategy:
- *   - DeepSeek V3: Q&A with tool use (~$0.001/call vs $0.014 for Claude Sonnet = 14x cheaper)
- *   - Kimi K2.5: reasoning tasks (analysis, email writing)
- *   - Claude Haiku: fast classification
- *
- * Cost tiers (approximate $/1M tokens, input/output):
- *   DeepSeek V3:       $0.27 / $1.10   (cheapest with good tool calling)
- *   Kimi K2.5:         ~$0.60 / $2     (excellent value, 256K context)
- *   Claude Haiku:      $0.80 / $4      (fast, cheap)
- *   Gemini Flash:      $0.075 / $0.30  (cheapest overall)
- *   Claude Sonnet:     $3 / $15        (premium fallback)
+ *   - GPT-5.4 Mini: primary model for Q&A, reasoning, email, analysis
+ *   - GPT-5.4 Nano: fast classification (image intent, document type)
+ *   - Claude Sonnet: fallback when OpenAI is down
  */
 const MODEL_CONFIG: Record<ModelTask, () => any> = {
-  // DeepSeek V3 — agentic Q&A with tool use (good tool calling, 14x cheaper than Sonnet)
-  qa:                   () => deepseek()("deepseek-chat"),
+  // GPT-5.4 Mini — primary for all reasoning and tool-calling tasks
+  qa:                   () => openai()("gpt-5.4-mini"),
+  qa_simple:            () => openai()("gpt-5.4-mini"),
+  health_check:         () => openai()("gpt-5.4-mini"),
+  portfolio_analysis:   () => openai()("gpt-5.4-mini"),
+  renewal_comparison:   () => openai()("gpt-5.4-mini"),
+  email_generate:       () => openai()("gpt-5.4-mini"),
+  email_reply:          () => openai()("gpt-5.4-mini"),
 
-  // Kimi K2.5 — reasoning tasks at low cost
-  health_check:         () => moonshot()("kimi-k2.5"),
-  portfolio_analysis:   () => moonshot()("kimi-k2.5"),
-  renewal_comparison:   () => moonshot()("kimi-k2.5"),
-  email_generate:       () => moonshot()("kimi-k2.5"),
-  email_reply:          () => moonshot()("kimi-k2.5"),
-  qa_simple:            () => moonshot()("kimi-k2.5"),
-
-  // Claude Haiku — fast classification
-  image_classify:       () => anthropic()("claude-haiku-4-5-20251001"),
-  extraction_classify:  () => anthropic()("claude-haiku-4-5-20251001"),
+  // GPT-5.4 Nano — fast classification
+  image_classify:       () => openai()("gpt-5.4-nano"),
+  extraction_classify:  () => openai()("gpt-5.4-nano"),
 };
 
 /**

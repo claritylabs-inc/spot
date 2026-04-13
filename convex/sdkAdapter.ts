@@ -6,7 +6,6 @@
  * InsuranceDocument helpers, contact extraction, and document context builder.
  */
 
-import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   createExtractor,
@@ -162,8 +161,8 @@ let _extractor: ReturnType<typeof createExtractor> | null = null;
 
 export function getExtractor() {
   if (!_extractor) {
-    const anthropic = createAnthropic();
-    const model = anthropic("claude-sonnet-4-6");
+    const oai = createOpenAI();
+    const model = oai("gpt-5.4-mini");
     _extractor = createExtractor({
       generateText: makeGenerateText(model),
       generateObject: makeGenerateObject(model),
@@ -462,8 +461,8 @@ export function createConvexMemoryStore(
  * Call this inside a Convex action handler.
  */
 export function getQueryAgent(ctx: any, userId: any) {
-  const anthropic = createAnthropic();
-  const model = anthropic("claude-sonnet-4-6");
+  const oai = createOpenAI();
+  const model = oai("gpt-5.4-mini");
   const embedFn = makeEmbedText();
 
   return createQueryAgent({
@@ -485,8 +484,8 @@ export function getQueryAgent(ctx: any, userId: any) {
  * Call this inside a Convex action handler.
  */
 export function getAppPipeline(ctx: any, userId: any, pdfBase64?: string) {
-  const anthropic = createAnthropic();
-  const model = anthropic("claude-sonnet-4-6");
+  const oai = createOpenAI();
+  const model = oai("gpt-5.4-mini");
   const embedFn = makeEmbedText();
 
   return createApplicationPipeline({
