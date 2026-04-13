@@ -29,6 +29,7 @@ import {
   isPartialPolicy,
   buildPolicySummary,
   makeEmbedText,
+  makeGenerateObject,
   createConvexMemoryStore,
   getQueryAgent,
 } from "./sdkAdapter";
@@ -510,31 +511,17 @@ export const processMultipleMedia = internalAction({
 
 async function isApplicationForm(pdfBase64: string): Promise<boolean> {
   try {
-    const result = await generateTextWithFallback({
-      model: getModel("extraction_classify"),
-      system: "You classify insurance documents. Respond with ONLY 'application' or 'not_application'. An insurance application is a form to be filled out to APPLY for insurance coverage (e.g. ACORD forms, carrier-specific application forms with blank fields to fill in). A policy, quote, declaration page, or certificate is NOT an application.",
-      messages: [
-        {
-          role: "user" as const,
-          content: [
-            {
-              type: "file" as const,
-              data: pdfBase64,
-              mediaType: "application/pdf" as const,
-              filename: "document.pdf",
-            },
-            {
-              type: "text" as const,
-              text: "Classify this document.",
-            },
-          ],
-        },
-      ],
-      maxOutputTokens: 10,
+    const { APPLICATION_CLASSIFY_PROMPT, ApplicationClassifyResultSchema } = await import("@claritylabs/cl-sdk");
+    const generateObject = makeGenerateObject(getModel("extraction_classify"));
+    const result = await generateObject({
+      prompt: "Classify this document.",
+      system: APPLICATION_CLASSIFY_PROMPT,
+      schema: ApplicationClassifyResultSchema,
+      maxTokens: 100,
+      providerOptions: { pdfBase64 },
     });
-    const response = result.text.trim().toLowerCase();
-    // Exact match — "not_application" must NOT match
-    return response === "application";
+    const classification = result.object as { isApplication: boolean; confidence: number };
+    return classification.isApplication && classification.confidence >= 0.7;
   } catch (_) {
     return false;
   }
