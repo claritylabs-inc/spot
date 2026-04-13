@@ -47,7 +47,7 @@ export const processUploadedPolicy = internalAction({
 
       // Ack + SDK extraction in parallel
       const [, extractionResult] = await Promise.all([
-        sendAndLog(ctx, args.userId, args.phone, "Got your upload — reading through it now", linqChatId, imessageSender),
+        sendAndLog(ctx, args.userId, args.phone, "Got your upload — reading through it now. This usually takes about 15-20 seconds", linqChatId, imessageSender),
         getExtractor().extract(pdfBase64),
       ]);
 

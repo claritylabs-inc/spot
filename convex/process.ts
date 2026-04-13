@@ -329,7 +329,7 @@ export const processMedia = internalAction({
 
       if (intent === "document" && canEmbedInPdf(args.mediaType)) {
         // JPEG/PNG document photo → embed in PDF → extraction pipeline
-        await sendAndLog(ctx, args.userId, args.phone, "Got your photo — converting and reading through it now", args.linqChatId, args.imessageSender);
+        await sendAndLog(ctx, args.userId, args.phone, "Got your photo — converting and reading through it now. Should take about 15-20 seconds", args.linqChatId, args.imessageSender);
 
         const pdfBase64 = await embedImageInPdf(buffer, args.mediaType);
 
@@ -430,7 +430,7 @@ export const processMultipleMedia = internalAction({
           const pdfBase64 = await embedImageInPdf(d.buffer, d.mimeType);
           const pdfBlob = new Blob([Buffer.from(pdfBase64, "base64")], { type: "application/pdf" });
           const pdfStorageId = await ctx.storage.store(pdfBlob);
-          await sendAndLog(ctx, args.userId, args.phone, "Got your photo — converting and reading through it now", args.linqChatId, args.imessageSender);
+          await sendAndLog(ctx, args.userId, args.phone, "Got your photo — converting and reading through it now. Should take about 15-20 seconds", args.linqChatId, args.imessageSender);
           await processExtractionPipeline(ctx, {
             userId: args.userId,
             pdfBase64,
@@ -476,7 +476,7 @@ export const processMultipleMedia = internalAction({
       }
 
       await sendAndLog(ctx, args.userId, args.phone,
-        `Got ${embeddable.length} documents — merging and reading through them now`,
+        `Got ${embeddable.length} documents — merging and reading through them now. This usually takes about 20-30 seconds`,
         args.linqChatId, args.imessageSender);
 
       const mergedPdfBase64 = await mergeIntoPdf(embeddable);
@@ -583,11 +583,28 @@ async function processExtractionPipeline(
     return;
   }
 
+  // Start typing indicator while extraction runs
+  if (args.linqChatId) {
+    ctx.runAction(internal.sendLinq.startTyping, { chatId: args.linqChatId }).catch(() => {});
+  }
+
+  // Send intermediate progress update if extraction takes longer than 8s
+  let extractionDone = false;
+  const progressTimer = setTimeout(async () => {
+    if (!extractionDone) {
+      await sendAndLog(ctx, args.userId, args.phone,
+        "Still reading — extracting coverages and limits. Almost there",
+        args.linqChatId, args.imessageSender);
+    }
+  }, 8000);
+
   // Run SDK extraction and application detection in parallel
   const [extractionResult, isApp] = await Promise.all([
     getExtractor().extract(args.pdfBase64),
     isApplicationForm(args.pdfBase64),
   ]);
+  extractionDone = true;
+  clearTimeout(progressTimer);
 
   // If it's an application form, redirect to application flow
   if (isApp) {
@@ -611,30 +628,26 @@ async function processExtractionPipeline(
   const applied = documentToUpdateFields(document, extractionResult);
   const detectedCategory = applied.category;
 
-  const startTypingIfLinq = args.linqChatId
-    ? ctx.runAction(internal.sendLinq.startTyping, { chatId: args.linqChatId }).catch(() => {})
-    : Promise.resolve();
-
-  // Create policy record + send ack in parallel
   const DOC_LABELS: Record<string, string> = {
     policy: "policy", quote: "quote", binder: "binder",
     endorsement: "endorsement", certificate: "certificate",
   };
   const docLabel = DOC_LABELS[documentType] || "document";
-  const ackMessages: Record<string, string> = {
-    quote: "Looks like a quote — pulling out the details",
-    binder: "Found a binder — pulling out the details",
-    endorsement: "Found an endorsement — reading through the changes",
-    certificate: "Got a certificate of insurance — pulling out the details",
-  };
+
+  // Post-extraction ack — now includes what we found
+  const carrierNote = applied.carrier ? ` from ${applied.carrier}` : "";
+  const categoryLabel = CATEGORY_LABELS[detectedCategory] || detectedCategory;
+  const discoveryMsg = documentType === "quote"
+    ? `Found a ${categoryLabel} quote${carrierNote} — organizing the details`
+    : documentType === "policy"
+      ? `Found your ${categoryLabel} policy${carrierNote} — organizing coverages and limits`
+      : `Found a ${categoryLabel} ${docLabel}${carrierNote} — pulling out the details`;
+
   const [finalPolicyId] = await Promise.all([
     ctx.runMutation(internal.policies.create, {
       userId: args.userId, category: detectedCategory || "other", documentType, pdfStorageId: args.pdfStorageId,
     }),
-    sendAndLog(ctx, args.userId, args.phone,
-      ackMessages[documentType] || "Found your policy — pulling out coverages and limits",
-      args.linqChatId, args.imessageSender),
-    startTypingIfLinq,
+    sendAndLog(ctx, args.userId, args.phone, discoveryMsg, args.linqChatId, args.imessageSender),
   ]);
 
   const stopTypingIfLinq = args.linqChatId
@@ -784,7 +797,7 @@ export const processPolicy = internalAction({
     try {
       // Step 1: Ack + download in parallel
       const [, downloadResponse] = await Promise.all([
-        sendAndLog(ctx, args.userId, args.phone, "Got it — reading through your document now", args.linqChatId, args.imessageSender),
+        sendAndLog(ctx, args.userId, args.phone, "Got it — reading through your document now. This usually takes about 15-20 seconds", args.linqChatId, args.imessageSender),
         fetch(args.mediaUrl),
       ]);
 
