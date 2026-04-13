@@ -910,6 +910,17 @@ export function buildDocumentContextFromDocs(
       }
     }
 
+    // Supplementary facts (v0.13+ — extra data not in structured schema)
+    if (doc.supplementaryFacts && doc.supplementaryFacts.length > 0) {
+      parts.push(`\nAdditional Details:`);
+      for (const fact of doc.supplementaryFacts) {
+        let line = `  - ${fact.key}: ${fact.value}`;
+        if (fact.subject) line += ` (${fact.subject})`;
+        if (fact.context) line += ` — ${fact.context}`;
+        parts.push(line);
+      }
+    }
+
     // Quote-specific fields
     if (doc.type === "quote") {
       const q = doc as any;
