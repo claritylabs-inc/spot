@@ -513,10 +513,28 @@ async function isApplicationForm(pdfBase64: string): Promise<boolean> {
     const result = await generateTextWithFallback({
       model: getModel("extraction_classify"),
       system: "You classify insurance documents. Respond with ONLY 'application' or 'not_application'. An insurance application is a form to be filled out to APPLY for insurance coverage (e.g. ACORD forms, carrier-specific application forms with blank fields to fill in). A policy, quote, declaration page, or certificate is NOT an application.",
-      prompt: `Classify this PDF (first 20KB of base64): ${pdfBase64.slice(0, 20000)}`,
+      messages: [
+        {
+          role: "user" as const,
+          content: [
+            {
+              type: "file" as const,
+              data: pdfBase64,
+              mediaType: "application/pdf" as const,
+              filename: "document.pdf",
+            },
+            {
+              type: "text" as const,
+              text: "Classify this document.",
+            },
+          ],
+        },
+      ],
       maxOutputTokens: 10,
     });
-    return result.text.trim().toLowerCase().includes("application");
+    const response = result.text.trim().toLowerCase();
+    // Exact match — "not_application" must NOT match
+    return response === "application";
   } catch (_) {
     return false;
   }
