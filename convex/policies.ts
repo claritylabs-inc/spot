@@ -18,6 +18,18 @@ export const getByUser = internalQuery({
   },
 });
 
+export const hasProcessingPolicy = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const processing = await ctx.db
+      .query("policies")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("status"), "processing"))
+      .first();
+    return !!processing;
+  },
+});
+
 export const create = internalMutation({
   args: {
     userId: v.id("users"),

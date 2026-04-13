@@ -27,6 +27,17 @@ export const processUploadedPolicy = internalAction({
     const imessageSender = user?.imessageSender;
 
     try {
+      // Only one extraction at a time per user
+      const alreadyProcessing = await ctx.runQuery(internal.policies.hasProcessingPolicy, {
+        userId: args.userId,
+      });
+      if (alreadyProcessing) {
+        await sendAndLog(ctx, args.userId, args.phone,
+          "I'm still working on your last document — hang tight and I'll let you know when it's done",
+          linqChatId, imessageSender);
+        return;
+      }
+
       // Get the PDF from storage
       const blob = await ctx.storage.get(args.storageId);
       if (!blob) throw new Error("File not found in storage");

@@ -255,31 +255,28 @@ export const nudgeForPolicy = internalAction({
       return;
     }
 
-    if (args.linqChatId || args.imessageSender) {
-      if (isRetryIntent(args.input)) {
-        await sendAndLog(
-          ctx,
-          args.userId,
-          args.phone,
-          "No worries, go ahead and send it again — just drop the PDF or photo right here",
-          args.linqChatId,
-          args.imessageSender
-        );
-      } else {
-        const link = getUploadLink(args.uploadToken);
-        await sendBurst(ctx, args.userId, args.phone, [
-          "I'll need to see the policy first — just send me the PDF or a photo right here",
-          `Or if that's not working, you can upload it here instead:\n${link}`,
-        ], args.linqChatId, args.imessageSender);
-      }
+    if (isRetryIntent(args.input)) {
+      const isImChannel = !!(args.linqChatId || args.imessageSender);
+      await sendAndLog(ctx, args.userId, args.phone,
+        isImChannel
+          ? "No worries, go ahead and send it again — just drop the PDF or photo right here"
+          : `No worries — try uploading again here:\n\n${getUploadLink(args.uploadToken)}`,
+        args.linqChatId, args.imessageSender);
     } else {
+      // Use AI to respond naturally while steering toward uploading
+      const isImChannel = !!(args.linqChatId || args.imessageSender);
       const link = getUploadLink(args.uploadToken);
-      await sendAndLog(
-        ctx,
-        args.userId,
-        args.phone,
-        `I'll need to see the policy first — you can drop it here\n\n${link}`,
-      );
+      const { text: response } = await generateTextWithFallback({
+        model: getModel("qa_simple"),
+        system: `You are Spot, a chill insurance assistant. The user hasn't sent their policy yet. You need the policy document to help them.
+Your job: respond to what they said naturally, then steer them toward sending you their policy.
+${isImChannel ? "They can send a PDF or photo of the policy right in this chat, or use the upload link." : "They need to use the upload link."}
+Upload link: ${link}
+Keep it short — 1-2 sentences max. Be friendly, not robotic. Don't repeat yourself.`,
+        prompt: args.input,
+        maxOutputTokens: 150,
+      });
+      await sendAndLog(ctx, args.userId, args.phone, response, args.linqChatId, args.imessageSender);
     }
   },
 });
@@ -573,6 +570,19 @@ async function processExtractionPipeline(
     imessageSender?: string;
   }
 ) {
+  // Only one extraction at a time per user — check for in-progress policies
+  const alreadyProcessing = await ctx.runQuery(internal.policies.hasProcessingPolicy, {
+    userId: args.userId,
+  });
+  if (alreadyProcessing) {
+    await sendAndLog(
+      ctx, args.userId, args.phone,
+      "I'm still working on your last document — hang tight and I'll let you know when it's done. You can ask me questions in the meantime",
+      args.linqChatId, args.imessageSender
+    );
+    return;
+  }
+
   // Run SDK extraction and application detection in parallel
   const [extractionResult, isApp] = await Promise.all([
     getExtractor().extract(args.pdfBase64),
@@ -2093,17 +2103,31 @@ export const handleQuestion = internalAction({
       ]);
 
       const readyPolicies = policies.filter((p: any) => p.status === "ready");
+      const processingPolicies = policies.filter((p: any) => p.status === "processing");
 
       if (readyPolicies.length === 0) {
+        if (processingPolicies.length > 0) {
+          // A document is being processed — let user know
+          await sendAndLog(ctx, args.userId, args.phone,
+            "I'm still reading through your document — almost done. You can ask me anything once it's ready",
+            args.linqChatId, args.imessageSender);
+          return;
+        }
+
+        // No policies at all — use AI to respond naturally and steer toward uploading
+        const isImChannel = !!(args.linqChatId || args.imessageSender);
         const link = getUploadLink(args.uploadToken);
-        await sendAndLog(
-          ctx,
-          args.userId,
-          args.phone,
-          `I don't have a policy from you yet, drop one here and I'll check it out\n\n${link}`,
-          args.linqChatId,
-          args.imessageSender
-        );
+        const { text: response } = await generateTextWithFallback({
+          model: getModel("qa_simple"),
+          system: `You are Spot, a chill insurance assistant. The user hasn't uploaded any policy yet. You need a policy document to help them.
+Your job: respond to what they said naturally, then steer them toward sending you their policy.
+${isImChannel ? "They can send a PDF or photo right in this chat, or use the upload link." : "They need to use the upload link."}
+Upload link: ${link}
+Keep it short — 1-2 sentences max. Be friendly, not robotic.`,
+          prompt: args.question,
+          maxOutputTokens: 150,
+        });
+        await sendAndLog(ctx, args.userId, args.phone, response, args.linqChatId, args.imessageSender);
         return;
       }
 
