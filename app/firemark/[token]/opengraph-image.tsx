@@ -199,7 +199,7 @@ export default async function FiremarkOgImage({
               <div key={d.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <div
                   style={{
-                    fontSize: 32,
+                    fontSize: 42,
                     fontFamily: BODY_FONT,
                     color: `${MUTED}aa`,
                     textTransform: "uppercase",
@@ -210,7 +210,7 @@ export default async function FiremarkOgImage({
                 </div>
                 <div
                   style={{
-                    fontSize: 48,
+                    fontSize: 56,
                     fontFamily: BODY_FONT,
                     color: FG,
                   }}
