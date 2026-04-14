@@ -126,7 +126,7 @@ export const processUploadedPolicy = internalAction({
         const matchLabel = existingMatch.carrier
           ? `your ${existingMatch.carrier} policy`
           : `your existing ${detectedCategory} policy`;
-        const msg = `Got your upload! Here's what I found:\n\n${summary}\n\nThis looks like it goes with ${matchLabel}. Want me to merge them together? (yes/no)\n\n${trackLink}`;
+        const msg = `Got your upload! Here's what I found:\n\n${summary}\n\nThis looks like it goes with ${matchLabel}. Want me to merge them together? (yes/no)`;
         await sendAndLog(ctx, args.userId, args.phone, msg, linqChatId, imessageSender);
         return;
       }
@@ -170,7 +170,13 @@ export const processUploadedPolicy = internalAction({
         closingMsg = "Ask me anything about your coverage.";
       }
 
-      await sendAndLog(ctx, args.userId, args.phone, `All done — your breakdown is ready:\n${trackLink}\n\n${closingMsg}`, linqChatId, imessageSender);
+      const DOC_LABELS: Record<string, string> = {
+        policy: "policy", quote: "quote", binder: "binder",
+        endorsement: "endorsement", certificate: "certificate",
+      };
+      const docLabel = DOC_LABELS[documentType] || "document";
+      const msg = `Got your ${detectedCategory} ${docLabel}! Here's the breakdown:\n\n${summary}\n\n${closingMsg}`;
+      await sendAndLog(ctx, args.userId, args.phone, msg, linqChatId, imessageSender);
     } catch (error: any) {
       console.error("Upload processing failed:", error);
       await sendAndLog(

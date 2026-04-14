@@ -772,9 +772,9 @@ async function processExtractionPipeline(
     },
   });
 
-  const trackLink = getTrackLink(taskToken!);
   await sendBurst(ctx, args.userId, args.phone, [
-    `All done — your breakdown is ready:\n${trackLink}`,
+    `Ok here's what ${isPolicy ? "you're covered for" : `that ${docLabel} includes`}`,
+    summary,
     closingMsg,
   ], args.linqChatId, args.imessageSender);
 
@@ -1288,10 +1288,13 @@ export const executePolicyMerge = internalAction({
         },
       });
 
-      // Send completion notification
-      await sendAndLog(ctx, args.userId, args.phone,
-        `All done — your merged breakdown is ready:\n${trackLink}\n\nAsk me anything about your coverage, or type /merge to check for more duplicates`,
-        args.linqChatId, args.imessageSender);
+      // Send completion with full summary
+      const label = friendlyCategoryLabel(detectedCategory, applied.policyTypes);
+      await sendBurst(ctx, args.userId, args.phone, [
+        `Done — merged your ${label} documents and re-read the combined policy`,
+        buildPolicySummary(mergedDoc),
+        "Ask me anything about your coverage, or type /merge to check for more duplicates",
+      ], args.linqChatId, args.imessageSender);
     } catch (error: any) {
       console.error("Policy merge failed:", error);
       // State already set to active at start — just notify
@@ -2957,9 +2960,9 @@ export const reextractPolicy = internalAction({
         },
       });
 
-      const trackLinkDone = getTrackLink(taskToken!);
       await sendBurst(ctx, args.userId, args.phone, [
-        `All done — your updated breakdown is ready:\n${trackLinkDone}`,
+        "All done — here's the updated breakdown",
+        summary,
         "Ask me anything about the updated info",
       ], args.linqChatId, args.imessageSender);
     } catch (error: any) {
@@ -3072,14 +3075,13 @@ export const reindexPolicies = internalAction({
         },
       });
 
-      const trackLinkDone = getTrackLink(taskToken);
       if (errors.length > 0) {
         await sendAndLog(ctx, args.userId, args.phone,
-          `Reindexed ${rechunked}/${readyPolicies.length} policies. Some had errors — check details:\n${trackLinkDone}`,
+          `Reindexed ${rechunked}/${readyPolicies.length} policies. Some had errors — check the progress page for details.`,
           args.linqChatId, args.imessageSender);
       } else {
         await sendAndLog(ctx, args.userId, args.phone,
-          `All done — reindexed ${rechunked} ${rechunked === 1 ? "policy" : "policies"}:\n${trackLinkDone}`,
+          `All done — reindexed ${rechunked} ${rechunked === 1 ? "policy" : "policies"}. Search should be better now.`,
           args.linqChatId, args.imessageSender);
       }
     } catch (error: any) {
