@@ -207,4 +207,32 @@ export default defineSchema({
     openPhoneId: v.string(),
     processedAt: v.number(),
   }).index("by_openphone_id", ["openPhoneId"]),
+
+  // Progress tracking for long-running operations (extraction, re-extraction, reindex)
+  tasks: defineTable({
+    userId: v.id("users"),
+    token: v.string(), // random token for URL (spot.claritylabs.inc/track/{token})
+    type: v.string(), // "extraction" | "re-extraction" | "reindex"
+    status: v.string(), // "running" | "completed" | "failed"
+    steps: v.array(v.object({
+      key: v.string(),
+      label: v.string(),
+      status: v.string(), // "pending" | "active" | "completed" | "failed"
+    })),
+    result: v.optional(v.object({
+      summary: v.optional(v.string()),
+      carrier: v.optional(v.string()),
+      category: v.optional(v.string()),
+      documentType: v.optional(v.string()),
+      policyNumber: v.optional(v.string()),
+      effectiveDate: v.optional(v.string()),
+      expirationDate: v.optional(v.string()),
+      errorMessage: v.optional(v.string()),
+      rechunkedCount: v.optional(v.number()),
+    })),
+    policyId: v.optional(v.id("policies")),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  }).index("by_token", ["token"])
+    .index("by_user", ["userId"]),
 });
