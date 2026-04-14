@@ -41,7 +41,7 @@ export const processUploadedPolicy = internalAction({
       // Create task and send tracking link
       const task = await ctx.runMutation(internal.tasks.create, { userId: args.userId, type: "extraction" });
       const trackLink = getTrackLink(task.token);
-      await sendAndLog(ctx, args.userId, args.phone, `Got your upload — I'm on it!\n\nWatch the progress: ${trackLink}`, linqChatId, imessageSender);
+      await sendAndLog(ctx, args.userId, args.phone, `Got your upload — I'm on it!\n\nTrack progress online: ${trackLink}`, linqChatId, imessageSender);
 
       // Get the PDF from storage
       const blob = await ctx.storage.get(args.storageId);

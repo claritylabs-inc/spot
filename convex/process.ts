@@ -588,7 +588,7 @@ async function processExtractionPipeline(
     taskToken = task.token;
     const trackLink = getTrackLink(taskToken!);
     await sendAndLog(ctx, args.userId, args.phone,
-      `Got your document — I'm on it!\n\nWatch the progress: ${trackLink}`,
+      `Got your document — I'm on it!\n\nTrack progress online: ${trackLink}`,
       args.linqChatId, args.imessageSender);
   }
 
@@ -818,7 +818,7 @@ export const processPolicy = internalAction({
       // Send tracking link
       const trackLink = getTrackLink(task.token);
       await sendAndLog(ctx, args.userId, args.phone,
-        `Got your document — I'm on it!\n\nWatch the progress: ${trackLink}`,
+        `Got your document — I'm on it!\n\nTrack progress online: ${trackLink}`,
         args.linqChatId, args.imessageSender);
 
       const buffer = await downloadResponse.arrayBuffer();
@@ -1180,7 +1180,7 @@ export const executePolicyMerge = internalAction({
       const taskId = task.taskId;
       const trackLink = getTrackLink(task.token);
       await sendAndLog(ctx, args.userId, args.phone,
-        `On it — merging those documents now.\n\nWatch the progress: ${trackLink}`,
+        `On it — merging those documents now.\n\nTrack progress online: ${trackLink}`,
         args.linqChatId, args.imessageSender);
 
       // Download both PDFs
@@ -2880,7 +2880,7 @@ export const reextractPolicy = internalAction({
       taskToken = task.token;
       const trackLink = getTrackLink(taskToken);
       await sendAndLog(ctx, args.userId, args.phone,
-        `Got it — re-reading your document now.\n\nWatch the progress: ${trackLink}`,
+        `Got it — re-reading your document now.\n\nTrack progress online: ${trackLink}`,
         args.linqChatId, args.imessageSender);
 
       // Set policy back to processing
@@ -3002,7 +3002,7 @@ export const reindexPolicies = internalAction({
       const taskToken = task.token;
       const trackLink = getTrackLink(taskToken);
       await sendAndLog(ctx, args.userId, args.phone,
-        `Reindexing ${readyPolicies.length} ${readyPolicies.length === 1 ? "policy" : "policies"} now.\n\nWatch the progress: ${trackLink}`,
+        `Reindexing ${readyPolicies.length} ${readyPolicies.length === 1 ? "policy" : "policies"} now.\n\nTrack progress online: ${trackLink}`,
         args.linqChatId, args.imessageSender);
 
       const ensureArray = (val: any) => Array.isArray(val) ? val : [];
