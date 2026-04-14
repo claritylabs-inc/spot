@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import {
   buildAgentSystemPrompt,
+  chunkDocument,
   sanitizeNulls,
   type InsuranceDocument,
 } from "@claritylabs/cl-sdk";
@@ -18,7 +19,7 @@ import {
   mergeIntoPdf,
 } from "./imageUtils";
 import { generateCoiPdf, buildCoiInput } from "./coiGenerator";
-import { sendAndLog, sendBurst, sleep, getUploadLink } from "./sendHelpers";
+import { sendAndLog, sendBurst, sleep, getUploadLink, getTrackLink } from "./sendHelpers";
 import { buildMemoryContext } from "./memory";
 import {
   getExtractor,
@@ -328,8 +329,6 @@ export const processMedia = internalAction({
 
       if (intent === "document" && canEmbedInPdf(args.mediaType)) {
         // JPEG/PNG document photo → embed in PDF → extraction pipeline
-        await sendAndLog(ctx, args.userId, args.phone, "Got your photo — converting and reading through it now. Should take about 15-20 seconds", args.linqChatId, args.imessageSender);
-
         const pdfBase64 = await embedImageInPdf(buffer, args.mediaType);
 
         const pdfBlob = new Blob([Buffer.from(pdfBase64, "base64")], { type: "application/pdf" });
@@ -429,7 +428,6 @@ export const processMultipleMedia = internalAction({
           const pdfBase64 = await embedImageInPdf(d.buffer, d.mimeType);
           const pdfBlob = new Blob([Buffer.from(pdfBase64, "base64")], { type: "application/pdf" });
           const pdfStorageId = await ctx.storage.store(pdfBlob);
-          await sendAndLog(ctx, args.userId, args.phone, "Got your photo — converting and reading through it now. Should take about 15-20 seconds", args.linqChatId, args.imessageSender);
           await processExtractionPipeline(ctx, {
             userId: args.userId,
             pdfBase64,
@@ -473,10 +471,6 @@ export const processMultipleMedia = internalAction({
           args.linqChatId, args.imessageSender);
         return;
       }
-
-      await sendAndLog(ctx, args.userId, args.phone,
-        `Got ${embeddable.length} documents — merging and reading through them now. This usually takes about 20-30 seconds`,
-        args.linqChatId, args.imessageSender);
 
       const mergedPdfBase64 = await mergeIntoPdf(embeddable);
 
@@ -567,8 +561,13 @@ async function processExtractionPipeline(
     phone: string;
     linqChatId?: string;
     imessageSender?: string;
+    taskId?: any;
+    taskToken?: string;
   }
 ) {
+  let taskId = args.taskId;
+  let taskToken = args.taskToken;
+
   // Only one extraction at a time per user — check for in-progress policies
   const alreadyProcessing = await ctx.runQuery(internal.policies.hasProcessingPolicy, {
     userId: args.userId,
@@ -582,31 +581,32 @@ async function processExtractionPipeline(
     return;
   }
 
-  // Start typing indicator while extraction runs
-  if (args.linqChatId) {
-    ctx.runAction(internal.sendLinq.startTyping, { chatId: args.linqChatId }).catch(() => {});
+  // Create task if not provided by caller
+  if (!taskId) {
+    const task = await ctx.runMutation(internal.tasks.create, { userId: args.userId, type: "extraction" });
+    taskId = task.taskId;
+    taskToken = task.token;
+    const trackLink = getTrackLink(taskToken!);
+    await sendAndLog(ctx, args.userId, args.phone,
+      `Got your document — I'm on it!\n\nWatch the progress: ${trackLink}`,
+      args.linqChatId, args.imessageSender);
   }
 
-  // Send intermediate progress update if extraction takes longer than 8s
-  let extractionDone = false;
-  const progressTimer = setTimeout(async () => {
-    if (!extractionDone) {
-      await sendAndLog(ctx, args.userId, args.phone,
-        "Still reading — extracting coverages and limits. Almost there",
-        args.linqChatId, args.imessageSender);
-    }
-  }, 8000);
+  // Mark "receiving" step completed
+  await ctx.runMutation(internal.tasks.advanceStep, { taskId, stepKey: "receiving" });
 
   // Run SDK extraction and application detection in parallel
   const [extractionResult, isApp] = await Promise.all([
     getExtractor().extract(args.pdfBase64),
     isApplicationForm(args.pdfBase64),
   ]);
-  extractionDone = true;
-  clearTimeout(progressTimer);
+
+  // Mark "classifying" step completed
+  await ctx.runMutation(internal.tasks.advanceStep, { taskId, stepKey: "classifying" });
 
   // If it's an application form, redirect to application flow
   if (isApp) {
+    await ctx.runMutation(internal.tasks.fail, { taskId, errorMessage: "Document is an application form — switching to application flow" });
     const appId = await ctx.runMutation(internal.applications.create, {
       userId: args.userId,
       pdfStorageId: args.pdfStorageId,
@@ -633,25 +633,12 @@ async function processExtractionPipeline(
   };
   const docLabel = DOC_LABELS[documentType] || "document";
 
-  // Post-extraction ack — now includes what we found
-  const carrierNote = applied.carrier ? ` from ${applied.carrier}` : "";
-  const categoryLabel = CATEGORY_LABELS[detectedCategory] || detectedCategory;
-  const discoveryMsg = documentType === "quote"
-    ? `Found a ${categoryLabel} quote${carrierNote} — organizing the details`
-    : documentType === "policy"
-      ? `Found your ${categoryLabel} policy${carrierNote} — organizing coverages and limits`
-      : `Found a ${categoryLabel} ${docLabel}${carrierNote} — pulling out the details`;
+  // Mark "extracting" step completed
+  await ctx.runMutation(internal.tasks.advanceStep, { taskId, stepKey: "extracting" });
 
-  const [finalPolicyId] = await Promise.all([
-    ctx.runMutation(internal.policies.create, {
-      userId: args.userId, category: detectedCategory || "other", documentType, pdfStorageId: args.pdfStorageId,
-    }),
-    sendAndLog(ctx, args.userId, args.phone, discoveryMsg, args.linqChatId, args.imessageSender),
-  ]);
-
-  const stopTypingIfLinq = args.linqChatId
-    ? ctx.runAction(internal.sendLinq.stopTyping, { chatId: args.linqChatId }).catch(() => {})
-    : Promise.resolve();
+  const finalPolicyId = await ctx.runMutation(internal.policies.create, {
+    userId: args.userId, category: detectedCategory || "other", documentType, pdfStorageId: args.pdfStorageId,
+  });
 
   const isPolicy = documentType === "policy";
   const partial = isPartialPolicy(document);
@@ -689,7 +676,6 @@ async function processExtractionPipeline(
         userId: args.userId,
         state: "awaiting_merge_confirm",
       }),
-      stopTypingIfLinq,
     ]);
 
     // Extract and save contacts from document parties
@@ -704,7 +690,22 @@ async function processExtractionPipeline(
       userId: args.userId,
     });
 
+    // Complete task before sending merge offer
     const summary = buildPolicySummary(document);
+    await ctx.runMutation(internal.tasks.complete, {
+      taskId,
+      policyId: finalPolicyId,
+      result: {
+        summary,
+        carrier: applied.carrier || undefined,
+        category: detectedCategory || undefined,
+        documentType,
+        policyNumber: applied.policyNumber || undefined,
+        effectiveDate: applied.effectiveDate || undefined,
+        expirationDate: applied.expirationDate || undefined,
+      },
+    });
+
     const matchLabel = existingMatch.carrier
       ? `your ${existingMatch.carrier} ${CATEGORY_LABELS[existingMatch.category] || existingMatch.category} policy`
       : `your existing ${CATEGORY_LABELS[existingMatch.category] || existingMatch.category} policy`;
@@ -737,7 +738,6 @@ async function processExtractionPipeline(
       userId: args.userId,
       state: isSlipEligible ? "awaiting_insurance_slip" : "active",
     }),
-    stopTypingIfLinq,
   ]);
 
   // Extract and save contacts from document parties
@@ -757,9 +757,24 @@ async function processExtractionPipeline(
     closingMsg = "That's the main stuff — ask me anything about it, or I can send proof of insurance / set a reminder for you";
   }
 
+  // Complete task and send done notification
+  await ctx.runMutation(internal.tasks.complete, {
+    taskId,
+    policyId: finalPolicyId,
+    result: {
+      summary,
+      carrier: applied.carrier || undefined,
+      category: detectedCategory || undefined,
+      documentType,
+      policyNumber: applied.policyNumber || undefined,
+      effectiveDate: applied.effectiveDate || undefined,
+      expirationDate: applied.expirationDate || undefined,
+    },
+  });
+
+  const trackLink = getTrackLink(taskToken!);
   await sendBurst(ctx, args.userId, args.phone, [
-    `Ok here's what ${isPolicy ? "you're covered for" : `that ${docLabel} includes`}`,
-    summary,
+    `All done — your breakdown is ready:\n${trackLink}`,
     closingMsg,
   ], args.linqChatId, args.imessageSender);
 
@@ -794,11 +809,17 @@ export const processPolicy = internalAction({
   },
   handler: async (ctx, args) => {
     try {
-      // Step 1: Ack + download in parallel
-      const [, downloadResponse] = await Promise.all([
-        sendAndLog(ctx, args.userId, args.phone, "Got it — reading through your document now. This usually takes about 15-20 seconds", args.linqChatId, args.imessageSender),
+      // Create task + download PDF in parallel
+      const [task, downloadResponse] = await Promise.all([
+        ctx.runMutation(internal.tasks.create, { userId: args.userId, type: "extraction" }),
         fetch(args.mediaUrl),
       ]);
+
+      // Send tracking link
+      const trackLink = getTrackLink(task.token);
+      await sendAndLog(ctx, args.userId, args.phone,
+        `Got your document — I'm on it!\n\nWatch the progress: ${trackLink}`,
+        args.linqChatId, args.imessageSender);
 
       const buffer = await downloadResponse.arrayBuffer();
       const pdfBase64 = Buffer.from(buffer).toString("base64");
@@ -814,17 +835,11 @@ export const processPolicy = internalAction({
         phone: args.phone,
         linqChatId: args.linqChatId,
         imessageSender: args.imessageSender,
+        taskId: task.taskId,
+        taskToken: task.token,
       });
     } catch (error: any) {
       console.error("Policy processing failed:", error);
-
-      if (args.linqChatId) {
-        try {
-          await ctx.runAction(internal.sendLinq.stopTyping, {
-            chatId: args.linqChatId,
-          });
-        } catch (_) {}
-      }
 
       if (args.linqChatId) {
         const user = await ctx.runQuery(internal.users.get, { userId: args.userId });
@@ -1884,6 +1899,7 @@ export const handleQuestion = internalAction({
           "/help — show this list",
           "/contacts — view your saved contacts",
           "/merge — scan for duplicate policies to merge",
+          "/reindex — re-chunk and re-embed all policies (improves search)",
           "/apply — start filling an insurance application",
           "/clear — delete all your policies and start fresh",
           "/autosend on/off — toggle email send confirmation",
@@ -2051,6 +2067,29 @@ export const handleQuestion = internalAction({
         return;
       }
 
+      // /reindex command — re-chunk and re-embed all policies using latest SDK chunking
+      if (clean === "/reindex") {
+        const allPolicies = await ctx.runQuery(internal.policies.getByUser, { userId: args.userId });
+        const readyPolicies = allPolicies.filter((p: any) => p.status === "ready" && p.rawExtracted);
+
+        if (readyPolicies.length === 0) {
+          await sendAndLog(ctx, args.userId, args.phone, "No policies to reindex.", args.linqChatId, args.imessageSender);
+          return;
+        }
+
+        await sendAndLog(ctx, args.userId, args.phone,
+          `Reindexing ${readyPolicies.length} ${readyPolicies.length === 1 ? "policy" : "policies"} — this may take a moment`,
+          args.linqChatId, args.imessageSender);
+
+        ctx.scheduler.runAfter(0, internal.process.reindexPolicies, {
+          userId: args.userId,
+          phone: args.phone,
+          linqChatId: args.linqChatId,
+          imessageSender: args.imessageSender,
+        });
+        return;
+      }
+
       // /debug command — dump current state for troubleshooting
       if (clean === "/debug" || clean === "debug") {
         const [dbUser, dbPolicies, dbPending, dbReminders] = await Promise.all([
@@ -2204,11 +2243,13 @@ Proactive awareness:
       // Lightweight policy index for the tool-calling LLM (which policies exist, for routing)
       const policyIndex = readyPolicies.map((p: any, i: number) => {
         const doc = p.rawExtracted as any;
-        const parts = [`Policy ${i + 1}: ${doc?.type || "policy"}`];
+        const parts = [`Policy ${i + 1} (id: ${p._id}): ${doc?.type || "policy"}`];
         if (p.carrier) parts.push(`Carrier: ${p.carrier}`);
         if (p.policyNumber) parts.push(`#${p.policyNumber}`);
         if (p.category) parts.push(`Category: ${p.category}`);
+        if (p.insuredName) parts.push(`Insured: ${p.insuredName}`);
         if (p.effectiveDate && p.expirationDate) parts.push(`${p.effectiveDate} to ${p.expirationDate}`);
+        if (p.premium) parts.push(`Premium: ${p.premium}`);
         return parts.join(" | ");
       }).join("\n");
 
@@ -2670,9 +2711,21 @@ Proactive awareness:
             }),
             execute: async (input) => {
               try {
-                const toReextract = input.policyId
-                  ? readyPolicies.filter((p: any) => p._id === input.policyId)
-                  : readyPolicies;
+                let toReextract;
+                if (input.policyId) {
+                  // Try exact ID match first, then fallback to category/carrier match
+                  toReextract = readyPolicies.filter((p: any) => p._id === input.policyId);
+                  if (toReextract.length === 0) {
+                    const q = input.policyId.toLowerCase();
+                    toReextract = readyPolicies.filter((p: any) =>
+                      p.category?.toLowerCase() === q ||
+                      p.carrier?.toLowerCase().includes(q) ||
+                      p.policyNumber?.toLowerCase() === q
+                    );
+                  }
+                } else {
+                  toReextract = readyPolicies;
+                }
                 if (toReextract.length === 0) return { success: false, message: "No policies found to re-extract" };
 
                 const withPdf = toReextract.filter((p: any) => p.pdfStorageId);
@@ -2691,7 +2744,7 @@ Proactive awareness:
 
                 return {
                   success: true,
-                  message: `Re-extracting ${withPdf.length} ${withPdf.length === 1 ? "policy" : "policies"} with the latest pipeline. The user will get updated summaries shortly.`,
+                  message: `Re-extraction complete for ${withPdf.length} ${withPdf.length === 1 ? "policy" : "policies"}. The user has ALREADY been sent progress updates and the final summary directly — do NOT send any additional messages about the re-extraction.`,
                 };
               } catch (err: any) {
                 console.error("reextract_policy tool error:", err);
@@ -2791,14 +2844,17 @@ export const reextractPolicy = internalAction({
     imessageSender: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    let taskId: any;
+    let taskToken: string | undefined;
     try {
-      // Progress: let the user know we're starting
-      await sendAndLog(ctx, args.userId, args.phone, "Got it — pulling up your original document and re-reading it now", args.linqChatId, args.imessageSender);
-
-      // Start typing for Linq users
-      if (args.linqChatId) {
-        try { await ctx.runAction(internal.sendLinq.startTyping, { chatId: args.linqChatId }); } catch (_) {}
-      }
+      // Create task and send tracking link
+      const task = await ctx.runMutation(internal.tasks.create, { userId: args.userId, type: "re-extraction" });
+      taskId = task.taskId;
+      taskToken = task.token;
+      const trackLink = getTrackLink(taskToken);
+      await sendAndLog(ctx, args.userId, args.phone,
+        `Got it — re-reading your document now.\n\nWatch the progress: ${trackLink}`,
+        args.linqChatId, args.imessageSender);
 
       // Set policy back to processing
       await ctx.runMutation(internal.policies.updateExtracted, {
@@ -2813,24 +2869,24 @@ export const reextractPolicy = internalAction({
           policyId: args.policyId,
           status: "failed",
         });
+        await ctx.runMutation(internal.tasks.fail, { taskId, errorMessage: "Could not find the original PDF" });
         await sendAndLog(ctx, args.userId, args.phone, "Couldn't find the original PDF — try uploading it again", args.linqChatId, args.imessageSender);
         return;
       }
+
+      // Mark "retrieving" step completed
+      await ctx.runMutation(internal.tasks.advanceStep, { taskId, stepKey: "retrieving" });
 
       const buffer = await blob.arrayBuffer();
       const pdfBase64 = Buffer.from(buffer).toString("base64");
 
       // Re-run extraction with latest SDK pipeline
-      await sendAndLog(ctx, args.userId, args.phone, "Running it through the latest extraction — pulling out coverages and limits", args.linqChatId, args.imessageSender);
-
       const reResult = await getExtractor().extract(pdfBase64);
       const { document: reDoc, chunks: reChunks } = reResult;
       const applied = documentToUpdateFields(reDoc, reResult);
 
-      // Stop typing before sending results
-      if (args.linqChatId) {
-        try { await ctx.runAction(internal.sendLinq.stopTyping, { chatId: args.linqChatId }); } catch (_) {}
-      }
+      // Mark "extracting" step completed
+      await ctx.runMutation(internal.tasks.advanceStep, { taskId, stepKey: "extracting" });
 
       await Promise.all([
         ctx.runMutation(internal.policies.updateExtracted, {
@@ -2858,21 +2914,156 @@ export const reextractPolicy = internalAction({
       });
 
       const summary = buildPolicySummary(reDoc);
+
+      // Complete task and send done notification
+      await ctx.runMutation(internal.tasks.complete, {
+        taskId,
+        policyId: args.policyId,
+        result: {
+          summary,
+          carrier: applied.carrier || undefined,
+          category: applied.category || undefined,
+          documentType: (reDoc as any).type || undefined,
+          policyNumber: applied.policyNumber || undefined,
+          effectiveDate: applied.effectiveDate || undefined,
+          expirationDate: applied.expirationDate || undefined,
+        },
+      });
+
+      const trackLinkDone = getTrackLink(taskToken!);
       await sendBurst(ctx, args.userId, args.phone, [
-        "All done — here's the updated breakdown",
-        summary,
+        `All done — your updated breakdown is ready:\n${trackLinkDone}`,
         "Ask me anything about the updated info",
       ], args.linqChatId, args.imessageSender);
     } catch (error: any) {
       console.error("Re-extraction failed:", error);
-      if (args.linqChatId) {
-        try { await ctx.runAction(internal.sendLinq.stopTyping, { chatId: args.linqChatId }); } catch (_) {}
+      if (taskId) {
+        await ctx.runMutation(internal.tasks.fail, { taskId, errorMessage: "Re-extraction failed" });
       }
       await ctx.runMutation(internal.policies.updateExtracted, {
         policyId: args.policyId,
         status: "failed",
       });
       await sendAndLog(ctx, args.userId, args.phone, "Had trouble re-extracting that policy — try uploading it again?", args.linqChatId, args.imessageSender);
+    }
+  },
+});
+
+/** Re-chunk and re-embed all policies using the latest SDK chunking without re-extracting. */
+export const reindexPolicies = internalAction({
+  args: {
+    userId: v.id("users"),
+    phone: v.string(),
+    linqChatId: v.optional(v.string()),
+    imessageSender: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const allPolicies = await ctx.runQuery(internal.policies.getByUser, { userId: args.userId });
+      const readyPolicies = allPolicies.filter((p: any) => p.status === "ready" && p.rawExtracted);
+
+      if (readyPolicies.length === 0) {
+        await sendAndLog(ctx, args.userId, args.phone,
+          "No policies to reindex — upload a policy first and I'll take care of the rest.",
+          args.linqChatId, args.imessageSender);
+        return;
+      }
+
+      // Create task and send tracking link
+      const task = await ctx.runMutation(internal.tasks.create, { userId: args.userId, type: "reindex" });
+      const taskId = task.taskId;
+      const taskToken = task.token;
+      const trackLink = getTrackLink(taskToken);
+      await sendAndLog(ctx, args.userId, args.phone,
+        `Reindexing ${readyPolicies.length} ${readyPolicies.length === 1 ? "policy" : "policies"} now.\n\nWatch the progress: ${trackLink}`,
+        args.linqChatId, args.imessageSender);
+
+      const ensureArray = (val: any) => Array.isArray(val) ? val : [];
+      let rechunked = 0;
+      const errors: string[] = [];
+
+      // Mark "scanning" step completed after loading policies
+      await ctx.runMutation(internal.tasks.advanceStep, { taskId, stepKey: "scanning" });
+
+      for (const policy of readyPolicies) {
+        const label = `${policy.category || "?"} (${policy._id})`;
+        try {
+          const raw = policy.rawExtracted as any;
+          const doc: InsuranceDocument = {
+            ...raw,
+            id: raw.id || policy._id,
+            type: raw.type || "policy",
+            coverages: ensureArray(raw.coverages),
+            namedInsureds: ensureArray(raw.namedInsureds),
+            drivers: ensureArray(raw.drivers),
+            endorsements: ensureArray(raw.endorsements),
+            exclusions: ensureArray(raw.exclusions),
+            conditions: ensureArray(raw.conditions),
+            deductibles: ensureArray(raw.deductibles),
+            limits: ensureArray(raw.limits),
+            sections: ensureArray(raw.sections),
+            supplementaryFacts: ensureArray(raw.supplementaryFacts),
+            premiumBreakdown: ensureArray(raw.premiumBreakdown),
+            formInventory: ensureArray(raw.formInventory),
+            ratingBasis: ensureArray(raw.ratingBasis),
+            taxesAndFees: ensureArray(raw.taxesAndFees),
+            claimsContacts: ensureArray(raw.claimsContacts),
+            regulatoryContacts: ensureArray(raw.regulatoryContacts),
+            thirdPartyAdministrators: ensureArray(raw.thirdPartyAdministrators),
+          };
+
+          console.log(`[reindex] Chunking ${label}...`);
+          const newChunks = chunkDocument(doc);
+          console.log(`[reindex] ${label}: ${newChunks.length} chunks`);
+
+          await ctx.runMutation(internal.documentChunks.saveChunks, {
+            policyId: policy._id,
+            userId: args.userId,
+            chunks: sanitizeNulls(newChunks),
+          });
+          console.log(`[reindex] ${label}: chunks saved`);
+
+          await ctx.scheduler.runAfter(0, internal.process.embedChunksForPolicy, {
+            policyId: policy._id,
+            userId: args.userId,
+          });
+
+          rechunked++;
+        } catch (e: any) {
+          const msg = e?.message || String(e);
+          console.error(`[reindex] FAILED ${label}:`, msg, e?.stack);
+          errors.push(`${label}: ${msg}`);
+        }
+      }
+
+      // Complete task and send done notification
+      await ctx.runMutation(internal.tasks.complete, {
+        taskId,
+        result: {
+          rechunkedCount: rechunked,
+          errorMessage: errors.length > 0 ? errors.join("; ") : undefined,
+        },
+      });
+
+      const trackLinkDone = getTrackLink(taskToken);
+      if (errors.length > 0) {
+        await sendAndLog(ctx, args.userId, args.phone,
+          `Reindexed ${rechunked}/${readyPolicies.length} policies. Some had errors — check details:\n${trackLinkDone}`,
+          args.linqChatId, args.imessageSender);
+      } else {
+        await sendAndLog(ctx, args.userId, args.phone,
+          `All done — reindexed ${rechunked} ${rechunked === 1 ? "policy" : "policies"}:\n${trackLinkDone}`,
+          args.linqChatId, args.imessageSender);
+      }
+    } catch (error: any) {
+      console.error("[reindex] Top-level error:", error?.message, error?.stack);
+      try {
+        await sendAndLog(ctx, args.userId, args.phone,
+          `Reindex crashed: ${error?.message || "unknown error"}`,
+          args.linqChatId, args.imessageSender);
+      } catch (_) {
+        console.error("[reindex] Even sendAndLog failed");
+      }
     }
   },
 });

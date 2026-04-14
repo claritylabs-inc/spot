@@ -42,6 +42,7 @@ import type * as send from "../send.js";
 import type * as sendBridge from "../sendBridge.js";
 import type * as sendHelpers from "../sendHelpers.js";
 import type * as sendLinq from "../sendLinq.js";
+import type * as tasks from "../tasks.js";
 import type * as upload from "../upload.js";
 import type * as users from "../users.js";
 
@@ -86,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   sendBridge: typeof sendBridge;
   sendHelpers: typeof sendHelpers;
   sendLinq: typeof sendLinq;
+  tasks: typeof tasks;
   upload: typeof upload;
   users: typeof users;
 }>;
