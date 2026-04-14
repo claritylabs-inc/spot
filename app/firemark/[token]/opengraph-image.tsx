@@ -73,11 +73,12 @@ export default async function FiremarkOgImage({
   }
 
   const cat = categoryLabel(policy.category);
+  // Keep to max 3 details so text stays large
   const details: { label: string; value: string }[] = [];
   if (policy.policyNumber) details.push({ label: "Policy #", value: policy.policyNumber });
   if (policy.premium) details.push({ label: "Premium", value: policy.premium });
-  if (policy.effectiveDate) details.push({ label: "Effective", value: policy.effectiveDate });
   if (policy.expirationDate) details.push({ label: "Expires", value: policy.expirationDate });
+  else if (policy.effectiveDate) details.push({ label: "Effective", value: policy.effectiveDate });
 
   return new ImageResponse(
     (
@@ -88,7 +89,7 @@ export default async function FiremarkOgImage({
           display: "flex",
           flexDirection: "column",
           backgroundColor: CARD_BG,
-          padding: "52px 64px",
+          padding: "56px 72px",
           position: "relative",
           overflow: "hidden",
         }}
@@ -100,7 +101,7 @@ export default async function FiremarkOgImage({
             top: 0,
             left: 0,
             right: 0,
-            height: 16,
+            height: 24,
             background: `linear-gradient(to right, ${BRAND_BLUE}, ${BRAND_BLUE}88, transparent)`,
             display: "flex",
           }}
@@ -121,8 +122,8 @@ export default async function FiremarkOgImage({
               style={{
                 backgroundColor: `${BRAND_BLUE}26`,
                 borderRadius: 100,
-                padding: "12px 26px",
-                fontSize: 28,
+                padding: "14px 30px",
+                fontSize: 36,
                 fontFamily: BODY_FONT,
                 color: FG,
               }}
@@ -133,8 +134,8 @@ export default async function FiremarkOgImage({
               style={{
                 backgroundColor: BG,
                 borderRadius: 100,
-                padding: "12px 26px",
-                fontSize: 28,
+                padding: "14px 30px",
+                fontSize: 36,
                 fontFamily: BODY_FONT,
                 color: MUTED,
                 textTransform: "capitalize",
@@ -146,7 +147,7 @@ export default async function FiremarkOgImage({
           <div
             style={{
               fontFamily: "Bagel Fat One",
-              fontSize: 32,
+              fontSize: 40,
               color: MUTED,
               letterSpacing: "0.08em",
             }}
@@ -158,7 +159,7 @@ export default async function FiremarkOgImage({
         {/* Carrier name — the hero */}
         <div
           style={{
-            fontSize: policy.carrier && policy.carrier.length > 25 ? 76 : 96,
+            fontSize: policy.carrier && policy.carrier.length > 25 ? 84 : 108,
             fontFamily: "Instrument Serif",
             color: FG,
             lineHeight: 1.1,
@@ -173,7 +174,7 @@ export default async function FiremarkOgImage({
         {policy.insuredName && (
           <div
             style={{
-              fontSize: 36,
+              fontSize: 44,
               fontFamily: BODY_FONT,
               color: MUTED,
               marginBottom: 20,
@@ -198,7 +199,7 @@ export default async function FiremarkOgImage({
               <div key={d.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: 32,
                     fontFamily: BODY_FONT,
                     color: `${MUTED}aa`,
                     textTransform: "uppercase",
@@ -209,7 +210,7 @@ export default async function FiremarkOgImage({
                 </div>
                 <div
                   style={{
-                    fontSize: 36,
+                    fontSize: 48,
                     fontFamily: BODY_FONT,
                     color: FG,
                   }}
