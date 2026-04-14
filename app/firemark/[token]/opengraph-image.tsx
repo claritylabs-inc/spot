@@ -86,155 +86,140 @@ export default async function FiremarkOgImage({
           width: "100%",
           height: "100%",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: BG,
-          padding: 60,
+          flexDirection: "column",
+          backgroundColor: CARD_BG,
+          padding: "52px 64px",
+          position: "relative",
+          overflow: "hidden",
         }}
       >
-        {/* Card */}
+        {/* Top accent */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 6,
+            background: `linear-gradient(to right, ${BRAND_BLUE}, ${BRAND_BLUE}88, transparent)`,
+            display: "flex",
+          }}
+        />
+
+        {/* Header row: pills left, SPOT right */}
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            width: 1080,
-            height: 510,
-            backgroundColor: CARD_BG,
-            borderRadius: 32,
-            border: `1px solid ${BORDER}`,
-            padding: "48px 56px",
-            position: "relative",
-            overflow: "hidden",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 32,
           }}
         >
-          {/* Top accent */}
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 5,
-              background: `linear-gradient(to right, ${BRAND_BLUE}, ${BRAND_BLUE}88, transparent)`,
-              display: "flex",
-            }}
-          />
-
-          {/* Header row: pills left, SPOT right */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              marginBottom: 28,
-            }}
-          >
-            {/* Category + type */}
-            <div style={{ display: "flex", gap: 10 }}>
-              <div
-                style={{
-                  backgroundColor: `${BRAND_BLUE}26`,
-                  borderRadius: 100,
-                  padding: "8px 18px",
-                  fontSize: 16,
-                  fontFamily: BODY_FONT,
-                  color: FG,
-                }}
-              >
-                {cat}
-              </div>
-              <div
-                style={{
-                  backgroundColor: "#f0ede7",
-                  borderRadius: 100,
-                  padding: "8px 18px",
-                  fontSize: 16,
-                  fontFamily: BODY_FONT,
-                  color: MUTED,
-                  textTransform: "capitalize",
-                }}
-              >
-                {policy.documentType}
-              </div>
-            </div>
+          {/* Category + type */}
+          <div style={{ display: "flex", gap: 12 }}>
             <div
               style={{
-                fontFamily: "Bagel Fat One",
-                fontSize: 20,
-                color: MUTED,
-                letterSpacing: "0.08em",
+                backgroundColor: `${BRAND_BLUE}26`,
+                borderRadius: 100,
+                padding: "10px 22px",
+                fontSize: 22,
+                fontFamily: BODY_FONT,
+                color: FG,
               }}
             >
-              SPOT
+              {cat}
             </div>
-          </div>
-
-          {/* Carrier name — the hero */}
-          <div
-            style={{
-              fontSize: policy.carrier && policy.carrier.length > 25 ? 52 : 64,
-              fontFamily: "Instrument Serif",
-              color: FG,
-              lineHeight: 1.1,
-              letterSpacing: "-0.01em",
-              marginBottom: 8,
-            }}
-          >
-            {policy.carrier || cat}
-          </div>
-
-          {/* Insured name */}
-          {policy.insuredName && (
             <div
               style={{
-                fontSize: 20,
+                backgroundColor: BG,
+                borderRadius: 100,
+                padding: "10px 22px",
+                fontSize: 22,
                 fontFamily: BODY_FONT,
                 color: MUTED,
-                marginBottom: 20,
+                textTransform: "capitalize",
               }}
             >
-              {policy.insuredName}
+              {policy.documentType}
             </div>
-          )}
-
-          {/* Spacer */}
-          <div style={{ display: "flex", flex: 1 }} />
-
-          {/* Details row at bottom */}
-          {details.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                gap: 48,
-              }}
-            >
-              {details.map((d) => (
-                <div key={d.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontFamily: BODY_FONT,
-                      color: `${MUTED}aa`,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.1em",
-                    }}
-                  >
-                    {d.label}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontFamily: BODY_FONT,
-                      color: FG,
-                    }}
-                  >
-                    {d.value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
+          <div
+            style={{
+              fontFamily: "Bagel Fat One",
+              fontSize: 26,
+              color: MUTED,
+              letterSpacing: "0.08em",
+            }}
+          >
+            SPOT
+          </div>
         </div>
+
+        {/* Carrier name — the hero */}
+        <div
+          style={{
+            fontSize: policy.carrier && policy.carrier.length > 25 ? 64 : 80,
+            fontFamily: "Instrument Serif",
+            color: FG,
+            lineHeight: 1.1,
+            letterSpacing: "-0.01em",
+            marginBottom: 10,
+          }}
+        >
+          {policy.carrier || cat}
+        </div>
+
+        {/* Insured name */}
+        {policy.insuredName && (
+          <div
+            style={{
+              fontSize: 28,
+              fontFamily: BODY_FONT,
+              color: MUTED,
+              marginBottom: 20,
+            }}
+          >
+            {policy.insuredName}
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div style={{ display: "flex", flex: 1 }} />
+
+        {/* Details row at bottom */}
+        {details.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              gap: 56,
+            }}
+          >
+            {details.map((d) => (
+              <div key={d.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div
+                  style={{
+                    fontSize: 16,
+                    fontFamily: BODY_FONT,
+                    color: `${MUTED}aa`,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  {d.label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 28,
+                    fontFamily: BODY_FONT,
+                    color: FG,
+                  }}
+                >
+                  {d.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     ),
     { ...size, fonts }
