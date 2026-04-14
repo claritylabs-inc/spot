@@ -21,15 +21,15 @@ interface Step {
 function StepIcon({ status }: { status: StepStatus }) {
   if (status === "completed") {
     return (
-      <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground">
+      <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-blue">
         <Check className="size-4 text-white" strokeWidth={2.5} />
       </div>
     );
   }
   if (status === "active") {
     return (
-      <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-foreground bg-white">
-        <Loader2 className="size-4 animate-spin text-foreground" />
+      <div className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-brand-blue bg-white">
+        <Loader2 className="size-4 animate-spin text-brand-blue" />
       </div>
     );
   }
@@ -56,7 +56,7 @@ function ProgressBar({ steps }: { steps: Step[] }) {
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
       <div
-        className="h-full rounded-full bg-foreground transition-all duration-700 ease-out"
+        className="h-full rounded-full bg-brand-blue transition-all duration-700 ease-out"
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -320,7 +320,7 @@ export default function TrackPage() {
                 {!isLast && (
                   <div className="absolute bottom-0 left-[15px] top-8 w-0.5 bg-border">
                     <div
-                      className="h-full w-full bg-foreground transition-all duration-500"
+                      className="h-full w-full bg-brand-blue transition-all duration-500"
                       style={{
                         transform: `scaleY(${step.status === "completed" ? 1 : 0})`,
                         transformOrigin: "top",
