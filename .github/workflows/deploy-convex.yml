@@ -131,9 +131,13 @@ jobs:
           npx convex env set OPERATOR_IMESSAGE_ENABLED true
           npx convex env set OPERATOR_IMESSAGE_TERMINAL_ENABLED false
           npx convex env set OPERATOR_IMESSAGE_CONTACT_PHONE "$OPERATOR_IMESSAGE_CONTACT_PHONE"
+          npx convex env set QUO_BROKER_WEBHOOK_SECRET "$QUO_BROKER_WEBHOOK_SECRET"
+          npx convex env set QUO_BROKER_PHONE_NUMBER_ID "$QUO_BROKER_PHONE_NUMBER_ID"
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
           OPERATOR_IMESSAGE_CONTACT_PHONE: ${{ vars.SPOT_PRODUCTION_OPERATOR_IMESSAGE_CONTACT_PHONE }}
+          QUO_BROKER_WEBHOOK_SECRET: ${{ secrets.QUO_BROKER_WEBHOOK_SECRET }}
+          QUO_BROKER_PHONE_NUMBER_ID: ${{ vars.SPOT_PRODUCTION_QUO_BROKER_PHONE_NUMBER_ID }}
 
   release-ready-production:
     if: always() && github.ref_name == 'main'
