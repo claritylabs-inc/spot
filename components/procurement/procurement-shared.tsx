@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 
 export const REQUEST_STATUS_OPTIONS = [
   { value: "draft", label: "Draft", tone: "neutral" },
@@ -225,6 +227,7 @@ export function ProcurementEmailDrawer({
   readOnly: boolean;
   onClose: () => void;
 }) {
+  const brokers = useCachedOperatorBrokers();
   const result = useQuery(api.procurementRequests.getEmailThread, {
     emailThreadId,
   });
@@ -271,8 +274,15 @@ export function ProcurementEmailDrawer({
         label: outreach.contactName
           ? `${outreach.brokerName} · ${outreach.contactName}`
           : outreach.brokerName,
+        icon: (
+          <OrgBrandIcon
+            name={outreach.brokerName}
+            {...brokers?.find((broker) => broker._id === outreach.brokerOrgId)}
+            size="xs"
+          />
+        ),
       })),
-    [inference],
+    [brokers, inference],
   );
   const inferredOutreachId =
     inference?.outreachInference.status === "exact"

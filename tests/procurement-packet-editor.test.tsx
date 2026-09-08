@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, type ReactNode } from "react";
+import { createSyncStore, SyncProvider } from "@claritylabs/cl-sync";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { PacketEditor } from "../components/procurement/packet-workspace";
@@ -52,9 +53,17 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
+  const store = createSyncStore({
+    scope: { appId: "procurement-test" },
+    persistence: "memory",
+  });
   const render = () =>
     act(async () => {
-      root.render(<PacketEditor requestId={requestId} onClose={onClose} />);
+      root.render(
+        <SyncProvider store={store}>
+          <PacketEditor requestId={requestId} onClose={onClose} />
+        </SyncProvider>,
+      );
     });
   try {
     await render();
@@ -73,9 +82,7 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
     await render();
     expect(container.querySelector("textarea")?.value).toBe("My unsaved draft");
     await act(async () => {
-      Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.includes("Save packet"))!
-        .click();
+      await new Promise((resolve) => setTimeout(resolve, 700));
     });
     expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
       requestId,
@@ -89,5 +96,74 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
     await act(async () => root.unmount());
     container.remove();
     vi.clearAllMocks();
+  }
+});
+
+test("successive packet autosaves use the acknowledged revision without closing the editor", async () => {
+  vi.useFakeTimers();
+  const requestId = "request" as Id<"procurementRequests">;
+  mocks.query.mockReturnValue({
+    packetRevision: 4,
+    sections: [
+      {
+        _id: "summary",
+        key: "summary",
+        heading: "Summary",
+        body: "Original",
+        updatedAt: 1,
+      },
+    ],
+  });
+  mocks.save
+    .mockResolvedValueOnce({ packetRevision: 5 })
+    .mockResolvedValueOnce({ packetRevision: 6 });
+  const onClose = vi.fn();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const store = createSyncStore({
+    scope: { appId: "packet-autosave" },
+    persistence: "memory",
+  });
+  try {
+    await act(async () =>
+      root.render(
+        <SyncProvider store={store}>
+          <PacketEditor requestId={requestId} onClose={onClose} />
+        </SyncProvider>,
+      ),
+    );
+    for (const value of ["First edit", "Second edit"]) {
+      await act(async () => {
+        const input = container.querySelector("textarea")!;
+        Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+    }
+    expect(mocks.save.mock.calls.map(([args]) => args)).toEqual([
+      {
+        requestId,
+        expectedPacketRevision: 4,
+        sections: [{ key: "summary", body: "First edit" }],
+      },
+      {
+        requestId,
+        expectedPacketRevision: 5,
+        sections: [{ key: "summary", body: "Second edit" }],
+      },
+    ]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea")?.value).toBe("Second edit");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.clearAllMocks();
+    vi.useRealTimers();
   }
 });

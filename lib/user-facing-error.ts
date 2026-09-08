@@ -70,11 +70,17 @@ function legacyPermissionMessage(message: string) {
 
 function normalizedErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return null;
-  return error.message
+  const message = error.message
     .replace(convexServerErrorPattern, "")
     .trim()
     .replace(/^(?:Uncaught Error: )+/, "")
     .trim();
+  return convexServerErrorPattern.test(error.message)
+    ? message
+        .split(/\n\s+at /)[0]
+        .replace(/\s*Called by client\s*$/, "")
+        .trim()
+    : message;
 }
 
 export function getPermissionErrorMessage(error: unknown) {
@@ -84,10 +90,7 @@ export function getPermissionErrorMessage(error: unknown) {
   return message ? legacyPermissionMessage(message) : null;
 }
 
-export function getUserFacingErrorMessage(
-  error: unknown,
-  fallback: string,
-) {
+export function getUserFacingErrorMessage(error: unknown, fallback: string) {
   const structured = structuredErrorData(error);
   if (structured) return structured.message;
 

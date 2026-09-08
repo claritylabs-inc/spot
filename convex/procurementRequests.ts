@@ -1541,6 +1541,7 @@ export async function previewProcurementEmailReconciliation(
     // the thread can rebuild its picker instead of trusting a stale snapshot.
     outreaches: outreaches.map((outreach) => ({
       outreachId: outreach._id,
+      brokerOrgId: outreach.brokerOrgId,
       brokerName: outreach.brokerName,
       contactName: outreach.contactName ?? null,
       contactEmail: outreach.contactEmail ?? null,

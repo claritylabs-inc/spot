@@ -45,12 +45,12 @@ export default function OperatorProcurementRequestPage() {
   const normalizedView =
     requestedView === "requirements"
       ? "packet"
-      : requestedView === "proposals"
-        ? "market"
+      : requestedView === "market"
+        ? "proposals"
         : requestedView;
   const view =
     normalizedView === "packet" ||
-    normalizedView === "market" ||
+    normalizedView === "proposals" ||
     normalizedView === "files" ||
     normalizedView === "email"
       ? normalizedView

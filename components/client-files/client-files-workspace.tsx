@@ -4,22 +4,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useMutation, useQuery } from "convex/react";
-import {
-  Archive,
-  ArchiveRestore,
-  Download,
-  File,
-  FileImage,
-  FileText,
-  Loader2,
-  Pencil,
-  Upload,
-  X,
-} from "lucide-react";
+import { File, FileImage, FileText, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
@@ -27,6 +17,9 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
+import { FileDownloadButton } from "@/components/ui/file-download-button";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { FileDropZone } from "@/components/ui/file-drop";
 import { Input } from "@/components/ui/input";
@@ -187,10 +180,7 @@ function ClientFileImagePanel({
       title={file.name}
       footer={
         file.url ? (
-          <PillButton href={file.url} download={file.name} variant="secondary">
-            <Download className="size-3.5" />
-            Download
-          </PillButton>
+          <FileDownloadButton href={file.url} fileName={file.name} />
         ) : null
       }
     >
@@ -217,59 +207,108 @@ function ClientFileEditor({
   file,
   policies,
   onClose,
+  onPreview,
+  canEdit,
+  canManage,
 }: {
   file: ClientFileRow;
   policies: ClientFilePolicyOption[];
   onClose: () => void;
+  onPreview: () => void;
+  canEdit: boolean;
+  canManage: boolean;
 }) {
   const updateClientFile = useMutation(api.clientFiles.update);
   const [name, setName] = useState(file.name);
   const [clientVisible, setClientVisible] = useState(file.clientVisible);
   const [policyId, setPolicyId] = useState<string>(file.policyId ?? NO_POLICY);
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    if (!name.trim()) {
-      toast.error("Enter a file name");
-      return;
-    }
-    setSaving(true);
-    try {
+  const setArchived = useMutation(api.clientFiles.setArchived);
+  const [working, setWorking] = useState(false);
+  const values = { name, clientVisible, policyId };
+  const saved = useRef(values);
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "clientFiles.update",
+    args: values,
+    enabled: canEdit,
+    canSave: !!name.trim(),
+    flush: async (next) => {
       await updateClientFile({
         clientFileId: file._id,
-        name,
-        clientVisible,
-        policyId: policyId === NO_POLICY ? null : (policyId as Id<"policies">),
+        name: next.name !== saved.current.name ? next.name : undefined,
+        clientVisible:
+          next.clientVisible !== saved.current.clientVisible
+            ? next.clientVisible
+            : undefined,
+        policyId:
+          next.policyId !== saved.current.policyId
+            ? next.policyId === NO_POLICY
+              ? null
+              : (next.policyId as Id<"policies">)
+            : undefined,
       });
-      toast.success("File updated");
-      onClose();
+      saved.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not update the file"),
+  });
+  async function afterSaving(action: () => void | Promise<void>) {
+    if (!canEdit || (await autoSave.saveNow())) await action();
+  }
+  async function archive() {
+    if (!canManage || working) return;
+    setWorking(true);
+    try {
+      await afterSaving(async () => {
+        await setArchived({
+          clientFileId: file._id,
+          archived: !file.archivedAt,
+        });
+        toast.success(file.archivedAt ? "File restored" : "File archived");
+        onClose();
+      });
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Failed to update file"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not update the file"),
+      );
     } finally {
-      setSaving(false);
+      setWorking(false);
     }
   }
-
   return (
     <SettingsDrawer
       open
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !working) void afterSaving(onClose);
       }}
-      title="Edit file"
+      title={file.name}
       footer={
         <>
-          <PillButton type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </PillButton>
-          <PillButton type="button" onClick={save} disabled={saving}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Save
-          </PillButton>
+          {canManage ? (
+            <PillButton
+              variant={file.archivedAt ? "secondary" : "destructive"}
+              disabled={working}
+              onClick={() => void archive()}
+            >
+              {file.archivedAt ? "Restore" : "Archive"}
+            </PillButton>
+          ) : null}
+          {file.url && (isPdf(file) || isImage(file)) ? (
+            <PillButton
+              variant="secondary"
+              disabled={working}
+              onClick={() => void afterSaving(onPreview)}
+            >
+              Preview
+            </PillButton>
+          ) : null}
+          {file.url ? (
+            <FileDownloadButton href={file.url} fileName={name} />
+          ) : null}
         </>
       }
     >
-      <div className="space-y-5">
+      <AutoSaveStatus status={autoSave.status} />
+      <fieldset disabled={!canEdit || working} className="min-w-0 space-y-5">
         <label className="space-y-1.5">
           <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -311,7 +350,7 @@ function ClientFileEditor({
             label="Visible to client"
           />
         </div>
-      </div>
+      </fieldset>
     </SettingsDrawer>
   );
 }
@@ -340,7 +379,6 @@ export function ClientFileUploadPanel({
   const [clientVisible, setClientVisible] = useState(false);
   const [policyId, setPolicyId] = useState<string>(NO_POLICY);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   const addFiles = useCallback((selected: File[]) => {
     const oversized = selected.filter(
@@ -372,7 +410,7 @@ export function ClientFileUploadPanel({
   async function upload() {
     if (files.length === 0) return;
     setUploading(true);
-    setProgress(0);
+    const toastId = toast.loading("Uploading files…");
     try {
       const uploaded: Array<{
         clientFileId: Id<"clientFiles">;
@@ -414,15 +452,20 @@ export function ClientFileUploadPanel({
           }).catch(() => undefined);
           throw error;
         }
-        setProgress(index + 1);
+        toast.loading(`Uploaded ${index + 1} of ${files.length} files…`, {
+          id: toastId,
+        });
       }
       await onUploaded?.(uploaded);
       toast.success(
         `${files.length} ${files.length === 1 ? "file" : "files"} uploaded. Names will update automatically.`,
+        { id: toastId },
       );
       onClose();
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Failed to upload file"));
+      toast.error(getUserFacingErrorMessage(error, "Failed to upload file"), {
+        id: toastId,
+      });
     } finally {
       setUploading(false);
     }
@@ -439,21 +482,11 @@ export function ClientFileUploadPanel({
         <>
           <PillButton
             type="button"
-            variant="secondary"
-            onClick={onClose}
-            disabled={uploading}
-          >
-            Cancel
-          </PillButton>
-          <PillButton
-            type="button"
             onClick={upload}
             disabled={uploading || files.length === 0}
           >
             {uploading ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {uploading
-              ? `Uploading ${progress + 1} of ${files.length}`
-              : "Upload files"}
+            Upload files
           </PillButton>
         </>
       }
@@ -588,10 +621,7 @@ export function ClientFilesWorkspace({
     orgId: clientOrgId,
     documentType: "policy",
   });
-  const updateClientFile = useMutation(api.clientFiles.update);
-  const setClientFileArchived = useMutation(api.clientFiles.setArchived);
   const { openWithUrl, closePdf } = usePdf();
-  const [updatingId, setUpdatingId] = useState<Id<"clientFiles"> | null>(null);
   const policies = useMemo(
     () => (policyRows ?? []) as ClientFilePolicyOption[],
     [policyRows],
@@ -648,54 +678,25 @@ export function ClientFilesWorkspace({
       closePdf();
       onRightPanel(
         <ClientFileEditor
+          key={file._id}
           file={file}
           policies={policies}
           onClose={closeRightPanel}
+          onPreview={() => preview(file)}
+          canEdit={canEdit}
+          canManage={canManage}
         />,
       );
     },
-    [closePdf, closeRightPanel, onRightPanel, policies],
-  );
-
-  const setArchived = useCallback(
-    async (file: ClientFileRow, archived: boolean) => {
-      setUpdatingId(file._id);
-      try {
-        await setClientFileArchived({ clientFileId: file._id, archived });
-        closeRightPanel();
-        toast.success(archived ? "File archived" : "File restored");
-      } catch (error) {
-        toast.error(
-          getUserFacingErrorMessage(
-            error,
-            archived ? "Failed to archive file" : "Failed to restore file",
-          ),
-        );
-      } finally {
-        setUpdatingId(null);
-      }
-    },
-    [closeRightPanel, setClientFileArchived],
-  );
-
-  const updateField = useCallback(
-    async (
-      clientFileId: Id<"clientFiles">,
-      patch: {
-        clientVisible?: boolean;
-        policyId?: Id<"policies"> | null;
-      },
-    ) => {
-      setUpdatingId(clientFileId);
-      try {
-        await updateClientFile({ clientFileId, ...patch });
-      } catch (error) {
-        toast.error(getUserFacingErrorMessage(error, "Failed to update file"));
-      } finally {
-        setUpdatingId(null);
-      }
-    },
-    [updateClientFile],
+    [
+      canEdit,
+      canManage,
+      closePdf,
+      closeRightPanel,
+      onRightPanel,
+      policies,
+      preview,
+    ],
   );
 
   if (result === undefined || policyRows === undefined) {
@@ -783,45 +784,34 @@ export function ClientFilesWorkspace({
               <TableHead>Policy</TableHead>
               {operatorView ? <TableHead>Client access</TableHead> : null}
               <TableHead>{archivedView ? "Archived" : "Added"}</TableHead>
-              <TableHead className="w-0 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visibleFiles.map((file) => {
-              const previewable = isPdf(file) || isImage(file);
-              const updating = updatingId === file._id;
               return (
-                <TableRow key={file._id}>
+                <TableRow
+                  key={file._id}
+                  tabIndex={0}
+                  onClick={() => edit(file)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      edit(file);
+                    }
+                  }}
+                  className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
                   <TableCell className="min-w-60 whitespace-normal">
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="shrink-0 text-muted-foreground">
                         <FileKindIcon file={file} />
                       </span>
                       <div className="min-w-0">
-                        {previewable ? (
-                          <button
-                            type="button"
-                            onClick={() => preview(file)}
-                            disabled={!file.url}
-                            className={`block max-w-full truncate text-left text-foreground underline-offset-4 hover:underline disabled:text-muted-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {file.name}
-                          </button>
-                        ) : file.url ? (
-                          <a
-                            href={file.url}
-                            download={file.name}
-                            className={`block max-w-full truncate text-foreground underline-offset-4 hover:underline ${typeStyle("body.medium")}`}
-                          >
-                            {file.name}
-                          </a>
-                        ) : (
-                          <span
-                            className={`block truncate text-muted-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {file.name}
-                          </span>
-                        )}
+                        <span
+                          className={`block truncate text-foreground ${typeStyle("body.medium")}`}
+                        >
+                          {file.name}
+                        </span>
                         <p
                           className={`mt-0.5 text-muted-foreground ${typeStyle("caption.default")}`}
                         >
@@ -838,45 +828,13 @@ export function ClientFilesWorkspace({
                     </div>
                   </TableCell>
                   <TableCell>
-                    {canEdit ? (
-                      <PolicySelect
-                        value={file.policyId ?? NO_POLICY}
-                        policies={policies}
-                        disabled={updating}
-                        onValueChange={(value) =>
-                          void updateField(file._id, {
-                            policyId:
-                              value === NO_POLICY
-                                ? null
-                                : (value as Id<"policies">),
-                          })
-                        }
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {file.policyLabel ?? "None"}
-                      </span>
-                    )}
+                    <span className="text-muted-foreground">
+                      {file.policyLabel ?? "None"}
+                    </span>
                   </TableCell>
                   {operatorView ? (
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {canEdit ? (
-                          <SettingsSwitch
-                            checked={file.clientVisible}
-                            onCheckedChange={() =>
-                              void updateField(file._id, {
-                                clientVisible: !file.clientVisible,
-                              })
-                            }
-                            disabled={updating}
-                            label={`${file.clientVisible ? "Hide" : "Show"} ${file.name} for client`}
-                          />
-                        ) : null}
-                        <span className="text-muted-foreground">
-                          {file.clientVisible ? "Shared" : "Private"}
-                        </span>
-                      </div>
+                    <TableCell className="text-muted-foreground">
+                      {file.clientVisible ? "Shared" : "Private"}
                     </TableCell>
                   ) : null}
                   <TableCell className="text-muted-foreground">
@@ -886,48 +844,6 @@ export function ClientFilesWorkspace({
                         : file.createdAt,
                       "—",
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      {canEdit ? (
-                        <PillButton
-                          type="button"
-                          variant="icon"
-                          iconOnly
-                          label={`Edit ${file.name}`}
-                          onClick={() => edit(file)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </PillButton>
-                      ) : null}
-                      {canManage ? (
-                        <PillButton
-                          type="button"
-                          variant="icon"
-                          iconOnly
-                          disabled={updating}
-                          label={`${archivedView ? "Restore" : "Archive"} ${file.name}`}
-                          onClick={() => void setArchived(file, !archivedView)}
-                        >
-                          {archivedView ? (
-                            <ArchiveRestore className="size-3.5" />
-                          ) : (
-                            <Archive className="size-3.5" />
-                          )}
-                        </PillButton>
-                      ) : null}
-                      {file.url ? (
-                        <PillButton
-                          href={file.url}
-                          download={file.name}
-                          variant="icon"
-                          iconOnly
-                          label={`Download ${file.name}`}
-                        >
-                          <Download className="size-3.5" />
-                        </PillButton>
-                      ) : null}
-                    </div>
                   </TableCell>
                 </TableRow>
               );

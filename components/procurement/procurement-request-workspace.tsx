@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -11,7 +12,6 @@ import { useRouter } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Copy,
-  Download,
   File,
   FileImage,
   FileText,
@@ -32,6 +32,7 @@ import { usePdf } from "@/components/pdf-context";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import {
   PacketEditor,
+  PacketLinkDrawer,
   PacketWorkspace,
 } from "@/components/procurement/packet-workspace";
 import {
@@ -54,9 +55,14 @@ import {
   type ProcurementRequestStatus,
   type StoredProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
+import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { FileDownloadButton } from "@/components/ui/file-download-button";
 import { FileDropZone } from "@/components/ui/file-drop";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Input } from "@/components/ui/input";
 import {
   OperationalLabelValueList,
@@ -176,6 +182,8 @@ type RequestDetails = {
 type BrokerOption = {
   _id: Id<"organizations">;
   name: string;
+  iconUrl?: string | null;
+  website?: string;
 };
 
 type ProposalUploadTarget = {
@@ -187,10 +195,14 @@ function ProposalDropzone({
   requestId,
   outreach,
   proposal,
+  disabled = false,
+  onUploadingChange,
 }: {
   requestId: Id<"procurementRequests">;
   outreach: Outreach;
   proposal?: ProposalUploadTarget;
+  disabled?: boolean;
+  onUploadingChange: (uploading: boolean) => void;
 }) {
   const [uploading, setUploading] = useState(false);
   const generateUploadUrl = useMutation(
@@ -203,6 +215,7 @@ function ProposalDropzone({
   async function upload(files: File[]) {
     if (
       uploading ||
+      disabled ||
       !outreach.brokerOrgId ||
       !files.length ||
       proposal?.status === "selected"
@@ -218,11 +231,19 @@ function ProposalDropzone({
       toast.error("Proposal documents must be PDFs");
       return;
     }
+    if (files.some((file) => file.size > 50 * 1024 * 1024)) {
+      toast.error("Each proposal PDF must be 50 MB or smaller");
+      return;
+    }
     const pendingUploads: Array<{
       uploadIntentId: Id<"clientFileUploadIntents">;
       fileId?: Id<"_storage">;
     }> = [];
     setUploading(true);
+    onUploadingChange(true);
+    const uploadToast = toast.loading(
+      `Uploading ${files.length === 1 ? "proposal PDF" : `${files.length} proposal PDFs`}…`,
+    );
     try {
       const sources: Array<{
         kind: "upload";
@@ -260,7 +281,7 @@ function ProposalDropzone({
           uploadIntentId: target.uploadIntentId,
         });
       }
-      await fileProposal({
+      const filed = await fileProposal({
         requestId,
         outreachId: outreach._id,
         sources,
@@ -269,9 +290,12 @@ function ProposalDropzone({
           proposal && proposal.status !== "draft" ? proposal._id : undefined,
       });
       toast.success(
-        proposal && proposal.status !== "draft"
-          ? "Proposal revision filed"
-          : "Proposal filed and queued for extraction",
+        filed.status === "already_filed"
+          ? "These proposal documents are already filed"
+          : filed.status === "revised"
+            ? "Proposal revision filed and queued for extraction"
+            : "Proposal filed and queued for extraction",
+        { id: uploadToast },
       );
     } catch (error) {
       await Promise.allSettled(
@@ -284,9 +308,11 @@ function ProposalDropzone({
       );
       toast.error(
         getUserFacingErrorMessage(error, "Could not file the proposal"),
+        { id: uploadToast },
       );
     } finally {
       setUploading(false);
+      onUploadingChange(false);
     }
   }
 
@@ -295,18 +321,25 @@ function ProposalDropzone({
       multiple
       accept="application/pdf,.pdf"
       disabled={
-        uploading || !outreach.brokerOrgId || proposal?.status === "selected"
+        disabled ||
+        uploading ||
+        !outreach.brokerOrgId ||
+        proposal?.status === "selected"
       }
       idleLabel={
         proposal?.status === "selected"
           ? "Proposal selected"
-          : "Drop proposal PDFs"
+          : proposal && proposal.status !== "draft"
+            ? "Drop revised proposal PDFs"
+            : "Drop proposal PDFs"
       }
       activeLabel="Drop to file proposal"
-      busyLabel={uploading ? "Filing proposal…" : undefined}
-      hint={proposal?.status === "selected" ? null : "or click to choose files"}
+      hint={
+        proposal?.status === "selected"
+          ? null
+          : "or choose PDFs · up to 50 MB each"
+      }
       padding="px-3 py-3"
-      className="min-w-48"
       onFiles={(files) => void upload(files)}
     />
   );
@@ -376,199 +409,134 @@ const REVIEW_CONCLUSION_LABELS = {
   insufficient_evidence: "Insufficient evidence",
 } as const;
 
-function ProposalReviewDrawer({
+function ProposalReviewDetails({
   proposal,
-  onClose,
-  onEvidence,
+  conclusion,
+  onConclusionChange,
+  readOnly,
 }: {
   proposal: ProposalView;
-  onClose: () => void;
-  onEvidence: (url: string, page?: number) => void;
+  conclusion: keyof typeof REVIEW_CONCLUSION_LABELS;
+  onConclusionChange: (value: keyof typeof REVIEW_CONCLUSION_LABELS) => void;
+  readOnly: boolean;
 }) {
-  const confirmReview = useMutation(api.procurementProposals.confirmReview);
   const review = proposal.reviews[0];
-  const [conclusion, setConclusion] = useState(
-    review?.staffConclusion ??
-      review?.modelConclusion ??
-      "insufficient_evidence",
-  );
-  const [saving, setSaving] = useState(false);
   const documents = new Map(
     proposal.documents.map((document) => [String(document._id), document]),
   );
   return (
-    <SettingsDrawer
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={`${proposal.brokerName ?? "Broker"} proposal`}
-    >
-      <div className="space-y-5">
-        <OperationalPanel>
-          <OperationalPanelHeader title="Extracted proposal" />
-          <OperationalPanelBody>
-            {proposal.proposalMarkdown ? (
-              <ProseMarkdown>{proposal.proposalMarkdown}</ProseMarkdown>
-            ) : (
+    <div className="space-y-4 border-b border-border pb-4">
+      {proposal.proposalMarkdown ? (
+        <ProseMarkdown>{proposal.proposalMarkdown}</ProseMarkdown>
+      ) : (
+        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+          No extracted terms yet.
+        </p>
+      )}
+      {review ? (
+        <details open>
+          <summary
+            className={`cursor-pointer text-foreground ${typeStyle("body.medium")}`}
+          >
+            Packet review{" "}
+            <span className="ml-2">
+              <StatusTag
+                tone={
+                  review.stale
+                    ? "warning"
+                    : review.staffConclusion
+                      ? "info"
+                      : "neutral"
+                }
+              >
+                {review.stale
+                  ? "Stale"
+                  : review.staffConclusion
+                    ? "Confirmed"
+                    : "Needs confirmation"}
+              </StatusTag>
+            </span>
+          </summary>
+          <div className="mt-3 space-y-4">
+            {review.findings.map((finding) => {
+              const evidence = finding.evidence[0];
+              const document = evidence
+                ? documents.get(evidence.proposalDocumentId)
+                : undefined;
+              return (
+                <div
+                  key={finding.sectionKey}
+                  className="space-y-2 border-b border-border pb-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className={typeStyle("body.medium")}>
+                      {proposal.sectionHeadings[finding.sectionKey] ??
+                        finding.sectionKey}
+                    </p>
+                    <StatusTag tone={FINDING_TONE[finding.conclusion]}>
+                      {FINDING_LABEL[finding.conclusion]}
+                    </StatusTag>
+                  </div>
+                  <p
+                    className={`text-muted-foreground ${typeStyle("body.default")}`}
+                  >
+                    {finding.summary}
+                  </p>
+                  {document?.url ? (
+                    <PillButton
+                      href={`${document.url}#page=${evidence?.pageStart ?? 1}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      size="compact"
+                      variant="secondary"
+                    >
+                      Open evidence
+                      {evidence?.pageStart ? ` · p. ${evidence.pageStart}` : ""}
+                    </PillButton>
+                  ) : null}
+                </div>
+              );
+            })}
+            {review.stale ? (
               <p
                 className={`text-muted-foreground ${typeStyle("body.default")}`}
               >
-                Nothing has been extracted from this proposal yet.
+                The packet changed. Re-run the review before confirming.
               </p>
+            ) : (
+              <label className="block space-y-1.5">
+                <span
+                  className={`text-muted-foreground ${typeStyle("label.field")}`}
+                >
+                  Conclusion
+                </span>
+                <Select
+                  value={conclusion}
+                  items={REVIEW_CONCLUSION_LABELS}
+                  disabled={readOnly || Boolean(review.staffConclusion)}
+                  onValueChange={(value) =>
+                    onConclusionChange(value as typeof conclusion)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(REVIEW_CONCLUSION_LABELS).map(
+                      ([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+              </label>
             )}
-          </OperationalPanelBody>
-        </OperationalPanel>
-        <OperationalPanel>
-          <OperationalPanelHeader title="Source documents" />
-          <OperationalPanelBody className="space-y-2">
-            {proposal.documents.map((document) =>
-              document.url ? (
-                <PillButton
-                  key={document._id}
-                  href={document.url}
-                  download={document.fileName}
-                  variant="secondary"
-                  className="w-full justify-start"
-                >
-                  <FileText className="size-3.5" />
-                  {document.fileName}
-                </PillButton>
-              ) : (
-                <p
-                  key={document._id}
-                  className={`text-muted-foreground ${typeStyle("body.default")}`}
-                >
-                  {document.fileName}
-                </p>
-              ),
-            )}
-          </OperationalPanelBody>
-        </OperationalPanel>
-        {review ? (
-          <OperationalPanel>
-            <OperationalPanelHeader
-              title="Packet review"
-              action={
-                review.stale ? (
-                  <StatusTag tone="warning">Stale</StatusTag>
-                ) : !review.staffConclusion ? (
-                  <Select
-                    value={conclusion}
-                    items={REVIEW_CONCLUSION_LABELS}
-                    onValueChange={(value) =>
-                      setConclusion(value as typeof conclusion)
-                    }
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(REVIEW_CONCLUSION_LABELS).map(
-                        ([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <StatusTag
-                    tone={
-                      review.staffConclusion === "meets_requirements"
-                        ? "success"
-                        : "warning"
-                    }
-                  >
-                    {REVIEW_CONCLUSION_LABELS[review.staffConclusion]}
-                  </StatusTag>
-                )
-              }
-            />
-            <OperationalPanelBody className="space-y-3">
-              {review.findings.map((finding) => {
-                const evidence = finding.evidence[0];
-                const document = evidence
-                  ? documents.get(evidence.proposalDocumentId)
-                  : undefined;
-                const evidenceUrl = document?.url;
-                return (
-                  <div
-                    key={finding.sectionKey}
-                    className="border-b border-border pb-3 last:border-0 last:pb-0"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className={typeStyle("body.medium")}>
-                        {proposal.sectionHeadings[finding.sectionKey] ??
-                          finding.sectionKey}
-                      </p>
-                      <StatusTag tone={FINDING_TONE[finding.conclusion]}>
-                        {FINDING_LABEL[finding.conclusion]}
-                      </StatusTag>
-                    </div>
-                    <p
-                      className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
-                    >
-                      {finding.summary}
-                    </p>
-                    {evidenceUrl ? (
-                      <PillButton
-                        className="mt-2"
-                        size="compact"
-                        variant="secondary"
-                        onClick={() =>
-                          onEvidence(
-                            evidenceUrl,
-                            evidence?.pageStart ?? undefined,
-                          )
-                        }
-                      >
-                        Open evidence
-                        {evidence?.pageStart
-                          ? ` · p. ${evidence.pageStart}`
-                          : ""}
-                      </PillButton>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {review.stale ? (
-                <p
-                  className={`text-muted-foreground ${typeStyle("body.default")}`}
-                >
-                  The packet changed after this review ran. Re-run it before
-                  confirming.
-                </p>
-              ) : !review.staffConclusion ? (
-                <PillButton
-                  disabled={saving}
-                  onClick={async () => {
-                    setSaving(true);
-                    try {
-                      await confirmReview({ reviewId: review._id, conclusion });
-                      toast.success("Proposal review confirmed");
-                    } catch (error) {
-                      toast.error(
-                        getUserFacingErrorMessage(
-                          error,
-                          "Could not confirm the proposal review",
-                        ),
-                      );
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-                  Confirm conclusion
-                </PillButton>
-              ) : null}
-            </OperationalPanelBody>
-          </OperationalPanel>
-        ) : null}
-      </div>
-    </SettingsDrawer>
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -596,7 +564,6 @@ function RequestEditor({
   const [resultingPolicyId, setResultingPolicyId] = useState(
     request.resultingPolicyId ?? NONE,
   );
-  const [saving, setSaving] = useState(false);
 
   const policyOptions = [
     { value: NONE, label: "No policy" },
@@ -606,57 +573,63 @@ function RequestEditor({
     })),
   ];
 
-  async function save() {
-    setSaving(true);
-    try {
+  const values = {
+    title,
+    narrative,
+    targetEffectiveDate,
+    status,
+    replacingPolicyId,
+    resultingPolicyId,
+  };
+  const saved = useRef(values);
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "procurementRequests.update",
+    args: values,
+    canSave: !!title.trim() && !!narrative.trim(),
+    flush: async (next) => {
       await updateRequest({
         requestId: request._id,
-        title,
-        narrative,
-        targetEffectiveDate: targetEffectiveDate || null,
-        status,
+        title: next.title !== saved.current.title ? next.title : undefined,
+        narrative:
+          next.narrative !== saved.current.narrative
+            ? next.narrative
+            : undefined,
+        targetEffectiveDate:
+          next.targetEffectiveDate !== saved.current.targetEffectiveDate
+            ? next.targetEffectiveDate || null
+            : undefined,
+        status: next.status !== saved.current.status ? next.status : undefined,
         replacingPolicyId:
-          replacingPolicyId === NONE
-            ? null
-            : (replacingPolicyId as Id<"policies">),
+          next.replacingPolicyId !== saved.current.replacingPolicyId
+            ? next.replacingPolicyId === NONE
+              ? null
+              : (next.replacingPolicyId as Id<"policies">)
+            : undefined,
         resultingPolicyId:
-          resultingPolicyId === NONE
-            ? null
-            : (resultingPolicyId as Id<"policies">),
+          next.resultingPolicyId !== saved.current.resultingPolicyId
+            ? next.resultingPolicyId === NONE
+              ? null
+              : (next.resultingPolicyId as Id<"policies">)
+            : undefined,
       });
-      toast.success("Procurement request updated");
-      onClose();
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(
-          error,
-          "Failed to update procurement request",
-        ),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
+      saved.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not update the request"),
+  });
 
   return (
     <SettingsDrawer
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open)
+          void autoSave.saveNow().then((saved) => {
+            if (saved) onClose();
+          });
       }}
       title="Edit request"
-      footer={
-        <>
-          <PillButton variant="secondary" type="button" onClick={onClose}>
-            Cancel
-          </PillButton>
-          <PillButton type="button" onClick={save} disabled={saving}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Save
-          </PillButton>
-        </>
-      }
     >
+      <AutoSaveStatus status={autoSave.status} />
       <div className="space-y-5">
         <label className="block space-y-1.5">
           <span
@@ -750,19 +723,48 @@ function RequestEditor({
   );
 }
 
-function OutreachEditor({
+export function OutreachEditor({
   requestId,
   outreach,
   brokers,
+  readOnly = false,
   onClose,
 }: {
   requestId: Id<"procurementRequests">;
   outreach?: Outreach;
   brokers: BrokerOption[];
+  readOnly?: boolean;
   onClose: () => void;
 }) {
   const createOutreach = useMutation(api.procurementRequests.createOutreach);
   const updateOutreach = useMutation(api.procurementRequests.updateOutreach);
+  const generateReview = useAction(api.actions.proposalReview.generateReview);
+  const confirmReview = useMutation(api.procurementProposals.confirmReview);
+  const selectProposal = useMutation(api.procurementProposals.select);
+  const archiveProposal = useMutation(api.procurementProposals.archive);
+  const retryExtraction = useMutation(api.procurementProposals.retryExtraction);
+  const cancelExtraction = useMutation(
+    api.procurementProposals.cancelExtraction,
+  );
+  const [outreachId, setOutreachId] = useState(outreach?._id);
+  const currentRequest = useQuery(
+    api.procurementRequests.get,
+    outreachId ? { requestId } : "skip",
+  );
+  const proposals = useQuery(
+    api.procurementProposals.list,
+    outreachId ? { requestId } : "skip",
+  );
+  const currentOutreach =
+    currentRequest?.outreaches.find((row) => row._id === outreachId) ??
+    outreach;
+  const proposal: (ProposalView & ProposalUploadTarget) | undefined =
+    proposals?.find(
+      (row) =>
+        row.outreachId === outreachId &&
+        row.status !== "archived" &&
+        row.status !== "withdrawn",
+    );
   const [brokerOrgId, setBrokerOrgId] = useState(outreach?.brokerOrgId ?? "");
   const [contactName, setContactName] = useState(outreach?.contactName ?? "");
   const [contactEmail, setContactEmail] = useState(
@@ -771,56 +773,145 @@ function OutreachEditor({
   const [contactPhone, setContactPhone] = useState(
     outreach?.contactPhone ?? "",
   );
-  const [status, setStatus] = useState<ProcurementOutreachStatus>(
-    outreach?.status ?? "request_sent",
-  );
+  const [statusDraft, setStatus] = useState<ProcurementOutreachStatus>();
+  const status = statusDraft ?? currentOutreach?.status ?? "request_sent";
   const [log, setLog] = useState(outreach?.log ?? "");
+  const savedValues = useRef({
+    brokerOrgId,
+    contactName,
+    contactEmail,
+    contactPhone,
+    log,
+  });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState("pdfs");
+  const review = proposal?.reviews[0];
+  const latestExtraction = proposal?.extraction.latest;
+  const [reviewChoice, setReviewChoice] = useState<{
+    reviewId: string;
+    value: keyof typeof REVIEW_CONCLUSION_LABELS;
+  }>();
+  const conclusion =
+    reviewChoice && reviewChoice.reviewId === review?._id
+      ? reviewChoice.value
+      : (review?.staffConclusion ??
+        review?.modelConclusion ??
+        "insufficient_evidence");
+  const busy = saving || uploading || working;
 
-  function chooseBroker(value: string) {
-    setBrokerOrgId(value);
-    const broker = brokers.find((candidate) => candidate._id === value);
-    if (!broker) return;
-  }
-
-  async function save() {
-    if (!brokerOrgId) {
-      toast.error("Select a broker organization");
-      return;
-    }
-    const shared = {
-      contactName: contactName || undefined,
-      contactEmail: contactEmail || undefined,
-      contactPhone: contactPhone || undefined,
-      status,
-      log: log || undefined,
-    };
-    setSaving(true);
+  async function run(
+    action: () => Promise<unknown>,
+    pending: string,
+    success: string,
+    close = false,
+  ) {
+    if (readOnly || busy) return;
+    setWorking(true);
+    const toastId = toast.loading(pending);
     try {
-      if (outreach) {
-        await updateOutreach({
-          outreachId: outreach._id,
-          brokerOrgId: brokerOrgId as Id<"organizations">,
-          ...shared,
-          contactName: contactName || null,
-          contactEmail: contactEmail || null,
-          contactPhone: contactPhone || null,
-          log: log || null,
-        });
-        toast.success("Broker outreach updated");
-      } else {
-        await createOutreach({
-          requestId,
-          brokerOrgId: brokerOrgId as Id<"organizations">,
-          ...shared,
-        });
-        toast.success("Broker added");
-      }
-      onClose();
+      await action();
+      toast.success(success, { id: toastId });
+      if (close) onClose();
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(error, "Failed to save broker outreach"),
+        getUserFacingErrorMessage(error, "Could not update the proposal"),
+        { id: toastId },
       );
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "procurementRequests.updateOutreach",
+    args: {
+      brokerOrgId,
+      contactName,
+      contactEmail,
+      contactPhone,
+      log,
+      statusDraft,
+    },
+    enabled: !readOnly,
+    canSave: !!outreachId && !!brokerOrgId,
+    flush: async (next) => {
+      if (!outreachId) return;
+      const previous = savedValues.current;
+      if (
+        next.statusDraft === undefined &&
+        Object.keys(previous).every(
+          (key) =>
+            next[key as keyof typeof previous] ===
+            previous[key as keyof typeof previous],
+        )
+      )
+        return;
+      await updateOutreach({
+        outreachId,
+        brokerOrgId:
+          next.brokerOrgId !== previous.brokerOrgId
+            ? (next.brokerOrgId as Id<"organizations">)
+            : undefined,
+        status: next.statusDraft,
+        contactName:
+          next.contactName !== previous.contactName
+            ? next.contactName || null
+            : undefined,
+        contactEmail:
+          next.contactEmail !== previous.contactEmail
+            ? next.contactEmail || null
+            : undefined,
+        contactPhone:
+          next.contactPhone !== previous.contactPhone
+            ? next.contactPhone || null
+            : undefined,
+        log: next.log !== previous.log ? next.log || null : undefined,
+      });
+      savedValues.current = {
+        brokerOrgId: next.brokerOrgId,
+        contactName: next.contactName,
+        contactEmail: next.contactEmail,
+        contactPhone: next.contactPhone,
+        log: next.log,
+      };
+    },
+    onFlushed: (_, next) =>
+      setStatus((current) =>
+        current === next.statusDraft ? undefined : current,
+      ),
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not update broker details"),
+  });
+
+  const changed = !!outreachId && autoSave.status !== "saved";
+
+  async function addBroker() {
+    if (readOnly || busy || !brokerOrgId) return;
+    setSaving(true);
+    try {
+      const created = await createOutreach({
+        requestId,
+        brokerOrgId: brokerOrgId as Id<"organizations">,
+        contactName: contactName || undefined,
+        contactEmail: contactEmail || undefined,
+        contactPhone: contactPhone || undefined,
+        status,
+        log: log || undefined,
+      });
+      savedValues.current = {
+        brokerOrgId,
+        contactName,
+        contactEmail,
+        contactPhone,
+        log,
+      };
+      setOutreachId(created.outreachId);
+      setStatus(undefined);
+      toast.success("Broker added");
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Could not add broker"));
     } finally {
       setSaving(false);
     }
@@ -830,115 +921,310 @@ function OutreachEditor({
     <SettingsDrawer
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open && !busy) {
+          if (!outreachId || readOnly) onClose();
+          else
+            void autoSave.saveNow().then((saved) => {
+              if (saved) onClose();
+            });
+        }
       }}
-      title={outreach ? "Edit broker outreach" : "Add broker"}
+      title={
+        outreachId
+          ? (currentOutreach?.brokerName ?? "Broker outreach")
+          : "Add broker"
+      }
       footer={
         <>
-          <PillButton type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </PillButton>
-          <PillButton type="button" onClick={save} disabled={saving}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Save broker
-          </PillButton>
+          {!readOnly ? (
+            <>
+              {proposal && proposal.status !== "selected" ? (
+                <PillButton
+                  variant="destructive"
+                  disabled={busy || changed}
+                  onClick={() =>
+                    void run(
+                      () => archiveProposal({ proposalId: proposal._id }),
+                      "Archiving proposal…",
+                      "Proposal archived",
+                      true,
+                    )
+                  }
+                >
+                  Archive
+                </PillButton>
+              ) : null}
+              {proposal &&
+              (latestExtraction?.stuck ||
+                latestExtraction?.status === "failed") ? (
+                <PillButton
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () => retryExtraction({ proposalId: proposal._id }),
+                      "Queuing extraction…",
+                      "Proposal extraction queued",
+                    )
+                  }
+                >
+                  Retry extraction
+                </PillButton>
+              ) : proposal &&
+                (latestExtraction?.status === "pending" ||
+                  latestExtraction?.status === "running") ? (
+                <PillButton
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () => cancelExtraction({ proposalId: proposal._id }),
+                      "Cancelling extraction…",
+                      "Proposal extraction cancelled",
+                    )
+                  }
+                >
+                  Cancel extraction
+                </PillButton>
+              ) : null}
+              {sidebarTab === "terms" ? (
+                <>
+                  {proposal?.extractedOffer && (!review || review.stale) ? (
+                    <PillButton
+                      disabled={busy || changed}
+                      onClick={() =>
+                        void run(
+                          () => generateReview({ proposalId: proposal._id }),
+                          "Reviewing proposal…",
+                          "Proposal review ready",
+                        )
+                      }
+                    >
+                      {review?.stale ? "Re-run review" : "Generate review"}
+                    </PillButton>
+                  ) : review && !review.stale && !review.staffConclusion ? (
+                    <PillButton
+                      disabled={busy || changed}
+                      onClick={() =>
+                        void run(
+                          () =>
+                            confirmReview({ reviewId: review._id, conclusion }),
+                          "Confirming review…",
+                          "Proposal review confirmed",
+                        )
+                      }
+                    >
+                      Confirm conclusion
+                    </PillButton>
+                  ) : proposal?.status === "reviewed" &&
+                    !review?.stale &&
+                    review?.staffConclusion === "meets_requirements" ? (
+                    <PillButton
+                      disabled={busy || changed}
+                      onClick={() =>
+                        void run(
+                          () => selectProposal({ proposalId: proposal._id }),
+                          "Selecting proposal…",
+                          "Proposal selected",
+                        )
+                      }
+                    >
+                      Select proposal
+                    </PillButton>
+                  ) : null}
+                </>
+              ) : null}
+              {!outreachId ? (
+                <PillButton
+                  type="button"
+                  onClick={() => void addBroker()}
+                  disabled={busy || !brokerOrgId}
+                >
+                  {saving ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : null}
+                  Add broker
+                </PillButton>
+              ) : null}
+            </>
+          ) : null}
         </>
       }
     >
-      <div className="space-y-6">
-        <section className="space-y-4">
-          <h3 className={`text-foreground ${typeStyle("heading.micro")}`}>
-            Broker and contact
-          </h3>
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Spot broker organization
-            </span>
-            <SearchableSelect
-              value={brokerOrgId}
-              onChange={chooseBroker}
-              options={brokers.map((broker) => ({
-                value: broker._id,
-                label: broker.name,
-              }))}
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Broker name
-            </span>
-            <Input
-              value={
-                brokers.find((broker) => broker._id === brokerOrgId)?.name ?? ""
+      <AutoSaveStatus status={outreachId ? autoSave.status : "saved"} />
+      <div className="space-y-4">
+        {outreachId ? (
+          <Tabs value={sidebarTab} onValueChange={setSidebarTab}>
+            <TabsList variant="pill" aria-label="Proposal sidebar">
+              <TabsTrigger value="pdfs">PDFs</TabsTrigger>
+              <TabsTrigger value="terms">Terms</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
+        {sidebarTab === "pdfs" && outreachId && currentOutreach ? (
+          <div className="space-y-3 border-b border-border pb-4">
+            {proposal?.documents.map((document) =>
+              document.url ? (
+                <PillButton
+                  key={document._id}
+                  href={document.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="secondary"
+                  className="w-full justify-start"
+                >
+                  <FileText className="size-3.5 shrink-0" />
+                  <span className="truncate">{document.fileName}</span>
+                </PillButton>
+              ) : null,
+            )}
+            <ProposalDropzone
+              requestId={requestId}
+              outreach={currentOutreach}
+              proposal={proposal}
+              disabled={
+                readOnly ||
+                busy ||
+                proposals === undefined ||
+                brokerOrgId !== currentOutreach.brokerOrgId
               }
-              disabled
+              onUploadingChange={setUploading}
             />
-          </label>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              value={contactName}
-              onChange={(event) => setContactName(event.target.value)}
-              placeholder="Contact name"
-            />
-            <Input
-              type="email"
-              value={contactEmail}
-              onChange={(event) => setContactEmail(event.target.value)}
-              placeholder="Contact email"
-            />
+            {proposal &&
+            proposal.status !== "draft" &&
+            proposal.status !== "selected" ? (
+              <p
+                className={`text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                Uploading revised PDFs replaces the current proposal. Include
+                all documents for the new revision.
+              </p>
+            ) : null}
           </div>
-          <Input
-            value={contactPhone}
-            onChange={(event) => setContactPhone(event.target.value)}
-            placeholder="Contact phone"
+        ) : null}
+        {sidebarTab === "terms" && proposal ? (
+          <ProposalReviewDetails
+            proposal={proposal}
+            conclusion={conclusion}
+            onConclusionChange={(value) =>
+              review && setReviewChoice({ reviewId: review._id, value })
+            }
+            readOnly={readOnly || busy}
           />
-        </section>
-
-        <section className="space-y-4 border-t border-border pt-5">
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("label.field")}`}
-            >
-              Status
-            </span>
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setStatus(value as ProcurementOutreachStatus)
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue>
-                  {procurementOutreachStatusLabel(status)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {OUTREACH_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("label.field")}`}
-            >
-              Log
-            </span>
-            <Textarea
-              value={log}
-              onChange={(event) => setLog(event.target.value)}
-              className="min-h-64"
-              placeholder="Add outreach updates in Markdown"
-            />
-          </label>
-        </section>
+        ) : null}
+        {sidebarTab === "terms" && !proposal ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            Upload proposal PDFs to extract their terms.
+          </p>
+        ) : null}
+        {sidebarTab === "pdfs" ? (
+          <fieldset disabled={readOnly || busy} className="min-w-0 space-y-4">
+            {!proposals?.some((row) => row.outreachId === outreachId) ? (
+              <label className="block space-y-1.5">
+                <span
+                  className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  Broker
+                </span>
+                <SearchableSelect
+                  value={brokerOrgId}
+                  onChange={setBrokerOrgId}
+                  disabled={proposals?.some(
+                    (row) => row.outreachId === outreachId,
+                  )}
+                  options={brokers.map((broker) => ({
+                    value: broker._id,
+                    label: broker.name,
+                    icon: (
+                      <OrgBrandIcon
+                        name={broker.name}
+                        iconUrl={broker.iconUrl}
+                        website={broker.website}
+                        size="xs"
+                      />
+                    ),
+                  }))}
+                />
+              </label>
+            ) : null}
+            <label className="block space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Contact name
+              </span>
+              <Input
+                value={contactName}
+                onChange={(event) => setContactName(event.target.value)}
+                placeholder="Contact name"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Contact email
+              </span>
+              <Input
+                type="email"
+                value={contactEmail}
+                onChange={(event) => setContactEmail(event.target.value)}
+                placeholder="Contact email"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Contact phone
+              </span>
+              <Input
+                value={contactPhone}
+                onChange={(event) => setContactPhone(event.target.value)}
+                placeholder="Contact phone"
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Status
+              </span>
+              <Select
+                value={status}
+                onValueChange={(value) =>
+                  setStatus(value as ProcurementOutreachStatus)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {procurementOutreachStatusLabel(status)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {OUTREACH_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="block space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Log
+              </span>
+              <Textarea
+                value={log}
+                onChange={(event) => setLog(event.target.value)}
+                className="min-h-64"
+                placeholder="Add outreach updates in Markdown"
+              />
+            </label>
+          </fieldset>
+        ) : null}
       </div>
     </SettingsDrawer>
   );
@@ -950,13 +1236,18 @@ function ProcurementFileEditor({
   outreaches,
   clientFiles,
   onClose,
+  onPreview,
+  readOnly,
 }: {
   requestId: Id<"procurementRequests">;
   fileItem?: ProcurementFileItem;
   outreaches: Outreach[];
   clientFiles: ClientFileOption[];
   onClose: () => void;
+  onPreview: (file: ClientFileOption) => void;
+  readOnly: boolean;
 }) {
+  const brokers = useCachedOperatorBrokers();
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
   const [label, setLabel] = useState(fileItem?.label ?? "");
@@ -979,54 +1270,92 @@ function ProcurementFileEditor({
   );
   const [saving, setSaving] = useState(false);
 
-  async function save() {
-    if (!label.trim()) {
-      toast.error("Enter a file label");
-      return;
-    }
+  const values = {
+    label,
+    purpose,
+    status,
+    outreachId,
+    clientFileId,
+    brokerRelease,
+    clientVisible,
+    notes,
+  };
+  const saved = useRef(values);
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "procurementRequests.updateFileItem",
+    args: values,
+    enabled: !readOnly,
+    canSave: !!fileItem && !!label.trim(),
+    flush: async (next) => {
+      if (!fileItem) return;
+      const previous = saved.current;
+      if (
+        Object.keys(previous).every(
+          (key) =>
+            next[key as keyof typeof previous] ===
+            previous[key as keyof typeof previous],
+        )
+      )
+        return;
+      await updateFileItem({
+        fileItemId: fileItem._id,
+        label: next.label !== previous.label ? next.label : undefined,
+        purpose: next.purpose !== previous.purpose ? next.purpose : undefined,
+        status: next.status !== previous.status ? next.status : undefined,
+        outreachId:
+          next.outreachId !== previous.outreachId
+            ? next.outreachId === NONE
+              ? null
+              : (next.outreachId as Id<"procurementBrokerOutreaches">)
+            : undefined,
+        clientFileId:
+          next.clientFileId !== previous.clientFileId
+            ? next.clientFileId === NONE
+              ? null
+              : (next.clientFileId as Id<"clientFiles">)
+            : undefined,
+        brokerRelease:
+          next.brokerRelease !== previous.brokerRelease
+            ? next.brokerRelease
+            : undefined,
+        clientVisible:
+          next.clientVisible !== previous.clientVisible
+            ? next.clientVisible
+            : undefined,
+        notes: next.notes !== previous.notes ? next.notes || null : undefined,
+      });
+      saved.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not update the file"),
+  });
+
+  async function addFile() {
+    if (readOnly || saving || !label.trim()) return;
     setSaving(true);
     try {
-      if (fileItem) {
-        await updateFileItem({
-          fileItemId: fileItem._id,
-          label,
-          purpose,
-          status,
-          outreachId:
-            outreachId === NONE
-              ? null
-              : (outreachId as Id<"procurementBrokerOutreaches">),
-          clientFileId:
-            clientFileId === NONE ? null : (clientFileId as Id<"clientFiles">),
-          brokerRelease,
-          clientVisible,
-          notes: notes || null,
-        });
-        toast.success("Procurement file updated");
-      } else {
-        await createFileItem({
-          requestId,
-          label,
-          purpose,
-          status,
-          outreachId:
-            outreachId === NONE
-              ? undefined
-              : (outreachId as Id<"procurementBrokerOutreaches">),
-          clientFileId:
-            clientFileId === NONE
-              ? undefined
-              : (clientFileId as Id<"clientFiles">),
-          brokerRelease,
-          clientVisible,
-          notes: notes || undefined,
-        });
-        toast.success("Procurement file added");
-      }
+      await createFileItem({
+        requestId,
+        label,
+        purpose,
+        status,
+        outreachId:
+          outreachId === NONE
+            ? undefined
+            : (outreachId as Id<"procurementBrokerOutreaches">),
+        clientFileId:
+          clientFileId === NONE
+            ? undefined
+            : (clientFileId as Id<"clientFiles">),
+        brokerRelease,
+        clientVisible,
+        notes: notes || undefined,
+      });
+      toast.success("File request added");
       onClose();
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(error, "Failed to save procurement file"),
+        getUserFacingErrorMessage(error, "Could not add file request"),
       );
     } finally {
       setSaving(false);
@@ -1037,22 +1366,55 @@ function ProcurementFileEditor({
     <SettingsDrawer
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open && !saving) {
+          if (!fileItem || readOnly) onClose();
+          else
+            void autoSave.saveNow().then((saved) => {
+              if (saved) onClose();
+            });
+        }
       }}
       title={fileItem ? "Edit procurement file" : "Add file request"}
       footer={
         <>
-          <PillButton type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </PillButton>
-          <PillButton type="button" onClick={save} disabled={saving}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Save file
-          </PillButton>
+          {fileItem?.clientFile?.url ? (
+            <>
+              {/pdf|image/.test(fileItem.clientFile.contentType) ||
+              /\.(pdf|avif|gif|jpe?g|png|webp)$/i.test(
+                fileItem.clientFile.name,
+              ) ? (
+                <PillButton
+                  variant="secondary"
+                  onClick={() => {
+                    void autoSave.saveNow().then((saved) => {
+                      if (saved || readOnly) onPreview(fileItem.clientFile!);
+                    });
+                  }}
+                >
+                  Preview
+                </PillButton>
+              ) : null}
+              <FileDownloadButton
+                href={fileItem.clientFile.url}
+                fileName={fileItem.clientFile.name}
+              />
+            </>
+          ) : null}
+          {!readOnly && !fileItem ? (
+            <PillButton
+              type="button"
+              onClick={addFile}
+              disabled={saving || !label.trim()}
+            >
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              Add file request
+            </PillButton>
+          ) : null}
         </>
       }
     >
-      <div className="space-y-5">
+      <AutoSaveStatus status={fileItem ? autoSave.status : "saved"} />
+      <fieldset disabled={readOnly || saving} className="min-w-0 space-y-5">
         <label className="block space-y-1.5">
           <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -1131,50 +1493,68 @@ function ProcurementFileEditor({
               ...outreaches.map((outreach) => ({
                 value: outreach._id,
                 label: outreach.brokerName,
+                icon: (
+                  <OrgBrandIcon
+                    name={outreach.brokerName}
+                    {...brokers?.find(
+                      (broker) => broker._id === outreach.brokerOrgId,
+                    )}
+                    size="xs"
+                  />
+                ),
               })),
             ]}
           />
         </label>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span
+        <div className="space-y-1.5">
+          <p className={`text-muted-foreground ${typeStyle("label.field")}`}>
+            Sharing
+          </p>
+          <Table aria-label="File sharing">
+            <TableBody>
+              <TableRow>
+                <TableCell>Client visibility</TableCell>
+                <TableCell className="text-right">
+                  <SettingsSwitch
+                    label="Client visibility"
+                    checked={clientVisible}
+                    disabled={readOnly || clientFileId === NONE}
+                    onCheckedChange={() => setClientVisible(!clientVisible)}
+                  />
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Broker visibility</TableCell>
+                <TableCell className="text-right">
+                  <SettingsSwitch
+                    label="Broker visibility"
+                    checked={brokerRelease !== "hidden"}
+                    disabled={
+                      readOnly || clientFileId === NONE || outreachId !== NONE
+                    }
+                    onCheckedChange={() =>
+                      setBrokerRelease(
+                        brokerRelease === "hidden" ? "attached" : "hidden",
+                      )
+                    }
+                  />
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          {outreachId !== NONE ? (
+            <p
               className={`text-muted-foreground ${typeStyle("caption.default")}`}
             >
-              Broker packet
-            </span>
-            <Select
-              value={brokerRelease}
-              onValueChange={(value) =>
-                setBrokerRelease(value as "hidden" | "listed" | "attached")
-              }
+              Broker-specific files stay out of the shared packet.
+            </p>
+          ) : brokerRelease !== "hidden" ? (
+            <p
+              className={`text-muted-foreground ${typeStyle("caption.default")}`}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue>
-                  {brokerRelease === "hidden"
-                    ? "Hidden"
-                    : brokerRelease === "listed"
-                      ? "List name only"
-                      : "Attach file"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hidden">Hidden</SelectItem>
-                <SelectItem value="listed">List name only</SelectItem>
-                <SelectItem value="attached">Attach file</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="flex items-center gap-3 self-end rounded-md border border-border px-3 py-2">
-            <input
-              type="checkbox"
-              className="size-4"
-              checked={clientVisible}
-              onChange={(event) => setClientVisible(event.target.checked)}
-            />
-            <span className={typeStyle("body.default")}>
-              Show in client request
-            </span>
-          </label>
+              Regenerate the packet link to share visibility changes.
+            </p>
+          ) : null}
         </div>
         <label className="block space-y-1.5">
           <span
@@ -1210,7 +1590,7 @@ function ProcurementFileEditor({
             className="min-h-24"
           />
         </label>
-      </div>
+      </fieldset>
     </SettingsDrawer>
   );
 }
@@ -1231,10 +1611,7 @@ function ImagePreview({
       title={file.name}
       footer={
         file.url ? (
-          <PillButton href={file.url} download={file.name} variant="secondary">
-            <Download className="size-3.5" />
-            Download
-          </PillButton>
+          <FileDownloadButton href={file.url} fileName={file.name} />
         ) : null
       }
     >
@@ -1262,7 +1639,7 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "overview" | "packet" | "market" | "files" | "email";
+  view: "overview" | "packet" | "proposals" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -1289,23 +1666,7 @@ export function ProcurementRequestWorkspace({
   const packetLinks = useQuery(api.procurementPacket.listLinks, { requestId });
   const mintPacketLink = useMutation(api.procurementPacket.mintLink);
   const rotatePacketLink = useMutation(api.procurementPacket.rotateLink);
-  const generateProposalReview = useAction(
-    api.actions.proposalReview.generateReview,
-  );
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
-  const selectProposal = useMutation(api.procurementProposals.select);
-  const archiveProposal = useMutation(api.procurementProposals.archive);
-  const retryProposalExtraction = useMutation(
-    api.procurementProposals.retryExtraction,
-  );
-  const cancelProposalExtraction = useMutation(
-    api.procurementProposals.cancelExtraction,
-  );
-  const [reviewingProposalId, setReviewingProposalId] =
-    useState<Id<"procurementProposals"> | null>(null);
-  const [workingProposalAction, setWorkingProposalAction] = useState<
-    string | null
-  >(null);
   const [regeneratingPacketLink, setRegeneratingPacketLink] = useState(false);
   const { openWithUrl, closePdf } = usePdf();
 
@@ -1333,17 +1694,29 @@ export function ProcurementRequestWorkspace({
     closePdf();
     onRightPanel(
       <RequestEditor
+        key={requestId}
         request={details.request}
         policies={policyOptions}
         onClose={closeRightPanel}
       />,
     );
-  }, [closePdf, closeRightPanel, details, onRightPanel, policyOptions]);
+  }, [
+    closePdf,
+    closeRightPanel,
+    details,
+    onRightPanel,
+    policyOptions,
+    requestId,
+  ]);
 
   const openPacketEditor = useCallback(() => {
     closePdf();
     onRightPanel(
-      <PacketEditor requestId={requestId} onClose={closeRightPanel} />,
+      <PacketEditor
+        key={requestId}
+        requestId={requestId}
+        onClose={closeRightPanel}
+      />,
     );
   }, [closePdf, closeRightPanel, onRightPanel, requestId]);
 
@@ -1352,14 +1725,16 @@ export function ProcurementRequestWorkspace({
       closePdf();
       onRightPanel(
         <OutreachEditor
+          key={outreach?._id ?? "new-outreach"}
           requestId={requestId}
           outreach={outreach}
+          readOnly={readOnly}
           brokers={brokers ?? []}
           onClose={closeRightPanel}
         />,
       );
     },
-    [brokers, closePdf, closeRightPanel, onRightPanel, requestId],
+    [brokers, closePdf, closeRightPanel, onRightPanel, readOnly, requestId],
   );
 
   const openFileEditor = useCallback(
@@ -1368,15 +1743,40 @@ export function ProcurementRequestWorkspace({
       closePdf();
       onRightPanel(
         <ProcurementFileEditor
+          key={fileItem?._id ?? "new-file"}
           requestId={requestId}
           fileItem={fileItem}
           outreaches={details?.outreaches ?? []}
           clientFiles={clientFiles}
+          readOnly={readOnly}
+          onPreview={(file) => {
+            if (!file.url) return;
+            if (
+              file.contentType === "application/pdf" ||
+              /\.pdf$/i.test(file.name)
+            ) {
+              onRightPanel(null);
+              openWithUrl(file.url);
+            } else {
+              onRightPanel(
+                <ImagePreview file={file} onClose={closeRightPanel} />,
+              );
+            }
+          }}
           onClose={closeRightPanel}
         />,
       );
     },
-    [clientFiles, closePdf, closeRightPanel, details, onRightPanel, requestId],
+    [
+      clientFiles,
+      closePdf,
+      closeRightPanel,
+      details,
+      onRightPanel,
+      openWithUrl,
+      readOnly,
+      requestId,
+    ],
   );
 
   const openUpload = useCallback(() => {
@@ -1411,23 +1811,6 @@ export function ProcurementRequestWorkspace({
     requestId,
   ]);
 
-  const openProposalReview = useCallback(
-    (proposal: ProposalView) => {
-      closePdf();
-      onRightPanel(
-        <ProposalReviewDrawer
-          proposal={proposal}
-          onClose={closeRightPanel}
-          onEvidence={(url, page) => {
-            onRightPanel(null);
-            openWithUrl(url, page);
-          }}
-        />,
-      );
-    },
-    [closePdf, closeRightPanel, onRightPanel, openWithUrl],
-  );
-
   const openEmail = useCallback(
     (emailThreadId: Id<"procurementEmailThreads">) => {
       closePdf();
@@ -1452,29 +1835,10 @@ export function ProcurementRequestWorkspace({
       const result = activeLink
         ? await rotatePacketLink({ linkId: activeLink.linkId })
         : await mintPacketLink({ requestId });
-      try {
-        await navigator.clipboard.writeText(result.url);
-        toast.success("Packet link regenerated and copied");
-      } catch {
-        onRightPanel(
-          <SettingsDrawer
-            open
-            onOpenChange={(open) => !open && closeRightPanel()}
-            title="Packet link regenerated"
-          >
-            <label className="block space-y-1.5">
-              <span className={typeStyle("label.field")}>
-                Copy this link to share the packet
-              </span>
-              <Input
-                readOnly
-                value={result.url}
-                onFocus={(event) => event.currentTarget.select()}
-              />
-            </label>
-          </SettingsDrawer>,
-        );
-      }
+      closePdf();
+      onRightPanel(
+        <PacketLinkDrawer url={result.url} onClose={closeRightPanel} />,
+      );
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(
@@ -1486,6 +1850,7 @@ export function ProcurementRequestWorkspace({
       setRegeneratingPacketLink(false);
     }
   }, [
+    closePdf,
     closeRightPanel,
     mintPacketLink,
     onRightPanel,
@@ -1511,11 +1876,26 @@ export function ProcurementRequestWorkspace({
           Edit request
         </PillButton>
       ) : view === "packet" ? (
-        <PillButton type="button" onClick={openPacketEditor}>
-          <Pencil className="size-3.5" />
-          Edit packet
-        </PillButton>
-      ) : view === "market" ? (
+        <>
+          <PillButton
+            type="button"
+            variant="secondary"
+            disabled={regeneratingPacketLink || packetLinks === undefined}
+            onClick={() => void regeneratePacketLink()}
+          >
+            {regeneratingPacketLink ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            Regenerate link
+          </PillButton>
+          <PillButton type="button" onClick={openPacketEditor}>
+            <Pencil className="size-3.5" />
+            Edit packet
+          </PillButton>
+        </>
+      ) : view === "proposals" ? (
         <>
           <PillButton
             type="button"
@@ -1572,58 +1952,6 @@ export function ProcurementRequestWorkspace({
     if (!details) return;
     await navigator.clipboard.writeText(details.request.forwardingAddress);
     toast.success("Forwarding address copied");
-  }
-
-  function previewFile(file: ClientFileOption) {
-    if (!file.url) return;
-    const pdf =
-      file.contentType === "application/pdf" || /\.pdf$/i.test(file.name);
-    const image =
-      file.contentType.startsWith("image/") ||
-      /\.(avif|gif|jpe?g|png|webp)$/i.test(file.name);
-    if (pdf) {
-      onRightPanel(null);
-      openWithUrl(file.url);
-    } else if (image) {
-      closePdf();
-      onRightPanel(<ImagePreview file={file} onClose={closeRightPanel} />);
-    }
-  }
-
-  async function reviewProposal(proposalId: Id<"procurementProposals">) {
-    setReviewingProposalId(proposalId);
-    try {
-      const result = await generateProposalReview({ proposalId });
-      toast.success(
-        `Proposal review generated with ${result.findingCount} finding${result.findingCount === 1 ? "" : "s"}`,
-      );
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(
-          error,
-          "Could not generate the proposal review",
-        ),
-      );
-    } finally {
-      setReviewingProposalId(null);
-    }
-  }
-
-  async function runProposalMutation(
-    key: string,
-    action: () => Promise<unknown>,
-    success: string,
-    failure: string,
-  ) {
-    setWorkingProposalAction(key);
-    try {
-      await action();
-      toast.success(success);
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, failure));
-    } finally {
-      setWorkingProposalAction(null);
-    }
   }
 
   if (
@@ -1717,8 +2045,8 @@ export function ProcurementRequestWorkspace({
           <TabsList variant="pill" aria-label="Procurement request view">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="packet">Packet</TabsTrigger>
-            <TabsTrigger value="market">
-              Market
+            <TabsTrigger value="proposals">
+              Proposals
               <span className="text-muted-foreground/60">
                 {details.outreaches.length}
               </span>
@@ -1747,7 +2075,7 @@ export function ProcurementRequestWorkspace({
               value={<RequestStatusTag status={details.request.status} />}
             />
             <OperationalLabelValueRow
-              label="Market"
+              label="Proposals"
               value={`${details.request.brokerCount} brokers · ${activeProposals.length} proposals`}
             />
             <OperationalLabelValueRow
@@ -1781,7 +2109,7 @@ export function ProcurementRequestWorkspace({
         />
       ) : null}
 
-      {view === "market" ? (
+      {view === "proposals" ? (
         <div className="space-y-4">
           {activeProposals.length ? (
             <OperationalPanel as="section">
@@ -1791,10 +2119,8 @@ export function ProcurementRequestWorkspace({
                     <TableHead>Broker</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Premium</TableHead>
-                    <TableHead>Term</TableHead>
                     <TableHead>Review</TableHead>
                     <TableHead>Documents</TableHead>
-                    <TableHead className="w-0" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1815,30 +2141,30 @@ export function ProcurementRequestWorkspace({
                       proposal.outreachId,
                     );
                     return (
-                      <TableRow key={proposal._id}>
-                        <TableCell>
-                          <button
-                            type="button"
-                            className={`text-left text-foreground underline-offset-4 hover:underline ${typeStyle("body.medium")}`}
-                            onClick={() =>
-                              openProposalReview(proposal as ProposalView)
-                            }
+                      <TableRow
+                        key={proposal._id}
+                        tabIndex={proposalOutreach ? 0 : undefined}
+                        onClick={() =>
+                          proposalOutreach &&
+                          openOutreachEditor(proposalOutreach)
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            proposalOutreach &&
+                            (event.key === "Enter" || event.key === " ")
+                          ) {
+                            event.preventDefault();
+                            openOutreachEditor(proposalOutreach);
+                          }
+                        }}
+                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        <TableCell className="max-w-64 whitespace-normal">
+                          <span
+                            className={`text-foreground ${typeStyle("body.medium")}`}
                           >
                             {proposal.brokerName ?? "Broker"}
-                          </button>
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {offer.coverages
-                              ?.slice(0, 2)
-                              .map((coverage) =>
-                                [coverage.name, coverage.limit]
-                                  .filter(Boolean)
-                                  .join(" "),
-                              )
-                              .filter(Boolean)
-                              .join(" · ") || "No coverage summary"}
-                          </p>
+                          </span>
                         </TableCell>
                         <TableCell>
                           <StatusTag
@@ -1850,7 +2176,8 @@ export function ProcurementRequestWorkspace({
                                   : "neutral"
                             }
                           >
-                            {proposal.status.replaceAll("_", " ")}
+                            {proposal.status.charAt(0).toUpperCase() +
+                              proposal.status.slice(1).replaceAll("_", " ")}
                           </StatusTag>
                           {latestExtraction?.stuck ? (
                             <p
@@ -1870,14 +2197,6 @@ export function ProcurementRequestWorkspace({
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {offer.premium ?? offer.premiumAmount ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {[
-                            offer.proposedEffectiveDate,
-                            offer.proposedExpirationDate,
-                          ]
-                            .filter(Boolean)
-                            .join(" – ") || "—"}
                         </TableCell>
                         <TableCell>
                           {review?.stale ? (
@@ -1899,142 +2218,9 @@ export function ProcurementRequestWorkspace({
                           )}
                         </TableCell>
                         <TableCell>
-                          {readOnly || !proposalOutreach ? (
-                            <span className="text-muted-foreground">
-                              {proposal.documents.length}
-                            </span>
-                          ) : (
-                            <ProposalDropzone
-                              requestId={requestId}
-                              outreach={proposalOutreach}
-                              proposal={proposal}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {!readOnly ? (
-                            <div className="flex flex-wrap justify-end gap-2">
-                              {proposalOutreach ? (
-                                <PillButton
-                                  size="compact"
-                                  variant="secondary"
-                                  iconOnly
-                                  label={`Edit ${proposalOutreach.brokerName}`}
-                                  onClick={() =>
-                                    openOutreachEditor(proposalOutreach)
-                                  }
-                                >
-                                  <Pencil className="size-3.5" />
-                                </PillButton>
-                              ) : null}
-                              {(!review || review.stale) &&
-                              proposal.extractedOffer ? (
-                                <PillButton
-                                  size="compact"
-                                  variant="secondary"
-                                  disabled={
-                                    reviewingProposalId === proposal._id
-                                  }
-                                  onClick={() =>
-                                    void reviewProposal(proposal._id)
-                                  }
-                                >
-                                  {reviewingProposalId === proposal._id ? (
-                                    <Loader2 className="size-3.5 animate-spin" />
-                                  ) : null}
-                                  {review?.stale
-                                    ? "Re-run review"
-                                    : "Generate review"}
-                                </PillButton>
-                              ) : review &&
-                                !review.stale &&
-                                !review.staffConclusion ? (
-                                <PillButton
-                                  size="compact"
-                                  variant="secondary"
-                                  onClick={() =>
-                                    openProposalReview(proposal as ProposalView)
-                                  }
-                                >
-                                  Review
-                                </PillButton>
-                              ) : proposal.status === "reviewed" &&
-                                conclusion === "meets_requirements" ? (
-                                <PillButton
-                                  size="compact"
-                                  onClick={() =>
-                                    void selectProposal({
-                                      proposalId: proposal._id,
-                                    })
-                                  }
-                                >
-                                  Select
-                                </PillButton>
-                              ) : null}
-                              {latestExtraction?.stuck ||
-                              latestExtraction?.status === "failed" ? (
-                                <PillButton
-                                  size="compact"
-                                  variant="secondary"
-                                  disabled={workingProposalAction !== null}
-                                  onClick={() =>
-                                    void runProposalMutation(
-                                      `retry:${proposal._id}`,
-                                      () =>
-                                        retryProposalExtraction({
-                                          proposalId: proposal._id,
-                                        }),
-                                      "Proposal extraction queued",
-                                      "Could not retry proposal extraction",
-                                    )
-                                  }
-                                >
-                                  Retry extraction
-                                </PillButton>
-                              ) : latestExtraction?.status === "pending" ||
-                                latestExtraction?.status === "running" ? (
-                                <PillButton
-                                  size="compact"
-                                  variant="secondary"
-                                  disabled={workingProposalAction !== null}
-                                  onClick={() =>
-                                    void runProposalMutation(
-                                      `cancel:${proposal._id}`,
-                                      () =>
-                                        cancelProposalExtraction({
-                                          proposalId: proposal._id,
-                                        }),
-                                      "Proposal extraction cancelled",
-                                      "Could not cancel proposal extraction",
-                                    )
-                                  }
-                                >
-                                  Cancel extraction
-                                </PillButton>
-                              ) : null}
-                              {proposal.status !== "selected" &&
-                              proposal.status !== "archived" ? (
-                                <PillButton
-                                  size="compact"
-                                  variant="destructive"
-                                  disabled={workingProposalAction !== null}
-                                  onClick={() =>
-                                    void runProposalMutation(
-                                      `archive:${proposal._id}`,
-                                      () =>
-                                        archiveProposal({
-                                          proposalId: proposal._id,
-                                        }),
-                                      "Proposal archived",
-                                      "Could not archive the proposal",
-                                    )
-                                  }
-                                >
-                                  Archive
-                                </PillButton>
-                              ) : null}
-                            </div>
-                          ) : null}
+                          <span className="text-muted-foreground">
+                            {proposal.documents.length}
+                          </span>
                         </TableCell>
                       </TableRow>
                     );
@@ -2046,7 +2232,7 @@ export function ProcurementRequestWorkspace({
         </div>
       ) : null}
 
-      {view === "market" ? (
+      {view === "proposals" ? (
         details.outreaches.length === 0 ? (
           <EmptyStateCard
             title="No brokers contacted yet"
@@ -2059,14 +2245,23 @@ export function ProcurementRequestWorkspace({
                 <TableRow>
                   <TableHead>Broker</TableHead>
                   <TableHead>Status</TableHead>
-                  {!readOnly ? <TableHead>Proposal</TableHead> : null}
                   <TableHead>Updated</TableHead>
-                  <TableHead className="w-0" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {outreachesWithoutProposal.map((outreach) => (
-                  <TableRow key={outreach._id}>
+                  <TableRow
+                    key={outreach._id}
+                    tabIndex={0}
+                    onClick={() => openOutreachEditor(outreach)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openOutreachEditor(outreach);
+                      }
+                    }}
+                    className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  >
                     <TableCell className="min-w-52 whitespace-normal">
                       <p
                         className={`text-foreground ${typeStyle("body.medium")}`}
@@ -2084,29 +2279,8 @@ export function ProcurementRequestWorkspace({
                     <TableCell>
                       <OutreachStatusTag status={outreach.status} />
                     </TableCell>
-                    {!readOnly ? (
-                      <TableCell>
-                        <ProposalDropzone
-                          requestId={requestId}
-                          outreach={outreach}
-                        />
-                      </TableCell>
-                    ) : null}
                     <TableCell className="text-muted-foreground">
                       {formatDisplayDate(outreach.updatedAt, "—")}
-                    </TableCell>
-                    <TableCell>
-                      {readOnly ? null : (
-                        <PillButton
-                          type="button"
-                          variant="icon"
-                          iconOnly
-                          label={`Edit ${outreach.brokerName}`}
-                          onClick={() => openOutreachEditor(outreach)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </PillButton>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -2133,7 +2307,6 @@ export function ProcurementRequestWorkspace({
                   <TableHead>Status</TableHead>
                   <TableHead>Access</TableHead>
                   <TableHead>Updated</TableHead>
-                  <TableHead className="w-0" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2150,7 +2323,18 @@ export function ProcurementRequestWorkspace({
                       /\.(avif|gif|jpe?g|png|webp)$/i.test(file.name)),
                   );
                   return (
-                    <TableRow key={item._id}>
+                    <TableRow
+                      key={item._id}
+                      tabIndex={0}
+                      onClick={() => openFileEditor(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openFileEditor(item);
+                        }
+                      }}
+                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    >
                       <TableCell className="min-w-64 whitespace-normal">
                         <div className="flex items-center gap-3">
                           <span className="text-muted-foreground">
@@ -2163,40 +2347,11 @@ export function ProcurementRequestWorkspace({
                             )}
                           </span>
                           <div className="min-w-0">
-                            {file?.url && (pdf || image) ? (
-                              <button
-                                type="button"
-                                onClick={() => previewFile(file)}
-                                className={`block max-w-full truncate text-left text-foreground underline-offset-4 hover:underline ${typeStyle("body.medium")}`}
-                              >
-                                {item.label}
-                              </button>
-                            ) : file?.url ? (
-                              <a
-                                href={file.url}
-                                download={file.name}
-                                className={`block max-w-full truncate text-foreground underline-offset-4 hover:underline ${typeStyle("body.medium")}`}
-                              >
-                                {item.label}
-                              </a>
-                            ) : (
-                              <span
-                                className={`text-foreground ${typeStyle("body.medium")}`}
-                              >
-                                {item.label}
-                              </span>
-                            )}
-                            {file ? (
-                              <p
-                                className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                              >
-                                {item.sourceEmailMessageId ||
-                                file.uploadedBySide === "procurement_email"
-                                  ? "Email attachment"
-                                  : "Operator upload"}
-                                : {file.name}
-                              </p>
-                            ) : null}
+                            <span
+                              className={`text-foreground ${typeStyle("body.medium")}`}
+                            >
+                              {item.label}
+                            </span>
                           </div>
                         </div>
                       </TableCell>
@@ -2215,30 +2370,15 @@ export function ProcurementRequestWorkspace({
                       <TableCell className="text-muted-foreground">
                         {[
                           item.clientVisible ? "Client" : null,
-                          item.brokerRelease === "attached"
-                            ? "Broker attachment"
-                            : item.brokerRelease === "listed"
-                              ? "Broker list"
-                              : null,
+                          item.brokerRelease && item.brokerRelease !== "hidden"
+                            ? "Broker"
+                            : null,
                         ]
                           .filter(Boolean)
                           .join(" · ") || "Private"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {formatDisplayDate(item.updatedAt, "—")}
-                      </TableCell>
-                      <TableCell>
-                        {readOnly ? null : (
-                          <PillButton
-                            type="button"
-                            variant="icon"
-                            iconOnly
-                            label={`Edit ${item.label}`}
-                            onClick={() => openFileEditor(item)}
-                          >
-                            <Pencil className="size-3.5" />
-                          </PillButton>
-                        )}
                       </TableCell>
                     </TableRow>
                   );

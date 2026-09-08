@@ -463,7 +463,10 @@ export const updateSections = mutation({
         source: "manual",
       });
     }
-    return { ok: true };
+    return {
+      ok: true,
+      packetRevision: (await ctx.db.get(args.requestId))?.packetRevision ?? 0,
+    };
   },
 });
 
