@@ -42,6 +42,7 @@ and concise labels. Explicit creation and consequential actions remain explicit.
 | CONNECT | Client / Vendors and Clients | Inspect empty/populated lists, create local synthetic connection request, view/revoke pending request, inspect shared policy access; exercise invalid public request token. |
 | ORG | Client / Settings organization | Edit profile/company facts, verify autosave and required-field errors; branding and access stay standalone. |
 | SETTINGS | Client / Agent and workflow settings | Exercise each visible tab, wiki/channels/behavior, certificate settings, notifications and beta flags; persist reversible local toggles and restore. |
+| NOTIFICATIONS | Client / Notification tray | Inspect empty/populated tray, open a scoped record link, mark individual/all items read, reload and verify persisted state; synthetic local items only. |
 | INTEGRATE | Client / Mailboxes and integrations | Open create/detail panels, validate missing/invalid input, inspect disconnect/recovery and OAuth denial; mark external authentication untested without a disposable account. |
 | CHANNEL | Operator / Channels | Inspect Slack/iMessage/MCP setup and linked identity, edit reversible local identity and restore; exercise mock Slack where configured; do not send to live channels. |
 | ROUTING | Operator / Routing | Inspect Routing/Models/Tools, refresh, filters and details; verify long data/mobile rendering. Shared router changes are read-only during local QA. |
@@ -60,18 +61,19 @@ baseline evidence, not a substitute for this run's regression checks.
 | AUTH, ONBOARD | Passed exercised local paths | Invalid email/OTP, valid captured OTP recovery, protected route/logout, fresh signup and reload passed. Fixed retired operator-only upload offered during client onboarding and removed single-choice signup detour. Expiry/rate-limit simulation remains untested. |
 | BROKER, BPROFILE | Partial pass | Autosave/error/filter persistence and role boundary passed. Standalone supplier creation and SVG logo upload passed; retaining the new editor while its status is filtered out passed. Same-field concurrent edits remain untested. |
 | TEAM | Passed exercised shared workflows | Client and broker keyboard member editing/invite/cancel passed. Client acceptance, role changes, primary contact, email-change cancellation, removal/fallback passed. Hidden service-account admin regression covered. |
-| THREAD | Passed exercised local workflows | Sidebar keyboard opening, archive/restore, full conversation navigation and grounded operator policy task passed after local model setup and rich-tool argument fix. Cancellation still to run. |
+| THREAD | Passed exercised local workflows | Sidebar keyboard opening, archive/restore, full conversation navigation and grounded operator policy task passed after local model setup and rich-tool argument fix. Stop persists as cancelled after reload; a subsequent turn succeeds. |
 | PROFILE | Partial pass | Operator/client name persistence, invalid-phone recovery, appearance and mobile rendering passed. Privacy/email panels inspected; irreversible account deletion excluded. |
 | POLICY, CERT, FILE | Partial pass | Client read-only policy details/source preview, client allowed-file isolation/download, synthetic certificate generation/version 2/download/archive/restore passed. Fixed PDF Download opening tabs and client read-only visibility switch changing visually. Operator storage-failure/retry/extraction, correction persistence and file lifecycle passed; requirement-backed certificate launch correctly blocked when evidence is insufficient. |
-| WIKI, ORG, SETTINGS | Passed exercised edits; follow-up underway | Wiki immediate-close/offline/retry and required-name validation passed; behavior/certificate/beta toggles restored. Notification autosave and restoring inherited defaults passed. |
+| WIKI, ORG, SETTINGS | Passed exercised edits | Wiki immediate-close/offline/retry and required-name validation passed; behavior/certificate/beta toggles restored. Notification autosave and restoring inherited defaults passed. |
 | INTEGRATE, CONNECT | Partial / external prerequisite blocks | Invalid vendor input and local pending invitation creation passed; cancel/sidebar and invalid mailbox inputs fixed and browser verified. Live IMAP/OAuth/Slack reinstall requires disposable credentials. |
-| CHANNEL, ROUTING, TELEMETRY | Partial pass | Local Slack identity save/reload/restore, MCP setup copy, read-only router refresh/filter, Models desktop/mobile, telemetry search/detail passed. Operator model configured only in native-local Convex. Mock channel turn, terminal turn and MCP client authorization remain. |
-| PUBLIC | Passed negative/public-report paths | Invalid share/connection tokens, missing/unknown OAuth client fail safely; routing-weather report responsive. Valid packet snapshot remains in PACKET lane. |
-| CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload remains in POLICY. |
+| CHANNEL, ROUTING, TELEMETRY | Passed exercised local flows | Local identities, read-only routing/models/telemetry, grounded mock Slack and operator terminal turns, browser thread mirrors, real local MCP consent/read/revocation passed. Native-local model configuration only; live channels excluded. |
+| PUBLIC | Passed exercised public paths | Invalid/revoked links and missing/unknown OAuth clients fail safely; routing-weather report responsive. Valid packet snapshot download, immutability and private-file exclusion passed. |
+| CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload/retry is recorded in POLICY. |
 | REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
-| AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits, survives reload; cancellation, archive/restore and mobile rendering passed. No outbound messages or record changes requested. Attachment-specific chat case remains. |
-| PACKET, PROPOSAL, EMAIL | In progress | Current procurement browser regression and synthetic forwarded-email replay underway. |
-| LEADS | Empty state only | No local synthetic lead yet; populated lifecycle remains. |
+| AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits and survives reload; cancellation, archive/restore and mobile rendering passed. A synthetic PDF can be staged/removed/restaged, read accurately, reopened from history and previewed after reload. |
+| PACKET, PROPOSAL, EMAIL | Passed exercised local flows | Section autosave, immutable/revoked snapshots, public download/privacy, proposal gap/staleness, two-PDF extraction/review and email replay/classification/revision/download passed. Concurrency/failed-switch safeguards covered by focused tests; advanced edges listed below. |
+| LEADS | Passed synthetic populated lifecycle | Keyboard detail opening, stored lead facts/conversation, delete cancellation, confirmed deletion and mobile rendering passed. Internal fixture creation does not prove live public-demo ingress. |
+| NOTIFICATIONS | Passed local tray workflow | Empty baseline and two synthetic user-scoped items; opening a thread marks one read, mark-all clears the badge, both read states persist after reload. No outbound deliveries. |
 
 ## Batch 1: broker editing and reusable method
 
@@ -110,8 +112,8 @@ Screenshots: `thread-restored.png`, `thread-mobile.png`, `team-autosave-after.pn
 `team-pending-invitation.png`, and `team-mobile.png`. The local QA invitation was
 cancelled and the client's title restored. Operator chat testing produced an
 honest failure: local `resolveOperatorAgentRoute` reports no configured model.
-This still needs local configuration and rerun; it is not a successful agent
-workflow. Client settings navigation discovery covered every exposed settings
+That attempt was not a successful agent workflow; local model configuration
+and the grounded rerun passed in Batch 3. Client settings navigation discovery covered every exposed settings
 tab, with screenshots/text recorded; those loads are not mutation coverage.
 
 A second-person invite exposed hidden Slack service-account membership in
@@ -132,11 +134,11 @@ records remain local. Do not reset the fixture database to clean up QA.
 
 ## Browser continuation
 
-Visible operator Chrome is on CDP port 9222. Visible client Chrome is on 9223
-with persistent profile `.context/qa/platform/client-chrome`; use it for the
-remaining client workflows without repeated sign-in. The first independent
-contexts were closed after each run. Their saved storage snapshots may be stale;
-prefer the live persistent sessions. A missing fresh OTP capture is an execution
+Persistent operator Chrome uses CDP9222/profile `.context/qa/chrome`; client uses
+CDP9223/profile `.context/qa/platform/client-chrome`; the procurement lane uses
+CDP9224/profile `.context/qa/platform/public-chrome`. Browsers close at safe
+checkpoints to release memory. Reopen only the active role profile. Earlier
+storage snapshots may be stale. A missing fresh OTP capture is an execution
 failure, not evidence that authentication or rate-limit behavior passed.
 
 ## Batch 3: local workflow repairs
@@ -263,3 +265,81 @@ rendered client/record/editor/upload light/dark/mobile cases. The independent
 deslop review removed the redundant archive mutation path and found the disabled
 drop and destructive-icon issues before commit. The memory watcher remained
 active; idle role browsers were closed at successful checkpoints.
+
+## Later memory checkpoint
+
+At 3.35 GiB available, new browser work paused. The procurement browser closed
+after its completed email assertions; the channel browser closed after lead
+cleanup. Extraction logs and the local proposal job audit confirmed no pending
+extraction before the development group restarted. Available memory recovered
+to 14.18 GiB. Persistent sessions and database contents were retained. The
+Turbopack setting controls its cache target, not total Next server RSS; stagger
+type checks, browser lanes and builds even when that setting is enabled.
+
+## Batch 5: procurement correspondence and channel completion
+
+Imported email rows now open by keyboard. Classification autosaves; close and
+email switching wait for a successful save. Failed drafts remain visible,
+acknowledged fields no longer overwrite a later operator's changes, and newer
+edits survive an in-flight save. Read-only previews close normally. Downloads
+use the shared download owner. Filing attachments against a reviewed proposal
+explicitly creates a revision with the exact superseded proposal ID; selected
+proposals remain protected. Redundant classification/reconciliation headings
+are removed, with decision-relevant ambiguity and revision information retained.
+
+The packet pass verified two-section persistence, immutable old snapshots,
+revoked rotated links, anonymous PDF downloads and private-file exclusion.
+Original packet text was restored. Two synthetic proposal PDFs completed real
+local extraction and review; insufficient evidence remains unverified and no
+proposal was confirmed, selected or bound. The seeded review correctly became
+stale after packet changes. Synthetic forwarded-email replay remained one event.
+Both Client/Broker file switches persisted through close and reload; a regenerated
+public snapshot excluded the file while sharing was disabled and included it
+again after restoring the original settings.
+
+Mock Slack and operator terminal turns returned grounded policy answers, with
+matching browser history. Slack evidence recovery now names an available policy
+tool rather than allowing a reaction instruction to consume its retry; tests
+also prove a prior write prevents retry. Terminal admission uses Spectrum's
+transport predicates, fixing silently ignored terminal messages. Nullable policy
+filters now behave as omitted filters, while actual expiry windows still apply.
+
+Real local MCP consent, read tools and policy lookup passed. Revocation accepts
+form-encoded access/refresh tokens and invalidates their stored pair, preserving
+legacy Bearer requests. A supplied mismatched client cannot revoke another
+client's token. Expected grant failures use structured Convex errors, so a revoked
+refresh token returns OAuth `400 invalid_grant`. The final native check confirmed
+policy lookup success, revoke 200, subsequent access 401 and refresh 400. All
+temporary OAuth tokens were revoked; raw tokens were not retained in artifacts.
+
+Demo leads now expose recorded facts above the conversation and keep deletion
+in the sidebar footer with confirmation. Synthetic lead deletion/cancellation,
+keyboard and mobile cases passed. The notification tray persisted individual
+read/read-all state. Client PDF chat staging, exact attachment facts, preview,
+reload and archive passed. Operator cancellation persisted across reload and
+allowed a later turn; archive now uses the destructive footer treatment.
+
+Final evidence: `procurement-regression.md`, `channel-leads-findings.md`,
+`thread-attachment-cancel-findings.md`, `mcp-form-revoke-retest.json`,
+`public-procurement-email-final-mobile-dark.png`, `leads-after-mobile.png` and
+`channel-terminal-browser-mirror.png` under `.context/qa/platform/`.
+
+Remaining coverage limits: no live IMAP/OAuth-provider connection, Slack
+reinstallation, Photon traffic or public-demo provider ingress; these need
+disposable external accounts/authorization. No binding, selection or account
+deletion was attempted. Expired-by-clock snapshots/OTPs, same-field broker races,
+two-browser stale packet editing and broker-specific snapshot variants were not
+re-exercised in this continuation. Email race/failure boundaries have automated
+coverage; the browser verified normal classification persistence. The lead
+“dark” screenshot was still light, so lead dark mode is explicitly not claimed.
+The source reports record retained synthetic fixtures and restored values.
+
+Final validation passed: 66 focused regressions across 15 files, root and Convex
+TypeScript, changed-file ESLint, the iMessage worker build, production Next build,
+shared-package version alignment, skill validation and diff whitespace checks.
+Frontend-design inspected actual desktop/mobile and applicable dark screenshots;
+deslop review checked draft/write boundaries, revision guards, token revocation
+and transport isolation. All 28 workflow groups now have recorded local outcomes
+and explicit coverage limits. Observed actionable defects from this run are
+resolved. Browser profiles/database remain intact; temporary browsers and the
+terminal closed before final validation. The memory watcher continues sampling.

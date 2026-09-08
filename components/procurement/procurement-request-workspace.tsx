@@ -49,6 +49,7 @@ import {
   procurementOutreachStatusLabel,
   procurementRequestStatusLabel,
   writableProcurementRequestStatus,
+  type ProcurementEmailDrawerHandle,
   type ProcurementFilePurpose,
   type ProcurementFileStatus,
   type ProcurementOutreachStatus,
@@ -1811,11 +1812,16 @@ export function ProcurementRequestWorkspace({
     requestId,
   ]);
 
+  const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
   const openEmail = useCallback(
-    (emailThreadId: Id<"procurementEmailThreads">) => {
+    async (emailThreadId: Id<"procurementEmailThreads">) => {
+      if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
+        return;
       closePdf();
       onRightPanel(
         <ProcurementEmailDrawer
+          key={emailThreadId}
+          ref={emailDrawerRef}
           emailThreadId={emailThreadId}
           requests={requestOptions}
           readOnly={readOnly}
@@ -2433,15 +2439,24 @@ export function ProcurementRequestWorkspace({
                 </TableHeader>
                 <TableBody>
                   {details.emailThreads.map((email) => (
-                    <TableRow key={email._id}>
+                    <TableRow
+                      key={email._id}
+                      tabIndex={0}
+                      className="cursor-pointer"
+                      onClick={() => openEmail(email._id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openEmail(email._id);
+                        }
+                      }}
+                    >
                       <TableCell className="min-w-64 whitespace-normal">
-                        <button
-                          type="button"
-                          onClick={() => openEmail(email._id)}
-                          className={`text-left text-foreground underline-offset-4 hover:underline ${typeStyle("body.medium")}`}
+                        <p
+                          className={`text-foreground ${typeStyle("body.medium")}`}
                         >
                           {email.subject}
-                        </button>
+                        </p>
                         <p
                           className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
                         >

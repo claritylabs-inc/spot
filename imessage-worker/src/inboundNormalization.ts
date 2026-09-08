@@ -1,5 +1,14 @@
+import { imessage } from "@spectrum-ts/imessage";
+import { terminal } from "@spectrum-ts/terminal";
 import type { ImessageAttachment } from "./convex.js";
 import type { InboundAttachmentContent } from "./attachmentPolicy.js";
+
+export function isInboundTransportMessage(
+  transport: "terminal" | "imessage",
+  message: unknown,
+) {
+  return transport === "terminal" ? terminal.is(message) : imessage.is(message);
+}
 
 type SpectrumAttachmentContent = InboundAttachmentContent & {
   type: "attachment";

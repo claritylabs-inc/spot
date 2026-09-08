@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   normalizeInboundTurn,
+  isInboundTransportMessage,
   type InboundRecoveryClient,
 } from "./inboundNormalization.js";
 import type { InboundAttachmentContent } from "./attachmentPolicy.js";
@@ -121,4 +122,22 @@ describe("normalizeInboundTurn", () => {
       error: "download unavailable",
     });
   });
+});
+
+test("transport admission accepts Spectrum Terminal identity and keeps terminal and iMessage isolated", () => {
+  expect(isInboundTransportMessage("terminal", { platform: "Terminal" })).toBe(
+    true,
+  );
+  expect(isInboundTransportMessage("imessage", { platform: "iMessage" })).toBe(
+    true,
+  );
+  expect(isInboundTransportMessage("terminal", { platform: "iMessage" })).toBe(
+    false,
+  );
+  expect(isInboundTransportMessage("imessage", { platform: "Terminal" })).toBe(
+    false,
+  );
+  expect(isInboundTransportMessage("terminal", { platform: "unknown" })).toBe(
+    false,
+  );
 });

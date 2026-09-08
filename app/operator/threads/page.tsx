@@ -154,7 +154,7 @@ export default function OperatorThreadsPage() {
                   Open conversation
                 </PillButton>
                 <PillButton
-                  variant="secondary"
+                  variant={selected.archivedAt ? "secondary" : "destructive"}
                   disabled={updatingThreadId !== null}
                   onClick={() => void updateArchiveState(selected.id)}
                 >

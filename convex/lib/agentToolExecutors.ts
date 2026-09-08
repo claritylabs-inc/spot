@@ -480,15 +480,19 @@ export function buildAgentToolExecutors(
       ...lookupPolicy,
       execute: async (
         params: {
-          query?: string;
-          policyIds?: string[];
-          expiringWithinDays?: number;
-          lineOfBusiness?: string;
-          policyType?: string;
-          carrier?: string;
+          query?: string | null;
+          policyIds?: string[] | null;
+          expiringWithinDays?: number | null;
+          lineOfBusiness?: string | null;
+          policyType?: string | null;
+          carrier?: string | null;
         },
         executionOptions?: ToolExecutionOptions,
       ) => {
+        const expiringWithinDays = params.expiringWithinDays ?? undefined;
+        const lineOfBusiness =
+          params.lineOfBusiness ?? params.policyType ?? undefined;
+        const carrier = params.carrier ?? undefined;
         const policies = await listPoliciesForReadableOrgs(ctx, options);
         const { policySearchScore } = await import("./aiUtils");
         const exactPolicyIds = new Set((params.policyIds ?? []).slice(0, 5));
@@ -499,9 +503,9 @@ export function buildAgentToolExecutors(
                   policy._id && exactPolicyIds.has(String(policy._id)),
               )
             : policies;
-        if (params.expiringWithinDays !== undefined) {
+        if (expiringWithinDays !== undefined) {
           const today = dayjs().startOf("day");
-          const end = today.add(params.expiringWithinDays, "day").endOf("day");
+          const end = today.add(expiringWithinDays, "day").endOf("day");
           candidates = candidates.filter((policy) => {
             if (
               !policy.expirationDate ||
@@ -523,21 +527,19 @@ export function buildAgentToolExecutors(
             score: policySearchScore(
               policy,
               params.query ?? "",
-              params.lineOfBusiness ?? params.policyType,
-              params.carrier,
+              lineOfBusiness,
+              carrier,
             ),
           }))
           .filter((match) => match.score > 0)
           .sort((left, right) => right.score - left.score);
-        const hasStructuredFilter = Boolean(
-          params.lineOfBusiness ?? params.policyType ?? params.carrier,
-        );
+        const hasStructuredFilter = Boolean(lineOfBusiness ?? carrier);
         let matches: ListedPolicyForTool[];
         if (exactPolicyIds.size > 0) {
           matches = candidates;
         } else if (scored.length > 0) {
           matches = scored.map((match) => match.policy);
-        } else if (params.expiringWithinDays !== undefined) {
+        } else if (expiringWithinDays !== undefined) {
           matches = candidates;
         } else if (hasStructuredFilter) {
           matches = [];
@@ -554,7 +556,7 @@ export function buildAgentToolExecutors(
               (order.get(String(right._id)) ?? Number.MAX_SAFE_INTEGER),
           );
         } else if (
-          params.expiringWithinDays !== undefined &&
+          expiringWithinDays !== undefined &&
           scored.length === 0
         ) {
           matches = [...matches].sort(

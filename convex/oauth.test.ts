@@ -1,23 +1,20 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import { ConvexError } from "convex/values";
+import http from "./http";
 import dayjs from "dayjs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import type { Id } from "./_generated/dataModel";
-import {
-  createAuthorizationCode,
-  exchangeAuthCode,
-  refreshAccessToken,
-  registerClient,
-  validateAccessTokenWithScopes,
-} from "./oauth";
+import type { ActionCtx } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.ts");
-const createAuthorizationCodeFn = createAuthorizationCode as any;
-const exchangeAuthCodeFn = exchangeAuthCode as any;
-const refreshAccessTokenFn = refreshAccessToken as any;
-const registerClientFn = registerClient as any;
-const validateAccessTokenWithScopesFn = validateAccessTokenWithScopes as any;
+const createAuthorizationCodeFn = api.oauth.createAuthorizationCode;
+const exchangeAuthCodeFn = internal.oauth.exchangeAuthCode;
+const refreshAccessTokenFn = internal.oauth.refreshAccessToken;
+const registerClientFn = internal.oauth.registerClient;
+const validateAccessTokenWithScopesFn = internal.oauth.validateAccessTokenWithScopes;
 const REDIRECT_URI = "https://app.example/callback";
 
 async function sha256Hex(input: string) {
@@ -194,6 +191,106 @@ describe("oauth scopes", () => {
     expect(codes).toHaveLength(0);
   });
 
+});
+
+describe("OAuth token revocation", () => {
+  test.each(["access_token", "refresh_token", "bearer"] as const)(
+    "revokes the access/refresh pair through HTTP using %s",
+    async (kind) => {
+      const { t, userId, clientId, codeChallenge, verifier } =
+        await seedOAuthClientAndUser();
+      const codeRaw = await createCode({ t, userId, clientId, codeChallenge });
+      const tokens = await t.mutation(exchangeAuthCodeFn, {
+        codeRaw,
+        clientId,
+        redirectUri: REDIRECT_URI,
+        codeVerifier: verifier,
+      });
+      expect(await validateRawAccessToken(t, tokens.access_token)).not.toBeNull();
+
+      const response = await t.fetch("/oauth/revoke", {
+        method: "POST",
+        ...(kind === "bearer"
+          ? { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+          : {
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                token: tokens[kind],
+                client_id: clientId,
+                token_type_hint: "ignored-hint",
+              }).toString(),
+            }),
+      });
+      expect(response.status).toBe(200);
+      expect(await validateRawAccessToken(t, tokens.access_token)).toBeNull();
+      await expect(
+        t.mutation(refreshAccessTokenFn, {
+          refreshTokenRaw: tokens.refresh_token,
+          clientId,
+        }),
+      ).rejects.toThrow("invalid_grant");
+
+    },
+  );
+
+  test("maps a structured invalid grant from the mutation to an OAuth client error", async () => {
+    const t = convexTest(schema, modules);
+    const route = http.lookup("/oauth/token", "POST");
+    if (!route) throw new Error("Missing OAuth token route");
+    const action = route[0] as typeof route[0] & {
+      _handler: (ctx: ActionCtx, request: Request) => Promise<Response>;
+    };
+    // Supply the SDK-decoded error: convex-test retains serialized error data
+    // when its HTTP action directly invokes a mutation.
+    const result = await t.action(async (ctx) => {
+      const response = await action._handler(
+        {
+          ...ctx,
+          runMutation: vi.fn().mockRejectedValue(new ConvexError("invalid_grant")),
+        },
+        new Request("https://spot.example/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "grant_type=refresh_token&refresh_token=revoked&client_id=qa",
+        }),
+      );
+      return { status: response.status, body: await response.json() };
+    });
+    expect(result).toEqual({ status: 400, body: { error: "invalid_grant" } });
+  });
+
+  test("rejects a mismatched client without revoking its token; unknown tokens are idempotent", async () => {
+    const { t, userId, clientId, codeChallenge, verifier } =
+      await seedOAuthClientAndUser();
+    const codeRaw = await createCode({ t, userId, clientId, codeChallenge });
+    const tokens = await t.mutation(exchangeAuthCodeFn, {
+      codeRaw,
+      clientId,
+      redirectUri: REDIRECT_URI,
+      codeVerifier: verifier,
+    });
+    const response = await t.fetch("/oauth/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        token: tokens.refresh_token,
+        client_id: "another-client",
+      }).toString(),
+    });
+    expect(response.status).toBe(400);
+    expect(await validateRawAccessToken(t, tokens.access_token)).not.toBeNull();
+
+    const unknown = () =>
+      t.fetch("/oauth/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "token=unknown-token",
+      });
+    expect((await unknown()).status).toBe(200);
+    expect((await unknown()).status).toBe(200);
+    expect(await validateRawAccessToken(t, tokens.access_token)).not.toBeNull();
+    expect((await t.fetch("/oauth/revoke", { method: "POST" })).status).toBe(400);
+  });
 });
 
 describe("operator oauth principals", () => {

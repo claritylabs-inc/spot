@@ -5,10 +5,12 @@ This reference lists the tools that Spot exposes to its operator agent, tenant-f
 ## Source owners and maintenance
 
 - Operator-agent tools are defined only in `convex/lib/operatorAgentToolRegistry.ts`. `convex/lib/operatorMcpToolCatalog.ts` projects that registry into operator MCP and adds operator-run lifecycle tools.
-- Shared tenant conversational tools are defined in `convex/lib/chatTools.ts` and executed by `convex/lib/agentToolExecutors.ts` plus `convex/lib/vendorComplianceTools.ts`.
+- Shared tenant conversational tools are defined in `convex/lib/chatTools.ts` and executed by `convex/lib/agentToolExecutors.ts` plus `convex/lib/vendorComplianceTools.ts`. Policy lookup treats nullable optional filters as omitted, including the expiry window, before applying exact policy IDs and tenant scope.
 - Channel-specific tenant tools are assembled in `convex/actions/processThreadChat.ts`, `convex/actions/handleInboundEmail.ts`, `convex/actions/handleInboundImessage.ts`, and `convex/actions/mcpChat.ts`.
+- `convex/lib/channelAgentRunner.ts` enforces current-turn evidence for policy answers. Its single recovery attempt exposes only available read-only policy tools, forces the first evidence tool by name (preferring `lookup_policy` discovery), and runs only after replay-safe earlier tools; existing tenant authorization remains in each executor.
 - Internal mailbox- and email-subagent tools live in `convex/actions/mailboxCoordinator.ts` and `convex/lib/emailSubagent.ts`.
 - Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the typed `MCP_TOOLS` catalog in `convex/http.ts`.
+- MCP OAuth revocation accepts form-encoded access or refresh tokens (and legacy Bearer access tokens), invalidates the stored token pair, and rejects a supplied mismatched client ID before any change.
 
 When any source above adds, removes, renames, or materially changes a tool, update this inventory in the same change. Availability, capability, effect, required role, confirmation policy, execution boundary, and MCP access changes count as material.
 

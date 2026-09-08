@@ -73,6 +73,8 @@ new workflow or validation job. The script uses the repository's Node/dayjs.
 - Periodically recycle the development server after a broad route sweep if
   closing idle browsers does not recover sufficient memory. Preserve the local
   database and persistent Chrome profiles, and wait for backend readiness.
+  A bundler cache target does not cap total server RSS. Coordinate browser lanes
+  and type/build jobs; do not start several memory-heavy checks together.
 - Run production builds with development services stopped when memory is tight.
   Never clear the database, delete browser profiles, or kill pending writes as
   a memory cleanup. Do not use kernel cache dropping as a substitute for reducing
