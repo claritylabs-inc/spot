@@ -38,7 +38,7 @@ Each file has one clear responsibility. No file exceeds ~400 new lines of added 
 
 Run:
 ```bash
-cd /Users/adyan/CascadeProjects/spot && git branch --show-current && git status --short
+cd /Users/adyan/code/experiments/spot && git branch --show-current && git status --short
 ```
 
 Expected: on `main` with some uncommitted changes (`convex/_generated/api.d.ts`, `convex/linq.ts`, new `app/banner/`, `convex/sandbox.ts`).
@@ -63,7 +63,7 @@ Expected: switched to a new branch. All subsequent commits land here until the f
 - [ ] **Step 0.3: Verify dev deployment reachable**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful sync to `kindhearted-labrador-258`. If it prompts for login, complete it. This confirms the dev deployment is live before we start changing things.
@@ -99,7 +99,7 @@ Also update the inline state comment on line 9 to include the new state:
 - [ ] **Step 2: Sync to dev deployment**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful schema push to `kindhearted-labrador-258`. Because all new fields are optional, existing documents migrate automatically. No prompts.
@@ -268,7 +268,7 @@ Make sure the imports at the top of `messages.ts` include `internalQuery` from `
 - [ ] **Step 4: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful push. No errors.
@@ -415,7 +415,7 @@ export async function debounceInbound(
 - [ ] **Step 4: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful push.
@@ -532,7 +532,7 @@ export const classifyFirstMessage = internalAction({
 - [ ] **Step 2: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful push.
@@ -803,7 +803,7 @@ export const updateState = internalMutation({
 - [ ] **Step 3: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful push.
@@ -1155,7 +1155,7 @@ Similarly check `handleInsuranceSlipResponse`, `handleEmailConfirmation`, `handl
 - [ ] **Step 4: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: successful push. If you get a TypeScript error about an action being undefined, it's probably a case where an action ref was wrong — check `internal.process.handleXxx` paths match actual exports.
@@ -1219,7 +1219,7 @@ export const sendWelcome = internalAction({
 - [ ] **Step 2: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 - [ ] **Step 3: Commit**
@@ -1456,7 +1456,7 @@ export const resetCategoryAttempts = internalMutation({
 - [ ] **Step 4: Sync to dev + smoke test**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 From the Convex dashboard, call `process:handleCategorySelection` directly with these inputs on your existing test user (who has state `awaiting_category`):
@@ -1506,7 +1506,7 @@ git commit -m "fix(spot): category selection loop — no-policy scan + attempt c
 - [ ] **Step 1: Read current `nudgeForPolicy` body**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && grep -n "nudgeForPolicy" convex/process.ts | head -5
+cd /Users/adyan/code/experiments/spot && grep -n "nudgeForPolicy" convex/process.ts | head -5
 ```
 
 Open `convex/process.ts` at the `nudgeForPolicy` definition. Read the full function so you can understand the existing branches (retry intent, category change, etc.) before editing.
@@ -1527,7 +1527,7 @@ If unsure about a specific branch, err toward shorter + lowercase. This is a voi
 - [ ] **Step 3: Sync to dev**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 - [ ] **Step 4: Commit**
@@ -1552,7 +1552,7 @@ Voice pass on remaining hardcoded strings. All edits are string-level.
 - [ ] **Step 1: Find and rewrite post-extraction summary**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && grep -n "sendBurst\|sendAndLog" convex/process.ts | head -40
+cd /Users/adyan/code/experiments/spot && grep -n "sendBurst\|sendAndLog" convex/process.ts | head -40
 ```
 
 Find the location where post-extraction results are announced to the user (likely in `processPolicy` or similar — search for `summary`, `buildPolicySummary`, or strings like "Here's what I see"). Rewrite to 3-4 short bubbles:
@@ -1618,7 +1618,7 @@ await sendBurst(ctx, userId, phone, [
 - [ ] **Step 6: Kill remaining "Haha no worries" / "Great question!" / assistant-tic strings**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && grep -n -i "haha\|no worries\|great question\|i'd be happy\|absolutely\|certainly" convex/process.ts
+cd /Users/adyan/code/experiments/spot && grep -n -i "haha\|no worries\|great question\|i'd be happy\|absolutely\|certainly" convex/process.ts
 ```
 
 Review each hit. Replace or delete per the voice codex. Utility command outputs (`/debug`, `/logs`, `/autosend`) should stay functional but lowercase.
@@ -1626,7 +1626,7 @@ Review each hit. Replace or delete per the voice codex. Utility command outputs 
 - [ ] **Step 7: Sync + commit**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 git add convex/process.ts
 git commit -m "feat(spot): voice pass on post-extraction, slip, merge, email prompts
 
@@ -1648,7 +1648,7 @@ The existing agentic Q&A uses `buildAgentSystemPrompt` from `@claritylabs/cl-sdk
 - [ ] **Step 1: Locate `handleQuestion`**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && grep -n "handleQuestion\|buildAgentSystemPrompt" convex/process.ts | head -10
+cd /Users/adyan/code/experiments/spot && grep -n "handleQuestion\|buildAgentSystemPrompt" convex/process.ts | head -10
 ```
 
 Find where the system prompt is assembled for the agentic call. There's likely something like:
@@ -1700,7 +1700,7 @@ const systemPrompt = `${VOICE_CODEX}\n\n---\n\n${baseSystemPrompt}`;
 - [ ] **Step 3: Sync + test**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Text Spot a question from your test phone (the dev deployment uses the same Linq number — test against dev env vars if set). Observe that the reply is lowercase, chunked, and lacks "no worries" tics.
@@ -1886,7 +1886,7 @@ export const dispatchAttachment = internalAction({
 - [ ] **Step 5: Sync + smoke test**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 From your test phone (via dev deployment — or prod if dev is shared with same number), text:
@@ -1923,7 +1923,7 @@ Apply the same debounce + `processBufferedTurn` pattern as Linq, but skip `ackno
 - [ ] **Step 1: Read current openphone.ts webhook**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && wc -l convex/openphone.ts && grep -n "scheduler.runAfter" convex/openphone.ts
+cd /Users/adyan/code/experiments/spot && wc -l convex/openphone.ts && grep -n "scheduler.runAfter" convex/openphone.ts
 ```
 
 Identify the dispatch block that routes by state. It mirrors the old Linq webhook structure.
@@ -2003,7 +2003,7 @@ Same pattern. Pass `imessageSender` instead of `linqChatId`:
 - [ ] **Step 4: Sync + commit**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 git add convex/openphone.ts convex/imessageBridge.ts
 git commit -m "feat(spot): wire OpenPhone + iMessage bridge webhooks through debounce
 
@@ -2021,7 +2021,7 @@ git commit -m "feat(spot): wire OpenPhone + iMessage bridge webhooks through deb
 - [ ] **Step 1: Sync and confirm dev is clean**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && npx convex dev --once
+cd /Users/adyan/code/experiments/spot && npx convex dev --once
 ```
 
 Expected: no errors, all functions up-to-date.
@@ -2074,7 +2074,7 @@ git commit -m "fix(spot): smoke test adjustments"
 - [ ] **Step 1: Review the feature branch delta**
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && git log main..feature/human-conversation-redesign --oneline
+cd /Users/adyan/code/experiments/spot && git log main..feature/human-conversation-redesign --oneline
 git diff main..feature/human-conversation-redesign --stat
 ```
 
@@ -2089,7 +2089,7 @@ Since this triggers prod deploy via GitHub Actions on `main`, STOP and confirm w
 Once confirmed:
 
 ```bash
-cd /Users/adyan/CascadeProjects/spot && git checkout main && git merge --ff-only feature/human-conversation-redesign
+cd /Users/adyan/code/experiments/spot && git checkout main && git merge --ff-only feature/human-conversation-redesign
 git push origin main
 ```
 
