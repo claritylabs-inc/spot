@@ -270,19 +270,22 @@ export function ManagedClientPolicyWorkspace({
 
   const handleUpload = useCallback(
     async (files: File[], uploadMode: PolicyUploadMode = "combined") => {
-      if (!clientOrgId || files.length === 0) return;
+      if (!clientOrgId || files.length === 0) return false;
       setUploading(true);
+      const progressToastId = `policy-upload:${clientOrgId}`;
       try {
         const orgId = clientOrgId as Id<"organizations">;
         const candidates = await preparePolicyUploadCandidates(
           files,
           (fileSha256) => checkDuplicateUploadByHash({ orgId, fileSha256 }),
         );
-        if (!candidates) return;
+        if (!candidates) return false;
 
         const storageIds: string[] = [];
         for (let i = 0; i < candidates.length; i++) {
-          toast.info(`Uploading ${i + 1} of ${candidates.length}…`);
+          toast.loading(`Uploading ${i + 1} of ${candidates.length}…`, {
+            id: progressToastId,
+          });
           storageIds.push(await uploadStorage(candidates[i].file));
         }
 
@@ -358,7 +361,9 @@ export function ManagedClientPolicyWorkspace({
           );
 
           if (candidates.length > 1) {
-            toast.info(`Merging ${candidates.length} files…`);
+            toast.loading(`Merging ${candidates.length} files…`, {
+              id: progressToastId,
+            });
           }
           const result = await extractFromUpload({
             fileId: storageIds[0] as Id<"_storage">,
@@ -380,9 +385,14 @@ export function ManagedClientPolicyWorkspace({
             throw new Error(result.error);
           }
         }
+        toast.dismiss(progressToastId);
+        return true;
       } catch (err) {
-        toast.error("Upload failed. Please try again.");
+        toast.error("Upload failed. Please try again.", {
+          id: progressToastId,
+        });
         console.error(err);
+        return false;
       } finally {
         setUploading(false);
       }

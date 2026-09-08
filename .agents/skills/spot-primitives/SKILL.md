@@ -25,6 +25,10 @@ Wiki, notification and compliance editors reuse autosave and preserve failed
 drafts on close. Notification resets remove only the current user's overrides.
 Connection rows navigate to details/footer actions; revocation invalidates
 pending invitation access and OTPs at the tenant-admin boundary.
+Request attachments use sidebar staging and shared footer preview/download.
+Upload surfaces retain staged files until explicit success; `FileDropZone`
+ignores drops while disabled. Archived thread rows use existing conversation
+actions instead of a duplicate restore action in the list.
 
 Search before creating:
 

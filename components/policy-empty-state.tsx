@@ -17,7 +17,7 @@ export interface PolicyEmptyStateProps {
   /** Upload-in-flight flag. */
   uploading: boolean;
   /** Called when the user presses Upload with 1+ staged files. */
-  onUpload: (files: File[], mode: PolicyUploadMode) => void;
+  onUpload: (files: File[], mode: PolicyUploadMode) => Promise<boolean>;
   /** Override the default title/subtitle if needed. */
   title?: string;
   subtitle?: string;
@@ -147,7 +147,7 @@ function DropZone({
   hideUploadButton = false,
 }: {
   uploading: boolean;
-  onUpload: (files: File[], mode: PolicyUploadMode) => void;
+  onUpload: (files: File[], mode: PolicyUploadMode) => Promise<boolean>;
   className?: string;
   staged?: File[];
   onStagedChange?: (files: File[]) => void;
@@ -219,9 +219,9 @@ function DropZone({
     [staged, updateStaged],
   );
 
-  const handleUpload = useCallback(() => {
+  const handleUpload = useCallback(async () => {
     if (staged.length === 0) return;
-    onUpload(staged, uploadMode);
+    if (!(await onUpload(staged, uploadMode))) return;
     updateStaged([]);
     updateUploadMode("combined");
   }, [staged, uploadMode, onUpload, updateStaged, updateUploadMode]);

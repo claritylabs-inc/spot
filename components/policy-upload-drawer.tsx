@@ -18,7 +18,7 @@ const LABEL_CLASSES =
 interface PolicyUploadDrawerProps {
   open: boolean;
   onClose: () => void;
-  onUpload: (files: File[], mode: PolicyUploadMode) => Promise<void>;
+  onUpload: (files: File[], mode: PolicyUploadMode) => Promise<boolean>;
   uploading: boolean;
 }
 
@@ -71,7 +71,7 @@ export function PolicyUploadDrawer({
       fileInputRef.current?.click();
       return;
     }
-    await onUpload(files, uploadMode);
+    if (!(await onUpload(files, uploadMode))) return;
     setFiles([]);
     setUploadMode("combined");
     onClose();

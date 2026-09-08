@@ -89,7 +89,7 @@ export function FileDropZone({
     if (file) onFile?.(file);
   };
   const { dragging, handlers } = useFileDrop<HTMLButtonElement>((files) => {
-    selectFiles(files);
+    if (!disabled) selectFiles(files);
   });
 
   const label = disabled

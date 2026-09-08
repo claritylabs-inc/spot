@@ -62,14 +62,15 @@ baseline evidence, not a substitute for this run's regression checks.
 | TEAM | Passed exercised shared workflows | Client and broker keyboard member editing/invite/cancel passed. Client acceptance, role changes, primary contact, email-change cancellation, removal/fallback passed. Hidden service-account admin regression covered. |
 | THREAD | Passed exercised local workflows | Sidebar keyboard opening, archive/restore, full conversation navigation and grounded operator policy task passed after local model setup and rich-tool argument fix. Cancellation still to run. |
 | PROFILE | Partial pass | Operator/client name persistence, invalid-phone recovery, appearance and mobile rendering passed. Privacy/email panels inspected; irreversible account deletion excluded. |
-| POLICY, CERT, FILE | Partial pass | Client read-only policy details/source preview, client allowed-file isolation/download, synthetic certificate generation/version 2/download/archive/restore passed. Fixed PDF Download opening tabs and client read-only visibility switch changing visually. Operator upload/edit and requirement-backed certificate cases underway. |
+| POLICY, CERT, FILE | Partial pass | Client read-only policy details/source preview, client allowed-file isolation/download, synthetic certificate generation/version 2/download/archive/restore passed. Fixed PDF Download opening tabs and client read-only visibility switch changing visually. Operator storage-failure/retry/extraction, correction persistence and file lifecycle passed; requirement-backed certificate launch correctly blocked when evidence is insufficient. |
 | WIKI, ORG, SETTINGS | Passed exercised edits; follow-up underway | Wiki immediate-close/offline/retry and required-name validation passed; behavior/certificate/beta toggles restored. Notification autosave and restoring inherited defaults passed. |
 | INTEGRATE, CONNECT | Partial / external prerequisite blocks | Invalid vendor input and local pending invitation creation passed; cancel/sidebar and invalid mailbox inputs fixed and browser verified. Live IMAP/OAuth/Slack reinstall requires disposable credentials. |
 | CHANNEL, ROUTING, TELEMETRY | Partial pass | Local Slack identity save/reload/restore, MCP setup copy, read-only router refresh/filter, Models desktop/mobile, telemetry search/detail passed. Operator model configured only in native-local Convex. Mock channel turn, terminal turn and MCP client authorization remain. |
 | PUBLIC | Passed negative/public-report paths | Invalid share/connection tokens, missing/unknown OAuth client fail safely; routing-weather report responsive. Valid packet snapshot remains in PACKET lane. |
 | CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload remains in POLICY. |
-| REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment workflow remains. |
-| AGENT, PACKET, PROPOSAL, EMAIL | Not run this pass | Prior procurement evidence is a baseline; current regression and client agent turn remain. |
+| REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
+| AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits, survives reload; cancellation, archive/restore and mobile rendering passed. No outbound messages or record changes requested. Attachment-specific chat case remains. |
+| PACKET, PROPOSAL, EMAIL | In progress | Current procurement browser regression and synthetic forwarded-email replay underway. |
 | LEADS | Empty state only | No local synthetic lead yet; populated lifecycle remains. |
 
 ## Batch 1: broker editing and reusable method
@@ -220,3 +221,45 @@ cleanup below 2 GiB. Run `--once` between workflows. Idle role browsers were
 closed at verified checkpoints; never clear auth profiles or local data. Current
 browser continuation uses operator9222 and client9223; public9224 and settings9225
 are intentionally closed. Resume them only when their lane is active.
+
+## Batch 4: uploads, request files, and client conversations
+
+The operator policy uploader used to clear staged PDFs and close even when its
+callback caught an error. Both upload surfaces now clear only on explicit success;
+one progress toast becomes the error on failure. A synthetic storage503 retained
+the PDF, retry completed real local extraction, and the policy correction editor
+persisted a premium change before restoration. Operator Details now reuses the
+shared typed details/editor; raw extraction inspection remains in Extraction
+history. Client policy Details remains read-only. Client Overview uses its
+breadcrumb identity and shows required-name errors inline.
+
+Client request creation now navigates directly to the created record. Request
+file rows open a sidebar with preview/download; Add file opens a staged sidebar
+uploader. Browser testing proved that the previous raw storage link navigated
+away instead of downloading. The shared blob download now keeps the app open;
+a503 upload failure keeps the selected file, and retry succeeds. Request editors
+are keyed by request ID. Shared dropzones ignore drag/drop while disabled, so
+another drop cannot replace an upload in progress.
+
+A real client policy question returned the seeded policy number, insurer and
+E&O/cyber/media limits; reload retained the answer. A subsequent read-only turn
+was cancelled and displayed Response cancelled. Thread archive/restore and mobile
+rendering passed. Archived list rows now navigate to their conversation; restore
+uses its existing action instead of an extra hover button in the list. Archive
+uses the destructive PillButton treatment.
+
+Evidence: `request-file-before.log`, `request-upload-failed-after.png`,
+`request-upload-retry-after.png`, `request-created-after.png`,
+`request-upload-dark-after.png`, `request-upload-mobile-after.png`,
+`client-agent-progress.png`, `client-agent-cancelled.png`,
+`client-agent-mobile-after.png`, and `client-policy-read-only-after.png`.
+Operator cases and synthetic fixture IDs are in `accounts-files-policy-findings.md`.
+The client QA conversation and compliance records are archived; two named client
+requests and an isolated operator QA client/policy remain local for regression.
+
+Validation: 31 policy-upload/domain tests passed, plus the disabled-drop regression;
+root TypeScript and changed-file lint passed. Frontend-design inspected the
+rendered client/record/editor/upload light/dark/mobile cases. The independent
+deslop review removed the redundant archive mutation path and found the disabled
+drop and destructive-icon issues before commit. The memory watcher remained
+active; idle role browsers were closed at successful checkpoints.

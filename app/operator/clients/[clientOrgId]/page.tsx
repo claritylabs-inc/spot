@@ -44,7 +44,6 @@ import {
   OperationalPanelBody,
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
-import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   useCachedOperatorClients,
@@ -301,40 +300,28 @@ function ClientWorkspace({
       <main className="w-full space-y-6">
         {activeTab === "overview" ? (
           <div className="space-y-5">
-            <OperationalPanel aria-labelledby="client-identity-title">
-              <OperationalPanelBody className="flex min-w-0 items-center gap-3 px-4 py-4">
-                <OrgBrandIcon
-                  name={client.name}
-                  iconUrl={client.iconUrl}
-                  website={client.website}
-                  size="lg"
-                />
-                <h1
-                  id="client-identity-title"
-                  className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("heading.micro")}`}
-                >
-                  {client.name}
-                </h1>
-                <StatusTag
-                  className="ml-auto"
-                  tone={
-                    client.operatorStatus === "live" && !client.inviteStatus
-                      ? "success"
-                      : "warning"
-                  }
-                >
-                  {operatorClientStatusLabel(client)}
-                </StatusTag>
-              </OperationalPanelBody>
-            </OperationalPanel>
-
             <OperationalPanel>
               <OperationalPanelBody>
-                <FormSection title="Account" divided={false}>
+                <FormSection
+                  title="Account"
+                  divided={false}
+                  action={
+                    <StatusTag
+                      tone={
+                        client.operatorStatus === "live" && !client.inviteStatus
+                          ? "success"
+                          : "warning"
+                      }
+                    >
+                      {operatorClientStatusLabel(client)}
+                    </StatusTag>
+                  }
+                >
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label="Organization name">
+                    <Field label="Organization name" error={validationError}>
                       <Input
                         value={organizationName}
+                        aria-invalid={Boolean(validationError)}
                         onChange={(event) =>
                           setOrganizationName(event.target.value)
                         }
