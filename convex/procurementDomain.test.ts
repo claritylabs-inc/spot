@@ -859,6 +859,68 @@ describe("procurement domain boundaries", () => {
     ).rejects.toThrow("Broker admin required");
   });
 
+  test("broker edits preserve unrelated profile fields and cannot change operator status", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      const membership = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization", (q) => q.eq("orgId", f.brokerOrgId))
+        .unique();
+      await ctx.db.patch(membership!._id, { role: "admin" });
+    });
+    await f.operator.mutation(api.brokerProfiles.upsert, {
+      brokerOrgId: f.brokerOrgId,
+      networkStatus: "blacklisted",
+      officeAddress: {
+        street1: "123 Example St",
+        street2: "Suite 2",
+        city: "Boston",
+        country: "US",
+      },
+      writingStates: ["MA"],
+      lineOfBusinessCodes: ["CGL"],
+    });
+    await f.broker.mutation(api.brokerProfiles.upsert, {
+      brokerOrgId: f.brokerOrgId,
+      website: "https://example.com",
+    });
+    await f.broker.mutation(api.brokerProfiles.upsert, {
+      brokerOrgId: f.brokerOrgId,
+      officeAddress: { city: "Cambridge", street2: "" },
+    });
+    const result = await f.operator.query(api.brokerProfiles.get, {
+      brokerOrgId: f.brokerOrgId,
+    });
+    expect(result).toMatchObject({
+      broker: { website: "https://example.com" },
+      profile: {
+        networkStatus: "blacklisted",
+        writingStates: ["MA"],
+        lineOfBusinessCodes: ["CGL"],
+        officeAddress: {
+          street1: "123 Example St",
+          street2: "",
+          city: "Cambridge",
+          country: "US",
+        },
+      },
+    });
+    await expect(
+      f.broker.mutation(api.brokerProfiles.upsert, {
+        brokerOrgId: f.brokerOrgId,
+        networkStatus: "active",
+        website: "https://changed.example.com",
+      }),
+    ).rejects.toThrow("Only operators can change broker network status");
+    expect(
+      (
+        await f.operator.query(api.brokerProfiles.get, {
+          brokerOrgId: f.brokerOrgId,
+        })
+      )?.broker.website,
+    ).toBe("https://example.com");
+  });
+
   test("issues immutable broker snapshots and revokes packet and file access", async () => {
     const f = await fixture();
     const brokerOrgId = await f.t.run((ctx) =>
