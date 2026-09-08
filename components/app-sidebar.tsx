@@ -83,15 +83,18 @@ export function AppSidebar({
 
   const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const viewerOrg = useCachedQuery("orgs.viewerOrg", api.orgs.viewerOrg, {});
+  const currentOrg = useCurrentOrg();
+  const isBroker = currentOrg?.isBroker ?? false;
+  const canReadThreads = !!currentOrg && !isBroker && !disablePersistentChat;
   const unifiedThreads = useCachedQuery(
     "threads.list.active",
     api.threads.list,
-    disablePersistentChat ? "skip" : { archived: false },
+    canReadThreads ? { archived: false } : "skip",
   );
   const archivedThreads = useCachedQuery(
     "threads.list.archived",
     api.threads.list,
-    disablePersistentChat ? "skip" : { archived: true },
+    canReadThreads ? { archived: true } : "skip",
   );
   const setThreadDetail = useSetCachedQuery<
     NonNullable<typeof unifiedThreads>[number],
@@ -102,8 +105,6 @@ export function AppSidebar({
   const { archiveThreadLocally } = useArchivedThreadCacheActions();
   const { signOut } = useAuthActions();
   const { clearCache: clearOnboardingCache } = useOnboardingCache();
-  const currentOrg = useCurrentOrg();
-  const isBroker = currentOrg?.isBroker ?? false;
   const showConnectFeatures = isFeatureEnabled(
     currentOrg?.org,
     "connect_features",

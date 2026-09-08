@@ -59,7 +59,8 @@ baseline evidence, not a substitute for this run's regression checks.
 | --- | --- | --- |
 | BROKER | Partial pass | Website autosave on immediate close/reopen; invalid-state rejection retains draft and recovers; status edits retain the sidebar when filtered out; keyboard row opening and 390px layout passed. Creation, logo upload, and same-field concurrency remain to run. |
 | BPROFILE | Partial pass | Broker OTP login, website autosave/reload and restoration passed; operator status restriction and partial-update preservation covered by Convex regression. Logo, live-draft and role UI cases remain. |
-| THREAD | In progress | Baseline desktop Chrome showed Archive action inside thread rows; fix pending. |
+| THREAD | Partial pass / configuration block | Keyboard-open conversation sidebar, archive/restore, narrow width and full conversation navigation passed. Read-only policy task fails because the native-local operator model is unconfigured. |
+| TEAM | Partial pass | Client admin title autosave and immediate close/reopen, self-role lock, local invite/cancel, keyboard invitation sidebar and mobile layout passed. Invited-member acceptance, explicit promotion/demotion, local email change/cancel, primary-contact assignment, and removal/fallback passed. Broker team remains. |
 | CLIENT, CHANNEL, ROUTING, TELEMETRY, PROFILE, LEADS | Discovery only | Operator routes rendered in desktop Chrome. Routing talks to shared dev; do not mutate it. |
 | All remaining IDs | Not run | Execute the scripts above and expand them when further reachable workflows are discovered. |
 
@@ -84,3 +85,47 @@ Evidence: `broker-before.png`, `broker-autosave-after.png`, `broker-mobile.png`,
 `broker-dark.png`, `broker-profile-after.png`; browser scripts and check logs
 are under `.context/qa/platform/`. Temporary broker website/status changes were
 restored. The new skill passes the skill-creator validator.
+
+## Batch 2: threads and team management
+
+The thread inbox now retains list context while showing the shared conversation
+renderer in a sidebar. Archive/restore and full conversation navigation use its
+footer. Team profile edits autosave partial field changes; changing access
+roles remains explicit. Pending invitations have a keyboard-accessible sidebar
+with cancellation in its footer; member activation and account actions move
+out of rows into the member footer. The table emphasizes identity/email/access,
+with phone in the editor. Broker navigation waits for organization identity and
+skips forbidden tenant-thread subscriptions.
+
+Screenshots: `thread-restored.png`, `thread-mobile.png`, `team-autosave-after.png`,
+`team-pending-invitation.png`, and `team-mobile.png`. The local QA invitation was
+cancelled and the client's title restored. Operator chat testing produced an
+honest failure: local `resolveOperatorAgentRoute` reports no configured model.
+This still needs local configuration and rerun; it is not a successful agent
+workflow. Client settings navigation discovery covered every exposed settings
+tab, with screenshots/text recorded; those loads are not mutation coverage.
+
+A second-person invite exposed hidden Slack service-account membership in
+primary-contact and last-admin logic. The backend now counts human memberships
+for demotion/removal and fallback, and rejects service accounts as explicit
+primary contacts. The regression suite covers those access/data consequences.
+
+Batch 2 validation: 34 focused tests passed (29 Convex domain/access tests,
+four autosave sequencing tests, one team failed-save/retry test). Root and
+Convex TypeScript, changed-file ESLint, production build and diff whitespace
+checks passed. Design review covered the thread/team desktop and mobile
+screenshots, and team dark mode. Deslop reused the shared conversation and
+input components, removed row event guards made obsolete by removing actions,
+removed the now-unused phone formatter, and avoided viewport-height arithmetic.
+The accepted synthetic member and its pending email change were removed; the
+original client is now the persisted primary contact. Synthetic user/auth
+records remain local. Do not reset the fixture database to clean up QA.
+
+## Browser continuation
+
+Visible operator Chrome is on CDP port 9222. Visible client Chrome is on 9223
+with persistent profile `.context/qa/platform/client-chrome`; use it for the
+remaining client workflows without repeated sign-in. The first independent
+contexts were closed after each run. Their saved storage snapshots may be stale;
+prefer the live persistent sessions. A missing fresh OTP capture is an execution
+failure, not evidence that authentication or rate-limit behavior passed.

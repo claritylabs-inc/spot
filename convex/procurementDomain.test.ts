@@ -921,6 +921,65 @@ describe("procurement domain boundaries", () => {
     ).toBe("https://example.com");
   });
 
+  test("service accounts cannot replace the last human admin or become the primary contact", async () => {
+    const f = await fixture();
+    const { serviceUserId, membershipId } = await f.t.run(async (ctx) => {
+      const serviceUserId = await ctx.db.insert("users", {
+        name: "Slack service",
+        serviceAccountKind: "slack",
+        accountKind: "customer",
+      });
+      await ctx.db.insert("orgMemberships", {
+        orgId: f.clientOrgId,
+        userId: serviceUserId,
+        role: "admin",
+      });
+      const membership = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization_user", (q) =>
+          q.eq("orgId", f.clientOrgId).eq("userId", f.clientUserId),
+        )
+        .unique();
+      return { serviceUserId, membershipId: membership!._id };
+    });
+    expect(
+      await f.client.mutation(api.orgs.ensurePrimaryInsuranceContact, {}),
+    ).toMatchObject({ userId: f.clientUserId, updated: true });
+    await expect(
+      f.client.mutation(api.orgs.updateMemberRole, {
+        membershipId,
+        role: "member",
+      }),
+    ).rejects.toThrow("Cannot demote the last admin");
+    await expect(
+      f.client.mutation(api.orgs.removeMember, { membershipId }),
+    ).rejects.toThrow("Cannot remove the last admin");
+    await expect(
+      f.client.mutation(api.orgs.setPrimaryInsuranceContact, {
+        userId: serviceUserId,
+      }),
+    ).rejects.toThrow("Primary contact must be a person");
+    const extraMembershipId = await f.t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        name: "Second person",
+        accountKind: "customer",
+      });
+      return await ctx.db.insert("orgMemberships", {
+        orgId: f.clientOrgId,
+        userId,
+        role: "member",
+      });
+    });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.clientOrgId, { primaryInsuranceContactId: undefined }),
+    );
+    expect(
+      await f.client.mutation(api.orgs.removeMember, {
+        membershipId: extraMembershipId,
+      }),
+    ).toMatchObject({ primaryInsuranceContactId: f.clientUserId });
+  });
+
   test("issues immutable broker snapshots and revokes packet and file access", async () => {
     const f = await fixture();
     const brokerOrgId = await f.t.run((ctx) =>

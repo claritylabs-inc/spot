@@ -9,9 +9,16 @@ import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { Loader2, UserPlus } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import {
+  OperationalLabelValueList,
+  OperationalLabelValueRow,
+} from "@/components/ui/operational-panel";
 import { InviteMemberDrawer } from "@/components/settings/invite-member-drawer";
-import { TeamMemberEditDrawer } from "@/components/settings/team-member-edit-drawer";
+import {
+  TeamMemberEditDrawer,
+  type TeamMemberProfileChanges,
+} from "@/components/settings/team-member-edit-drawer";
 import { TeamMembersList } from "@/components/settings/team-members-list";
 import type {
   TeamInvitation,
@@ -47,7 +54,7 @@ export function TeamSection({
 } = {}) {
   const operatorClientOrgId = operatorClient?._id;
   const teamQueryArgs = useMemo(
-    () => operatorClientOrgId ? { operatorClientOrgId } : {},
+    () => (operatorClientOrgId ? { operatorClientOrgId } : {}),
     [operatorClientOrgId],
   );
   const cacheScope = operatorClientOrgId ?? "current";
@@ -60,12 +67,13 @@ export function TeamSection({
   const viewer = useCachedQuery("settings.team.viewer", api.users.viewer, {});
   const currentOrgData = useCachedViewerOrg();
   const orgData = useMemo(
-    () => operatorClient
-      ? {
-          org: operatorClient,
-          membership: { role: "admin" as const },
-        }
-      : currentOrgData,
+    () =>
+      operatorClient
+        ? {
+            org: operatorClient,
+            membership: { role: "admin" as const },
+          }
+        : currentOrgData,
     [currentOrgData, operatorClient],
   );
   const members = useCachedQuery(
@@ -106,6 +114,9 @@ export function TeamSection({
   const viewerUserId = viewer?._id;
 
   const [uncontrolledInviteOpen, setUncontrolledInviteOpen] = useState(false);
+  const [selectedInvitation, setSelectedInvitation] =
+    useState<TeamInvitation | null>(null);
+  const [cancellingInvitation, setCancellingInvitation] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [editName, setEditName] = useState("");
   const [editTitle, setEditTitle] = useState("");
@@ -119,8 +130,9 @@ export function TeamSection({
   const [removingMember, setRemovingMember] = useState(false);
   const [settingPrimaryContactUserId, setSettingPrimaryContactUserId] =
     useState<Id<"users"> | null>(null);
-  const [activationUserId, setActivationUserId] =
-    useState<Id<"users"> | null>(null);
+  const [activationUserId, setActivationUserId] = useState<Id<"users"> | null>(
+    null,
+  );
 
   const {
     setActions: setSettingsActions,
@@ -171,10 +183,7 @@ export function TeamSection({
         toast.success("Primary contact updated");
       } catch (error) {
         toast.error(
-          getUserFacingErrorMessage(
-            error,
-            "Failed to update primary contact",
-          ),
+          getUserFacingErrorMessage(error, "Failed to update primary contact"),
         );
       } finally {
         setSettingPrimaryContactUserId(null);
@@ -184,6 +193,7 @@ export function TeamSection({
   );
 
   const openEditMember = useCallback((member: TeamMember) => {
+    setSelectedInvitation(null);
     setEditingMember(member);
     setEditName(member.name ?? "");
     setEditTitle(member.title ?? "");
@@ -210,7 +220,9 @@ export function TeamSection({
         toast.success("Member removed");
         setEditingMember(null);
       } catch (error) {
-        toast.error(getUserFacingErrorMessage(error, "Failed to remove member"));
+        toast.error(
+          getUserFacingErrorMessage(error, "Failed to remove member"),
+        );
       } finally {
         setRemovingMember(false);
       }
@@ -225,59 +237,74 @@ export function TeamSection({
   );
 
   const saveTeamMember = useCallback(
-    async (member: TeamMember, roleLocked: boolean) => {
+    async (member: TeamMember, changes: TeamMemberProfileChanges) => {
+      await updateMemberProfile({
+        membershipId: member.membershipId,
+        operatorClientOrgId,
+        ...changes,
+      });
+      await updateCachedMembers(teamQueryArgs, (current) =>
+        current.map((row) =>
+          row.membershipId === member.membershipId
+            ? {
+                ...row,
+                ...(changes.name !== undefined
+                  ? { name: changes.name.trim() || undefined }
+                  : {}),
+                ...(changes.title !== undefined
+                  ? { title: changes.title.trim() || undefined }
+                  : {}),
+                ...(changes.phone !== undefined
+                  ? { phone: changes.phone || undefined }
+                  : {}),
+              }
+            : row,
+        ),
+      );
+    },
+    [
+      operatorClientOrgId,
+      teamQueryArgs,
+      updateCachedMembers,
+      updateMemberProfile,
+    ],
+  );
+
+  const saveTeamMemberRole = useCallback(
+    async (member: TeamMember) => {
       setSavingProfile(true);
       try {
-        const nextRole = roleLocked ? member.role : editRole;
-
-        await updateMemberProfile({
+        await updateMemberRole({
           membershipId: member.membershipId,
-          name: editName,
-          title: editTitle,
+          role: editRole,
           operatorClientOrgId,
-          ...(editPhone.trim() !== (member.phone ?? "").trim()
-            ? { phone: editPhone }
-            : {}),
         });
-        if (nextRole !== member.role) {
-          await updateMemberRole({
-            membershipId: member.membershipId,
-            role: nextRole,
-            operatorClientOrgId,
-          });
-        }
         await updateCachedMembers(teamQueryArgs, (current) =>
           current.map((row) =>
             row.membershipId === member.membershipId
-              ? {
-                  ...row,
-                  name: editName.trim() || undefined,
-                  title: editTitle.trim() || undefined,
-                  phone: editPhone || undefined,
-                  role: nextRole,
-                }
+              ? { ...row, role: editRole }
               : row,
           ),
         );
-        toast.success("Team member updated");
-        setEditingMember(null);
+        setEditingMember((current) =>
+          current?.membershipId === member.membershipId
+            ? { ...current, role: editRole }
+            : current,
+        );
+        toast.success("Role updated");
       } catch (error) {
         toast.error(
-          getUserFacingErrorMessage(error, "Failed to update team member"),
+          getUserFacingErrorMessage(error, "Could not change the role"),
         );
       } finally {
         setSavingProfile(false);
       }
     },
     [
-      editName,
-      editPhone,
       editRole,
-      editTitle,
       operatorClientOrgId,
       teamQueryArgs,
       updateCachedMembers,
-      updateMemberProfile,
       updateMemberRole,
     ],
   );
@@ -382,6 +409,7 @@ export function TeamSection({
 
   const cancelPendingInvitation = useCallback(
     async (invitation: TeamInvitation) => {
+      setCancellingInvitation(true);
       try {
         await cancelInvitation({
           invitationId: invitation._id,
@@ -391,8 +419,11 @@ export function TeamSection({
           current.filter((row) => row._id !== invitation._id),
         );
         toast.success("Invitation cancelled");
+        setSelectedInvitation(null);
       } catch {
         toast.error("Failed to cancel invitation");
+      } finally {
+        setCancellingInvitation(false);
       }
     },
     [
@@ -430,10 +461,7 @@ export function TeamSection({
   useEffect(() => {
     if (operatorClientOrgId) return;
     setSettingsActions(
-      <PillButton
-        size="compact"
-        onClick={() => setInviteOpen(true)}
-      >
+      <PillButton size="compact" onClick={() => setInviteOpen(true)}>
         <UserPlus className="w-3.5 h-3.5" />
         Invite member
       </PillButton>,
@@ -469,6 +497,7 @@ export function TeamSection({
     if (editingMember) {
       setRightPanel(
         <TeamMemberEditDrawer
+          key={editingMember.membershipId}
           member={editingMember}
           viewerUserId={viewerUserId}
           adminCount={adminCount}
@@ -495,9 +524,27 @@ export function TeamSection({
             setEditEmail(value);
             setEmailChangeError("");
           }}
-          onSave={(member, roleLocked) =>
-            void saveTeamMember(member, roleLocked)
+          activationAction={
+            operatorClientOrgId && !editingMember.isActivated ? (
+              <PillButton
+                variant="secondary"
+                disabled={
+                  activationUserId !== null ||
+                  !editingMember.email ||
+                  (operatorClient?.operatorStatus === "onboarding" &&
+                    editingMember.role !== "admin")
+                }
+                onClick={() => void sendOperatorActivation(editingMember)}
+              >
+                {activationUserId === editingMember.userId ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : null}
+                Send activation
+              </PillButton>
+            ) : undefined
           }
+          onSave={saveTeamMember}
+          onSaveRole={(member) => void saveTeamMemberRole(member)}
           onRemove={(member) => void removeTeamMember(member)}
           onSetPrimary={(userId) => void updatePrimaryContact(userId)}
           onRequestEmailChange={(member, email) =>
@@ -510,6 +557,41 @@ export function TeamSection({
       );
       return () => setRightPanel(null);
     }
+    if (selectedInvitation) {
+      setRightPanel(
+        <SettingsDrawer
+          open
+          title={selectedInvitation.email}
+          onOpenChange={(open) => {
+            if (!open) setSelectedInvitation(null);
+          }}
+          footer={
+            <PillButton
+              variant="destructive"
+              disabled={cancellingInvitation}
+              onClick={() => void cancelPendingInvitation(selectedInvitation)}
+            >
+              {cancellingInvitation ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : null}
+              Cancel invitation
+            </PillButton>
+          }
+        >
+          <OperationalLabelValueList>
+            <OperationalLabelValueRow
+              label="Status"
+              value="Pending invitation"
+            />
+            <OperationalLabelValueRow
+              label="Role"
+              value={selectedInvitation.role === "admin" ? "Admin" : "Member"}
+            />
+          </OperationalLabelValueList>
+        </SettingsDrawer>,
+      );
+      return () => setRightPanel(null);
+    }
     setRightPanel(
       <InviteMemberDrawer
         open={inviteOpen}
@@ -519,6 +601,12 @@ export function TeamSection({
     );
     return () => setRightPanel(null);
   }, [
+    selectedInvitation,
+    cancellingInvitation,
+    cancelPendingInvitation,
+    activationUserId,
+    operatorClient?.operatorStatus,
+    sendOperatorActivation,
     editName,
     editEmail,
     editRole,
@@ -538,6 +626,7 @@ export function TeamSection({
     cancelPendingEmailChange,
     requestPendingEmailChange,
     saveTeamMember,
+    saveTeamMemberRole,
     setInviteOpen,
     setRightPanel,
     updatePrimaryContact,
@@ -573,40 +662,12 @@ export function TeamSection({
         viewerUserId={viewerUserId}
         canEditMembers={orgData?.membership?.role === "admin"}
         primaryContactId={primaryContactId}
-        renderMemberAction={
-          operatorClientOrgId
-            ? (member) =>
-                member.isActivated ? (
-                  <StatusTag tone="success">Active</StatusTag>
-                ) : operatorClient?.operatorStatus === "onboarding" &&
-                  member.role !== "admin" ? (
-                  <StatusTag tone="warning">Activate admin first</StatusTag>
-                ) : (
-                  <PillButton
-                    size="compact"
-                    variant="secondary"
-                    disabled={activationUserId !== null || !member.email}
-                    title={
-                      member.email
-                        ? undefined
-                        : "This team member does not have an email address"
-                    }
-                    onClick={() => void sendOperatorActivation(member)}
-                  >
-                    {activationUserId === member.userId ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : null}
-                    {activationUserId === member.userId
-                      ? "Sending…"
-                      : "Send activation"}
-                  </PillButton>
-                )
-            : undefined
-        }
+        showActivationStatus={!!operatorClientOrgId}
         onEditMember={openEditMember}
-        onCancelInvitation={(invitation) =>
-          void cancelPendingInvitation(invitation)
-        }
+        onOpenInvitation={(invitation) => {
+          setEditingMember(null);
+          setSelectedInvitation(invitation);
+        }}
       />
     </div>
   );

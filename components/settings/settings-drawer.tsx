@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
 const EASE = [0.2, 0, 0, 1] as const;
@@ -14,6 +15,7 @@ export function SettingsDrawer({
   actions,
   children,
   footer,
+  contentClassName,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -21,6 +23,7 @@ export function SettingsDrawer({
   actions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
+  contentClassName?: string;
 }) {
   const reduceMotion = useReducedMotion();
   const footerRef = useRef<HTMLDivElement>(null);
@@ -45,10 +48,7 @@ export function SettingsDrawer({
     return () => {
       observer.disconnect();
       if (previous) {
-        root.style.setProperty(
-          "--spot-settings-drawer-footer-inset",
-          previous,
-        );
+        root.style.setProperty("--spot-settings-drawer-footer-inset", previous);
       } else {
         root.style.removeProperty("--spot-settings-drawer-footer-inset");
       }
@@ -73,7 +73,9 @@ export function SettingsDrawer({
             className="flex min-h-0 w-full flex-1 flex-col border-l border-border bg-background"
           >
             <div className="min-h-12 flex items-center gap-3 px-4 py-2 border-b border-border shrink-0">
-              <div className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("body.medium")}`}>
+              <div
+                className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("body.medium")}`}
+              >
                 {title}
               </div>
               {actions ? <div className="shrink-0">{actions}</div> : null}
@@ -88,7 +90,9 @@ export function SettingsDrawer({
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
-              <div className="flex flex-col my-4">{children}</div>
+              <div className={cn("flex flex-col my-4", contentClassName)}>
+                {children}
+              </div>
             </div>
 
             {hasFooter && (

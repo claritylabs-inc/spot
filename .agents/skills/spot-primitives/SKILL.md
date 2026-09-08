@@ -121,3 +121,7 @@ Requirement-backed certificate generation uses `components/certificates/certific
 When the user asks for primitive cleanup, start with branding/email shell ownership, raw settings switches outside `SettingsSwitch`, and any settings/nav section duplication before broader refactors.
 
 - Broker profile editors use record-scoped autosave with field-specific `brokerProfiles.upsert` patches; omitted fields survive concurrent edits, office-address patches merge fields, logo changes touch only the logo, and network status changes require an operator. Selected operator broker details are queried independently of list filters.
+
+- Operator thread table rows open the shared conversation renderer in a sidebar; open-conversation and archive/restore actions live in its footer. `SettingsDrawer.contentClassName` supports flex-filling content without viewport-height calculations. Team profile edits autosave field-specific changes and retain failed drafts; role changes remain explicit. Member activation, primary-contact and email-change actions live in the member sidebar footer, and pending invitations open a detail sidebar for cancellation. Broker app navigation skips tenant-thread subscriptions.
+
+- Team last-admin checks and primary-contact fallback count human memberships only. Hidden channel service accounts cannot replace the last human admin or be selected as the insurance contact.

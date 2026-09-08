@@ -34,7 +34,10 @@ rendered product by following the same workflow before and after each fix.
    Headless tests supplement, rather than replace, this browser run.
 2. Confirm the app targets the worktree's local backend and synthetic fixture.
    Sign in normally using local email-capture OTPs. Test each role with an
-   isolated browser context; never bypass auth to mark a browser case passed.
+   isolated browser context or persistent Chrome profile; never bypass auth to
+   mark a browser case passed. For long runs, persistent per-role Chrome profiles
+   avoid repeated logins and stale refresh-token snapshots. Read a fresh, matching
+   local OTP capture after requesting it; do not reuse the previous user's code.
 3. Follow the written use case. Inspect screenshots as well as accessible UI,
    downloads, persistence after reload, errors, and live updates. Record the
    observed behavior and evidence before editing.

@@ -709,3 +709,7 @@ When working on Convex code, **always read `convex/_generated/ai/guidelines.md` 
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 
 <!-- convex-ai-end -->
+
+- Operator thread table rows open the shared conversation renderer in a sidebar; open-conversation and archive/restore actions live in its footer. `SettingsDrawer.contentClassName` supports flex-filling content without viewport-height calculations. Team profile edits autosave field-specific changes and retain failed drafts; role changes remain explicit. Member activation, primary-contact and email-change actions live in the member sidebar footer, and pending invitations open a detail sidebar for cancellation. Broker app navigation skips tenant-thread subscriptions.
+
+- Team last-admin checks and primary-contact fallback count human memberships only. Hidden channel service accounts cannot replace the last human admin or be selected as the insurance contact.
