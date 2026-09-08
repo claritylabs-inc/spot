@@ -346,6 +346,7 @@ function ClientFileEditor({
           </div>
           <SettingsSwitch
             checked={clientVisible}
+            disabled={!canEdit || working}
             onCheckedChange={() => setClientVisible((value) => !value)}
             label="Visible to client"
           />

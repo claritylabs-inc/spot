@@ -88,6 +88,10 @@ export default function OperatorBrokersPage() {
           key={selected?.broker._id ?? (creating ? "create" : "closed")}
           open={creating || !!selected}
           row={selected ?? null}
+          onCreated={(brokerOrgId) => {
+            setCreating(false);
+            setSelectedId(brokerOrgId);
+          }}
           onClose={() => {
             setCreating(false);
             setSelectedId(null);
@@ -105,8 +109,8 @@ export default function OperatorBrokersPage() {
       disablePersistentChat
       disableCommandPalette
     >
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_11rem_9rem_11rem]">
+      <div className="@container/brokers space-y-4">
+        <div className="grid gap-3 @xl/brokers:grid-cols-2 @5xl/brokers:grid-cols-[minmax(16rem,1fr)_11rem_9rem_11rem]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
@@ -251,10 +255,12 @@ export default function OperatorBrokersPage() {
 function BrokerDrawer({
   open,
   row,
+  onCreated,
   onClose,
 }: {
   open: boolean;
   row: BrokerRow | null;
+  onCreated: (brokerOrgId: Id<"organizations">) => void;
   onClose: () => void;
 }) {
   const create = useMutation(api.brokerProfiles.createStandalone);
@@ -348,7 +354,7 @@ function BrokerDrawer({
     }
     setSaving(true);
     try {
-      await create({
+      const { brokerOrgId } = await create({
         name: name.trim(),
         website: website.trim() || undefined,
         networkStatus: status,
@@ -363,7 +369,7 @@ function BrokerDrawer({
         lineOfBusinessCodes: lines,
       });
       toast.success("Broker created");
-      onClose();
+      onCreated(brokerOrgId);
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(error, "Could not create the broker"),

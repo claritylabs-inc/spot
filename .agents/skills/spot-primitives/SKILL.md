@@ -15,6 +15,16 @@ uploads belong in the sidebar; record actions belong in its footer. Avoid
 redundant sidebar section titles. Upload/extraction progress uses toasts.
 Broker/client selectors use `OrgBrandIcon` through `SearchableSelect`'s optional
 option icon, including the selected value.
+Use `SearchableSelect.ariaLabel` when a tab already supplies the visible context.
+`FileDownloadButton.iconOnly` serves compact PDF toolbars while retaining real
+downloads. `SettingsDrawer` owns focus entry/restoration and Escape via its
+nonmodal Base UI dialog, portaled into the app-shell sidebar; callers retain
+their save-before-close guard. Sibling previews remain accessible, and footer
+measurements keep toasts above actions.
+Wiki, notification and compliance editors reuse autosave and preserve failed
+drafts on close. Notification resets remove only the current user's overrides.
+Connection rows navigate to details/footer actions; revocation invalidates
+pending invitation access and OTPs at the tenant-admin boundary.
 
 Search before creating:
 

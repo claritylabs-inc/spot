@@ -2607,7 +2607,13 @@ async function executeToolActionDomain(
   if (OPERATOR_RICH_ACTION_TOOLS.has(args.toolName)) {
     return (await ctx.runAction(
       internal.actions.operatorAgentRichTools.runInternal,
-      args,
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        toolName: args.toolName,
+        input: args.input,
+        channel: args.channel,
+      },
     )) as OperatorActionToolResult;
   }
 

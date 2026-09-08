@@ -331,27 +331,19 @@ export function CertificateGeneratePanel({
       }}
       title="Generate certificate"
       footer={batchResult ? (
-        <>
-          <PillButton variant="secondary" size="compact" onClick={() => setBatchResult(null)}>
-            Back to request
-          </PillButton>
-          <PillButton size="compact" onClick={close}>Done</PillButton>
-        </>
+        <PillButton variant="secondary" size="compact" onClick={() => setBatchResult(null)}>
+          Back to request
+        </PillButton>
       ) : (
-        <>
-          <PillButton variant="secondary" size="compact" onClick={close} disabled={generating}>
-            Cancel
-          </PillButton>
-          <PillButton
-            type="submit"
-            form="certificate-generate-form"
-            size="compact"
-            disabled={generating || !canGenerate}
-          >
-            {generating ? <Loader2 className="size-3.5 animate-spin" /> : <BadgeCheck className="size-3.5" />}
-            Generate{mode === "requirements" ? " certificates" : ""}
-          </PillButton>
-        </>
+        <PillButton
+          type="submit"
+          form="certificate-generate-form"
+          size="compact"
+          disabled={generating || !canGenerate}
+        >
+          {generating ? <Loader2 className="size-3.5 animate-spin" /> : <BadgeCheck className="size-3.5" />}
+          Generate{mode === "requirements" ? " certificates" : ""}
+        </PillButton>
       )}
     >
       {batchResult ? (
@@ -368,7 +360,7 @@ export function CertificateGeneratePanel({
             {batchResult.results.map((item) => {
               const policy = readyPolicies.find((row) => row._id === item.policyId);
               return (
-                <div key={item.policyId} className="rounded-lg border border-foreground/8 p-3">
+                <div key={item.policyId} className="rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>
@@ -390,9 +382,9 @@ export function CertificateGeneratePanel({
             })}
           </div>
           {batchResult.gaps.length ? (
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
               <div className="flex items-center gap-2 text-foreground">
-                <AlertTriangle className="size-4 text-amber-600" />
+                <AlertTriangle className="size-4 text-warning" />
                 <p className={typeStyle("body.medium")}>Requirement gaps</p>
               </div>
               <div className="mt-2 space-y-2">
@@ -412,12 +404,6 @@ export function CertificateGeneratePanel({
         <form id="certificate-generate-form" onSubmit={handleSubmit} className="space-y-6">
           {!policyLocked && !initialRequirementSourceId ? (
             <section className="space-y-3">
-              <div>
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>Generate from</p>
-                <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-                  Use one policy with all of its coverages, or fulfill a requirements source across matching policies.
-                </p>
-              </div>
               <Tabs value={mode} onValueChange={(value) => setMode(value as GenerationMode)}>
                 <TabsList variant="pill">
                   <TabsTrigger value="policy">Policy</TabsTrigger>
@@ -429,14 +415,9 @@ export function CertificateGeneratePanel({
 
           {mode === "policy" ? (
             <>
-              <section className="space-y-2 border-t border-foreground/6 pt-5">
-                <div>
-                  <p className={`text-foreground ${typeStyle("body.medium")}`}>Policy</p>
-                  <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-                    The certificate includes every available coverage on this fully extracted policy.
-                  </p>
-                </div>
+              <section className="space-y-2">
                 <SearchableSelect
+                  ariaLabel="Policy"
                   options={readyPolicies.map((policy) => ({ value: policy._id, label: policyLabel(policy) }))}
                   value={policyId}
                   onChange={setPolicyId}
@@ -450,11 +431,7 @@ export function CertificateGeneratePanel({
                 ) : null}
               </section>
 
-              <section className="space-y-4 border-t border-foreground/6 pt-5">
-                <div>
-                  <p className={`text-foreground ${typeStyle("body.medium")}`}>Certificate holder</p>
-                  <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>Add the organization or person receiving the certificate.</p>
-                </div>
+              <section className="space-y-4 border-t border-border pt-5">
                 <div className="space-y-2">
                   <Label htmlFor="certificate-holder-name">Certificate holder</Label>
                   <Input id="certificate-holder-name" value={holderName} onChange={(event) => setHolderName(event.target.value)} placeholder="Company or individual name" autoComplete="organization" disabled={generating} />
@@ -507,14 +484,9 @@ export function CertificateGeneratePanel({
               </section>
             </>
           ) : (
-            <section className="space-y-3 border-t border-foreground/6 pt-5">
-              <div>
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>Requirements source</p>
-                <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-                  The source supplies both the certificate holder and the coverage requirements. Spot may issue separate certificates from several policies.
-                </p>
-              </div>
+            <section className="space-y-3">
               <SearchableSelect
+                ariaLabel="Requirements source"
                 options={selectableRequirementSources.map((source) => ({ value: source._id, label: sourceLabel(source) }))}
                 value={requirementSourceId}
                 onChange={setRequirementSourceId}
@@ -522,12 +494,12 @@ export function CertificateGeneratePanel({
                 disabled={generating || Boolean(initialRequirementSourceId) || requirementSources === undefined}
               />
               {requirementSources !== undefined && selectableRequirementSources.length === 0 ? (
-                <p className={`rounded-lg border border-foreground/8 p-3 text-muted-foreground ${typeStyle("body.default")}`}>
+                <p className={`rounded-lg border border-border p-3 text-muted-foreground ${typeStyle("body.default")}`}>
                   No requirements sources with certificate-holder details are available yet. Complete a source in Compliance first.
                 </p>
               ) : null}
               {selectedSource ? (
-                <div className="space-y-3 rounded-lg border border-foreground/8 p-3">
+                <div className="space-y-3 rounded-lg border border-border p-3">
                   <div>
                     <p className={`text-foreground ${typeStyle("body.medium")}`}>
                       {selectedSource.holder?.displayName ?? "Holder details needed"}
@@ -539,7 +511,7 @@ export function CertificateGeneratePanel({
                     </p>
                   </div>
                   {selectedRequirements.length ? (
-                    <div className="space-y-3 border-t border-foreground/6 pt-3">
+                    <div className="space-y-3 border-t border-border pt-3">
                       {selectedRequirements.map((requirement) => {
                         const status = complianceStatusPresentation(requirement.status);
                         return (
@@ -561,7 +533,7 @@ export function CertificateGeneratePanel({
                     </div>
                   ) : null}
                   {selectedRequirements.length > 0 && readyRequirementCount === 0 ? (
-                    <p className={`border-t border-foreground/6 pt-3 text-muted-foreground ${typeStyle("body.default")}`}>
+                    <p className={`border-t border-border pt-3 text-muted-foreground ${typeStyle("body.default")}`}>
                       No certificate can be generated until at least one requirement is met by a fully extracted policy.
                     </p>
                   ) : null}

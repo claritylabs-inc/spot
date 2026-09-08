@@ -163,6 +163,27 @@ export const setChannels = mutation({
   },
 });
 
+export const resetChannels = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    type: v.string(),
+    channel: v.optional(channelValidator),
+  },
+  handler: async (ctx, args) => {
+    const { orgId, userId } = await requireOrgAccess(ctx);
+    assertCurrentOrg(orgId, args.orgId);
+    const channels: NotificationChannel[] = args.channel
+      ? [args.channel]
+      : ["email", "imessage"];
+    for (const channel of channels) {
+      const preference = await preferenceForType(ctx, {
+        userId, orgId, type: args.type, channel,
+      });
+      if (preference) await ctx.db.delete(preference._id);
+    }
+  },
+});
+
 export const setAllEmail = mutation({
   args: {
     orgId: v.id("organizations"),

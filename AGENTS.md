@@ -567,13 +567,10 @@ Important: in a Conductor worktree, `npx convex dev` and `npx convex dev --once`
 
 Onboarding is role-specific.
 
-- `/onboarding` is a router-only entrypoint.
-- Broker users (or users without an org) are sent to `/onboarding/broker` (unchanged from v0.1.x).
-- Client users are sent to `/onboarding/setup`, a 4-step wizard:
-  1. **Identity** — name + role.
-  2. **Org** — organization name + website; on continue, `extractCompanyInfo` runs server-side enrichment from the website and writes company-wiki facts.
-  3. **Policies** — list current policies; user can upload PDFs (extracted via `extractFromUpload`) or forward them to the org's inbound address.
-  4. **Finish** — intro to the chat assistant + MCP connection info.
+- `/signup` opens the client email/OTP form directly; `/signup/client` remains a compatible entrypoint. Broker accounts are provisioned by operators.
+- `/onboarding` routes broker organizations to `/onboarding/broker`; new users without an organization and client users continue to `/onboarding/setup`.
+- Client setup has three steps: identity (name, role, optional phone), organization (name and optional website enrichment), and finish. Policy uploads are operator-only and are not offered during client onboarding. Finish shows an agent email only when the organization has a configured handle.
+- `/broker/team` hosts the shared team settings actions and sidebar through `SettingsActionsContext`, including member editing and invitations.
 
 Passport onboarding (`/onboarding/passport/*`) has been removed.
 
@@ -644,6 +641,9 @@ Outbound emails sent by Spot Agent are centralized in `convex/lib/emailSubagent.
 - Tab strips are addressable through `?tab=`, via `hooks/use-tab-param.ts` for operator pages and `resolveSettingsDestination` for settings. The first tab is the default and stays out of the URL, so a section with only one tab writes no parameter at all.
 - `/operator/clients/:id` has three sections: `overview`, `?tab=team`, and `?tab=settings`, the last stacking agent channels and beta feature flags on one page.
 - A page header owns its primary action; empty states describe the absence rather than repeating that button. Drawers render through `AppShell`'s `rightPanel`, never inline in the page body — `SettingsDrawer` sizes itself to fill that panel.
+- `SettingsDrawer` uses a nonmodal Base UI dialog in an explicit sidebar portal container, with focus entry/restoration and Escape dismissal through the caller's save guard. Sibling PDF previews remain accessible. Footer measurements keep toasts above actions. `FileDownloadButton` also supports icon-only PDF-toolbar downloads; preview downloads save a blob without navigating away. `SearchableSelect.ariaLabel` names selectors whose context is already visible in tabs.
+- Wiki sections, notification preferences, manual compliance requirements, and requirement-source context use shared autosave and retain invalid/failed drafts on close. Notification reset removes only the current user's matching override to restore inheritance. Connection rows open details with footer actions; tenant-admin invitation cancellation and relationship revocation also invalidate pending invitation access and OTPs.
+- Conductor Cloud development caps Turbopack's cache target at 2 GiB to leave room for visible role-specific Chrome sessions during platform QA; production builds and local Mac development retain their defaults.
 - Retired routes are deleted rather than kept as redirect shims. `/chat`, `/activity`, `/connections`, `/agent`, `/connected-orgs/*`, `/clients`, `/settings/notifications`, `/operator/models`, `/operator/tools`, and the operator client `/memory` path no longer resolve.
 
 ## MCP

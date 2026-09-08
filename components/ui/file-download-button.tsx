@@ -9,17 +9,21 @@ export function FileDownloadButton({
   href,
   fileName,
   children,
+  iconOnly = false,
 }: {
   href: string;
   fileName: string;
   children?: ReactNode;
+  iconOnly?: boolean;
 }) {
   const [downloading, setDownloading] = useState(false);
   return (
     <PillButton
       href={href}
       download={fileName}
-      variant="secondary"
+      variant={iconOnly ? "icon" : "secondary"}
+      size={iconOnly ? "compact" : undefined}
+      label={iconOnly ? "Download" : undefined}
       disabled={downloading}
       onClick={async (event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -49,7 +53,7 @@ export function FileDownloadButton({
       }}
     >
       <Download className="size-3.5" />
-      {children ?? "Download"}
+      {!iconOnly && (children ?? "Download")}
     </PillButton>
   );
 }

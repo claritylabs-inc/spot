@@ -57,12 +57,20 @@ baseline evidence, not a substitute for this run's regression checks.
 
 | IDs | Status | Evidence / findings |
 | --- | --- | --- |
-| BROKER | Partial pass | Website autosave on immediate close/reopen; invalid-state rejection retains draft and recovers; status edits retain the sidebar when filtered out; keyboard row opening and 390px layout passed. Creation, logo upload, and same-field concurrency remain to run. |
-| BPROFILE | Partial pass | Broker OTP login, website autosave/reload and restoration passed; operator status restriction and partial-update preservation covered by Convex regression. Logo, live-draft and role UI cases remain. |
-| THREAD | Partial pass / configuration block | Keyboard-open conversation sidebar, archive/restore, narrow width and full conversation navigation passed. Read-only policy task fails because the native-local operator model is unconfigured. |
-| TEAM | Partial pass | Client admin title autosave and immediate close/reopen, self-role lock, local invite/cancel, keyboard invitation sidebar and mobile layout passed. Invited-member acceptance, explicit promotion/demotion, local email change/cancel, primary-contact assignment, and removal/fallback passed. Broker team remains. |
-| CLIENT, CHANNEL, ROUTING, TELEMETRY, PROFILE, LEADS | Discovery only | Operator routes rendered in desktop Chrome. Routing talks to shared dev; do not mutate it. |
-| All remaining IDs | Not run | Execute the scripts above and expand them when further reachable workflows are discovered. |
+| AUTH, ONBOARD | Passed exercised local paths | Invalid email/OTP, valid captured OTP recovery, protected route/logout, fresh signup and reload passed. Fixed retired operator-only upload offered during client onboarding and removed single-choice signup detour. Expiry/rate-limit simulation remains untested. |
+| BROKER, BPROFILE | Partial pass | Autosave/error/filter persistence and role boundary passed. Standalone supplier creation and SVG logo upload passed; retaining the new editor while its status is filtered out passed. Same-field concurrent edits remain untested. |
+| TEAM | Passed exercised shared workflows | Client and broker keyboard member editing/invite/cancel passed. Client acceptance, role changes, primary contact, email-change cancellation, removal/fallback passed. Hidden service-account admin regression covered. |
+| THREAD | Passed exercised local workflows | Sidebar keyboard opening, archive/restore, full conversation navigation and grounded operator policy task passed after local model setup and rich-tool argument fix. Cancellation still to run. |
+| PROFILE | Partial pass | Operator/client name persistence, invalid-phone recovery, appearance and mobile rendering passed. Privacy/email panels inspected; irreversible account deletion excluded. |
+| POLICY, CERT, FILE | Partial pass | Client read-only policy details/source preview, client allowed-file isolation/download, synthetic certificate generation/version 2/download/archive/restore passed. Fixed PDF Download opening tabs and client read-only visibility switch changing visually. Operator upload/edit and requirement-backed certificate cases underway. |
+| WIKI, ORG, SETTINGS | Passed exercised edits; follow-up underway | Wiki immediate-close/offline/retry and required-name validation passed; behavior/certificate/beta toggles restored. Notification autosave and restoring inherited defaults passed. |
+| INTEGRATE, CONNECT | Partial / external prerequisite blocks | Invalid vendor input and local pending invitation creation passed; cancel/sidebar and invalid mailbox inputs fixed and browser verified. Live IMAP/OAuth/Slack reinstall requires disposable credentials. |
+| CHANNEL, ROUTING, TELEMETRY | Partial pass | Local Slack identity save/reload/restore, MCP setup copy, read-only router refresh/filter, Models desktop/mobile, telemetry search/detail passed. Operator model configured only in native-local Convex. Mock channel turn, terminal turn and MCP client authorization remain. |
+| PUBLIC | Passed negative/public-report paths | Invalid share/connection tokens, missing/unknown OAuth client fail safely; routing-weather report responsive. Valid packet snapshot remains in PACKET lane. |
+| CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload remains in POLICY. |
+| REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment workflow remains. |
+| AGENT, PACKET, PROPOSAL, EMAIL | Not run this pass | Prior procurement evidence is a baseline; current regression and client agent turn remain. |
+| LEADS | Empty state only | No local synthetic lead yet; populated lifecycle remains. |
 
 ## Batch 1: broker editing and reusable method
 
@@ -129,3 +137,86 @@ remaining client workflows without repeated sign-in. The first independent
 contexts were closed after each run. Their saved storage snapshots may be stale;
 prefer the live persistent sessions. A missing fresh OTP capture is an execution
 failure, not evidence that authentication or rate-limit behavior passed.
+
+## Batch 3: local workflow repairs
+
+Browser evidence exposed broken broker Team context wiring, forbidden client
+onboarding upload, wiki/notification close-loss, silent empty organization
+names, PDF downloads opening tabs, and operator rich reads passing an unexpected
+idempotency argument. Repairs reuse existing contexts, auth entrypoints, autosave,
+blob downloads, and the audited action boundary. Native-local operator Models
+now selects the existing OpenAI GPT 5.6 Terra route; a fresh browser task returns
+Cove limits grounded in Declarations page 1. Shared router configuration was not
+changed.
+
+`SettingsDrawer` now supplies dialog naming, focus entry/restoration, and Escape
+through the caller's save guard. Its explicit sidebar portal avoids body-level
+layout shifts; the nonmodal design preserves sibling PDF previews. Actual footer
+mount/resize measurements keep toasts above actions. Browser testing caught and
+fixed transient missing-portal, placement, and footer-measurement regressions
+before delivery. The drawer regression test checks containment and keyboard focus.
+
+Evidence includes `certificate-generate-after.png`,
+`certificate-generate-mobile-after.png`, `certificate-version2.png`,
+`client-file-preview-after.png`, `settings-wiki-after.png`,
+`settings-wiki-dark-after.png`, `public-broker-team-mobile.png`,
+`public-onboarding-after-mobile.png`, and `operator-chat-rich-fixed-outcome.png`.
+Detailed independent scripts/results are in `public-auth-findings.md`,
+`settings-connections-findings.md`, and `operator-findings.md` under the evidence
+directory. Temporary certificate is archived; wiki text and profile edits are
+restored. Synthetic signup accounts/organizations remain local and named as QA.
+
+Two broad route sweeps exhausted VM memory, interrupting browser/dev/X processes.
+The native-local database and browser profiles survived. Cloud development now
+sets a 2 GiB Turbopack cache target; builds run separately from development to
+leave room for role-specific visible Chrome. Interrupted attempts are not passes.
+Restart the existing services/profiles, never setup/seed-reset for cleanup.
+
+## Settings and connection follow-up
+
+Visible client Chrome verified wiki immediate-close autosave, invalid-draft
+retention, offline/reconnect recovery, and Escape closure after correction.
+Organization names reject whitespace with accessible feedback. Notification
+sidebar toggles persist on close; **Use defaults** removes the current user's
+event overrides, and **Use Spot defaults** restores severity-based defaults for
+an entire channel. Both inheritance paths survived reload and restored the
+fixture's original notification behavior.
+
+Connection rows now open a keyboard-accessible detail sidebar. Request context,
+compliance information, and footer actions share that sidebar. The synthetic
+vendor invitation was cancelled from its footer and remained revoked after
+reload; its row contains no actions. Tenant-admin cancellation and relationship
+revocation invalidate pending invitation access and OTPs atomically. Focused
+Convex tests cover tenant/admin isolation, token reuse rejection, and notification
+reset isolation. A revoked synthetic audit row remains locally.
+
+Mailbox creation now uses native form validation. Cloud Chrome rejected an
+invalid email and ports 0, 65536, and 1.5, focusing the invalid field before any
+connection action; correcting to a valid email and port 993 passed validity.
+Live IMAP account connection, external MCP OAuth, and Slack reinstallation remain
+blocked by disposable account/provider prerequisites and were not marked passed.
+
+Design review covered desktop light/dark and 390px connection/wiki sidebars.
+Evidence and exact scripts: `.context/qa/platform/settings-connections-findings.md`,
+`settings-followup-results.json`, `settings-vendor-invitation-sidebar.png`,
+`settings-vendor-invitation-revoked.png`, `settings-vendor-mobile-after.png`,
+`settings-vendor-dark-after.png`, `settings-notification-defaults-restored.png`,
+and `settings-mailbox-validation-after.png`. Idle Chrome9225 was closed after
+this checkpoint to release memory.
+
+Batch 3 validation: 43 focused tests across nine files passed, including rich-tool
+execution/audit replay, invitation/token revocation, notification inheritance,
+wiki/compliance draft recovery, and sidebar focus/containment. Root and Convex
+TypeScript passed; changed-file lint and diff whitespace checks passed. Production
+build passed before final small browser-polish edits, which passed subsequent
+TypeScript and focused checks. Deslop removed unused onboarding upload code,
+manual save state, and unrelated formatter churn; frontend-design reviewed actual
+desktop/mobile/light/dark evidence. Client creation remains without implicit
+invitation; new broker profiles retain their editor for adding a logo.
+
+The reusable skill now includes `scripts/watch-memory.mjs`: samples every 15s,
+logs available memory, pauses new work below 4 GiB, and prioritizes controlled
+cleanup below 2 GiB. Run `--once` between workflows. Idle role browsers were
+closed at verified checkpoints; never clear auth profiles or local data. Current
+browser continuation uses operator9222 and client9223; public9224 and settings9225
+are intentionally closed. Resume them only when their lane is active.

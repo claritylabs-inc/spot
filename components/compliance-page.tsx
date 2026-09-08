@@ -1,7 +1,7 @@
 "use client";
 
-import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode, Ref } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import type { FunctionReference } from "convex/server";
@@ -658,6 +658,13 @@ function RequirementsTable({
                 key={requirement._id}
                 className="cursor-pointer"
                 onClick={() => onSelect(requirement._id)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(requirement._id);
+                  }
+                }}
               >
                 <TableCell className={`text-foreground ${typeStyle("body.medium")}`}>
                   {lineDisplayLabel(requirement.lineOfBusiness)}
@@ -757,6 +764,7 @@ function RequirementDrawer({
   writeRestriction,
   onDeepCheck,
   onGenerate,
+  onSave,
   onArchive,
   onClose,
 }: {
@@ -766,10 +774,12 @@ function RequirementDrawer({
   writeRestriction: string | null;
   onDeepCheck: (requirement: Requirement) => void;
   onGenerate: (requirement: Requirement) => void;
+  onSave: (requirement: Requirement, values: RequirementEditValues) => Promise<void>;
   onArchive: (requirementId: Id<"insuranceRequirements">) => void;
   onClose: () => void;
 }) {
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const editRef = useRef<{ save: () => Promise<boolean> }>(null);
   const check = requirement.complianceCheck;
   const policy = check?.matchedPolicy;
   const policyIds = matchedPolicyIdsForRequirement(requirement);
@@ -784,8 +794,8 @@ function RequirementDrawer({
   return (
     <SettingsDrawer
       open
-      onOpenChange={(open) => {
-        if (!open) onClose();
+      onOpenChange={async (open) => {
+        if (!open && (!editRef.current || await editRef.current.save())) onClose();
       }}
       title={requirement.title}
       actions={check ? <ComplianceStatusTag status={check.status} /> : undefined}
@@ -859,41 +869,52 @@ function RequirementDrawer({
             </div>
           </OperationalPanel>
         ) : null}
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{requirement.requirementText}</p>
-        <section className="space-y-2 border-t border-border pt-5">
-          {requirement.lineOfBusiness ? (
-            <DrawerDetail label="Line" value={lineDisplayLabel(requirement.lineOfBusiness)} />
-          ) : null}
-          {(requirement.limits ?? []).map((limit, index) => (
-            <DrawerDetail
-              key={index}
-              label={limitKindLabel(limit.kind)}
-              value={formatMoney(limit.amount) ?? String(limit.amount)}
-            />
-          ))}
-          {requirement.maxDeductible ? (
-            <DrawerDetail
-              label="Max deductible"
-              value={formatMoney(requirement.maxDeductible.amount) ?? ""}
-            />
-          ) : null}
-          {requirement.coverageForm ? (
-            <DrawerDetail
-              label="Coverage form"
-              value={requirement.coverageForm === "claims_made" ? "Claims-made" : "Occurrence"}
-            />
-          ) : null}
-          {(requirement.provisions ?? []).length > 0 ? (
-            <DrawerDetail
-              label="Provisions"
-              value={(requirement.provisions ?? []).map(provisionLabel).join(", ")}
-            />
-          ) : null}
-          {(requirement.requiredForms ?? []).length > 0 ? (
-            <DrawerDetail label="Required forms" value={(requirement.requiredForms ?? []).join(", ")} />
-          ) : null}
-          <DrawerDetail label="Source" value={requirementSourceLine(requirement)} />
-        </section>
+        {canManage && requirement.canArchive !== false ? (
+          <RequirementEditForm
+            key={requirement._id}
+            ref={editRef}
+            requirement={requirement}
+            onSave={(values) => onSave(requirement, values)}
+          />
+        ) : (
+          <>
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{requirement.requirementText}</p>
+            <section className="space-y-2 border-t border-border pt-5">
+              {requirement.lineOfBusiness ? (
+                <DrawerDetail label="Line" value={lineDisplayLabel(requirement.lineOfBusiness)} />
+              ) : null}
+              {(requirement.limits ?? []).map((limit, index) => (
+                <DrawerDetail
+                  key={index}
+                  label={limitKindLabel(limit.kind)}
+                  value={formatMoney(limit.amount) ?? String(limit.amount)}
+                />
+              ))}
+              {requirement.maxDeductible ? (
+                <DrawerDetail
+                  label="Max deductible"
+                  value={formatMoney(requirement.maxDeductible.amount) ?? ""}
+                />
+              ) : null}
+              {requirement.coverageForm ? (
+                <DrawerDetail
+                  label="Coverage form"
+                  value={requirement.coverageForm === "claims_made" ? "Claims-made" : "Occurrence"}
+                />
+              ) : null}
+              {(requirement.provisions ?? []).length > 0 ? (
+                <DrawerDetail
+                  label="Provisions"
+                  value={(requirement.provisions ?? []).map(provisionLabel).join(", ")}
+                />
+              ) : null}
+              {(requirement.requiredForms ?? []).length > 0 ? (
+                <DrawerDetail label="Required forms" value={(requirement.requiredForms ?? []).join(", ")} />
+              ) : null}
+              <DrawerDetail label="Source" value={requirementSourceLine(requirement)} />
+            </section>
+          </>
+        )}
         {check ? (
           <section className="space-y-2 border-t border-border pt-5">
             <p className={`text-muted-foreground/60 ${typeStyle("body.medium")}`}>
@@ -989,7 +1010,7 @@ function limitDraftsForRequirement(requirement: Requirement): LimitDraft[] {
   return (requirement.limits ?? []).map((limit, index) => ({
     id: `${requirement._id}:${index}`,
     kind: asRequirementLimitKind(limit.kind),
-    amount: limit.label ?? formatMoney(limit.amount) ?? String(limit.amount),
+    amount: String(limit.amount),
   }));
 }
 
@@ -1026,14 +1047,16 @@ function requirementEditValuesFromDrafts(
   };
 }
 
-function RequirementEditForm({
+export function RequirementEditForm({
+  ref,
   requirement,
   onSave,
   onArchive,
 }: {
   requirement: Requirement;
   onSave: (values: RequirementEditValues) => Promise<void>;
-  onArchive: () => void;
+  onArchive?: () => void;
+  ref?: Ref<{ save: () => Promise<boolean> }>;
 }) {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [title, setTitle] = useState(requirement.title);
@@ -1078,6 +1101,8 @@ function RequirementEditForm({
     flush: onSave,
     errorMessage: "The requirement could not be saved.",
   });
+
+  useImperativeHandle(ref, () => ({ save: autoSave.saveNow }), [autoSave.saveNow]);
 
   return (
     <div className="space-y-3">
@@ -1248,41 +1273,43 @@ function RequirementEditForm({
         ) : null}
       </label>
       <AutoSaveStatus status={autoSave.status} />
-      <div className="flex items-center justify-end gap-3">
-        {confirmArchive ? (
-          <>
-            <span className={`mr-auto text-muted-foreground ${typeStyle("caption.default")}`}>
-              Remove this requirement from active compliance?
-            </span>
-            <PillButton
-              type="button"
-              size="compact"
-              variant="secondary"
-              onClick={() => setConfirmArchive(false)}
-            >
-              Keep
-            </PillButton>
+      {onArchive ? (
+        <div className="flex items-center justify-end gap-3">
+          {confirmArchive ? (
+            <>
+              <span className={`mr-auto text-muted-foreground ${typeStyle("caption.default")}`}>
+                Remove this requirement from active compliance?
+              </span>
+              <PillButton
+                type="button"
+                size="compact"
+                variant="secondary"
+                onClick={() => setConfirmArchive(false)}
+              >
+                Keep
+              </PillButton>
+              <PillButton
+                type="button"
+                size="compact"
+                variant="destructive"
+                onClick={onArchive}
+              >
+                Confirm archive
+              </PillButton>
+            </>
+          ) : (
             <PillButton
               type="button"
               size="compact"
               variant="destructive"
-              onClick={onArchive}
+              onClick={() => setConfirmArchive(true)}
             >
-              Confirm archive
+              <Trash2 className="h-3.5 w-3.5" />
+              Archive requirement
             </PillButton>
-          </>
-        ) : (
-          <PillButton
-            type="button"
-            size="compact"
-            variant="destructive"
-            onClick={() => setConfirmArchive(true)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Archive requirement
-          </PillButton>
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1350,7 +1377,6 @@ function SourceDrawer({
   const [dealName, setDealName] = useState(source.dealName ?? "");
   const [dealType, setDealType] = useState(source.dealType ?? "");
   const [internalNotes, setInternalNotes] = useState(source.internalNotes ?? "");
-  const [savingContext, setSavingContext] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [expandedRequirementId, setExpandedRequirementId] =
     useState<Id<"insuranceRequirements"> | null>(null);
@@ -1370,6 +1396,38 @@ function SourceDrawer({
     errorMessage: "The requirement source could not be saved.",
   });
 
+  const hasHolderDetails = !!source.holder || [
+    holderName, holderContactName, holderEmail, holderPhone,
+    addressLine1, addressLine2, city, state, postalCode, country,
+  ].some((value) => value.trim());
+  const contextAutoSave = useLocalFirstAutoSave({
+    mutationName: `compliance.updateRequirementSource.context.${source._id}`,
+    args: {
+      holder: holderName.trim() ? {
+        displayName: holderName.trim(),
+        contactName: holderContactName.trim() || undefined,
+        email: holderEmail.trim() || undefined,
+        phone: holderPhone.trim() || undefined,
+        address: {
+          line1: addressLine1.trim() || undefined,
+          line2: addressLine2.trim() || undefined,
+          city: city.trim() || undefined,
+          state: state.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          country: country.trim() || undefined,
+        },
+      } : undefined,
+      dealName,
+      dealType,
+      internalNotes,
+    },
+    resetKey: source._id,
+    enabled: canManage,
+    canSave: !hasHolderDetails || !!holderName.trim(),
+    flush: (args) => onUpdateSource(source, args),
+    errorMessage: "The requirement source details could not be saved.",
+  });
+
   async function archiveSource() {
     const archived = await onArchiveSource(source._id);
     if (archived) onClose();
@@ -1378,8 +1436,8 @@ function SourceDrawer({
   return (
     <SettingsDrawer
       open
-      onOpenChange={(open) => {
-        if (!open) onClose();
+      onOpenChange={async (open) => {
+        if (!open && await sourceAutoSave.saveNow() && await contextAutoSave.saveNow()) onClose();
       }}
       title="Requirement source"
       footer={
@@ -1409,7 +1467,7 @@ function SourceDrawer({
               <PillButton
                 type="button"
                 variant="destructive"
-                disabled={archiving || savingContext}
+                disabled={archiving || contextAutoSave.status === "saving"}
                 onClick={() => setConfirmArchive(true)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1542,46 +1600,12 @@ function SourceDrawer({
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={dealName} onChange={(event) => setDealName(event.target.value)} disabled={!canManage} placeholder="Office lease, Series B financing, client engagement" /></label>
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={dealType} onChange={(event) => setDealType(event.target.value)} disabled={!canManage} placeholder="Lease, investment, contract" /></label>
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Internal notes<Textarea value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} disabled={!canManage} rows={4} /></label>
-            {canManage ? (
-              <div className="flex justify-end">
-                <PillButton
-                  type="button"
-                  size="compact"
-                  disabled={savingContext || !holderName.trim()}
-                  onClick={async () => {
-                    setSavingContext(true);
-                    try {
-                      await onUpdateSource(source, {
-                        holder: {
-                          displayName: holderName.trim(),
-                          contactName: holderContactName.trim() || undefined,
-                          email: holderEmail.trim() || undefined,
-                          phone: holderPhone.trim() || undefined,
-                          address: {
-                            line1: addressLine1.trim() || undefined,
-                            line2: addressLine2.trim() || undefined,
-                            city: city.trim() || undefined,
-                            state: state.trim() || undefined,
-                            postalCode: postalCode.trim() || undefined,
-                            country: country.trim() || undefined,
-                          },
-                        },
-                        dealName,
-                        dealType,
-                        internalNotes,
-                      });
-                      toast.success("Requirement source details saved");
-                    } catch (error) {
-                      toast.error(getUserFacingErrorMessage(error, "Unable to save source details"));
-                    } finally {
-                      setSavingContext(false);
-                    }
-                  }}
-                >
-                  {savingContext ? "Saving…" : "Save details"}
-                </PillButton>
-              </div>
+            {hasHolderDetails && !holderName.trim() ? (
+              <p className={`text-destructive ${typeStyle("caption.default")}`}>
+                Certificate holder name is required.
+              </p>
             ) : null}
+            <AutoSaveStatus status={contextAutoSave.status} />
           </div>
         </FormSection>
         <section className="space-y-2 border-t border-border pt-5">
@@ -1747,6 +1771,13 @@ function RequirementSourcesTable({
               key={source._id}
               className="cursor-pointer"
               onClick={() => onSelect(source._id)}
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(source._id);
+                }
+              }}
             >
               <TableCell className="max-w-72 px-4">
                 <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>{source.title}</p>
@@ -2140,6 +2171,7 @@ function ComplianceWorkspace({
       return;
     }
     setImporting(true);
+    const importToast = toast.loading("Importing requirements…");
     try {
       let fileId: Id<"_storage"> | undefined;
       if (sourceFile) {
@@ -2184,6 +2216,7 @@ function ComplianceWorkspace({
         result.createdCount === 0
           ? "No new coverage requirements found"
           : `Created ${result.createdCount} requirement${result.createdCount === 1 ? "" : "s"}`,
+        { id: importToast },
       );
       setSourceText("");
       setSourceFile(null);
@@ -2203,7 +2236,7 @@ function ComplianceWorkspace({
       setSourceInternalNotes("");
       setCreationDrawer(null);
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Unable to generate requirements"));
+      toast.error(getUserFacingErrorMessage(error, "Unable to generate requirements"), { id: importToast });
     } finally {
       setImporting(false);
     }
@@ -2352,9 +2385,6 @@ function ComplianceWorkspace({
       title="Import requirements"
       footer={
         <>
-          <PillButton type="button" variant="secondary" disabled={importing} onClick={() => setCreationDrawer(null)}>
-            Cancel
-          </PillButton>
           <PillButton type="button" disabled={importing || (!sourceText.trim() && !sourceFile)} onClick={() => void generateRequirements()}>
             {importing ? "Importing..." : "Import requirements"}
           </PillButton>
@@ -2431,7 +2461,7 @@ function ComplianceWorkspace({
           accept=".txt,.md,.markdown,.pdf,.docx,.csv,.json,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/json"
           disabled={importing}
           idleLabel="Upload requirement document"
-          busyLabel="Importing requirements..."
+          busyLabel="Upload requirement document"
           hint="TXT, Markdown, PDF, DOCX, CSV, or JSON"
           onFile={(file) => {
             setSourceFile(file);
@@ -2457,9 +2487,6 @@ function ComplianceWorkspace({
       title="Add requirement"
       footer={
         <>
-          <PillButton type="button" variant="secondary" disabled={submitting} onClick={() => setCreationDrawer(null)}>
-            Cancel
-          </PillButton>
           <PillButton type="submit" form="manual-compliance-requirement" disabled={submitting}>
             {submitting ? "Saving..." : "Save requirement"}
           </PillButton>
@@ -2557,6 +2584,7 @@ function ComplianceWorkspace({
       checking={checkingRequirementId === selectedRequirement._id}
       canManage={canManageCompliance}
       writeRestriction={complianceWriteRestriction}
+      onSave={saveRequirementEdits}
       onDeepCheck={(row) => void runDeeperCheck(row)}
       onGenerate={(requirement) => {
         if (!requirement.sourceDocumentId) {

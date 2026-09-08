@@ -101,7 +101,7 @@ export function OrganizationSection() {
   }, [org]);
 
   const orgSettingsArgs: OrgSettingsArgs = {
-    name: name || undefined,
+    name: name.trim(),
     website: website || undefined,
     industry: industry || undefined,
     industryVertical: industryVertical || undefined,
@@ -122,6 +122,7 @@ export function OrganizationSection() {
     mutationName: "settings.organization.updateOrg",
     args: orgSettingsArgs,
     enabled: settingsHydrated,
+    canSave: Boolean(name.trim()),
     autoSave: false,
     applyLocal: (store, args) => patchCachedViewerOrg(store, args),
     flush: saveOrgSettings,
@@ -277,18 +278,33 @@ export function OrganizationSection() {
             <OperationalPanelBody className="space-y-4 px-5 py-5">
               <div>
                 <label
+                  htmlFor="organization-name"
                   className={`text-muted-foreground block mb-1.5 ${typeStyle("label.field")}`}
                 >
                   Organization Name
                 </label>
                 <input
+                  id="organization-name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   onBlur={() => void saveOrgSettingsNow()}
                   placeholder="Organization name"
+                  aria-invalid={settingsHydrated && !name.trim()}
+                  aria-describedby={
+                    !name.trim() ? "organization-name-error" : undefined
+                  }
                   className={`h-9 w-full rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
                 />
+                {settingsHydrated && !name.trim() ? (
+                  <p
+                    id="organization-name-error"
+                    role="alert"
+                    className={`mt-1.5 text-destructive ${typeStyle("body.default")}`}
+                  >
+                    Enter an organization name.
+                  </p>
+                ) : null}
               </div>
 
               <div>
@@ -348,14 +364,15 @@ export function OrganizationSection() {
                           placeholder="Alternate legal name, DBA, FKA, parent, subsidiary, or affiliate"
                           className={`h-9 min-w-0 flex-1 rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
                         />
-                        <button
+                        <PillButton
                           type="button"
+                          variant="destructive"
+                          iconOnly
+                          label="Remove legal entity"
                           onClick={() => removeRelatedLegalEntity(index)}
-                          className="inline-flex h-9 w-10 items-center justify-center rounded-lg border border-input text-muted-foreground transition-colors hover:bg-foreground/4 hover:text-foreground"
-                          aria-label="Remove legal entity"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        </PillButton>
                       </div>
                     ))}
                   </div>

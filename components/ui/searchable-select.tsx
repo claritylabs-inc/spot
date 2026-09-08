@@ -17,6 +17,7 @@ interface SearchableSelectProps {
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
 export function SearchableSelect({
@@ -40,6 +41,7 @@ function SearchableSelectControl({
   onChange,
   placeholder = "Select...",
   disabled = false,
+  ariaLabel,
 }: SearchableSelectProps) {
   const selected = options.find((o) => o.value === value) ?? null;
   const [inputValue, setInputValue] = useState("");
@@ -65,6 +67,7 @@ function SearchableSelectControl({
       disabled={disabled}
     >
       <Combobox.Trigger
+        aria-label={ariaLabel}
         className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-input disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.menu")}`}
       >
         {selected?.icon ? (

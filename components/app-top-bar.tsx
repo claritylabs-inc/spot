@@ -15,6 +15,7 @@ const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/agent/archive": { label: "Threads", href: "/agent/threads" },
   "/agent/thread": { label: "Threads", href: "/agent/threads" },
   "/broker": { label: "Profile" },
+  "/broker/team": { label: "Team" },
   "/connect": { label: "Connect" },
   "/connect/clients": { label: "Clients", href: "/connect/clients" },
   "/connect/vendors": { label: "Vendors", href: "/connect/vendors" },

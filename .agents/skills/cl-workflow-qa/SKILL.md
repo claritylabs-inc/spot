@@ -38,6 +38,10 @@ rendered product by following the same workflow before and after each fix.
    mark a browser case passed. For long runs, persistent per-role Chrome profiles
    avoid repeated logins and stale refresh-token snapshots. Read a fresh, matching
    local OTP capture after requesting it; do not reuse the previous user's code.
+   Keep one active tab per role and watch VM memory during broad route sweeps.
+   Run production builds separately from development services when memory is
+   tight. After a process crash, restore the existing database/profile and rerun
+   interrupted checks; never treat an infrastructure timeout as a product result.
 3. Follow the written use case. Inspect screenshots as well as accessible UI,
    downloads, persistence after reload, errors, and live updates. Record the
    observed behavior and evidence before editing.
@@ -54,6 +58,27 @@ rendered product by following the same workflow before and after each fix.
 7. Update the ledger with evidence and remaining uncertainty. Work through all
    untested groups, then return to unresolved findings. Keep useful progress
    updates flowing during a long run.
+
+## Memory checkpoints
+
+Start `node .agents/skills/cl-workflow-qa/scripts/watch-memory.mjs` with output
+redirected into `.context/qa/`; it samples every 15 seconds and records only
+memory totals/timestamps in `.context/qa/memory.jsonl`. Use `--once` before each
+new workflow or validation job. The script uses the repository's Node/dayjs.
+
+- At less than 4 GiB available, pause new browser work. Finish pending saves,
+  downloads, and imports, record the current step, then close idle role browsers.
+- At less than 2 GiB, stop all new work that consumes substantial memory and
+  prioritize a controlled service/browser restart at the first safe checkpoint.
+- Periodically recycle the development server after a broad route sweep if
+  closing idle browsers does not recover sufficient memory. Preserve the local
+  database and persistent Chrome profiles, and wait for backend readiness.
+- Run production builds with development services stopped when memory is tight.
+  Never clear the database, delete browser profiles, or kill pending writes as
+  a memory cleanup. Do not use kernel cache dropping as a substitute for reducing
+  the working processes.
+- Resume from the recorded step and repeat interrupted assertions. Record the
+  resource incident separately from actual product defects.
 
 ## Boundaries and delivery
 
