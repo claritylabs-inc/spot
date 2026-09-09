@@ -49,7 +49,7 @@ export function buildOperatorMcpToolCatalog(args: {
           readOnlyHint: !write,
           destructiveHint: spec.effect === "destructive",
           idempotentHint: spec.effect === "read",
-          openWorldHint: false,
+          openWorldHint: spec.openWorld,
         },
       };
     });

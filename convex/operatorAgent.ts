@@ -2604,6 +2604,24 @@ async function executeToolActionDomain(
     idempotencyKey?: string;
   },
 ): Promise<OperatorActionToolResult> {
+  if (
+    args.toolName === "list_company_mailboxes" ||
+    args.toolName === "search_company_email" ||
+    args.toolName === "read_company_email_thread" ||
+    args.toolName === "get_company_email_attachment"
+  ) {
+    return await ctx.runAction(
+      internal.actions.operatorGoogleWorkspace.runToolInternal,
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        toolName: args.toolName,
+        input: args.input,
+        channel: args.channel,
+      },
+    );
+  }
+
   if (OPERATOR_RICH_ACTION_TOOLS.has(args.toolName)) {
     return (await ctx.runAction(
       internal.actions.operatorAgentRichTools.runInternal,

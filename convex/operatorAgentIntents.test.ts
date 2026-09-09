@@ -51,6 +51,7 @@ describe("operator task intents", () => {
     expect(global.map((intent) => intent.id)).toEqual([
       "find_account_or_policy",
       "check_system_health",
+      "search_company_email",
       "investigate_recent_failures",
     ]);
 
