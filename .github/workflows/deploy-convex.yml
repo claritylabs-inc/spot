@@ -25,10 +25,16 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            imessage-worker/package-lock.json
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund --loglevel=error
+
+      - name: Install iMessage worker test dependencies
+        working-directory: imessage-worker
+        run: npm ci --include=dev --no-audit --no-fund --loglevel=error
 
       - name: Check shared package versions
         run: npm run check:shared-package-versions
