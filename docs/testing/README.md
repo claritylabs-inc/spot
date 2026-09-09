@@ -2,6 +2,14 @@
 
 Spot uses automated tests to protect consequential, durable behavior. The goal is not the largest suite or the highest line count. A smaller suite is better when each failure points to a real regression and the suite remains fast enough to run routinely.
 
+## Running the suite
+
+The root `npm test` command includes the iMessage worker tests, which use the
+installed Spectrum providers. Run `npm ci` and `npm --prefix imessage-worker ci`
+before testing a fresh checkout. Both the CI root job and release root validation
+install these dependencies; installs in the separate worker jobs are not shared
+with the root jobs.
+
 ## The decision rule
 
 Write a test when all of the following are true:
