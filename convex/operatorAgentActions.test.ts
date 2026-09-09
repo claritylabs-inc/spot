@@ -84,7 +84,7 @@ test("operator rich reads execute and replay through the audited action boundary
     internal.operatorAgent.executeUnconfirmedActionToolInternal,
     args,
   );
-  expect(first, JSON.stringify(first)).toMatchObject({
+  expect(first).toMatchObject({
     status: "succeeded",
     idempotent: false,
     result: [expect.objectContaining({ messageId: ids.userMessageId })],

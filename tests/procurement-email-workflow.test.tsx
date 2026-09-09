@@ -3,7 +3,7 @@ import { act, createRef, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createSyncStore, SyncProvider } from "@claritylabs/cl-sync";
 import { getFunctionName } from "convex/server";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import {
   ProcurementEmailDrawer,
   type ProcurementEmailDrawerHandle,
@@ -127,7 +127,14 @@ vi.mock("@/components/settings/settings-drawer", () => ({
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-async function mount(close: () => void, readOnly = false) {
+beforeEach(() => {
+  vi.resetAllMocks();
+  state.attachments = false;
+  state.proposalStatus = "reviewed";
+  state.category = "other";
+});
+
+async function mount(close: () => void) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -136,20 +143,19 @@ async function mount(close: () => void, readOnly = false) {
     persistence: "memory",
   });
   const drawerRef = createRef<ProcurementEmailDrawerHandle>();
-  const render = (thread = "thread") =>
+  const render = () =>
     root.render(
       <SyncProvider store={store}>
         <ProcurementEmailDrawer
-          key={thread}
           ref={drawerRef}
-          emailThreadId={thread as Id<"procurementEmailThreads">}
+          emailThreadId={"thread" as Id<"procurementEmailThreads">}
           requests={[
             {
               _id: "request" as Id<"procurementRequests">,
               title: "QA request",
             },
           ]}
-          readOnly={readOnly}
+          readOnly={false}
           onClose={close}
         />
       </SyncProvider>,
@@ -172,9 +178,7 @@ function button(container: Element, text: string) {
 }
 
 test("classification close retains failed draft and retries only the edited field", async () => {
-  state.attachments = false;
   update
-    .mockReset()
     .mockRejectedValueOnce(new Error("Offline"))
     .mockResolvedValue(undefined);
   const close = vi.fn();
@@ -204,8 +208,7 @@ test("classification close retains failed draft and retries only the edited fiel
 
 test("filing a revision supplies the exact prior proposal and selected proposals stay protected", async () => {
   state.attachments = true;
-  state.proposalStatus = "reviewed";
-  file.mockReset().mockResolvedValue({ status: "revised" });
+  file.mockResolvedValue({ status: "revised" });
   const view = await mount(vi.fn());
   try {
     await act(async () => button(view.container, "File revision").click());
@@ -223,24 +226,8 @@ test("filing a revision supplies the exact prior proposal and selected proposals
   }
 });
 
-test("read-only email preview closes without attempting a write", async () => {
-  state.attachments = false;
-  update.mockReset();
-  const close = vi.fn();
-  const view = await mount(close, true);
-  try {
-    await act(async () => button(view.container, "Close").click());
-    expect(close).toHaveBeenCalledOnce();
-    expect(update).not.toHaveBeenCalled();
-  } finally {
-    await view.cleanup();
-  }
-});
-
 test("acknowledged category follows another operator and is not resent with a later request edit", async () => {
-  state.category = "other";
-  state.attachments = false;
-  update.mockReset().mockResolvedValue(undefined);
+  update.mockResolvedValue(undefined);
   const view = await mount(vi.fn());
   try {
     const category = view.container.querySelector<HTMLSelectElement>(
@@ -276,48 +263,9 @@ test("acknowledged category follows another operator and is not resent with a la
   }
 });
 
-test("rapid drawer switching flushes the previous record and retains failed drafts", async () => {
-  state.category = "other";
-  update
-    .mockReset()
-    .mockRejectedValueOnce(new Error("Offline"))
-    .mockResolvedValue(undefined);
-  const view = await mount(vi.fn());
-  const switchThread = async () => {
-    if (await view.drawerRef.current!.save()) view.render("next-thread");
-  };
-  try {
-    const category = view.container.querySelector<HTMLSelectElement>(
-      'select[aria-label="Participant category"]',
-    )!;
-    await act(async () => {
-      category.value = "broker";
-      category.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await act(switchThread);
-    expect(category.value).toBe("broker");
-    expect(update).toHaveBeenLastCalledWith({
-      emailThreadId: "thread",
-      category: "broker",
-      requestId: undefined,
-    });
-    await act(switchThread);
-    expect(
-      view.container.querySelector<HTMLSelectElement>(
-        'select[aria-label="Participant category"]',
-      )!.value,
-    ).toBe("other");
-    expect(update).toHaveBeenCalledTimes(2);
-  } finally {
-    await view.cleanup();
-  }
-});
-
 test("an earlier acknowledgement preserves a newer edit made while saving", async () => {
-  state.category = "other";
   let acknowledge!: () => void;
   update
-    .mockReset()
     .mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {

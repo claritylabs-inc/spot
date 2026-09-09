@@ -3,7 +3,7 @@
 import { act, type ReactNode } from "react";
 import { createSyncStore, SyncProvider } from "@claritylabs/cl-sync";
 import { createRoot } from "react-dom/client";
-import { expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { PacketEditor } from "../components/procurement/packet-workspace";
 import type { Id } from "../convex/_generated/dataModel";
 
@@ -35,6 +35,12 @@ vi.mock("@/components/settings/settings-drawer", () => ({
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.resetAllMocks();
+});
 
 test("preserves unsaved packet edits across live updates and a rejected save", async () => {
   const requestId = "request" as Id<"procurementRequests">;
@@ -82,7 +88,7 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
     await render();
     expect(container.querySelector("textarea")?.value).toBe("My unsaved draft");
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      await vi.advanceTimersByTimeAsync(600);
     });
     expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
       requestId,
@@ -95,12 +101,10 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
   } finally {
     await act(async () => root.unmount());
     container.remove();
-    vi.clearAllMocks();
   }
 });
 
 test("successive packet autosaves use the acknowledged revision without closing the editor", async () => {
-  vi.useFakeTimers();
   const requestId = "request" as Id<"procurementRequests">;
   mocks.query.mockReturnValue({
     packetRevision: 4,
@@ -163,7 +167,5 @@ test("successive packet autosaves use the acknowledged revision without closing 
   } finally {
     await act(async () => root.unmount());
     container.remove();
-    vi.clearAllMocks();
-    vi.useRealTimers();
   }
 });

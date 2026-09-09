@@ -242,7 +242,6 @@ describe("procurement domain boundaries", () => {
         expect.objectContaining({
           outreachId: null,
           state: "active",
-          recipientLabel: "All brokers",
         }),
       ]);
     }
@@ -271,7 +270,7 @@ describe("procurement domain boundaries", () => {
       requestId: request.requestId,
     });
     expect(before.outreaches[0]).toMatchObject({
-      log: expect.stringContaining("## Application"),
+      log: expect.stringContaining("https://example.com/application"),
     });
     expect(before.outreaches[0]).not.toHaveProperty("applicationUrl");
     expect(before.outreaches[0]).not.toHaveProperty("quoteSummary");

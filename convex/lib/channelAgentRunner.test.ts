@@ -28,18 +28,14 @@ test("Slack reaction-first context recovers with available policy discovery rath
     toolResults: [{ toolName: "choose_slack_reaction", output: { ok: true } }],
   });
   mocks.generate.mockImplementationOnce(async (_ctx, _org, _task, options) => {
-    const step = await options.prepareStep({ stepNumber: 0 });
-    // Simulate a provider following the original reaction-first instruction
-    // unless the recovery request names the evidence tool it must execute.
-    const name =
-      step?.toolChoice?.type === "tool"
-        ? step.toolChoice.toolName
-        : "choose_slack_reaction";
-    const output = await options.tools[name]?.execute({});
+    expect(await options.prepareStep({ stepNumber: 0 })).toMatchObject({
+      toolChoice: { type: "tool", toolName: "lookup_policy" },
+    });
+    const output = await options.tools.lookup_policy.execute({});
     return {
-      text: output ?? "The requested reaction tool is unavailable.",
-      toolCalls: [{ toolName: name, input: {} }],
-      toolResults: output ? [{ toolName: name, output }] : [],
+      text: output,
+      toolCalls: [{ toolName: "lookup_policy", input: {} }],
+      toolResults: [{ toolName: "lookup_policy", output }],
     };
   });
   const result = await runAgentTurn({} as ActionCtx, {
