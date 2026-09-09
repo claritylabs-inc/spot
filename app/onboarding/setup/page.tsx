@@ -6,21 +6,15 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { BrandWordmark } from "@/components/auth-shell";
-import { PolicyEmptyState } from "@/components/policy-empty-state";
-import type { PolicyUploadMode } from "@/components/policy-upload-mode-toggle";
 import { PillButton } from "@/components/ui/pill-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
-import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { ArrowRight, Check, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getPublicAgentDomain } from "@/lib/domains";
 import { AGENT_TEXT_NUMBER } from "@/lib/imessage-config";
-import { preparePolicyUploadCandidates } from "@/lib/policy-upload-duplicates";
 import {
-  useCachedPolicyList,
   useCachedViewerOrg,
   useViewerCacheActions,
 } from "@/lib/sync/spot-cached-queries";
@@ -68,7 +62,7 @@ function websiteFromEmail(email?: string | null): string {
   return domain;
 }
 
-type Step = 0 | 1 | 2 | 3;
+type Step = 0 | 1 | 2;
 
 const STEPS: ReadonlyArray<{ label: string; subtitle?: string }> = [
   {
@@ -78,11 +72,6 @@ const STEPS: ReadonlyArray<{ label: string; subtitle?: string }> = [
   {
     label: "Your organization",
     subtitle: "Confirm your company name and website.",
-  },
-  {
-    label: "Add your policies",
-    subtitle:
-      "Add policies so you can manage them, get answers and generate COIs.",
   },
   { label: "You're all set", subtitle: "Here's what you can do next." },
 ] as const;
@@ -165,15 +154,6 @@ function Shell({
   );
 }
 
-type PolicyRow = {
-  _id: string;
-  carrier?: string | null;
-  policyNumber?: string | null;
-  documentType?: string;
-  pipelineStatus?: string;
-  uploadedBySide?: string;
-};
-
 export default function ClientOnboardingSetupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -190,18 +170,9 @@ export default function ClientOnboardingSetupPage() {
   const updateOrg = useMutation(api.orgs.updateOrg);
   const createClientOrg = useMutation(api.orgs.createClientOrg);
   const completeOnboarding = useMutation(api.users.completeOnboarding);
-  const generateUploadUrl = useMutation(api.policies.generateUploadUrl);
-  const checkDuplicateUploadByHash = useMutation(
-    api.policies.checkDuplicateUploadByHash,
-  );
-  const extractFromUpload = useAction(
-    api.actions.extractFromUpload.extractFromUpload,
-  );
   const extractCompanyInfo = useAction(
     api.actions.extractCompanyInfo.extractCompanyInfo,
   );
-
-  const policies = useCachedPolicyList() as PolicyRow[] | undefined;
 
   const [currentStep, setCurrentStep] = useState<Step>(0);
   const [userName, setUserName] = useState("");
@@ -211,11 +182,7 @@ export default function ClientOnboardingSetupPage() {
   const [orgName, setOrgName] = useState("");
   const [website, setWebsite] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [stagedPolicies, setStagedPolicies] = useState<File[]>([]);
-  const [policyUploadMode, setPolicyUploadMode] =
-    useState<PolicyUploadMode>("combined");
   const isVendorInvite = searchParams?.get("source") === "vendor-invite";
   const invitingClientName =
     searchParams?.get("client")?.trim() || "your client";
@@ -285,7 +252,7 @@ export default function ClientOnboardingSetupPage() {
   const spotAgentHandle = viewerOrg?.org?.agentHandle;
   const spotAgentEmail = spotAgentHandle
     ? `${spotAgentHandle}@${AGENT_DOMAIN}`
-    : `agent@${AGENT_DOMAIN}`;
+    : null;
 
   const handleLogout = useCallback(async () => {
     await signOut();
@@ -370,104 +337,6 @@ export default function ClientOnboardingSetupPage() {
     patchViewerOrg,
   ]);
 
-  const handleFilesUpload = useCallback(
-    async (files: File[], uploadMode: PolicyUploadMode = policyUploadMode) => {
-      if (files.length === 0) return false;
-      setUploading(true);
-      try {
-        const orgId = viewerOrg?.org?._id as Id<"organizations"> | undefined;
-        if (!orgId) throw new Error("No organization");
-        const candidates = await preparePolicyUploadCandidates(
-          files,
-          (fileSha256) => checkDuplicateUploadByHash({ orgId, fileSha256 }),
-        );
-        if (!candidates) return false;
-
-        const storageIds: string[] = [];
-        for (let i = 0; i < candidates.length; i++) {
-          const uploadUrl = await generateUploadUrl();
-          const res = await fetch(uploadUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/pdf" },
-            body: candidates[i].file,
-          });
-          if (!res.ok) throw new Error("Upload failed");
-          const { storageId } = (await res.json()) as { storageId: string };
-          storageIds.push(storageId);
-        }
-
-        if (uploadMode === "separate") {
-          for (let i = 0; i < storageIds.length; i++) {
-            const result = await extractFromUpload({
-              fileId: storageIds[i] as never,
-              fileName: candidates[i].file.name,
-              fileSha256: candidates[i].fileSha256,
-            });
-            if (
-              result &&
-              typeof result === "object" &&
-              "error" in result &&
-              typeof result.error === "string"
-            ) {
-              throw new Error(result.error);
-            }
-          }
-        } else {
-          const result = await extractFromUpload({
-            fileId: storageIds[0] as never,
-            fileName: candidates[0].file.name,
-            fileSha256: candidates[0].fileSha256,
-            additionalFiles: storageIds.slice(1).map((fileId, i) => ({
-              fileId: fileId as never,
-              fileName: candidates[i + 1].file.name,
-              fileSha256: candidates[i + 1].fileSha256,
-            })),
-          });
-          if (
-            result &&
-            typeof result === "object" &&
-            "error" in result &&
-            typeof result.error === "string"
-          ) {
-            throw new Error(result.error);
-          }
-        }
-
-        toast.success(
-          uploadMode === "separate" && candidates.length > 1
-            ? `${candidates.length} policies uploaded — extraction runs in the background.`
-            : candidates.length > 1
-              ? `${candidates.length} files uploaded and merged — extraction runs in the background.`
-              : "Upload started — extraction runs in the background.",
-        );
-        return true;
-      } catch (err) {
-        console.error(err);
-        toast.error("Upload failed. Please try again.");
-        return false;
-      } finally {
-        setUploading(false);
-      }
-    },
-    [
-      viewerOrg,
-      checkDuplicateUploadByHash,
-      generateUploadUrl,
-      extractFromUpload,
-      policyUploadMode,
-    ],
-  );
-
-  const handleStep2Continue = useCallback(async () => {
-    if (stagedPolicies.length > 0) {
-      const ok = await handleFilesUpload(stagedPolicies, policyUploadMode);
-      if (!ok) return;
-      setStagedPolicies([]);
-      setPolicyUploadMode("combined");
-    }
-    setCurrentStep(3);
-  }, [stagedPolicies, handleFilesUpload, policyUploadMode]);
-
   const handleFinish = useCallback(async () => {
     setSubmitting(true);
     setError("");
@@ -486,7 +355,6 @@ export default function ClientOnboardingSetupPage() {
     userName.trim().length > 0 && userRole.trim().length > 0 && !phoneBlocked;
   const canContinueStep1 = orgName.trim().length > 0;
 
-  const policyCount = policies?.length ?? 0;
   const stepContent = isVendorInvite
     ? ([
         {
@@ -497,11 +365,6 @@ export default function ClientOnboardingSetupPage() {
           label: "Your organization",
           subtitle:
             "Confirm the company that will share insurance records with this client.",
-        },
-        {
-          label: "Add insurance documents",
-          subtitle:
-            "Upload policies or certificates your client can use to review their vendor requirements.",
         },
         {
           label: "You're connected",
@@ -540,32 +403,41 @@ export default function ClientOnboardingSetupPage() {
           >
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className={labelClass}>Your name</label>
+                <label htmlFor="onboarding-name" className={labelClass}>
+                  Your name
+                </label>
                 <input
                   type="text"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
+                  id="onboarding-name"
                   placeholder="Full name"
                   autoFocus
                   className={inputClass}
                 />
               </div>
               <div className="space-y-2">
-                <label className={labelClass}>Your role</label>
+                <label htmlFor="onboarding-role" className={labelClass}>
+                  Your role
+                </label>
                 <input
                   type="text"
                   value={userRole}
                   onChange={(e) => setUserRole(e.target.value)}
+                  id="onboarding-role"
                   placeholder="Job title"
                   className={inputClass}
                 />
               </div>
               <div className="space-y-2">
-                <label className={labelClass}>Mobile number (optional)</label>
+                <label htmlFor="onboarding-phone" className={labelClass}>
+                  Mobile number (optional)
+                </label>
                 <PhoneInput
                   value={userPhone || undefined}
                   onChange={(value) => setUserPhone(value ?? "")}
                   defaultCountry="US"
+                  id="onboarding-phone"
                   placeholder="Enter phone number"
                 />
                 <p
@@ -621,22 +493,28 @@ export default function ClientOnboardingSetupPage() {
           >
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className={labelClass}>Organization name</label>
+                <label htmlFor="onboarding-organization" className={labelClass}>
+                  Organization name
+                </label>
                 <input
                   type="text"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
+                  id="onboarding-organization"
                   placeholder="Organization name"
                   autoFocus
                   className={inputClass}
                 />
               </div>
               <div className="space-y-2">
-                <label className={labelClass}>Website (optional)</label>
+                <label htmlFor="onboarding-website" className={labelClass}>
+                  Website (optional)
+                </label>
                 <input
                   type="text"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
+                  id="onboarding-website"
                   placeholder="https://example.com"
                   className={inputClass}
                 />
@@ -670,84 +548,6 @@ export default function ClientOnboardingSetupPage() {
         )}
 
         {currentStep === 2 && (
-          <div className="space-y-8">
-            {policyCount > 0 ? (
-              <OperationalPanel
-                as="div"
-                className="p-5 sm:p-6 flex items-start gap-3"
-              >
-                <div className="mt-0.5 h-8 w-8 rounded-full bg-foreground/4 flex items-center justify-center shrink-0">
-                  <Check className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={`text-foreground ${typeStyle("body.strong")}`}
-                  >
-                    {policyCount === 1
-                      ? "1 policy uploaded"
-                      : `${policyCount} policies uploaded`}
-                  </div>
-                  <div
-                    className={`text-muted-foreground mt-0.5 ${typeStyle("body.default")}`}
-                  >
-                    We&apos;re extracting the details in the background — you
-                    can move on.
-                  </div>
-                </div>
-              </OperationalPanel>
-            ) : (
-              <PolicyEmptyState
-                agentEmail={spotAgentEmail}
-                uploading={uploading}
-                onUpload={handleFilesUpload}
-                title=""
-                subtitle=""
-                bare
-                staged={stagedPolicies}
-                onStagedChange={setStagedPolicies}
-                uploadMode={policyUploadMode}
-                onUploadModeChange={setPolicyUploadMode}
-                hideUploadButton
-              />
-            )}
-
-            {error ? (
-              <p
-                className={`text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                {error}
-              </p>
-            ) : null}
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between -mt-4">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(3)}
-                disabled={uploading}
-                className={`text-muted-foreground hover:text-foreground transition self-start sm:self-center disabled:opacity-50 ${typeStyle("control.buttonCompact")}`}
-              >
-                Skip for now
-              </button>
-              <PillButton
-                type="button"
-                onClick={() => void handleStep2Continue()}
-                disabled={
-                  uploading ||
-                  (policyCount === 0 && stagedPolicies.length === 0)
-                }
-                className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}
-              >
-                {uploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                Continue
-                {!uploading ? <ArrowRight className="h-4 w-4" /> : null}
-              </PillButton>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 3 && (
           <div className="space-y-10">
             <ol
               className={`list-none space-y-4 text-muted-foreground [&>li]:flex [&>li]:gap-4 ${typeStyle("body.default")}`}
@@ -773,39 +573,41 @@ export default function ClientOnboardingSetupPage() {
                   <span>{item}</span>
                 </li>
               ))}
-              <li>
-                <span
-                  className={`shrink-0 text-foreground/30 ${typeStyle("data.numeric")}`}
-                >
-                  4.
-                </span>
-                <span>
-                  Email{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard
-                        .writeText(spotAgentEmail)
-                        .then(() => toast.success("Copied to clipboard"))
-                        .catch(() => toast.error("Couldn't copy"));
-                    }}
-                    className={`mx-1 inline-flex items-center gap-1 text-foreground underline decoration-foreground/20 underline-offset-4 hover:decoration-foreground/50 transition-colors ${typeStyle("control.button")}`}
+              {spotAgentEmail ? (
+                <li>
+                  <span
+                    className={`shrink-0 text-foreground/30 ${typeStyle("data.numeric")}`}
                   >
-                    {spotAgentEmail}
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>{" "}
-                  to get instant answers about your insurance coverage.
-                </span>
-              </li>
+                    4.
+                  </span>
+                  <span>
+                    Email{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard
+                          .writeText(spotAgentEmail)
+                          .then(() => toast.success("Copied to clipboard"))
+                          .catch(() => toast.error("Couldn't copy"));
+                      }}
+                      className={`mx-1 inline-flex items-center gap-1 text-foreground underline decoration-foreground/20 underline-offset-4 hover:decoration-foreground/50 transition-colors ${typeStyle("control.button")}`}
+                    >
+                      {spotAgentEmail}
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>{" "}
+                    to get instant answers about your insurance coverage.
+                  </span>
+                </li>
+              ) : null}
               {SPOT_IMESSAGE_NUMBER ? (
                 <li>
                   <span
                     className={`shrink-0 text-foreground/30 ${typeStyle("data.numeric")}`}
                   >
-                    5.
+                    {spotAgentEmail ? "5." : "4."}
                   </span>
                   <span>
-                    Or text{" "}
+                    Text{" "}
                     <button
                       type="button"
                       onClick={() => {

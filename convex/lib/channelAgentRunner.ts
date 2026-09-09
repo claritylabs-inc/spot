@@ -209,6 +209,7 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
   if (!canRetry || Object.keys(recoveryTools).length === 0) {
     return { audit, text: POLICY_EVIDENCE_UNAVAILABLE_MESSAGE };
   }
+  const firstEvidenceTool = Object.keys(recoveryTools)[0];
 
   try {
     const retryResult = await generateAgentTextForOrg(
@@ -220,7 +221,9 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
         system: `${args.options.system}\n\nPOLICY EVIDENCE RECOVERY:\n- The previous attempt did not complete a current-turn policy evidence lookup required for this answer.\n- Use the available read-only policy tools silently, then answer from their result.\n- If the tools find no matching policy or cannot retrieve the needed evidence, report that concrete outcome instead of promising future work.`,
         tools: recoveryTools,
         prepareStep: ({ stepNumber }) =>
-          stepNumber === 0 ? { toolChoice: "required" as const } : undefined,
+          stepNumber === 0
+            ? { toolChoice: { type: "tool" as const, toolName: firstEvidenceTool } }
+            : undefined,
       },
       {
         ...args.run,

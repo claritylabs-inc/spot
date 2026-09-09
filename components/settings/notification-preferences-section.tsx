@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "convex/react";
-import { ChevronRight, Loader2, Mail, MessageSquareText } from "lucide-react";
+import { ChevronRight, Mail, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
@@ -16,6 +16,8 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import {
   getEffectiveChannelDefault,
   getNotificationSettingsRows,
@@ -53,6 +55,7 @@ function DefaultNotificationRow({
   onCheckedChange,
   label,
   disabled,
+  onReset,
 }: {
   icon: typeof Mail;
   title: string;
@@ -61,6 +64,7 @@ function DefaultNotificationRow({
   onCheckedChange: () => void;
   label: string;
   disabled: boolean;
+  onReset?: () => void;
 }) {
   return (
     <OperationalPanel as="div">
@@ -70,8 +74,12 @@ function DefaultNotificationRow({
             <Icon className="size-4" />
           </div>
           <div className="min-w-0">
-            <p className={`text-foreground ${typeStyle("body.medium")}`}>{title}</p>
-            <p className={`mt-0.5 text-muted-foreground ${typeStyle("body.default")}`}>
+            <p className={`text-foreground ${typeStyle("body.medium")}`}>
+              {title}
+            </p>
+            <p
+              className={`mt-0.5 text-muted-foreground ${typeStyle("body.default")}`}
+            >
               {description}
             </p>
           </div>
@@ -83,6 +91,13 @@ function DefaultNotificationRow({
           label={label}
         />
       </div>
+      {onReset ? (
+        <div className="px-5 pb-4">
+          <PillButton variant="secondary" disabled={disabled} onClick={onReset}>
+            Use Spot defaults
+          </PillButton>
+        </div>
+      ) : null}
     </OperationalPanel>
   );
 }
@@ -95,6 +110,7 @@ function NotificationPreferenceDrawer({
   usesDefaults,
   onOpenChange,
   onSaved,
+  onReset,
 }: {
   orgId: Id<"organizations">;
   row: NotificationSettingsRow;
@@ -103,54 +119,64 @@ function NotificationPreferenceDrawer({
   usesDefaults: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (type: string, email: boolean, text: boolean) => void;
+  onReset: (type: string) => void;
 }) {
   const setChannels = useMutation(api.notificationPreferences.setChannels);
+  const resetChannels = useMutation(api.notificationPreferences.resetChannels);
+  const [resetting, setResetting] = useState(false);
   const [email, setEmail] = useState(initialEmail);
   const [text, setText] = useState(initialText);
-  const [saving, setSaving] = useState(false);
-  const hasChanges = email !== initialEmail || text !== initialText;
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "notificationPreferences.setChannels",
+    args: { email, imessage: text },
+    flush: async (channels) => {
+      await setChannels({ orgId, type: row.type, ...channels });
+      onSaved(row.type, channels.email, channels.imessage);
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(
+        error,
+        "Failed to save notification preference",
+      ),
+  });
 
-  async function savePreference() {
-    setSaving(true);
+  async function restoreDefaults() {
+    setResetting(true);
     try {
-      await setChannels({ orgId, type: row.type, email, imessage: text });
-      onSaved(row.type, email, text);
-      toast.success("Notification preference saved");
+      if (!(await autoSave.saveNow())) return;
+      await resetChannels({ orgId, type: row.type });
+      onReset(row.type);
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(
-          error,
-          "Failed to save notification preference",
-        ),
+        getUserFacingErrorMessage(error, "Failed to restore defaults"),
       );
     } finally {
-      setSaving(false);
+      setResetting(false);
     }
   }
 
   return (
     <SettingsDrawer
       open
-      onOpenChange={onOpenChange}
+      onOpenChange={(open) => {
+        if (!open)
+          void autoSave.saveNow().then((saved) => {
+            if (saved) onOpenChange(false);
+          });
+      }}
       title={row.label}
+      actions={<AutoSaveStatus status={autoSave.status} />}
       footer={
-        <>
+        !usesDefaults ? (
           <PillButton
             variant="secondary"
-            disabled={saving}
-            onClick={() => onOpenChange(false)}
+            disabled={resetting}
+            onClick={() => void restoreDefaults()}
           >
-            Cancel
+            Use defaults
           </PillButton>
-          <PillButton
-            disabled={!hasChanges || saving}
-            onClick={() => void savePreference()}
-          >
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {saving ? "Saving…" : "Save changes"}
-          </PillButton>
-        </>
+        ) : undefined
       }
     >
       <FormSection
@@ -165,26 +191,36 @@ function NotificationPreferenceDrawer({
         <OperationalPanel as="div" className="divide-y divide-border">
           <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div>
-              <p className={`text-foreground ${typeStyle("body.medium")}`}>Email</p>
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                Email
+              </p>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
                 Send this event to your account email.
               </p>
             </div>
             <SettingsSwitch
               checked={email}
+              disabled={resetting}
               onCheckedChange={() => setEmail((current) => !current)}
               label={`${row.label} email`}
             />
           </div>
           <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div>
-              <p className={`text-foreground ${typeStyle("body.medium")}`}>Text</p>
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                Text
+              </p>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
                 Send this event to your profile phone number.
               </p>
             </div>
             <SettingsSwitch
               checked={text}
+              disabled={resetting}
               onCheckedChange={() => setText((current) => !current)}
               label={`${row.label} text message`}
             />
@@ -206,11 +242,11 @@ export function NotificationPreferencesSection({
   );
   const setAllEmail = useMutation(api.notificationPreferences.setAllEmail);
   const setAllChannel = useMutation(api.notificationPreferences.setAllChannel);
+  const resetChannels = useMutation(api.notificationPreferences.resetChannels);
   const { setRightPanel } = useSettingsActions();
   const [localPrefs, setLocalPrefs] = useState<Record<string, boolean>>({});
-  const [savingDefault, setSavingDefault] = useState<NotificationChannel | null>(
-    null,
-  );
+  const [savingDefault, setSavingDefault] =
+    useState<NotificationChannel | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const visibleRows = getNotificationSettingsRows(orgType);
   const groups = Array.from(new Set(visibleRows.map((row) => row.group)));
@@ -249,10 +285,7 @@ export function NotificationPreferencesSection({
     const defaultOverride = explicitPreference("__all__", channel);
     if (defaultOverride !== undefined) return defaultOverride;
 
-    return getEffectiveChannelDefault(
-      channel,
-      NOTIFICATION_SEVERITY[type],
-    );
+    return getEffectiveChannelDefault(channel, NOTIFICATION_SEVERITY[type]);
   }
 
   function setLocalPreference(
@@ -276,6 +309,35 @@ export function NotificationPreferencesSection({
     },
     [],
   );
+
+  const clearLocalPreference = useCallback(
+    (type: string, channel?: NotificationChannel) => {
+      setLocalPrefs((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([key]) =>
+            channel
+              ? key !== prefKey(type, channel)
+              : !key.startsWith(`${type}:`),
+          ),
+        ),
+      );
+    },
+    [],
+  );
+
+  async function restoreDefault(channel: NotificationChannel) {
+    setSavingDefault(channel);
+    try {
+      await resetChannels({ orgId, type: "__all__", channel });
+      clearLocalPreference("__all__", channel);
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(error, "Failed to restore defaults"),
+      );
+    } finally {
+      setSavingDefault(null);
+    }
+  }
 
   async function toggleDefault(channel: NotificationChannel) {
     const previous = defaultOverride(channel);
@@ -334,6 +396,7 @@ export function NotificationPreferencesSection({
             if (!open) setSelectedType(null);
           }}
           onSaved={saveEventLocally}
+          onReset={clearLocalPreference}
         />
       ) : null,
     );
@@ -341,6 +404,7 @@ export function NotificationPreferencesSection({
   }, [
     orgId,
     saveEventLocally,
+    clearLocalPreference,
     selectedEmail,
     selectedRow,
     selectedText,
@@ -363,6 +427,11 @@ export function NotificationPreferencesSection({
           disabled={savingDefault !== null}
           onCheckedChange={() => void toggleDefault("email")}
           label="Default email delivery"
+          onReset={
+            defaultOverride("email") !== undefined
+              ? () => void restoreDefault("email")
+              : undefined
+          }
         />
         <DefaultNotificationRow
           icon={MessageSquareText}
@@ -376,6 +445,11 @@ export function NotificationPreferencesSection({
           disabled={savingDefault !== null}
           onCheckedChange={() => void toggleDefault("imessage")}
           label="Default text delivery"
+          onReset={
+            defaultOverride("imessage") !== undefined
+              ? () => void restoreDefault("imessage")
+              : undefined
+          }
         />
       </div>
 
@@ -398,10 +472,14 @@ export function NotificationPreferencesSection({
                     onClick={() => setSelectedType(row.type)}
                     className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-foreground/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-emphasized"
                   >
-                    <span className={`min-w-0 flex-1 text-foreground ${typeStyle("body.medium")}`}>
+                    <span
+                      className={`min-w-0 flex-1 text-foreground ${typeStyle("body.medium")}`}
+                    >
                       {row.label}
                     </span>
-                    <span className={`shrink-0 text-muted-foreground ${typeStyle("body.default")}`}>
+                    <span
+                      className={`shrink-0 text-muted-foreground ${typeStyle("body.default")}`}
+                    >
                       {usesDefaults ? "Default · " : ""}
                       {channelSummary(email, text)}
                     </span>

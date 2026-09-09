@@ -7,105 +7,8 @@ import type { Id } from "./_generated/dataModel";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
 import { normalizeUserPhone } from "./lib/userPhone";
 
-const LOCAL_FIXTURE = {
-  operator: {
-    email: "terry@claritylabs.inc",
-    name: "Terry Wang",
-  },
-  broker: {
-    name: "Montgomery Risk",
-    slug: "montgomery-risk",
-    website: "https://montgomeryrisk.com",
-    admin: {
-      email: "terry@montgomeryrisk.com",
-      name: "Terry Wang",
-    },
-  },
-  client: {
-    name: "Cove",
-    website: "https://cove.dev",
-    industry: "technology",
-    industryVertical: "fintech",
-    agentHandle: "cove",
-    context:
-      "Cove builds underwriting tools for the relationship-based parts of the housing and finance ecosystem. It works with realtors, property managers, brokers, and mortgage agents. Cove is a technology company focused on underwriting and credit products.",
-    admin: {
-      email: "adyan@cove.dev",
-      name: "Adyan Tanver",
-    },
-  },
-  policy: {
-    carrier: "Northwoods Continental Insurance Company",
-    broker: "Montgomery Risk",
-    policyNumber: "NWC-TEC-3110-26-01",
-    linesOfBusiness: ["EO", "CYBER"],
-    policyYear: 2026,
-    effectiveDate: "03/15/2026",
-    expirationDate: "03/15/2027",
-    insuredName: "Cove Technologies Inc.",
-    insuredAddress: {
-      street1: "111 Richmond Street West",
-      street2: "Suite 700",
-      city: "Toronto",
-      state: "ON",
-      zip: "M5H 2G4",
-      country: "Canada",
-    },
-    operationsDescription:
-      "Technology company providing underwriting, credit, and workflow software for housing and finance professionals.",
-    producer: {
-      agencyName: "Montgomery Risk",
-      address: {
-        street1: "161 Bay Street",
-        street2: "Suite 2700",
-        city: "Toronto",
-        state: "ON",
-        zip: "M5J 2S1",
-        country: "Canada",
-      },
-    },
-    insurer: {
-      legalName: "Northwoods Continental Insurance Company",
-      address: {
-        street1: "200 Front Street West",
-        city: "Toronto",
-        state: "ON",
-        zip: "M5V 3J1",
-        country: "Canada",
-      },
-    },
-    generalAgent: {
-      agencyName: "Highland Risk Services",
-      address: {
-        street1: "100 King Street West",
-        city: "Toronto",
-        state: "ON",
-        zip: "M5X 1A9",
-        country: "Canada",
-      },
-    },
-    premium: "$48,200",
-    premiumAmount: 48_200,
-    summary:
-      "Northwoods Continental Insurance Company policy #NWC-TEC-3110-26-01 for Cove Technologies Inc. covering Errors & Omissions, Other Liability",
-    coverages: [
-      {
-        name: "Technology Errors & Omissions Liability",
-        lineOfBusiness: "EO",
-        limit: "$5,000,000",
-      },
-      {
-        name: "Network Security & Privacy Liability (Cyber)",
-        lineOfBusiness: "OLIB",
-        limit: "$3,000,000",
-      },
-      {
-        name: "Media Content Liability",
-        limit: "$1,000,000",
-      },
-    ],
-  },
-} as const;
+import { LOCAL_FIXTURE } from "./lib/localSeedData";
+import { seedWorkflowFixtures } from "./seedWorkflows";
 
 const DEFAULT_BROKER_PHONE = "+16472921666";
 const DEFAULT_CLIENT_PHONE = "+12025550102";
@@ -130,6 +33,9 @@ type LocalFixtureResult = {
   clientPhone: string;
   operatorPhone: string;
   summary: string;
+  requestId?: Id<"procurementRequests">;
+  proposalId?: Id<"procurementProposals">;
+  operatorThreadId?: Id<"operatorAgentThreads">;
 };
 
 type LegacyDemoCleanupResult = {
@@ -259,7 +165,6 @@ async function ensureMembership(
     )
     .first();
   if (existing) {
-    await ctx.db.patch(existing._id, { role: "admin" });
     return existing._id;
   }
   return await ctx.db.insert("orgMemberships", {
@@ -278,9 +183,6 @@ export const seed = action({
   handler: async (ctx, args): Promise<LocalFixtureResult> => {
     assertLocalSeed();
     const phones = fixturePhones(args);
-    await ctx.runMutation(internal.seed.removeLegacyDemoFixture, {
-      dryRun: false,
-    });
     const fixture = await ctx.runMutation(
       internal.seed.insertLocalFixture,
       phones,
@@ -340,7 +242,8 @@ export const seed = action({
         `Could not seed stored favicon logos for ${missingLogos.join(" and ")}`,
       );
     }
-    return fixture;
+    const workflow = await seedWorkflowFixtures(ctx, fixture);
+    return { ...fixture, ...workflow };
   },
 });
 
@@ -368,6 +271,7 @@ export const cleanupLocalVerificationArtifacts = action({
 export const removeLocalVerificationArtifacts = internalMutation({
   args: {},
   handler: async (ctx): Promise<VerificationCleanupResult> => {
+    assertLocalSeed();
     const isVerificationGuid = (value: string | undefined) =>
       value?.startsWith("seed-e2e-") === true;
     const chats = (await ctx.db.query("imessageChats").collect()).filter(
@@ -432,6 +336,7 @@ export const removeLocalVerificationArtifacts = internalMutation({
 export const removeLegacyDemoFixture = internalMutation({
   args: { dryRun: v.boolean() },
   handler: async (ctx, args): Promise<LegacyDemoCleanupResult> => {
+    assertLocalSeed();
     const organizations = (
       await ctx.db.query("organizations").collect()
     ).filter(
@@ -503,6 +408,7 @@ export const insertLocalFixture = internalMutation({
     operatorPhone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertLocalSeed();
     const now = dayjs().valueOf();
     const { brokerPhone, clientPhone, operatorPhone } = fixturePhones(args);
     const operatorUserId = await upsertUser(ctx, {
@@ -518,8 +424,6 @@ export const insertLocalFixture = internalMutation({
     if (operatorProfile) {
       await ctx.db.patch(operatorProfile._id, {
         email: LOCAL_FIXTURE.operator.email,
-        role: "operator",
-        status: "active",
         slackTeamId: LOCAL_SLACK_FIXTURE.clarityTeamId,
         slackUserId: LOCAL_SLACK_FIXTURE.operatorUserId,
         updatedAt: now,
@@ -564,7 +468,9 @@ export const insertLocalFixture = internalMutation({
     };
     let brokerOrgId: Id<"organizations">;
     if (existingBroker) {
-      await ctx.db.patch(existingBroker._id, brokerFields);
+      if (existingBroker.slug === "release") {
+        await ctx.db.patch(existingBroker._id, brokerFields);
+      }
       brokerOrgId = existingBroker._id;
     } else {
       brokerOrgId = await ctx.db.insert("organizations", brokerFields);
@@ -585,13 +491,11 @@ export const insertLocalFixture = internalMutation({
         country: "Canada",
       },
       writingStates: ["CA", "NY", "TX"],
-      lineOfBusinessCodes: ["CYBER", "EO", "OLIB"],
+      lineOfBusinessCodes: ["CYBER", "EO"],
       updatedByUserId: operatorUserId,
       updatedAt: now,
     };
-    if (existingBrokerProfile) {
-      await ctx.db.patch(existingBrokerProfile._id, brokerProfileFields);
-    } else {
+    if (!existingBrokerProfile) {
       await ctx.db.insert("brokerProfiles", {
         brokerOrgId,
         ...brokerProfileFields,
@@ -630,7 +534,7 @@ export const insertLocalFixture = internalMutation({
     };
     let clientOrgId: Id<"organizations">;
     if (existingClient) {
-      await ctx.db.patch(existingClient._id, clientFields);
+      await ctx.db.patch(existingClient._id, { brokerOrgId: undefined });
       clientOrgId = existingClient._id;
     } else {
       clientOrgId = await ctx.db.insert("organizations", clientFields);
@@ -720,7 +624,11 @@ export const insertLocalFixture = internalMutation({
           sourceNodeIds: ["fixture-operations"],
           sourceSpanIds: ["fixture-operations"],
         },
-        coverages: [],
+        coverages: LOCAL_FIXTURE.policy.coverages.map((coverage) => ({
+          ...coverage,
+          sourceNodeIds: ["fixture-declarations"],
+          sourceSpanIds: ["fixture-coverages"],
+        })),
         parties: [
           {
             role: "named_insured",
@@ -759,6 +667,7 @@ export const insertLocalFixture = internalMutation({
           "fixture-insurer",
           "fixture-general-agent",
           "fixture-operations",
+          "fixture-coverages",
         ],
         warnings: [],
       },
@@ -769,7 +678,39 @@ export const insertLocalFixture = internalMutation({
     };
     let policyId: Id<"policies">;
     if (existingPolicy) {
-      await ctx.db.patch(existingPolicy._id, policyFields);
+      // Upgrade the old synthetic evidence shape without resetting QA changes
+      // such as premiums, archives, pipeline state, or policy ownership.
+      const profile = existingPolicy.operationalProfile;
+      await ctx.db.patch(existingPolicy._id, {
+        coverages: existingPolicy.coverages?.map((coverage) => ({
+          ...coverage,
+          ...(coverage.name ===
+            "Network Security & Privacy Liability (Cyber)" &&
+          coverage.lineOfBusiness === "OLIB"
+            ? { lineOfBusiness: "CYBER" }
+            : {}),
+        })),
+        ...(profile &&
+        Array.isArray(profile.coverages) &&
+        profile.coverages.length === 0
+          ? {
+              operationalProfile: {
+                ...profile,
+                coverages: policyFields.operationalProfile.coverages,
+                sourceSpanIds: [
+                  ...new Set([
+                    ...(profile.sourceSpanIds ?? []),
+                    "fixture-coverages",
+                  ]),
+                ],
+              },
+            }
+          : {}),
+        ...(existingPolicy.summary ===
+        "Northwoods Continental Insurance Company policy #NWC-TEC-3110-26-01 for Cove Technologies Inc. covering Errors & Omissions, Other Liability"
+          ? { summary: LOCAL_FIXTURE.policy.summary }
+          : {}),
+      });
       policyId = existingPolicy._id;
     } else {
       policyId = await ctx.db.insert("policies", policyFields);
@@ -787,7 +728,7 @@ export const insertLocalFixture = internalMutation({
       clientPhone,
       operatorPhone,
       summary:
-        "Seeded local fixture: Terry operator, standalone Montgomery Risk supplier profile, standalone Cove client, mock Slack service channel, stored favicon logos, and one final Cove policy",
+        "Seeded local fixture: operator and tenant accounts, supplier network, standalone Cove client and company wiki, mock Slack, policy source evidence and PDFs, renewal packet, private quote and unconfirmed review, archived file, and operator work thread",
     };
   },
 });

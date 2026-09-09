@@ -121,7 +121,7 @@ export function useCachedOperatorBrokers(search?: string) {
     search ? { search } : {},
   );
   return useMemo(
-    () => rows?.map(({ broker }) => ({ _id: broker._id, name: broker.name })),
+    () => rows?.map(({ broker }) => broker),
     [rows],
   );
 }

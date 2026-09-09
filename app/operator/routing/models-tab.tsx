@@ -88,8 +88,8 @@ type Settings = {
 const AUTOMATED_VALUE = "__automated__";
 const DEFAULT_ROUTE_VALUE = "__default_route__";
 const MANUAL_REQUIRED_VALUE = "__manual_required__";
-const PROVIDER_SELECT_WIDTH_CLASS = "w-full xl:w-44";
-const MODEL_SELECT_WIDTH_CLASS = "w-full xl:w-[30rem]";
+const PROVIDER_SELECT_WIDTH_CLASS = "w-full @5xl/models:w-44";
+const MODEL_SELECT_WIDTH_CLASS = "w-full @5xl/models:w-[30rem]";
 const PROVIDER_PRIORITY: ProviderId[] = [
   "fireworks",
   "openai",
@@ -244,7 +244,7 @@ export function ModelsTab() {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="@container/models grid gap-4">
       {settings.groups.map((group) => {
         const tasks = group.tasks
           .map((taskId) => settings.tasks.find((task) => task.id === taskId))
@@ -279,7 +279,7 @@ export function ModelsTab() {
                 return (
                   <div
                     key={task.id}
-                    className="grid gap-3 py-3.5 xl:grid-cols-[1fr_auto] xl:items-center"
+                    className="grid gap-3 py-3.5 @5xl/models:grid-cols-[1fr_auto] @5xl/models:items-center"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -308,9 +308,9 @@ export function ModelsTab() {
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex w-full flex-col gap-2 justify-self-start xl:w-auto xl:flex-row xl:justify-self-end">
+                    <div className="flex w-full flex-col gap-2 justify-self-start @5xl/models:w-auto @5xl/models:flex-row @5xl/models:justify-self-end">
                       {saving ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground xl:self-center" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground @5xl/models:self-center" />
                       ) : null}
                       <Select
                         value={

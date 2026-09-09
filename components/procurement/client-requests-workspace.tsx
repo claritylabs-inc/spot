@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { usePdf } from "@/components/pdf-context";
+import { FileDropZone } from "@/components/ui/file-drop";
+import { FileDownloadButton } from "@/components/ui/file-download-button";
 import { useMutation, useQuery } from "convex/react";
 import { FileText, Loader2, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -63,6 +73,7 @@ export function ClientRequestsList({
   onActions: (actions: ReactNode) => void;
   onRightPanel: (panel: ReactNode) => void;
 }) {
+  const router = useRouter();
   const rows = useQuery(api.clientProcurementRequests.list, {});
   const create = useMutation(api.clientProcurementRequests.create);
   const [open, setOpen] = useState(false);
@@ -75,7 +86,7 @@ export function ClientRequestsList({
     event.preventDefault();
     setSaving(true);
     try {
-      await create({
+      const { requestId } = await create({
         title: title.trim(),
         narrative: narrative.trim(),
         targetEffectiveDate: targetEffectiveDate || undefined,
@@ -85,6 +96,7 @@ export function ClientRequestsList({
       setTargetEffectiveDate("");
       setOpen(false);
       toast.success("Request submitted");
+      router.push(`/requests/${requestId}`);
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(error, "Could not submit the request"),
@@ -156,7 +168,7 @@ export function ClientRequestsList({
             />
           </div>
         </form>
-      </SettingsDrawer>
+      </SettingsDrawer>,
     );
     return () => onRightPanel(null);
     // The drawer must be rebuilt as its local form state changes.
@@ -215,7 +227,6 @@ export function ClientRequestsList({
           ))}
         </OperationalPanel>
       )}
-
     </>
   );
 }
@@ -223,9 +234,11 @@ export function ClientRequestsList({
 export function ClientRequestDetail({
   requestId,
   onBreadcrumb,
+  onRightPanel,
 }: {
   requestId: Id<"procurementRequests">;
   onBreadcrumb: (detail: string | null) => void;
+  onRightPanel: (panel: ReactNode) => void;
 }) {
   const details = useQuery(api.clientProcurementRequests.get, { requestId });
   const generateUploadUrl = useMutation(
@@ -233,34 +246,128 @@ export function ClientRequestDetail({
   );
   const attachFile = useMutation(api.clientProcurementRequests.attachFile);
   const [busy, setBusy] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const selectedFile = details?.files.find(
+    (file) => file._id === selectedFileId,
+  );
+  const { openWithUrl } = usePdf();
 
-  async function upload(file: File) {
-    setBusy(true);
-    try {
-      const uploadUrl = await generateUploadUrl({ requestId });
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!response.ok) throw new Error("Upload failed");
-      const { storageId } = (await response.json()) as {
-        storageId: Id<"_storage">;
-      };
-      await attachFile({
-        requestId,
-        storageId,
-        fileName: file.name,
-        contentType: file.type || "application/octet-stream",
-        size: file.size,
-      });
-      toast.success("File added");
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not add the file"));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const upload = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      const toastId = toast.loading("Adding file…");
+      try {
+        const uploadUrl = await generateUploadUrl({ requestId });
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!response.ok) throw new Error("Upload failed");
+        const { storageId } = (await response.json()) as {
+          storageId: Id<"_storage">;
+        };
+        await attachFile({
+          requestId,
+          storageId,
+          fileName: file.name,
+          contentType: file.type || "application/octet-stream",
+          size: file.size,
+        });
+        toast.success("File added", { id: toastId });
+        setPendingFile(null);
+        setUploadOpen(false);
+      } catch (error) {
+        toast.error(
+          getUserFacingErrorMessage(error, "Could not add the file"),
+          { id: toastId },
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [attachFile, generateUploadUrl, requestId],
+  );
+
+  useEffect(() => {
+    onRightPanel(
+      uploadOpen ? (
+        <SettingsDrawer
+          open
+          title="Add file"
+          onOpenChange={(open) => {
+            if (!busy) setUploadOpen(open);
+          }}
+          footer={
+            <PillButton
+              disabled={busy || !pendingFile}
+              onClick={() => {
+                if (pendingFile) void upload(pendingFile);
+              }}
+            >
+              Add file
+            </PillButton>
+          }
+        >
+          <FileDropZone
+            accept=""
+            disabled={busy}
+            idleLabel={pendingFile?.name ?? "Choose a supporting file"}
+            hint={pendingFile ? "Choose another file to replace it" : undefined}
+            onFile={setPendingFile}
+          />
+        </SettingsDrawer>
+      ) : selectedFile ? (
+        <SettingsDrawer
+          open
+          title={selectedFile.name}
+          onOpenChange={(open) => {
+            if (!open) setSelectedFileId(null);
+          }}
+          footer={
+            selectedFile.url ? (
+              <>
+                {selectedFile.contentType === "application/pdf" ||
+                selectedFile.name.toLowerCase().endsWith(".pdf") ? (
+                  <PillButton
+                    variant="secondary"
+                    onClick={() => {
+                      setSelectedFileId(null);
+                      openWithUrl(selectedFile.url!);
+                    }}
+                  >
+                    Preview
+                  </PillButton>
+                ) : null}
+                <FileDownloadButton
+                  href={selectedFile.url}
+                  fileName={selectedFile.name}
+                />
+              </>
+            ) : null
+          }
+        >
+          <OperationalLabelValueList>
+            <OperationalLabelValueRow
+              label="Added"
+              value={formatDisplayDate(selectedFile.createdAt)}
+            />
+          </OperationalLabelValueList>
+        </SettingsDrawer>
+      ) : null,
+    );
+    return () => onRightPanel(null);
+  }, [
+    busy,
+    onRightPanel,
+    openWithUrl,
+    pendingFile,
+    selectedFile,
+    upload,
+    uploadOpen,
+  ]);
 
   useEffect(() => {
     onBreadcrumb(details?.title ?? null);
@@ -347,29 +454,17 @@ export function ClientRequestDetail({
         <OperationalPanelHeader
           title="Shared files"
           action={
-            <>
-              <PillButton
-                variant="secondary"
-                size="compact"
-                disabled={busy}
-                onClick={() =>
-                  document.getElementById("request-supporting-file")?.click()
-                }
-              >
-                <Upload className="size-3.5" />
-                Add file
-              </PillButton>
-              <input
-                id="request-supporting-file"
-                className="hidden"
-                type="file"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void upload(file);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </>
+            <PillButton
+              variant="secondary"
+              size="compact"
+              onClick={() => {
+                setSelectedFileId(null);
+                setUploadOpen(true);
+              }}
+            >
+              <Upload className="size-3.5" />
+              Add file
+            </PillButton>
           }
         />
         {request.files.length === 0 ? (
@@ -380,19 +475,18 @@ export function ClientRequestDetail({
           </OperationalPanelBody>
         ) : (
           request.files.map((file) => (
-            <OperationalItem key={file._id} className="flex items-center gap-3">
-              <FileText className="size-4 text-muted-foreground" />
-              {file.url ? (
-                <a
-                  href={file.url}
-                  download
-                  className={`text-foreground underline underline-offset-4 ${typeStyle("body.medium")}`}
-                >
-                  {file.name}
-                </a>
-              ) : (
-                <span className={typeStyle("body.medium")}>{file.name}</span>
-              )}
+            <OperationalItem key={file._id} className="p-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadOpen(false);
+                  setSelectedFileId(file._id);
+                }}
+                className={`flex w-full items-center gap-3 px-4 py-3 text-left text-foreground hover:bg-muted/50 ${typeStyle("body.medium")}`}
+              >
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate">{file.name}</span>
+              </button>
             </OperationalItem>
           ))
         )}

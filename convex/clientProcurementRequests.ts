@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
 
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   mutation,
@@ -197,6 +198,11 @@ export const create = mutation({
       userId: access.userId,
       source: "client",
     });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.procurementPacket.ensureRequestLinkInternal,
+      { requestId, createdByUserId: access.userId },
+    );
     return { requestId };
   },
 });

@@ -995,10 +995,10 @@ function UnifiedThreadActions({
       </PillButton>
       <PillButton
         size="compact"
-        variant="secondary"
+        variant={isArchived ? "secondary" : "destructive"}
         onClick={handleArchiveToggle}
         label={isArchived ? "Unarchive" : "Archive"}
-        expandLabel
+        iconOnly
       >
         {isArchived ? (
           <ArchiveRestore className="w-4 h-4" />

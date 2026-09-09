@@ -42,6 +42,15 @@ subtitle. Persistent status tags belong in the overview or active-tab body.
   and prioritize records. When selecting a row can open a right-side preview,
   move summaries, identifiers, secondary counts, links, and other record
   details into that panel instead of packing them into table cells.
+- Table rows display data and open a sidebar, with keyboard navigation. Never
+  place action buttons, action menus, edit controls, or dropzones in rows.
+  Editing and uploads live in the sidebar; record actions live in its footer.
+- Omit sidebar headings when filenames or controls already identify the
+  section. Separate groups with spacing and subtle dividers. Show upload and
+  extraction progress in toasts, never as notes in or below a dropzone.
+- Broker and client selectors show `OrgBrandIcon` beside each option and the
+  selected company name. `SearchableSelect` supports an optional option icon;
+  keep the company name as the searchable and accessible text.
 - Give a request-specific forwarding address its own bounded value-pair card,
   separate from imported message rows.
 - Name navigation actions for a specific destination. Omit vague labels such
@@ -240,6 +249,8 @@ wrapping, and truncation local.
   decoration.
 
 ## Actions and controls
+
+Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement file sharing uses a compact audience table with Client visibility and Broker visibility switches; broker visibility includes the attachment in the next shared packet snapshot, while outreach-bound files remain excluded. `components/ui/file-download-button.tsx` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
 
 - Use `PillButton` for product actions, including primary, secondary,
   destructive, footer, link, download, and icon-only actions.

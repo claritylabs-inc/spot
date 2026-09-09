@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import dayjs from "dayjs";
 import {
   query,
@@ -147,16 +147,16 @@ export const exchangeAuthCode = internalMutation({
       .withIndex("code", (q) => q.eq("codeHash", codeHash))
       .first();
 
-    if (!codeRecord) throw new Error("invalid_grant");
-    if (codeRecord.usedAt) throw new Error("invalid_grant");
+    if (!codeRecord) throw new ConvexError("invalid_grant");
+    if (codeRecord.usedAt) throw new ConvexError("invalid_grant");
     if (codeRecord.expiresAt < dayjs().valueOf())
-      throw new Error("invalid_grant");
-    if (codeRecord.clientId !== args.clientId) throw new Error("invalid_grant");
+      throw new ConvexError("invalid_grant");
+    if (codeRecord.clientId !== args.clientId) throw new ConvexError("invalid_grant");
     if (codeRecord.redirectUri !== args.redirectUri)
-      throw new Error("invalid_grant");
+      throw new ConvexError("invalid_grant");
     const resource = normalizeMcpResource(args.resource);
     if (codeRecord.resource && resource !== codeRecord.resource) {
-      throw new Error("invalid_grant");
+      throw new ConvexError("invalid_grant");
     }
 
     // PKCE S256 verification
@@ -167,7 +167,7 @@ export const exchangeAuthCode = internalMutation({
     );
     const computedChallenge = base64UrlEncode(verifierBuffer);
     if (computedChallenge !== codeRecord.codeChallenge) {
-      throw new Error("invalid_grant");
+      throw new ConvexError("invalid_grant");
     }
 
     const now = dayjs().valueOf();
@@ -264,16 +264,16 @@ export const refreshAccessToken = internalMutation({
       .withIndex("refresh_token", (q) => q.eq("refreshTokenHash", refreshHash))
       .first();
 
-    if (!token) throw new Error("invalid_grant");
-    if (token.revokedAt) throw new Error("invalid_grant");
+    if (!token) throw new ConvexError("invalid_grant");
+    if (token.revokedAt) throw new ConvexError("invalid_grant");
     const now = dayjs().valueOf();
     if (token.refreshExpiresAt && token.refreshExpiresAt < now) {
-      throw new Error("invalid_grant");
+      throw new ConvexError("invalid_grant");
     }
-    if (token.clientId !== args.clientId) throw new Error("invalid_grant");
+    if (token.clientId !== args.clientId) throw new ConvexError("invalid_grant");
     const resource = normalizeMcpResource(args.resource);
     if (token.resource && resource !== token.resource) {
-      throw new Error("invalid_grant");
+      throw new ConvexError("invalid_grant");
     }
 
     const scopes = parseScopesFromToken(token.scopes, token.scope);
@@ -309,15 +309,25 @@ export const refreshAccessToken = internalMutation({
 });
 
 export const revokeTokenInternal = internalMutation({
-  args: { tokenHash: v.string() },
+  args: { tokenHash: v.string(), clientId: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const token = await ctx.db
-      .query("oauthTokens")
-      .withIndex("token", (q) => q.eq("tokenHash", args.tokenHash))
-      .first();
+    const token =
+      (await ctx.db
+        .query("oauthTokens")
+        .withIndex("token", (q) => q.eq("tokenHash", args.tokenHash))
+        .first()) ??
+      (await ctx.db
+        .query("oauthTokens")
+        .withIndex("refresh_token", (q) =>
+          q.eq("refreshTokenHash", args.tokenHash),
+        )
+        .first());
+    if (token && args.clientId !== undefined && token.clientId !== args.clientId)
+      return false;
     if (token && !token.revokedAt) {
       await ctx.db.patch(token._id, { revokedAt: dayjs().valueOf() });
     }
+    return true;
   },
 });
 

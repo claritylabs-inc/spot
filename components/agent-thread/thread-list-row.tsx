@@ -1,9 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { LockKeyhole, Mail, MessageCircle, MessageSquare } from "lucide-react";
 import { SiSlack } from "react-icons/si";
-import { ActionSurface, ActionSurfaceLink } from "@/components/ui/action-surface";
+import {
+  ActionSurface,
+  ActionSurfaceLink,
+} from "@/components/ui/action-surface";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   getThreadDisplayLabel,
@@ -33,14 +35,8 @@ function channelLabel(thread: ThreadDisplayLike) {
   return "Chat";
 }
 
-/** One row in the active or archived thread lists. `action` renders on hover. */
-export function ThreadListRow({
-  thread,
-  action,
-}: {
-  thread: ThreadDisplayLike;
-  action?: ReactNode;
-}) {
+/** One navigation row in the active or archived thread lists. */
+export function ThreadListRow({ thread }: { thread: ThreadDisplayLike }) {
   return (
     <ActionSurface className="group flex items-center">
       <ActionSurfaceLink
@@ -52,7 +48,9 @@ export function ThreadListRow({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>
+            <p
+              className={`truncate text-foreground ${typeStyle("body.medium")}`}
+            >
               {getThreadDisplayLabel(thread)}
             </p>
             {isPrivateSlackThread(thread) ? (
@@ -62,13 +60,16 @@ export function ThreadListRow({
               />
             ) : null}
           </div>
-          <p className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}>
-            {formatDisplayDateTime(thread.lastMessageAt ?? thread._creationTime)}{" "}
+          <p
+            className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}
+          >
+            {formatDisplayDateTime(
+              thread.lastMessageAt ?? thread._creationTime,
+            )}{" "}
             · {channelLabel(thread)}
           </p>
         </div>
       </ActionSurfaceLink>
-      {action ? <div className="shrink-0 pr-4">{action}</div> : null}
     </ActionSurface>
   );
 }

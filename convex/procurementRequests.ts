@@ -150,21 +150,6 @@ function optionalEmail(value: unknown) {
   return normalized;
 }
 
-function optionalUrl(value: unknown) {
-  const normalized = optionalText(value, 2_000);
-  if (!normalized) return undefined;
-  let parsed: URL;
-  try {
-    parsed = new URL(normalized);
-  } catch {
-    throw new Error("Enter a valid URL");
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("URL must use http or https");
-  }
-  return parsed.toString();
-}
-
 function optionalDate(value: unknown) {
   const normalized = optionalText(value, 10);
   if (!normalized) return undefined;
@@ -172,16 +157,6 @@ function optionalDate(value: unknown) {
     throw new Error("Effective date must use YYYY-MM-DD");
   }
   return normalized;
-}
-
-function optionalQuestions(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((question) => {
-      const normalized = optionalText(question, 1_000);
-      return normalized ? [normalized] : [];
-    })
-    .slice(0, 100);
 }
 
 async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
@@ -319,6 +294,39 @@ function policyLabel(policy: Doc<"policies"> | null) {
 function requestForwardingAddress(request: Doc<"procurementRequests">) {
   if (!request.inboxToken) throw new Error("Procurement inbox is not ready");
   return procurementForwardingAddress(request.inboxToken, getAgentDomain());
+}
+
+function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
+  const {
+    notes,
+    applicationUrl,
+    applicationQuestions,
+    quoteSummary,
+    quoteAmount,
+    quoteCurrency,
+    quoteUrl,
+    ...fields
+  } = outreach;
+  const sections: string[] = notes?.trim() ? [notes.trim()] : [];
+  const application = [
+    applicationUrl ? `[Application link](${applicationUrl})` : null,
+    ...applicationQuestions.map((question) => `- ${question}`),
+  ].filter(Boolean);
+  if (application.length)
+    sections.push(`## Application\n\n${application.join("\n")}`);
+  const quote = [
+    quoteSummary?.trim(),
+    quoteAmount !== undefined
+      ? `Premium: ${quoteCurrency ?? "USD"} ${quoteAmount}`
+      : null,
+    quoteUrl ? `[Quote link](${quoteUrl})` : null,
+  ].filter(Boolean);
+  if (quote.length) sections.push(`## Legacy quote\n\n${quote.join("\n\n")}`);
+  return { ...fields, log: sections.join("\n\n") };
+}
+
+function outreachLog(value: string | null | undefined) {
+  return value?.trim() ? requiredText(value, "Log") : undefined;
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
@@ -553,7 +561,7 @@ export async function getProcurementRequestDetails(
   const activeEmailThreads = emailThreads.filter(activeEmailThread);
   return {
     request: summary,
-    outreaches,
+    outreaches: outreaches.map(outreachDto),
     files,
     emailThreads: activeEmailThreads,
     confirmedRequirements,
@@ -726,6 +734,11 @@ export async function createProcurementRequestByOperator(
     userId: args.operatorUserId,
     source: args.source === "agent" ? "operator_agent" : "manual",
   });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.procurementPacket.ensureRequestLinkInternal,
+    { requestId, createdByUserId: args.operatorUserId },
+  );
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -880,13 +893,7 @@ export async function createProcurementOutreachByOperator(
     contactEmail?: string;
     contactPhone?: string;
     status?: OutreachStatus;
-    applicationUrl?: string;
-    applicationQuestions?: string[];
-    notes?: string;
-    quoteSummary?: string;
-    quoteAmount?: number;
-    quoteCurrency?: string;
-    quoteUrl?: string;
+    log?: string;
     source: "operator" | "agent";
   },
 ) {
@@ -928,13 +935,8 @@ export async function createProcurementOutreachByOperator(
       ? await outreachPacketSnapshot(ctx, request)
       : undefined,
     status: args.status ?? "request_sent",
-    applicationUrl: optionalUrl(args.applicationUrl),
-    applicationQuestions: optionalQuestions(args.applicationQuestions),
-    notes: optionalText(args.notes),
-    quoteSummary: optionalText(args.quoteSummary),
-    quoteAmount: args.quoteAmount,
-    quoteCurrency: optionalText(args.quoteCurrency, 3)?.toUpperCase(),
-    quoteUrl: optionalUrl(args.quoteUrl),
+    applicationQuestions: [],
+    notes: outreachLog(args.log),
     createdByUserId: args.operatorUserId,
     updatedByUserId: args.operatorUserId,
     createdAt: now,
@@ -964,13 +966,7 @@ export const createOutreach = mutation({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     status: v.optional(outreachStatusValidator),
-    applicationUrl: v.optional(v.string()),
-    applicationQuestions: v.optional(v.array(v.string())),
-    notes: v.optional(v.string()),
-    quoteSummary: v.optional(v.string()),
-    quoteAmount: v.optional(v.number()),
-    quoteCurrency: v.optional(v.string()),
-    quoteUrl: v.optional(v.string()),
+    log: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -993,13 +989,7 @@ export async function updateProcurementOutreachByOperator(
     contactEmail?: string | null;
     contactPhone?: string | null;
     status?: OutreachStatus;
-    applicationUrl?: string | null;
-    applicationQuestions?: string[];
-    notes?: string | null;
-    quoteSummary?: string | null;
-    quoteAmount?: number | null;
-    quoteCurrency?: string | null;
-    quoteUrl?: string | null;
+    log?: string | null;
     source: "operator" | "agent";
   },
 ) {
@@ -1068,20 +1058,15 @@ export async function updateProcurementOutreachByOperator(
       patch.packetSnapshot = await outreachPacketSnapshot(ctx, request);
     }
   }
-  if (args.applicationUrl !== undefined)
-    patch.applicationUrl = optionalUrl(args.applicationUrl);
-  if (args.applicationQuestions !== undefined) {
-    patch.applicationQuestions = optionalQuestions(args.applicationQuestions);
+  if (args.log !== undefined) {
+    patch.notes = outreachLog(args.log);
+    patch.applicationUrl = undefined;
+    patch.applicationQuestions = [];
+    patch.quoteSummary = undefined;
+    patch.quoteAmount = undefined;
+    patch.quoteCurrency = undefined;
+    patch.quoteUrl = undefined;
   }
-  if (args.notes !== undefined) patch.notes = optionalText(args.notes);
-  if (args.quoteSummary !== undefined)
-    patch.quoteSummary = optionalText(args.quoteSummary);
-  if (args.quoteAmount !== undefined)
-    patch.quoteAmount = args.quoteAmount ?? undefined;
-  if (args.quoteCurrency !== undefined) {
-    patch.quoteCurrency = optionalText(args.quoteCurrency, 3)?.toUpperCase();
-  }
-  if (args.quoteUrl !== undefined) patch.quoteUrl = optionalUrl(args.quoteUrl);
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
@@ -1112,13 +1097,7 @@ export const updateOutreach = mutation({
     contactEmail: v.optional(v.union(v.string(), v.null())),
     contactPhone: v.optional(v.union(v.string(), v.null())),
     status: v.optional(outreachStatusValidator),
-    applicationUrl: v.optional(v.union(v.string(), v.null())),
-    applicationQuestions: v.optional(v.array(v.string())),
-    notes: v.optional(v.union(v.string(), v.null())),
-    quoteSummary: v.optional(v.union(v.string(), v.null())),
-    quoteAmount: v.optional(v.union(v.number(), v.null())),
-    quoteCurrency: v.optional(v.union(v.string(), v.null())),
-    quoteUrl: v.optional(v.union(v.string(), v.null())),
+    log: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1562,6 +1541,7 @@ export async function previewProcurementEmailReconciliation(
     // the thread can rebuild its picker instead of trusting a stale snapshot.
     outreaches: outreaches.map((outreach) => ({
       outreachId: outreach._id,
+      brokerOrgId: outreach.brokerOrgId,
       brokerName: outreach.brokerName,
       contactName: outreach.contactName ?? null,
       contactEmail: outreach.contactEmail ?? null,
@@ -1727,7 +1707,6 @@ async function emailThreadClientFileIds(
     .collect();
   return [...new Set(messages.flatMap((message) => message.clientFileIds))];
 }
-
 
 export const resolveInboxInternal = internalQuery({
   args: { inboxToken: v.string() },

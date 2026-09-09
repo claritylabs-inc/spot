@@ -359,8 +359,6 @@ async function preflightOutreachCreate(
   await requireProcurementRequest(ctx, input.procurementRequestId);
   await requireBrokerOrganization(ctx, input.brokerOrgId);
   validateOptionalEmail(input.contactEmail);
-  validateOptionalUrl(input.applicationUrl);
-  validateOptionalUrl(input.quoteUrl);
 }
 
 async function preflightOutreachUpdate(
@@ -376,8 +374,6 @@ async function preflightOutreachUpdate(
   await requireProcurementRequest(ctx, outreach.requestId);
   await requireBrokerOrganization(ctx, input.brokerOrgId);
   validateOptionalEmail(input.contactEmail);
-  validateOptionalUrl(input.applicationUrl);
-  validateOptionalUrl(input.quoteUrl);
 }
 
 async function preflightProposalFile(

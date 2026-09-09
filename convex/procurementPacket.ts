@@ -441,6 +441,35 @@ export const get = query({
   },
 });
 
+export const updateSections = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    expectedPacketRevision: v.number(),
+    sections: v.array(v.object({ key: v.string(), body: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await directOperator(ctx, operator.userId);
+    const request = await requestForOperator(ctx, args.requestId);
+    if ((request.packetRevision ?? 0) !== args.expectedPacketRevision)
+      throw new Error(
+        "The packet changed while you were editing. Copy your changes, then reopen the editor to review the latest packet.",
+      );
+    for (const section of args.sections) {
+      await upsertPacketSectionByOperator(ctx, {
+        operatorUserId: operator.userId,
+        requestId: args.requestId,
+        ...section,
+        source: "manual",
+      });
+    }
+    return {
+      ok: true,
+      packetRevision: (await ctx.db.get(args.requestId))?.packetRevision ?? 0,
+    };
+  },
+});
+
 /** Apply source-backed machine updates without silently changing a human edit
  * or the projection already visible to a recipient. */
 export const applyAgentUpdateInternal = internalMutation({
@@ -643,10 +672,11 @@ function requestedPacketLinkExpiry(
   return dayjs(now).add(args.expiresInDays, "day").valueOf();
 }
 
-export async function mintPacketLinkForOperator(
+async function createPacketLink(
   ctx: MutationCtx,
   args: {
-    operatorUserId: Id<"users">;
+    actorUserId: Id<"users">;
+    auditOperatorUserId?: Id<"users">;
     requestId: Id<"procurementRequests">;
     outreachId?: Id<"procurementBrokerOutreaches">;
     recipientLabel?: string;
@@ -655,7 +685,6 @@ export async function mintPacketLinkForOperator(
     expiresInDays?: number;
   },
 ) {
-  await directOperator(ctx, args.operatorUserId);
   const request = await requestForOperator(ctx, args.requestId);
   const outreach = args.outreachId ? await ctx.db.get(args.outreachId) : null;
   if (args.outreachId && (!outreach || outreach.requestId !== request._id))
@@ -691,7 +720,7 @@ export async function mintPacketLinkForOperator(
       if (link.outreachId || link.revokedAt || link.expiresAt <= now) continue;
       await ctx.db.patch(link._id, {
         revokedAt: now,
-        revokedByUserId: args.operatorUserId,
+        revokedByUserId: args.actorUserId,
         updatedAt: now,
       });
       replacedLinkIds.push(link._id);
@@ -716,7 +745,7 @@ export async function mintPacketLinkForOperator(
     })),
     includedFileItemIds: preview.files.map((file) => file.fileItemId),
     viewCount: 0,
-    createdByUserId: args.operatorUserId,
+    createdByUserId: args.actorUserId,
     createdAt: now,
     updatedAt: now,
   });
@@ -724,30 +753,32 @@ export async function mintPacketLinkForOperator(
     await ctx.db.patch(outreach._id, {
       packetRevisionAtIssue: request.packetRevision ?? 0,
       updatedAt: now,
-      updatedByUserId: args.operatorUserId,
+      updatedByUserId: args.actorUserId,
     });
-  const auditEventId = await writeOperatorAudit(ctx, {
-    operatorUserId: args.operatorUserId,
-    type: "setup_write",
-    targetOrgId: request.clientOrgId,
-    summary: outreach
-      ? `Created broker packet link for ${outreach.brokerName}`
-      : replacedLinkIds.length
-        ? "Replaced shared broker packet link"
-        : "Created shared broker packet link",
-    metadata: {
-      domain: "procurement",
-      operation: "create_packet_link",
-      requestId: request._id,
-      outreachId: outreach?._id,
-      linkId: id,
-      replacedLinkIds,
-      expiresAt,
-      packetRevisionAtIssue: request.packetRevision ?? 0,
-      sectionCount: preview.sections.length,
-      fileCount: preview.files.length,
-    },
-  });
+  const auditEventId = args.auditOperatorUserId
+    ? await writeOperatorAudit(ctx, {
+        operatorUserId: args.auditOperatorUserId,
+        type: "setup_write",
+        targetOrgId: request.clientOrgId,
+        summary: outreach
+          ? `Created broker packet link for ${outreach.brokerName}`
+          : replacedLinkIds.length
+            ? "Replaced shared broker packet link"
+            : "Created shared broker packet link",
+        metadata: {
+          domain: "procurement",
+          operation: "create_packet_link",
+          requestId: request._id,
+          outreachId: outreach?._id,
+          linkId: id,
+          replacedLinkIds,
+          expiresAt,
+          packetRevisionAtIssue: request.packetRevision ?? 0,
+          sectionCount: preview.sections.length,
+          fileCount: preview.files.length,
+        },
+      })
+    : null;
   return {
     id,
     token,
@@ -766,6 +797,52 @@ export async function mintPacketLinkForOperator(
     auditEventId,
   };
 }
+
+export async function mintPacketLinkForOperator(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    requestId: Id<"procurementRequests">;
+    outreachId?: Id<"procurementBrokerOutreaches">;
+    recipientLabel?: string;
+    recipientEmail?: string;
+    expiresAt?: number;
+    expiresInDays?: number;
+  },
+) {
+  await directOperator(ctx, args.operatorUserId);
+  return await createPacketLink(ctx, {
+    ...args,
+    actorUserId: args.operatorUserId,
+    auditOperatorUserId: args.operatorUserId,
+  });
+}
+
+export const ensureRequestLinkInternal = internalMutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    createdByUserId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const request = await ctx.db.get(args.requestId);
+    if (!request || request.createdByUserId !== args.createdByUserId)
+      return null;
+    const now = dayjs().valueOf();
+    const links = await ctx.db
+      .query("procurementPacketLinks")
+      .withIndex("request", (q) => q.eq("requestId", request._id))
+      .collect();
+    const active = links.find(
+      (link) => !link.outreachId && !link.revokedAt && link.expiresAt > now,
+    );
+    if (active) return { id: active._id, created: false };
+    const created = await createPacketLink(ctx, {
+      actorUserId: args.createdByUserId,
+      requestId: request._id,
+    });
+    return { id: created.id, created: true };
+  },
+});
 
 export const mintLinkInternal = internalMutation({
   args: {

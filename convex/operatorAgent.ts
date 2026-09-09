@@ -2316,9 +2316,7 @@ async function executeToolDomain(
       contactEmail: normalizedOptionalText(input.contactEmail),
       contactPhone: normalizedOptionalText(input.contactPhone),
       status: procurementOutreachStatus(input.status),
-      applicationUrl: normalizedOptionalText(input.applicationUrl),
-      applicationQuestions: stringList(input.applicationQuestions),
-      notes: normalizedOptionalText(input.notes),
+      log: normalizedOptionalText(input.log),
       source: "agent",
     });
   }
@@ -2346,12 +2344,7 @@ async function executeToolDomain(
           ? null
           : normalizedOptionalText(input.contactPhone),
       status: procurementOutreachStatus(input.status),
-      applicationUrl:
-        input.applicationUrl === null
-          ? null
-          : normalizedOptionalText(input.applicationUrl),
-      applicationQuestions: stringList(input.applicationQuestions),
-      notes: input.notes === null ? null : normalizedOptionalText(input.notes),
+      log: input.log === null ? null : normalizedOptionalText(input.log),
       source: "agent",
     });
   }
@@ -2614,7 +2607,13 @@ async function executeToolActionDomain(
   if (OPERATOR_RICH_ACTION_TOOLS.has(args.toolName)) {
     return (await ctx.runAction(
       internal.actions.operatorAgentRichTools.runInternal,
-      args,
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        toolName: args.toolName,
+        input: args.input,
+        channel: args.channel,
+      },
     )) as OperatorActionToolResult;
   }
 

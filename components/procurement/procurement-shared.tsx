@@ -1,19 +1,29 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Download, Loader2, Mail } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@/components/ui/badge";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import { FileDownloadButton } from "@/components/ui/file-download-button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Select,
   SelectContent,
@@ -27,6 +37,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 
 export const REQUEST_STATUS_OPTIONS = [
   { value: "draft", label: "Draft", tone: "neutral" },
@@ -214,17 +225,22 @@ function mailboxList(mailboxes: ForwardedMailbox[] | undefined) {
     .join(", ");
 }
 
+export type ProcurementEmailDrawerHandle = { save: () => Promise<boolean> };
+
 export function ProcurementEmailDrawer({
+  ref,
   emailThreadId,
   requests,
   readOnly,
   onClose,
 }: {
+  ref?: Ref<ProcurementEmailDrawerHandle>;
   emailThreadId: Id<"procurementEmailThreads">;
   requests: ProcurementRequestOption[];
   readOnly: boolean;
   onClose: () => void;
 }) {
+  const brokers = useCachedOperatorBrokers();
   const result = useQuery(api.procurementRequests.getEmailThread, {
     emailThreadId,
   });
@@ -236,10 +252,11 @@ export function ProcurementEmailDrawer({
   const fileEmailQuote = useMutation(api.procurementProposals.fileEmailQuote);
   const [draft, setDraft] = useState<{
     emailThreadId: Id<"procurementEmailThreads">;
-    category: ProcurementEmailCategory;
-    requestId: string;
+    revision: number;
+    category?: { value: ProcurementEmailCategory; revision: number };
+    requestId?: { value: string; revision: number };
   } | null>(null);
-  const [saving, setSaving] = useState(false);
+  const acknowledged = useRef({ category: 0, requestId: 0 });
   const [filing, setFiling] = useState(false);
   const [outreachSelection, setOutreachSelection] = useState<{
     emailThreadId: Id<"procurementEmailThreads">;
@@ -249,14 +266,11 @@ export function ProcurementEmailDrawer({
   // logos do not become proposal documents. Everything else files by default.
   const [excludedFileIds, setExcludedFileIds] = useState<string[]>([]);
   const activeDraft = draft?.emailThreadId === emailThreadId ? draft : null;
-  const category = activeDraft?.category ?? result?.thread.category ?? "";
-  const requestId = activeDraft?.requestId ?? result?.thread.requestId ?? "";
+  const category =
+    activeDraft?.category?.value ?? result?.thread.category ?? "";
+  const requestId =
+    activeDraft?.requestId?.value ?? result?.thread.requestId ?? "";
 
-  const changed = Boolean(
-    result &&
-    (category !== result.thread.category ||
-      requestId !== result.thread.requestId),
-  );
   const requestOptions = useMemo(
     () =>
       requests.map((request) => ({ value: request._id, label: request.title })),
@@ -271,8 +285,15 @@ export function ProcurementEmailDrawer({
         label: outreach.contactName
           ? `${outreach.brokerName} · ${outreach.contactName}`
           : outreach.brokerName,
+        icon: (
+          <OrgBrandIcon
+            name={outreach.brokerName}
+            {...brokers?.find((broker) => broker._id === outreach.brokerOrgId)}
+            size="xs"
+          />
+        ),
       })),
-    [inference],
+    [brokers, inference],
   );
   const inferredOutreachId =
     inference?.outreachInference.status === "exact"
@@ -302,37 +323,87 @@ export function ProcurementEmailDrawer({
     (file) => !excludedFileIds.includes(String(file.clientFileId)),
   );
 
-  async function save() {
-    if (!result || !category || !requestId || !changed) return;
-    setSaving(true);
-    try {
+  const proposals = useQuery(
+    api.procurementProposals.list,
+    result && selectedOutreachId
+      ? { requestId: result.thread.requestId }
+      : "skip",
+  );
+  const currentProposal = proposals?.find(
+    (proposal) =>
+      proposal.outreachId === selectedOutreachId &&
+      proposal.status !== "archived" &&
+      proposal.status !== "withdrawn",
+  );
+  const isRevision = !!currentProposal && currentProposal.status !== "draft";
+
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: `procurement.updateEmailThread.${emailThreadId}`,
+    args: {
+      emailThreadId,
+      category: activeDraft?.category,
+      requestId: activeDraft?.requestId,
+    },
+    valueKey: String(activeDraft?.revision ?? 0),
+    resetKey: emailThreadId,
+    enabled: !readOnly && !!result,
+    canSave: !!category && !!requestId,
+    flush: async (args) => {
+      const categoryEdit =
+        args.category && args.category.revision > acknowledged.current.category
+          ? args.category
+          : undefined;
+      const requestEdit =
+        args.requestId &&
+        args.requestId.revision > acknowledged.current.requestId
+          ? args.requestId
+          : undefined;
+      if (!categoryEdit && !requestEdit) return;
       await updateThread({
-        emailThreadId,
-        category: category === result.thread.category ? undefined : category,
-        requestId:
-          requestId === result.thread.requestId
-            ? undefined
-            : (requestId as Id<"procurementRequests">),
+        emailThreadId: args.emailThreadId,
+        category: categoryEdit?.value,
+        requestId: requestEdit?.value as Id<"procurementRequests"> | undefined,
       });
-      toast.success("Email classification updated");
-      onClose();
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Failed to update email thread"),
+      if (categoryEdit) acknowledged.current.category = categoryEdit.revision;
+      if (requestEdit) acknowledged.current.requestId = requestEdit.revision;
+      setDraft((current) =>
+        current?.emailThreadId === args.emailThreadId
+          ? {
+              ...current,
+              category:
+                current.category?.revision === categoryEdit?.revision
+                  ? undefined
+                  : current.category,
+              requestId:
+                current.requestId?.revision === requestEdit?.revision
+                  ? undefined
+                  : current.requestId,
+            }
+          : current,
       );
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Failed to update email thread"),
+  });
+
+  const save = async () =>
+    !filing && (readOnly || !result || (await autoSave.saveNow()));
+  useImperativeHandle(ref, () => ({ save }));
 
   async function fileQuote() {
-    if (!selectedOutreachId || !selectedFiles.length) return;
+    if (
+      !selectedOutreachId ||
+      !selectedFiles.length ||
+      !(await autoSave.saveNow())
+    )
+      return;
     setFiling(true);
     try {
       const filed = await fileEmailQuote({
         emailThreadId,
         outreachId: selectedOutreachId as Id<"procurementBrokerOutreaches">,
         clientFileIds: selectedFiles.map((file) => file.clientFileId),
+        supersedesProposalId: isRevision ? currentProposal._id : undefined,
       });
       toast.success(
         filed.status === "already_filed"
@@ -351,26 +422,31 @@ export function ProcurementEmailDrawer({
   return (
     <SettingsDrawer
       open
-      onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+      onOpenChange={async (open) => {
+        if (!open && (await save())) onClose();
       }}
       title={result?.thread.subject ?? "Imported email"}
       footer={
-        readOnly ? null : (
-          <>
-            <PillButton type="button" variant="secondary" onClick={onClose}>
-              Cancel
-            </PillButton>
-            <PillButton
-              type="button"
-              onClick={save}
-              disabled={!changed || saving}
-            >
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Save
-            </PillButton>
-          </>
-        )
+        !readOnly &&
+        reconciliation?.filable &&
+        reconciliation.unfiledFiles.length > 0 ? (
+          <PillButton
+            type="button"
+            onClick={fileQuote}
+            disabled={
+              filing ||
+              autoSave.status !== "saved" ||
+              proposals === undefined ||
+              currentProposal?.status === "selected" ||
+              result?.thread.requestId !== requestId ||
+              !selectedOutreachId ||
+              !selectedFiles.length
+            }
+          >
+            {filing ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            {isRevision ? "File revision" : "File quote"}
+          </PillButton>
+        ) : null
       }
     >
       {result === undefined ? (
@@ -383,15 +459,8 @@ export function ProcurementEmailDrawer({
         </p>
       ) : (
         <div className="space-y-5">
+          <AutoSaveStatus status={autoSave.status} />
           <OperationalPanel as="div">
-            <OperationalPanelHeader
-              title="Classification"
-              description={
-                result.thread.categorySource === "operator"
-                  ? "Set manually by an operator"
-                  : result.thread.categoryReason
-              }
-            />
             <OperationalPanelBody className="space-y-4">
               <label className="block space-y-1.5">
                 <span
@@ -404,9 +473,13 @@ export function ProcurementEmailDrawer({
                   onValueChange={(value) =>
                     value &&
                     setDraft({
+                      ...activeDraft,
                       emailThreadId,
-                      category: value as ProcurementEmailCategory,
-                      requestId,
+                      revision: (activeDraft?.revision ?? 0) + 1,
+                      category: {
+                        value: value as ProcurementEmailCategory,
+                        revision: (activeDraft?.revision ?? 0) + 1,
+                      },
                     })
                   }
                   disabled={readOnly}
@@ -438,9 +511,13 @@ export function ProcurementEmailDrawer({
                   options={requestOptions}
                   onChange={(value) =>
                     setDraft({
+                      ...activeDraft,
                       emailThreadId,
-                      category: category || result.thread.category,
-                      requestId: value,
+                      revision: (activeDraft?.revision ?? 0) + 1,
+                      requestId: {
+                        value,
+                        revision: (activeDraft?.revision ?? 0) + 1,
+                      },
                     })
                   }
                   disabled={readOnly}
@@ -468,27 +545,39 @@ export function ProcurementEmailDrawer({
           </OperationalPanel>
 
           <OperationalPanel as="div">
-            <OperationalPanelHeader
-              title="Quote reconciliation"
-              description={
-                reconciliation === undefined
-                  ? "Checking attachments and outreach contacts"
-                  : !reconciliation.filable
-                    ? "This email is archived; restore it to file a quote"
-                    : reconciliation.files.length === 0
-                      ? "This email has no active attachments"
-                      : reconciliation.unfiledFiles.length === 0
-                        ? "Every active attachment is already filed in a proposal"
-                        : inference?.outreachInference.status === "exact"
-                          ? "Matched from an exact outreach contact email"
-                          : "Choose the outreach that sent these attachments"
-              }
-            />
             <OperationalPanelBody className="space-y-4">
               {reconciliation === undefined ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : (
                 <>
+                  {!reconciliation.filable ||
+                  reconciliation.files.length === 0 ||
+                  reconciliation.unfiledFiles.length === 0 ? (
+                    <p
+                      className={`text-muted-foreground ${typeStyle("body.default")}`}
+                    >
+                      {!reconciliation.filable
+                        ? "This email is archived; restore it to file a quote"
+                        : reconciliation.files.length === 0
+                          ? "This email has no active attachments"
+                          : "Every active attachment is already filed in a proposal"}
+                    </p>
+                  ) : null}
+                  {currentProposal?.status === "selected" ? (
+                    <p
+                      className={`text-muted-foreground ${typeStyle("body.default")}`}
+                    >
+                      The selected proposal cannot be replaced.
+                    </p>
+                  ) : isRevision ? (
+                    <p
+                      className={`text-muted-foreground ${typeStyle("body.default")}`}
+                    >
+                      These attachments will replace the current proposal.
+                      Include all documents for the new revision; the previous
+                      proposal stays in history.
+                    </p>
+                  ) : null}
                   <div>
                     <p
                       className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -560,21 +649,6 @@ export function ProcurementEmailDrawer({
                           placeholder="Choose outreach"
                         />
                       </label>
-                      <PillButton
-                        type="button"
-                        onClick={fileQuote}
-                        disabled={
-                          readOnly ||
-                          filing ||
-                          !selectedOutreachId ||
-                          !selectedFiles.length
-                        }
-                      >
-                        {filing ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : null}
-                        File quote
-                      </PillButton>
                     </>
                   ) : null}
                 </>
@@ -664,17 +738,13 @@ export function ProcurementEmailDrawer({
                       <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                         {message.files.flatMap((file) =>
                           file?.url ? (
-                            <PillButton
+                            <FileDownloadButton
                               key={file.clientFileId}
                               href={file.url}
-                              download={file.name}
-                              target="_blank"
-                              rel="noreferrer"
-                              variant="secondary"
+                              fileName={file.name}
                             >
-                              <Download className="size-3.5" />
                               {file.name}
-                            </PillButton>
+                            </FileDownloadButton>
                           ) : (
                             []
                           ),

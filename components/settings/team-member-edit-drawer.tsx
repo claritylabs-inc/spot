@@ -1,9 +1,13 @@
 "use client";
 
+import { useRef, type ReactNode } from "react";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { Input } from "@/components/ui/input";
 import { Loader2, Mail } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
-import { FormSection } from "@/components/ui/form-section";
 import { PillButton } from "@/components/ui/pill-button";
 import { PhoneInput } from "@/components/ui/phone-input";
 import {
@@ -16,6 +20,12 @@ import {
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import type { TeamMember } from "@/components/settings/team-types";
 import { typeStyle } from "@/lib/typography";
+
+export type TeamMemberProfileChanges = {
+  name?: string;
+  title?: string;
+  phone?: string;
+};
 
 type TeamMemberEditDrawerProps = {
   member: TeamMember;
@@ -39,7 +49,12 @@ type TeamMemberEditDrawerProps = {
   onPhoneChange: (value: string) => void;
   onRoleChange: (value: TeamMember["role"]) => void;
   onEmailChange: (value: string) => void;
-  onSave: (member: TeamMember, roleLocked: boolean) => void;
+  onSave: (
+    member: TeamMember,
+    changes: TeamMemberProfileChanges,
+  ) => Promise<void>;
+  onSaveRole: (member: TeamMember) => void;
+  activationAction?: ReactNode;
   onRemove: (member: TeamMember) => void;
   onSetPrimary: (userId: Id<"users">) => void;
   onRequestEmailChange: (member: TeamMember, email: string) => void;
@@ -69,6 +84,8 @@ export function TeamMemberEditDrawer({
   onRoleChange,
   onEmailChange,
   onSave,
+  onSaveRole,
+  activationAction,
   onRemove,
   onSetPrimary,
   onRequestEmailChange,
@@ -84,111 +101,64 @@ export function TeamMemberEditDrawer({
       ? "At least one admin is required"
       : undefined;
 
+  const savedValues = useRef({ name, title, phone });
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "orgs.updateMemberProfile",
+    args: { name, title, phone },
+    enabled: !removingMember,
+    flush: async (next) => {
+      const previous = savedValues.current;
+      await onSave(member, {
+        name: next.name !== previous.name ? next.name : undefined,
+        title: next.title !== previous.title ? next.title : undefined,
+        phone: next.phone !== previous.phone ? next.phone : undefined,
+      });
+      savedValues.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not update the team member"),
+  });
+
+  const hasFooterActions =
+    (!isSelf && !isLastAdmin) ||
+    !isPrimaryContact ||
+    !!member.pendingEmailChange ||
+    !!email.trim() ||
+    !!activationAction ||
+    (!roleLocked && role !== member.role);
+
   return (
     <SettingsDrawer
       open
-      onOpenChange={onOpenChange}
-      title="Edit team member"
+      onOpenChange={(open) => {
+        if (!open)
+          void autoSave.saveNow().then((saved) => {
+            if (saved) onOpenChange(false);
+          });
+      }}
+      actions={<AutoSaveStatus status={autoSave.status} />}
+      title={member.name || member.email || "Team member"}
       footer={
-        <>
-          {!isSelf && !isLastAdmin ? (
-            <PillButton
-              variant="destructive"
-              size="compact"
-              disabled={removingMember}
-              onClick={() => onRemove(member)}
-            >
-              {removingMember ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : null}
-              Remove team member
-            </PillButton>
-          ) : null}
-          <PillButton
-            disabled={savingProfile || removingMember}
-            onClick={() => onSave(member, roleLocked)}
-          >
-            {savingProfile ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+        hasFooterActions ? (
+          <>
+            {!isSelf && !isLastAdmin ? (
+              <PillButton
+                variant="destructive"
+                size="compact"
+                disabled={removingMember}
+                onClick={() =>
+                  void autoSave.saveNow().then((saved) => {
+                    if (saved) onRemove(member);
+                  })
+                }
+              >
+                {removingMember ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Remove team member
+              </PillButton>
             ) : null}
-            Save team member
-          </PillButton>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <label className="block space-y-1.5">
-          <span className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
-            Name
-          </span>
-          <input
-            value={name}
-            onChange={(event) => onNameChange(event.target.value)}
-            className={`h-9 w-full rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
-            placeholder="Name"
-          />
-        </label>
-        <label className="block space-y-1.5">
-          <span className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
-            Title
-          </span>
-          <input
-            value={title}
-            onChange={(event) => onTitleChange(event.target.value)}
-            className={`h-9 w-full rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
-            placeholder="Title"
-          />
-        </label>
-        <label className="block space-y-1.5">
-          <span className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
-            Phone
-          </span>
-          <PhoneInput
-            value={phone}
-            onChange={(value) => onPhoneChange(value ?? "")}
-            defaultCountry="US"
-            placeholder="(555) 123-4567"
-          />
-        </label>
-        <div className="space-y-1.5">
-          <span className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
-            Role
-          </span>
-          <Select
-            value={role}
-            onValueChange={(value) => {
-              if (value === "admin" || value === "member") onRoleChange(value);
-            }}
-          >
-            <SelectTrigger
-              className="w-full"
-              disabled={roleLocked}
-              title={roleSelectTitle}
-            >
-              <SelectValue>
-                {role === "admin" ? "Admin" : "Member"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="member">Member</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="rounded-lg border border-input bg-popover px-3 py-2.5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className={`${typeStyle("body.medium")}`}>Primary contact</p>
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-                Used as the org&apos;s insurance contact for routing and
-                follow-up.
-              </p>
-            </div>
-            {isPrimaryContact ? (
-              <Badge variant="secondary" className="mt-0.5">
-                Primary Contact
-              </Badge>
-            ) : (
+            {!isPrimaryContact ? (
               <PillButton
                 variant="secondary"
                 size="compact"
@@ -200,82 +170,178 @@ export function TeamMemberEditDrawer({
                 ) : null}
                 Set primary
               </PillButton>
-            )}
-          </div>
+            ) : null}
+            {member.pendingEmailChange ? (
+              <PillButton
+                variant="destructive"
+                size="compact"
+                disabled={cancellingEmailChange}
+                onClick={() => onCancelEmailChange(member)}
+              >
+                {cancellingEmailChange ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Cancel email change
+              </PillButton>
+            ) : email.trim() ? (
+              <PillButton
+                variant="secondary"
+                disabled={requestingEmailChange}
+                onClick={() => onRequestEmailChange(member, email)}
+              >
+                {requestingEmailChange ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )}
+                Send code
+              </PillButton>
+            ) : null}
+            {activationAction}
+            {!roleLocked && role !== member.role ? (
+              <PillButton
+                disabled={savingProfile || removingMember}
+                onClick={() => onSaveRole(member)}
+              >
+                {savingProfile ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                Change role
+              </PillButton>
+            ) : null}
+          </>
+        ) : undefined
+      }
+    >
+      <div className="space-y-4">
+        <label className="block space-y-1.5">
+          <span
+            className={`text-muted-foreground ${typeStyle("caption.medium")}`}
+          >
+            Name
+          </span>
+          <Input
+            value={name}
+            onChange={(event) => onNameChange(event.target.value)}
+            placeholder="Name"
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span
+            className={`text-muted-foreground ${typeStyle("caption.medium")}`}
+          >
+            Title
+          </span>
+          <Input
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            placeholder="Title"
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span
+            className={`text-muted-foreground ${typeStyle("caption.medium")}`}
+          >
+            Phone
+          </span>
+          <PhoneInput
+            value={phone}
+            onChange={(value) => onPhoneChange(value ?? "")}
+            defaultCountry="US"
+            placeholder="(555) 123-4567"
+          />
+        </label>
+        <div className="space-y-1.5">
+          <span
+            className={`text-muted-foreground ${typeStyle("caption.medium")}`}
+          >
+            Role
+          </span>
+          <Select
+            value={role}
+            onValueChange={(value) => {
+              if (value === "admin" || value === "member") onRoleChange(value);
+            }}
+          >
+            <SelectTrigger
+              className="w-full"
+              aria-label="Role"
+              disabled={roleLocked}
+              title={roleSelectTitle}
+            >
+              <SelectValue>{role === "admin" ? "Admin" : "Member"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="member">Member</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <FormSection title="Account email">
-          <div className="rounded-lg border border-input bg-foreground/[0.02] px-3 py-2">
-            <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>Current email</p>
-            <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>
-              {member.email ?? "No email"}
-            </p>
-          </div>
+        {isPrimaryContact ? (
+          <Badge variant="secondary">Primary insurance contact</Badge>
+        ) : null}
+        <div className="space-y-4 border-t border-border pt-4">
+          <label className="block space-y-1.5">
+            <span
+              className={`text-muted-foreground ${typeStyle("label.field")}`}
+            >
+              Email
+            </span>
+            <Input value={member.email ?? ""} disabled />
+          </label>
           {member.pendingEmailChange ? (
             <div className="rounded-lg border border-input bg-popover px-3 py-2.5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+                  <p
+                    className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
                     Pending email
                   </p>
-                  <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>
+                  <p
+                    className={`truncate text-foreground ${typeStyle("body.medium")}`}
+                  >
                     {member.pendingEmailChange.newEmail}
                   </p>
                 </div>
-                <PillButton
-                  variant="secondary"
-                  size="compact"
-                  disabled={cancellingEmailChange}
-                  onClick={() => onCancelEmailChange(member)}
-                >
-                  {cancellingEmailChange ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : null}
-                  Cancel
-                </PillButton>
               </div>
-              <p className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}>
+              <p
+                className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}
+              >
                 Waiting for verification before this replaces the current email.
               </p>
             </div>
           ) : (
             <div className="space-y-1.5">
               <label className="block space-y-1.5">
-                <span className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
+                <span
+                  className={`text-muted-foreground ${typeStyle("caption.medium")}`}
+                >
                   New email
                 </span>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <input
+                <div>
+                  <Input
                     type="email"
                     value={email}
                     onChange={(event) => onEmailChange(event.target.value)}
-                    className={`h-9 w-full rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
                     placeholder="new@example.com"
                   />
-                  <PillButton
-                    variant="secondary"
-                    className="h-10 w-full px-4 sm:w-auto"
-                    disabled={requestingEmailChange || !email.trim()}
-                    onClick={() => onRequestEmailChange(member, email)}
-                  >
-                    {requestingEmailChange ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Mail className="h-4 w-4" />
-                    )}
-                    Send code
-                  </PillButton>
                 </div>
               </label>
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
                 The current email stays active until the new address is
                 verified.
               </p>
             </div>
           )}
           {emailChangeError ? (
-            <p className={`text-red-500/80 ${typeStyle("body.default")}`}>{emailChangeError}</p>
+            <p className={`text-destructive ${typeStyle("body.default")}`}>
+              {emailChangeError}
+            </p>
           ) : null}
-        </FormSection>
+        </div>
       </div>
     </SettingsDrawer>
   );

@@ -76,3 +76,11 @@ Before adding coverage, ask:
 - Can this case replace or merge with an existing case instead of expanding the suite?
 
 If those questions do not have crisp answers, leave the test out.
+
+## Hands-on workflow improvement
+
+Use [the platform workflow guide](workflow-qa.md) and the repository
+`cl-workflow-qa` skill for scripted testing in visible cloud Chrome. Write the
+expected use case first, capture observed behavior, fix and rerun it, then
+perform frontend-design and deslop reviews before committing each batch.
+Maintain passed, failed, blocked, and not-run coverage separately.

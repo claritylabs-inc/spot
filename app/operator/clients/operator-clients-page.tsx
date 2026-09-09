@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, LogOut, Plus } from "lucide-react";
+import { Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { OperatorSidebar } from "../operator-sidebar";
@@ -68,12 +68,22 @@ export default function OperatorClientsScreen() {
     null,
   );
   const [panelMode, setPanelMode] = useState<"create" | "details" | null>(null);
+  const [search, setSearch] = useState("");
   const [name, setName] = useState("");
   const [website, setWebsite] = useState("");
   const [busy, setBusy] = useState(false);
 
   const current = useCachedOperatorCurrent();
   const clients = useCachedOperatorClients();
+  const searchText = search.trim().toLowerCase();
+  const filteredClients = clients?.filter((client) =>
+    [
+      client.name,
+      client.website,
+      client.primaryContactEmail,
+      client.adminEmail,
+    ].some((value) => value?.toLowerCase().includes(searchText)),
+  );
   const { seedClient } = useOperatorClientCacheActions();
   const createClient = useAction(api.operator.createSoloClient);
   const { startImpersonation } = useStartOperatorImpersonation();
@@ -352,7 +362,17 @@ export default function OperatorClientsScreen() {
       disableCommandPalette
       rightPanel={rightPanel}
     >
-      <main className="flex w-full flex-col">
+      <main className="flex w-full flex-col gap-4">
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search clients"
+            aria-label="Search clients"
+          />
+        </div>
         <OperationalPanel>
           <Table>
             <TableHeader>
@@ -394,17 +414,19 @@ export default function OperatorClientsScreen() {
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </TableCell>
                 </TableRow>
-              ) : clients.length === 0 ? (
+              ) : filteredClients?.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
                     colSpan={5}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
-                    No client accounts found.
+                    {searchText
+                      ? "No clients match this search."
+                      : "No client accounts found."}
                   </TableCell>
                 </TableRow>
               ) : (
-                clients.map((client) => (
+                filteredClients?.map((client) => (
                   <TableRow
                     key={client._id}
                     tabIndex={0}

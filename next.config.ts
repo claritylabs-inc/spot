@@ -17,6 +17,11 @@ const legacyAssetRewrites = [
 ];
 
 const nextConfig: NextConfig = {
+  experimental:
+    process.env.CONDUCTOR_IS_LOCAL === "0" &&
+    process.env.NODE_ENV === "development"
+      ? { turbopackMemoryLimit: 2 * 1024 ** 3 }
+      : undefined,
   env: {
     NEXT_PUBLIC_VERCEL_ENV:
       process.env.VERCEL_ENV ?? process.env.NEXT_PUBLIC_VERCEL_ENV ?? "",

@@ -20,11 +20,16 @@ import { PillButton } from "@/components/ui/pill-button";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { ORG_WIKI_SECTIONS, type OrgWikiSectionKey } from "@/convex/lib/orgWiki";
+import {
+  ORG_WIKI_SECTIONS,
+  type OrgWikiSectionKey,
+} from "@/convex/lib/orgWiki";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 
 type WikiSection = Doc<"orgWikiSections">;
 
@@ -58,50 +63,30 @@ function SectionDrawer({
   onClose: () => void;
 }) {
   const [body, setBody] = useState(initialBody);
-  const [saving, setSaving] = useState(false);
   const trimmedBody = body.trim();
-  const canSave =
-    Boolean(trimmedBody) && trimmedBody !== initialBody.trim() && !saving;
-
-  async function save() {
-    setSaving(true);
-    try {
-      await onSave(trimmedBody);
-      toast.success(`${heading} saved`);
-      onClose();
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Failed to save the wiki section"),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
+  const emptyDraft = !trimmedBody && body !== initialBody;
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "orgWiki.upsertSection",
+    args: trimmedBody,
+    canSave: !emptyDraft,
+    flush: onSave,
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Failed to save the wiki section"),
+  });
 
   return (
     <SettingsDrawer
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open)
+          void autoSave.saveNow().then((saved) => {
+            if (saved) onClose();
+          });
       }}
       title={heading}
-      footer={
-        <>
-          <PillButton variant="secondary" disabled={saving} onClick={onClose}>
-            Cancel
-          </PillButton>
-          <PillButton disabled={!canSave} onClick={() => void save()}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {saving ? "Saving…" : "Save section"}
-          </PillButton>
-        </>
-      }
+      actions={<AutoSaveStatus status={autoSave.status} />}
     >
       <div className="space-y-5">
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          Stable company facts only, written as markdown. Agents read the whole
-          wiki, so keep policy details, drafts, and workflow status out of it.
-        </p>
         <label className="block space-y-1.5">
           <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -114,8 +99,19 @@ function SectionDrawer({
             className="min-h-64"
             maxLength={20_000}
             placeholder="- Cove operates a commercial vehicle fleet."
+            aria-invalid={emptyDraft}
+            aria-describedby={emptyDraft ? "wiki-section-error" : undefined}
           />
         </label>
+        {emptyDraft ? (
+          <p
+            id="wiki-section-error"
+            role="alert"
+            className={`text-destructive ${typeStyle("body.default")}`}
+          >
+            Enter company facts before closing this section.
+          </p>
+        ) : null}
       </div>
     </SettingsDrawer>
   );

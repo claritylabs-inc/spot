@@ -1,4 +1,5 @@
 import { httpRouter } from "convex/server";
+import { ConvexError } from "convex/values";
 import dayjs from "dayjs";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
@@ -1146,7 +1147,12 @@ http.route({
         );
       }
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message =
+        e instanceof ConvexError && typeof e.data === "string"
+          ? e.data
+          : e instanceof Error
+            ? e.message
+            : String(e);
       if (message === "invalid_grant") {
         return new Response(JSON.stringify({ error: "invalid_grant" }), {
           status: 400,
@@ -1175,15 +1181,18 @@ http.route({
   path: "/oauth/revoke",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const params = new URLSearchParams(await request.text());
     const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
+    const rawToken =
+      params.get("token") ??
+      (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined);
+    if (!rawToken) {
+      return new Response(JSON.stringify({ error: "invalid_request" }), {
+        status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const rawToken = authHeader.slice(7);
     const encoder = new TextEncoder();
     const hashBuffer = await crypto.subtle.digest(
       "SHA-256",
@@ -1193,7 +1202,16 @@ http.route({
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    await ctx.runMutation(internal.oauth.revokeTokenInternal, { tokenHash });
+    const revoked = await ctx.runMutation(internal.oauth.revokeTokenInternal, {
+      tokenHash,
+      clientId: params.get("client_id") ?? undefined,
+    });
+    if (!revoked) {
+      return new Response(JSON.stringify({ error: "invalid_client" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(null, { status: 200 });
   }),
 });

@@ -903,9 +903,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_procurement_request: defineOperatorTool({
     // Invalidates pending confirmations created against the retired fields.
-    version: 2,
+    version: 3,
     description:
-      "Create a new-policy procurement request for an exact client and generate its unique forwarding address. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
+      "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
     inputSchema: z.object({
       orgId: organizationId,
       title: z.string().min(1).max(200),
@@ -1247,9 +1247,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) => `Update broker network profile ${input.brokerOrgId}`,
   }),
   create_procurement_broker_outreach: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Add a real broker-network organization to an exact procurement request and preserve the selected contact snapshot and application context.",
+      "Add a real broker-network organization to an exact procurement request with a selected contact, workflow status, and optional Markdown log.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgId: organizationId,
@@ -1257,9 +1257,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       contactEmail: omittable(z.string().max(320)),
       contactPhone: omittable(z.string().max(100)),
       status: omittable(procurementOutreachStatus),
-      applicationUrl: omittable(z.string().max(2_000)),
-      applicationQuestions: omittable(z.array(z.string().max(1_000)).max(100)),
-      notes: omittable(z.string().max(20_000)),
+      log: omittable(z.string().max(20_000)),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -1273,9 +1271,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add broker ${input.brokerOrgId} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_broker_outreach: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Update supplied broker outreach fields, including its exact workflow status, broker/contact snapshot, application link/questions, and notes. File quote documents as private proposals instead of writing quote fields on outreach.",
+      "Update supplied broker outreach identity, exact workflow status, or its single Markdown log. File quote documents as private proposals.",
     inputSchema: z
       .object({
         procurementOutreachId,
@@ -1284,11 +1282,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         contactEmail: clearable(z.string().max(320)),
         contactPhone: clearable(z.string().max(100)),
         status: omittable(procurementOutreachStatus),
-        applicationUrl: clearable(z.string().max(2_000)),
-        applicationQuestions: omittable(
-          z.array(z.string().max(1_000)).max(100),
-        ),
-        notes: clearable(z.string().max(20_000)),
+        log: clearable(z.string().max(20_000)),
       })
       .refine(
         (input) =>

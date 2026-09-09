@@ -13,9 +13,9 @@ import {
   Loader2,
   AlertTriangle,
   PanelRightClose,
-  Download,
 } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
+import { FileDownloadButton } from "@/components/ui/file-download-button";
 import { typeStyle } from "@/lib/typography";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -339,9 +339,7 @@ export function PdfViewer({
   const handleDocumentLoad = useCallback(
     (pdf: {
       numPages: number;
-      getPage: (
-        n: number,
-      ) => Promise<{
+      getPage: (n: number) => Promise<{
         getViewport: (opts: { scale: number }) => {
           width: number;
           height: number;
@@ -431,6 +429,7 @@ export function PdfViewer({
           size="compact"
           variant="icon"
           onClick={() => goToPage(displayPage - 1)}
+          label="Previous page"
           disabled={displayPage <= 1}
         >
           <ChevronUp className="w-3.5 h-3.5" />
@@ -439,6 +438,7 @@ export function PdfViewer({
           size="compact"
           variant="icon"
           onClick={() => goToPage(displayPage + 1)}
+          label="Next page"
           disabled={displayPage >= numPages}
         >
           <ChevronDown className="w-3.5 h-3.5" />
@@ -449,11 +449,14 @@ export function PdfViewer({
         >
           <input
             type="text"
+            aria-label="Page"
             value={pageInput}
             onChange={(e) => setPageInput(e.target.value)}
             className={`w-9 text-center border border-input rounded px-1 py-0.5 bg-popover focus:outline-none focus:border-border-focus ${typeStyle("control.input")}`}
           />
-          <span className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}>
+          <span
+            className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}
+          >
             / {numPages || "—"}
           </span>
         </form>
@@ -465,17 +468,21 @@ export function PdfViewer({
           size="compact"
           variant="icon"
           onClick={zoomOut}
+          label="Zoom out"
           disabled={scale <= 0.5}
         >
           <ZoomOut className="w-3.5 h-3.5" />
         </PillButton>
-        <span className={`text-muted-foreground/40 w-10 text-center ${typeStyle("data.numeric")}`}>
+        <span
+          className={`text-muted-foreground/40 w-10 text-center ${typeStyle("data.numeric")}`}
+        >
           {Math.round(scale * 100)}%
         </span>
         <PillButton
           size="compact"
           variant="icon"
           onClick={zoomIn}
+          label="Zoom in"
           disabled={scale >= 3}
         >
           <ZoomIn className="w-3.5 h-3.5" />
@@ -484,14 +491,11 @@ export function PdfViewer({
         {onClose && (
           <>
             <div className="w-px h-4 bg-foreground/8 mx-1" />
-            <PillButton
-              size="compact"
-              variant="icon"
-              onClick={() => window.open(fileUrl, "_blank")}
-              label="Download"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </PillButton>
+            <FileDownloadButton
+              href={fileUrl}
+              fileName="document.pdf"
+              iconOnly
+            />
           </>
         )}
       </div>
@@ -533,7 +537,9 @@ export function PdfViewer({
           >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((page) => {
               const h = getPageHeight(page, pageWidth, pageDimensions);
-              const pageHighlightBoxes = highlightBoxes.filter((box) => box.page === page);
+              const pageHighlightBoxes = highlightBoxes.filter(
+                (box) => box.page === page,
+              );
               const intrinsicDims = pageDimensions.get(page);
               return (
                 <div
@@ -557,8 +563,13 @@ export function PdfViewer({
                     />
                   )}
                   {pageHighlightBoxes.map((box, index) => {
-                    const coordinateWidth = box.coordinateWidth ?? intrinsicDims?.width ?? pageWidth ?? 1;
-                    const coordinateHeight = box.coordinateHeight ?? intrinsicDims?.height ?? h;
+                    const coordinateWidth =
+                      box.coordinateWidth ??
+                      intrinsicDims?.width ??
+                      pageWidth ??
+                      1;
+                    const coordinateHeight =
+                      box.coordinateHeight ?? intrinsicDims?.height ?? h;
                     const left = (box.x / coordinateWidth) * 100;
                     const top = (box.y / coordinateHeight) * 100;
                     const width = (box.width / coordinateWidth) * 100;

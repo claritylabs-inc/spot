@@ -33,6 +33,7 @@ import {
 import { readInboundAttachment } from "./voiceAttachment.js";
 import {
   normalizeInboundTurn,
+  isInboundTransportMessage,
   type InboundRecoveryClient,
 } from "./inboundNormalization.js";
 import { resolveContactCardPhone } from "./contactCard.js";
@@ -1214,8 +1215,7 @@ async function main() {
   process.on("SIGINT", shutdown);
 
   for await (const [space, message] of app.messages) {
-    if (TRANSPORT === "imessage" && message.platform !== "iMessage") continue;
-    if (TRANSPORT === "terminal" && message.platform !== "terminal") continue;
+    if (!isInboundTransportMessage(TRANSPORT, message)) continue;
 
     const rawSenderId = message.sender?.id;
     if (!rawSenderId) {

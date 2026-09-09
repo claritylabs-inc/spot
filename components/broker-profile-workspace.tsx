@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ImagePlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import type { FunctionReturnType } from "convex/server";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { Input } from "@/components/ui/input";
 import { TokenListField } from "@/components/broker-network/token-list-field";
 import {
@@ -25,63 +28,6 @@ export function BrokerProfileWorkspace() {
     api.brokerProfiles.get,
     brokerOrgId ? { brokerOrgId } : "skip",
   );
-  const update = useMutation(api.brokerProfiles.upsert);
-  const generateLogoUploadUrl = useMutation(
-    api.brokerProfiles.generateLogoUploadUrl,
-  );
-  const [website, setWebsite] = useState("");
-  const [line1, setLine1] = useState("");
-  const [line2, setLine2] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [writingStates, setWritingStates] = useState<string[]>([]);
-  const [lines, setLines] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!profile) return;
-    const timer = window.setTimeout(() => {
-      setWebsite(profile.broker.website ?? "");
-      setLine1(profile.profile?.officeAddress?.street1 ?? "");
-      setLine2(profile.profile?.officeAddress?.street2 ?? "");
-      setCity(profile.profile?.officeAddress?.city ?? "");
-      setState(profile.profile?.officeAddress?.state ?? "");
-      setPostalCode(profile.profile?.officeAddress?.postalCode ?? "");
-      setWritingStates(profile.profile?.writingStates ?? []);
-      setLines(profile.profile?.lineOfBusinessCodes ?? []);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [profile]);
-
-  async function save() {
-    setSaving(true);
-    try {
-      if (!brokerOrgId) return;
-      await update({
-        brokerOrgId,
-        website: website.trim() || null,
-        networkStatus: profile?.profile?.networkStatus ?? "prospect",
-        officeAddress: {
-          street1: line1.trim() || undefined,
-          street2: line2.trim() || undefined,
-          city: city.trim() || undefined,
-          state: state.trim().toUpperCase() || undefined,
-          postalCode: postalCode.trim() || undefined,
-        },
-        writingStates,
-        lineOfBusinessCodes: lines,
-      });
-      toast.success("Broker profile saved");
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not save the broker profile"),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
   if (profile === undefined) {
     return (
       <OperationalPanel className="flex h-40 items-center justify-center">
@@ -101,8 +47,107 @@ export function BrokerProfileWorkspace() {
     );
   }
 
-  const canEdit = currentOrg?.role === "admin";
-  const disabled = !canEdit || saving;
+  return (
+    <BrokerProfileEditor
+      key={brokerOrgId}
+      profile={profile}
+      canEdit={currentOrg?.role === "admin"}
+    />
+  );
+}
+
+function BrokerProfileEditor({
+  profile,
+  canEdit,
+}: {
+  profile: NonNullable<FunctionReturnType<typeof api.brokerProfiles.get>>;
+  canEdit: boolean;
+}) {
+  const brokerOrgId = profile.broker._id;
+  const update = useMutation(api.brokerProfiles.upsert);
+  const generateLogoUploadUrl = useMutation(
+    api.brokerProfiles.generateLogoUploadUrl,
+  );
+  const [website, setWebsite] = useState(profile.broker.website ?? "");
+  const [line1, setLine1] = useState(
+    profile.profile?.officeAddress?.street1 ?? "",
+  );
+  const [line2, setLine2] = useState(
+    profile.profile?.officeAddress?.street2 ?? "",
+  );
+  const [city, setCity] = useState(profile.profile?.officeAddress?.city ?? "");
+  const [state, setState] = useState(
+    profile.profile?.officeAddress?.state ?? "",
+  );
+  const [postalCode, setPostalCode] = useState(
+    profile.profile?.officeAddress?.postalCode ?? "",
+  );
+  const [writingStates, setWritingStates] = useState(
+    profile.profile?.writingStates ?? [],
+  );
+  const [lines, setLines] = useState(
+    profile.profile?.lineOfBusinessCodes ?? [],
+  );
+  const [saving, setSaving] = useState(false);
+  const values = {
+    website,
+    line1,
+    line2,
+    city,
+    state,
+    postalCode,
+    writingStates,
+    lines,
+  };
+  const savedValues = useRef(values);
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "brokerProfiles.upsert",
+    args: values,
+    enabled: canEdit,
+    flush: async (next) => {
+      const previous = savedValues.current;
+      const officeChanged =
+        next.line1 !== previous.line1 ||
+        next.line2 !== previous.line2 ||
+        next.city !== previous.city ||
+        next.state !== previous.state ||
+        next.postalCode !== previous.postalCode;
+      await update({
+        brokerOrgId,
+        website:
+          next.website !== previous.website
+            ? next.website.trim() || null
+            : undefined,
+        officeAddress: officeChanged
+          ? {
+              street1:
+                next.line1 !== previous.line1 ? next.line1.trim() : undefined,
+              street2:
+                next.line2 !== previous.line2 ? next.line2.trim() : undefined,
+              city: next.city !== previous.city ? next.city.trim() : undefined,
+              state:
+                next.state !== previous.state
+                  ? next.state.trim().toUpperCase()
+                  : undefined,
+              postalCode:
+                next.postalCode !== previous.postalCode
+                  ? next.postalCode.trim()
+                  : undefined,
+            }
+          : undefined,
+        writingStates:
+          next.writingStates !== previous.writingStates
+            ? next.writingStates
+            : undefined,
+        lineOfBusinessCodes:
+          next.lines !== previous.lines ? next.lines : undefined,
+      });
+      savedValues.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not save the broker profile"),
+  });
+  const disabled = !canEdit;
   async function uploadLogo(file: File) {
     if (!brokerOrgId) return;
     setSaving(true);
@@ -120,10 +165,6 @@ export function BrokerProfileWorkspace() {
       await update({
         brokerOrgId,
         iconStorageId: storageId,
-        networkStatus: profile?.profile?.networkStatus ?? "prospect",
-        officeAddress: profile?.profile?.officeAddress ?? {},
-        writingStates: profile?.profile?.writingStates ?? [],
-        lineOfBusinessCodes: profile?.profile?.lineOfBusinessCodes ?? [],
       });
       toast.success("Broker logo saved");
     } catch (error) {
@@ -136,6 +177,7 @@ export function BrokerProfileWorkspace() {
   }
   return (
     <div className="space-y-4">
+      <AutoSaveStatus status={autoSave.status} />
       <OperationalPanel>
         <OperationalPanelHeader title={profile.broker.name} />
         <OperationalPanelBody className="grid gap-5 sm:grid-cols-2">
@@ -253,14 +295,6 @@ export function BrokerProfileWorkspace() {
           </Field>
         </OperationalPanelBody>
       </OperationalPanel>
-      {canEdit ? (
-        <div className="flex justify-end">
-          <PillButton disabled={saving} onClick={() => void save()}>
-            {saving ? <Loader2 className="size-4 animate-spin" /> : null}Save
-            profile
-          </PillButton>
-        </div>
-      ) : null}
     </div>
   );
 }

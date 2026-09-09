@@ -602,6 +602,37 @@ export const getInvitationOtpCode = action({
   },
 });
 
+export const revokeInvitation = mutation({
+  args: { invitationId: v.id("connectedOrgInvitations") },
+  handler: async (ctx, args) => {
+    const invitation = await ctx.db.get(args.invitationId);
+    if (!invitation) throw new Error("Vendor invitation not found");
+    const access = await getOrgAccess(ctx, invitation.clientOrgId);
+    if (access.accessType !== "member" || access.role !== "admin") {
+      throwUserFacingError(userFacingErrorCodes.orgAdminRequired);
+    }
+    if (invitation.status === "accepted") {
+      throw new Error("Revoke the active connection instead");
+    }
+    await ctx.db.patch(invitation._id, {
+      status: "revoked",
+      otpCode: undefined,
+      otpCodeExpiresAt: undefined,
+      updatedAt: dayjs().valueOf(),
+    });
+    if (invitation.relationshipId) {
+      const relationship = await ctx.db.get(invitation.relationshipId);
+      if (relationship?.status === "pending") {
+        await ctx.db.patch(relationship._id, {
+          status: "revoked",
+          revokedByUserId: access.userId,
+          updatedAt: dayjs().valueOf(),
+        });
+      }
+    }
+  },
+});
+
 export const revoke = mutation({
   args: { relationshipId: v.id("connectedOrgRelationships") },
   handler: async (ctx, args) => {
@@ -625,8 +656,22 @@ export const revoke = mutation({
     await ctx.db.patch(args.relationshipId, {
       status: "revoked",
       revokedByUserId: userId,
-      updatedAt: Date.now(),
+      updatedAt: dayjs().valueOf(),
     });
+    const invitations = await ctx.db
+      .query("connectedOrgInvitations")
+      .withIndex("client", (q) => q.eq("clientOrgId", rel.clientOrgId))
+      .filter((q) => q.eq(q.field("relationshipId"), rel._id))
+      .collect();
+    for (const invitation of invitations) {
+      if (invitation.status !== "pending" && invitation.status !== "expired") continue;
+      await ctx.db.patch(invitation._id, {
+        status: "revoked",
+        otpCode: undefined,
+        otpCodeExpiresAt: undefined,
+        updatedAt: dayjs().valueOf(),
+      });
+    }
   },
 });
 

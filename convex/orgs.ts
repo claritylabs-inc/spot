@@ -970,6 +970,20 @@ export const acceptInvitation = mutation({
   },
 });
 
+async function humanTeamMemberships(ctx: QueryCtx, orgId: Id<"organizations">) {
+  const memberships = await ctx.db
+    .query("orgMemberships")
+    .withIndex("organization", (q) => q.eq("orgId", orgId))
+    .collect();
+  const people = await Promise.all(
+    memberships.map(async (membership) => {
+      const user = await ctx.db.get(membership.userId);
+      return user && !user.serviceAccountKind ? membership : null;
+    }),
+  );
+  return people.filter((membership) => membership !== null);
+}
+
 export const removeMember = mutation({
   args: {
     membershipId: v.id("orgMemberships"),
@@ -983,10 +997,7 @@ export const removeMember = mutation({
     if (!membership || membership.orgId !== orgId)
       throw new Error("Membership not found");
 
-    const memberships = await ctx.db
-      .query("orgMemberships")
-      .withIndex("organization", (q) => q.eq("orgId", orgId))
-      .collect();
+    const memberships = await humanTeamMemberships(ctx, orgId);
 
     if (membership.role === "admin") {
       const adminCount = memberships.filter((m) => m.role === "admin").length;
@@ -1035,10 +1046,7 @@ export const updateMemberRole = mutation({
 
     // Can't demote the last admin
     if (membership.role === "admin" && args.role === "member") {
-      const admins = await ctx.db
-        .query("orgMemberships")
-        .withIndex("organization", (q) => q.eq("orgId", orgId))
-        .collect();
+      const admins = await humanTeamMemberships(ctx, orgId);
       const adminCount = admins.filter((m) => m.role === "admin").length;
       if (adminCount <= 1) throw new Error("Cannot demote the last admin");
     }
@@ -1148,6 +1156,9 @@ export const setPrimaryInsuranceContact = mutation({
     if (!membership)
       throw new Error("User is not a member of this organization");
 
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.serviceAccountKind)
+      throw new Error("Primary contact must be a person");
     await ctx.db.patch(orgId, { primaryInsuranceContactId: args.userId });
     await writeTeamSupportAudit(ctx, access, {
       summary: "Updated the client primary contact",
@@ -1166,10 +1177,7 @@ export const ensurePrimaryInsuranceContact = mutation({
     const org = await ctx.db.get(orgId);
     if (!org) throw new Error("Organization not found");
 
-    const memberships = await ctx.db
-      .query("orgMemberships")
-      .withIndex("organization", (q) => q.eq("orgId", orgId))
-      .collect();
+    const memberships = await humanTeamMemberships(ctx, orgId);
 
     const currentPrimaryStillMember = org.primaryInsuranceContactId
       ? memberships.some(

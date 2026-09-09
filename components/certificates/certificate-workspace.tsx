@@ -630,14 +630,11 @@ export function CertificateDetailPanel({
             {!isArchived && onArchive ? (
               <PillButton
                 type="button"
-                variant={actionPresentation === "labels" ? "secondary" : "icon"}
+                variant="destructive"
                 size="compact"
-                label="Archive"
-                className={
-                  actionPresentation === "icons"
-                    ? "!h-7 !min-h-7 !w-7 !p-0"
-                    : undefined
-                }
+                {...(actionPresentation === "icons"
+                  ? { iconOnly: true as const, label: "Archive" }
+                  : { iconOnly: false as const, label: "Archive" })}
                 onClick={() => onArchive(row)}
                 disabled={archiving}
               >

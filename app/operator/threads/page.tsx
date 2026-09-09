@@ -7,6 +7,7 @@ import {
   ArchiveRestore,
   Loader2,
   MessageSquare,
+  Maximize2,
   Plus,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,6 +20,8 @@ import {
   OperatorThreadChannelIcon,
   operatorThreadChannelLabel,
 } from "@/components/operator-agent/operator-thread-channel";
+import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
@@ -32,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  normalizeOperatorAgentThread,
   normalizeOperatorAgentThreads,
   operatorAgentApi,
 } from "@/lib/operator-agent-api";
@@ -48,6 +52,15 @@ export default function OperatorThreadsPage() {
     limit: 100,
     archived: showArchived,
   });
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const selectedRaw = useQuery(
+    operatorAgentApi.getThread,
+    selectedThreadId ? { threadId: selectedThreadId } : "skip",
+  );
+  const selected = useMemo(
+    () => normalizeOperatorAgentThread(selectedRaw).thread,
+    [selectedRaw],
+  );
   const intents = useQuery(operatorAgentApi.listIntents, {});
   const threads = useMemo(
     () => normalizeOperatorAgentThreads(rawThreads),
@@ -75,7 +88,7 @@ export default function OperatorThreadsPage() {
   async function updateArchiveState(threadId: string) {
     setUpdatingThreadId(threadId);
     try {
-      if (showArchived) {
+      if (selected?.archivedAt) {
         await unarchiveThread({ threadId });
         toast.success("Thread restored");
       } else {
@@ -85,11 +98,12 @@ export default function OperatorThreadsPage() {
         }
         toast.success("Thread archived");
       }
+      setSelectedThreadId(null);
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(
           error,
-          `Could not ${showArchived ? "restore" : "archive"} the thread`,
+          `Could not ${selected?.archivedAt ? "restore" : "archive"} the thread`,
         ),
       );
     } finally {
@@ -120,6 +134,52 @@ export default function OperatorThreadsPage() {
           <Plus className="size-4" />
           New thread
         </PillButton>
+      }
+      rightPanel={
+        selected ? (
+          <SettingsDrawer
+            open
+            contentClassName="my-0 min-h-0 flex-1"
+            title={selected.title}
+            onOpenChange={(open) => {
+              if (!open) setSelectedThreadId(null);
+            }}
+            footer={
+              <>
+                <PillButton
+                  variant="secondary"
+                  href={`/operator/threads/${selected.id}`}
+                >
+                  <Maximize2 className="size-3.5" />
+                  Open conversation
+                </PillButton>
+                <PillButton
+                  variant={selected.archivedAt ? "secondary" : "destructive"}
+                  disabled={updatingThreadId !== null}
+                  onClick={() => void updateArchiveState(selected.id)}
+                >
+                  {updatingThreadId ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : selected.archivedAt ? (
+                    <ArchiveRestore className="size-3.5" />
+                  ) : (
+                    <Archive className="size-3.5" />
+                  )}
+                  {selected.archivedAt ? "Restore thread" : "Archive thread"}
+                </PillButton>
+              </>
+            }
+          >
+            <div className="min-h-0 flex-1">
+              <OperatorAgentPanel
+                key={selected.id}
+                variant="page"
+                threadId={selected.id}
+                showHeader={false}
+              />
+            </div>
+          </SettingsDrawer>
+        ) : undefined
       }
       customSidebar={({ collapsed, onToggleCollapse }) => (
         <OperatorSidebar
@@ -201,33 +261,27 @@ export default function OperatorThreadsPage() {
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[48%] sm:w-[46%]">
+                  <TableHead className="w-[65%] sm:w-[50%]">
                     Conversation
                   </TableHead>
-                  <TableHead className="w-[30%] sm:w-[17%]">Channel</TableHead>
-                  <TableHead className="hidden w-[23%] text-right sm:table-cell">
+                  <TableHead className="w-[35%] sm:w-[20%]">Channel</TableHead>
+                  <TableHead className="hidden w-[30%] text-right sm:table-cell">
                     Last activity
-                  </TableHead>
-                  <TableHead className="w-[22%] text-right sm:w-[14%]">
-                    Action
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {threads.map((thread) => {
-                  const updating = updatingThreadId === thread.id;
                   return (
                     <TableRow
                       key={thread.id}
                       tabIndex={0}
-                      onClick={() =>
-                        router.push(`/operator/threads/${thread.id}`)
-                      }
+                      onClick={() => setSelectedThreadId(thread.id)}
                       onKeyDown={(event) => {
                         if (event.target !== event.currentTarget) return;
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
-                        router.push(`/operator/threads/${thread.id}`);
+                        setSelectedThreadId(thread.id);
                       }}
                       className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
@@ -256,45 +310,6 @@ export default function OperatorThreadsPage() {
                       </TableCell>
                       <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
                         {formatDisplayDateTime(thread.lastMessageAt)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {showArchived ? (
-                          <PillButton
-                            size="compact"
-                            variant="secondary"
-                            label="Restore thread"
-                            disabled={updatingThreadId !== null}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void updateArchiveState(thread.id);
-                            }}
-                          >
-                            {updating ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <ArchiveRestore className="size-3.5" />
-                            )}
-                            <span className="hidden md:inline">Restore</span>
-                          </PillButton>
-                        ) : (
-                          <PillButton
-                            size="compact"
-                            variant="secondary"
-                            label="Archive thread"
-                            disabled={updatingThreadId !== null}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void updateArchiveState(thread.id);
-                            }}
-                          >
-                            {updating ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Archive className="size-3.5" />
-                            )}
-                            <span className="hidden md:inline">Archive</span>
-                          </PillButton>
-                        )}
                       </TableCell>
                     </TableRow>
                   );

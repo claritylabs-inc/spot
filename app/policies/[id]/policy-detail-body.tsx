@@ -1188,33 +1188,7 @@ export function PolicyDetailBody({
         </TabsList>
       </Tabs>
 
-      {visibleActiveTab === "details" &&
-      operatorMode &&
-      fullPolicy === undefined ? (
-        <OperationalSkeletonList rows={8} showTrailing={false} />
-      ) : null}
-
-      {visibleActiveTab === "details" && operatorMode && fullPolicy ? (
-        <OperatorPolicyWorkspace
-          policy={
-            fullPolicy as unknown as Record<string, unknown> & {
-              _id: Id<"policies">;
-            }
-          }
-          onInspect={openOperatorInspection}
-        />
-      ) : null}
-
-      {visibleActiveTab === "extraction-history" && operatorMode ? (
-        <OperatorPolicyExtractionHistory
-          policyId={policy._id}
-          initialTraceId={searchParams.get("traceId")}
-          inspection={operatorInspection}
-          onInspect={openOperatorInspection}
-        />
-      ) : null}
-
-      {visibleActiveTab === "details" && !operatorMode && (
+      {visibleActiveTab === "details" && (
         <PolicyDetailsTab
           policy={policy}
           fileUrl={fileUrl}
@@ -1222,6 +1196,29 @@ export function PolicyDetailBody({
           onEdit={openPolicyDetailsEditor}
         />
       )}
+
+      {visibleActiveTab === "extraction-history" && operatorMode ? (
+        <div className="space-y-6">
+          <OperatorPolicyExtractionHistory
+            policyId={policy._id}
+            initialTraceId={searchParams.get("traceId")}
+            inspection={operatorInspection}
+            onInspect={openOperatorInspection}
+          />
+          {fullPolicy === undefined ? (
+            <OperationalSkeletonList rows={8} showTrailing={false} />
+          ) : fullPolicy ? (
+            <OperatorPolicyWorkspace
+              policy={
+                fullPolicy as unknown as Record<string, unknown> & {
+                  _id: Id<"policies">;
+                }
+              }
+              onInspect={openOperatorInspection}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {visibleActiveTab === "coverages" && fullPolicy === undefined ? (
         <OperationalSkeletonList rows={5} showTrailing={false} />

@@ -1,11 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { OperationalPanel } from "@/components/ui/operational-panel";
-import { PillButton } from "@/components/ui/pill-button";
+import { StatusTag } from "@/components/ui/status-tag";
 import {
   Table,
   TableBody,
@@ -26,9 +24,9 @@ type TeamMembersListProps = {
   viewerUserId?: Id<"users">;
   canEditMembers: boolean;
   primaryContactId?: Id<"users">;
-  renderMemberAction?: (member: TeamMember) => ReactNode;
+  showActivationStatus?: boolean;
   onEditMember: (member: TeamMember) => void;
-  onCancelInvitation: (invitation: TeamInvitation) => void;
+  onOpenInvitation: (invitation: TeamInvitation) => void;
 };
 
 export function TeamMembersList({
@@ -37,22 +35,21 @@ export function TeamMembersList({
   viewerUserId,
   canEditMembers,
   primaryContactId,
-  renderMemberAction,
+  showActivationStatus,
   onEditMember,
-  onCancelInvitation,
+  onOpenInvitation,
 }: TeamMembersListProps) {
   const pendingInvitations =
     invitations?.filter((invitation) => invitation.status === "pending") ?? [];
 
   return (
     <OperationalPanel>
-      <Table className="min-w-[760px]">
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[24%] px-5">Member</TableHead>
-            <TableHead className="w-[22%]">Email</TableHead>
-            <TableHead className="w-[14%]">Phone</TableHead>
-            <TableHead className="w-[40%] px-5">Access</TableHead>
+            <TableHead className="w-[35%] px-5">Member</TableHead>
+            <TableHead className="w-[40%]">Email</TableHead>
+            <TableHead className="w-[25%] px-5">Access</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -69,21 +66,7 @@ export function TeamMembersList({
                   ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   : undefined
               }
-              onClick={
-                canEditMembers
-                  ? (event) => {
-                      if (
-                        event.target instanceof Element &&
-                        event.target.closest(
-                          "button, a, input, select, textarea, [role='button']",
-                        )
-                      ) {
-                        return;
-                      }
-                      onEditMember(member);
-                    }
-                  : undefined
-              }
+              onClick={canEditMembers ? () => onEditMember(member) : undefined}
               onKeyDown={
                 canEditMembers
                   ? (event) => {
@@ -98,20 +81,28 @@ export function TeamMembersList({
             >
               <TableCell className="px-5 py-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-foreground ${typeStyle("caption.medium")}`}>
+                  <div
+                    className={`flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-foreground ${typeStyle("caption.medium")}`}
+                  >
                     {getMemberInitials(member)}
                   </div>
                   <div className="min-w-0">
-                    <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>
+                    <p
+                      className={`truncate text-foreground ${typeStyle("body.medium")}`}
+                    >
                       {member.name || member.email}
                       {member.userId === viewerUserId ? (
-                        <span className={`ml-1 text-muted-foreground/50 ${typeStyle("caption.default")}`}>
+                        <span
+                          className={`ml-1 text-muted-foreground/50 ${typeStyle("caption.default")}`}
+                        >
                           (you)
                         </span>
                       ) : null}
                     </p>
                     {member.title ? (
-                      <p className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}>
+                      <p
+                        className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                      >
                         {member.title}
                       </p>
                     ) : null}
@@ -121,12 +112,10 @@ export function TeamMembersList({
               <TableCell className="max-w-64 truncate py-3 text-muted-foreground">
                 {member.email || "-"}
               </TableCell>
-              <TableCell className="py-3 text-muted-foreground">
-                {formatTeamMemberPhone(member.phone)}
-              </TableCell>
+
               <TableCell className="px-5 py-3">
-                <div className="flex flex-row items-center justify-between gap-6">
-                  <div className="flex flex-row flex-nowrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
                       {member.role === "admin" ? "Admin" : "Member"}
                     </Badge>
@@ -134,10 +123,12 @@ export function TeamMembersList({
                       <Badge variant="secondary">Primary Contact</Badge>
                     ) : null}
                   </div>
-                  {renderMemberAction ? (
-                    <div className="shrink-0">
-                      {renderMemberAction(member)}
-                    </div>
+                  {showActivationStatus ? (
+                    <StatusTag
+                      tone={member.isActivated ? "success" : "neutral"}
+                    >
+                      {member.isActivated ? "Active" : "Not activated"}
+                    </StatusTag>
                   ) : null}
                 </div>
               </TableCell>
@@ -145,7 +136,18 @@ export function TeamMembersList({
           ))}
 
           {pendingInvitations.map((invitation) => (
-            <TableRow key={invitation._id} className="opacity-60">
+            <TableRow
+              key={invitation._id}
+              className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              tabIndex={0}
+              onClick={() => onOpenInvitation(invitation)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenInvitation(invitation);
+                }
+              }}
+            >
               <TableCell className="px-5 py-3">
                 <p className={`text-foreground ${typeStyle("body.medium")}`}>
                   Pending invitation
@@ -154,19 +156,14 @@ export function TeamMembersList({
               <TableCell className="py-3 text-muted-foreground">
                 {invitation.email}
               </TableCell>
-              <TableCell className="py-3 text-muted-foreground">-</TableCell>
               <TableCell className="px-5 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  <Badge variant="outline" className={`${typeStyle("label.tag")}`}>
+                  <Badge
+                    variant="outline"
+                    className={`${typeStyle("label.tag")}`}
+                  >
                     {invitation.role}
                   </Badge>
-                  <PillButton
-                    variant="destructive"
-                    size="compact"
-                    onClick={() => onCancelInvitation(invitation)}
-                  >
-                    Cancel
-                  </PillButton>
                 </div>
               </TableCell>
             </TableRow>
@@ -175,18 +172,6 @@ export function TeamMembersList({
       </Table>
     </OperationalPanel>
   );
-}
-
-export function formatTeamMemberPhone(value?: string) {
-  const phone = value?.trim();
-  if (!phone) return "-";
-
-  const parsed = parsePhoneNumberFromString(phone, "US");
-  if (!parsed) return phone;
-
-  return parsed.countryCallingCode === "1"
-    ? parsed.formatNational()
-    : parsed.formatInternational();
 }
 
 function getMemberInitials(member: TeamMember) {

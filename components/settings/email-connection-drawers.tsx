@@ -3,6 +3,7 @@
 import {
   useCallback,
   useLayoutEffect,
+  useId,
   useMemo,
   useState,
   type ComponentType,
@@ -127,6 +128,7 @@ export function AddMailboxDrawer({
   onConnected: (account: ConnectedEmailAccountRow) => Promise<void>;
 }) {
   const connectEmail = useAction(api.actions.connectedEmail.connect);
+  const formId = useId();
   const [selectedPresetId, setSelectedPresetId] = useState("google");
   const selectedPreset = useMemo(
     () =>
@@ -210,7 +212,9 @@ export function AddMailboxDrawer({
       toast.success("Mailbox connected");
       onOpenChange(false);
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Failed to connect mailbox"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Failed to connect mailbox"),
+      );
     } finally {
       setConnecting(false);
     }
@@ -230,10 +234,7 @@ export function AddMailboxDrawer({
           >
             Cancel
           </PillButton>
-          <PillButton
-            onClick={() => void handleConnectEmail()}
-            disabled={!canConnect}
-          >
+          <PillButton type="submit" form={formId} disabled={!canConnect}>
             {connecting ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
@@ -244,7 +245,14 @@ export function AddMailboxDrawer({
         </>
       }
     >
-      <div className="flex flex-col gap-5">
+      <form
+        id={formId}
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canConnect) void handleConnectEmail();
+        }}
+      >
         <div className="grid gap-2">
           {[...PROVIDER_PRESETS, CUSTOM_PRESET].map((preset) => {
             const Icon = preset.icon;
@@ -264,10 +272,14 @@ export function AddMailboxDrawer({
                   <Icon className="size-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={`block text-foreground ${typeStyle("body.medium")}`}>
+                  <span
+                    className={`block text-foreground ${typeStyle("body.medium")}`}
+                  >
                     {preset.name}
                   </span>
-                  <span className={`block text-muted-foreground ${typeStyle("body.default")}`}>
+                  <span
+                    className={`block text-muted-foreground ${typeStyle("body.default")}`}
+                  >
                     {preset.detail}
                   </span>
                 </span>
@@ -283,6 +295,7 @@ export function AddMailboxDrawer({
             <Input
               id="mailbox-email"
               type="email"
+              required
               value={form.emailAddress}
               onChange={(event) =>
                 setForm((current) => ({
@@ -300,9 +313,13 @@ export function AddMailboxDrawer({
                 <Label htmlFor="mailbox-host">IMAP host</Label>
                 <Input
                   id="mailbox-host"
+                  required
                   value={form.host}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, host: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      host: event.target.value,
+                    }))
                   }
                   placeholder="imap.example.com"
                 />
@@ -311,24 +328,39 @@ export function AddMailboxDrawer({
                 <Label htmlFor="mailbox-port">Port</Label>
                 <Input
                   id="mailbox-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  step={1}
+                  required
                   value={form.port}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, port: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      port: event.target.value,
+                    }))
                   }
                   inputMode="numeric"
                 />
               </div>
               <div className="flex items-center justify-between gap-4 rounded-lg border border-input px-3 py-3">
                 <div>
-                  <p className={`text-foreground ${typeStyle("body.medium")}`}>Use TLS</p>
-                  <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+                  <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                    Use TLS
+                  </p>
+                  <p
+                    className={`text-muted-foreground ${typeStyle("body.default")}`}
+                  >
                     Recommended for IMAP on port 993.
                   </p>
                 </div>
                 <SettingsSwitch
                   checked={form.secure}
                   onCheckedChange={() =>
-                    setForm((current) => ({ ...current, secure: !current.secure }))
+                    setForm((current) => ({
+                      ...current,
+                      secure: !current.secure,
+                    }))
                   }
                   label="Use TLS"
                 />
@@ -337,13 +369,19 @@ export function AddMailboxDrawer({
           ) : null}
 
           <div className="space-y-1.5">
-            <Label htmlFor="mailbox-password">{selectedPreset.passwordLabel}</Label>
+            <Label htmlFor="mailbox-password">
+              {selectedPreset.passwordLabel}
+            </Label>
             <Input
               id="mailbox-password"
               type="password"
+              required
               value={form.password}
               onChange={(event) =>
-                setForm((current) => ({ ...current, password: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  password: event.target.value,
+                }))
               }
             />
           </div>
@@ -363,7 +401,9 @@ export function AddMailboxDrawer({
 
         <div className="space-y-2">
           <div>
-            <p className={`text-foreground ${typeStyle("body.medium")}`}>Start monitoring</p>
+            <p className={`text-foreground ${typeStyle("body.medium")}`}>
+              Start monitoring
+            </p>
             <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
               Spot will monitor all three sources by default.
             </p>
@@ -397,7 +437,7 @@ export function AddMailboxDrawer({
             </>
           ) : null}
         </p>
-      </div>
+      </form>
     </SettingsDrawer>
   );
 }

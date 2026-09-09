@@ -475,17 +475,15 @@ try {
   rmSync(overridesPath, { force: true });
 }
 
-if (createdLocalDeployment) {
-  run(convex, [
-    "run",
-    "seed:seed",
-    JSON.stringify({
-      brokerPhone: terminalPhone,
-      clientPhone: terminalClientPhone,
-      operatorPhone: operatorTerminalPhone,
-    }),
-  ]);
-}
+run(convex, [
+  "run",
+  "seed:seed",
+  JSON.stringify({
+    brokerPhone: terminalPhone,
+    clientPhone: terminalClientPhone,
+    operatorPhone: operatorTerminalPhone,
+  }),
+]);
 
 writeRuntimeEnv("extraction-worker.env", {
   CONVEX_URL: localUrls.cloud,

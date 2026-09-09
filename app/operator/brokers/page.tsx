@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { Loader2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -10,6 +11,8 @@ import { AppShell } from "@/components/app-shell";
 import { TokenListField } from "@/components/broker-network/token-list-field";
 import { OperatorSidebar } from "../operator-sidebar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { Input } from "@/components/ui/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { OperationalPanel } from "@/components/ui/operational-panel";
@@ -35,35 +38,7 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 type NetworkStatus = "prospect" | "active" | "inactive" | "blacklisted";
-type BrokerRow = {
-  broker: {
-    _id: Id<"organizations">;
-    name: string;
-    website?: string;
-    iconUrl?: string | null;
-  };
-  profile?: {
-    networkStatus: NetworkStatus;
-    officeAddress?: {
-      street1?: string;
-      street2?: string;
-      city?: string;
-      state?: string;
-      postalCode?: string;
-      country?: string;
-    };
-    writingStates: string[];
-    lineOfBusinessCodes: string[];
-  } | null;
-  contacts: Array<{
-    userId: Id<"users">;
-    name?: string;
-    email?: string;
-    role: "admin" | "member";
-  }>;
-  lastOutreachAt?: number;
-  proposalCount: number;
-};
+type BrokerRow = NonNullable<FunctionReturnType<typeof api.brokerProfiles.get>>;
 
 const ALL = "all";
 
@@ -88,10 +63,10 @@ export default function OperatorBrokersPage() {
     status: status === ALL ? undefined : status,
     writingState: writingState.trim() || undefined,
     lineOfBusinessCode: line.trim() || undefined,
-  }) as BrokerRow[] | undefined;
-  const selected = useMemo(
-    () => rows?.find((row) => row.broker._id === selectedId) ?? null,
-    [rows, selectedId],
+  });
+  const selected = useQuery(
+    api.brokerProfiles.get,
+    selectedId ? { brokerOrgId: selectedId } : "skip",
   );
 
   return (
@@ -112,7 +87,11 @@ export default function OperatorBrokersPage() {
         <BrokerDrawer
           key={selected?.broker._id ?? (creating ? "create" : "closed")}
           open={creating || !!selected}
-          row={selected}
+          row={selected ?? null}
+          onCreated={(brokerOrgId) => {
+            setCreating(false);
+            setSelectedId(brokerOrgId);
+          }}
           onClose={() => {
             setCreating(false);
             setSelectedId(null);
@@ -130,8 +109,8 @@ export default function OperatorBrokersPage() {
       disablePersistentChat
       disableCommandPalette
     >
-      <div className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_11rem_9rem_11rem]">
+      <div className="@container/brokers space-y-4">
+        <div className="grid gap-3 @xl/brokers:grid-cols-2 @5xl/brokers:grid-cols-[minmax(16rem,1fr)_11rem_9rem_11rem]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
@@ -177,29 +156,26 @@ export default function OperatorBrokersPage() {
           />
         </div>
         <OperationalPanel>
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="px-4">Broker</TableHead>
+                <TableHead className="w-[40%] px-4">Broker</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>States</TableHead>
                 <TableHead>Lines</TableHead>
-                <TableHead>Contacts</TableHead>
-                <TableHead>Last outreach</TableHead>
-                <TableHead className="px-4">Proposals</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows === undefined ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32">
+                  <TableCell colSpan={4} className="h-32">
                     <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={4}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
                     No brokers match these filters.
@@ -237,11 +213,6 @@ export default function OperatorBrokersPage() {
                           >
                             {row.broker.name}
                           </p>
-                          <p
-                            className={`mt-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {row.broker.website ?? "No website"}
-                          </p>
                         </div>
                       </div>
                     </TableCell>
@@ -257,27 +228,18 @@ export default function OperatorBrokersPage() {
                                 : "warning"
                         }
                       >
-                        {NETWORK_STATUS_LABELS[
-                          row.profile?.networkStatus ?? "prospect"
-                        ]}
+                        {
+                          NETWORK_STATUS_LABELS[
+                            row.profile?.networkStatus ?? "prospect"
+                          ]
+                        }
                       </StatusTag>
                     </TableCell>
-                    <TableCell className="max-w-48 text-muted-foreground">
+                    <TableCell className="whitespace-normal text-muted-foreground">
                       {row.profile?.writingStates.join(", ") || "—"}
                     </TableCell>
-                    <TableCell className="max-w-48 text-muted-foreground">
+                    <TableCell className="whitespace-normal text-muted-foreground">
                       {row.profile?.lineOfBusinessCodes.join(", ") || "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.contacts.length}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.lastOutreachAt
-                        ? formatDisplayDate(row.lastOutreachAt)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="px-4 text-muted-foreground">
-                      {row.proposalCount}
                     </TableCell>
                   </TableRow>
                 ))
@@ -293,10 +255,12 @@ export default function OperatorBrokersPage() {
 function BrokerDrawer({
   open,
   row,
+  onCreated,
   onClose,
 }: {
   open: boolean;
   row: BrokerRow | null;
+  onCreated: (brokerOrgId: Id<"organizations">) => void;
   onClose: () => void;
 }) {
   const create = useMutation(api.brokerProfiles.createStandalone);
@@ -322,40 +286,93 @@ function BrokerDrawer({
   const [lines, setLines] = useState(row?.profile?.lineOfBusinessCodes ?? []);
   const key = row?.broker._id ?? "create";
 
+  const values = {
+    name,
+    website,
+    status,
+    address,
+    city,
+    state,
+    postalCode,
+    states,
+    lines,
+  };
+  const savedValues = useRef(values);
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "brokerProfiles.upsert",
+    args: values,
+    enabled: !!row,
+    canSave: !!name.trim(),
+    flush: async (next) => {
+      if (!row) return;
+      const previous = savedValues.current;
+      const officeChanged =
+        next.address !== previous.address ||
+        next.city !== previous.city ||
+        next.state !== previous.state ||
+        next.postalCode !== previous.postalCode;
+      await update({
+        brokerOrgId: row.broker._id,
+        name: next.name !== previous.name ? next.name.trim() : undefined,
+        website:
+          next.website !== previous.website
+            ? next.website.trim() || null
+            : undefined,
+        networkStatus:
+          next.status !== previous.status ? next.status : undefined,
+        officeAddress: officeChanged
+          ? {
+              street1:
+                next.address !== previous.address
+                  ? next.address.trim()
+                  : undefined,
+              city: next.city !== previous.city ? next.city.trim() : undefined,
+              state:
+                next.state !== previous.state ? next.state.trim() : undefined,
+              postalCode:
+                next.postalCode !== previous.postalCode
+                  ? next.postalCode.trim()
+                  : undefined,
+            }
+          : undefined,
+        writingStates:
+          next.states !== previous.states ? next.states : undefined,
+        lineOfBusinessCodes:
+          next.lines !== previous.lines ? next.lines : undefined,
+      });
+      savedValues.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not save the broker"),
+  });
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (row) {
+      await autoSave.saveNow();
+      return;
+    }
     setSaving(true);
-    const common = {
-      networkStatus: status,
-      officeAddress: {
-        street1: address || undefined,
-        city: city || undefined,
-        state: state || undefined,
-        postalCode: postalCode || undefined,
-        country: "US",
-      },
-      writingStates: states,
-      lineOfBusinessCodes: lines,
-    };
     try {
-      if (row)
-        await update({
-          brokerOrgId: row.broker._id,
-          name: name.trim(),
-          website: website.trim() || null,
-          ...common,
-        });
-      else
-        await create({
-          name: name.trim(),
-          website: website.trim() || undefined,
-          ...common,
-        });
-      toast.success(row ? "Broker profile saved" : "Broker created");
-      onClose();
+      const { brokerOrgId } = await create({
+        name: name.trim(),
+        website: website.trim() || undefined,
+        networkStatus: status,
+        officeAddress: {
+          street1: address,
+          city,
+          state,
+          postalCode,
+          country: "US",
+        },
+        writingStates: states,
+        lineOfBusinessCodes: lines,
+      });
+      toast.success("Broker created");
+      onCreated(brokerOrgId);
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(error, "Could not save the broker"),
+        getUserFacingErrorMessage(error, "Could not create the broker"),
       );
     } finally {
       setSaving(false);
@@ -381,16 +398,6 @@ function BrokerDrawer({
       await update({
         brokerOrgId: row.broker._id,
         iconStorageId: storageId,
-        networkStatus: status,
-        officeAddress: {
-          street1: address || undefined,
-          city: city || undefined,
-          state: state || undefined,
-          postalCode: postalCode || undefined,
-          country: "US",
-        },
-        writingStates: states,
-        lineOfBusinessCodes: lines,
       });
       toast.success("Broker logo saved");
     } catch (error) {
@@ -407,18 +414,27 @@ function BrokerDrawer({
       key={key}
       open={open}
       onOpenChange={(next) => {
-        if (!next) onClose();
+        if (!next) {
+          if (!row) onClose();
+          else
+            void autoSave.saveNow().then((saved) => {
+              if (saved) onClose();
+            });
+        }
       }}
       title={row?.broker.name ?? "Create broker"}
+      actions={<AutoSaveStatus status={autoSave.status} />}
       footer={
-        <PillButton
-          type="submit"
-          form="broker-profile-form"
-          disabled={saving || !name.trim()}
-        >
-          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-          {row ? "Save profile" : "Create broker"}
-        </PillButton>
+        !row ? (
+          <PillButton
+            type="submit"
+            form="broker-profile-form"
+            disabled={saving || !name.trim()}
+          >
+            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+            Create broker
+          </PillButton>
+        ) : undefined
       }
     >
       <form id="broker-profile-form" className="space-y-4" onSubmit={submit}>
@@ -538,12 +554,22 @@ function BrokerDrawer({
             ariaLabel="Add ACORD line"
           />
         </Field>
-        {row ? (
+        {row &&
+        (row.contacts.length > 0 ||
+          (row.proposalCount ?? 0) > 0 ||
+          row.lastOutreachAt) ? (
           <div
             className={`border-t border-border pt-4 text-muted-foreground ${typeStyle("body.default")}`}
           >
-            <p>{row.contacts.length} contacts</p>
-            <p>{row.proposalCount} proposals</p>
+            {row.contacts.length > 0 ? (
+              <p>{row.contacts.length} contacts</p>
+            ) : null}
+            {(row.proposalCount ?? 0) > 0 ? (
+              <p>{row.proposalCount} proposals</p>
+            ) : null}
+            {row.lastOutreachAt ? (
+              <p>Last outreach {formatDisplayDate(row.lastOutreachAt)}</p>
+            ) : null}
           </div>
         ) : null}
       </form>

@@ -79,6 +79,10 @@ OAuth and requests both scopes:
   `claude mcp remove <name>`; both revoke through `/oauth/revoke`. Operator
   connections are not listed in the tenant Connected apps settings, which are
   scoped to an organization membership.
+- `/oauth/revoke` accepts a form-encoded `token` containing either the access or
+  refresh token, and an optional matching `client_id`. Revoking either invalidates
+  its stored access/refresh pair. Unknown tokens succeed idempotently; the legacy
+  Bearer-token request also remains supported.
 - The endpoint is also reachable through the app origin (`/mcp` is proxied by
   `next.config.ts`), but configure clients with the Convex site URL above so the
   token audience matches without relying on the proxy.

@@ -332,10 +332,10 @@ export const upsert = mutation({
     name: v.optional(v.string()),
     website: v.optional(v.union(v.string(), v.null())),
     iconStorageId: v.optional(v.union(v.id("_storage"), v.null())),
-    networkStatus: statusValidator,
+    networkStatus: v.optional(statusValidator),
     officeAddress: v.optional(addressValidator),
-    writingStates: v.array(v.string()),
-    lineOfBusinessCodes: v.array(v.string()),
+    writingStates: v.optional(v.array(v.string())),
+    lineOfBusinessCodes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const broker = await requireBroker(ctx, args.brokerOrgId);
@@ -375,11 +375,30 @@ export const upsert = mutation({
       .query("brokerProfiles")
       .withIndex("broker", (q) => q.eq("brokerOrgId", args.brokerOrgId))
       .unique();
+    if (
+      access.accessType !== "operator" &&
+      args.networkStatus !== undefined &&
+      args.networkStatus !== (existing?.networkStatus ?? "prospect")
+    )
+      throw new Error("Only operators can change broker network status");
     const patch = {
-      networkStatus: args.networkStatus,
-      officeAddress: args.officeAddress,
-      writingStates: normalizeStates(args.writingStates),
-      lineOfBusinessCodes: normalizeLines(args.lineOfBusinessCodes),
+      networkStatus:
+        args.networkStatus ?? existing?.networkStatus ?? "prospect",
+      officeAddress:
+        args.officeAddress === undefined
+          ? existing?.officeAddress
+          : {
+              ...existing?.officeAddress,
+              ...args.officeAddress,
+            },
+      writingStates:
+        args.writingStates === undefined
+          ? (existing?.writingStates ?? [])
+          : normalizeStates(args.writingStates),
+      lineOfBusinessCodes:
+        args.lineOfBusinessCodes === undefined
+          ? (existing?.lineOfBusinessCodes ?? [])
+          : normalizeLines(args.lineOfBusinessCodes),
       updatedByUserId: access.userId,
       updatedAt: now,
     };

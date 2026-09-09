@@ -2878,6 +2878,8 @@ export default defineSchema({
       v.literal("quote_accepted"),
       v.literal("quote_rejected"),
     ),
+    // Legacy structured workflow/quote fields. Runtime reads fold them into the
+    // Markdown log, and the next log write clears them for later narrowing.
     applicationUrl: v.optional(v.string()),
     applicationQuestions: v.array(v.string()),
     notes: v.optional(v.string()),

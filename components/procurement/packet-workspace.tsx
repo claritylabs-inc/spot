@@ -1,36 +1,92 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Copy, Loader2, RefreshCw } from "lucide-react";
+import { Copy, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { ProseMarkdown } from "@/components/prose-markdown";
+import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
   OperationalPanel,
   OperationalPanelBody,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { StatusTag } from "@/components/ui/status-tag";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
-const LINK_LIFETIME_OPTIONS = [
-  { value: "7", label: "7 days" },
-  { value: "30", label: "30 days" },
-  { value: "60", label: "60 days" },
-  { value: "90", label: "90 days" },
-] as const;
+export function PacketLinkDrawer({
+  url,
+  onClose,
+}: {
+  url: string;
+  onClose: () => void;
+}) {
+  const [copyFailed, setCopyFailed] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyFailed(false);
+      toast.success("Packet link copied");
+    } catch {
+      setCopyFailed(true);
+    }
+  }
+  return (
+    <SettingsDrawer
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Share packet"
+      footer={
+        <PillButton type="button" onClick={() => void copy()}>
+          <Copy className="size-3.5" />
+          Copy link
+        </PillButton>
+      }
+    >
+      <div className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className={`text-muted-foreground ${typeStyle("label.field")}`}>
+            Packet link
+          </span>
+          <Input
+            readOnly
+            value={url}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </label>
+        {copyFailed ? (
+          <p
+            role="status"
+            className={`text-muted-foreground ${typeStyle("body.default")}`}
+          >
+            Select the link above and copy it manually.
+          </p>
+        ) : null}
+        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+          This link shares the saved packet and released files with all brokers.
+          It replaces the previous shared link.
+        </p>
+        <PillButton
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          variant="secondary"
+        >
+          <ExternalLink className="size-3.5" />
+          Preview shared packet
+        </PillButton>
+      </div>
+    </SettingsDrawer>
+  );
+}
 
 export function PacketWorkspace({
   requestId,
@@ -164,241 +220,128 @@ export function PacketWorkspace({
   );
 }
 
-export function PacketSharingWorkspace({
+type EditablePacketSection = {
+  _id: Id<"procurementPacketSections">;
+  key: string;
+  heading: string;
+  body: string;
+};
+
+function LoadedPacketEditor({
   requestId,
-  readOnly,
+  sections: initialSections,
+  packetRevision,
+  onClose,
 }: {
   requestId: Id<"procurementRequests">;
-  readOnly: boolean;
+  sections: EditablePacketSection[];
+  packetRevision: number;
+  onClose: () => void;
 }) {
-  const preview = useQuery(api.procurementPacket.preview, { requestId });
-  const links = useQuery(api.procurementPacket.listLinks, { requestId });
-  const mintLink = useMutation(api.procurementPacket.mintLink);
-  const rotateLink = useMutation(api.procurementPacket.rotateLink);
-  const revokeLink = useMutation(api.procurementPacket.revokeLink);
-  const [working, setWorking] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [linkLifetimeDays, setLinkLifetimeDays] = useState("30");
-  const [freshLink, setFreshLink] = useState<{
-    id: Id<"procurementPacketLinks">;
-    url: string;
-  } | null>(null);
+  const updateSections = useMutation(api.procurementPacket.updateSections);
+  const fieldId = useId();
+  const [sections] = useState(initialSections);
+  const expectedPacketRevision = useRef(packetRevision);
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(sections.map((section) => [section.key, section.body])),
+  );
+  const savedDrafts = useRef(drafts);
+  const autoSave = useLocalFirstAutoSave({
+    mutationName: "procurementPacket.updateSections",
+    args: drafts,
+    flush: async (next) => {
+      const changed = sections.filter(
+        (section) => next[section.key] !== savedDrafts.current[section.key],
+      );
+      if (!changed.length) return;
+      const result = await updateSections({
+        requestId,
+        expectedPacketRevision: expectedPacketRevision.current,
+        sections: changed.map((section) => ({
+          key: section.key,
+          body: next[section.key] ?? "",
+        })),
+      });
+      expectedPacketRevision.current = result.packetRevision;
+      savedDrafts.current = next;
+    },
+    errorMessage: (error) =>
+      getUserFacingErrorMessage(error, "Could not update the packet"),
+  });
 
-  if (!preview || !links) {
+  return (
+    <SettingsDrawer
+      open
+      onOpenChange={(open) => {
+        if (!open)
+          void autoSave.saveNow().then((saved) => {
+            if (saved) onClose();
+          });
+      }}
+      title="Edit packet"
+    >
+      <AutoSaveStatus status={autoSave.status} />
+      <div className="space-y-5">
+        {sections.map((section) => (
+          <div key={section._id} className="space-y-1.5">
+            <label
+              htmlFor={`${fieldId}-${section.key}`}
+              className={`text-muted-foreground ${typeStyle("label.field")}`}
+            >
+              {section.heading}
+            </label>
+            <Textarea
+              id={`${fieldId}-${section.key}`}
+              value={drafts[section.key] ?? ""}
+              onChange={(event) =>
+                setDrafts((current) => ({
+                  ...current,
+                  [section.key]: event.target.value,
+                }))
+              }
+              className="min-h-40"
+              placeholder="Write this packet section in Markdown"
+            />
+          </div>
+        ))}
+      </div>
+    </SettingsDrawer>
+  );
+}
+
+export function PacketEditor({
+  requestId,
+  onClose,
+}: {
+  requestId: Id<"procurementRequests">;
+  onClose: () => void;
+}) {
+  const packet = useQuery(api.procurementPacket.get, {
+    requestId,
+    audience: "client",
+  });
+
+  if (!packet) {
     return (
-      <OperationalPanel className="flex h-24 items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </OperationalPanel>
+      <SettingsDrawer
+        open
+        onOpenChange={(open) => !open && onClose()}
+        title="Edit packet"
+      >
+        <div className="flex h-40 items-center justify-center">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      </SettingsDrawer>
     );
   }
 
-  const activeLink = links.find(
-    (link) => link.outreachId === null && link.state === "active",
-  );
-
-  async function createOrReplace() {
-    setWorking(true);
-    try {
-      const result = activeLink
-        ? await rotateLink({
-            linkId: activeLink.linkId,
-            expiresInDays: Number(linkLifetimeDays),
-          })
-        : await mintLink({
-            requestId,
-            expiresInDays: Number(linkLifetimeDays),
-          });
-      setFreshLink({ id: result.id, url: result.url });
-      toast.success(
-        activeLink ? "Packet link replaced" : "Packet link created",
-      );
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not create the packet link"),
-      );
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function copyLink() {
-    if (!freshLink) return;
-    try {
-      await navigator.clipboard.writeText(freshLink.url);
-      toast.success("Packet link copied");
-    } catch {
-      toast.error("Could not copy the packet link");
-    }
-  }
-
-  async function revoke() {
-    if (!activeLink) return;
-    setWorking(true);
-    try {
-      await revokeLink({ linkId: activeLink.linkId });
-      setFreshLink(null);
-      toast.success("Packet link revoked");
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not revoke the packet link"),
-      );
-    } finally {
-      setWorking(false);
-    }
-  }
-
   return (
-    <OperationalPanel as="section" aria-label="Broker packet sharing">
-      <OperationalPanelBody className="space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-1">
-            <p className={typeStyle("body.medium")}>Shared packet link</p>
-            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-              One packet and one link for every broker in this market.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            {!readOnly ? (
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="packet-link-lifetime"
-                  className={`block text-muted-foreground ${typeStyle("label.field")}`}
-                >
-                  Link lifetime
-                </label>
-                <Select
-                  value={linkLifetimeDays}
-                  items={LINK_LIFETIME_OPTIONS}
-                  onValueChange={(value) => setLinkLifetimeDays(value ?? "30")}
-                >
-                  <SelectTrigger
-                    id="packet-link-lifetime"
-                    className="w-full sm:w-32"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LINK_LIFETIME_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <PillButton
-                variant="secondary"
-                onClick={() => setShowPreview((current) => !current)}
-              >
-                {showPreview ? "Hide preview" : "Preview packet"}
-              </PillButton>
-              {!readOnly ? (
-                freshLink && activeLink?.linkId === freshLink.id ? (
-                  <PillButton
-                    disabled={working}
-                    onClick={() => void copyLink()}
-                  >
-                    <Copy className="size-3.5" />
-                    Copy link
-                  </PillButton>
-                ) : (
-                  <PillButton
-                    disabled={working}
-                    onClick={() => void createOrReplace()}
-                  >
-                    {working ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : activeLink ? (
-                      <RefreshCw className="size-3.5" />
-                    ) : null}
-                    {activeLink ? "Replace link" : "Create link"}
-                  </PillButton>
-                )
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {activeLink ? (
-          <div className="flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusTag tone={activeLink.stale ? "warning" : "success"}>
-                  {activeLink.stale ? "Packet changed" : "Active"}
-                </StatusTag>
-                <span
-                  className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  Expires {formatDisplayDateTime(activeLink.expiresAt)} ·{" "}
-                  {activeLink.viewCount}{" "}
-                  {activeLink.viewCount === 1 ? "view" : "views"}
-                </span>
-              </div>
-              {freshLink && activeLink.linkId === freshLink.id ? (
-                <code
-                  className={`mt-2 block truncate text-foreground ${typeStyle("technical.codeCompact")}`}
-                >
-                  {freshLink.url}
-                </code>
-              ) : (
-                <p
-                  className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  For security, the URL is shown only when created. Replace it
-                  to copy a new one.
-                </p>
-              )}
-            </div>
-            {!readOnly ? (
-              <PillButton
-                size="compact"
-                variant="destructive"
-                disabled={working}
-                onClick={() => void revoke()}
-              >
-                Revoke
-              </PillButton>
-            ) : null}
-          </div>
-        ) : (
-          <p
-            className={`border-t border-border pt-3 text-muted-foreground ${typeStyle("body.default")}`}
-          >
-            No active packet link.
-          </p>
-        )}
-
-        {showPreview ? (
-          <div className="space-y-4 border-t border-border pt-4">
-            {preview.markdown ? (
-              <ProseMarkdown>{preview.markdown}</ProseMarkdown>
-            ) : (
-              <p
-                className={`text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                The shared packet is empty.
-              </p>
-            )}
-            {preview.files.length ? (
-              <div className="divide-y divide-border border-y border-border">
-                {preview.files.map((file) => (
-                  <div
-                    key={file.fileItemId}
-                    className={`flex items-center justify-between gap-3 py-3 ${typeStyle("body.default")}`}
-                  >
-                    <span className="min-w-0 truncate">{file.name}</span>
-                    <span className="shrink-0 text-muted-foreground">
-                      {file.release === "attached" ? "Downloadable" : "Listed"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </OperationalPanelBody>
-    </OperationalPanel>
+    <LoadedPacketEditor
+      key={requestId}
+      requestId={requestId}
+      sections={packet.sections}
+      packetRevision={packet.packetRevision}
+      onClose={onClose}
+    />
   );
 }

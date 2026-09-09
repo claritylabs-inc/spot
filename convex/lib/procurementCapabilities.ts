@@ -57,7 +57,7 @@ export const PROCUREMENT_CAPABILITIES = [
   },
   {
     id: "packet.share",
-    browserSurface: "market shared-packet controls",
+    browserSurface: "market navigation link regeneration control",
     agentTools: [
       "preview_broker_packet",
       "create_broker_packet_link",
@@ -107,7 +107,7 @@ export const PROCUREMENT_CAPABILITIES = [
   },
   {
     id: "proposal.file",
-    browserSurface: "proposal filing drawer",
+    browserSurface: "broker outreach proposal dropzone",
     agentTools: ["file_procurement_proposal", "file_procurement_email_quote"],
   },
   {

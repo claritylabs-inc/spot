@@ -11,6 +11,10 @@ import { ThreadMessageBubble } from "@/components/agent-thread/message-bubble";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { OperatorSidebar } from "../operator-sidebar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import {
+  OperationalLabelValueList,
+  OperationalLabelValueRow,
+} from "@/components/ui/operational-panel";
 import { ActionSurface } from "@/components/ui/action-surface";
 import {
   Dialog,
@@ -80,7 +84,9 @@ function drawerTitle(row?: TranscriptRow) {
       <span className="min-w-0">
         <span className="block truncate">{primary}</span>
         {secondary ? (
-          <span className={`block truncate text-muted-foreground/40 ${typeStyle("caption.default")}`}>
+          <span
+            className={`block truncate text-muted-foreground/40 ${typeStyle("caption.default")}`}
+          >
             {secondary}
           </span>
         ) : null}
@@ -98,7 +104,11 @@ function Timeline({
 }) {
   const messages = logs?.filter((log) => log.direction !== "system") ?? [];
   if (!messages.length) {
-    return <p className={`text-muted-foreground ${typeStyle("body.default")}`}>No turns recorded.</p>;
+    return (
+      <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+        No turns recorded.
+      </p>
+    );
   }
 
   return (
@@ -112,24 +122,30 @@ function Timeline({
             key={log._id}
             className={`max-w-lg w-fit ${isInbound ? "ml-auto" : ""}`}
           >
-            <div
-              className={`mb-1 flex items-center gap-2 ${isInbound ? "justify-end" : ""}`}
-            >
-              <span className={`text-muted-foreground/50 ${typeStyle("caption.medium")}`}>
-                {isInbound ? "Prospect" : "Spot"}
-              </span>
-              <span className="text-muted-foreground/20">·</span>
-              <span className={`text-muted-foreground/25 ${typeStyle("caption.default")}`}>
-                {formatDisplayDateTime(log.createdAt)}
-              </span>
-            </div>
+            {isInbound ? (
+              <div className="mb-1 flex items-center justify-end gap-2">
+                <span
+                  className={`text-muted-foreground/50 ${typeStyle("caption.medium")}`}
+                >
+                  Prospect
+                </span>
+                <span className="text-muted-foreground/20">·</span>
+                <span
+                  className={`text-muted-foreground/25 ${typeStyle("caption.default")}`}
+                >
+                  {formatDisplayDateTime(log.createdAt)}
+                </span>
+              </div>
+            ) : null}
             <ThreadMessageBubble
               role={isInbound ? "user" : "agent"}
               channel={channel}
               isOwnMessage={isInbound}
             >
               {log.subject ? (
-                <p className={`mb-1 ${typeStyle("body.medium")}`}>{log.subject}</p>
+                <p className={`mb-1 ${typeStyle("body.medium")}`}>
+                  {log.subject}
+                </p>
               ) : null}
               <ProseMarkdown gfm breaks compact={isInbound}>
                 {content}
@@ -149,7 +165,9 @@ export default function OperatorDemoLeadsPage() {
   );
   const [selectedTranscriptId, setSelectedTranscriptId] =
     useState<Id<"publicDemoSalesTranscripts"> | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<TranscriptRow | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TranscriptRow | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
   const transcriptDetail =
     useCachedOperatorDemoSalesTranscriptDetail(selectedTranscriptId);
@@ -181,16 +199,44 @@ export default function OperatorDemoLeadsPage() {
         if (!open) setSelectedTranscriptId(null);
       }}
       title={drawerTitle(selectedTranscript)}
+      footer={
+        selectedTranscript ? (
+          <PillButton
+            variant="destructive"
+            disabled={deleting}
+            onClick={() => setPendingDelete(selectedTranscript)}
+          >
+            <Trash2 className="size-3.5" />
+            Delete lead
+          </PillButton>
+        ) : undefined
+      }
     >
       {transcriptDetail ? (
-        <div className="pb-4">
+        <div className="space-y-5 pb-4">
+          <OperationalLabelValueList>
+            <OperationalLabelValueRow
+              label="Use case"
+              value={transcriptDetail.transcript.leadUseCase}
+            />
+            <OperationalLabelValueRow
+              label="Summary"
+              value={transcriptDetail.transcript.summary}
+            />
+            <OperationalLabelValueRow
+              label="Next step"
+              value={transcriptDetail.transcript.nextStep}
+            />
+          </OperationalLabelValueList>
           <Timeline
             logs={transcriptDetail.logs}
             channel={transcriptDetail.transcript.channel}
           />
         </div>
       ) : (
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>Loading chat.</p>
+        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+          Loading chat.
+        </p>
       )}
     </SettingsDrawer>
   );
@@ -212,7 +258,9 @@ export default function OperatorDemoLeadsPage() {
       <FadeIn when={true} duration={0.12}>
         {(transcripts ?? []).length === 0 ? (
           <div className="py-16 text-center">
-            <p className={`text-muted-foreground/40 ${typeStyle("body.default")}`}>
+            <p
+              className={`text-muted-foreground/40 ${typeStyle("body.default")}`}
+            >
               No public demo chats
             </p>
           </div>
@@ -246,16 +294,6 @@ export default function OperatorDemoLeadsPage() {
                       </span>
                     </span>
                   </button>
-                  <PillButton
-                    variant="destructive"
-                    size="compact"
-                    iconOnly
-                    label={`Delete lead ${contact}`}
-                    className="mr-1"
-                    onClick={() => setPendingDelete(row)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </PillButton>
                 </ActionSurface>
               );
             })}

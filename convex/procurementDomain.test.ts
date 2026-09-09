@@ -144,6 +144,150 @@ async function createRequest(
 }
 
 describe("procurement domain boundaries", () => {
+  test("saves packet edits together and rejects stale or unauthorized edits", async () => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Packet editing");
+    const initial = await f.operator.query(api.procurementPacket.get, {
+      requestId,
+    });
+    const edits = {
+      requestId,
+      expectedPacketRevision: initial.packetRevision,
+      sections: [
+        { key: "intake_narrative", body: "Updated narrative" },
+        { key: "summary", body: "Updated summary" },
+      ],
+    };
+    await expect(
+      f.client.mutation(api.procurementPacket.updateSections, edits),
+    ).rejects.toThrow();
+    await expect(
+      f.broker.mutation(api.procurementPacket.updateSections, edits),
+    ).rejects.toThrow();
+    await f.operator.mutation(api.procurementPacket.updateSections, edits);
+    const saved = await f.operator.query(api.procurementPacket.get, {
+      requestId,
+    });
+    expect(saved.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "intake_narrative",
+          body: "Updated narrative",
+          source: "manual",
+        }),
+        expect.objectContaining({
+          key: "summary",
+          body: "Updated summary",
+          source: "manual",
+        }),
+      ]),
+    );
+    await expect(
+      f.operator.mutation(api.procurementPacket.updateSections, {
+        ...edits,
+        sections: edits.sections.map((section) => ({
+          ...section,
+          body: "Stale draft",
+        })),
+      }),
+    ).rejects.toThrow("packet changed");
+    expect(
+      await f.operator.query(api.procurementPacket.get, { requestId }),
+    ).toEqual(saved);
+  });
+
+  test("rejects oversized outreach logs without losing existing content", async () => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Long outreach log");
+    const { outreachId } = await f.operator.mutation(
+      api.procurementRequests.createOutreach,
+      {
+        requestId,
+        brokerOrgId: f.brokerOrgId,
+        log: "Keep this log",
+      },
+    );
+    await f.t.run((ctx) =>
+      ctx.db.patch(outreachId, { quoteSummary: "Keep legacy context" }),
+    );
+    const before = await f.t.run((ctx) => ctx.db.get(outreachId));
+    await expect(
+      f.operator.mutation(api.procurementRequests.updateOutreach, {
+        outreachId,
+        log: "x".repeat(20_001),
+      }),
+    ).rejects.toThrow("Log must be");
+    expect(await f.t.run((ctx) => ctx.db.get(outreachId))).toEqual(before);
+  });
+
+  test("automatically creates one shared packet link for every new request", async () => {
+    vi.useFakeTimers();
+    const f = await fixture();
+    const operatorRequest = await createRequest(f, "Operator placement");
+    const clientRequest = await f.client.mutation(
+      api.clientProcurementRequests.create,
+      { title: "Client placement", narrative: "Please place coverage" },
+    );
+
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    for (const requestId of [
+      operatorRequest.requestId,
+      clientRequest.requestId,
+    ]) {
+      const links = await f.operator.query(api.procurementPacket.listLinks, {
+        requestId,
+      });
+      expect(links).toEqual([
+        expect.objectContaining({
+          outreachId: null,
+          state: "active",
+        }),
+      ]);
+    }
+  });
+
+  test("exposes one outreach Markdown log and retires legacy workflow fields on edit", async () => {
+    const f = await fixture();
+    const request = await createRequest(f, "Broker log");
+    const outreach = await f.operator.mutation(
+      api.procurementRequests.createOutreach,
+      {
+        requestId: request.requestId,
+        brokerOrgId: f.brokerOrgId,
+        log: "Initial contact sent.",
+      },
+    );
+    await f.t.run((ctx) =>
+      ctx.db.patch(outreach.outreachId, {
+        applicationUrl: "https://example.com/application",
+        applicationQuestions: ["Who are the drivers?"],
+        quoteSummary: "Legacy quote summary",
+      }),
+    );
+
+    const before = await f.operator.query(api.procurementRequests.get, {
+      requestId: request.requestId,
+    });
+    expect(before.outreaches[0]).toMatchObject({
+      log: expect.stringContaining("https://example.com/application"),
+    });
+    expect(before.outreaches[0]).not.toHaveProperty("applicationUrl");
+    expect(before.outreaches[0]).not.toHaveProperty("quoteSummary");
+
+    await f.operator.mutation(api.procurementRequests.updateOutreach, {
+      outreachId: outreach.outreachId,
+      log: "- Followed up with underwriting.",
+    });
+    const stored = await f.t.run((ctx) => ctx.db.get(outreach.outreachId));
+    expect(stored).toMatchObject({
+      applicationQuestions: [],
+      notes: "- Followed up with underwriting.",
+    });
+    expect(stored).not.toHaveProperty("applicationUrl");
+    expect(stored).not.toHaveProperty("quoteSummary");
+  });
+
   test("stores client request uploads as canonical artifacts without activity rows", async () => {
     const f = await fixture();
     const request = await f.client.mutation(
@@ -714,6 +858,127 @@ describe("procurement domain boundaries", () => {
     ).rejects.toThrow("Broker admin required");
   });
 
+  test("broker edits preserve unrelated profile fields and cannot change operator status", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      const membership = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization", (q) => q.eq("orgId", f.brokerOrgId))
+        .unique();
+      await ctx.db.patch(membership!._id, { role: "admin" });
+    });
+    await f.operator.mutation(api.brokerProfiles.upsert, {
+      brokerOrgId: f.brokerOrgId,
+      networkStatus: "blacklisted",
+      officeAddress: {
+        street1: "123 Example St",
+        street2: "Suite 2",
+        city: "Boston",
+        country: "US",
+      },
+      writingStates: ["MA"],
+      lineOfBusinessCodes: ["CGL"],
+    });
+    await f.broker.mutation(api.brokerProfiles.upsert, {
+      brokerOrgId: f.brokerOrgId,
+      website: "https://example.com",
+    });
+    await f.broker.mutation(api.brokerProfiles.upsert, {
+      brokerOrgId: f.brokerOrgId,
+      officeAddress: { city: "Cambridge", street2: "" },
+    });
+    const result = await f.operator.query(api.brokerProfiles.get, {
+      brokerOrgId: f.brokerOrgId,
+    });
+    expect(result).toMatchObject({
+      broker: { website: "https://example.com" },
+      profile: {
+        networkStatus: "blacklisted",
+        writingStates: ["MA"],
+        lineOfBusinessCodes: ["CGL"],
+        officeAddress: {
+          street1: "123 Example St",
+          street2: "",
+          city: "Cambridge",
+          country: "US",
+        },
+      },
+    });
+    await expect(
+      f.broker.mutation(api.brokerProfiles.upsert, {
+        brokerOrgId: f.brokerOrgId,
+        networkStatus: "active",
+        website: "https://changed.example.com",
+      }),
+    ).rejects.toThrow("Only operators can change broker network status");
+    expect(
+      (
+        await f.operator.query(api.brokerProfiles.get, {
+          brokerOrgId: f.brokerOrgId,
+        })
+      )?.broker.website,
+    ).toBe("https://example.com");
+  });
+
+  test("service accounts cannot replace the last human admin or become the primary contact", async () => {
+    const f = await fixture();
+    const { serviceUserId, membershipId } = await f.t.run(async (ctx) => {
+      const serviceUserId = await ctx.db.insert("users", {
+        name: "Slack service",
+        serviceAccountKind: "slack",
+        accountKind: "customer",
+      });
+      await ctx.db.insert("orgMemberships", {
+        orgId: f.clientOrgId,
+        userId: serviceUserId,
+        role: "admin",
+      });
+      const membership = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization_user", (q) =>
+          q.eq("orgId", f.clientOrgId).eq("userId", f.clientUserId),
+        )
+        .unique();
+      return { serviceUserId, membershipId: membership!._id };
+    });
+    expect(
+      await f.client.mutation(api.orgs.ensurePrimaryInsuranceContact, {}),
+    ).toMatchObject({ userId: f.clientUserId, updated: true });
+    await expect(
+      f.client.mutation(api.orgs.updateMemberRole, {
+        membershipId,
+        role: "member",
+      }),
+    ).rejects.toThrow("Cannot demote the last admin");
+    await expect(
+      f.client.mutation(api.orgs.removeMember, { membershipId }),
+    ).rejects.toThrow("Cannot remove the last admin");
+    await expect(
+      f.client.mutation(api.orgs.setPrimaryInsuranceContact, {
+        userId: serviceUserId,
+      }),
+    ).rejects.toThrow("Primary contact must be a person");
+    const extraMembershipId = await f.t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        name: "Second person",
+        accountKind: "customer",
+      });
+      return await ctx.db.insert("orgMemberships", {
+        orgId: f.clientOrgId,
+        userId,
+        role: "member",
+      });
+    });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.clientOrgId, { primaryInsuranceContactId: undefined }),
+    );
+    expect(
+      await f.client.mutation(api.orgs.removeMember, {
+        membershipId: extraMembershipId,
+      }),
+    ).toMatchObject({ primaryInsuranceContactId: f.clientUserId });
+  });
+
   test("issues immutable broker snapshots and revokes packet and file access", async () => {
     const f = await fixture();
     const brokerOrgId = await f.t.run((ctx) =>
@@ -727,15 +992,12 @@ describe("procurement domain boundaries", () => {
       title: "Property placement",
       narrative: "Insure the Carroll Avenue property",
     });
-    const outreach = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
-      {
-        requestId: request.requestId,
-        brokerOrgId,
-        contactName: "Dana Reyes",
-        contactEmail: "dana@example.com",
-      },
-    );
+    await f.operator.mutation(api.procurementRequests.createOutreach, {
+      requestId: request.requestId,
+      brokerOrgId,
+      contactName: "Dana Reyes",
+      contactEmail: "dana@example.com",
+    });
     const otherOutreach = await f.operator.mutation(
       api.procurementRequests.createOutreach,
       {
