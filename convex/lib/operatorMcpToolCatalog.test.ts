@@ -25,6 +25,17 @@ describe("operator MCP tool catalog", () => {
     expect(names).toContain("lookup_compliance_requirements");
     expect(names).toContain("read_client_file");
     expect(names).toContain("lookup_client_wiki");
+    for (const name of [
+      "list_company_mailboxes",
+      "search_company_email",
+      "read_company_email_thread",
+      "get_company_email_attachment",
+    ]) {
+      expect(tools.find((tool) => tool.name === name)).toMatchObject({
+        annotations: { readOnlyHint: true, openWorldHint: true },
+        securitySchemes: [{ type: "oauth2", scopes: ["read"] }],
+      });
+    }
     expect(names).not.toContain("generate_coi");
     expect(names).not.toContain("create_procurement_request");
     expect(names).not.toContain("update_procurement_email_thread");
