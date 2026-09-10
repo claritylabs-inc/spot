@@ -10,19 +10,8 @@ const AGENT_HISTORY_MAX_USER_TURNS = 24;
 const AGENT_HISTORY_MAX_ESTIMATED_TOKENS = 32_000;
 export const AGENT_HISTORY_PAGE_SIZE = 64;
 export const AGENT_HISTORY_MAX_SCANNED_MESSAGES = 256;
-export const IMESSAGE_TASK_INACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
 export const THREAD_SUMMARY_MAX_OUTPUT_TOKENS = 1_536;
 export const THREAD_SUMMARY_VERSION = 1;
-
-export function shouldStartNewImessageTask(
-  previousUserMessageAt: number | undefined,
-  currentUserMessageAt: number,
-): boolean {
-  return (
-    previousUserMessageAt !== undefined &&
-    currentUserMessageAt - previousUserMessageAt >= IMESSAGE_TASK_INACTIVITY_MS
-  );
-}
 
 export const AGENT_CHANNEL_HISTORY_POLICY = {
   web: { continuityMode: "thread_long" },

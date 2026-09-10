@@ -589,6 +589,13 @@ describe("Slack Events API webhook", () => {
       id: created.presentation._id,
       providerMessageId: "1800.1",
     });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(created.presentation!._id, {
+        createdAt: dayjs().subtract(90, "day").valueOf(),
+        updatedAt: dayjs().subtract(90, "day").valueOf(),
+        actionTokenExpiresAt: dayjs().subtract(60, "day").valueOf(),
+      });
+    });
     const claimed = await t.mutation(
       internal.slackPresentation.claimInteraction,
       {
@@ -633,5 +640,11 @@ describe("Slack Events API webhook", () => {
       rating: "negative",
       comment: "The coverage limit was wrong.",
     });
+    await t.run(ctx => ctx.db.patch(created.presentation!._id, { actionTokenRevokedAt: dayjs().valueOf() }));
+    await expect(t.mutation(internal.slackPresentation.claimInteraction, {
+      interactionKey: "revoked-control-click", actionToken: created.actionToken,
+      teamId: "T-CUSTOMER", actorTeamId: "T-CUSTOMER", slackUserId: "U-CUSTOMER",
+      channelId: "C-PRIMARY", messageTs: "1800.1", actionId: "spot_response_feedback", value: "negative",
+    })).rejects.toThrow("no longer available");
   });
 });

@@ -2,6 +2,8 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "./schema";
+import { internal } from "./_generated/api";
+import dayjs from "dayjs";
 import { consumeInternal, createInternal } from "./threadActionConfirmations";
 import { pendingEmailDraftFingerprint } from "./lib/actionConfirmationFingerprint";
 
@@ -232,7 +234,7 @@ describe("thread action confirmations", () => {
     });
   });
 
-  it("expires and is invalidated by a task epoch transition", async () => {
+  it("ignores legacy expiry but is invalidated by a task epoch transition", async () => {
     const expired = await fixture();
     const expiredId = await expired.t.mutation(createConfirmation, {
       orgId: expired.orgId,
@@ -254,7 +256,7 @@ describe("thread action confirmations", () => {
         actor: { kind: "user", userId: expired.userId },
         requireAdjacentPrompt: false,
       }),
-    ).toBe("expired");
+    ).toBe("completed");
 
     const reset = await fixture();
     const resetId = await reset.t.mutation(createConfirmation, {
@@ -271,9 +273,7 @@ describe("thread action confirmations", () => {
     await reset.t.run(async (ctx) => {
       const state = await ctx.db
         .query("threadContextStates")
-        .withIndex("thread", (query) =>
-          query.eq("threadId", reset.threadId),
-        )
+        .withIndex("thread", (query) => query.eq("threadId", reset.threadId))
         .unique();
       await ctx.db.patch(state!._id, { taskEpoch: 5 });
     });
@@ -284,5 +284,55 @@ describe("thread action confirmations", () => {
         requireAdjacentPrompt: false,
       }),
     ).toBe("stale");
+  });
+  it("preserves an iMessage task and its pending approval across a long absence", async () => {
+    const data = await fixture();
+    const id = await data.t.mutation(createConfirmation, {
+      orgId: data.orgId,
+      threadId: data.threadId,
+      actor: { kind: "user", userId: data.userId },
+      promptMessageId: data.promptMessageId,
+      payload: {
+        kind: "email_send",
+        pendingEmailIds: [data.draftId],
+        draftFingerprints: [data.fingerprint],
+      },
+    });
+    const messageId = await data.t.run(async (ctx) => {
+      const state = await ctx.db
+        .query("threadContextStates")
+        .withIndex("thread", (q) => q.eq("threadId", data.threadId))
+        .unique();
+      await ctx.db.patch(state!._id, {
+        lastUserMessageAt: dayjs().subtract(90, "day").valueOf(),
+        summary: "The client is reviewing the unchanged draft.",
+      });
+      return ctx.db.insert("threadMessages", {
+        threadId: data.threadId,
+        orgId: data.orgId,
+        channel: "imessage",
+        role: "user",
+        content: "Please continue.",
+      });
+    });
+    const state = await data.t.mutation(internal.agentHistory.prepareForTurn, {
+      threadId: data.threadId,
+      currentMessageId: messageId,
+      surface: "imessage",
+    });
+    expect(state).toMatchObject({
+      taskEpoch: 4,
+      summary: "The client is reviewing the unchanged draft.",
+    });
+    expect(await data.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      status: "pending",
+    });
+    await data.t.mutation(internal.agentHistory.resetTask, {
+      threadId: data.threadId,
+      currentMessageId: messageId,
+    });
+    expect(await data.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      status: "stale",
+    });
   });
 });

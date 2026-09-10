@@ -1,9 +1,8 @@
 "use node";
 
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
 import {
   buildInboundImessageEventKey,
   normalizeInboundImessageSender,
@@ -15,6 +14,7 @@ import { prepareInboundImessageTurn } from "../lib/imessageAgentContext";
 import {
   handleOperatorChannelConfirmation,
   waitForOperatorAgentRun,
+  type OperatorChannelRunResult,
 } from "../lib/operatorAgentChannel";
 import { cleanAgentMarkdownForTransport } from "../lib/transportRenderers";
 
@@ -106,6 +106,22 @@ export const processInbound = internalAction({
       content: preliminaryContent,
     });
     if (confirmation) {
+      if (confirmation.status === "queued") {
+        const result = await waitForOperatorAgentRun(
+          ctx,
+          identity.operatorUserId,
+          confirmation.runId,
+          {
+            channel: "imessage",
+            toPhone: fromPhone,
+            chatGuid,
+            clientMessageId: `operator-confirmation:${confirmation.confirmationId}`,
+          },
+        );
+        return result
+          ? operatorImessageRunResponse(ctx, result)
+          : { response: "", sendContactCard: false };
+      }
       return {
         response: cleanAgentMarkdownForTransport(confirmation.content ?? ""),
         sendContactCard: false,
@@ -173,65 +189,73 @@ export const processInbound = internalAction({
       ctx,
       identity.operatorUserId,
       queued.runId,
+      {
+        channel: "imessage",
+        toPhone: fromPhone,
+        chatGuid,
+        clientMessageId: `operator-agent:${queued.runId}:${eventKey}`,
+      },
     );
-    const response = result.response;
-    const attachments = await Promise.all(
-      (response?.attachments ?? [])
-        .flatMap(
-          (attachment: {
-            fileId?: Id<"_storage">;
-            filename: string;
-            contentType: string;
-          }) => (attachment.fileId ? [attachment] : []),
-        )
-        .map(
-          async (attachment: {
-            fileId: Id<"_storage">;
-            filename: string;
-            contentType: string;
-          }) => ({
-            url: await ctx.storage.getUrl(attachment.fileId),
-            filename: attachment.filename,
-            mimeType: attachment.contentType,
-          }),
-        ),
-    );
-    const attachmentFailures = attachments.flatMap((attachment) =>
-      attachment.url
-        ? []
-        : [
-            {
-              filename: attachment.filename,
-              error: "Storage URL was unavailable.",
-            },
-          ],
-    );
-    if (attachmentFailures.length > 0 && response?.messageId) {
-      await ctx.runMutation(
-        internalApi.operatorAgent
-          .recordImessageAttachmentDeliveryFailureInternal,
-        {
-          operatorMessageId: response.messageId,
-          stage: "url_resolution",
-          failures: attachmentFailures,
-        },
-      );
-    }
-    const responseText = cleanAgentMarkdownForTransport(
-      response?.content ?? "",
-    );
-    return {
-      response:
-        attachmentFailures.length > 0
-          ? `${responseText.trim()}\n\nOne or more attachments could not be delivered.`.trim()
-          : responseText,
-      attachments: attachments.flatMap((attachment) =>
-        attachment.url ? [{ ...attachment, url: attachment.url }] : [],
-      ),
-      threadMessageId: response?.messageId
-        ? String(response.messageId)
-        : undefined,
-      sendContactCard: false,
-    };
+    if (!result) return { response: "", sendContactCard: false };
+    return operatorImessageRunResponse(ctx, result);
   },
 });
+
+export async function operatorImessageRunResponse(
+  ctx: ActionCtx,
+  result: OperatorChannelRunResult,
+) {
+  const response = result.response;
+  const attachments = await Promise.all(
+    (response?.attachments ?? [])
+      .flatMap((attachment) =>
+        attachment.fileId
+          ? [
+              {
+                ...attachment,
+                fileId: attachment.fileId,
+              },
+            ]
+          : [],
+      )
+      .map(async (attachment) => ({
+        url: await ctx.storage.getUrl(attachment.fileId),
+        filename: attachment.filename,
+        mimeType: attachment.contentType,
+      })),
+  );
+  const attachmentFailures = attachments.flatMap((attachment) =>
+    attachment.url
+      ? []
+      : [
+          {
+            filename: attachment.filename,
+            error: "Storage URL was unavailable.",
+          },
+        ],
+  );
+  if (attachmentFailures.length > 0 && response?.messageId) {
+    await ctx.runMutation(
+      internalApi.operatorAgent.recordImessageAttachmentDeliveryFailureInternal,
+      {
+        operatorMessageId: response.messageId,
+        stage: "url_resolution",
+        failures: attachmentFailures,
+      },
+    );
+  }
+  const responseText = cleanAgentMarkdownForTransport(response?.content ?? "");
+  return {
+    response:
+      attachmentFailures.length > 0
+        ? `${responseText.trim()}\n\nOne or more attachments could not be delivered.`.trim()
+        : responseText,
+    attachments: attachments.flatMap((attachment) =>
+      attachment.url ? [{ ...attachment, url: attachment.url }] : [],
+    ),
+    threadMessageId: response?.messageId
+      ? String(response.messageId)
+      : undefined,
+    sendContactCard: false,
+  };
+}

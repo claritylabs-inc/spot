@@ -79,7 +79,7 @@ function operatorSlackContent(event: Doc<"slackInboundEvents">) {
     : "Please help with this.";
 }
 
-async function sendOperatorSlackResponse(
+export async function sendOperatorSlackResponse(
   ctx: ActionCtx,
   args: {
     delivery: OperatorSlackDelivery;
@@ -169,11 +169,8 @@ function operatorSlackDelivery(
   };
 }
 
-async function updateOperatorSlackActivity(
-  event: Pick<
-    Doc<"slackInboundEvents">,
-    "teamId" | "channelId" | "messageTs"
-  >,
+export async function updateOperatorSlackActivity(
+  event: Pick<Doc<"slackInboundEvents">, "teamId" | "channelId" | "messageTs">,
   state: OperatorSlackActivityState,
 ) {
   const reaction = async (operation: "add" | "remove", name: string) => {
@@ -258,9 +255,7 @@ async function updateOperatorSlackConfirmation(
     const result = (await response.json().catch(() => ({}))) as {
       error?: string;
     };
-    throw new Error(
-      result.error ?? `Slack worker returned ${response.status}`,
-    );
+    throw new Error(result.error ?? `Slack worker returned ${response.status}`);
   }
 }
 
@@ -287,7 +282,10 @@ async function processOperatorBatch(
     const channelName = firstAuthorizedEvent?.isDirectMessage
       ? undefined
       : await resolveSlackChannelName(firstAuthorizedEvent).catch((error) => {
-          console.warn("[slack] Could not resolve operator channel name", error);
+          console.warn(
+            "[slack] Could not resolve operator channel name",
+            error,
+          );
           return undefined;
         });
     const slackThreadContext = authorized.at(-1)?.event
@@ -324,15 +322,32 @@ async function processOperatorBatch(
         content,
       });
       if (confirmation) {
-        await sendOperatorSlackResponse(ctx, {
-          delivery: operatorSlackDelivery(refreshedEvent),
-          clientMessageId: `operator-agent:${confirmation.runId}:${refreshedEvent.eventKey}`,
-          response: confirmation.response ?? { content: confirmation.content },
-        });
+        const clientMessageId = `operator-agent:${confirmation.runId}:${refreshedEvent.eventKey}`;
+        const result =
+          confirmation.status === "queued"
+            ? await waitForOperatorAgentRun(
+                ctx,
+                operatorUserId,
+                confirmation.runId,
+                {
+                  channel: "slack",
+                  ...operatorSlackDelivery(refreshedEvent),
+                  eventId: refreshedEvent._id,
+                  clientMessageId,
+                },
+              )
+            : { response: { content: confirmation.content } };
+        if (result) {
+          await sendOperatorSlackResponse(ctx, {
+            delivery: operatorSlackDelivery(refreshedEvent),
+            clientMessageId,
+            response: result.response ?? {},
+          });
+          await updateOperatorSlackActivity(refreshedEvent, "complete");
+        }
         await ctx.runMutation(internalApi.operatorSlack.completeEvent, {
           eventId: refreshedEvent._id,
         });
-        await updateOperatorSlackActivity(refreshedEvent, "complete");
         pendingActivity.delete(event._id);
         continue;
       }
@@ -360,7 +375,8 @@ async function processOperatorBatch(
           threadId,
           channel: "slack",
           content,
-          dedupeKey: refreshedEvent.canonicalEventKey ?? refreshedEvent.eventKey,
+          dedupeKey:
+            refreshedEvent.canonicalEventKey ?? refreshedEvent.eventKey,
           slackThreadContext,
           attachments: inboundAttachments.flatMap((attachment) =>
             attachment.fileId
@@ -386,7 +402,20 @@ async function processOperatorBatch(
         ctx,
         operatorUserId,
         queued.runId,
+        {
+          channel: "slack",
+          ...operatorSlackDelivery(refreshedEvent),
+          eventId: refreshedEvent._id,
+          clientMessageId: `operator-agent:${queued.runId}:${refreshedEvent.eventKey}`,
+        },
       );
+      if (!result) {
+        await ctx.runMutation(internalApi.operatorSlack.completeEvent, {
+          eventId: refreshedEvent._id,
+        });
+        pendingActivity.delete(event._id);
+        continue;
+      }
       const pendingConfirmation =
         result.run.status === "waiting_confirmation"
           ? ((await ctx.runQuery(
@@ -883,8 +912,18 @@ export const processOperatorConfirmationInteraction = internalAction({
 
     const response =
       result.status === "queued"
-        ? await waitForOperatorAgentRun(ctx, args.operatorUserId, result.runId)
+        ? await waitForOperatorAgentRun(
+            ctx,
+            args.operatorUserId,
+            result.runId,
+            {
+              channel: "slack",
+              ...delivery,
+              clientMessageId: `operator-confirmation:${args.confirmationId}:${args.decision}`,
+            },
+          )
         : { response: { content: result.content } };
+    if (!response) return result;
     await sendOperatorSlackResponse(ctx, {
       delivery,
       clientMessageId: `operator-confirmation:${args.confirmationId}:${args.decision}`,

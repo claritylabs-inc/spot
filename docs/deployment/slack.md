@@ -342,8 +342,9 @@ the existing durable plaintext-and-attachment fallback.
 
 Interactive payloads use the same five-minute signature and raw-body validation
 as Events API requests. Buttons carry a random bearer token whose SHA-256 digest
-and 30-day expiry are stored with the presentation; plaintext tokens are never
-persisted. Convex binds every action back to the exact team, channel, provider
+is stored with the presentation; plaintext tokens are never persisted. Controls
+have no time-based expiry. Plaintext fallback explicitly revokes them, and
+legacy fallback revocations remain enforced. Convex binds every action back to the exact team, channel, provider
 message, connection, tenant, and resolved Slack actor. It idempotently records
 `slackInteractionEvents`, stores one `agentResponseFeedback` row per actor and
 response, opens an optional detail modal after negative feedback, and routes
@@ -427,3 +428,9 @@ Clicking an expired or inactive control replaces the buttons with its state and
 an instruction to ask Spot to continue with a fresh confirmation. Legacy stored
 `expiresAt` values no longer expire pending approvals, and expiration jobs
 scheduled before this change do nothing.
+
+Operator responses that exceed the synchronous wait continue through scheduled
+channel delivery. Slack keeps its processing reaction until the deferred response
+or terminal failure is delivered; crossing the request budget does not fail the
+underlying task. Every delivery revalidates operator access and preserves its
+original client message ID.

@@ -35,8 +35,6 @@ const audienceValidator = v.union(
   v.literal("client"),
   v.literal("broker"),
 );
-const PACKET_LINK_TTL_DAYS = 30;
-const MAX_PACKET_LINK_TTL_DAYS = 90;
 
 function brokerSectionProjectionChanged(
   previous: Pick<
@@ -73,7 +71,7 @@ function packetLinkStatus(
   return {
     state: link.revokedAt
       ? ("revoked" as const)
-      : link.expiresAt <= now
+      : link.expiresAt !== undefined && link.expiresAt <= now
         ? ("expired" as const)
         : ("active" as const),
     stale: link.packetRevisionAtIssue !== packetRevision,
@@ -654,20 +652,15 @@ export const mintLink = mutation({
   },
 });
 
-/** Callers name a lifetime in days and let the server date it. A raw
- * `expiresAt` from a browser whose clock runs ahead would trip the maximum. */
+/** An expiry is optional; explicit durations use the server clock. */
 function requestedPacketLinkExpiry(
   now: number,
   args: { expiresAt?: number; expiresInDays?: number },
 ) {
   if (args.expiresInDays === undefined) return args.expiresAt;
-  if (
-    !Number.isInteger(args.expiresInDays) ||
-    args.expiresInDays < 1 ||
-    args.expiresInDays > MAX_PACKET_LINK_TTL_DAYS
-  )
+  if (!Number.isSafeInteger(args.expiresInDays) || args.expiresInDays < 1)
     throw new Error(
-      `Packet link lifetime must be between 1 and ${MAX_PACKET_LINK_TTL_DAYS} days`,
+      "Packet link lifetime must be a positive whole number of days",
     );
   return dayjs(now).add(args.expiresInDays, "day").valueOf();
 }
@@ -695,21 +688,13 @@ async function createPacketLink(
     outreachId: outreach?._id,
   });
   const token = createMagicLinkToken();
-  const maximumExpiry = dayjs(now)
-    .add(MAX_PACKET_LINK_TTL_DAYS, "day")
-    .valueOf();
   const requestedExpiry = requestedPacketLinkExpiry(now, args);
   if (
     requestedExpiry !== undefined &&
     (!Number.isFinite(requestedExpiry) || requestedExpiry <= now)
   )
     throw new Error("Packet link expiry must be in the future");
-  if (requestedExpiry !== undefined && requestedExpiry > maximumExpiry)
-    throw new Error(
-      `Packet links may expire at most ${MAX_PACKET_LINK_TTL_DAYS} days after issue`,
-    );
-  const expiresAt =
-    requestedExpiry ?? dayjs(now).add(PACKET_LINK_TTL_DAYS, "day").valueOf();
+  const expiresAt = requestedExpiry;
   const replacedLinkIds: Id<"procurementPacketLinks">[] = [];
   if (!outreach) {
     const currentRequestLinks = await ctx.db
@@ -717,7 +702,12 @@ async function createPacketLink(
       .withIndex("request", (q) => q.eq("requestId", request._id))
       .collect();
     for (const link of currentRequestLinks) {
-      if (link.outreachId || link.revokedAt || link.expiresAt <= now) continue;
+      if (
+        link.outreachId ||
+        link.revokedAt ||
+        (link.expiresAt !== undefined && link.expiresAt <= now)
+      )
+        continue;
       await ctx.db.patch(link._id, {
         revokedAt: now,
         revokedByUserId: args.actorUserId,
@@ -833,7 +823,10 @@ export const ensureRequestLinkInternal = internalMutation({
       .withIndex("request", (q) => q.eq("requestId", request._id))
       .collect();
     const active = links.find(
-      (link) => !link.outreachId && !link.revokedAt && link.expiresAt > now,
+      (link) =>
+        !link.outreachId &&
+        !link.revokedAt &&
+        (link.expiresAt === undefined || link.expiresAt > now),
     );
     if (active) return { id: active._id, created: false };
     const created = await createPacketLink(ctx, {
@@ -1012,7 +1005,12 @@ export const getByToken = query({
       .withIndex("token", (q) => q.eq("tokenHash", hash))
       .unique();
     const now = dayjs().valueOf();
-    if (!link || link.revokedAt || link.expiresAt <= now) return null;
+    if (
+      !link ||
+      link.revokedAt ||
+      (link.expiresAt !== undefined && link.expiresAt <= now)
+    )
+      return null;
     const request = await ctx.db.get(link.requestId);
     const outreach = link.outreachId ? await ctx.db.get(link.outreachId) : null;
     if (
@@ -1116,7 +1114,12 @@ export const getFileByTokenInternal = internalQuery({
       .withIndex("token", (q) => q.eq("tokenHash", hash))
       .unique();
     const now = dayjs().valueOf();
-    if (!link || link.revokedAt || link.expiresAt <= now) return null;
+    if (
+      !link ||
+      link.revokedAt ||
+      (link.expiresAt !== undefined && link.expiresAt <= now)
+    )
+      return null;
     const itemId = ctx.db.normalizeId("procurementFileItems", args.item);
     if (!itemId) return null;
     const item = await ctx.db.get(itemId);
@@ -1183,7 +1186,11 @@ async function recordViewInternalHandler(
   },
 ) {
   const link = await ctx.db.get(args.linkId);
-  if (!link || link.revokedAt || link.expiresAt <= dayjs().valueOf())
+  if (
+    !link ||
+    link.revokedAt ||
+    (link.expiresAt !== undefined && link.expiresAt <= dayjs().valueOf())
+  )
     return { ok: false };
   const now = dayjs().valueOf();
   await ctx.db.insert("procurementPacketViews", {
@@ -1211,7 +1218,11 @@ export const sweepExpired = internalMutation({
       .collect();
     let count = 0;
     for (const link of links)
-      if (!link.revokedAt && link.expiresAt <= now) {
+      if (
+        !link.revokedAt &&
+        link.expiresAt !== undefined &&
+        link.expiresAt <= now
+      ) {
         await ctx.db.patch(link._id, { revokedAt: now, updatedAt: now });
         count += 1;
       }

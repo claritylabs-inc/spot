@@ -1200,12 +1200,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Generate a packet review for procurement proposal ${input.procurementProposalId}`,
   }),
   create_broker_packet_link: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Create the single revocable, expiring link for an immutable snapshot of the shared broker-market packet. A new link replaces any active request-wide link; the URL is shown only once.",
+      "Create the single revocable link for an immutable snapshot of the shared broker-market packet. It stays available until revoked or replaced unless expiresInDays is specified. The URL is shown only once.",
     inputSchema: z.object({
       procurementRequestId,
-      expiresInDays: omittable(z.number().int().min(1).max(90)),
+      expiresInDays: omittable(z.number().int().min(1)),
     }),
     capability: "operator.procurement.write",
     effect: "access_change",
@@ -1219,12 +1219,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create the shared broker packet link for request ${input.procurementRequestId}`,
   }),
   rotate_broker_packet_link: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Revoke one broker packet magic link and create a replacement snapshot-bound link. The new URL is shown only once and is not emailed.",
+      "Revoke one broker packet magic link and create a replacement snapshot-bound link. It stays available until revoked or replaced unless expiresInDays is specified. The new URL is shown only once and is not emailed.",
     inputSchema: z.object({
       procurementPacketLinkId,
-      expiresInDays: omittable(z.number().int().min(1).max(90)),
+      expiresInDays: omittable(z.number().int().min(1)),
     }),
     capability: "operator.procurement.write",
     effect: "access_change",

@@ -1,9 +1,36 @@
 import dayjs from "dayjs";
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import { v, type Infer } from "convex/values";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 
 const internalApi = internal as any;
+
+export const operatorChannelDeliveryValidator = v.union(
+  v.object({
+    channel: v.literal("slack"),
+    teamId: v.string(),
+    channelId: v.string(),
+    threadTs: v.optional(v.string()),
+    eventId: v.optional(v.id("slackInboundEvents")),
+    clientMessageId: v.string(),
+  }),
+  v.object({
+    channel: v.literal("imessage"),
+    toPhone: v.string(),
+    chatGuid: v.string(),
+    clientMessageId: v.string(),
+  }),
+);
+export type OperatorChannelDelivery = Infer<
+  typeof operatorChannelDeliveryValidator
+>;
+export type OperatorChannelRunResult = {
+  run: Doc<"operatorAgentRuns">;
+  response?: Pick<Doc<"operatorAgentMessages">, "content" | "attachments"> & {
+    messageId: Id<"operatorAgentMessages">;
+  };
+};
 
 export function operatorConfirmationDecision(
   content: string,
@@ -43,27 +70,19 @@ export async function handleOperatorChannelConfirmation(
       decision,
     },
   );
-  if (result.status !== "queued") return result;
-  const completed = await waitForOperatorAgentRun(
-    ctx,
-    args.operatorUserId,
-    result.runId,
-  );
-  return {
-    ...result,
-    content: completed.response?.content ?? result.content,
-    response: completed.response,
-  };
+  return { ...result, confirmationId: confirmation._id };
 }
 
 export async function waitForOperatorAgentRun(
   ctx: ActionCtx,
   operatorUserId: Id<"users">,
   runId: Id<"operatorAgentRuns">,
-) {
+  delivery: OperatorChannelDelivery,
+): Promise<OperatorChannelRunResult | null> {
+  // Bound each action invocation, not the lifetime of the underlying task.
   const deadline = dayjs().add(4, "minute").valueOf();
   while (dayjs().valueOf() < deadline) {
-    const result = await ctx.runQuery(
+    const result: OperatorChannelRunResult = await ctx.runQuery(
       internalApi.operatorAgent.getRunResultForOperatorInternal,
       { operatorUserId, runId },
     );
@@ -83,5 +102,10 @@ export async function waitForOperatorAgentRun(
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error("Operator agent run timed out");
+  await ctx.scheduler.runAfter(
+    0,
+    internalApi.actions.operatorChannelDelivery.deliver,
+    { operatorUserId, runId, delivery },
+  );
+  return null;
 }

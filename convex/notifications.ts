@@ -221,28 +221,6 @@ export const patchImessageStatus = internalMutation({
 
 export const sweepStale = internalMutation({
   args: {},
-  handler: async (ctx) => {
-    const thirtyDaysAgo = dayjs().valueOf() - 30 * 24 * 60 * 60 * 1000;
-
-    // Fetch unread info-level notifications older than 30 days
-    const old = await ctx.db
-      .query("notifications")
-      .withIndex("organization_status", (q) =>
-        // We scan all unread and filter by severity and age in JS
-        // since Convex doesn't support multi-field range in one index
-        q.gt("orgId", "" as unknown as Id<"organizations">)
-      )
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("severity"), "info"),
-          q.eq(q.field("status"), "unread"),
-          q.lt(q.field("createdAt"), thirtyDaysAgo),
-        )
-      )
-      .take(500);
-
-    for (const n of old) {
-      await ctx.db.patch(n._id, { status: "dismissed" });
-    }
-  },
+  // Keep already-scheduled sweeps harmless; unread notifications require a decision.
+  handler: async () => {},
 });

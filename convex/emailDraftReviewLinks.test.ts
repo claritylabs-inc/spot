@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "./schema";
+import { internal } from "./_generated/api";
 import { pendingEmailDraftFingerprint } from "./lib/actionConfirmationFingerprint";
 import { createInternal as createConfirmationInternal } from "./threadActionConfirmations";
 import {
@@ -102,7 +103,9 @@ describe("email draft review links", () => {
       pendingEmailId: data.draftId,
       channel: "slack",
     });
-    expect(await data.t.query(getReviewLink, { token: first.token })).toMatchObject({
+    expect(
+      await data.t.query(getReviewLink, { token: first.token }),
+    ).toMatchObject({
       state: "draft",
       orgName: "Acme",
       recipientEmail: "recipient@example.com",
@@ -114,7 +117,9 @@ describe("email draft review links", () => {
       pendingEmailId: data.draftId,
       channel: "slack",
     });
-    expect(await data.t.query(getReviewLink, { token: first.token })).toBeNull();
+    expect(
+      await data.t.query(getReviewLink, { token: first.token }),
+    ).toBeNull();
     expect(
       await data.t.query(getReviewLink, { token: replacement.token }),
     ).toMatchObject({ state: "draft", canSend: true });
@@ -170,7 +175,9 @@ describe("email draft review links", () => {
       channel: "email",
       actor: { kind: "user", userId: data.userId },
     });
-    expect(await data.t.query(getReviewLink, { token: link.token })).toMatchObject({
+    expect(
+      await data.t.query(getReviewLink, { token: link.token }),
+    ).toMatchObject({
       state: "draft",
       canSend: false,
     });
@@ -180,26 +187,56 @@ describe("email draft review links", () => {
       id: link.id,
       confirmationId,
     });
-    expect(await data.t.query(getReviewLink, { token: link.token })).toMatchObject({
+    expect(
+      await data.t.query(getReviewLink, { token: link.token }),
+    ).toMatchObject({
       state: "draft",
       canSend: true,
     });
   });
 
-  it("removes expired bearer links", async () => {
+  it("keeps unchanged review links usable beyond legacy expiry and still rejects a reset task", async () => {
     const data = await fixture();
-    await addConfirmation(data);
+    const confirmationId = await addConfirmation(data);
     const link = await data.t.mutation(createReviewLink, {
       pendingEmailId: data.draftId,
       channel: "other",
     });
     await data.t.run(async (ctx) => {
       await ctx.db.patch(link.id, { expiresAt: 1 });
+      await ctx.db.patch(confirmationId, { expiresAt: 1 });
     });
 
     await expect(
       data.t.mutation(sweepReviewLinks, { batchSize: 10 }),
-    ).resolves.toEqual({ deleted: 1 });
-    expect(await data.t.query(getReviewLink, { token: link.token })).toBeNull();
+    ).resolves.toEqual({ deleted: 0 });
+    expect(
+      await data.t.query(getReviewLink, { token: link.token }),
+    ).toMatchObject({ canSend: true });
+    await data.t.mutation(internal.threadActionConfirmations.consumeInternal, {
+      id: confirmationId,
+      actor: { kind: "user", userId: data.userId },
+      requireAdjacentPrompt: false,
+    });
+    await data.t.mutation(claimSend, { token: link.token });
+    await data.t.mutation(internal.emailDraftReviewLinks.releaseSendInternal, {
+      id: link.id,
+      error: "Retry",
+    });
+    await data.t.mutation(internal.agentHistory.resetTask, {
+      threadId: data.threadId,
+      currentMessageId: data.promptMessageId,
+    });
+    expect(
+      await data.t.query(getReviewLink, { token: link.token }),
+    ).toMatchObject({ canSend: false });
+    await expect(
+      data.t.mutation(claimSend, { token: link.token }),
+    ).rejects.toThrow("no longer current");
+    expect(
+      await data.t.query(internal.threadActionConfirmations.getInternal, {
+        id: confirmationId,
+      }),
+    ).toBeNull();
   });
 });

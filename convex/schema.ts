@@ -3098,7 +3098,7 @@ export default defineSchema({
     tokenHash: v.string(),
     recipientLabel: v.string(),
     recipientEmail: v.optional(v.string()),
-    expiresAt: v.number(),
+    expiresAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
     revokedByUserId: v.optional(v.id("users")),
     packetRevisionAtIssue: v.number(),
@@ -4431,7 +4431,7 @@ export default defineSchema({
     payload: threadActionConfirmationPayloadValidator,
     taskEpoch: v.number(),
     status: threadActionConfirmationStatusValidator,
-    expiresAt: v.number(),
+    expiresAt: v.optional(v.number()), // Legacy expiry; validity follows current state.
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -4716,7 +4716,8 @@ export default defineSchema({
     lastPayloadHash: v.optional(v.string()),
     processingReaction: v.optional(v.string()),
     actionTokenHash: v.string(),
-    actionTokenExpiresAt: v.number(),
+    actionTokenExpiresAt: v.optional(v.number()), // Legacy expiry.
+    actionTokenRevokedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     providerErrorCode: v.optional(v.string()),
     retryable: v.optional(v.boolean()),
@@ -5141,7 +5142,7 @@ export default defineSchema({
     actor: threadActionActorValidator,
     sourceThreadId: v.id("threads"),
     sourceThreadMessageId: v.optional(v.id("threadMessages")),
-    expiresAt: v.number(),
+    expiresAt: v.optional(v.number()), // Legacy expiry; validity follows current state.
     revokedAt: v.optional(v.number()),
     sendStartedAt: v.optional(v.number()),
     sendCompletedAt: v.optional(v.number()),

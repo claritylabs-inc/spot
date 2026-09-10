@@ -108,6 +108,8 @@ An operator conversation permits one live exact confirmation at a time. A compet
 | `cancel_operator_run`     | Request cancellation of a queued or active operator run.                           | write scope         |
 | `confirm_operator_action` | Approve or reject one exact pending operator action.                               | write scope         |
 
+Operator Slack/iMessage runs that outlast the synchronous request continue through scheduled channel delivery with current-operator validation and the same delivery key. The task itself has no response-wait deadline. New `create_broker_packet_link` and `rotate_broker_packet_link` links remain available until revoked or replaced unless an expiry is explicitly supplied; there is no arbitrary maximum lifetime. Existing stored link expirations are honored.
+
 ## Client conversational agent
 
 There is no single client registry equivalent to `OPERATOR_AGENT_TOOL_REGISTRY`. The client agent receives a shared executable tool set and channel-specific additions. In the tables below, **MCP chat** means the model loop behind the tenant `ask_spot`/`ask_glass` MCP tools, not the full tenant MCP catalog documented later.
@@ -140,6 +142,8 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `attach_policy_document`         | Attach the original full policy PDF to the response.                               | All channels; final readable policy and stored PDF required.                    |
 | `confirm_policy_fact`            | Confirm a source-backed policy fact and optionally patch allowed top-level fields. | All channels; final writable policy and exact source spans required.            |
 | `generate_coi`                   | Generate or reuse certificates from a policy or requirements source.               | All channels; write permission and final supporting policies required.          |
+
+Shared customer confirmation records for email send/cancel, draft snapshots, multiple-certificate delivery, and requirement imports have no time limit. Exact actor, content, adjacency where required, single-use, and task-reset checks remain enforced. Email review links follow that same lifecycle, and completed email authorizations revalidate the current task epoch before delivery. iMessage inactivity does not reset the task. Signed Slack controls are revoked explicitly instead of aging out.
 
 ### Channel-specific root tools
 

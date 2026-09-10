@@ -57,11 +57,13 @@ export function Packet({
         >
           Prepared for {view.recipientLabel}
         </p>
-        <p
-          className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          Available until {formatDisplayDateTimeUtc(view.expiresAt)}
-        </p>
+        {view.expiresAt !== undefined && (
+          <p
+            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+          >
+            Available until {formatDisplayDateTimeUtc(view.expiresAt)}
+          </p>
+        )}
       </header>
       <article className="prose prose-neutral mt-8 max-w-none">
         <ProseMarkdown>{view.markdown}</ProseMarkdown>

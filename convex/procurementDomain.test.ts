@@ -1013,29 +1013,15 @@ describe("procurement domain boundaries", () => {
         expiresAt: dayjs().subtract(1, "minute").valueOf(),
       }),
     ).rejects.toThrow("Packet link expiry must be in the future");
-    await expect(
-      f.operator.mutation(api.procurementPacket.mintLink, {
-        requestId: request.requestId,
-        expiresAt: dayjs().add(91, "day").valueOf(),
-      }),
-    ).rejects.toThrow("Packet links may expire at most 90 days after issue");
-    // A browser clock a few seconds ahead must not lose the maximum lifetime,
-    // so callers name days and the server dates them.
-    await expect(
-      f.operator.mutation(api.procurementPacket.mintLink, {
-        requestId: request.requestId,
-        expiresAt: dayjs().add(90, "day").add(5, "second").valueOf(),
-      }),
-    ).rejects.toThrow("Packet links may expire at most 90 days after issue");
     const maximumLifetime = await f.operator.mutation(
       api.procurementPacket.mintLink,
       {
         requestId: request.requestId,
-        expiresInDays: 90,
+        expiresInDays: 365,
       },
     );
     expect(maximumLifetime.expiresAt).toBeGreaterThan(
-      dayjs().add(89, "day").valueOf(),
+      dayjs().add(364, "day").valueOf(),
     );
     const replacementLink = await f.operator.mutation(
       api.procurementPacket.mintLink,
@@ -1052,9 +1038,9 @@ describe("procurement domain boundaries", () => {
     await expect(
       f.operator.mutation(api.procurementPacket.mintLink, {
         requestId: request.requestId,
-        expiresInDays: 91,
+        expiresInDays: 0,
       }),
-    ).rejects.toThrow("Packet link lifetime must be between 1 and 90 days");
+    ).rejects.toThrow("Packet link lifetime must be a positive whole number of days");
     await f.operator.mutation(api.procurementPacket.revokeLink, {
       linkId: replacementLink.id,
     });
@@ -1150,6 +1136,9 @@ describe("procurement domain boundaries", () => {
     const issued = await f.operator.mutation(api.procurementPacket.mintLink, {
       requestId: request.requestId,
     });
+    expect(issued.expiresAt).toBeUndefined();
+    await f.t.mutation(internal.procurementPacket.sweepExpired, {});
+    expect(await f.t.query(api.procurementPacket.getByToken, { token: issued.token })).not.toBeNull();
     const { originalFileId, replacementClientFileId } = await f.t.run(
       async (ctx) => {
         const original = await ctx.db.get(clientFileId);
