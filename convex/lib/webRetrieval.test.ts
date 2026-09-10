@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { Id } from "../_generated/dataModel";
-import { runWebRetrieval } from "./webRetrieval";
+import { runOperatorWebRetrieval, runWebRetrieval } from "./webRetrieval";
 
 describe("router-owned web retrieval", () => {
   afterEach(() => {
@@ -49,5 +49,44 @@ describe("router-owned web retrieval", () => {
     expect(url).toBe(
       "https://router.example.test/v1/retrieve",
     );
+  });
+
+  test("routes operator retrieval through cl-router with the selected native pin", async () => {
+    vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        provider: "openai",
+        attempts: [{ provider: "openai", ok: true }],
+        text: "Synthetic result",
+        sources: [{ url: "https://example.com" }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const runQuery = vi
+      .fn()
+      .mockResolvedValueOnce({ webRetrieval: { primary: "model_default" } })
+      .mockResolvedValueOnce({ provider: "openai", model: "gpt-5.5" });
+
+    await expect(
+      runOperatorWebRetrieval(
+        { runQuery } as never,
+        { query: "synthetic operator search" },
+      ),
+    ).resolves.toMatchObject({ provider: "openai", text: "Synthetic result" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://router.example.test/v1/retrieve");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      tenantId: "glass",
+      input: { query: "synthetic operator search" },
+      config: {
+        primary: "model_default",
+        route: { provider: "openai", model: "gpt-5.5" },
+      },
+    });
   });
 });

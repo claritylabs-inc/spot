@@ -18,9 +18,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("operator web research falls back to Exa, preserves source evidence on replay, and rejects revoked operators", async () => {
-  vi.stubEnv("PARALLEL_API_KEY", "test-parallel");
-  vi.stubEnv("EXA_API_KEY", "test-exa");
+test("operator web research preserves router source evidence on replay and rejects revoked operators", async () => {
+  vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
+  vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const now = dayjs().valueOf();
@@ -46,19 +46,21 @@ test("operator web research falls back to Exa, preserves source evidence on repl
     return { operatorUserId, profileId };
   });
   const fetchMock = vi.fn(async (url: string) => {
-    if (url === "https://api.parallel.ai/v1/search")
-      return new Response("unavailable", { status: 503 });
-    if (url === "https://api.exa.ai/search")
-      return Response.json({
-        results: [
-          {
-            title: "Miller Brokerage",
-            url: "https://miller.example/about",
-            text: "Public broker background. ".repeat(400),
-          },
-        ],
-      });
-    throw new Error(`Unexpected provider URL: ${url}`);
+    expect(url).toBe("https://router.example.test/v1/retrieve");
+    return Response.json({
+      provider: "exa",
+      attempts: [
+        { provider: "parallel", ok: false, error: "unavailable" },
+        { provider: "exa", ok: true },
+      ],
+      text: "Public broker background. ".repeat(400),
+      sources: [
+        {
+          title: "Miller Brokerage",
+          url: "https://miller.example/about",
+        },
+      ],
+    });
   });
   vi.stubGlobal("fetch", fetchMock);
   const args = {
@@ -94,7 +96,7 @@ test("operator web research falls back to Exa, preserves source evidence on repl
     throw new Error("Expected web research results");
   expect(JSON.stringify(first.outcome.result).length).toBeGreaterThan(8_000);
   expect(replay.outcome.result).toEqual(first.outcome.result);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenCalledOnce();
   await t.run((ctx) => ctx.db.patch(ids.profileId, { status: "disabled" }));
   await expect(
     t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
@@ -102,7 +104,7 @@ test("operator web research falls back to Exa, preserves source evidence on repl
       idempotencyKey: "revoked",
     }),
   ).rejects.toThrow();
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenCalledOnce();
 });
 
 test("company email reads share operator authorization, auditing and private attachment delivery across channels", async () => {

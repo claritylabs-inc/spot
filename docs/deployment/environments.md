@@ -62,7 +62,7 @@ clean checkout:
    before making changes with
    `npx convex function-spec --deployment acoustic-caiman-755`.
 2. Configure the shared-dev Convex and Railway worker with the migrated lane's
-   `CL_ROUTER_URL=https://disciplined-dove-883.convex.site`, matching inference
+   `CL_ROUTER_URL=https://tangible-warbler-253.convex.site`, matching inference
    `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass`, and matching optional
    timeout. Set `CONVEX_SITE_URL=https://acoustic-caiman-755.convex.site` on
    the Railway extraction worker and verify Convex's built-in
@@ -71,11 +71,18 @@ clean checkout:
    `npx convex env set`. Before changing either caller, audit the legacy
    `https://cl-router-dev.up.railway.app` routing state, pins, and freeze posture
    against the new router, export while the source is briefly paused, import
-   into `disciplined-dove-883`, and verify the imported controls before changing
+   into `tangible-warbler-253`, and verify the imported controls before changing
    both callers as one coordinated lane. Do not execute inference or mutate
    controls on the destination before that import. Keep the legacy service and
-   database intact as rollback evidence. `intent-egret-409` is the preserved
-   prior synthetic-data target, not the destination for this history import.
+   database intact as rollback evidence. `disciplined-dove-883` is the retained
+   abandoned first import and `intent-egret-409` is the preserved prior
+   synthetic-data target; neither is an active caller destination or the target
+   for this history import. `tangible-warbler-253` is deployed from cl-router
+   `402b7a2d38fa8453770a868bc4163363f33e99b5` by successful workflow
+   `34531575428`; all 16 environment values were verified and all canonical
+   tables and migration checkpoints were empty. It must remain guarded and
+   frozen until the next fresh transfer. Both active Spot shared-dev callers
+   remain on the legacy router until that coordinated cutover.
    Keep existing consumer provider keys until the new code has been deployed
    and exercised; the new runtime does not read them.
 3. From the exact approved Spot commit, deploy the widening Convex schema and
