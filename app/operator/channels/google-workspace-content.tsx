@@ -14,8 +14,6 @@ import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import {
-  GOOGLE_WORKSPACE_DIRECTORY_USER_READONLY_SCOPE,
-  GOOGLE_WORKSPACE_GMAIL_READONLY_SCOPE,
   GOOGLE_WORKSPACE_LIMITS,
   type OperatorGoogleWorkspaceMailboxMode,
   type OperatorGoogleWorkspaceStatus,
@@ -26,7 +24,6 @@ import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import {
-  OperationalLabelValueList,
   OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
@@ -55,17 +52,22 @@ type StatusPresentation = { label: string; tone: StatusTagTone };
 function CopyValueButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
-  function copy() {
-    void navigator.clipboard.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      toast.error("Could not copy to clipboard");
+    }
   }
 
   return (
     <PillButton
       variant="secondary"
       size="compact"
-      onClick={copy}
+      onClick={() => void copy()}
       aria-label={label}
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
@@ -167,7 +169,7 @@ function VerificationDiagnostics({
           <p
             className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            Verified {formatDisplayDateTime(result.verifiedAt, "Unknown time")}
+            Checked {formatDisplayDateTime(result.verifiedAt, "Unknown time")}
             {result.completeness === "partial"
               ? `. This run is capped at ${result.maxMailboxChecks.toLocaleString()} mailboxes and does not establish company-wide access.`
               : "."}
@@ -215,8 +217,6 @@ export function OperatorGoogleWorkspaceContent({
     api.actions.operatorGoogleWorkspace.verifyConnection,
   );
   const [verifying, setVerifying] = useState(false);
-  const [latestVerification, setLatestVerification] =
-    useState<OperatorGoogleWorkspaceVerificationResult | null>(null);
 
   if (status === undefined) {
     return (
@@ -227,11 +227,7 @@ export function OperatorGoogleWorkspaceContent({
   }
 
   const config = status.config;
-  const localVerificationMatches =
-    latestVerification?.configUpdatedAt === config?.updatedAt;
-  const verification = localVerificationMatches
-    ? latestVerification
-    : status.savedVerification;
+  const verification = status.savedVerification;
   const readyToVerify = Boolean(config?.enabled && status.credentials.present);
   const presentation: StatusPresentation = verification
     ? verificationPresentation(verification)
@@ -253,7 +249,6 @@ export function OperatorGoogleWorkspaceContent({
     setVerifying(true);
     try {
       const result = await verifyConnection({});
-      setLatestVerification(result);
       const resultPresentation = verificationPresentation(result);
       if (resultPresentation.tone === "success") {
         toast.success("Google Workspace connection verified");
@@ -279,7 +274,6 @@ export function OperatorGoogleWorkspaceContent({
       <OperationalPanel>
         <OperationalPanelHeader
           title="Company mailbox access"
-          description="Live, read-only Gmail access for active operators."
           action={
             <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
           }
@@ -298,7 +292,7 @@ export function OperatorGoogleWorkspaceContent({
           value={status.credentials.clientId ?? "Unavailable"}
         />
         <OperationalLabelValueRow
-          label="Authorized scopes"
+          label="Required scopes"
           value={
             status.requiredScopes.length
               ? status.requiredScopes.join(", ")
@@ -339,20 +333,38 @@ export function OperatorGoogleWorkspaceContent({
             className={`list-decimal space-y-2 pl-4 text-muted-foreground ${typeStyle("body.default")}`}
           >
             <li>
-              Create a dedicated Google Cloud service account, enable
-              domain-wide delegation, and store its JSON only in the backend
-              environment.
+              Enable the Gmail API in the service account’s Google Cloud
+              project. Directory mode also requires the Admin SDK API.
             </li>
             <li>
-              In Google Admin, authorize the numeric client ID with the exact
-              scopes below. A normal administrator OAuth connection is not a
-              substitute.
+              Create a dedicated service account with domain-wide delegation. In
+              Google Admin, authorize its numeric client ID with the exact
+              scopes below.
             </li>
             <li>
-              Configure the mailbox roster, save it, then verify the connection
+              Store the complete JSON key in Convex as{" "}
+              <code className={typeStyle("technical.codeCompact")}>
+                GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON
+              </code>
+              . A normal administrator OAuth connection is not a substitute.
+            </li>
+            <li>
+              Configure the mailbox list, save it, then verify the connection
               here.
             </li>
           </ol>
+
+          <div className="border-t border-border pt-4">
+            <p
+              className={`mb-1.5 text-muted-foreground ${typeStyle("label.metadata")}`}
+            >
+              Convex secret command
+            </p>
+            <TechnicalValue
+              value="npx convex env set --deployment <deployment> GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON < /secure/path/spot-google-workspace.json"
+              label="Copy Convex secret command"
+            />
+          </div>
 
           {status.credentials.clientId ? (
             <div>
@@ -438,7 +450,6 @@ export function OperatorGoogleWorkspaceSettingsDrawer({
 
   return (
     <LoadedGoogleWorkspaceSettingsDrawer
-      key={status.config?.updatedAt ?? "new"}
       open={open}
       onOpenChange={onOpenChange}
       status={status}
@@ -475,13 +486,6 @@ function LoadedGoogleWorkspaceSettingsDrawer({
     .split(/\r?\n/)
     .map((mailbox) => mailbox.trim())
     .filter(Boolean);
-  const scopes =
-    mailboxMode === "directory"
-      ? [
-          GOOGLE_WORKSPACE_GMAIL_READONLY_SCOPE,
-          GOOGLE_WORKSPACE_DIRECTORY_USER_READONLY_SCOPE,
-        ]
-      : [GOOGLE_WORKSPACE_GMAIL_READONLY_SCOPE];
   const canSave =
     !saving &&
     mailboxList.length <= GOOGLE_WORKSPACE_LIMITS.maxConfiguredMailboxes &&
@@ -527,19 +531,14 @@ function LoadedGoogleWorkspaceSettingsDrawer({
       }}
       title="Configure Google Workspace"
       footer={
-        <>
-          <PillButton variant="secondary" onClick={close} disabled={saving}>
-            Cancel
-          </PillButton>
-          <PillButton
-            type="submit"
-            form="operator-google-workspace-settings"
-            disabled={!canSave}
-          >
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {saving ? "Saving…" : "Save settings"}
-          </PillButton>
-        </>
+        <PillButton
+          type="submit"
+          form="operator-google-workspace-settings"
+          disabled={!canSave}
+        >
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          {saving ? "Saving…" : "Save settings"}
+        </PillButton>
       }
     >
       <form
@@ -573,7 +572,7 @@ function LoadedGoogleWorkspaceSettingsDrawer({
 
         <FormSection
           title="Mailbox roster"
-          description="Choose an explicit allowlist or enumerate eligible users across the Workspace customer."
+          description="Choose a manual mailbox list or enumerate eligible users across the Workspace customer."
         >
           <label className="block">
             <span
@@ -653,30 +652,6 @@ function LoadedGoogleWorkspaceSettingsDrawer({
               </span>
             </label>
           )}
-        </FormSection>
-
-        <FormSection
-          title="Backend credential"
-          description="The service-account JSON is configured out of band and never entered in this browser."
-        >
-          <OperationalLabelValueList>
-            <OperationalLabelValueRow
-              label="Credential"
-              value={status.credentials.present ? "Configured" : "Missing"}
-            />
-            <OperationalLabelValueRow
-              label="Service account"
-              value={status.credentials.serviceAccountEmail ?? "Unavailable"}
-            />
-            <OperationalLabelValueRow
-              label="Client ID"
-              value={status.credentials.clientId ?? "Unavailable"}
-            />
-            <OperationalLabelValueRow
-              label="Scopes"
-              value={scopes.join(", ")}
-            />
-          </OperationalLabelValueList>
         </FormSection>
       </form>
     </SettingsDrawer>
