@@ -23,7 +23,7 @@ MCP. The shared operator tool gate revalidates that operator, the enabled global
 configuration, and the requested mailbox. Spot then impersonates only the
 needed Workspace user and calls Gmail live. Directory mode obtains the company
 roster from `customer=my_customer`, which covers every domain in the Workspace
-customer; manual mode uses the saved allowlist. Responses preserve mailbox,
+customer; manual mode uses the saved mailbox list. Responses preserve mailbox,
 message, thread, and attachment provenance, report partial mailbox failures,
 and return an explicit continuation when bounded work remains.
 
@@ -57,7 +57,7 @@ Acceptance criteria:
 Choose the mode before granting scopes so the authorization stays as narrow as
 possible.
 
-| Mode | Use it when | Authorized scopes | Spot configuration |
+| Mode | Use it when | Required scopes | Spot configuration |
 | --- | --- | --- | --- |
 | Manual | A small, stable set of mailboxes is enough | `https://www.googleapis.com/auth/gmail.readonly` | Enter each mailbox address explicitly |
 | Directory | Every eligible mailbox in the Workspace account should be discoverable | `https://www.googleapis.com/auth/gmail.readonly`, `https://www.googleapis.com/auth/admin.directory.user.readonly` | Enter an active Workspace administrator as the directory subject |
