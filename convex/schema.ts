@@ -22,6 +22,10 @@ import {
   threadActionConfirmationPayloadValidator,
   threadActionConfirmationStatusValidator,
 } from "./lib/threadActionConfirmationValidators";
+import {
+  operatorGoogleWorkspaceMailboxModeValidator,
+  storedOperatorGoogleWorkspaceVerificationValidator,
+} from "./lib/googleWorkspaceValidators";
 
 const modelProviderValidator = v.union(
   v.literal("openai"),
@@ -775,6 +779,19 @@ export default defineSchema({
     .index("email", ["email"])
     .index("slack_user", ["slackTeamId", "slackUserId"])
     .index("status", ["status"]),
+
+  operatorGoogleWorkspaceConfig: defineTable({
+    key: v.literal("default"),
+    enabled: v.boolean(),
+    mailboxMode: operatorGoogleWorkspaceMailboxModeValidator,
+    mailboxes: v.array(v.string()),
+    directoryAdminEmail: v.optional(v.string()),
+    lastVerification: v.optional(
+      storedOperatorGoogleWorkspaceVerificationValidator,
+    ),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }).index("key", ["key"]),
 
   operatorImpersonationSessions: defineTable({
     operatorUserId: v.id("users"),

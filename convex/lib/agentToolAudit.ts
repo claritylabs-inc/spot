@@ -8,9 +8,31 @@ export type AgentToolAudit = {
   workflowOutcomes: WorkflowOutcome[];
 };
 
-function serializeToolAuditValue(value: unknown): string | undefined {
+function serializeToolAuditValue(
+  value: unknown,
+  preserveContinuation = false,
+): string | undefined {
   if (value === undefined) return undefined;
   try {
+    if (preserveContinuation && value && typeof value === "object") {
+      const wrapped = "result" in value ? value.result : value;
+      if (
+        wrapped &&
+        typeof wrapped === "object" &&
+        "nextCursor" in wrapped &&
+        typeof wrapped.nextCursor === "string" &&
+        wrapped.nextCursor.startsWith("gws:")
+      ) {
+        return JSON.stringify({
+          continuation: {
+            nextCursor: wrapped.nextCursor,
+            completeness:
+              "completeness" in wrapped ? wrapped.completeness : undefined,
+          },
+          value,
+        }).slice(0, 500);
+      }
+    }
     return JSON.stringify(value).slice(0, 500);
   } catch {
     return String(value).slice(0, 500);
@@ -62,7 +84,7 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
       .reverse()
       .find((candidate) => candidate.name === name && !candidate.output);
     if (target) {
-      target.output = serializeToolAuditValue(output);
+      target.output = serializeToolAuditValue(output, true);
     }
   };
 
@@ -108,9 +130,6 @@ export function mergeToolAudits(
       ...new Set([...first.completedTools, ...second.completedTools]),
     ],
     toolCalls: [...first.toolCalls, ...second.toolCalls],
-    workflowOutcomes: [
-      ...first.workflowOutcomes,
-      ...second.workflowOutcomes,
-    ],
+    workflowOutcomes: [...first.workflowOutcomes, ...second.workflowOutcomes],
   };
 }

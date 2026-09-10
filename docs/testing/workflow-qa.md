@@ -45,6 +45,7 @@ and concise labels. Explicit creation and consequential actions remain explicit.
 | NOTIFICATIONS | Client / Notification tray | Inspect empty/populated tray, open a scoped record link, mark individual/all items read, reload and verify persisted state; synthetic local items only. |
 | INTEGRATE | Client / Mailboxes and integrations | Open create/detail panels, validate missing/invalid input, inspect disconnect/recovery and OAuth denial; mark external authentication untested without a disposable account. |
 | CHANNEL | Operator / Channels | Inspect Slack/iMessage/MCP setup and linked identity, edit reversible local identity and restore; exercise mock Slack where configured; do not send to live channels. |
+| GWORKSPACE | Operator / Channels and agent | Sign in with captured local OTP, configure manual and Directory mailbox modes in the Google Workspace tab, verify validation, persistence, disabled/missing-credential failures, role boundaries, and the shared operator tool registry. Exercise a synthetic registered-tool model path and protected attachment behavior without Gmail writes; report live delegated-mailbox search/read/download as blocked unless an authorized service-account credential is present. |
 | ROUTING | Operator / Routing | Inspect Routing/Models/Tools, refresh, filters and details; verify long data/mobile rendering. Shared router changes are read-only during local QA. |
 | TELEMETRY | Operator / Telemetry | Switch extraction/model views, inspect empty/populated failures and drill-down, verify recoverable errors and navigation. |
 | LEADS | Operator / Demo leads | Inspect empty state and synthetic public chat if locally available, open lead details and conversation, preserve prospect privacy. |
@@ -67,6 +68,7 @@ baseline evidence, not a substitute for this run's regression checks.
 | WIKI, ORG, SETTINGS | Passed exercised edits | Wiki immediate-close/offline/retry and required-name validation passed; behavior/certificate/beta toggles restored. Notification autosave and restoring inherited defaults passed. |
 | INTEGRATE, CONNECT | Partial / external prerequisite blocks | Invalid vendor input and local pending invitation creation passed; cancel/sidebar and invalid mailbox inputs fixed and browser verified. Live IMAP/OAuth/Slack reinstall requires disposable credentials. |
 | CHANNEL, ROUTING, TELEMETRY | Passed exercised local flows | Local identities, read-only routing/models/telemetry, grounded mock Slack and operator terminal turns, browser thread mirrors, real local MCP consent/read/revocation passed. Native-local model configuration only; live channels excluded. |
+| GWORKSPACE | Passed exercised dev DWD and local paths | Rendered native-local operator setup, authorization, validation, manual/Directory persistence, disabled and incomplete-credential behavior, compact settings rendering, live delegated Directory verification, bounded mailbox listing/search/thread reads, current-context reasoning, and five protected originals passed. The actual registered model followed short continuations and attachment references. Cross-channel registry, replay, revocation, and protected-original boundaries also passed focused automated coverage. User-visible desktop Chrome was not run because this cloud workspace exposes no desktop/browser control. |
 | PUBLIC | Passed exercised public paths | Invalid/revoked links and missing/unknown OAuth clients fail safely; routing-weather report responsive. Valid packet snapshot download, immutability and private-file exclusion passed. |
 | CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload/retry is recorded in POLICY. |
 | REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
@@ -339,7 +341,88 @@ TypeScript, changed-file ESLint, the iMessage worker build, production Next buil
 shared-package version alignment, skill validation and diff whitespace checks.
 Frontend-design inspected actual desktop/mobile and applicable dark screenshots;
 deslop review checked draft/write boundaries, revision guards, token revocation
-and transport isolation. All 28 workflow groups now have recorded local outcomes
+and transport isolation. All 29 workflow groups now have recorded local outcomes
 and explicit coverage limits. Observed actionable defects from this run are
 resolved. Browser profiles/database remain intact; temporary browsers and the
 terminal closed before final validation. The memory watcher continues sampling.
+
+## Batch 6: operator Google Workspace Gmail
+
+This pass used the preserved native-local database and normal captured-OTP
+operator sign-in. Rendered Chrome verified the operator-only Google Workspace
+tab, manual mailbox normalization and deduplication, Directory administrator
+validation and normalization, failed-save draft retention, disable/re-enable,
+missing and incomplete credential states, verification invalidation after a
+credential revision change, and tenant denial. The settings surface also rendered
+at 390 by 844 after the normal operator-agent overlay was minimized. Synthetic
+settings and credential values were removed before a separately authorized live
+delegated-development credential was provisioned memory-only from the shared dev
+environment. That credential was removed after acceptance, and the local
+integration finished disabled.
+
+The first manual-mode verification failure returned zero checked mailboxes but
+showed no reason. A shared typed, sanitized aggregate error and credential-health
+presentation fixed the defect. Focused rendered retests then showed malformed
+JSON as **Credential incomplete** with verification disabled, while a synthetic
+metadata-present credential with an invalid key allowed an explicit verification
+attempt and displayed the safe incomplete-credential reason in diagnostics. No
+credential payload appeared in the UI, model output, audit evidence, or tracked
+artifacts.
+
+A real local operator-agent turn selected `list_company_mailboxes` through the
+shared registry. Stored message metadata recorded exactly one tool call. The
+operator audit recorded an authorized read-capability attempt on the chat channel;
+it failed before provider access because the synthetic credential was incomplete,
+and the model accurately reported that no mailbox results were returned. This
+passes model selection, tool registration, audit wiring, and fail-closed behavior;
+it is not evidence of delegated Gmail access. Focused automated coverage verifies
+the same four read tools across chat, Slack, iMessage, and MCP, including greater-
+than-8-KiB replay, disabled-operator revocation, mailbox/thread ownership,
+protected operator-thread attachment delivery, replay, and absence from tenant
+files.
+
+The authorized live continuation then verified the Directory subject and every
+eligible mailbox without exposing credentials. Exact backend cursors completed a
+bounded all-mailbox search with zero mailbox errors, and bounded thread reads
+returned complete bodies and attachment metadata with mailbox, message, thread,
+and MIME-part provenance. Private oracle checks confirmed that the model used the
+newest available source, did not revive answered questions from quoted history,
+kept a withdrawn option distinct from preliminary activity, and used the current
+deadline. Only redacted counts and statuses are tracked here.
+
+Two model-boundary defects were reproduced before repair. First, model-emitted
+`null` values for optional fields failed strict leaf validation; `79275b8`
+normalizes only omittable nulls while preserving clearable nulls, and `25a18ed`
+keeps nonempty-update checks correct after normalization. Second, the model
+altered long opaque provider cursors and attachment IDs even though full action
+audits proved the backend values were lossless. `8f7e95c` returns short,
+authorization-bound continuation references while retaining raw signed cursors
+in the backend audit, and `674f006` exposes unique parent-local MIME-part
+references while keeping provider attachment IDs backend-only. The unchanged
+prompts then completed mailbox continuation and retrieved all five expected
+originals. Each original matched private filename and size-band expectations,
+matched freshly read parent provenance, produced a bounded extraction outcome,
+registered to the protected operator thread, and rendered an authorized link.
+One PDF original opened through the existing preview and exposed its download
+control. No base64 or public URL reached the model.
+
+| Outcome | Cases |
+| --- | --- |
+| Passed | Rendered OTP/setup and configuration workflows; manual and Directory validation/persistence; draft recovery; unauthenticated, tenant, disabled-config, incomplete-credential, and disabled-operator boundaries; live dev DWD Directory verification; bounded all-mailbox listing/search/thread reads with explicit completeness; current-context model reasoning; five parent-bound protected originals with bounded extraction and rendered preview; synthetic cross-channel, replay, revocation, and attachment assertions. |
+| Failed, then fixed and passed | Manual-mode zero-checked verification lacked an actionable reason; the sanitized aggregate diagnostic passed rendered retest. Model-emitted optional nulls initially failed validation, and long opaque cursors and attachment IDs were altered in later model calls; omittable normalization plus short authorization-bound continuation/MIME-part references passed the unchanged live prompts. No unresolved defect remains from the exercised cases. |
+| Blocked | None in the authorized live delegated-development acceptance. Production provisioning and post-deploy verification belong to the root release workflow and are not claimed by this workspace. |
+| Not run | User-visible cloud desktop Chrome because no desktop/browser-control surface is available; live Slack, iMessage, or MCP traffic; Gmail sends, labels, scheduling, ingestion, or production writes. Headless system Chrome supplied rendered supplemental evidence only; cross-channel behavior is automated evidence rather than live traffic. |
+
+Private screenshots, browser scripts, redacted prerequisite notes, and model/audit
+checks remain under `.context/qa/google-workspace/`. The tracked scenario contains
+no live mailbox addresses, message/thread identifiers, filenames, transcripts,
+insurance facts, or credentials. Integration-owner validation on the preceding
+checkpoint passed 103 files and 299 tests, native-local Convex deployment, app
+TypeScript/build, and changed-source ESLint; the retained provider, verification,
+header-parser, replay, attachment, and authorization updates subsequently passed
+103 files and 300 tests plus native-local Convex deployment. The final integrated
+model-boundary and short-reference changes passed 103 files and 304 tests, their
+focused runtime/auth/replay/checkpoint regressions, application build and
+TypeScript, changed-source ESLint, diff checks, and native-local Convex codegen,
+typecheck, and deployment. Those full checks were not redundantly rerun in this
+workspace.

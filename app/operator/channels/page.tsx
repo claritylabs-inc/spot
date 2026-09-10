@@ -23,6 +23,10 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
 import { OperatorSidebar } from "../operator-sidebar";
 import { typeStyle } from "@/lib/typography";
+import {
+  OperatorGoogleWorkspaceContent,
+  OperatorGoogleWorkspaceSettingsDrawer,
+} from "./google-workspace-content";
 
 type OperatorSlackProfile = {
   role: "operator" | "owner";
@@ -82,15 +86,17 @@ function ChannelDetail({
   );
 }
 
-const CHANNEL_TABS = ["slack", "imessage", "mcp"] as const;
+const CHANNEL_TABS = ["slack", "imessage", "google-workspace", "mcp"] as const;
 
 function OperatorChannelTabs({
   children,
   imessageContent,
+  googleWorkspaceContent,
   mcpContent,
 }: {
   children: ReactNode;
   imessageContent?: ReactNode;
+  googleWorkspaceContent?: ReactNode;
   mcpContent?: ReactNode;
 }) {
   const placeholder = (
@@ -107,12 +113,16 @@ function OperatorChannelTabs({
         <TabsList variant="pill" aria-label="Channel">
           <TabsTrigger value="slack">Slack</TabsTrigger>
           <TabsTrigger value="imessage">iMessage</TabsTrigger>
+          <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
           <TabsTrigger value="mcp">MCP</TabsTrigger>
         </TabsList>
       </div>
       <TabsContent value="slack">{children}</TabsContent>
       <TabsContent value="imessage">
         {imessageContent ?? placeholder}
+      </TabsContent>
+      <TabsContent value="google-workspace">
+        {googleWorkspaceContent ?? placeholder}
       </TabsContent>
       <TabsContent value="mcp">{mcpContent ?? placeholder}</TabsContent>
     </Tabs>
@@ -457,6 +467,8 @@ function OperatorChannelsContent({
   const [savedIdentity, setSavedIdentity] = useState(profile);
   const [slackUserId, setSlackUserId] = useState(profile.slackUserId ?? "");
   const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
+  const [googleSettingsDrawerOpen, setGoogleSettingsDrawerOpen] =
+    useState(false);
   const [busy, setBusy] = useState<"host" | "identity" | null>(null);
   const hostInstallation = hostStatus?.installation;
   const workspaceTeamId = hostStatus?.hostTeamId;
@@ -546,6 +558,7 @@ function OperatorChannelsContent({
 
   function startEditingIdentity() {
     setSlackUserId(savedIdentity.slackUserId ?? "");
+    setGoogleSettingsDrawerOpen(false);
     setIdentityDrawerOpen(true);
   }
 
@@ -554,7 +567,7 @@ function OperatorChannelsContent({
     setIdentityDrawerOpen(false);
   }
 
-  const rightPanel = (
+  const identityDrawer = (
     <SettingsDrawer
       open={identityDrawerOpen}
       onOpenChange={(open) => {
@@ -654,6 +667,14 @@ function OperatorChannelsContent({
       </form>
     </SettingsDrawer>
   );
+  const rightPanel = googleSettingsDrawerOpen ? (
+    <OperatorGoogleWorkspaceSettingsDrawer
+      open
+      onOpenChange={setGoogleSettingsDrawerOpen}
+    />
+  ) : (
+    identityDrawer
+  );
 
   return (
     <AppShell
@@ -672,6 +693,14 @@ function OperatorChannelsContent({
       <main className="w-full">
         <OperatorChannelTabs
           imessageContent={<OperatorImessageContent />}
+          googleWorkspaceContent={
+            <OperatorGoogleWorkspaceContent
+              onConfigure={() => {
+                setIdentityDrawerOpen(false);
+                setGoogleSettingsDrawerOpen(true);
+              }}
+            />
+          }
           mcpContent={<OperatorMcpContent />}
         >
           <section className="space-y-3" aria-label="Slack channels">

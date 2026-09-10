@@ -7,6 +7,101 @@ import {
 import { buildOperatorMcpToolCatalog } from "./operatorMcpToolCatalog";
 
 describe("operator MCP tool catalog", () => {
+  test("rejects null-only omitted updates but accepts explicit clears", () => {
+    const cases = [
+      {
+        name: "update_procurement_request",
+        id: "procurementRequestId",
+        omitted: "title",
+        cleared: "targetEffectiveDate",
+      },
+      {
+        name: "update_broker_network_profile",
+        id: "brokerOrgId",
+        omitted: "name",
+        cleared: "website",
+      },
+      {
+        name: "update_procurement_broker_outreach",
+        id: "procurementOutreachId",
+        omitted: "status",
+        cleared: "log",
+      },
+      {
+        name: "update_procurement_file_item",
+        id: "procurementFileItemId",
+        omitted: "label",
+        cleared: "notes",
+      },
+    ];
+    for (const { name, id, omitted, cleared } of cases) {
+      expect(() =>
+        parseOperatorAgentToolInput(name, {
+          [id]: "record-1",
+          [omitted]: null,
+        }),
+      ).toThrow("At least one");
+      const clear = { [id]: "record-1", [cleared]: null };
+      expect(parseOperatorAgentToolInput(name, clear)).toStrictEqual(clear);
+    }
+  });
+  test("omits absent inputs while preserving explicit clears and rejecting invalid types", () => {
+    expect(
+      parseOperatorAgentToolInput("create_broker_network_profile", {
+        name: "Example supplier",
+        officeAddress: { city: "Boston", street2: null },
+      }),
+    ).toStrictEqual({
+      name: "Example supplier",
+      officeAddress: { city: "Boston" },
+    });
+    expect(
+      parseOperatorAgentToolInput("list_company_mailboxes", {
+        cursor: null,
+        limit: 1,
+      }),
+    ).toStrictEqual({ limit: 1 });
+    expect(
+      parseOperatorAgentToolInput("search_company_email", {
+        query: "warehouse",
+        mailboxes: null,
+        cursor: null,
+        limit: 10,
+      }),
+    ).toStrictEqual({ query: "warehouse", limit: 10 });
+    expect(
+      parseOperatorAgentToolInput("update_procurement_request", {
+        procurementRequestId: "request-1",
+        title: null,
+        clientVisible: false,
+        targetEffectiveDate: null,
+      }),
+    ).toStrictEqual({
+      procurementRequestId: "request-1",
+      clientVisible: false,
+      targetEffectiveDate: null,
+    });
+    for (const input of [{ cursor: false }, { limit: "1" }]) {
+      expect(() =>
+        parseOperatorAgentToolInput("list_company_mailboxes", input),
+      ).toThrow();
+    }
+    for (const input of [
+      { query: null },
+      { query: "warehouse", mailboxes: "a@example.com" },
+    ]) {
+      expect(() =>
+        parseOperatorAgentToolInput("search_company_email", input),
+      ).toThrow();
+    }
+    expect(() =>
+      parseOperatorAgentToolInput("get_company_email_attachment", {
+        mailbox: "a@example.com",
+        messageId: "message-1",
+        attachmentId: null,
+      }),
+    ).toThrow();
+  });
 
   test("limits read-only operators to read tools and run status", () => {
     const tools = buildOperatorMcpToolCatalog({
@@ -25,6 +120,17 @@ describe("operator MCP tool catalog", () => {
     expect(names).toContain("lookup_compliance_requirements");
     expect(names).toContain("read_client_file");
     expect(names).toContain("lookup_client_wiki");
+    for (const name of [
+      "list_company_mailboxes",
+      "search_company_email",
+      "read_company_email_thread",
+      "get_company_email_attachment",
+    ]) {
+      expect(tools.find((tool) => tool.name === name)).toMatchObject({
+        annotations: { readOnlyHint: true, openWorldHint: true },
+        securitySchemes: [{ type: "oauth2", scopes: ["read"] }],
+      });
+    }
     expect(names).not.toContain("generate_coi");
     expect(names).not.toContain("create_procurement_request");
     expect(names).not.toContain("update_procurement_email_thread");

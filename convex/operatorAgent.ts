@@ -30,6 +30,7 @@ import {
   type OperatorAgentToolName,
   type OperatorToolRole,
 } from "./lib/operatorAgentToolRegistry";
+import type { OperatorGoogleWorkspaceToolName } from "./lib/googleWorkspace";
 import {
   listOperatorAgentIntents,
   resolveOperatorAgentIntent,
@@ -251,6 +252,76 @@ function boundedJson(value: unknown, maximum = 8_000) {
   } catch {
     return String(value).slice(0, maximum);
   }
+}
+
+function isOperatorGoogleWorkspaceTool(
+  toolName: string,
+): toolName is OperatorGoogleWorkspaceToolName {
+  return (
+    toolName === "list_company_mailboxes" ||
+    toolName === "search_company_email" ||
+    toolName === "read_company_email_thread" ||
+    toolName === "get_company_email_attachment"
+  );
+}
+
+function serializedOperatorActionOutput(toolName: string, result: unknown) {
+  return isOperatorGoogleWorkspaceTool(toolName)
+    ? JSON.stringify(result)
+    : boundedJson(result);
+}
+
+function operatorActionResultForCaller(
+  toolName: string,
+  auditId: Id<"agentActionAuditEvents">,
+  result: unknown,
+) {
+  const record = recordValue(result);
+  if (
+    isOperatorGoogleWorkspaceTool(toolName) &&
+    typeof record?.nextCursor === "string" &&
+    record.nextCursor
+  ) {
+    return { ...record, nextCursor: `gws:${auditId}` };
+  }
+  return result;
+}
+
+async function resolveGoogleWorkspaceContinuation(
+  ctx: MutationCtx,
+  args: {
+    toolName: string;
+    operatorUserId: Id<"users">;
+    threadId: Id<"operatorAgentThreads">;
+  },
+  input: Record<string, unknown>,
+) {
+  if (
+    !isOperatorGoogleWorkspaceTool(args.toolName) ||
+    typeof input.cursor !== "string" ||
+    !input.cursor.startsWith("gws:")
+  )
+    return input;
+  const id = ctx.db.normalizeId(
+    "agentActionAuditEvents",
+    input.cursor.slice(4),
+  );
+  const source = id ? await ctx.db.get(id) : null;
+  const cursor = recordValue(parseStoredOutput(source?.output))?.nextCursor;
+  if (
+    !source ||
+    source.status !== "succeeded" ||
+    source.action !== args.toolName ||
+    source.operatorUserId !== args.operatorUserId ||
+    source.operatorThreadId !== args.threadId ||
+    typeof cursor !== "string" ||
+    !cursor
+  ) {
+    throw new Error(
+      "Google Workspace continuation reference is invalid for this operator, thread, or tool.",
+    );
+  }
+  return { ...input, cursor };
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
@@ -2604,6 +2675,19 @@ async function executeToolActionDomain(
     idempotencyKey?: string;
   },
 ): Promise<OperatorActionToolResult> {
+  if (isOperatorGoogleWorkspaceTool(args.toolName)) {
+    return await ctx.runAction(
+      internal.actions.operatorGoogleWorkspace.runToolInternal,
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        toolName: args.toolName,
+        input: args.input,
+        channel: args.channel,
+      },
+    );
+  }
+
   if (OPERATOR_RICH_ACTION_TOOLS.has(args.toolName)) {
     return (await ctx.runAction(
       internal.actions.operatorAgentRichTools.runInternal,
@@ -4542,7 +4626,11 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       if (existing.status === "succeeded") {
         return {
           status: "succeeded" as const,
-          result: parseStoredOutput(existing.output),
+          result: operatorActionResultForCaller(
+            args.toolName,
+            existing._id,
+            parseStoredOutput(existing.output),
+          ),
           idempotent: true,
         };
       }
@@ -4552,6 +4640,11 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       throw new Error("Operator agent run is no longer active");
     }
     const target = spec.target(input);
+    const resolvedInput = await resolveGoogleWorkspaceContinuation(
+      ctx,
+      args,
+      input,
+    );
     const now = dayjs().valueOf();
     const auditId = await ctx.db.insert("agentActionAuditEvents", {
       operatorThreadId: args.threadId,
@@ -4574,7 +4667,7 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
-    return { status: "execute" as const, auditId, input };
+    return { status: "execute" as const, auditId, input: resolvedInput };
   },
 });
 
@@ -4599,7 +4692,7 @@ export const finishUnconfirmedActionToolInternal = internalMutation({
     }
     await ctx.db.patch(audit._id, {
       status: "succeeded",
-      output: boundedJson(args.result),
+      output: serializedOperatorActionOutput(audit.action, args.result),
       error: undefined,
       updatedAt: now,
     });
@@ -4646,7 +4739,11 @@ export const executeUnconfirmedActionToolInternal = internalAction({
       );
       return {
         status: "succeeded" as const,
-        result: output.result,
+        result: operatorActionResultForCaller(
+          args.toolName,
+          prepared.auditId,
+          output.result,
+        ),
         idempotent: false,
       };
     } catch (error) {

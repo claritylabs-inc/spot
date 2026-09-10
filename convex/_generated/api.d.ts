@@ -42,6 +42,7 @@ import type * as actions_mailboxCoordinator from "../actions/mailboxCoordinator.
 import type * as actions_mcpChat from "../actions/mcpChat.js";
 import type * as actions_mirrorWebChatToImessage from "../actions/mirrorWebChatToImessage.js";
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
+import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
@@ -199,6 +200,12 @@ import type * as lib_extractionTraceRouterFields from "../lib/extractionTraceRou
 import type * as lib_featureFlags from "../lib/featureFlags.js";
 import type * as lib_fireworksStructuredOutput from "../lib/fireworksStructuredOutput.js";
 import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js";
+import type * as lib_googleWorkspace from "../lib/googleWorkspace.js";
+import type * as lib_googleWorkspaceCredentials from "../lib/googleWorkspaceCredentials.js";
+import type * as lib_googleWorkspaceProvider from "../lib/googleWorkspaceProvider.js";
+import type * as lib_googleWorkspaceTools from "../lib/googleWorkspaceTools.js";
+import type * as lib_googleWorkspaceValidators from "../lib/googleWorkspaceValidators.js";
+import type * as lib_googleWorkspaceVerification from "../lib/googleWorkspaceVerification.js";
 import type * as lib_imapDestination from "../lib/imapDestination.js";
 import type * as lib_imapMailbox from "../lib/imapMailbox.js";
 import type * as lib_imessageAgentContext from "../lib/imessageAgentContext.js";
@@ -315,6 +322,7 @@ import type * as oauth from "../oauth.js";
 import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
+import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
 import type * as operatorImessage from "../operatorImessage.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
 import type * as operatorSlack from "../operatorSlack.js";
@@ -394,6 +402,7 @@ declare const fullApi: ApiFromModules<{
   "actions/mcpChat": typeof actions_mcpChat;
   "actions/mirrorWebChatToImessage": typeof actions_mirrorWebChatToImessage;
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
+  "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
@@ -551,6 +560,12 @@ declare const fullApi: ApiFromModules<{
   "lib/featureFlags": typeof lib_featureFlags;
   "lib/fireworksStructuredOutput": typeof lib_fireworksStructuredOutput;
   "lib/forwardReplyDirection": typeof lib_forwardReplyDirection;
+  "lib/googleWorkspace": typeof lib_googleWorkspace;
+  "lib/googleWorkspaceCredentials": typeof lib_googleWorkspaceCredentials;
+  "lib/googleWorkspaceProvider": typeof lib_googleWorkspaceProvider;
+  "lib/googleWorkspaceTools": typeof lib_googleWorkspaceTools;
+  "lib/googleWorkspaceValidators": typeof lib_googleWorkspaceValidators;
+  "lib/googleWorkspaceVerification": typeof lib_googleWorkspaceVerification;
   "lib/imapDestination": typeof lib_imapDestination;
   "lib/imapMailbox": typeof lib_imapMailbox;
   "lib/imessageAgentContext": typeof lib_imessageAgentContext;
@@ -667,6 +682,7 @@ declare const fullApi: ApiFromModules<{
   operator: typeof operator;
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
+  operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
   operatorImessage: typeof operatorImessage;
   operatorProvisioning: typeof operatorProvisioning;
   operatorSlack: typeof operatorSlack;
