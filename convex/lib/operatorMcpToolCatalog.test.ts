@@ -7,6 +7,63 @@ import {
 import { buildOperatorMcpToolCatalog } from "./operatorMcpToolCatalog";
 
 describe("operator MCP tool catalog", () => {
+  test("omits absent inputs while preserving explicit clears and rejecting invalid types", () => {
+    expect(
+      parseOperatorAgentToolInput("create_broker_network_profile", {
+        name: "Example supplier",
+        officeAddress: { city: "Boston", street2: null },
+      }),
+    ).toStrictEqual({
+      name: "Example supplier",
+      officeAddress: { city: "Boston" },
+    });
+    expect(
+      parseOperatorAgentToolInput("list_company_mailboxes", {
+        cursor: null,
+        limit: 1,
+      }),
+    ).toStrictEqual({ limit: 1 });
+    expect(
+      parseOperatorAgentToolInput("search_company_email", {
+        query: "warehouse",
+        mailboxes: null,
+        cursor: null,
+        limit: 10,
+      }),
+    ).toStrictEqual({ query: "warehouse", limit: 10 });
+    expect(
+      parseOperatorAgentToolInput("update_procurement_request", {
+        procurementRequestId: "request-1",
+        title: null,
+        clientVisible: false,
+        targetEffectiveDate: null,
+      }),
+    ).toStrictEqual({
+      procurementRequestId: "request-1",
+      clientVisible: false,
+      targetEffectiveDate: null,
+    });
+    for (const input of [{ cursor: false }, { limit: "1" }]) {
+      expect(() =>
+        parseOperatorAgentToolInput("list_company_mailboxes", input),
+      ).toThrow();
+    }
+    for (const input of [
+      { query: null },
+      { query: "warehouse", mailboxes: "a@example.com" },
+    ]) {
+      expect(() =>
+        parseOperatorAgentToolInput("search_company_email", input),
+      ).toThrow();
+    }
+    expect(() =>
+      parseOperatorAgentToolInput("get_company_email_attachment", {
+        mailbox: "a@example.com",
+        messageId: "message-1",
+        attachmentId: null,
+      }),
+    ).toThrow();
+  });
 
   test("limits read-only operators to read tools and run status", () => {
     const tools = buildOperatorMcpToolCatalog({

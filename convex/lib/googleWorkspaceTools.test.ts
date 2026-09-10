@@ -2,6 +2,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
+import { parseOperatorAgentToolInput } from "./operatorAgentToolRegistry";
 import type {
   GoogleWorkspaceDirectoryUser,
   GoogleWorkspaceMessage,
@@ -112,6 +113,37 @@ async function allMailboxPages(deps: GoogleWorkspaceToolDependencies) {
 }
 
 describe("company Gmail continuation boundaries", () => {
+  test("model null optionals reach Gmail providers as omitted inputs", async () => {
+    const deps = setup();
+    const cases = [
+      { name: "list_company_mailboxes", input: { cursor: null, limit: 1 } },
+      {
+        name: "search_company_email",
+        input: { query: "warehouse", mailboxes: null, cursor: null, limit: 10 },
+      },
+      {
+        name: "read_company_email_thread",
+        input: {
+          mailbox: "a@example.com",
+          threadId: "thread",
+          cursor: null,
+          limit: null,
+        },
+      },
+    ] as const;
+    for (const { name, input } of cases) {
+      const parsed = parseOperatorAgentToolInput(name, input);
+      expect(parsed).not.toHaveProperty("cursor");
+      expect(parsed).not.toHaveProperty("mailboxes");
+      if (input.limit === null) expect(parsed).not.toHaveProperty("limit");
+      await expect(
+        runGoogleWorkspaceTool(deps, name, parsed),
+      ).resolves.toHaveProperty("result");
+    }
+    expect(deps.provider.listMessages).toHaveBeenCalledTimes(2);
+    expect(deps.provider.getMessageFull).toHaveBeenCalled();
+  });
+
   test("does not drop Directory users when short pages contain ineligible users", async () => {
     const users = Array.from({ length: 83 }, (_, i) => ({
       ...directoryUser(i),

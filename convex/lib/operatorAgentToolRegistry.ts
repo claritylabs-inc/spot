@@ -52,11 +52,11 @@ function defineOperatorTool<TSchema extends z.ZodType>(
 // Models routinely emit `null` for a field they have no value for instead of
 // leaving the key out, and a plain `.optional()` turns that into a type error
 // the model reads as "this field is required". Both helpers accept null; they
-// differ only in what consumers do with it.
+// differ in whether parsing omits it or preserves an intentional clear.
 
 /** Absent input: null and omission both mean "not provided". */
 function omittable<TSchema extends z.ZodType>(schema: TSchema) {
-  return schema.nullish();
+  return schema.nullish().transform((value) => value ?? undefined);
 }
 
 /** Update input where null erases the stored value and omission leaves it. */
@@ -1624,7 +1624,7 @@ function stripNestedNulls(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([, entry]) => entry !== null)
+      .filter(([, entry]) => entry !== null && entry !== undefined)
       .map(([key, entry]) => [key, stripNestedNulls(entry)]),
   );
 }
@@ -1637,10 +1637,9 @@ export function parseOperatorAgentToolInput(
     input,
   ) as Record<string, unknown>;
   return Object.fromEntries(
-    Object.entries(parsed).map(([key, value]) => [
-      key,
-      stripNestedNulls(value),
-    ]),
+    Object.entries(parsed)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, stripNestedNulls(value)]),
   );
 }
 
@@ -1662,7 +1661,10 @@ export function operatorAgentToolJsonCatalog() {
     name: name as OperatorAgentToolName,
     version: spec.version,
     description: spec.description,
-    inputSchema: z.toJSONSchema(spec.inputSchema) as Record<string, unknown>,
+    inputSchema: z.toJSONSchema(spec.inputSchema, { io: "input" }) as Record<
+      string,
+      unknown
+    >,
     capability: spec.capability,
     effect: spec.effect,
     requiredRole: spec.requiredRole,

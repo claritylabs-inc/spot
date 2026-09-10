@@ -22,10 +22,9 @@ export function buildOperatorMcpToolCatalog(args: {
     })
     .map(([name, spec]) => {
       const write = spec.effect !== "read";
-      const inputSchema = z.toJSONSchema(spec.inputSchema) as Record<
-        string,
-        unknown
-      >;
+      const inputSchema = z.toJSONSchema(spec.inputSchema, {
+        io: "input",
+      }) as Record<string, unknown>;
       delete inputSchema.$schema;
       inputSchema.properties = {
         ...((inputSchema.properties as Record<string, unknown> | undefined) ??
