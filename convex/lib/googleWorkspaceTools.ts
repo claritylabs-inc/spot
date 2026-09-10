@@ -850,10 +850,14 @@ export function messageBody(message: GoogleWorkspaceMessage) {
 
 type LocatedPart = { part: GoogleWorkspaceMessagePart; stablePartId: string };
 
+function mimePartId(part: GoogleWorkspaceMessagePart, path: number[]) {
+  return part.partId || path.join(".") || "0";
+}
+
 function allParts(message: GoogleWorkspaceMessage) {
   const values: LocatedPart[] = [];
   const visit = (part: GoogleWorkspaceMessagePart, path: number[]) => {
-    const stablePartId = part.partId || path.join(".") || "0";
+    const stablePartId = mimePartId(part, path);
     values.push({ part, stablePartId });
     part.parts.forEach((child, index) => visit(child, [...path, index]));
   };
@@ -883,7 +887,7 @@ function attachmentMetadata(
 ): OperatorGoogleWorkspaceThreadAttachment {
   const { part, stablePartId } = located;
   return {
-    attachmentId: part.body.attachmentId ?? `part:${stablePartId}`,
+    attachmentId: `part:${stablePartId}`,
     partId: stablePartId,
     filename: part.filename || `attachment-${stablePartId}`,
     contentType: part.mimeType || "application/octet-stream",
@@ -901,7 +905,7 @@ async function loadExternalBodyParts(
 ) {
   const unavailable: OperatorGoogleWorkspaceThreadMessage["bodyUnavailableParts"] =
     [];
-  const visit = async (part: GoogleWorkspaceMessagePart) => {
+  const visit = async (part: GoogleWorkspaceMessagePart, path: number[]) => {
     if (part.filename || disposition(part).includes("attachment")) return;
     if (
       /^text\/(plain|html)$/i.test(part.mimeType) &&
@@ -946,14 +950,15 @@ async function loadExternalBodyParts(
       }
       if (reason)
         unavailable.push({
-          partId: part.partId,
-          attachmentId: part.body.attachmentId,
+          partId: mimePartId(part, path),
+          attachmentId: `part:${mimePartId(part, path)}`,
           reason,
         });
     }
-    for (const child of part.parts) await visit(child);
+    for (const [index, child] of part.parts.entries())
+      await visit(child, [...path, index]);
   };
-  if (message.payload) await visit(message.payload);
+  if (message.payload) await visit(message.payload, []);
   return unavailable;
 }
 
@@ -1113,12 +1118,14 @@ function locatedAttachment(
   const parts = allParts(message).filter(({ part }) => isAttachmentPart(part));
   if (attachmentId.startsWith("part:")) {
     const stablePartId = attachmentId.slice("part:".length);
-    return parts.find(
-      (located) =>
-        located.stablePartId === stablePartId &&
-        !located.part.body.attachmentId &&
-        located.part.body.data !== null,
+    const matches = parts.filter(
+      (located) => located.stablePartId === stablePartId,
     );
+    const located = matches.length === 1 ? matches[0] : undefined;
+    return located &&
+      (located.part.body.attachmentId || located.part.body.data !== null)
+      ? located
+      : undefined;
   }
   return parts.find(
     (located) => located.part.body.attachmentId === attachmentId,

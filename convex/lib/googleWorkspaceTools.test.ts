@@ -388,7 +388,7 @@ describe("company Gmail original bodies and attachments", () => {
     expect(incomplete.messages[0]).toMatchObject({
       bodyComplete: false,
       bodySourceComplete: false,
-      bodyUnavailableParts: [{ attachmentId: "external-body" }],
+      bodyUnavailableParts: [{ attachmentId: "part:0" }],
     });
     expect(deps.provider.getAttachment).not.toHaveBeenCalled();
   });
@@ -428,6 +428,74 @@ describe("company Gmail original bodies and attachments", () => {
       }),
     ).rejects.toThrow("extraction failed");
     expect(deps.attachmentStorage.delete).toHaveBeenCalledWith("original");
+  });
+
+  test("uses short MIME references for remote originals and rejects ambiguous or wrong parents", async () => {
+    const rawId = "provider-attachment-".repeat(25);
+    const attachment = part({
+      partId: "1.0",
+      filename: "evidence.txt",
+      body: { attachmentId: rawId, data: null, size: 4 },
+    });
+    const payload = part({
+      partId: "",
+      mimeType: "multipart/mixed",
+      body: { attachmentId: null, data: null, size: 0 },
+      parts: [
+        part({
+          partId: "1",
+          mimeType: "multipart/mixed",
+          body: { attachmentId: null, data: null, size: 0 },
+          parts: [attachment],
+        }),
+      ],
+    });
+    const deps = setup({
+      getMessageFull: vi.fn(async () =>
+        message("m1", structuredClone(payload)),
+      ),
+    });
+    const thread = await readCompanyEmailThread(deps, {
+      mailbox: "a@example.com",
+      threadId: "thread",
+    });
+    const metadata = thread.messages[0].attachments[0];
+    expect(metadata).toMatchObject({
+      attachmentId: "part:1.0",
+      partId: "1.0",
+      filename: "evidence.txt",
+    });
+    expect(JSON.stringify(thread)).not.toContain(rawId);
+    const input = {
+      mailbox: "a@example.com",
+      messageId: "m1",
+      attachmentId: metadata.attachmentId,
+    };
+    const output = await getCompanyEmailAttachment(deps, input);
+    expect(deps.provider.getAttachment).toHaveBeenCalledWith({
+      mailbox: input.mailbox,
+      messageId: input.messageId,
+      attachmentId: rawId,
+    });
+    expect(output.result.source).toMatchObject({ ...input, partId: "1.0" });
+    await expect(
+      getCompanyEmailAttachment(deps, { ...input, attachmentId: rawId }),
+    ).resolves.toHaveProperty("attachment");
+    vi.mocked(deps.provider.getAttachment).mockClear();
+    await expect(
+      getCompanyEmailAttachment(deps, {
+        ...input,
+        attachmentId: "part:missing",
+      }),
+    ).rejects.toThrow("not part");
+    await expect(
+      getCompanyEmailAttachment(deps, { ...input, messageId: "other-parent" }),
+    ).rejects.toThrow("identity changed");
+    payload.parts.push(structuredClone(attachment));
+    await expect(getCompanyEmailAttachment(deps, input)).rejects.toThrow(
+      "not part",
+    );
+    expect(deps.provider.getAttachment).not.toHaveBeenCalled();
   });
 
   test("enforces the 15 MiB cap on both declared and actual attachment bytes", async () => {
