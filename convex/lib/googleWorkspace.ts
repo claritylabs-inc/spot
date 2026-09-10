@@ -11,6 +11,11 @@ export const GOOGLE_WORKSPACE_LIMITS = {
   defaultPageSize: 20,
   maxPageSize: 50,
   maxCursorChars: 16_000,
+  maxQueryChars: 2_000,
+  maxMailboxChars: 320,
+  maxMessageIdChars: 200,
+  maxThreadIdChars: 200,
+  maxAttachmentIdChars: 4_000,
   maxVerificationMailboxes: 100,
   maxAttachmentBytes: 15 * 1024 * 1024,
 } as const;
@@ -123,4 +128,115 @@ export type OperatorGoogleWorkspaceGetAttachmentInput = {
   mailbox: string;
   messageId: string;
   attachmentId: string;
+};
+
+export type OperatorGoogleWorkspaceMailbox = {
+  mailbox: string;
+  displayName: string | null;
+  aliases: string[];
+  source: "manual" | "directory";
+};
+
+export type OperatorGoogleWorkspaceListMailboxesResult = {
+  mailboxMode: OperatorGoogleWorkspaceMailboxMode;
+  mailboxes: OperatorGoogleWorkspaceMailbox[];
+  nextCursor: string | null;
+  completeness: "complete" | "partial";
+  error: string | null;
+};
+
+export type OperatorGoogleWorkspaceSearchMessage = {
+  mailbox: string;
+  messageId: string;
+  threadId: string;
+  subject: string | null;
+  from: string | null;
+  to: string[];
+  cc: string[];
+  date: string | null;
+  snippet: string | null;
+  metadataComplete: boolean;
+};
+
+export type OperatorGoogleWorkspaceMailboxError = {
+  mailbox: string;
+  error: string;
+};
+
+export type OperatorGoogleWorkspaceSearchEmailResult = {
+  query: string;
+  messages: OperatorGoogleWorkspaceSearchMessage[];
+  searchedMailboxes: string[];
+  errors: OperatorGoogleWorkspaceMailboxError[];
+  directoryError: string | null;
+  encounteredErrorCount: number;
+  nextCursor: string | null;
+  completeness: "complete" | "partial";
+  ordering: "mailbox_then_gmail";
+  querySemantics: "gmail_api_no_alias_expansion";
+};
+
+export type OperatorGoogleWorkspaceThreadAttachment = {
+  attachmentId: string;
+  partId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  inline: boolean;
+  contentId: string | null;
+};
+
+export type OperatorGoogleWorkspaceThreadMessage = {
+  mailbox: string;
+  messageId: string;
+  threadId: string;
+  from: string | null;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  replyTo: string | null;
+  subject: string | null;
+  date: string | null;
+  internetMessageId: string | null;
+  inReplyTo: string | null;
+  references: string | null;
+  body: string;
+  bodyFormat: "plain" | "html_fallback" | "unavailable";
+  bodyOffset: number;
+  bodyComplete: boolean;
+  bodySourceComplete: boolean;
+  bodyUnavailableParts: Array<{
+    partId: string;
+    attachmentId: string;
+    reason: string;
+  }>;
+  attachments: OperatorGoogleWorkspaceThreadAttachment[];
+};
+
+export type OperatorGoogleWorkspaceReadThreadResult = {
+  mailbox: string;
+  threadId: string;
+  messages: OperatorGoogleWorkspaceThreadMessage[];
+  nextCursor: string | null;
+  completeness: "complete" | "partial";
+  maxBodyCharsPerPage: number;
+};
+
+export type OperatorGoogleWorkspaceAttachmentSource = {
+  mailbox: string;
+  messageId: string;
+  threadId: string;
+  attachmentId: string;
+  partId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  inline: boolean;
+  contentId: string | null;
+};
+
+export type OperatorGoogleWorkspaceGetAttachmentResult = {
+  status: "attached";
+  source: OperatorGoogleWorkspaceAttachmentSource;
+  extracted: unknown;
 };
