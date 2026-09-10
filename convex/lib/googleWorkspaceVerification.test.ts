@@ -206,6 +206,7 @@ describe("Google Workspace verification", () => {
   });
 
   it("applies the same deadline to Directory enumeration even when token fetch ignores abort", async () => {
+    vi.useFakeTimers();
     const listDirectoryUsers = vi
       .fn()
       .mockResolvedValueOnce({
@@ -213,34 +214,40 @@ describe("Google Workspace verification", () => {
         nextPageToken: "page-2",
       })
       .mockImplementationOnce(() => new Promise<never>(() => undefined));
-    const result = await verifyGoogleWorkspaceConnection(
-      provider({ listDirectoryUsers }),
-      config({
-        mailboxMode: "directory",
-        mailboxes: [],
-        directoryAdminEmail: "admin@claritylabs.inc",
-      }),
-      { deadlineMs: 5 },
-    );
+    try {
+      const verification = verifyGoogleWorkspaceConnection(
+        provider({ listDirectoryUsers }),
+        config({
+          mailboxMode: "directory",
+          mailboxes: [],
+          directoryAdminEmail: "admin@claritylabs.inc",
+        }),
+        { deadlineMs: 5 },
+      );
+      await vi.advanceTimersByTimeAsync(5);
+      const result = await verification;
 
-    expect(result).toMatchObject({
-      status: "failed",
-      completeness: "partial",
-      checkedMailboxCount: 0,
-      totalMailboxCount: null,
-      error: "Google Workspace verification reached its time limit.",
-      directory: {
-        status: "partial",
-        discoveredMailboxCount: 1,
+      expect(result).toMatchObject({
+        status: "failed",
+        completeness: "partial",
+        checkedMailboxCount: 0,
         totalMailboxCount: null,
-        hasMore: true,
         error: "Google Workspace verification reached its time limit.",
-      },
-      mailboxes: [],
-    });
-    expect(listDirectoryUsers).toHaveBeenCalledTimes(2);
-    expect(listDirectoryUsers.mock.calls[1][0].signal).toBeInstanceOf(
-      AbortSignal,
-    );
+        directory: {
+          status: "partial",
+          discoveredMailboxCount: 1,
+          totalMailboxCount: null,
+          hasMore: true,
+          error: "Google Workspace verification reached its time limit.",
+        },
+        mailboxes: [],
+      });
+      expect(listDirectoryUsers).toHaveBeenCalledTimes(2);
+      expect(listDirectoryUsers.mock.calls[1][0].signal).toBeInstanceOf(
+        AbortSignal,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
