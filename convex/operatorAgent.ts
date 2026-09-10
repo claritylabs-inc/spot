@@ -271,6 +271,59 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     : boundedJson(result);
 }
 
+function operatorActionResultForCaller(
+  toolName: string,
+  auditId: Id<"agentActionAuditEvents">,
+  result: unknown,
+) {
+  const record = recordValue(result);
+  if (
+    isOperatorGoogleWorkspaceTool(toolName) &&
+    typeof record?.nextCursor === "string" &&
+    record.nextCursor
+  ) {
+    return { ...record, nextCursor: `gws:${auditId}` };
+  }
+  return result;
+}
+
+async function resolveGoogleWorkspaceContinuation(
+  ctx: MutationCtx,
+  args: {
+    toolName: string;
+    operatorUserId: Id<"users">;
+    threadId: Id<"operatorAgentThreads">;
+  },
+  input: Record<string, unknown>,
+) {
+  if (
+    !isOperatorGoogleWorkspaceTool(args.toolName) ||
+    typeof input.cursor !== "string" ||
+    !input.cursor.startsWith("gws:")
+  )
+    return input;
+  const id = ctx.db.normalizeId(
+    "agentActionAuditEvents",
+    input.cursor.slice(4),
+  );
+  const source = id ? await ctx.db.get(id) : null;
+  const cursor = recordValue(parseStoredOutput(source?.output))?.nextCursor;
+  if (
+    !source ||
+    source.status !== "succeeded" ||
+    source.action !== args.toolName ||
+    source.operatorUserId !== args.operatorUserId ||
+    source.operatorThreadId !== args.threadId ||
+    typeof cursor !== "string" ||
+    !cursor
+  ) {
+    throw new Error(
+      "Google Workspace continuation reference is invalid for this operator, thread, or tool.",
+    );
+  }
+  return { ...input, cursor };
+}
+
 function recordValue(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -4573,7 +4626,11 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       if (existing.status === "succeeded") {
         return {
           status: "succeeded" as const,
-          result: parseStoredOutput(existing.output),
+          result: operatorActionResultForCaller(
+            args.toolName,
+            existing._id,
+            parseStoredOutput(existing.output),
+          ),
           idempotent: true,
         };
       }
@@ -4583,6 +4640,11 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       throw new Error("Operator agent run is no longer active");
     }
     const target = spec.target(input);
+    const resolvedInput = await resolveGoogleWorkspaceContinuation(
+      ctx,
+      args,
+      input,
+    );
     const now = dayjs().valueOf();
     const auditId = await ctx.db.insert("agentActionAuditEvents", {
       operatorThreadId: args.threadId,
@@ -4605,7 +4667,7 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
-    return { status: "execute" as const, auditId, input };
+    return { status: "execute" as const, auditId, input: resolvedInput };
   },
 });
 
@@ -4677,7 +4739,11 @@ export const executeUnconfirmedActionToolInternal = internalAction({
       );
       return {
         status: "succeeded" as const,
-        result: output.result,
+        result: operatorActionResultForCaller(
+          args.toolName,
+          prepared.auditId,
+          output.result,
+        ),
         idempotent: false,
       };
     } catch (error) {

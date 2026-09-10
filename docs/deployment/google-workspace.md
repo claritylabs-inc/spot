@@ -235,6 +235,10 @@ bound to the mailbox and parent message that identified them. See the
 Pages default to 20 entries and accept at most 50. Search traverses mailboxes
 in bounded batches; it does not promise globally newest-first ordering. Pass
 each `nextCursor` unchanged with the same query, mailbox filters, and page size.
+Registered tools return short continuation references scoped to the operator, thread,
+and tool. The existing action audit retains the full signed Google cursor; the
+backend resolves the reference without asking the model to copy a long provider
+token. Removing the source audit makes its reference unavailable.
 Settings changes or credential rotation invalidate existing cursors. Earlier
 access failures keep the final search incomplete even when later pages succeed.
 

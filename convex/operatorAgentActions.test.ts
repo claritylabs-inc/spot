@@ -4,8 +4,11 @@ import dayjs from "dayjs";
 import { expect, test, vi } from "vitest";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
+import { collectToolAudit } from "./lib/agentToolAudit";
+import { buildOperatorRunCheckpointSummary } from "./lib/operatorAgentContinuation";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -44,6 +47,15 @@ test("company email reads share operator authorization, auditing and private att
         handler: async (ctx, args) => {
           providerCall(args);
           if (args.toolName === "search_company_email") {
+            if (args.input.cursor) {
+              expect(args.input.cursor).toBe(largeSearchResult.nextCursor);
+              return {
+                result: {
+                  ...largeSearchResult,
+                  nextCursor: "second-page-raw-continuation",
+                },
+              };
+            }
             return { result: largeSearchResult };
           }
           if (args.toolName !== "get_company_email_attachment") {
@@ -115,6 +127,9 @@ test("company email reads share operator authorization, auditing and private att
       },
     },
   ] as const;
+  let continuation:
+    | { threadId: Id<"operatorAgentThreads">; cursor: string }
+    | undefined;
   for (const entry of cases) {
     const args = {
       ...entry,
@@ -142,16 +157,41 @@ test("company email reads share operator authorization, auditing and private att
       idempotent: true,
     });
     if (entry.toolName === "search_company_email") {
+      const audit = await t.run((ctx) =>
+        ctx.db
+          .query("agentActionAuditEvents")
+          .filter((q) => q.eq(q.field("action"), entry.toolName))
+          .unique(),
+      );
+      if (!audit) throw new Error("Missing search audit");
+      expect(JSON.parse(audit.output!)).toEqual(largeSearchResult);
+      const callerResult = {
+        ...largeSearchResult,
+        nextCursor: `gws:${audit._id}`,
+      };
+      continuation = {
+        threadId: first.threadId,
+        cursor: callerResult.nextCursor,
+      };
+      expect(callerResult.nextCursor.length).toBeLessThan(50);
       expect(first.outcome).toEqual({
         status: "succeeded",
-        result: largeSearchResult,
+        result: callerResult,
         idempotent: false,
       });
       expect(replay.outcome).toEqual({
         status: "succeeded",
-        result: largeSearchResult,
+        result: callerResult,
         idempotent: true,
       });
+      const checkpoint = buildOperatorRunCheckpointSummary({
+        audit: collectToolAudit({
+          toolCalls: [{ toolName: entry.toolName, input: entry.input }],
+          toolResults: [{ toolName: entry.toolName, output: first.outcome }],
+        }),
+      });
+      expect(checkpoint).toContain(callerResult.nextCursor);
+      expect(checkpoint).toContain('"completeness":"partial"');
     }
     if (entry.toolName === "get_company_email_attachment") {
       const persisted = await t.run(async (ctx) => ({
@@ -173,10 +213,98 @@ test("company email reads share operator authorization, auditing and private att
     }
   }
   expect(providerCall).toHaveBeenCalledTimes(4);
+  if (!continuation) throw new Error("Missing continuation");
+  const nextArgs = {
+    operatorUserId: ids.operatorUserId,
+    threadId: continuation.threadId,
+    channel: "mcp" as const,
+    toolName: "search_company_email",
+    input: { query: "warehouse", limit: 10, cursor: continuation.cursor },
+    idempotencyKey: "next-page",
+  };
+  for (const invalid of [
+    { ...nextArgs, threadId: undefined, idempotencyKey: "wrong-thread" },
+    {
+      ...nextArgs,
+      toolName: "list_company_mailboxes",
+      input: { cursor: continuation.cursor },
+      idempotencyKey: "wrong-tool",
+    },
+    {
+      ...nextArgs,
+      input: { ...nextArgs.input, cursor: "gws:invalid" },
+      idempotencyKey: "invalid-reference",
+    },
+  ]) {
+    await expect(
+      t.action(internal.operatorAgent.invokeRegisteredToolInternal, invalid),
+    ).resolves.toMatchObject({
+      outcome: {
+        status: "failed",
+        error: expect.stringContaining("continuation reference is invalid"),
+      },
+    });
+  }
+  expect(providerCall).toHaveBeenCalledTimes(4);
+  const otherOperatorUserId = await t.run(async (ctx) => {
+    const now = dayjs().valueOf();
+    const userId = await ctx.db.insert("users", {
+      email: "other@example.com",
+      accountKind: "operator",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "other@example.com",
+      role: "operator",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(nextArgs.threadId, { visibility: "shared" });
+    return userId;
+  });
+  await expect(
+    t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
+      ...nextArgs,
+      operatorUserId: otherOperatorUserId,
+      idempotencyKey: "other-operator",
+    }),
+  ).resolves.toMatchObject({
+    outcome: {
+      status: "failed",
+      error: expect.stringContaining("continuation reference is invalid"),
+    },
+  });
+  await t.run((ctx) =>
+    ctx.db.patch(nextArgs.threadId, { visibility: "private" }),
+  );
+  const next = await t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    nextArgs,
+  );
+  expect(next.outcome).toMatchObject({
+    status: "succeeded",
+    result: {
+      nextCursor: expect.stringMatching(/^gws:/),
+      completeness: "partial",
+    },
+  });
+  expect(next.outcome).not.toMatchObject({
+    result: { nextCursor: continuation.cursor },
+  });
+  const nextReplay = await t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    nextArgs,
+  );
+  expect(nextReplay.outcome).toEqual({ ...next.outcome, idempotent: true });
+  expect(providerCall.mock.lastCall?.[0].input.cursor).toBe(
+    largeSearchResult.nextCursor,
+  );
+  expect(providerCall).toHaveBeenCalledTimes(5);
   const audits = await t.run((ctx) =>
     ctx.db.query("agentActionAuditEvents").collect(),
   );
-  expect(audits).toHaveLength(4);
+  expect(audits).toHaveLength(5);
   expect(audits.every((event) => event.status === "succeeded")).toBe(true);
 
   await t.run((ctx) => ctx.db.patch(ids.profileId, { status: "disabled" }));
@@ -189,7 +317,7 @@ test("company email reads share operator authorization, auditing and private att
       idempotencyKey: "after-revocation",
     }),
   ).rejects.toThrow();
-  expect(providerCall).toHaveBeenCalledTimes(4);
+  expect(providerCall).toHaveBeenCalledTimes(5);
 });
 
 test("operator rich reads execute and replay through the audited action boundary", async () => {
