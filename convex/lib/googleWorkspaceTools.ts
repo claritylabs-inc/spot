@@ -1230,7 +1230,7 @@ export async function runGoogleWorkspaceTool(
   );
   // Leave room for the audit envelope and preserve lossless idempotent replay.
   if (Buffer.byteLength(JSON.stringify(output.result), "utf8") > 512 * 1024) {
-    if ("attachments" in output) {
+    if (output.attachments) {
       await Promise.all(
         output.attachments.map((file) =>
           dependencies.attachmentStorage.delete(file.fileId),
