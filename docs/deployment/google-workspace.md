@@ -217,7 +217,11 @@ query, for example `from:alias@example.com`; do not change the mailbox roster to
 the alias.
 
 Full thread reads use Gmail's full message payload, and attachments remain
-bound to the mailbox and parent message that identified them. See the
+bound to the mailbox and parent message that identified them. Model-facing attachment IDs
+use short `part:<MIME part ID>` locators for both inline and remote content. The
+backend refetches the stated message, requires one matching part, and passes its
+raw Google attachment ID to Gmail privately. Older raw-ID calls remain accepted
+only after the same parent-message membership check. See the
 [`users.threads.get` reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.threads/get) and
 [`users.messages.attachments.get` reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages.attachments/get).
 
