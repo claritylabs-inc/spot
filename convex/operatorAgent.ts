@@ -30,6 +30,7 @@ import {
   type OperatorAgentToolName,
   type OperatorToolRole,
 } from "./lib/operatorAgentToolRegistry";
+import type { OperatorGoogleWorkspaceToolName } from "./lib/googleWorkspace";
 import {
   listOperatorAgentIntents,
   resolveOperatorAgentIntent,
@@ -251,6 +252,23 @@ function boundedJson(value: unknown, maximum = 8_000) {
   } catch {
     return String(value).slice(0, maximum);
   }
+}
+
+function isOperatorGoogleWorkspaceTool(
+  toolName: string,
+): toolName is OperatorGoogleWorkspaceToolName {
+  return (
+    toolName === "list_company_mailboxes" ||
+    toolName === "search_company_email" ||
+    toolName === "read_company_email_thread" ||
+    toolName === "get_company_email_attachment"
+  );
+}
+
+function serializedOperatorActionOutput(toolName: string, result: unknown) {
+  return isOperatorGoogleWorkspaceTool(toolName)
+    ? JSON.stringify(result)
+    : boundedJson(result);
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
@@ -2604,12 +2622,7 @@ async function executeToolActionDomain(
     idempotencyKey?: string;
   },
 ): Promise<OperatorActionToolResult> {
-  if (
-    args.toolName === "list_company_mailboxes" ||
-    args.toolName === "search_company_email" ||
-    args.toolName === "read_company_email_thread" ||
-    args.toolName === "get_company_email_attachment"
-  ) {
+  if (isOperatorGoogleWorkspaceTool(args.toolName)) {
     return await ctx.runAction(
       internal.actions.operatorGoogleWorkspace.runToolInternal,
       {
@@ -4617,7 +4630,7 @@ export const finishUnconfirmedActionToolInternal = internalMutation({
     }
     await ctx.db.patch(audit._id, {
       status: "succeeded",
-      output: boundedJson(args.result),
+      output: serializedOperatorActionOutput(audit.action, args.result),
       error: undefined,
       updatedAt: now,
     });

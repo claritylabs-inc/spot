@@ -12,6 +12,24 @@ const modules = import.meta.glob("./**/*.ts");
 
 test("company email reads share operator authorization, auditing and private attachment delivery across channels", async () => {
   const providerCall = vi.fn();
+  const largeSearchResult = {
+    messages: Array.from({ length: 40 }, (_, index) => ({
+      mailbox: "staff@example.com",
+      messageId: `message-${index}`,
+      threadId: `thread-${index}`,
+      subject: `Warehouse renewal ${index}`,
+      snippet: `Source-backed renewal correspondence ${"detail ".repeat(40)}`,
+    })),
+    nextCursor: "opaque-resume-cursor",
+    errors: [
+      {
+        mailbox: "claims@example.com",
+        error: "Mailbox delegation is unavailable.",
+      },
+    ],
+    completeness: "partial",
+  };
+  expect(JSON.stringify(largeSearchResult).length).toBeGreaterThan(8_000);
   const t = convexTest(schema, {
     ...modules,
     "./actions/operatorGoogleWorkspace.ts": async () => ({
@@ -25,6 +43,9 @@ test("company email reads share operator authorization, auditing and private att
         },
         handler: async (ctx, args) => {
           providerCall(args);
+          if (args.toolName === "search_company_email") {
+            return { result: largeSearchResult };
+          }
           if (args.toolName !== "get_company_email_attachment") {
             return { result: { status: "ok", source: "company_email" } };
           }
@@ -107,6 +128,18 @@ test("company email reads share operator authorization, auditing and private att
       status: "succeeded",
       idempotent: true,
     });
+    if (entry.toolName === "search_company_email") {
+      expect(first.outcome).toEqual({
+        status: "succeeded",
+        result: largeSearchResult,
+        idempotent: false,
+      });
+      expect(replay.outcome).toEqual({
+        status: "succeeded",
+        result: largeSearchResult,
+        idempotent: true,
+      });
+    }
     if (entry.toolName === "get_company_email_attachment") {
       const persisted = await t.run(async (ctx) => ({
         thread: await ctx.db.get(first.threadId),
