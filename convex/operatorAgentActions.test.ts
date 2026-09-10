@@ -85,16 +85,25 @@ test("company email reads share operator authorization, auditing and private att
   });
 
   const cases = [
-    { toolName: "list_company_mailboxes", channel: "chat", input: {} },
+    {
+      toolName: "list_company_mailboxes",
+      channel: "chat",
+      input: { cursor: null, limit: 1 },
+    },
     {
       toolName: "search_company_email",
       channel: "slack",
-      input: { query: "warehouse" },
+      input: { query: "warehouse", cursor: null, mailboxes: null, limit: 10 },
     },
     {
       toolName: "read_company_email_thread",
       channel: "imessage",
-      input: { mailbox: "staff@example.com", threadId: "thread-1" },
+      input: {
+        mailbox: "staff@example.com",
+        threadId: "thread-1",
+        cursor: null,
+        limit: null,
+      },
     },
     {
       toolName: "get_company_email_attachment",
@@ -120,6 +129,10 @@ test("company email reads share operator authorization, auditing and private att
       status: "succeeded",
       idempotent: false,
     });
+    const forwardedInput = providerCall.mock.lastCall?.[0].input;
+    expect(forwardedInput).not.toHaveProperty("cursor");
+    expect(forwardedInput).not.toHaveProperty("mailboxes");
+    expect(Object.values(forwardedInput)).not.toContain(null);
     const replay = await t.action(
       internal.operatorAgent.invokeRegisteredToolInternal,
       args,
