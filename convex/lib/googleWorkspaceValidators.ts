@@ -32,6 +32,7 @@ export const operatorGoogleWorkspaceVerificationResultValidator = v.object({
     v.literal("failed"),
   ),
   completeness: v.union(v.literal("complete"), v.literal("partial")),
+  error: v.optional(v.string()),
   verifiedAt: v.number(),
   configUpdatedAt: v.number(),
   checkedMailboxCount: v.number(),

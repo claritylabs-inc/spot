@@ -81,15 +81,17 @@ describe("Google Workspace verification", () => {
   });
 
   it("returns sanitized partial diagnostics for a mailbox failure", async () => {
-    const getMailboxProfile = vi.fn().mockImplementation(async (mailbox: string) => {
-      if (mailbox === "second@example.com") {
-        throw {
-          message: "private_key=LEAK token=LEAK",
-          response: { status: 403, config: { data: "assertion=LEAK" } },
-        };
-      }
-      return { emailAddress: mailbox };
-    });
+    const getMailboxProfile = vi
+      .fn()
+      .mockImplementation(async (mailbox: string) => {
+        if (mailbox === "second@example.com") {
+          throw {
+            message: "private_key=LEAK token=LEAK",
+            response: { status: 403, config: { data: "assertion=LEAK" } },
+          };
+        }
+        return { emailAddress: mailbox };
+      });
     const result = await verifyGoogleWorkspaceConnection(
       provider({ getMailboxProfile }),
       config({ mailboxes: ["first@example.com", "second@example.com"] }),
@@ -103,7 +105,9 @@ describe("Google Workspace verification", () => {
       error:
         "Google Workspace denied delegated access. Check domain-wide delegation, scopes, and the impersonated account.",
     });
-    expect(JSON.stringify(result)).not.toMatch(/LEAK|private_key|assertion|token=/);
+    expect(JSON.stringify(result)).not.toMatch(
+      /LEAK|private_key|assertion|token=/,
+    );
   });
 
   it("uses customer-wide Directory enumeration, filters ineligible users, and never overstates a bounded sample", async () => {
@@ -154,8 +158,12 @@ describe("Google Workspace verification", () => {
         error: null,
       },
     });
-    expect(result.mailboxes.some(({ mailbox }) => mailbox.endsWith("@spot.insure"))).toBe(true);
-    expect(result.mailboxes.some(({ mailbox }) => mailbox.endsWith("@glass.insure"))).toBe(true);
+    expect(
+      result.mailboxes.some(({ mailbox }) => mailbox.endsWith("@spot.insure")),
+    ).toBe(true);
+    expect(
+      result.mailboxes.some(({ mailbox }) => mailbox.endsWith("@glass.insure")),
+    ).toBe(true);
     expect(result.mailboxes).not.toContainEqual(
       expect.objectContaining({ mailbox: "suspended@glass.insure" }),
     );
@@ -165,7 +173,9 @@ describe("Google Workspace verification", () => {
     const getMailboxProfile = vi.fn(
       (_mailbox: string, options?: { signal?: AbortSignal }) =>
         new Promise<{ emailAddress: string }>((_resolve, reject) => {
-          options?.signal?.addEventListener("abort", () => reject({ code: "ABORT_ERR" }));
+          options?.signal?.addEventListener("abort", () =>
+            reject({ code: "ABORT_ERR" }),
+          );
         }),
     );
     const mailboxes = Array.from(
@@ -182,6 +192,7 @@ describe("Google Workspace verification", () => {
       completeness: "partial",
       checkedMailboxCount: 0,
       totalMailboxCount: 11,
+      error: "Google Workspace verification reached its time limit.",
     });
     expect(result.mailboxes).toHaveLength(0);
     expect(getMailboxProfile).toHaveBeenCalledTimes(10);
@@ -194,9 +205,7 @@ describe("Google Workspace verification", () => {
         users: [directoryUser("first@spot.insure")],
         nextPageToken: "page-2",
       })
-      .mockImplementationOnce(
-        () => new Promise<never>(() => undefined),
-      );
+      .mockImplementationOnce(() => new Promise<never>(() => undefined));
     const result = await verifyGoogleWorkspaceConnection(
       provider({ listDirectoryUsers }),
       config({
@@ -212,6 +221,7 @@ describe("Google Workspace verification", () => {
       completeness: "partial",
       checkedMailboxCount: 0,
       totalMailboxCount: null,
+      error: "Google Workspace verification reached its time limit.",
       directory: {
         status: "partial",
         discoveredMailboxCount: 1,

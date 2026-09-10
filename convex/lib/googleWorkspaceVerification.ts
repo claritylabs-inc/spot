@@ -87,7 +87,9 @@ async function directoryTargets(
       pages += 1;
       for (const user of page.users) {
         if (isEligibleDirectoryMailbox(user)) mailboxes.push(user.primaryEmail);
-        if (mailboxes.length > GOOGLE_WORKSPACE_LIMITS.maxVerificationMailboxes) {
+        if (
+          mailboxes.length > GOOGLE_WORKSPACE_LIMITS.maxVerificationMailboxes
+        ) {
           break;
         }
       }
@@ -147,6 +149,7 @@ export function failedGoogleWorkspaceVerification(
   return {
     status: "failed",
     completeness: "partial",
+    error,
     verifiedAt: dayjs().valueOf(),
     configUpdatedAt: config?.updatedAt ?? 0,
     checkedMailboxCount: 0,
@@ -183,6 +186,8 @@ export async function verifyGoogleWorkspaceConnection(
       return {
         status: "failed",
         completeness: "partial",
+        error:
+          directory.error ?? "Google Workspace directory verification failed.",
         verifiedAt: dayjs().valueOf(),
         configUpdatedAt: config.updatedAt,
         checkedMailboxCount: 0,
@@ -210,42 +215,46 @@ export async function verifyGoogleWorkspaceConnection(
   }
 
   const diagnostics: OperatorGoogleWorkspaceMailboxDiagnostic[] = [];
-  for (let offset = 0; offset < mailboxes.length; offset += VERIFY_CONCURRENCY) {
+  let aggregateError = directory.error;
+  for (
+    let offset = 0;
+    offset < mailboxes.length;
+    offset += VERIFY_CONCURRENCY
+  ) {
     const batch = mailboxes.slice(offset, offset + VERIFY_CONCURRENCY);
     const settled: Array<OperatorGoogleWorkspaceMailboxDiagnostic | undefined> =
       new Array(batch.length);
     try {
-      const results = await withVerificationDeadline(
-        deadlineAt,
-        (signal) =>
-          Promise.all(
-            batch.map(
-              async (
-                mailbox,
-                index,
-              ): Promise<OperatorGoogleWorkspaceMailboxDiagnostic> => {
-                let diagnostic: OperatorGoogleWorkspaceMailboxDiagnostic;
-                try {
-                  await provider.getMailboxProfile(mailbox, { signal });
-                  diagnostic = { mailbox, status: "verified", error: null };
-                } catch (error) {
-                  diagnostic = {
-                    mailbox,
-                    status: "failed",
-                    error: signal.aborted
-                      ? "Google Workspace verification reached its time limit."
-                      : sanitizeGoogleWorkspaceError(error),
-                  };
-                }
-                if (!signal.aborted) settled[index] = diagnostic;
-                return diagnostic;
-              },
-            ),
+      const results = await withVerificationDeadline(deadlineAt, (signal) =>
+        Promise.all(
+          batch.map(
+            async (
+              mailbox,
+              index,
+            ): Promise<OperatorGoogleWorkspaceMailboxDiagnostic> => {
+              let diagnostic: OperatorGoogleWorkspaceMailboxDiagnostic;
+              try {
+                await provider.getMailboxProfile(mailbox, { signal });
+                diagnostic = { mailbox, status: "verified", error: null };
+              } catch (error) {
+                diagnostic = {
+                  mailbox,
+                  status: "failed",
+                  error: signal.aborted
+                    ? "Google Workspace verification reached its time limit."
+                    : sanitizeGoogleWorkspaceError(error),
+                };
+              }
+              if (!signal.aborted) settled[index] = diagnostic;
+              return diagnostic;
+            },
           ),
+        ),
       );
       diagnostics.push(...results);
     } catch (error) {
       if (!(error instanceof VerificationDeadlineError)) throw error;
+      aggregateError = error.message;
       diagnostics.push(
         ...settled.filter(
           (
@@ -261,13 +270,15 @@ export async function verifyGoogleWorkspaceConnection(
     (diagnostic) => diagnostic.status === "verified",
   ).length;
   const enumerationComplete = !directory.hasMore;
-  const allSucceeded = diagnostics.length > 0 && successful === diagnostics.length;
+  const allSucceeded =
+    diagnostics.length > 0 && successful === diagnostics.length;
   const allMailboxesChecked = diagnostics.length === mailboxes.length;
   const completeness =
     enumerationComplete && allMailboxesChecked && allSucceeded
       ? "complete"
       : "partial";
   return {
+    ...(aggregateError ? { error: aggregateError } : {}),
     status:
       completeness === "complete"
         ? "verified"

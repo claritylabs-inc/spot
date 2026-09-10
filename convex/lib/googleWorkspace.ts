@@ -70,6 +70,8 @@ export type OperatorGoogleWorkspaceDirectoryDiagnostic = {
 export type OperatorGoogleWorkspaceVerificationResult = {
   status: "verified" | "partial" | "failed";
   completeness: "complete" | "partial";
+  /** Sanitized configuration or run-wide failure; absent on older saved results. */
+  error?: string;
   /** Unix epoch milliseconds. */
   verifiedAt: number;
   /** Binds this result to the settings revision that was verified. */

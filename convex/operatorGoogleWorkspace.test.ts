@@ -112,7 +112,10 @@ describe("operator Google Workspace settings", () => {
       directoryAdminEmail: "admin@example.com",
     });
 
-    const status = await operator.query(api.operatorGoogleWorkspace.getStatus, {});
+    const status = await operator.query(
+      api.operatorGoogleWorkspace.getStatus,
+      {},
+    );
     expect(status).toEqual({
       config: second,
       credentials: {
@@ -271,6 +274,7 @@ describe("operator Google Workspace settings", () => {
       completeness: "partial",
       checkedMailboxCount: 0,
       totalMailboxCount: 1,
+      error: "Google Workspace service-account credentials are not configured.",
     });
     await expect(
       customer.action(api.actions.operatorGoogleWorkspace.verifyConnection, {}),
@@ -284,5 +288,25 @@ describe("operator Google Workspace settings", () => {
         channel: "mcp",
       }),
     ).rejects.toThrow("credentials are not configured");
+
+    vi.stubEnv(
+      "GOOGLE_WORKSPACE_SERVICE_ACCOUNT_JSON",
+      "invalid-SENSITIVE-MARKER",
+    );
+    const failed = await operator.action(
+      api.actions.operatorGoogleWorkspace.verifyConnection,
+      {},
+    );
+    expect(failed).toMatchObject({
+      status: "failed",
+      checkedMailboxCount: 0,
+      error: "Google Workspace service-account credentials are invalid.",
+    });
+    expect(JSON.stringify(failed)).not.toContain("SENSITIVE-MARKER");
+    const status = await operator.query(
+      api.operatorGoogleWorkspace.getStatus,
+      {},
+    );
+    expect(status.savedVerification?.error).toBe(failed.error);
   });
 });
