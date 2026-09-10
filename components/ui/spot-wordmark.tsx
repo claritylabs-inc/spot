@@ -1,27 +1,37 @@
+import type { CSSProperties } from "react";
 import { LogoIcon } from "@/components/ui/logo-icon";
+import { SPOT_WORDMARK } from "@/lib/spot-wordmark";
+import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import {
-  spotWordmarkLeadingGlyphTypographyStyle,
-  redactionTypeStyle,
-} from "@/lib/typography";
 
-const SPOT_BLUE = "#A0D2FA";
-
-export function SpotWordmark({ className }: { className?: string }) {
+export function SpotWordmark({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
     <span
-      role="img"
-      aria-label="Spot"
       className={cn(
-        "inline-flex items-center gap-[0.25em] text-foreground",
-        redactionTypeStyle("brand.wordmark"),
+        "inline-flex items-center text-foreground",
+        typeStyle("brand.wordmark"),
         className,
       )}
+      style={{ display: "inline-flex", alignItems: "center", ...style }}
     >
-      <LogoIcon className="shrink-0" size="1em" color={SPOT_BLUE} static />
-      <span aria-hidden>
-        <span style={spotWordmarkLeadingGlyphTypographyStyle}>s</span>pot
-      </span>
+      <svg
+        width={`${SPOT_WORDMARK.width / SPOT_WORDMARK.height}em`}
+        height="1em"
+        viewBox={`0 0 ${SPOT_WORDMARK.width} ${SPOT_WORDMARK.height}`}
+        fill="none"
+        role="img"
+        aria-label="Spot"
+        className="shrink-0"
+      >
+        <LogoIcon size={SPOT_WORDMARK.height} />
+        <path d={SPOT_WORDMARK.path} fill="currentColor" />
+      </svg>
     </span>
   );
 }

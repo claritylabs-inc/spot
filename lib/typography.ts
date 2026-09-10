@@ -108,11 +108,6 @@ export function redactionTypeStyle(
   return typographyRoles[role].replace("font-brand", redactionFamilyClasses[level]);
 }
 
-/** The canonical Spot lockup preserves normal tracking on its leading glyph. */
-export const spotWordmarkLeadingGlyphTypographyStyle = Object.freeze({
-  letterSpacing: "normal",
-} satisfies CSSProperties);
-
 /** Typography contract for the Spot social card rendered through next/og. */
 export const spotSocialAsciiTypographyStyle = Object.freeze({
   fontFamily: "monospace",
@@ -120,14 +115,6 @@ export const spotSocialAsciiTypographyStyle = Object.freeze({
   fontWeight: 500,
   letterSpacing: "0.085em",
   lineHeight: 0.96,
-} satisfies CSSProperties);
-
-export const spotSocialWordmarkTypographyStyle = Object.freeze({
-  fontFamily: "Redaction",
-  fontSize: 136,
-  fontWeight: 400,
-  letterSpacing: "-0.025em",
-  lineHeight: 1,
 } satisfies CSSProperties);
 
 export const spotSocialUrlTypographyStyle = Object.freeze({
