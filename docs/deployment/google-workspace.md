@@ -83,14 +83,25 @@ Use a Google Cloud project controlled by the company, then:
 2. Open **IAM & Admin → Service Accounts → Create service account** and create
    a dedicated account for Spot. Do not grant it unrelated Google Cloud IAM
    roles.
-3. Open the new service account's **Details**, expand its Google Workspace
-   domain-wide delegation settings, and enable domain-wide delegation.
-4. Record its service-account email and numeric OAuth client ID. In Google
-   Cloud, open **IAM & Admin → Service Accounts → the service account → Advanced
-   settings** to copy the client ID.
-5. Open **Keys → Add key → Create new key → JSON**. Move the downloaded file
-   immediately to the approved secret store. The downloaded file is the only
-   copy of that private key.
+3. Open the new service account's **Details → Advanced settings → Domain-wide
+   Delegation** and record its numeric **Client ID** and service-account email.
+   Authorize that client ID in the Workspace Admin console using the next
+   section; displaying a client ID in Cloud does not itself grant mailbox access.
+4. Open **Keys → Add key → Create new key → JSON**. Allow the Google Cloud
+   download in the browser, confirm the file was saved, and move it immediately
+   to the approved secret store. The downloaded file is the only copy of that
+   private key.
+
+Use separate service accounts and JSON keys for development and production.
+Each client ID needs its own Workspace delegation entry, and each JSON belongs
+only in its matching backend environment.
+
+If Google blocks key creation with `iam.disableServiceAccountKeyCreation`, an
+Organization Policy Administrator must approve and configure a project-scoped
+exception. Allow time for the policy change to propagate before retrying. After
+the required keys are generated and securely stored, restore the inherited
+restriction and remove any temporary IAM role granted for provisioning. Follow
+Google's [key creation instructions](https://cloud.google.com/iam/docs/keys-create-delete).
 
 Google recommends its client libraries for this server-to-server flow. Spot
 uses the server-side Google libraries and specifies the mailbox being
