@@ -20,6 +20,7 @@ import {
 import {
   assertImpersonatedSetupWrite,
   requireOperator,
+  requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
 import type { Id as DataModelId } from "./_generated/dataModel";
@@ -40,6 +41,7 @@ import {
 } from "./lib/carrierIdentity";
 import { resolveCarrierIdentity } from "./lib/carrierIdentityProjection";
 import { policyProductIdentityValidator } from "./lib/policyProductIdentity";
+import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import {
   extractionContractHash,
   evaluateExtractionPromotion,
@@ -2230,51 +2232,67 @@ export const createOperatorUpload = mutation({
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client")
-      throw new Error("Client not found");
     await assertImpersonatedSetupWrite(ctx, args.clientOrgId);
-    const fileSha256 = normalizeFileSha256(args.fileSha256);
-
-    const policyId = await ctx.db.insert("policies", {
-      orgId: args.clientOrgId,
-      fileId: args.fileId,
-      fileName: args.fileName,
-      uploadFileSha256s: normalizeFileSha256s(
-        args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
-      ),
-      documentType: args.documentType,
-      carrier: "Extracting...",
-      policyNumber: "Extracting...",
-      linesOfBusiness: ["UN"],
-      policyYear: dayjs().year(),
-      effectiveDate: "Extracting...",
-      expirationDate: "Extracting...",
-      isRenewal: false,
-      coverages: [],
-      insuredName: "Extracting...",
-      extractionDataStage: "placeholder",
-      extractionDataStageUpdatedAt: nowMs(),
-      uploadedBySide: "operator",
-      uploadedByUserId: operator.userId,
-    });
-
-    await writeOperatorAudit(ctx, {
-      operatorUserId: operator.userId,
-      type: "setup_write",
-      targetOrgId: args.clientOrgId,
-      summary: `Uploaded a policy for ${client.name}`,
-      metadata: {
-        domain: "policies",
-        policyId,
-        documentType: args.documentType,
-        fileName: args.fileName,
-      },
-    });
-
-    return policyId;
+    return createOperatorUploadByUser(ctx, operator.userId, args);
   },
 });
+
+export async function createOperatorUploadByUser(
+  ctx: MutationCtx,
+  operatorUserId: DataModelId<"users">,
+  args: {
+    clientOrgId: DataModelId<"organizations">;
+    fileId: DataModelId<"_storage">;
+    fileName?: string;
+    fileSha256?: string;
+    uploadFileSha256s?: string[];
+    documentType: "policy";
+  },
+): Promise<DataModelId<"policies">> {
+  const operator = await requireOperatorForUser(ctx, operatorUserId);
+  await assertNoOperatorImpersonation(ctx, operatorUserId);
+  const client = await ctx.db.get(args.clientOrgId);
+  if (!client || client.type !== "client") throw new Error("Client not found");
+  const fileSha256 = normalizeFileSha256(args.fileSha256);
+
+  const policyId = await ctx.db.insert("policies", {
+    orgId: args.clientOrgId,
+    fileId: args.fileId,
+    fileName: args.fileName,
+    uploadFileSha256s: normalizeFileSha256s(
+      args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
+    ),
+    documentType: args.documentType,
+    carrier: "Extracting...",
+    policyNumber: "Extracting...",
+    linesOfBusiness: ["UN"],
+    policyYear: dayjs().year(),
+    effectiveDate: "Extracting...",
+    expirationDate: "Extracting...",
+    isRenewal: false,
+    coverages: [],
+    insuredName: "Extracting...",
+    extractionDataStage: "placeholder",
+    extractionDataStageUpdatedAt: nowMs(),
+    uploadedBySide: "operator",
+    uploadedByUserId: operator.userId,
+  });
+
+  await writeOperatorAudit(ctx, {
+    operatorUserId: operator.userId,
+    type: "setup_write",
+    targetOrgId: args.clientOrgId,
+    summary: `Uploaded a policy for ${client.name}`,
+    metadata: {
+      domain: "policies",
+      policyId,
+      documentType: args.documentType,
+      fileName: args.fileName,
+    },
+  });
+
+  return policyId;
+}
 
 // Operators query policies for an explicit client organization. Tenant clients
 // use listForClient and receive read-only policy access.

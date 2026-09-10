@@ -515,8 +515,31 @@ export async function runWebRetrieval(
   orgId: Id<"organizations">,
   rawInput: WebRetrievalInput,
 ): Promise<WebRetrievalResult> {
-  const input = normalizeInput(rawInput);
   const config = await resolveWebRetrievalForOrg(ctx, orgId);
+  return runWebRetrievalWithConfig(config, rawInput);
+}
+
+export async function runOperatorWebRetrieval(
+  ctx: ActionCtx,
+  rawInput: WebRetrievalInput,
+): Promise<WebRetrievalResult> {
+  const settings = await ctx.runQuery(
+    internal.modelSettings.resolvePublicDefaults,
+    {},
+  );
+  const config = normalizeRoute(settings.webRetrieval);
+  const route =
+    config.primary === "model_default"
+      ? await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {})
+      : undefined;
+  return runWebRetrievalWithConfig({ ...config, route }, rawInput);
+}
+
+async function runWebRetrievalWithConfig(
+  config: ResolvedWebRetrievalRoute,
+  rawInput: WebRetrievalInput,
+): Promise<WebRetrievalResult> {
+  const input = normalizeInput(rawInput);
   const attempts: WebRetrievalResult["attempts"] = [];
   const fallbackProviders: Array<{
     provider: WebRetrievalProvider;

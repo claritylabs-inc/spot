@@ -27,6 +27,8 @@ import {
 import {
   getOperatorAgentToolSpec,
   parseOperatorAgentToolInput,
+  operatorUpdateFieldLabel,
+  operatorUpdateValue,
   type OperatorAgentToolName,
   type OperatorToolRole,
 } from "./lib/operatorAgentToolRegistry";
@@ -93,6 +95,10 @@ import type { PacketAudience } from "./lib/procurementPacket";
 import { isOrgWikiSectionKey } from "./lib/orgWiki";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import {
+  resolveOperatorPolicySources,
+  operatorPolicySourceFingerprint,
+} from "./operatorPolicyImports";
 import {
   createSlackThreadContextArtifact,
   slackThreadContextMessageTimestamps,
@@ -227,6 +233,8 @@ type OperatorActionToolResult = {
 };
 
 const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
+  "import_policy_files",
+  "web_search",
   "lookup_policy",
   "compare_coverages",
   "lookup_policy_section",
@@ -259,7 +267,10 @@ function isOperatorGoogleWorkspaceTool(
 }
 
 function serializedOperatorActionOutput(toolName: string, result: unknown) {
-  return isOperatorGoogleWorkspaceTool(toolName)
+  return isOperatorGoogleWorkspaceTool(toolName) ||
+    toolName === "web_search" ||
+    toolName === "list_operator_conversations" ||
+    toolName === "read_operator_conversation"
     ? JSON.stringify(result)
     : boundedJson(result);
 }
@@ -436,7 +447,66 @@ async function operatorDisplaySummary(
     if (!displayName) continue;
     displaySummary = displaySummary.split(value).join(displayName);
   }
-  return boundedDisplayText(displaySummary, 1_000);
+  return boundedDisplayText(displaySummary, 2_500);
+}
+
+async function operatorConfirmationSummary(
+  ctx: MutationCtx,
+  toolName: string,
+  input: Record<string, unknown>,
+  context: {
+    operatorUserId: Id<"users">;
+    threadId: Id<"operatorAgentThreads">;
+  },
+) {
+  if (toolName === "import_policy_files") {
+    const orgId = normalizeOrganizationId(ctx, input.orgId);
+    const files = await resolveOperatorPolicySources(ctx, {
+      ...context,
+      orgId,
+      attachmentFileIds: stringList(input.attachmentFileIds),
+      clientFileIds: stringList(input.clientFileIds),
+    });
+    const client = await ctx.db.get(orgId);
+    return `Import into ${client!.name}'s policy library\nFiles: ${files.map((file) => file.fileName).join(", ")}\nGrouping: ${input.mode === "combined" ? "one policy containing all selected PDFs" : `${files.length} separate policies (one per PDF)`}\nQueue extraction; duplicate PDFs reuse existing policies.`;
+  }
+  if (toolName !== "update_broker_network_profile") {
+    return operatorDisplaySummary(
+      ctx,
+      getOperatorAgentToolSpec(toolName).summarize(input),
+      input,
+    );
+  }
+  const details = await getBrokerProfileDetails(
+    ctx,
+    normalizeOrganizationId(ctx, input.brokerOrgId),
+  );
+  const current: Record<string, unknown> = {
+    ...details.profile,
+    ...details.broker,
+  };
+  const changes = Object.entries(input)
+    .filter(
+      ([key, value]) =>
+        key !== "brokerOrgId" && key !== "evidence" && value !== undefined,
+    )
+    .map(([key, value]) => {
+      const next =
+        key === "officeAddress" && value && typeof value === "object"
+          ? { ...details.profile?.officeAddress, ...value }
+          : value;
+      return `${operatorUpdateFieldLabel(key)}: ${operatorUpdateValue(key, current[key])} → ${operatorUpdateValue(key, next)}`;
+    });
+  return boundedDisplayText(
+    [
+      `Update broker network profile ${details.broker.name}`,
+      ...changes,
+      input.evidence ? `Evidence: ${input.evidence}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    2_500,
+  );
 }
 
 function boundedTokenEditDistance(
@@ -1354,6 +1424,83 @@ async function executeToolDomain(
   },
 ) {
   const { toolName, input } = args;
+  if (toolName === "list_operator_conversations") {
+    const archived = input.archived === true;
+    const threads =
+      input.scope === "shared"
+        ? ctx.db
+            .query("operatorAgentThreads")
+            .withIndex("visibility_archive", (q) =>
+              q
+                .eq("visibility", "shared")
+                .eq("archiveState", archived ? "archived" : undefined),
+            )
+        : ctx.db
+            .query("operatorAgentThreads")
+            .withIndex("owner_archive", (q) =>
+              q
+                .eq("ownerUserId", args.operatorUserId)
+                .eq("archiveState", archived ? "archived" : undefined),
+            );
+    const page = await threads.order("desc").paginate({
+      cursor: typeof input.cursor === "string" ? input.cursor : null,
+      numItems: typeof input.limit === "number" ? input.limit : 15,
+    });
+    return {
+      conversations: page.page.map((thread) => ({
+        threadId: thread._id,
+        title: thread.title,
+        channel: thread.channel,
+        visibility: thread.visibility,
+        archived: Boolean(thread.archivedAt),
+        lastMessageAt: thread.lastMessageAt,
+      })),
+      nextCursor: page.isDone ? null : page.continueCursor,
+      isDone: page.isDone,
+    };
+  }
+  if (toolName === "read_operator_conversation") {
+    const threadId =
+      typeof input.operatorThreadId === "string"
+        ? ctx.db.normalizeId("operatorAgentThreads", input.operatorThreadId)
+        : null;
+    if (!threadId) throw new Error("Operator conversation not found");
+    const thread = await requireOperatorThread(
+      ctx,
+      threadId,
+      args.operatorUserId,
+      { allowShared: true },
+    );
+    const page = await ctx.db
+      .query("operatorAgentMessages")
+      .withIndex("thread", (q) => q.eq("threadId", threadId))
+      .order("desc")
+      .paginate({
+        cursor: typeof input.cursor === "string" ? input.cursor : null,
+        numItems: typeof input.limit === "number" ? input.limit : 5,
+      });
+    return {
+      threadId,
+      title: thread.title,
+      messages: page.page.map((message) => ({
+        messageId: message._id,
+        role: message.role,
+        author: message.userName,
+        channel: message.channel,
+        createdAt: message.createdAt,
+        content: message.content,
+        attachments: message.attachments?.map(
+          ({ filename, contentType, size }) => ({
+            filename,
+            contentType,
+            size,
+          }),
+        ),
+      })),
+      nextCursor: page.isDone ? null : page.continueCursor,
+      isDone: page.isDone,
+    };
+  }
   if (toolName === "search_organizations") {
     const queryText = typeof input.query === "string" ? input.query.trim() : "";
     const requestedType =
@@ -2666,6 +2813,7 @@ async function executeToolActionDomain(
     input: Record<string, unknown>;
     channel: OperatorChannel;
     idempotencyKey?: string;
+    confirmationId?: Id<"operatorAgentConfirmations">;
   },
 ): Promise<OperatorActionToolResult> {
   if (isOperatorGoogleWorkspaceTool(args.toolName)) {
@@ -2690,6 +2838,7 @@ async function executeToolActionDomain(
         toolName: args.toolName,
         input: args.input,
         channel: args.channel,
+        confirmationId: args.confirmationId,
       },
     )) as OperatorActionToolResult;
   }
@@ -2865,6 +3014,17 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
       throw new Error("Idempotency key was already used for another action");
     }
     if (existing.status === "succeeded") {
+      if (
+        args.toolName === "list_operator_conversations" ||
+        args.toolName === "read_operator_conversation"
+      ) {
+        const result = await executeToolDomain(ctx, {
+          ...args,
+          toolName: args.toolName,
+          input,
+        });
+        return { status: "succeeded" as const, result, idempotent: true };
+      }
       return {
         status: "succeeded" as const,
         result: parseStoredOutput(existing.output),
@@ -2969,7 +3129,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     });
     await ctx.db.patch(auditId, {
       status: "succeeded",
-      output: boundedJson(result),
+      output: serializedOperatorActionOutput(args.toolName, result),
       error: undefined,
       updatedAt: dayjs().valueOf(),
     });
@@ -3503,6 +3663,23 @@ async function confirmOperatorAction(
     toolName: payload.toolName as OperatorAgentToolName,
     input: parseOperatorAgentToolInput(payload.toolName, parsedInput),
   });
+  if (payload.toolName === "import_policy_files") {
+    const input = parseOperatorAgentToolInput(payload.toolName, parsedInput);
+    const files = await resolveOperatorPolicySources(ctx, {
+      operatorUserId: operator.userId,
+      threadId: args.threadId,
+      orgId: normalizeOrganizationId(ctx, input.orgId),
+      attachmentFileIds: stringList(input.attachmentFileIds),
+      clientFileIds: stringList(input.clientFileIds),
+    });
+    if (
+      payload.sourceFingerprint !==
+      (await operatorPolicySourceFingerprint(files))
+    )
+      throw new Error(
+        "Policy sources changed since confirmation; request a fresh import approval",
+      );
+  }
   await ctx.db.patch(confirmation._id, {
     status: "completed",
     completedAt: now,
@@ -3769,6 +3946,7 @@ export const validateConfirmedActionToolExecutionInternal = internalQuery({
         thread.channel === "mcp"
           ? thread.channel
           : ("chat" as const),
+      confirmationId: confirmation._id,
     };
   },
 });
@@ -4024,10 +4202,7 @@ export const getPendingConfirmationInternal = internalQuery({
       )
       .order("desc")
       .first();
-    if (
-      !confirmation ||
-      confirmation.operatorUserId !== args.operatorUserId
-    ) {
+    if (!confirmation || confirmation.operatorUserId !== args.operatorUserId) {
       return null;
     }
     const run = await ctx.db.get(confirmation.payload.runId);
@@ -4879,6 +5054,7 @@ export const markRunStartedInternal = internalMutation({
 
 export const requestToolConfirmationInternal = internalMutation({
   args: {
+    checkpointSummary: v.optional(v.string()),
     operatorUserId: v.id("users"),
     runId: v.id("operatorAgentRuns"),
     threadId: v.id("operatorAgentThreads"),
@@ -5003,10 +5179,11 @@ export const requestToolConfirmationInternal = internalMutation({
     }
     const target = spec.target(input);
     const inputJson = JSON.stringify(input);
-    const summary = await operatorDisplaySummary(
+    const summary = await operatorConfirmationSummary(
       ctx,
-      spec.summarize(input),
+      args.toolName,
       input,
+      { operatorUserId: args.operatorUserId, threadId: args.threadId },
     );
     const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
       threadId: args.threadId,
@@ -5019,6 +5196,18 @@ export const requestToolConfirmationInternal = internalMutation({
         toolVersion: spec.version,
         input: inputJson,
         inputHash: args.inputHash,
+        sourceFingerprint:
+          args.toolName === "import_policy_files"
+            ? await operatorPolicySourceFingerprint(
+                await resolveOperatorPolicySources(ctx, {
+                  operatorUserId: args.operatorUserId,
+                  threadId: args.threadId,
+                  orgId: normalizeOrganizationId(ctx, input.orgId),
+                  attachmentFileIds: stringList(input.attachmentFileIds),
+                  clientFileIds: stringList(input.clientFileIds),
+                }),
+              )
+            : undefined,
         idempotencyKey: args.idempotencyKey,
         capability: spec.capability,
         effect: spec.effect,
@@ -5067,7 +5256,8 @@ export const requestToolConfirmationInternal = internalMutation({
       checkpoint: {
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
         executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
-        summary: run.checkpoint?.summary,
+        summary:
+          args.checkpointSummary?.slice(-6_000) ?? run.checkpoint?.summary,
         lastToolName: args.toolName,
         pendingConfirmationId: confirmationId,
       },
@@ -5092,6 +5282,8 @@ export const executeToolInternal = internalMutation({
 export const completeRunInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
+    expectedCheckpointIteration: v.optional(v.number()),
+    checkpointSummary: v.optional(v.string()),
     content: v.string(),
     routerRequestId: v.optional(v.string()),
     usedTools: v.array(v.string()),
@@ -5111,6 +5303,13 @@ export const completeRunInternal = internalMutation({
       return { status: "cancelled" as const };
     }
     const waiting = run.status === "waiting_confirmation";
+    if (
+      (run.status !== "running" && !waiting) ||
+      (args.expectedCheckpointIteration !== undefined &&
+        (run.checkpoint?.iteration ?? 0) !==
+          args.expectedCheckpointIteration + (waiting ? 1 : 0))
+    )
+      return { status: "not_completed" as const };
     const currentMessage = await ctx.db.get(run.agentMessageId);
     const usedTools = [
       ...new Set([...(currentMessage?.usedTools ?? []), ...args.usedTools]),
@@ -5128,6 +5327,25 @@ export const completeRunInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
+    if (waiting && run.checkpoint) {
+      await ctx.db.patch(run._id, {
+        checkpoint: {
+          ...run.checkpoint,
+          summary:
+            args.checkpointSummary?.slice(-6_000) ??
+            buildOperatorRunCheckpointSummary({
+              previous: run.checkpoint.summary,
+              audit: {
+                usedTools: args.usedTools,
+                completedTools: [],
+                toolCalls: args.toolCalls,
+                workflowOutcomes: [],
+              },
+            }),
+        },
+        updatedAt: now,
+      });
+    }
     if (!waiting) {
       await ctx.db.patch(run._id, {
         status: "completed",
@@ -5153,6 +5371,7 @@ export const completeRunInternal = internalMutation({
 export const continueRunInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
+    expectedCheckpointIteration: v.optional(v.number()),
     summary: v.string(),
     usedTools: v.array(v.string()),
     toolCalls: v.array(
@@ -5169,7 +5388,12 @@ export const continueRunInternal = internalMutation({
     if (run.status === "waiting_confirmation") {
       return { status: "waiting_confirmation" as const };
     }
-    if (run.status !== "running" || run.cancellationRequestedAt) {
+    if (
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      (args.expectedCheckpointIteration !== undefined &&
+        (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration)
+    ) {
       return { status: "not_continued" as const };
     }
     const message = await ctx.db.get(run.agentMessageId);
@@ -5205,10 +5429,20 @@ export const continueRunInternal = internalMutation({
 });
 
 export const failRunInternal = internalMutation({
-  args: { runId: v.id("operatorAgentRuns"), error: v.string() },
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    error: v.string(),
+    expectedCheckpointIteration: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
     if (!run) return;
+    if (
+      args.expectedCheckpointIteration !== undefined &&
+      (run.status !== "running" ||
+        (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration)
+    )
+      return;
     const now = dayjs().valueOf();
     if (run.status === "cancelled" || run.cancellationRequestedAt) return;
     if (run.checkpoint?.pendingConfirmationId) {
