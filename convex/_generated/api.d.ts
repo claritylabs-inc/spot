@@ -42,6 +42,7 @@ import type * as actions_mailboxCoordinator from "../actions/mailboxCoordinator.
 import type * as actions_mcpChat from "../actions/mcpChat.js";
 import type * as actions_mirrorWebChatToImessage from "../actions/mirrorWebChatToImessage.js";
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
+import type * as actions_operatorChannelDelivery from "../actions/operatorChannelDelivery.js";
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
@@ -402,6 +403,7 @@ declare const fullApi: ApiFromModules<{
   "actions/mcpChat": typeof actions_mcpChat;
   "actions/mirrorWebChatToImessage": typeof actions_mirrorWebChatToImessage;
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
+  "actions/operatorChannelDelivery": typeof actions_operatorChannelDelivery;
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
   "actions/policyExtraction": typeof actions_policyExtraction;

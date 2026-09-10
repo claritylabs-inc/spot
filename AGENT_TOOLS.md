@@ -99,7 +99,7 @@ Company email uses the global connection configured in Channels → Google Works
 
 Operator MCP exposes registered read tools to read-scoped operator tokens, registered write tools only to write-scoped tokens, and owner-only tools only to owners. `docs/deployment/operator-mcp.md` covers connecting Claude Code, Codex, and Conductor sessions to it. It adds these lifecycle tools outside the operator-agent registry:
 
-An operator conversation permits one live exact confirmation at a time. A competing registered write returns `blocked_by_confirmation` with the existing confirmation and run IDs instead of an MCP error, and the blocked invocation terminates without executing. Expired confirmations are closed before a later write requests confirmation.
+An operator conversation permits one live exact confirmation at a time. A competing registered write returns `blocked_by_confirmation` with the existing confirmation and run IDs instead of an MCP error, and the blocked invocation terminates without executing. Pending operator confirmations have no time limit; they remain live until approved, cancelled, or superseded. Approval reruns the shared reference preflight before execution, in addition to the existing identity, role, fingerprint, and write-boundary checks. Already-expired confirmations remain terminal and require a fresh proposal.
 
 | Tool                      | Purpose                                                                            | Availability        |
 | ------------------------- | ---------------------------------------------------------------------------------- | ------------------- |
@@ -107,6 +107,8 @@ An operator conversation permits one live exact confirmation at a time. A compet
 | `get_operator_run`        | Read an operator run, checkpoint, response, and pending confirmation.              | read or write scope |
 | `cancel_operator_run`     | Request cancellation of a queued or active operator run.                           | write scope         |
 | `confirm_operator_action` | Approve or reject one exact pending operator action.                               | write scope         |
+
+Operator Slack/iMessage runs that outlast the synchronous request continue through scheduled channel delivery with current-operator validation and the same delivery key. The task itself has no response-wait deadline. New `create_broker_packet_link` and `rotate_broker_packet_link` links remain available until revoked or replaced unless an expiry is explicitly supplied; there is no arbitrary maximum lifetime. Existing stored link expirations are honored.
 
 ## Client conversational agent
 
@@ -140,6 +142,8 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `attach_policy_document`         | Attach the original full policy PDF to the response.                               | All channels; final readable policy and stored PDF required.                    |
 | `confirm_policy_fact`            | Confirm a source-backed policy fact and optionally patch allowed top-level fields. | All channels; final writable policy and exact source spans required.            |
 | `generate_coi`                   | Generate or reuse certificates from a policy or requirements source.               | All channels; write permission and final supporting policies required.          |
+
+Shared customer confirmation records for email send/cancel, draft snapshots, multiple-certificate delivery, and requirement imports have no time limit. Exact actor, content, adjacency where required, single-use, and task-reset checks remain enforced. Email review links follow that same lifecycle, and completed email authorizations revalidate the current task epoch before delivery. iMessage inactivity does not reset the task. Signed Slack controls are revoked explicitly instead of aging out.
 
 ### Channel-specific root tools
 

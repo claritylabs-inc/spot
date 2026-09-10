@@ -577,8 +577,6 @@ async function preflightPacketLinkCreate(
       !dayjs(input.expiresAt).isAfter(dayjs())
     )
       throw new Error("Packet link expiry must be in the future");
-    if (dayjs(input.expiresAt).isAfter(dayjs().add(90, "day")))
-      throw new Error("Packet links may expire at most 90 days after issue");
   }
 }
 

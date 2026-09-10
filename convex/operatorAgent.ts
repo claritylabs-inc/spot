@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
@@ -152,19 +152,12 @@ type OperatorConfirmationDisplayState =
   | "superseded"
   | "unavailable";
 
-function operatorConfirmationDisplayState(
-  confirmation: {
-    status: "pending" | "completed" | "stale" | "expired";
-    expiresAt: number;
-    invalidationReason?: string;
-  },
-  now: number,
-): OperatorConfirmationDisplayState {
+function operatorConfirmationDisplayState(confirmation: {
+  status: "pending" | "completed" | "stale" | "expired";
+  invalidationReason?: string;
+}): OperatorConfirmationDisplayState {
   if (confirmation.status === "completed") return "approved";
-  if (
-    confirmation.status === "expired" ||
-    (confirmation.status === "pending" && confirmation.expiresAt <= now)
-  ) {
+  if (confirmation.status === "expired") {
     return "expired";
   }
   if (confirmation.status === "pending") return "pending";
@@ -219,7 +212,7 @@ type DirectToolOutcome =
       confirmationId: Id<"operatorAgentConfirmations">;
       runId: Id<"operatorAgentRuns">;
       summary: string;
-      expiresAt: number;
+      expiresAt?: number;
     }
   | {
       status: "succeeded";
@@ -3097,7 +3090,6 @@ export const getThread = query({
     ]);
     const activeRun =
       runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
-    const now = dayjs().valueOf();
     const visibleMessageIds = new Set(messages.map((message) => message._id));
     return {
       thread,
@@ -3112,7 +3104,6 @@ export const getThread = query({
           const actionable =
             confirmation.status === "pending" &&
             confirmation.operatorUserId === operator.userId &&
-            confirmation.expiresAt > now &&
             activeRun?.status === "waiting_confirmation" &&
             activeRun.checkpoint?.pendingConfirmationId === confirmation._id;
           return {
@@ -3121,7 +3112,7 @@ export const getThread = query({
             summary: confirmation.payload.summary,
             toolName: confirmation.payload.toolName,
             effect: confirmation.payload.effect,
-            state: operatorConfirmationDisplayState(confirmation, now),
+            state: operatorConfirmationDisplayState(confirmation),
             actionable,
             expiresAt: confirmation.expiresAt,
           };
@@ -3405,106 +3396,13 @@ export const cancelRun = mutation({
   },
 });
 
-async function expireOperatorConfirmation(
-  ctx: MutationCtx,
-  confirmation: Doc<"operatorAgentConfirmations">,
-  now: number,
-  channel: OperatorChannel,
-) {
-  if (confirmation.status !== "pending" || confirmation.expiresAt > now) {
-    return false;
-  }
-
-  await ctx.db.patch(confirmation._id, {
-    status: "expired",
-    completedAt: now,
-    updatedAt: now,
-  });
-
-  const ledger = await ctx.db
-    .query("agentActionAuditEvents")
-    .withIndex("idempotency", (index) =>
-      index
-        .eq("operatorUserId", confirmation.operatorUserId)
-        .eq("idempotencyKey", confirmation.payload.idempotencyKey),
-    )
-    .unique();
-  if (
-    ledger?.operatorConfirmationId === confirmation._id &&
-    ledger.status === "awaiting_confirmation"
-  ) {
-    await ctx.db.patch(ledger._id, {
-      status: "cancelled",
-      error: "Operator confirmation expired",
-      updatedAt: now,
-    });
-  }
-
-  const run = await ctx.db.get(confirmation.payload.runId);
-  if (
-    !run ||
-    run.operatorUserId !== confirmation.operatorUserId ||
-    run.threadId !== confirmation.threadId ||
-    !ACTIVE_RUN_STATUSES.has(run.status)
-  ) {
-    return true;
-  }
-
-  const content = `Confirmation expired: ${confirmation.payload.summary}.`;
-  await ctx.db.patch(run._id, {
-    status: "completed",
-    completedAt: now,
-    checkpoint: {
-      iteration: run.checkpoint?.iteration ?? 0,
-      executionCount: run.checkpoint?.executionCount ?? 0,
-      summary: "Operator confirmation expired",
-      lastToolName: run.checkpoint?.lastToolName,
-    },
-    updatedAt: now,
-  });
-  await ctx.db.insert("operatorAgentMessages", {
-    threadId: confirmation.threadId,
-    ownerUserId: confirmation.operatorUserId,
-    channel,
-    role: "agent",
-    content,
-    createdAt: now,
-    updatedAt: now,
-  });
-  await ctx.db.patch(confirmation.threadId, {
-    lastMessageAt: now,
-    updatedAt: now,
-  });
-  return true;
-}
-
+// Retained for expiration jobs scheduled before operator approvals stopped timing out.
 export const expireConfirmationInternal = internalMutation({
   args: {
     confirmationId: v.id("operatorAgentConfirmations"),
     channel: operatorChannelValidator,
   },
-  handler: async (ctx, args) => {
-    const confirmation = await ctx.db.get(args.confirmationId);
-    if (!confirmation || confirmation.status !== "pending") {
-      return { expired: false as const };
-    }
-    const now = dayjs().valueOf();
-    if (confirmation.expiresAt > now) {
-      await ctx.scheduler.runAt(
-        confirmation.expiresAt,
-        internal.operatorAgent.expireConfirmationInternal,
-        args,
-      );
-      return { expired: false as const };
-    }
-    const expired = await expireOperatorConfirmation(
-      ctx,
-      confirmation,
-      now,
-      args.channel,
-    );
-    return { expired };
-  },
+  handler: async () => ({ expired: false as const }),
 });
 
 async function confirmOperatorAction(
@@ -3556,11 +3454,6 @@ async function confirmOperatorAction(
   ) {
     return { status: "needs_refresh" as const, runId: run._id };
   }
-  if (confirmation.expiresAt <= now) {
-    const content = `Confirmation expired: ${payload.summary}.`;
-    await expireOperatorConfirmation(ctx, confirmation, now, channel);
-    return { status: "expired" as const, runId: run._id, content };
-  }
   if (args.decision === "reject") {
     await ctx.db.patch(confirmation._id, {
       status: "stale",
@@ -3601,14 +3494,20 @@ async function confirmOperatorAction(
     return { status: "rejected" as const, runId: run._id, content };
   }
 
+  const parsedInput = JSON.parse(payload.input) as unknown;
+  const spec = getOperatorAgentToolSpec(payload.toolName);
+  assertOperatorRole(operator.profile.role, spec.requiredRole);
+  await preflightOperatorToolConfirmation(ctx, {
+    operatorUserId: operator.userId,
+    threadId: args.threadId,
+    toolName: payload.toolName as OperatorAgentToolName,
+    input: parseOperatorAgentToolInput(payload.toolName, parsedInput),
+  });
   await ctx.db.patch(confirmation._id, {
     status: "completed",
     completedAt: now,
     updatedAt: now,
   });
-  const parsedInput = JSON.parse(payload.input) as unknown;
-  const spec = getOperatorAgentToolSpec(payload.toolName);
-  assertOperatorRole(operator.profile.role, spec.requiredRole);
   if (spec.execution === "action") {
     const input = parseOperatorAgentToolInput(payload.toolName, parsedInput);
     const expectedHash = await actionConfirmationFingerprint({
@@ -4127,8 +4026,7 @@ export const getPendingConfirmationInternal = internalQuery({
       .first();
     if (
       !confirmation ||
-      confirmation.operatorUserId !== args.operatorUserId ||
-      confirmation.expiresAt <= dayjs().valueOf()
+      confirmation.operatorUserId !== args.operatorUserId
     ) {
       return null;
     }
@@ -5044,22 +4942,6 @@ export const requestToolConfirmationInternal = internalMutation({
         const confirmation = existing.operatorConfirmationId
           ? await ctx.db.get(existing.operatorConfirmationId)
           : null;
-        const now = dayjs().valueOf();
-        if (
-          confirmation &&
-          (await expireOperatorConfirmation(
-            ctx,
-            confirmation,
-            now,
-            args.channel,
-          ))
-        ) {
-          return {
-            status: "failed" as const,
-            error:
-              "Operator confirmation expired; retry with a new idempotency key",
-          };
-        }
         if (
           !confirmation ||
           confirmation.status !== "pending" ||
@@ -5091,24 +4973,12 @@ export const requestToolConfirmationInternal = internalMutation({
       throw new Error("Operator agent run is no longer active");
     }
     const now = dayjs().valueOf();
-    const pendingConfirmations = await ctx.db
+    const blockingConfirmation = await ctx.db
       .query("operatorAgentConfirmations")
       .withIndex("thread_status", (index) =>
         index.eq("threadId", args.threadId).eq("status", "pending"),
       )
-      .take(25);
-    let blockingConfirmation: Doc<"operatorAgentConfirmations"> | null = null;
-    for (const confirmation of pendingConfirmations) {
-      const expired = await expireOperatorConfirmation(
-        ctx,
-        confirmation,
-        now,
-        args.channel,
-      );
-      if (!expired && !blockingConfirmation) {
-        blockingConfirmation = confirmation;
-      }
-    }
+      .first();
     if (blockingConfirmation) {
       return {
         status: "blocked_by_confirmation" as const,
@@ -5138,7 +5008,6 @@ export const requestToolConfirmationInternal = internalMutation({
       spec.summarize(input),
       input,
     );
-    const expiresAt = dayjs(now).add(10, "minute").valueOf();
     const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
       threadId: args.threadId,
       operatorUserId: args.operatorUserId,
@@ -5159,15 +5028,9 @@ export const requestToolConfirmationInternal = internalMutation({
         summary,
       },
       status: "pending",
-      expiresAt,
       createdAt: now,
       updatedAt: now,
     });
-    await ctx.scheduler.runAt(
-      expiresAt,
-      internal.operatorAgent.expireConfirmationInternal,
-      { confirmationId, channel: args.channel },
-    );
     await ctx.db.insert("agentActionAuditEvents", {
       operatorThreadId: args.threadId,
       operatorMessageId: args.threadMessageId,
