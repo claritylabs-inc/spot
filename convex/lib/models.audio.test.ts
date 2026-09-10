@@ -2,12 +2,52 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import { transcribeAudioForOrg } from "./models";
 
-function routerStorage() {
-  return {
+const route = {
+  provider: "openai" as const,
+  model: "gpt-4o-mini-transcribe",
+};
+
+function context() {
+  const runQuery = vi
+    .fn()
+    .mockResolvedValueOnce({
+      routes: { voice_transcription: route },
+      routeSources: { voice_transcription: "broker" },
+    })
+    .mockResolvedValueOnce({ storageId: "storage-audio-1" });
+  const runMutation = vi
+    .fn()
+    .mockResolvedValueOnce("router-asset-1")
+    .mockResolvedValueOnce(null);
+  const storage = {
     store: vi.fn(async () => "storage-audio-1"),
-    getUrl: vi.fn(async () => "https://merry-platypus-82.convex.cloud/api/storage/audio"),
     delete: vi.fn(async () => undefined),
   };
+  return { runQuery, runMutation, storage };
+}
+
+function routerResponse() {
+  return Response.json({
+    requestId: "request-1",
+    model: route,
+    routing: {
+      decision: "snapshot",
+      candidatesConsidered: [route],
+      policyVersion: "policy-v1",
+      cacheStickinessApplied: false,
+      routeSource: "broker",
+      attemptCount: 1,
+    },
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+    },
+    costUsd: 0.001,
+    costStatus: "priced",
+    text: "Router transcript.",
+  });
 }
 
 describe("audio transcription routing", () => {
@@ -16,43 +56,19 @@ describe("audio transcription routing", () => {
     vi.unstubAllEnvs();
   });
 
-  test("uses cl-router when voice transcription is explicitly enabled", async () => {
-    vi.stubEnv("CL_ROUTER_TASKS", "voice_transcription");
+  test("uses router JSON with a short-lived signed asset reference", async () => {
+    vi.stubEnv("SPOT_ENV", "production");
+    vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
     vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
-    const runQuery = vi.fn(async () => ({
-      routes: {
-        voice_transcription: {
-          provider: "openai",
-          model: "gpt-4o-mini-transcribe",
-        },
-      },
-      routeSources: { voice_transcription: "broker" },
-      providerKeys: { openai: "test-openai-key" },
-    }));
-    const storage = routerStorage();
-    const fetchMock = vi.fn(async () => Response.json({
-      requestId: "request-1",
-      model: { provider: "openai", model: "gpt-4o-mini-transcribe" },
-      routing: {
-        decision: "snapshot",
-        candidatesConsidered: [
-          { provider: "openai", model: "gpt-4o-mini-transcribe" },
-        ],
-        policyVersion: "policy-v1",
-        cacheStickinessApplied: false,
-        routeSource: "broker",
-        attemptCount: 1,
-      },
-      usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
-      costUsd: 0.001,
-      costStatus: "priced",
-      text: "Router transcript.",
-    }));
+    const ctx = context();
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      routerResponse(),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await transcribeAudioForOrg(
-      { runQuery, storage } as never,
+      ctx as never,
       "org-1" as Id<"organizations">,
       {
         data: Buffer.from("voice"),
@@ -63,75 +79,71 @@ describe("audio transcription routing", () => {
 
     expect(result).toMatchObject({
       text: "Router transcript.",
-      route: { provider: "openai", model: "gpt-4o-mini-transcribe" },
+      route,
       routeSource: "broker",
       transport: "cl-router",
       clRouter: { requestId: "request-1", costUsd: 0.001 },
     });
-    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "https://router.example.test/v1/transcribe",
     );
-    const request = JSON.parse(
-      (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
-    );
-    expect(request.audio).toEqual({
-      url: "https://merry-platypus-82.convex.cloud/api/storage/audio",
-      mediaType: "audio/mp4",
-      filename: "Audio Message.m4a",
-      sizeBytes: 5,
+    const request = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(request).toMatchObject({
+      tenantId: "glass",
+      orgId: "org-1",
+      audio: {
+        mediaType: "audio/mp4",
+        filename: "Audio Message.m4a",
+        sizeBytes: 5,
+      },
     });
-    expect(storage.delete).toHaveBeenCalledWith("storage-audio-1");
+    expect(request.audio.url).toMatch(
+      /^https:\/\/actions\.spot\.insure\/router-assets\?/,
+    );
+    expect(request.audio.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(request.settings).not.toHaveProperty("providerKeys");
+    expect(ctx.storage.delete).toHaveBeenCalledWith("storage-audio-1");
   });
 
-  test("falls back to direct transcription after a typed pre-execution production outage", async () => {
+  test("fails closed on a router outage and still cleans up the asset", async () => {
     vi.stubEnv("SPOT_ENV", "production");
-    vi.stubEnv("CL_ROUTER_TASKS", "voice_transcription");
+    vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
     vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
-    const runQuery = vi.fn(async () => ({
-      routes: {
-        voice_transcription: {
-          provider: "openai",
-          model: "gpt-4o-mini-transcribe",
+    const ctx = context();
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json(
+        {
+          error: {
+            code: "router_unavailable",
+            message: "No eligible route is available.",
+            retryable: true,
+            executionStarted: false,
+            requestId: "failed-transcription-request",
+          },
         },
-      },
-      routeSources: { voice_transcription: "broker" },
-      providerKeys: { openai: "test-openai-key" },
-    }));
-    const storage = routerStorage();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(Response.json({
-        error: {
-          code: "router_unavailable",
-          message: "No eligible route is available.",
-          retryable: true,
-          executionStarted: false,
-          requestId: "failed-transcription-request",
-        },
-      }, { status: 503 }))
-      .mockResolvedValueOnce(Response.json({ text: "Direct transcript." }));
+        { status: 503 },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await transcribeAudioForOrg(
-      { runQuery, storage } as never,
-      "org-1" as Id<"organizations">,
-      {
-        data: Buffer.from("voice"),
-        filename: "Audio Message.m4a",
-        mediaType: "audio/mp4",
-      },
-    );
+    await expect(
+      transcribeAudioForOrg(
+        ctx as never,
+        "org-1" as Id<"organizations">,
+        {
+          data: Buffer.from("voice"),
+          filename: "Audio Message.m4a",
+          mediaType: "audio/mp4",
+        },
+      ),
+    ).rejects.toThrow("No eligible route is available");
 
-    expect(result).toMatchObject({
-      text: "Direct transcript.",
-      transport: "direct",
-    });
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "https://router.example.test/v1/transcribe",
-      "https://api.openai.com/v1/audio/transcriptions",
-    ]);
-    expect(runQuery).toHaveBeenCalledOnce();
-    expect(storage.delete).toHaveBeenCalledWith("storage-audio-1");
+    );
+    expect(ctx.storage.delete).toHaveBeenCalledWith("storage-audio-1");
   });
 });

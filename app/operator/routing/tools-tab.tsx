@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/convex/_generated/api";
 import {
+  type OperatorRouterCapabilities,
   useCachedOperatorGlobalToolSettings,
   useOperatorGlobalToolSettingsCacheActions,
 } from "@/lib/sync/operator-cached-queries";
@@ -26,7 +27,6 @@ type WebRetrieval = { primary: WebRetrievalProviderId };
 type WebRetrievalProviderConfig = {
   id: WebRetrievalProviderId;
   label: string;
-  configured: boolean;
 };
 const PROVIDER_SELECT_WIDTH_CLASS = "w-full xl:w-44";
 const WEB_RETRIEVAL_PRIORITY: WebRetrievalProviderId[] = [
@@ -34,6 +34,28 @@ const WEB_RETRIEVAL_PRIORITY: WebRetrievalProviderId[] = [
   "exa",
   "model_default",
 ];
+const NATIVE_WEB_RETRIEVAL_PROVIDERS = new Set([
+  "openai",
+  "google",
+  "anthropic",
+  "xai",
+]);
+
+export function modelDefaultRetrievalConfigured(
+  providers: Array<{ provider: string; configured: boolean }>,
+  selectedModelProvider: string | null,
+) {
+  if (
+    !selectedModelProvider ||
+    !NATIVE_WEB_RETRIEVAL_PROVIDERS.has(selectedModelProvider)
+  ) {
+    return false;
+  }
+  return (
+    providers.find((item) => item.provider === selectedModelProvider)
+      ?.configured ?? false
+  );
+}
 
 function ExaLogo({ size = 14 }: { size?: number }) {
   return (
@@ -123,10 +145,12 @@ function providerSortIndex(provider: WebRetrievalProviderId) {
 function providerOptions(
   providers: WebRetrievalProviderConfig[],
   selectedProvider: WebRetrievalProviderId,
+  availability: (provider: WebRetrievalProviderId) => boolean | null,
 ) {
   return providers
     .filter(
-      (provider) => provider.configured || provider.id === selectedProvider,
+      (provider) =>
+        availability(provider.id) !== false || provider.id === selectedProvider,
     )
     .sort(
       (left, right) => providerSortIndex(left.id) - providerSortIndex(right.id),
@@ -138,11 +162,15 @@ function SearchProviderRow({
   providers,
   saving,
   onCommit,
+  capabilities,
+  selectedModelProvider,
 }: {
   webRetrieval: WebRetrieval;
   providers: WebRetrievalProviderConfig[];
   saving: boolean;
   onCommit: (next: WebRetrieval) => void | Promise<void>;
+  capabilities: OperatorRouterCapabilities | undefined;
+  selectedModelProvider: string | null;
 }) {
   const selectedProvider = providers.find(
     (provider) => provider.id === webRetrieval.primary,
@@ -150,6 +178,21 @@ function SearchProviderRow({
 
   function commitProvider(primary: WebRetrievalProviderId) {
     void onCommit({ primary });
+  }
+
+  function providerAvailability(provider: WebRetrievalProviderId) {
+    if (capabilities?.availability !== "available") return null;
+    if (provider === "model_default") {
+      return modelDefaultRetrievalConfigured(
+        capabilities.webRetrieval.providers,
+        selectedModelProvider,
+      );
+    }
+    return (
+      capabilities.webRetrieval.providers.find(
+        (item) => item.provider === provider,
+      )?.configured ?? false
+    );
   }
 
   return (
@@ -160,7 +203,9 @@ function SearchProviderRow({
             Web search
           </p>
           {webRetrieval.primary !== "parallel" ? (
-            <span className={`rounded-full bg-muted/55 px-2 py-0.5 text-muted-foreground ${typeStyle("label.tag")}`}>
+            <span
+              className={`rounded-full bg-muted/55 px-2 py-0.5 text-muted-foreground ${typeStyle("label.tag")}`}
+            >
               Override
             </span>
           ) : null}
@@ -189,27 +234,35 @@ function SearchProviderRow({
             </SelectValue>
           </SelectTrigger>
           <SelectContent className="min-w-56">
-            {providerOptions(providers, webRetrieval.primary).map(
-              (provider) => (
-                <SelectItem
-                  key={provider.id}
-                  value={provider.id}
-                  disabled={!provider.configured}
-                >
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <WebRetrievalLogo provider={provider.id} size={15} />
-                    <span className={`truncate ${typeStyle("body.large")}`}>{provider.label}</span>
-                    <span className={`ml-auto shrink-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}>
-                      {!provider.configured
-                        ? "Unavailable"
-                        : usesDedicatedSearchApi(provider.id)
-                          ? "Configured"
-                          : "Built in"}
-                    </span>
+            {providerOptions(
+              providers,
+              webRetrieval.primary,
+              providerAvailability,
+            ).map((provider) => (
+              <SelectItem
+                key={provider.id}
+                value={provider.id}
+                disabled={providerAvailability(provider.id) === false}
+              >
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <WebRetrievalLogo provider={provider.id} size={15} />
+                  <span className={`truncate ${typeStyle("body.large")}`}>
+                    {provider.label}
                   </span>
-                </SelectItem>
-              ),
-            )}
+                  <span
+                    className={`ml-auto shrink-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
+                  >
+                    {providerAvailability(provider.id) === false
+                      ? "Unavailable"
+                      : providerAvailability(provider.id) === null
+                        ? "Unknown"
+                        : usesDedicatedSearchApi(provider.id)
+                          ? "Router"
+                          : "Available"}
+                  </span>
+                </span>
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -217,13 +270,20 @@ function SearchProviderRow({
   );
 }
 
-export function ToolsTab() {
+export function ToolsTab({
+  capabilities,
+}: {
+  capabilities: OperatorRouterCapabilities | undefined;
+}) {
   const settings = useCachedOperatorGlobalToolSettings();
   const updateWebRetrieval = useMutation(
     api.modelSettings.updateGlobalWebRetrieval,
   );
   const { patchWebRetrieval } = useOperatorGlobalToolSettingsCacheActions();
   const [saving, setSaving] = useState(false);
+  const selectedChatRoute =
+    settings?.routes.chat ??
+    settings?.tasks.find((task) => task.id === "chat")?.defaultRoute;
 
   async function commitWebRetrieval(next: WebRetrieval) {
     setSaving(true);
@@ -241,7 +301,16 @@ export function ToolsTab() {
   }
 
   return (
-    <div className="flex w-full flex-col">
+    <div className="flex w-full flex-col gap-4">
+      {capabilities?.availability === "unavailable" ? (
+        <OperationalPanel>
+          <div
+            className={`px-4 py-3.5 text-muted-foreground ${typeStyle("body.default")}`}
+          >
+            {capabilities.message}
+          </div>
+        </OperationalPanel>
+      ) : null}
       {settings === undefined ? (
         <OperationalPanel>
           <div className="flex h-40 items-center justify-center text-muted-foreground">
@@ -256,6 +325,8 @@ export function ToolsTab() {
               providers={settings.webRetrievalProviders}
               saving={saving}
               onCommit={commitWebRetrieval}
+              capabilities={capabilities}
+              selectedModelProvider={selectedChatRoute?.provider ?? null}
             />
           </div>
         </OperationalPanel>

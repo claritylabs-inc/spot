@@ -58,7 +58,7 @@ const SUPPORTED_IMESSAGE_ATTACHMENT_MIME_TYPES = new Set([
   "audio/webm",
 ]);
 
-export const MAX_IMESSAGE_AUDIO_BYTES = 20 * 1024 * 1024;
+export const MAX_IMESSAGE_AUDIO_BYTES = 12 * 1024 * 1024;
 
 export function normalizeImessageAttachmentMimeType(mimeType: string): string {
   return mimeType.toLowerCase().split(";", 1)[0]?.trim() || "";

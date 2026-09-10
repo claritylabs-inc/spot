@@ -69,22 +69,48 @@
       ]
     },
     {
-      "name": "transcription",
+      "name": "JSON transcription",
       "method": "post",
       "path": "/v1/transcribe",
       "request": {
         "required": true,
-        "mediaType": "multipart/form-data",
-        "requiredFields": [
-          "request",
-          "file"
-        ]
+        "mediaType": "application/json",
+        "schema": "TranscribeRequest"
       },
       "responses": [
         {
           "status": "200",
           "mediaType": "application/json",
           "schema": "TranscribeResponse"
+        }
+      ]
+    },
+    {
+      "name": "capabilities",
+      "method": "get",
+      "path": "/v1/capabilities",
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "CapabilitiesResponse"
+        }
+      ]
+    },
+    {
+      "name": "retrieval",
+      "method": "post",
+      "path": "/v1/retrieve",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "RetrieveRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "RetrieveResponse"
         }
       ]
     },
@@ -136,23 +162,6 @@
           "status": "200",
           "mediaType": "application/json",
           "schema": "PinResponse"
-        }
-      ]
-    },
-    {
-      "name": "admin calibration seed import",
-      "method": "post",
-      "path": "/admin/calibration-seeds/import",
-      "request": {
-        "required": true,
-        "mediaType": "application/json",
-        "schema": "CalibrationSeedImportRequest"
-      },
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "CalibrationSeedImportResponse"
         }
       ]
     },
@@ -536,413 +545,128 @@
       }
     },
     {
-      "name": "Admin calibration seed import request",
-      "schema": "CalibrationSeedImportRequest",
+      "name": "Spot JSON transcription request",
+      "schema": "TranscribeRequest",
       "value": {
         "tenantId": "glass",
-        "reason": "three-replicate proxy benchmark contract fixture",
-        "reportUri": "s3://private-calibrations/run-fixture-2026-07-21/report.html",
-        "expectedPolicyVersionIds": {
-          "extraction_source_tree": null
+        "orgId": "org_123",
+        "settings": {
+          "routes": {
+            "voice_transcription": {
+              "provider": "openai",
+              "model": "gpt-4o-transcribe"
+            }
+          },
+          "routeSources": {
+            "voice_transcription": "static"
+          }
         },
-        "seed": {
-          "formatVersion": 1,
-          "sourceRunId": "run_fixture_2026_07_21",
-          "replicateCount": 3,
-          "activationReady": true,
-          "qualificationSpec": {
-            "id": "glass-policy-extraction-source-tree@1",
-            "task": "extraction",
-            "taskFamily": "extraction_source_tree",
-            "classification": "proxy_benchmark",
-            "activationEligibility": "benchmark_only",
-            "runtimeContract": null,
-            "promptContractId": "@claritylabs/cl-router-testbench@0.1.0:policy-extraction-prompt-v1#sha256=7a84acb6a96bfcc518f0ee8c201b7c1cd5bb856cec8cf15a6e937371f14fdc0e",
-            "schemaContractId": "@claritylabs/cl-router-testbench@0.1.0:policy-extraction-response-schema-v1#sha256=ca92c9f002b5aa5438290245071a4c9de142f9286e3cb980b03933ca82da4d70",
-            "validationContractId": "@claritylabs/cl-router-testbench@0.1.0:policy-extraction-validator-v1#sha256=636b352a1dd85433e0f9c22c0e2493eb056870c8103f23112bd50e7f69bf4b3e",
-            "scorerContractId": "@claritylabs/cl-router-testbench@0.1.0:policy-extraction-scorer-v1#sha256=add1301314358a210c44c310cd82cece9786492f6bce88e43f9ed35311d1039a",
-            "requiredOpenBenchmarks": [
-              "docvqa",
-              "vrdu",
-              "cord",
-              "kleister"
-            ]
+        "prompt": "Transcribe faithfully.",
+        "filename": "voice.wav",
+        "mediaType": "audio/wav",
+        "trace": {
+          "surface": "imessage"
+        },
+        "audio": {
+          "url": "https://actions.spot.insure/router-assets?assetId=asset_123&expiresAt=1893456000000&signature=test",
+          "mediaType": "audio/wav",
+          "filename": "voice.wav",
+          "sizeBytes": 128,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "Router credential capabilities",
+      "schema": "CapabilitiesResponse",
+      "value": {
+        "apiVersion": "v1",
+        "credentialMode": "router",
+        "providers": [
+          {
+            "provider": "openai",
+            "configured": true
           },
-          "corpusVersions": {
-            "policy-corpus": "policy-corpus-v1",
-            "docvqa-corpus": "docvqa-corpus-v1",
-            "vrdu-corpus": "vrdu-corpus-v1",
-            "cord-corpus": "cord-corpus-v1",
-            "kleister-corpus": "kleister-corpus-v1"
-          },
-          "corpusEvidence": [
+          {
+            "provider": "anthropic",
+            "configured": false
+          }
+        ],
+        "webRetrieval": {
+          "providers": [
             {
-              "corpusId": "policy-corpus",
-              "corpusVersion": "policy-corpus-v1",
-              "benchmark": "in_house",
-              "benchmarkVersion": "in_house-reviewed-v1",
-              "qualificationSpecId": "glass-policy-extraction-source-tree@1",
-              "purpose": "production_qualification",
-              "sourceKind": "private_bucket",
-              "caseCount": 20,
-              "manifestSha256": "ed71d66a895891a03d2c1fef6c1f8022c6d20e6e60cafe48aeaf0d74edf2d049",
-              "corpusSha256": "188254c7e9890f8421677361c9c8843f5dc98dcf29dae4536791cad08c5f912a",
-              "documents": [
-                {
-                  "id": "policy-corpus-document-1",
-                  "assetSha256": "738af68e0a4cffa066de9e4fb72491ff10ad63a54a195c1300c75a3093492eaf",
-                  "labelsSha256": "980c316f362074d5b97edb633dc974a84b161ef8b46d73117200069acbf55cf8",
-                  "documentSha256": "a43b469b939cdc2b526df2621682e59d3d8abfa9f18acfcab099656d9d4b923c"
-                },
-                {
-                  "id": "policy-corpus-document-2",
-                  "assetSha256": "5da5b96e08333a7f581978a9d2e64f4443e56b2feaea3182c79dbf9f70e7554f",
-                  "labelsSha256": "dbbd90809ba8128252ae8e898ca4217fbf1586f06a727ed19a95d6f0b0652222",
-                  "documentSha256": "4fbebae504290bfafb2b9ddf690059d3eb30ac06f9df9f18ff391f494b92d0e1"
-                },
-                {
-                  "id": "policy-corpus-document-3",
-                  "assetSha256": "39fe1a88f3e2efbe2559a82fff2defd3559dc0c3e583bcc8ff255f6973a45b73",
-                  "labelsSha256": "00f6c17dd021726e69810063b65f6129303643732388275902cc3cef7098daf5",
-                  "documentSha256": "f306ce298bbc0bfc7b3f1dcf33f40a8554217cf51f7993c34c1dabd03823c1a9"
-                },
-                {
-                  "id": "policy-corpus-document-4",
-                  "assetSha256": "23d72828e9a4ddaeaf60cf8fd9a09facf2599885bfdabda1e11c624ccd03c261",
-                  "labelsSha256": "e7e969104dcbbb105c7db68d8d4edd246bba02f7f2f522d0e782fb91cae15a17",
-                  "documentSha256": "7ea02ae165d7af9b7a1c77d7ba1375ed575d5570c23f673e231789e34bdc433d"
-                },
-                {
-                  "id": "policy-corpus-document-5",
-                  "assetSha256": "37b3b175b45e6ce993a0870d529a197b896585a59ff61e9051f00a2407740efc",
-                  "labelsSha256": "38b5828f58d80b706cc0fac9df830336d7b00124e717ed7f4ed2c5a2fe731480",
-                  "documentSha256": "d1d88ad99ca56ed6288987b31763963b20e566114e53a9766e16109ea6750b98"
-                },
-                {
-                  "id": "policy-corpus-document-6",
-                  "assetSha256": "3854b7215d2381d88164666867b78185f6afffc87f26d8e8be3417924fc1f168",
-                  "labelsSha256": "ce626f73da4af1941902af8bb827a9e0edd079850b2dfaae3ff871d97b1c9405",
-                  "documentSha256": "ee9ea7503708b1bf669fdb446176cf3ef5a40c94a110b0ed1692f37712f2b234"
-                },
-                {
-                  "id": "policy-corpus-document-7",
-                  "assetSha256": "740d6a0fe7db3266e3f3bdf9872511998419e39f89561aa74248b251a74a5cb1",
-                  "labelsSha256": "c12d955baabb8c448c27609ea95b20104f62fb52fee1840a3517b997fc8d6e8f",
-                  "documentSha256": "a158950258ab287fc6cb103305aac40931bbf7fc940203ac2f34e251513a9062"
-                },
-                {
-                  "id": "policy-corpus-document-8",
-                  "assetSha256": "5cb25d3682b3afe972ad5cb4f14644b4364f54160e13204764308f38e558f085",
-                  "labelsSha256": "b8e58ff614f4d18275cfae27c4dbf4a9f0c6951c0295fa55c9a6997aeadf2111",
-                  "documentSha256": "e9fc904dadd0ee90c3a8bcedb21df3d0fa3d8f12b1632d751f29482d7089406e"
-                },
-                {
-                  "id": "policy-corpus-document-9",
-                  "assetSha256": "91dbc490b66ec8f00cf457f0515e3499e2cb3b8bc90e11ea8d3634e9662200a3",
-                  "labelsSha256": "68024756502fc69af8e780e0f04b7e8e0be7ed8ea4d407937c9610cadd2f2668",
-                  "documentSha256": "9c0a1b6bb97d809da762f4741672effb07f252c2ead75c2d11cc82d39de519bb"
-                },
-                {
-                  "id": "policy-corpus-document-10",
-                  "assetSha256": "60c2cd497a0dccd2c151fd9d72bcf2ce8e105cc53f56753cee1e3929ef5cf7d5",
-                  "labelsSha256": "008837d6d52e9ca8f018c20d9d17ffd21f93d8f3d13e9a8d4a2e3000522a04ca",
-                  "documentSha256": "586bf167dbc2e79e09e5097d9861a7a081b2d44201fa6c82ef4199e345530509"
-                },
-                {
-                  "id": "policy-corpus-document-11",
-                  "assetSha256": "1fcce58a96a08849e5778b7768c0debd79d2916e0c32a2a70cce77a94a2ec172",
-                  "labelsSha256": "5ee400049976b607d630cca4001db6571600b7b1def15a187faa84d560f71570",
-                  "documentSha256": "5e7d4c96f8b81b4b27f7d7f6253c8b074b4fd5a4fd587437168f95b6f1447f3a"
-                },
-                {
-                  "id": "policy-corpus-document-12",
-                  "assetSha256": "36e8f1fb9df77ddb2236c4c4874a2b206caf87b30d72cfe17f27ce8e33037696",
-                  "labelsSha256": "28a356089bc2aeb8007723027d8d613fde69253945fa34d56886c16be86070f3",
-                  "documentSha256": "61c892af3b523a2793c940296f0fb46be5b34cf1bc54c15514b0287a1d05e720"
-                },
-                {
-                  "id": "policy-corpus-document-13",
-                  "assetSha256": "394add9aa12b66d5156d0e7a407316b6bccbbed534f853c72e10aefb782e703f",
-                  "labelsSha256": "b60361c83ae139eb91481c0e093fad3625d0aff26cfc4e18083da2ddc197ddd9",
-                  "documentSha256": "3b8d997bdf86285e87fbc16d1d29c4d0328cc5ed841b1410899868800cfa3428"
-                },
-                {
-                  "id": "policy-corpus-document-14",
-                  "assetSha256": "1c49e20bac9743694934ed59bf605080caa70cd8d24aba5b3239b8a45f1d544f",
-                  "labelsSha256": "9deb0c013f31981fc2f0d81df251f179a63c4df38d749cd2d83565a0085b5e22",
-                  "documentSha256": "1668a2702133810053921cc22d3812f8a792ada0a87a68cd979c6257884e66c6"
-                },
-                {
-                  "id": "policy-corpus-document-15",
-                  "assetSha256": "61368cc7d3617e7c892fa35296ee4f8d1147183f780fb20d1b400861e3f903b7",
-                  "labelsSha256": "2c9757626a2eeee840c6bd6f97b63506db11355c28cd86c10148d93c981fe7b1",
-                  "documentSha256": "00487ed1f3bcb5dec9813b8dc63318829de4f6db1f68daa9e7a755b05ad5285d"
-                },
-                {
-                  "id": "policy-corpus-document-16",
-                  "assetSha256": "db52a00f4903ec51e71022194d07a5cdb32b9f4b4efc02b470d4162542928225",
-                  "labelsSha256": "e045b5ad4e2c939160f81ef5f2e5060dc2b4638e28f1ae7b1a70483bebd40354",
-                  "documentSha256": "9ad78c025e6a8690f0db58d02681a71c211ceb7474b7e5fd19ef32b5b3c09295"
-                },
-                {
-                  "id": "policy-corpus-document-17",
-                  "assetSha256": "d04d05a17a024438b91af805795099e14ff1ef0d387a1c0729d2fbf61a20dcd0",
-                  "labelsSha256": "f120ccfdda30e9010a1b4ab2a625d37c5ce721f522ec298a0ff21ecdcb3b0087",
-                  "documentSha256": "8b89cd49f08eb1f8f542369f0ec9219fc0e8db17aa0fcae562abb2ac33631fc5"
-                },
-                {
-                  "id": "policy-corpus-document-18",
-                  "assetSha256": "8119bdf8f076874c5b569065d3f14a97336241015a116ae8d7468477d695d4b9",
-                  "labelsSha256": "20b90b822b9197d6554b0b244f73eb373b2fa70b3a5112bf51866435ba7c87e1",
-                  "documentSha256": "407b99d8fe3a0464411c6125a601d485d2955016050f0bac9dadf86c1e71a320"
-                },
-                {
-                  "id": "policy-corpus-document-19",
-                  "assetSha256": "e63c3b6a7a1f6a9e7b551c0a8d2d258b382bcc62583563f94303fe48d6032f8c",
-                  "labelsSha256": "a6aa3d287855904a781dbce13a3629f5deac0a5f00471dd9f0bd5815630f37d7",
-                  "documentSha256": "d969ec6ed7d2005f6ed972e5e7383e602b79fbc66f3246a8d7c26a2c11898c6c"
-                },
-                {
-                  "id": "policy-corpus-document-20",
-                  "assetSha256": "9c1dc55c10c6f174233fe87ee168f847caa49b8b6f3655c76811d0bd51271004",
-                  "labelsSha256": "19d7cb417bea07f4e940d2e6c7fad325aed5221388c8c240676f6ff2f8a77b4d",
-                  "documentSha256": "9a5327ecf1e3c81e6bf474247b96cfaa0a7bca6fbe798d5c5c304f3a212901d4"
-                }
-              ]
+              "provider": "parallel",
+              "configured": true
             },
             {
-              "corpusId": "docvqa-corpus",
-              "corpusVersion": "docvqa-corpus-v1",
-              "benchmark": "docvqa",
-              "benchmarkVersion": "docvqa-reviewed-v1",
-              "qualificationSpecId": "glass-policy-extraction-source-tree@1",
-              "purpose": "open_benchmark",
-              "sourceKind": "local",
-              "caseCount": 1,
-              "manifestSha256": "fe12584a2cd0cd243c5f6fb0f746f5d4d432f6e4053f54eace79a5191b58a8f8",
-              "corpusSha256": "d6e76e15472a13e25e36acfb15a4e846e9289137fe715faa195ac4c2c243101f",
-              "documents": [
-                {
-                  "id": "docvqa-corpus-document-1",
-                  "assetSha256": "fb5293f59d057ff89070181f36a99fbcc5ef5a12e4500f3a91e685209e6aef36",
-                  "labelsSha256": "ec2c7f1967d47a65b57d78d32132191802884a6a2544bb5de0e3c68bb1340d8a",
-                  "documentSha256": "7c4678a0a06ca4fe13ef7d850353fd7baff18e530568e9aa6d62cf48b2e58e72"
-                }
-              ]
-            },
-            {
-              "corpusId": "vrdu-corpus",
-              "corpusVersion": "vrdu-corpus-v1",
-              "benchmark": "vrdu",
-              "benchmarkVersion": "vrdu-reviewed-v1",
-              "qualificationSpecId": "glass-policy-extraction-source-tree@1",
-              "purpose": "open_benchmark",
-              "sourceKind": "local",
-              "caseCount": 1,
-              "manifestSha256": "17e0c9bfba911bbfa6818efc720e5cd56006f9c01edb0a307cc81eb05a3c9b23",
-              "corpusSha256": "6a10a05ebae47ddec31e023e8bf14eaa87d38ee04068e66f7dceb8cf5d939f5e",
-              "documents": [
-                {
-                  "id": "vrdu-corpus-document-1",
-                  "assetSha256": "153c0630330d31a13d094cfb90200d47f1f00317f1c3e5fec6127c3f42366d5c",
-                  "labelsSha256": "925763e5364075b1a12551a2219c786d30912cb06de700905c4674d0542f2f8e",
-                  "documentSha256": "35805fa98443bea5e01bbe3661afb3ebafd3cd2c155a465870e8b2e473de7745"
-                }
-              ]
-            },
-            {
-              "corpusId": "cord-corpus",
-              "corpusVersion": "cord-corpus-v1",
-              "benchmark": "cord",
-              "benchmarkVersion": "cord-reviewed-v1",
-              "qualificationSpecId": "glass-policy-extraction-source-tree@1",
-              "purpose": "open_benchmark",
-              "sourceKind": "local",
-              "caseCount": 1,
-              "manifestSha256": "60bc2302f5c9a65def19134d153d669c7f777f99512bc17173f84cd8bab5679c",
-              "corpusSha256": "f3ac3f98e86c60d7a381a43effa8bbf1f5e5ca2d7fdcf6b80f919a96215e3d11",
-              "documents": [
-                {
-                  "id": "cord-corpus-document-1",
-                  "assetSha256": "e29081ff2637958488f9d1d82778f5b5104be8a3080a8cb0470bfd08d9004fda",
-                  "labelsSha256": "39a9d4118d19b0dc4fb2edc387266a3816b778cd1251f9b67a4426389c083a4e",
-                  "documentSha256": "ba483584d9bda78e5ecf2c1a0938da15918601ac5c13b97ba5d9508585128e0b"
-                }
-              ]
-            },
-            {
-              "corpusId": "kleister-corpus",
-              "corpusVersion": "kleister-corpus-v1",
-              "benchmark": "kleister",
-              "benchmarkVersion": "kleister-reviewed-v1",
-              "qualificationSpecId": "glass-policy-extraction-source-tree@1",
-              "purpose": "open_benchmark",
-              "sourceKind": "local",
-              "caseCount": 1,
-              "manifestSha256": "2761d48912d5a95ecdf20b5047b617bf6a0a73c8e9f74d8139f4de88ae343cb4",
-              "corpusSha256": "88a0994d069501d15c3df2434c62ce38a14925bb440e4c64c7df25fc08b0842e",
-              "documents": [
-                {
-                  "id": "kleister-corpus-document-1",
-                  "assetSha256": "bfca8ac5a6e55168ec77acc052f58963174b5ccb59ce5c0c5106620cdc423002",
-                  "labelsSha256": "558d1bc9300a58a0f9d3a415b3aebf7de0476e3ef05b4b71577d345d3706ec8d",
-                  "documentSha256": "536966c9207b91aac057b6326d4500ed6b1e30874e943299ae6a24ac717b0fe7"
-                }
-              ]
-            }
-          ],
-          "productionReview": {
-            "privateCorpusId": "policy-corpus",
-            "provenance": {
-              "kind": "private_bucket",
-              "uri": "s3://private-calibrations/policy-corpus-v1",
-              "accessControlled": true
-            },
-            "brokerConsent": {
-              "attested": true,
-              "attestationId": "broker-consent-2026-07",
-              "attestedAt": "2026-07-21T00:00:00.000Z"
-            },
-            "piiScrub": {
-              "attested": true,
-              "attestationId": "pii-scrub-2026-07",
-              "attestedAt": "2026-07-21T00:00:00.000Z"
-            },
-            "coverageDocumentHashes": {
-              "generalLiability": [
-                "a43b469b939cdc2b526df2621682e59d3d8abfa9f18acfcab099656d9d4b923c"
-              ],
-              "property": [
-                "4fbebae504290bfafb2b9ddf690059d3eb30ac06f9df9f18ff391f494b92d0e1"
-              ],
-              "auto": [
-                "f306ce298bbc0bfc7b3f1dcf33f40a8554217cf51f7993c34c1dabd03823c1a9"
-              ],
-              "workersCompensation": [
-                "7ea02ae165d7af9b7a1c77d7ba1375ed575d5570c23f673e231789e34bdc433d"
-              ],
-              "professionalLiability": [
-                "d1d88ad99ca56ed6288987b31763963b20e566114e53a9766e16109ea6750b98"
-              ]
-            }
-          },
-          "reproducibility": {
-            "maxAllowedAggregateScoreRange": 0.01,
-            "candidates": {
-              "extraction_fireworks_fixture": {
-                "caseCount": 24,
-                "verifiedCaseCount": 24,
-                "maxAggregateScoreRange": 0.004
-              }
-            }
-          },
-          "qualityBars": {
-            "extraction_source_tree": {
-              "baselineCandidateId": "extraction_fireworks_fixture",
-              "baselineScore": 0.94,
-              "qualityBar": 0.92
-            }
-          },
-          "candidates": [
-            {
-              "candidateId": "extraction_fireworks_fixture",
-              "qualificationSpecId": "glass-policy-extraction-source-tree@1",
-              "task": "extraction",
-              "taskFamily": "extraction_source_tree",
-              "provider": "fireworks",
-              "model": "accounts/fireworks/models/glm-5p2",
-              "successfulCalls": 72,
-              "failedCalls": 0,
-              "pricedCalls": 72,
-              "meanScore": 0.94,
-              "totalCostNanoUsd": 7200,
-              "meanCostNanoUsd": 100,
-              "nanoUsdPerScorePoint": 106.382978723404,
-              "byBenchmark": [
-                {
-                  "benchmark": "in_house",
-                  "weight": 0.7,
-                  "callCount": 60,
-                  "meanScore": 0.94
-                },
-                {
-                  "benchmark": "cord",
-                  "weight": 0.075,
-                  "callCount": 3,
-                  "meanScore": 0.94
-                },
-                {
-                  "benchmark": "docvqa",
-                  "weight": 0.075,
-                  "callCount": 3,
-                  "meanScore": 0.94
-                },
-                {
-                  "benchmark": "kleister",
-                  "weight": 0.075,
-                  "callCount": 3,
-                  "meanScore": 0.94
-                },
-                {
-                  "benchmark": "vrdu",
-                  "weight": 0.075,
-                  "callCount": 3,
-                  "meanScore": 0.94
-                }
-              ]
+              "provider": "anthropic",
+              "configured": false
             }
           ]
         }
       }
     },
     {
-      "name": "Admin calibration seed import response",
-      "schema": "CalibrationSeedImportResponse",
+      "name": "Spot retrieval request",
+      "schema": "RetrieveRequest",
       "value": {
-        "sourceRunId": "run_fixture_2026_07_21",
-        "calibrationCount": 1,
-        "policies": [
+        "tenantId": "glass",
+        "orgId": "org_123",
+        "input": {
+          "query": "commercial insurance requirements",
+          "allowedDomains": [
+            "example.com"
+          ],
+          "maxResults": 3
+        },
+        "config": {
+          "primary": "parallel"
+        },
+        "executionBudgetMs": 30000
+      }
+    },
+    {
+      "name": "Router retrieval response",
+      "schema": "RetrieveResponse",
+      "value": {
+        "provider": "parallel",
+        "attempts": [
           {
-            "taskFamily": "extraction_source_tree",
-            "policyVersionId": "11111111-1111-4111-8111-111111111111",
-            "version": 1,
-            "qualityBar": 0.92,
-            "primary": {
-              "provider": "fireworks",
-              "model": "accounts/fireworks/models/glm-5p2"
-            },
-            "challengerCount": 0,
-            "quarantinedCount": 0
+            "provider": "parallel",
+            "ok": true
           }
-        ]
+        ],
+        "text": "Source-backed result.",
+        "sources": [
+          {
+            "url": "https://example.com/source",
+            "title": "Example",
+            "snippet": "Relevant evidence."
+          }
+        ],
+        "warnings": []
       }
     },
     {
       "name": "Admin policy response",
       "schema": "AdminPolicyResponse",
       "value": {
-        "id": "22222222-2222-4222-8222-222222222222",
-        "version": 2,
-        "taskFamily": "classification",
-        "qualityBar": 0.92,
-        "explorationPct": 0.05,
-        "frozen": true,
-        "frozenRoute": {
-          "provider": "fireworks",
-          "model": "accounts/fireworks/models/glm-5p2"
-        },
+        "id": "policy_1",
+        "version": 1,
+        "taskFamily": "chat",
+        "explorationPct": 0,
+        "frozen": false,
+        "frozenRoute": null,
         "candidates": [
           {
-            "provider": "fireworks",
-            "model": "accounts/fireworks/models/glm-5p2",
+            "provider": "openai",
+            "model": "gpt-5.6-terra",
             "rank": 0,
             "role": "primary",
-            "trafficPct": 0,
-            "offlineQualified": true,
-            "offlineScore": 0.94,
-            "rollingScore": 0.95,
-            "onlineCallCount": 120,
-            "projectedCostNanoUsd": "2050"
+            "trafficPct": 1,
+            "ratingScore": null,
+            "ratingCount": 0,
+            "projectedCostNanoUsd": "10"
           }
         ]
       }
@@ -952,39 +676,41 @@
       "schema": "AdminRollupResponse",
       "value": [
         {
-          "hourStart": "2026-07-21T18:00:00.000Z",
+          "provider": "openai",
+          "model": "gpt-5.6-terra",
+          "hourStart": 1893456000000,
           "tenantId": "glass",
-          "taskFamily": "classification",
-          "provider": "fireworks",
-          "model": "accounts/fireworks/models/glm-5p2",
-          "callCount": 100,
-          "successCount": 99,
-          "schemaCheckedCount": 100,
-          "schemaValidCount": 99,
-          "softFailCount": 1,
+          "taskFamily": "chat",
+          "callCount": 1,
+          "successCount": 1,
+          "schemaCheckedCount": 0,
+          "schemaValidCount": 0,
+          "softFailCount": 0,
           "fallbackCount": 0,
-          "providerErrorCount": 1,
+          "providerErrorCount": 0,
           "truncatedCount": 0,
-          "cacheHitCount": 30,
-          "feedbackCount": 20,
-          "reviewFeedbackCount": 20,
-          "reviewPassCount": 19,
-          "correctionCount": 1,
-          "reviewedFieldCount": 400,
-          "ungroundedStripCount": 1,
-          "sensitiveFieldCount": 200,
+          "cacheHitCount": 0,
+          "feedbackCount": 1,
+          "positiveRatingCount": 1,
+          "negativeRatingCount": 0,
+          "reviewFeedbackCount": 0,
+          "reviewPassCount": 0,
+          "correctionCount": 0,
+          "reviewedFieldCount": 0,
+          "ungroundedStripCount": 0,
+          "sensitiveFieldCount": 0,
           "escalationCount": 0,
           "humanEditCount": 0,
           "editedFieldCount": 0,
-          "latencyP50Ms": 280,
-          "latencyP95Ms": 640,
-          "inputTokens": "12000",
-          "outputTokens": "2400",
-          "cachedInputTokens": "3600",
-          "cacheWriteTokens": "800",
-          "pricedCallCount": 100,
-          "costNanoUsd": "205000",
-          "rolledUpAt": "2026-07-21T19:02:00.000Z"
+          "latencyP50Ms": 120,
+          "latencyP95Ms": 120,
+          "inputTokens": "10",
+          "outputTokens": "5",
+          "cachedInputTokens": "0",
+          "cacheWriteTokens": "0",
+          "pricedCallCount": 1,
+          "costNanoUsd": "10",
+          "rolledUpAt": 1893456000100
         }
       ]
     },
@@ -995,18 +721,29 @@
         {
           "kind": "none",
           "incumbent": {
-            "provider": "fireworks",
-            "model": "accounts/fireworks/models/glm-5p2",
+            "provider": "openai",
+            "model": "gpt-5.6-terra",
             "rank": 0,
-            "role": "primary"
+            "role": "primary",
+            "trafficPct": 1,
+            "ratingScore": null,
+            "ratingCount": 0,
+            "projectedCostNanoUsd": "10",
+            "score": {
+              "score": 0.5,
+              "ratingCount": 0,
+              "positiveRatingCount": 0,
+              "negativeRatingCount": 0
+            }
           },
           "replacement": null,
-          "reason": "Incumbent clears the quality bar.",
+          "reason": "Incumbent retained.",
           "scores": {
-            "fireworks:accounts/fireworks/models/glm-5p2": {
-              "effectiveScore": 0.95,
-              "lowerConfidenceBound95": 0.93,
-              "callCount": 120
+            "openai:gpt-5.6-terra": {
+              "score": 0.5,
+              "ratingCount": 0,
+              "positiveRatingCount": 0,
+              "negativeRatingCount": 0
             }
           }
         }

@@ -6,7 +6,10 @@ import { useTabParam } from "@/hooks/use-tab-param";
 import { PillButton } from "@/components/ui/pill-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDisplayDate } from "@/lib/date-format";
-import { useCachedOperatorGlobalModelSettings } from "@/lib/sync/operator-cached-queries";
+import {
+  useCachedOperatorGlobalModelSettings,
+  useOperatorRouterCapabilities,
+} from "@/lib/sync/operator-cached-queries";
 import { OperatorSidebar } from "../operator-sidebar";
 import { ModelsTab } from "./models-tab";
 import { RoutingTab, useRouterDashboard } from "./routing-tab";
@@ -27,6 +30,7 @@ export default function OperatorRoutingPage() {
     freezeLoading,
     setGlobalFreeze,
   } = useRouterDashboard();
+  const { capabilities } = useOperatorRouterCapabilities();
 
   const [activeTab, selectTab] = useTabParam(ROUTING_PAGE_TABS);
 
@@ -83,10 +87,10 @@ export default function OperatorRoutingPage() {
             />
           </TabsContent>
           <TabsContent value="models">
-            <ModelsTab />
+            <ModelsTab capabilities={capabilities} />
           </TabsContent>
           <TabsContent value="tools">
-            <ToolsTab />
+            <ToolsTab capabilities={capabilities} />
           </TabsContent>
         </Tabs>
       </main>

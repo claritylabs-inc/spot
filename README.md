@@ -74,8 +74,12 @@ deployment and database that belong only to that worktree. Workspace setup:
    worktree-tagged Linux/amd64 worker images; cloud setup uses the compiled
    workers directly.
 
-When credentials are available, the imported environment includes provider and
-integration configuration but never cloud database rows or files. Local auth
+When credentials are available, the imported environment includes integration
+and router configuration but filters every AI and retrieval provider credential;
+it never imports cloud database rows or files. Setup also removes provider
+credentials retained in native-local Convex by an older setup and strips them
+from the copied root `.env.local`; rerun `npm run conductor:setup` once in an
+existing workspace to apply that cleanup. Local auth
 always uses the workspace's own signing keys. Local database state and secrets
 persist under gitignored `.convex/local/default/` and `.context/`. Rerunning
 setup preserves the existing local database and does not reseed it. The fixture
@@ -129,7 +133,7 @@ from the repository root. The copied root `.env.local` must initially select a
 cloud dev deployment. Local workspaces use the signed-in Convex CLI to import
 its environment. Cloud workspaces without a Convex credential skip that import
 and still support seeded browser, auth, email/OTP, and mock-channel QA; AI and
-other provider-backed flows remain unavailable. For full cloud-workspace parity,
+other router-backed flows remain unavailable. For full cloud-workspace parity,
 add a deployment-scoped key for the selected dev deployment as
 `CONDUCTOR_CONVEX_SOURCE_DEPLOY_KEY` in the Conductor Cloud Computer environment
 before creating a fresh workspace. A matching standard `CONVEX_DEPLOY_KEY` is
@@ -215,11 +219,13 @@ Repeat with `imessage-worker/.env` or `mailbox-scan-worker/.env` for those servi
 Common variables used across major workflows:
 
 - `CONVEX_DEPLOYMENT`
-- `PARALLEL_API_KEY` — default public web search and known-URL extraction provider
-- `EXA_API_KEY` — optional Exa web retrieval override and compatibility fallback
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `DEEPSEEK_API_KEY`
+- `CONVEX_SITE_URL` — exact Spot HTTP-action origin used for signed router
+  assets; set it on both Convex and the extraction worker
+  (`https://acoustic-caiman-755.convex.site` in shared dev,
+  `https://actions.spot.insure` in production)
+- `CL_ROUTER_URL` — canonical cl-router origin for every AI and web-retrieval call
+- `CL_ROUTER_SECRET` — inference bearer shared only with cl-router
+- `CL_ROUTER_TIMEOUT_MS` — optional total router request timeout
 - `AUTH_RESEND_KEY` — Resend API key (shared by all outbound email; not required for local capture with `SPOT_ENV=local` and `EMAIL_DELIVERY_MODE=capture`)
 - `RESEND_WEBHOOK_SECRET`
 - `SPOT_ENV` — runtime lane: `production`, `dev`, or `local`
@@ -275,32 +281,31 @@ Connected vendor data is exposed in the same channels as first-party insurance d
 
 ## Model Routing
 
-Model execution can be routed through the separate task-aware `cl-router`
-service. Spot resolves the global/code settings snapshot and sends it
-with each enabled request; the router owns direct-provider selection,
-failover, cost telemetry, calibration, and autonomous policy.
+Every AI and credentialed web-retrieval call runs through the separate
+task-aware `cl-router` service. Spot resolves the global/code settings snapshot
+without provider credentials and sends it with each request; the router owns
+provider credentials, direct-provider execution, failover, cost telemetry,
+calibration, capabilities, and autonomous policy.
 
-- `CL_ROUTER_TASKS` enables task families incrementally. Authenticated
-  `query_reason` uses the router whenever its URL and inference secret are
-  configured; other unlisted task families retain the direct path.
+- `CL_ROUTER_URL` and `CL_ROUTER_SECRET` are mandatory for AI execution.
+  There is no task gate or consumer-side direct-provider fallback.
 - Operator global choices are explicit overrides; leaving a task on Automated
   routing gives the active policy control. The global fallback remains a
   separate safety route. Broker organizations do not override model routing.
-- The internal `operator_agent` route is the exception: every environment must
-  explicitly save one image-capable direct-provider model before operator
-  traffic is enabled. It is never published to `cl-router` and never uses an
-  automatic, alternate-model, or alternate-provider fallback.
-- `convex/lib/clRouterClient.ts` owns the API contract and safe pre-response
-  fallback. `convex/lib/clRouterLanguageModel.ts` preserves the Spot-side chat
-  tool loop with one router stream per model step.
+- The internal `operator_agent` route still requires an explicit image-capable
+  selection, but Spot sends that selection to cl-router as a request pin.
+- `convex/lib/clRouterClient.ts` owns generation, streaming, embeddings,
+  transcription, capabilities, and retrieval contracts.
+  `convex/lib/clRouterLanguageModel.ts` preserves the Spot-owned business-tool
+  loop with one routed stream per model step and a stable route pin.
 - Tool-bearing successes and incomplete responses feed generic quality signals
   back to the routed request so autonomous `query_reason` policies can learn
   which candidates reliably complete tool workflows.
 - Defaults are operator-configurable in `/operator/routing`; see `AGENTS.md`
   and `docs/deployment/environments.md` for rollout and controls.
 
-The router and retained fallback path both call providers directly. Vercel AI
-Gateway is not a fallback.
+Only cl-router calls AI and retrieval providers. Spot contains no provider keys,
+provider SDK execution, Vercel AI Gateway fallback, or break-glass provider path.
 
 ## Convex Rule Of Thumb
 
@@ -310,7 +315,7 @@ Internal Convex functions do not have user auth context. Do not call public auth
 
 - `convex/lib/clRouterClient.ts` - task-aware router API client
 - `convex/lib/clRouterLanguageModel.ts` - AI SDK chat streaming adapter
-- `convex/lib/models.ts` - settings resolution and direct break-glass path
+- `convex/lib/models.ts` - settings resolution and router-only task helpers
 - `convex/lib/sdkCallbacks.ts` - `cl-sdk` task bridge
 - `convex/lib/agentPrompts.ts` - retrieval context builders
 - `convex/actions/extractPolicy.ts` - policy extraction entrypoint

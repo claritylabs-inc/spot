@@ -358,7 +358,6 @@ type ExternalClaimResult = {
   modelSettings?: {
     routes?: Record<string, { provider: string; model: string }>;
     routeSources?: Record<string, string>;
-    providerKeys?: Record<string, string>;
   };
 } | null;
 
@@ -371,7 +370,6 @@ type ExternalPreviewClaimResult = {
   modelSettings?: {
     routes?: Record<string, { provider: string; model: string }>;
     routeSources?: Record<string, string>;
-    providerKeys?: Record<string, string>;
   };
 } | null;
 
@@ -2568,7 +2566,6 @@ export const claimExternalJob = action({
       | {
           routes?: Record<string, { provider: string; model: string }>;
           routeSources?: Record<string, string>;
-          providerKeys?: Record<string, string>;
         }
       | undefined;
     try {
@@ -2661,7 +2658,6 @@ export const claimExternalPreviewJob = action({
       | {
           routes?: Record<string, { provider: string; model: string }>;
           routeSources?: Record<string, string>;
-          providerKeys?: Record<string, string>;
         }
       | undefined;
     try {

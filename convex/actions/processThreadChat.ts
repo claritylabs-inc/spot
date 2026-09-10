@@ -64,6 +64,7 @@ import {
 } from "../lib/agentMessageHistory";
 import {
   buildAgentAttachmentParts,
+  createAgentAttachmentRouterBudget,
   MAX_AGENT_ATTACHMENT_TEXT_CHARS,
   modelMessagesHaveImageInput,
 } from "../lib/agentAttachmentContext";
@@ -98,6 +99,7 @@ async function buildMessageHistoryWithAttachmentContext(
 ): Promise<{ history: ModelMessage[]; latestAttachmentNames: string[] }> {
   const history: ModelMessage[] = [];
   const remainingTextChars = { value: MAX_AGENT_ATTACHMENT_TEXT_CHARS };
+  const routerBudget = createAgentAttachmentRouterBudget();
   const recentUserAttachmentIds = new Set(
     messages
       .filter(
@@ -137,6 +139,7 @@ async function buildMessageHistoryWithAttachmentContext(
           {
             includeRichParts: isLatestUser,
             remainingTextChars,
+            routerBudget,
           },
         );
         if (isLatestUser) {

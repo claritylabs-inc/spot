@@ -12,6 +12,7 @@ import path from "node:path";
 import {
   canUseAnonymousConvexCloudFallback,
   cloudConvexSelectionKeys,
+  consumerAiCredentialNames,
   conductorContainerNamesOnPort,
   conductorImageTag,
   conductorPorts,
@@ -20,12 +21,14 @@ import {
   generateLocalAuthKeys,
   localConvexUrls,
   parseEnvFile,
+  parseEnvText,
   repairLocalConvexSelection,
   repoRoot,
   resolveConductorClRouterConfig,
   resolveConductorMapboxAccessToken,
   workspaceSlug,
   withoutCloudConvexSelection,
+  withoutConsumerAiCredentials,
 } from "./lib/conductor-workspace.mjs";
 
 ensureNode24();
@@ -163,6 +166,13 @@ function optionalConvexEnv(convex, name) {
   return capture(convex, ["env", "get", name], { allowFailure: true });
 }
 
+function removeConsumerAiCredentials(convex) {
+  const configured = parseEnvText(capture(convex, ["env", "list"]) || "");
+  for (const name of consumerAiCredentialNames) {
+    if (configured.has(name)) run(convex, ["env", "remove", name]);
+  }
+}
+
 function ensureContainerService() {
   if (
     run("node", ["scripts/check-container-cli.mjs"], { allowFailure: true }) ===
@@ -228,6 +238,10 @@ if (!existsSync(imessageEnvPath)) {
 
 const initialRootEnv = parseEnvFile(rootEnvPath);
 const imessageEnv = parseEnvFile(imessageEnvPath);
+writePrivateFile(
+  rootEnvPath,
+  withoutConsumerAiCredentials(readFileSync(rootEnvPath, "utf8")),
+);
 const terminalPhone = requiredValue(
   imessageEnv,
   "IMESSAGE_TERMINAL_FROM_PHONE",
@@ -301,7 +315,9 @@ if (createdLocalDeployment) {
   });
   if (result.status === 0) {
     sourceEnvironmentRead = true;
-    cloudEnvironment = result.stdout.trim() || undefined;
+    cloudEnvironment = result.stdout.trim()
+      ? withoutConsumerAiCredentials(result.stdout)
+      : undefined;
   } else if (
     canUseAnonymousConvexCloudFallback({
       isCloud: process.env.CONDUCTOR_IS_LOCAL === "0",
@@ -359,22 +375,24 @@ if (cloudEnvironment) {
     rmSync(importPath, { force: true });
   }
 }
+// `env set --from-file` is additive. An existing worktree may therefore retain
+// credentials imported by an older setup even after the source import is
+// filtered, so every setup run removes the known consumer AI credentials.
+removeConsumerAiCredentials(convex);
 
 // A successful source import must include complete router execution settings.
 // Credential-free Conductor Cloud setup has no imported settings and keeps
-// provider-backed flows disabled while basic local browser QA remains usable.
+// router-backed AI flows disabled while basic local browser QA remains usable.
 const routerRequired =
   sourceEnvironmentRead || process.env.CONDUCTOR_IS_LOCAL !== "0";
 const {
   url: clRouterUrl,
-  tasks: clRouterTasks,
   secret: clRouterSecret,
   timeoutMs: clRouterTimeoutMs,
   tenantId: clRouterTenantId,
 } = resolveConductorClRouterConfig(
   {
     url: optionalConvexEnv(convex, "CL_ROUTER_URL"),
-    tasks: optionalConvexEnv(convex, "CL_ROUTER_TASKS"),
     secret: optionalConvexEnv(convex, "CL_ROUTER_SECRET"),
     timeoutMs: optionalConvexEnv(convex, "CL_ROUTER_TIMEOUT_MS"),
     tenantId: optionalConvexEnv(convex, "CL_ROUTER_TENANT_ID"),
@@ -487,27 +505,16 @@ run(convex, [
 
 writeRuntimeEnv("extraction-worker.env", {
   CONVEX_URL: localUrls.cloud,
+  CONVEX_SITE_URL: localUrls.site,
   SPOT_ENV: "local",
   EXTRACTION_WORKER_SECRET: extractionSecret,
   EXTRACTION_WORKER_ID: `conductor-${workspaceSlug()}`,
   EXTRACTION_JOB_CONCURRENCY: "8",
   EXTRACTION_PREVIEW_CONCURRENCY: "2",
   CL_ROUTER_URL: clRouterUrl,
-  CL_ROUTER_TASKS: clRouterTasks,
   CL_ROUTER_SECRET: clRouterSecret,
   CL_ROUTER_TIMEOUT_MS: clRouterTimeoutMs,
   CL_ROUTER_TENANT_ID: clRouterTenantId,
-  FIREWORKS_API_KEY: optionalConvexEnv(convex, "FIREWORKS_API_KEY"),
-  OPENAI_API_KEY: optionalConvexEnv(convex, "OPENAI_API_KEY"),
-  ANTHROPIC_API_KEY: optionalConvexEnv(convex, "ANTHROPIC_API_KEY"),
-  DEEPSEEK_API_KEY: optionalConvexEnv(convex, "DEEPSEEK_API_KEY"),
-  GOOGLE_GENERATIVE_AI_API_KEY: optionalConvexEnv(
-    convex,
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-  ),
-  MISTRAL_API_KEY: optionalConvexEnv(convex, "MISTRAL_API_KEY"),
-  COHERE_API_KEY: optionalConvexEnv(convex, "COHERE_API_KEY"),
-  XAI_API_KEY: optionalConvexEnv(convex, "XAI_API_KEY"),
 });
 writeRuntimeEnv("imessage-worker.env", {
   SPOT_ENV: "local",

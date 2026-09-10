@@ -916,6 +916,8 @@ export default defineSchema({
 
   brokerModelSettings: defineTable({
     brokerOrgId: v.id("organizations"),
+    // Legacy consumer-owned credentials. Keep optional through the audited
+    // widen/migrate/narrow rollout; runtime code must never read this field.
     providerKeys: v.optional(
       v.object({
         openai: v.optional(v.string()),
@@ -2664,6 +2666,31 @@ export default defineSchema({
   })
     .index("policy", ["policyId"])
     .index("policy_kind", ["policyId", "kind"]),
+
+  // Short-lived model-input assets staged by authenticated extraction workers
+  // or trusted Convex actions. Public URLs are signed and never persisted.
+  routerAssets: defineTable({
+    ownerKind: v.union(v.literal("worker"), v.literal("action")),
+    jobKind: v.optional(
+      v.union(v.literal("policy"), v.literal("preview"), v.literal("proposal")),
+    ),
+    jobId: v.optional(v.string()),
+    leaseId: v.optional(v.string()),
+    orgId: v.optional(v.id("organizations")),
+    surface: v.optional(v.string()),
+    sessionKey: v.optional(v.string()),
+    storageId: v.id("_storage"),
+    mediaType: v.string(),
+    filename: v.optional(v.string()),
+    sizeBytes: v.number(),
+    sha256: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    cleanupAttempts: v.optional(v.number()),
+  })
+    .index("job", ["jobKind", "jobId"])
+    .index("session", ["ownerKind", "surface", "sessionKey"])
+    .index("expiry", ["expiresAt"]),
 
   policyExtractionTraceSessions: defineTable({
     traceId: v.string(),

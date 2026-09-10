@@ -12,14 +12,17 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  consumerAiCredentialNames,
   conductorImageTag,
   conductorPorts,
   conductorLocalRuntimeOverrides,
   repairLocalConvexSelection,
   repoRoot,
+  resolveConductorClRouterConfig,
   resolveConductorMapboxAccessToken,
   workspaceSlug,
   withoutCloudConvexSelection,
+  withoutConsumerAiCredentials,
 } from "../scripts/lib/conductor-workspace.mjs";
 
 describe("Conductor workspace identity", () => {
@@ -138,6 +141,76 @@ describe("Conductor local Convex selection", () => {
   });
 });
 describe("Conductor Convex bootstrap", () => {
+  it("filters provider credentials from copied and imported environments", () => {
+    const filtered = withoutConsumerAiCredentials(
+      [
+        "OPENAI_API_KEY=openai-secret",
+        "PARALLEL_API_KEY=parallel-secret",
+        "AI_GATEWAY_API_KEY=retired-secret",
+        "MOONSHOTAI_API_KEY=retired-moonshot-secret",
+        "CL_ROUTER_SECRET=router-inference-secret",
+        "AUTH_RESEND_KEY=email-integration-secret",
+        "",
+      ].join("\n"),
+    );
+
+    expect(filtered).toBe(
+      [
+        "CL_ROUTER_SECRET=router-inference-secret",
+        "AUTH_RESEND_KEY=email-integration-secret",
+        "",
+      ].join("\n"),
+    );
+    expect(consumerAiCredentialNames).toContain("MOONSHOT_API_KEY");
+    expect(consumerAiCredentialNames).toContain("VERCEL_AI_GATEWAY_API_KEY");
+  });
+
+  it("removes credentials retained by an older local Convex setup", () => {
+    const setupSource = readFileSync(
+      path.join(repoRoot, "scripts/setup-conductor-workspace.mjs"),
+      "utf8",
+    );
+    expect(setupSource).toContain("removeConsumerAiCredentials(convex);");
+    expect(setupSource).toContain('run(convex, ["env", "remove", name])');
+  });
+
+  it("passes the native-local HTTP actions URL to the extraction worker", () => {
+    const setupSource = readFileSync(
+      path.join(repoRoot, "scripts/setup-conductor-workspace.mjs"),
+      "utf8",
+    );
+    expect(setupSource).toMatch(
+      /writeRuntimeEnv\("extraction-worker\.env", \{\s+CONVEX_URL: localUrls\.cloud,\s+CONVEX_SITE_URL: localUrls\.site,/,
+    );
+  });
+
+  it("requires only router URL and inference secret for every AI task", () => {
+    expect(
+      resolveConductorClRouterConfig(
+        {
+          url: " https://router.example.test ",
+          secret: " router-secret ",
+          timeoutMs: "60000",
+        },
+        { required: true },
+      ),
+    ).toEqual({
+      url: "https://router.example.test",
+      secret: "router-secret",
+      timeoutMs: "60000",
+      tenantId: "glass",
+    });
+  });
+
+  it("does not treat a legacy task gate as router configuration", () => {
+    expect(() =>
+      resolveConductorClRouterConfig(
+        { tasks: "*", url: "", secret: "" },
+        { required: true },
+      ),
+    ).toThrow("CL_ROUTER_URL, CL_ROUTER_SECRET");
+  });
+
   it("falls back to the Cloud Computer Mapbox token when the copied env omits it", () => {
     expect(
       resolveConductorMapboxAccessToken(new Map(), {

@@ -3,9 +3,13 @@
 import type { ModelMessage } from "ai";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import { buildPrivateAgentHistoryMetadata } from "./agentMessageHistory";
 import {
-  buildPrivateAgentHistoryMetadata,
-} from "./agentMessageHistory";
+  AgentAttachmentLimitError,
+  MAX_AGENT_ATTACHMENT_FILES,
+  accountRouterAttachment,
+  assertAgentAttachmentLimits,
+} from "./agentAttachmentLimits";
 import {
   MAX_IMESSAGE_AUDIO_BYTES,
   isImessageAudioAttachment,
@@ -75,6 +79,11 @@ export async function prepareInboundImessageTurn(
     attachments?: RawImessageAttachment[];
   },
 ): Promise<PreparedInboundImessageTurn> {
+  if ((args.attachments?.length ?? 0) > MAX_AGENT_ATTACHMENT_FILES) {
+    throw new AgentAttachmentLimitError(
+      `iMessage messages may include at most ${MAX_AGENT_ATTACHMENT_FILES} attachments`,
+    );
+  }
   const voiceMemos = (args.attachments ?? []).filter(isImessageAudioAttachment);
   const nonAudioAttachments = (args.attachments ?? []).filter(
     (attachment) => !isImessageAudioAttachment(attachment),
@@ -101,7 +110,7 @@ export async function prepareInboundImessageTurn(
     if (data.byteLength > MAX_IMESSAGE_AUDIO_BYTES) {
       failures.push({
         filename,
-        error: "The voice memo exceeded the 20 MB attachment limit.",
+        error: "The voice memo exceeded the 12 MiB attachment limit.",
       });
       continue;
     }
@@ -237,7 +246,11 @@ export async function buildImessageModelMessages(args: {
     content: `[${args.currentSpeakerLabel}]: ${args.messageText}`,
   });
 
-  if (args.attachmentRecords.length === 0) return modelMessages;
+  if (args.attachmentRecords.length === 0) {
+    return modelMessages;
+  }
+
+  assertAgentAttachmentLimits(args.attachmentRecords);
 
   const lastMsg = modelMessages[modelMessages.length - 1];
   if (lastMsg.role !== "user" || typeof lastMsg.content !== "string") {
@@ -245,8 +258,10 @@ export async function buildImessageModelMessages(args: {
   }
 
   const parts: ImessageContentPart[] = [];
+  const richAssets = { count: 0, bytes: 0 };
   for (const attachment of args.attachmentRecords) {
     if (!attachment.buffer) continue;
+
     if (attachment.contentType === "application/pdf") {
       const parsedPdfText = await tryBuildParsedPdfText({
         pdfBytes: attachment.buffer,
@@ -260,6 +275,10 @@ export async function buildImessageModelMessages(args: {
           text: `--- PDF attachment: ${attachment.filename} (LiteParse text) ---\n${parsedPdfText}\n--- End PDF attachment ---`,
         });
       } else {
+        accountRouterAttachment(richAssets, {
+          filename: attachment.filename,
+          size: attachment.buffer.byteLength,
+        });
         parts.push({
           type: "file",
           data: attachment.buffer.toString("base64"),
@@ -267,6 +286,10 @@ export async function buildImessageModelMessages(args: {
         });
       }
     } else if (attachment.contentType.startsWith("image/")) {
+      accountRouterAttachment(richAssets, {
+        filename: attachment.filename,
+        size: attachment.buffer.byteLength,
+      });
       parts.push({
         type: "image",
         image: attachment.buffer.toString("base64"),

@@ -54,7 +54,7 @@ iMessage accepts:
 - JPEG, PNG, WebP, GIF, HEIC, and HEIF images; and
 - common voice-note and audio formats, including M4A, AAC, MP3, WAV, and WebM.
 
-Audio files may be up to 20 MB. Spot transcribes a supported voice note before
+Audio files may be up to 12 MiB. Spot transcribes a supported voice note before
 responding. If the audio cannot be transcribed, resend it or send the key detail
 as text.
 
@@ -118,7 +118,7 @@ move it to a direct conversation or the signed-in web app before confirming it.
 
 ### A voice note or file was ignored
 
-Use one of the supported formats. Keep audio below 20 MB, and resend essential
+Use one of the supported formats. Keep audio below 12 MiB, and resend essential
 instructions as text if transcription fails.
 
 ### I need a human

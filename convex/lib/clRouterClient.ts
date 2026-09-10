@@ -1,6 +1,7 @@
 "use node";
 
 import {
+  MODEL_PROVIDERS,
   MODEL_TASKS,
   type ModelProvider,
   type ModelRoute,
@@ -13,18 +14,19 @@ const CL_ROUTER_TENANT_ID = "glass";
 const DEFAULT_CL_ROUTER_TIMEOUT_MS = 180_000;
 const MIN_CL_ROUTER_TIMEOUT_MS = 30_000;
 const MAX_CL_ROUTER_TIMEOUT_MS = 900_000;
+export const MAX_CL_ROUTER_JSON_REQUEST_BYTES = 4 * 1024 * 1024;
+export const MAX_CL_ROUTER_ASSET_BYTES = 12 * 1024 * 1024;
+export const MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
+export const MAX_CL_ROUTER_ASSET_COUNT = 8;
 
 /** All model tasks implemented by the cl-router v1 API contract. */
 export const CL_ROUTER_SUPPORTED_TASKS = MODEL_TASKS;
-
-const SUPPORTED_TASK_SET = new Set<ModelTask>(CL_ROUTER_SUPPORTED_TASKS);
 
 export type ClRouterEnvironment = Readonly<Record<string, string | undefined>>;
 
 export type ClRouterSettingsSnapshot = {
   routes?: Record<string, ModelRoute>;
   routeSources?: Record<string, string>;
-  providerKeys?: Partial<Record<ModelProvider, string>>;
 };
 
 export type ClRouterTraceMetadata = {
@@ -81,19 +83,77 @@ export type ClRouterAssetReference = {
   sha256?: string;
 };
 
+export function assertSpotRouterAssetUrl(
+  url: URL,
+  environment: ClRouterEnvironment = process.env,
+): void {
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "::1" ||
+    url.hostname === "[::1]";
+  const spotEnvironment = clean(environment.SPOT_ENV)?.toLowerCase() ?? "local";
+  const hostAllowed =
+    spotEnvironment === "production"
+      ? url.hostname === "merry-platypus-82.convex.cloud" ||
+        url.hostname === "actions.spot.insure"
+      : spotEnvironment === "dev"
+        ? url.hostname === "acoustic-caiman-755.convex.cloud" ||
+          url.hostname === "acoustic-caiman-755.convex.site"
+        : loopback;
+  const pathAllowed =
+    url.pathname.startsWith("/api/storage/") ||
+    url.pathname === "/router-assets";
+  const transportAllowed =
+    spotEnvironment === "local"
+      ? url.protocol === "http:"
+      : url.protocol === "https:" && url.port === "";
+  if (
+    url.username ||
+    url.password ||
+    !hostAllowed ||
+    !pathAllowed ||
+    !transportAllowed
+  ) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Referenced router assets must use an approved Spot storage host",
+    );
+  }
+  if (spotEnvironment === "local") {
+    const configuredRouterUrl = clean(environment.CL_ROUTER_URL);
+    let routerIsLoopback = false;
+    if (configuredRouterUrl) {
+      try {
+        const routerUrl = new URL(configuredRouterUrl);
+        routerIsLoopback =
+          routerUrl.protocol === "http:" &&
+          (routerUrl.hostname === "localhost" ||
+            routerUrl.hostname === "127.0.0.1" ||
+            routerUrl.hostname === "::1" ||
+            routerUrl.hostname === "[::1]");
+      } catch {
+        routerIsLoopback = false;
+      }
+    }
+    if (!routerIsLoopback) {
+      throw new ClRouterRequestError(
+        "configuration",
+        "Loopback router assets require a loopback cl-router deployment",
+      );
+    }
+  }
+}
+
 export async function clRouterAssetReferenceFromUrl(options: {
   url: URL;
   mediaType: string;
   filename?: string;
   sizeBytes?: number;
   fetch?: typeof globalThis.fetch;
+  environment?: ClRouterEnvironment;
 }): Promise<ClRouterAssetReference> {
-  if (options.url.protocol !== "https:") {
-    throw new ClRouterRequestError(
-      "configuration",
-      "Referenced router assets require HTTPS URLs",
-    );
-  }
+  assertSpotRouterAssetUrl(options.url, options.environment);
   let sizeBytes = options.sizeBytes;
   if (sizeBytes === undefined) {
     const response = await (options.fetch ?? globalThis.fetch)(options.url, {
@@ -129,7 +189,12 @@ export type ClRouterMessagePart =
   | { type: "file"; data: string; mediaType: string; filename?: string }
   | { type: "file"; source: ClRouterAssetReference }
   | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-  | { type: "tool-result"; toolCallId: string; toolName: string; output: unknown };
+  | {
+      type: "tool-result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+    };
 
 export type ClRouterMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -176,23 +241,23 @@ export type ClRouterGenerateResponse = ClRouterResponseMetadata & {
 export type ClRouterStreamEvent =
   | { type: "text-delta"; id: string; delta: string }
   | {
-    type: "tool-call";
-    toolCallId: string;
-    toolName: string;
-    input: unknown;
-  }
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
   | ({ type: "done"; finishReason: string } & ClRouterResponseMetadata)
   | {
-    type: "error";
-    error: {
-      code: string;
-      message: string;
-      retryable: boolean;
-      executionStarted?: boolean;
-      requestId?: string;
-      attempts?: ClRouterFailureAttempt[];
+      type: "error";
+      error: {
+        code: string;
+        message: string;
+        retryable: boolean;
+        executionStarted?: boolean;
+        requestId?: string;
+        attempts?: ClRouterFailureAttempt[];
+      };
     };
-  };
 
 export type ClRouterGenerateStreamResponse = {
   events: AsyncIterable<ClRouterStreamEvent>;
@@ -224,6 +289,68 @@ export type ClRouterTranscribeRequest = {
 export type ClRouterTranscribeResponse = ClRouterResponseMetadata & {
   text: string;
   durationSeconds?: number;
+};
+
+export type ClRouterCapabilities = {
+  apiVersion: "v1";
+  credentialMode: "router";
+  providers: Array<{ provider: ModelProvider; configured: boolean }>;
+  webRetrieval: {
+    providers: Array<{
+      provider: "parallel" | "exa" | "openai" | "google" | "anthropic" | "xai";
+      configured: boolean;
+    }>;
+  };
+};
+
+export type ClRouterRetrieveRequest = {
+  tenantId?: string;
+  orgId?: string;
+  input: {
+    query?: string;
+    url?: string;
+    goal?: string;
+    allowedDomains?: string[];
+    maxResults?: number;
+  };
+  config?: {
+    primary:
+      | "parallel"
+      | "exa"
+      | "model_default"
+      | "openai"
+      | "google"
+      | "anthropic"
+      | "xai";
+    route?: ModelRoute;
+  };
+  executionBudgetMs?: number;
+};
+
+export type ClRouterRetrieveResponse = {
+  provider:
+    | "parallel"
+    | "exa"
+    | "model_default"
+    | "openai"
+    | "google"
+    | "anthropic"
+    | "xai";
+  attempts: Array<{
+    provider:
+      | "parallel"
+      | "exa"
+      | "model_default"
+      | "openai"
+      | "google"
+      | "anthropic"
+      | "xai";
+    ok: boolean;
+    error?: string;
+  }>;
+  text: string;
+  sources: Array<{ title?: string; url: string; snippet?: string }>;
+  warnings?: string[];
 };
 
 export type ClRouterFeedbackRequest = {
@@ -262,7 +389,7 @@ export const CL_ROUTER_FAILURE_CODES = [
   "router_internal",
 ] as const;
 
-export type ClRouterFailureCode = typeof CL_ROUTER_FAILURE_CODES[number];
+export type ClRouterFailureCode = (typeof CL_ROUTER_FAILURE_CODES)[number];
 
 const CL_ROUTER_FAILURE_CODE_SET = new Set<string>(CL_ROUTER_FAILURE_CODES);
 
@@ -275,22 +402,30 @@ export class ClRouterRequestError extends Error {
   readonly requestId?: string;
   readonly attempts: readonly ClRouterFailureAttempt[];
 
-  constructor(kind: ClRouterErrorKind, message: string, options?: {
-    status?: number;
-    cause?: unknown;
-    routerCode?: ClRouterFailureCode;
-    retryable?: boolean;
-    executionStarted?: boolean;
-    requestId?: string;
-    attempts?: readonly ClRouterFailureAttempt[];
-  }) {
-    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+  constructor(
+    kind: ClRouterErrorKind,
+    message: string,
+    options?: {
+      status?: number;
+      cause?: unknown;
+      routerCode?: ClRouterFailureCode;
+      retryable?: boolean;
+      executionStarted?: boolean;
+      requestId?: string;
+      attempts?: readonly ClRouterFailureAttempt[];
+    },
+  ) {
+    super(
+      message,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
     this.name = "ClRouterRequestError";
     this.kind = kind;
     if (options?.status !== undefined) this.status = options.status;
     if (options?.routerCode !== undefined) this.routerCode = options.routerCode;
     if (options?.retryable !== undefined) this.retryable = options.retryable;
-    if (options?.executionStarted !== undefined) this.executionStarted = options.executionStarted;
+    if (options?.executionStarted !== undefined)
+      this.executionStarted = options.executionStarted;
     if (options?.requestId !== undefined) this.requestId = options.requestId;
     this.attempts = options?.attempts ?? [];
   }
@@ -307,64 +442,16 @@ function clean(value: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
-function configuredTasks(environment: ClRouterEnvironment): Set<string> {
-  return new Set(
-    (environment.CL_ROUTER_TASKS ?? "")
-      .split(",")
-      .map((task) => task.trim())
-      .filter(Boolean),
-  );
-}
-
-export function isClRouterConfigured(
-  environment: ClRouterEnvironment = process.env,
-): boolean {
-  return Boolean(
-    clean(environment.CL_ROUTER_URL) && clean(environment.CL_ROUTER_SECRET),
-  );
-}
-
-export function isClRouterTaskFlagged(
-  task: ModelTask,
-  environment: ClRouterEnvironment = process.env,
-): boolean {
-  const tasks = configuredTasks(environment);
-  return tasks.has("*") || tasks.has(task);
-}
-
-export function shouldUseClRouterForTask(
-  task: ModelTask,
-  environment: ClRouterEnvironment = process.env,
-): boolean {
-  return SUPPORTED_TASK_SET.has(task) && isClRouterTaskFlagged(task, environment);
-}
-
-export function shouldUseClRouterForCall(
-  task: ModelTask,
-  taskKind?: string,
-  environment: ClRouterEnvironment = process.env,
-): boolean {
-  if (taskKind === "operator_agent") return false;
-  if (!SUPPORTED_TASK_SET.has(task)) return false;
-  if (taskKind === "query_reason" && isClRouterConfigured(environment)) {
-    return true;
-  }
-  const tasks = configuredTasks(environment);
-  if (tasks.has("*") || tasks.has(task) || (taskKind && tasks.has(taskKind))) {
-    return true;
-  }
-  return Boolean(
-    taskKind?.startsWith("extraction_") && tasks.has("extraction"),
-  );
-}
-
 function clRouterTimeoutMs(environment: ClRouterEnvironment): number {
   const parsed = Number.parseInt(
     environment.CL_ROUTER_TIMEOUT_MS ?? environment.MODEL_CALL_TIMEOUT_MS ?? "",
     10,
   );
   if (!Number.isFinite(parsed)) return DEFAULT_CL_ROUTER_TIMEOUT_MS;
-  return Math.min(MAX_CL_ROUTER_TIMEOUT_MS, Math.max(MIN_CL_ROUTER_TIMEOUT_MS, parsed));
+  return Math.min(
+    MAX_CL_ROUTER_TIMEOUT_MS,
+    Math.max(MIN_CL_ROUTER_TIMEOUT_MS, parsed),
+  );
 }
 
 function clientConfig(environment: ClRouterEnvironment) {
@@ -397,22 +484,31 @@ function clientConfig(environment: ClRouterEnvironment) {
       "CL_ROUTER_URL must use HTTPS unless it targets loopback localhost, 127.0.0.1, or ::1",
     );
   }
-  return { url: url.toString().replace(/\/+$/, ""), secret, timeoutMs: clRouterTimeoutMs(environment) };
+  return {
+    url: url.toString().replace(/\/+$/, ""),
+    secret,
+    timeoutMs: clRouterTimeoutMs(environment),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function isClRouterFailureCode(value: unknown): value is ClRouterFailureCode {
+export function isClRouterFailureCode(
+  value: unknown,
+): value is ClRouterFailureCode {
   return typeof value === "string" && CL_ROUTER_FAILURE_CODE_SET.has(value);
 }
 
-function readClRouterFailure(
-  value: unknown,
-): Pick<ClRouterRequestError, "routerCode" | "retryable" | "executionStarted" | "requestId" | "attempts"> & {
-  message: string;
-} | null {
+function readClRouterFailure(value: unknown):
+  | (Pick<
+      ClRouterRequestError,
+      "routerCode" | "retryable" | "executionStarted" | "requestId" | "attempts"
+    > & {
+      message: string;
+    })
+  | null {
   if (!isRecord(value) || !isRecord(value.error)) return null;
   const error = value.error;
   if (
@@ -429,12 +525,16 @@ function readClRouterFailure(
     message: error.message,
     retryable: error.retryable,
     executionStarted: error.executionStarted,
-    ...(typeof error.requestId === "string" ? { requestId: error.requestId } : {}),
+    ...(typeof error.requestId === "string"
+      ? { requestId: error.requestId }
+      : {}),
     attempts: readFailureAttempts(error.attempts),
   };
 }
 
-async function responseFailure(response: Response): Promise<ClRouterRequestError> {
+async function responseFailure(
+  response: Response,
+): Promise<ClRouterRequestError> {
   let failure: ReturnType<typeof readClRouterFailure> = null;
   try {
     failure = readClRouterFailure(await response.json());
@@ -459,8 +559,10 @@ async function responseFailure(response: Response): Promise<ClRouterRequestError
 function isModelRoute(value: unknown): value is ModelRoute {
   return (
     isRecord(value) &&
-    typeof value.provider === "string" && value.provider.length > 0 &&
-    typeof value.model === "string" && value.model.length > 0
+    typeof value.provider === "string" &&
+    value.provider.length > 0 &&
+    typeof value.model === "string" &&
+    value.model.length > 0
   );
 }
 
@@ -480,15 +582,17 @@ function readFailureAttempts(value: unknown): ClRouterFailureAttempt[] {
     ) {
       return [];
     }
-    return [{
-      attempt,
-      provider: item.provider,
-      model: item.model,
-      outcome,
-      ...(typeof failureErrorCode === "string"
-        ? { errorCode: failureErrorCode }
-        : {}),
-    }];
+    return [
+      {
+        attempt,
+        provider: item.provider,
+        model: item.model,
+        outcome,
+        ...(typeof failureErrorCode === "string"
+          ? { errorCode: failureErrorCode }
+          : {}),
+      },
+    ];
   });
 }
 
@@ -508,7 +612,8 @@ function readUsage(value: unknown): ClRouterUsage | null {
     !isNonNegativeInteger(cachedInputTokens) ||
     !isNonNegativeInteger(cacheWriteTokens) ||
     cachedInputTokens + cacheWriteTokens > inputTokens ||
-    (value.reasoningTokens !== undefined && !isNonNegativeInteger(value.reasoningTokens))
+    (value.reasoningTokens !== undefined &&
+      !isNonNegativeInteger(value.reasoningTokens))
   ) {
     return null;
   }
@@ -530,7 +635,9 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
     typeof value.decision !== "string" ||
     !Array.isArray(candidates) ||
     !candidates.every(isModelRoute) ||
-    !(typeof value.policyVersion === "string" || value.policyVersion === null) ||
+    !(
+      typeof value.policyVersion === "string" || value.policyVersion === null
+    ) ||
     typeof value.cacheStickinessApplied !== "boolean" ||
     !isNonNegativeInteger(value.attemptCount) ||
     value.attemptCount < 1
@@ -538,17 +645,16 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
     return null;
   }
   const wouldHaveChosen = value.wouldHaveChosen;
-  const wouldHaveChosenDecision = isRecord(wouldHaveChosen) &&
-    typeof wouldHaveChosen.decision === "string"
-    ? wouldHaveChosen.decision
-    : undefined;
+  const wouldHaveChosenDecision =
+    isRecord(wouldHaveChosen) && typeof wouldHaveChosen.decision === "string"
+      ? wouldHaveChosen.decision
+      : undefined;
   if (
     (value.shadowMode !== undefined && typeof value.shadowMode !== "boolean") ||
-    (value.wouldHaveMatched !== undefined && typeof value.wouldHaveMatched !== "boolean") ||
-    (wouldHaveChosen !== undefined && (
-      !isModelRoute(wouldHaveChosen) ||
-      wouldHaveChosenDecision === undefined
-    ))
+    (value.wouldHaveMatched !== undefined &&
+      typeof value.wouldHaveMatched !== "boolean") ||
+    (wouldHaveChosen !== undefined &&
+      (!isModelRoute(wouldHaveChosen) || wouldHaveChosenDecision === undefined))
   ) {
     return null;
   }
@@ -558,14 +664,20 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
     policyVersion: value.policyVersion,
     cacheStickinessApplied: value.cacheStickinessApplied,
     attemptCount: value.attemptCount,
-    ...(typeof value.routeSource === "string" ? { routeSource: value.routeSource } : {}),
-    ...(typeof value.shadowMode === "boolean" ? { shadowMode: value.shadowMode } : {}),
+    ...(typeof value.routeSource === "string"
+      ? { routeSource: value.routeSource }
+      : {}),
+    ...(typeof value.shadowMode === "boolean"
+      ? { shadowMode: value.shadowMode }
+      : {}),
     ...(wouldHaveChosen !== undefined
-      ? { wouldHaveChosen: {
-          provider: wouldHaveChosen.provider,
-          model: wouldHaveChosen.model,
-          decision: wouldHaveChosenDecision!,
-        } }
+      ? {
+          wouldHaveChosen: {
+            provider: wouldHaveChosen.provider,
+            model: wouldHaveChosen.model,
+            decision: wouldHaveChosenDecision!,
+          },
+        }
       : {}),
     ...(typeof value.wouldHaveMatched === "boolean"
       ? { wouldHaveMatched: value.wouldHaveMatched }
@@ -573,17 +685,22 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
   };
 }
 
-function readResponseMetadata(value: Record<string, unknown>): ClRouterResponseMetadata | null {
+function readResponseMetadata(
+  value: Record<string, unknown>,
+): ClRouterResponseMetadata | null {
   const usage = readUsage(value.usage);
   const routing = readRouting(value.routing);
   if (
-    typeof value.requestId !== "string" || value.requestId.length === 0 ||
+    typeof value.requestId !== "string" ||
+    value.requestId.length === 0 ||
     !isModelRoute(value.model) ||
     !usage ||
     !routing ||
     !(
       value.costUsd === null ||
-      (typeof value.costUsd === "number" && Number.isFinite(value.costUsd) && value.costUsd >= 0)
+      (typeof value.costUsd === "number" &&
+        Number.isFinite(value.costUsd) &&
+        value.costUsd >= 0)
     ) ||
     (value.costStatus !== "priced" && value.costStatus !== "unpriced")
   ) {
@@ -615,7 +732,10 @@ async function clRouterFetch(
   }, config.timeoutMs);
   const abortFromCaller = () => controller.abort();
   if (options.abortSignal?.aborted) controller.abort();
-  else options.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  else
+    options.abortSignal?.addEventListener("abort", abortFromCaller, {
+      once: true,
+    });
   try {
     let response: Response;
     try {
@@ -663,21 +783,123 @@ async function postJson(
   body: unknown,
   options: ClRouterClientOptions,
 ): Promise<unknown> {
+  validateRouterAssets(body, options.environment ?? process.env);
+  const serialized = serializeRouterRequest(body);
   return clRouterFetch(
     path,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: serialized,
     },
     options,
   );
 }
 
-function requestPayload<T extends {
-  tenantId?: string;
-  settings?: ClRouterSettingsSnapshot | null;
-}>(request: T): Omit<T, "settings"> & {
+function serializeRouterRequest(body: unknown): string {
+  const serialized = JSON.stringify(body);
+  if (
+    new TextEncoder().encode(serialized).byteLength >
+    MAX_CL_ROUTER_JSON_REQUEST_BYTES
+  ) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "cl-router JSON requests may not exceed 4 MiB",
+    );
+  }
+  return serialized;
+}
+
+function inlineAssetBytes(data: string): number {
+  const compact = data.replace(/\s/g, "");
+  if (!compact || !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Router inline assets require base64 data",
+    );
+  }
+  return Buffer.from(compact, "base64").byteLength;
+}
+
+function validateRouterAssets(
+  body: unknown,
+  environment: ClRouterEnvironment,
+): void {
+  if (!isRecord(body)) return;
+  const sizes: number[] = [];
+  const add = (size: number) => {
+    if (
+      !Number.isSafeInteger(size) ||
+      size <= 0 ||
+      size > MAX_CL_ROUTER_ASSET_BYTES
+    ) {
+      throw new ClRouterRequestError(
+        "configuration",
+        "Router assets must be nonempty and no larger than 12 MiB",
+      );
+    }
+    sizes.push(size);
+  };
+  const addSource = (source: Record<string, unknown>) => {
+    if (typeof source.url !== "string") {
+      throw new ClRouterRequestError(
+        "configuration",
+        "Router asset references require a URL",
+      );
+    }
+    let url: URL;
+    try {
+      url = new URL(source.url);
+    } catch (error) {
+      throw new ClRouterRequestError(
+        "configuration",
+        "Router asset reference URL is invalid",
+        { cause: error },
+      );
+    }
+    assertSpotRouterAssetUrl(url, environment);
+    add(Number(source.sizeBytes));
+  };
+  if (isRecord(body.audio)) addSource(body.audio);
+  if (Array.isArray(body.messages)) {
+    for (const message of body.messages) {
+      if (!isRecord(message) || !Array.isArray(message.content)) continue;
+      for (const part of message.content) {
+        if (!isRecord(part) || (part.type !== "image" && part.type !== "file"))
+          continue;
+        if (isRecord(part.source)) addSource(part.source);
+        else if (typeof part.data === "string")
+          add(inlineAssetBytes(part.data));
+        else if (typeof part.image === "string")
+          add(inlineAssetBytes(part.image));
+      }
+    }
+  }
+  if (sizes.length > MAX_CL_ROUTER_ASSET_COUNT) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Router requests may contain at most eight assets",
+    );
+  }
+  if (
+    sizes.reduce((sum, size) => sum + size, 0) >
+    MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES
+  ) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Router request assets may contain at most 16 MiB decoded data",
+    );
+  }
+}
+
+function requestPayload<
+  T extends {
+    tenantId?: string;
+    settings?: ClRouterSettingsSnapshot | null;
+  },
+>(
+  request: T,
+): Omit<T, "settings"> & {
   tenantId: string;
   settings?: ClRouterSettingsSnapshot;
 } {
@@ -696,11 +918,15 @@ function generateRequestPayload(
   const timeoutMs = clRouterTimeoutMs(environment);
   return requestPayload({
     ...request,
-    executionBudgetMs: request.executionBudgetMs ?? Math.max(100, timeoutMs - 1_000),
+    executionBudgetMs:
+      request.executionBudgetMs ?? Math.max(100, timeoutMs - 1_000),
   });
 }
 
-function invalidStreamResponse(message: string, cause?: unknown): ClRouterRequestError {
+function invalidStreamResponse(
+  message: string,
+  cause?: unknown,
+): ClRouterRequestError {
   return new ClRouterRequestError(
     "invalid_response",
     message,
@@ -731,12 +957,16 @@ function parseStreamEventBlock(block: string): ClRouterStreamEvent | null {
     throw invalidStreamResponse("cl-router returned invalid SSE JSON", error);
   }
   if (!isRecord(payload) || payload.type !== eventName) {
-    throw invalidStreamResponse("cl-router SSE event name and payload do not match");
+    throw invalidStreamResponse(
+      "cl-router SSE event name and payload do not match",
+    );
   }
   switch (payload.type) {
     case "text-delta":
       if (typeof payload.id !== "string" || typeof payload.delta !== "string") {
-        throw invalidStreamResponse("cl-router returned an invalid text stream event");
+        throw invalidStreamResponse(
+          "cl-router returned an invalid text stream event",
+        );
       }
       return { type: "text-delta", id: payload.id, delta: payload.delta };
     case "tool-call":
@@ -747,7 +977,9 @@ function parseStreamEventBlock(block: string): ClRouterStreamEvent | null {
         !payload.toolName ||
         !("input" in payload)
       ) {
-        throw invalidStreamResponse("cl-router returned an invalid tool-call stream event");
+        throw invalidStreamResponse(
+          "cl-router returned an invalid tool-call stream event",
+        );
       }
       return {
         type: "tool-call",
@@ -758,7 +990,9 @@ function parseStreamEventBlock(block: string): ClRouterStreamEvent | null {
     case "done": {
       const metadata = readResponseMetadata(payload);
       if (!metadata || typeof payload.finishReason !== "string") {
-        throw invalidStreamResponse("cl-router returned an invalid done stream event");
+        throw invalidStreamResponse(
+          "cl-router returned an invalid done stream event",
+        );
       }
       return { type: "done", finishReason: payload.finishReason, ...metadata };
     }
@@ -770,9 +1004,12 @@ function parseStreamEventBlock(block: string): ClRouterStreamEvent | null {
         typeof payload.error.retryable !== "boolean" ||
         (payload.error.executionStarted !== undefined &&
           typeof payload.error.executionStarted !== "boolean") ||
-        (payload.error.requestId !== undefined && typeof payload.error.requestId !== "string")
+        (payload.error.requestId !== undefined &&
+          typeof payload.error.requestId !== "string")
       ) {
-        throw invalidStreamResponse("cl-router returned an invalid error stream event");
+        throw invalidStreamResponse(
+          "cl-router returned an invalid error stream event",
+        );
       }
       return {
         type: "error",
@@ -809,7 +1046,10 @@ export async function clRouterGenerateStream(
   }, config.timeoutMs);
   const abortFromCaller = () => controller.abort();
   if (options.abortSignal?.aborted) controller.abort();
-  else options.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  else
+    options.abortSignal?.addEventListener("abort", abortFromCaller, {
+      once: true,
+    });
   const cleanup = () => {
     clearTimeout(timer);
     options.abortSignal?.removeEventListener("abort", abortFromCaller);
@@ -817,6 +1057,8 @@ export async function clRouterGenerateStream(
 
   let response: Response;
   try {
+    const payload = generateRequestPayload(request, environment);
+    validateRouterAssets(payload, environment);
     response = await fetchImplementation(`${config.url}/v1/generate/stream`, {
       method: "POST",
       headers: {
@@ -824,11 +1066,12 @@ export async function clRouterGenerateStream(
         "Content-Type": "application/json",
         Accept: "text/event-stream",
       },
-      body: JSON.stringify(generateRequestPayload(request, environment)),
+      body: serializeRouterRequest(payload),
       signal: controller.signal,
     });
   } catch (error) {
     cleanup();
+    if (error instanceof ClRouterRequestError) throw error;
     throw new ClRouterRequestError(
       timedOut
         ? "timeout"
@@ -847,7 +1090,12 @@ export async function clRouterGenerateStream(
     cleanup();
     throw await responseFailure(response);
   }
-  if (!response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")) {
+  if (
+    !response.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .includes("text/event-stream")
+  ) {
     cleanup();
     throw invalidStreamResponse("cl-router returned a non-SSE stream response");
   }
@@ -903,55 +1151,6 @@ export async function clRouterGenerateStream(
   return { events, headers: response.headers };
 }
 
-const PROVEN_PRE_EXECUTION_CONNECTION_CODES = new Set([
-  "ECONNREFUSED",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "UND_ERR_CONNECT_TIMEOUT",
-]);
-
-function nestedErrorCode(value: unknown, depth = 0): string | undefined {
-  if (depth > 4 || !isRecord(value)) return undefined;
-  if (typeof value.code === "string") return value.code;
-  return nestedErrorCode(value.cause, depth + 1);
-}
-
-function isProductionEnvironment(environment: ClRouterEnvironment): boolean {
-  return clean(environment.SPOT_ENV)?.toLowerCase() === "production";
-}
-
-export function isClRouterDirectFallbackError(
-  error: unknown,
-  environment: ClRouterEnvironment = process.env,
-): boolean {
-  if (!isProductionEnvironment(environment) || !(error instanceof ClRouterRequestError)) {
-    return false;
-  }
-  if (
-    error.routerCode === "router_unavailable" &&
-    error.executionStarted === false
-  ) {
-    return true;
-  }
-  return error.kind === "connection" &&
-    PROVEN_PRE_EXECUTION_CONNECTION_CODES.has(nestedErrorCode(error.cause) ?? "");
-}
-
-export async function withClRouterDirectFallback<T>(options: {
-  router: () => Promise<T>;
-  direct: () => Promise<T>;
-  onFallback?: (error: ClRouterRequestError) => void;
-  environment?: ClRouterEnvironment;
-}): Promise<T> {
-  try {
-    return await options.router();
-  } catch (error) {
-    if (!isClRouterDirectFallbackError(error, options.environment ?? process.env)) throw error;
-    options.onFallback?.(error as ClRouterRequestError);
-    return options.direct();
-  }
-}
-
 export async function clRouterGenerate(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
@@ -962,11 +1161,17 @@ export async function clRouterGenerate(
     options,
   );
   if (!isRecord(payload)) {
-    throw new ClRouterRequestError("invalid_response", "cl-router generate response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router generate response is invalid",
+    );
   }
   const metadata = readResponseMetadata(payload);
   if (!metadata || !("output" in payload)) {
-    throw new ClRouterRequestError("invalid_response", "cl-router generate response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router generate response is invalid",
+    );
   }
   return {
     ...metadata,
@@ -977,29 +1182,126 @@ export async function clRouterGenerate(
   };
 }
 
+const MODEL_PROVIDER_SET = new Set<ModelProvider>(MODEL_PROVIDERS);
+
+const WEB_RETRIEVAL_PROVIDER_SET = new Set([
+  "parallel",
+  "exa",
+  "model_default",
+  "openai",
+  "google",
+  "anthropic",
+  "xai",
+]);
+
+export async function clRouterCapabilities(
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterCapabilities> {
+  const payload = await clRouterFetch(
+    "/v1/capabilities",
+    { method: "GET" },
+    options,
+  );
+  if (
+    !isRecord(payload) ||
+    payload.apiVersion !== "v1" ||
+    payload.credentialMode !== "router" ||
+    !Array.isArray(payload.providers) ||
+    !payload.providers.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.provider === "string" &&
+        MODEL_PROVIDER_SET.has(entry.provider as ModelProvider) &&
+        typeof entry.configured === "boolean",
+    ) ||
+    !isRecord(payload.webRetrieval) ||
+    !Array.isArray(payload.webRetrieval.providers) ||
+    !payload.webRetrieval.providers.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.provider === "string" &&
+        WEB_RETRIEVAL_PROVIDER_SET.has(entry.provider) &&
+        typeof entry.configured === "boolean",
+    )
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router capabilities response is invalid",
+    );
+  }
+  return payload as ClRouterCapabilities;
+}
+
+export async function clRouterRetrieve(
+  request: ClRouterRetrieveRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterRetrieveResponse> {
+  const payload = await postJson(
+    "/v1/retrieve",
+    { ...request, tenantId: request.tenantId ?? CL_ROUTER_TENANT_ID },
+    options,
+  );
+  if (
+    !isRecord(payload) ||
+    typeof payload.provider !== "string" ||
+    !WEB_RETRIEVAL_PROVIDER_SET.has(payload.provider) ||
+    !Array.isArray(payload.attempts) ||
+    !payload.attempts.every(
+      (attempt) =>
+        isRecord(attempt) &&
+        typeof attempt.provider === "string" &&
+        WEB_RETRIEVAL_PROVIDER_SET.has(attempt.provider) &&
+        typeof attempt.ok === "boolean" &&
+        (attempt.error === undefined || typeof attempt.error === "string"),
+    ) ||
+    typeof payload.text !== "string" ||
+    !Array.isArray(payload.sources) ||
+    !payload.sources.every(
+      (source) =>
+        isRecord(source) &&
+        typeof source.url === "string" &&
+        (source.title === undefined || typeof source.title === "string") &&
+        (source.snippet === undefined || typeof source.snippet === "string"),
+    ) ||
+    (payload.warnings !== undefined &&
+      (!Array.isArray(payload.warnings) ||
+        !payload.warnings.every((warning) => typeof warning === "string")))
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router retrieval response is invalid",
+    );
+  }
+  return payload as ClRouterRetrieveResponse;
+}
+
 export async function clRouterEmbed(
   request: ClRouterEmbedRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterEmbedResponse> {
-  const payload = await postJson(
-    "/v1/embed",
-    requestPayload(request),
-    options,
-  );
+  const payload = await postJson("/v1/embed", requestPayload(request), options);
   if (!isRecord(payload)) {
-    throw new ClRouterRequestError("invalid_response", "cl-router embed response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router embed response is invalid",
+    );
   }
   const metadata = readResponseMetadata(payload);
   if (
     !metadata ||
     !Array.isArray(payload.embeddings) ||
     !payload.embeddings.every(
-      (embedding) => Array.isArray(embedding) && embedding.every(
-        (value) => typeof value === "number" && Number.isFinite(value),
-      ),
+      (embedding) =>
+        Array.isArray(embedding) &&
+        embedding.every(
+          (value) => typeof value === "number" && Number.isFinite(value),
+        ),
     )
   ) {
-    throw new ClRouterRequestError("invalid_response", "cl-router embed response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router embed response is invalid",
+    );
   }
   const embeddings = payload.embeddings as number[][];
   if (
@@ -1025,11 +1327,17 @@ export async function clRouterTranscribe(
     options,
   );
   if (!isRecord(payload)) {
-    throw new ClRouterRequestError("invalid_response", "cl-router transcription response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router transcription response is invalid",
+    );
   }
   const responseMetadata = readResponseMetadata(payload);
   if (!responseMetadata || typeof payload.text !== "string") {
-    throw new ClRouterRequestError("invalid_response", "cl-router transcription response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router transcription response is invalid",
+    );
   }
   return {
     ...responseMetadata,
@@ -1054,7 +1362,10 @@ export async function sendClRouterFeedback(
     payload.accepted !== true ||
     typeof payload.duplicate !== "boolean"
   ) {
-    throw new ClRouterRequestError("invalid_response", "cl-router feedback response is invalid");
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router feedback response is invalid",
+    );
   }
   return { accepted: true, duplicate: payload.duplicate };
 }

@@ -1,18 +1,17 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Clarity Labs Router API",
+    "title": "cl-router API",
     "version": "1.0.0",
-    "description": "Task-aware direct-provider inference routing for Glass."
+    "description": "Canonical Convex router API with legacy Fastify compatibility. Provider credentials belong exclusively to the router deployment. Runtime validation additionally enforces relational limits, asset host policy, and routing safety requirements."
   },
   "paths": {
     "/health": {
       "get": {
-        "summary": "Read service and database health",
         "security": [],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Healthy",
             "content": {
               "application/json": {
                 "schema": {
@@ -22,7 +21,7 @@
             }
           },
           "503": {
-            "description": "Database unavailable",
+            "description": "Degraded",
             "content": {
               "application/json": {
                 "schema": {
@@ -34,9 +33,89 @@
         }
       }
     },
+    "/v1/capabilities": {
+      "get": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/generate": {
       "post": {
-        "summary": "Generate",
         "security": [
           {
             "inferenceBearerAuth": []
@@ -54,11 +133,71 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GenerateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -68,7 +207,6 @@
     },
     "/v1/generate/stream": {
       "post": {
-        "summary": "Stream one model step over SSE",
         "security": [
           {
             "inferenceBearerAuth": []
@@ -86,11 +224,71 @@
         },
         "responses": {
           "200": {
-            "description": "Server-sent StreamEvent records",
+            "description": "SSE events; each data frame conforms to StreamEvent.",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "$ref": "#/components/schemas/StreamEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -100,7 +298,6 @@
     },
     "/v1/embed": {
       "post": {
-        "summary": "Embed text",
         "security": [
           {
             "inferenceBearerAuth": []
@@ -118,11 +315,71 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EmbedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -132,7 +389,6 @@
     },
     "/v1/transcribe": {
       "post": {
-        "summary": "Transcribe an audio upload",
         "security": [
           {
             "inferenceBearerAuth": []
@@ -141,6 +397,11 @@
         "requestBody": {
           "required": true,
           "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscribeRequest"
+              }
+            },
             "multipart/form-data": {
               "schema": {
                 "type": "object",
@@ -155,7 +416,8 @@
                   },
                   "file": {
                     "type": "string",
-                    "contentEncoding": "binary"
+                    "contentMediaType": "application/octet-stream",
+                    "description": "Audio bytes"
                   }
                 }
               }
@@ -164,11 +426,183 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TranscribeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Legacy Fastify multipart validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyTranscriptionErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Legacy Fastify audio exceeds upload limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyTranscriptionErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Convex accepts JSON with an HTTPS AssetReference or multipart audio. Legacy Fastify accepts multipart only. Asset references require an allowed host and runtime size limits."
+      }
+    },
+    "/v1/retrieve": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrieveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -178,7 +612,6 @@
     },
     "/v1/feedback": {
       "post": {
-        "summary": "Submit quality feedback",
         "security": [
           {
             "inferenceBearerAuth": []
@@ -196,11 +629,71 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FeedbackResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -210,7 +703,6 @@
     },
     "/admin/freeze": {
       "post": {
-        "summary": "Freeze or unfreeze routing",
         "security": [
           {
             "adminBearerAuth": []
@@ -228,11 +720,81 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FreezeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Legacy Fastify admin validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyValidationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnavailableResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -242,7 +804,6 @@
     },
     "/admin/pin": {
       "post": {
-        "summary": "Pin or clear a task route",
         "security": [
           {
             "adminBearerAuth": []
@@ -260,7 +821,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -268,35 +829,73 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/admin/calibration-seeds/import": {
-      "post": {
-        "summary": "Atomically import an audited offline calibration seed",
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CalibrationSeedImportRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
+          },
+          "400": {
+            "description": "Legacy Fastify admin validation failure",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CalibrationSeedImportResponse"
+                  "$ref": "#/components/schemas/LegacyValidationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnavailableResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -306,34 +905,14 @@
     },
     "/admin/policy": {
       "get": {
-        "summary": "Read active routing policy",
         "security": [
           {
             "adminBearerAuth": []
           }
         ],
-        "parameters": [
-          {
-            "name": "tenantId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "glass"
-            }
-          },
-          {
-            "name": "taskFamily",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -341,18 +920,78 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Legacy Fastify admin validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyValidationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnavailableResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
           }
-        }
-      }
-    },
-    "/admin/rollups": {
-      "get": {
-        "summary": "Read hourly task rollups",
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
+        },
         "parameters": [
           {
             "name": "tenantId",
@@ -372,9 +1011,19 @@
             }
           }
         ],
+        "description": "Returns one policy or null with taskFamily; otherwise returns an array of policies."
+      }
+    },
+    "/admin/rollups": {
+      "get": {
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -382,13 +1031,102 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Legacy Fastify admin validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyValidationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnavailableResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "glass"
+            }
+          },
+          {
+            "name": "taskFamily",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Returns task rollups from the 28-day window. Convex timestamps are milliseconds and include _id/_creationTime; legacy timestamps are ISO 8601. Integer token and monetary totals are decimal strings."
       }
     },
     "/admin/score": {
       "post": {
-        "summary": "Run scoring and policy evaluation",
         "security": [
           {
             "adminBearerAuth": []
@@ -406,7 +1144,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Successful response",
             "content": {
               "application/json": {
                 "schema": {
@@ -414,8 +1152,79 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Legacy Fastify admin validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyValidationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Candidates exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnavailableResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Execution budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "Returns scoring decisions per task family, including full scored candidate details on incumbent and replacement."
       }
     }
   },
@@ -424,17 +1233,1554 @@
       "inferenceBearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Inference credential for /v1 routes (CL_ROUTER_SECRET)."
+        "description": "Consumer inference credential (CL_ROUTER_SECRET)."
       },
       "adminBearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Independent operator credential for /admin routes (CL_ROUTER_ADMIN_SECRET)."
+        "description": "Independent operator credential (CL_ROUTER_ADMIN_SECRET); never distributed to inference consumers."
       }
     },
     "schemas": {
+      "AdminPolicyResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "taskFamily": {
+                "type": "string"
+              },
+              "explorationPct": {
+                "type": "number"
+              },
+              "frozen": {
+                "type": "boolean"
+              },
+              "frozenRoute": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "candidates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "primary",
+                        "challenger",
+                        "fallback",
+                        "quarantined"
+                      ]
+                    },
+                    "trafficPct": {
+                      "type": "number"
+                    },
+                    "ratingScore": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ratingCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "projectedCostNanoUsd": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^\\d+$",
+                          "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model",
+                    "rank",
+                    "role",
+                    "trafficPct",
+                    "ratingScore",
+                    "ratingCount",
+                    "projectedCostNanoUsd"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "taskFamily",
+              "explorationPct",
+              "frozen",
+              "frozenRoute",
+              "candidates"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "taskFamily": {
+                  "type": "string"
+                },
+                "explorationPct": {
+                  "type": "number"
+                },
+                "frozen": {
+                  "type": "boolean"
+                },
+                "frozenRoute": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "rank": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "primary",
+                          "challenger",
+                          "fallback",
+                          "quarantined"
+                        ]
+                      },
+                      "trafficPct": {
+                        "type": "number"
+                      },
+                      "ratingScore": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ratingCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "projectedCostNanoUsd": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^\\d+$",
+                            "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model",
+                      "rank",
+                      "role",
+                      "trafficPct",
+                      "ratingScore",
+                      "ratingCount",
+                      "projectedCostNanoUsd"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "taskFamily",
+                "explorationPct",
+                "frozen",
+                "frozenRoute",
+                "candidates"
+              ],
+              "additionalProperties": false
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "AdminRollupResponse": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "_id": {
+              "type": "string"
+            },
+            "_creationTime": {
+              "type": "number"
+            },
+            "hourStart": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              ],
+              "description": "Unix milliseconds in Convex; ISO 8601 in the legacy PostgreSQL runtime."
+            },
+            "tenantId": {
+              "type": "string"
+            },
+            "taskFamily": {
+              "type": "string"
+            },
+            "callCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "successCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "schemaCheckedCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "schemaValidCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "softFailCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "fallbackCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "providerErrorCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "truncatedCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "cacheHitCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "feedbackCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "positiveRatingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "negativeRatingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "reviewFeedbackCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "reviewPassCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "correctionCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "reviewedFieldCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "ungroundedStripCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sensitiveFieldCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "escalationCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "humanEditCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "editedFieldCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "latencyP50Ms": {
+              "type": "number"
+            },
+            "latencyP95Ms": {
+              "type": "number"
+            },
+            "inputTokens": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+            },
+            "outputTokens": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+            },
+            "cachedInputTokens": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+            },
+            "cacheWriteTokens": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+            },
+            "pricedCallCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "costNanoUsd": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+            },
+            "rolledUpAt": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              ],
+              "description": "Unix milliseconds in Convex; ISO 8601 in the legacy PostgreSQL runtime."
+            }
+          },
+          "required": [
+            "provider",
+            "model",
+            "hourStart",
+            "tenantId",
+            "taskFamily",
+            "callCount",
+            "successCount",
+            "schemaCheckedCount",
+            "schemaValidCount",
+            "softFailCount",
+            "fallbackCount",
+            "providerErrorCount",
+            "truncatedCount",
+            "cacheHitCount",
+            "feedbackCount",
+            "positiveRatingCount",
+            "negativeRatingCount",
+            "reviewFeedbackCount",
+            "reviewPassCount",
+            "correctionCount",
+            "reviewedFieldCount",
+            "ungroundedStripCount",
+            "sensitiveFieldCount",
+            "escalationCount",
+            "humanEditCount",
+            "editedFieldCount",
+            "latencyP50Ms",
+            "latencyP95Ms",
+            "inputTokens",
+            "outputTokens",
+            "cachedInputTokens",
+            "cacheWriteTokens",
+            "pricedCallCount",
+            "costNanoUsd",
+            "rolledUpAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "AdminScoreResponse": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "none",
+                "promote_challenger",
+                "frozen"
+              ]
+            },
+            "incumbent": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "challenger",
+                    "fallback",
+                    "quarantined"
+                  ]
+                },
+                "trafficPct": {
+                  "type": "number"
+                },
+                "ratingScore": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ratingCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "projectedCostNanoUsd": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^\\d+$",
+                      "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "score": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "ratingCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "positiveRatingCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "negativeRatingCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "score",
+                    "ratingCount",
+                    "positiveRatingCount",
+                    "negativeRatingCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "provider",
+                "model",
+                "rank",
+                "role",
+                "trafficPct",
+                "ratingScore",
+                "ratingCount",
+                "projectedCostNanoUsd",
+                "score"
+              ],
+              "additionalProperties": false
+            },
+            "replacement": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "primary",
+                        "challenger",
+                        "fallback",
+                        "quarantined"
+                      ]
+                    },
+                    "trafficPct": {
+                      "type": "number"
+                    },
+                    "ratingScore": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ratingCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "projectedCostNanoUsd": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^\\d+$",
+                          "description": "Integer serialized as a decimal string; monetary values are nano-USD."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "score": {
+                      "type": "object",
+                      "properties": {
+                        "score": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "ratingCount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "positiveRatingCount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "negativeRatingCount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "score",
+                        "ratingCount",
+                        "positiveRatingCount",
+                        "negativeRatingCount"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model",
+                    "rank",
+                    "role",
+                    "trafficPct",
+                    "ratingScore",
+                    "ratingCount",
+                    "projectedCostNanoUsd",
+                    "score"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "scores": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "ratingCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "positiveRatingCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "negativeRatingCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "score",
+                  "ratingCount",
+                  "positiveRatingCount",
+                  "negativeRatingCount"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "incumbent",
+            "replacement",
+            "reason",
+            "scores"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "AdminUnavailableResponse": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "router_unavailable",
+                      "router_candidates_exhausted",
+                      "router_budget_exhausted",
+                      "router_rejected",
+                      "router_internal"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  },
+                  "executionStarted": {
+                    "type": "boolean"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "attempts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "attempt": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "error",
+                            "timeout"
+                          ]
+                        },
+                        "errorCode": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model",
+                        "attempt",
+                        "outcome"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "executionStarted"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "error"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "const": "router_unavailable"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "AssetReference": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https:\\/\\/.*"
+          },
+          "mediaType": {
+            "type": "string",
+            "minLength": 1
+          },
+          "filename": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 12582912
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "url",
+          "mediaType",
+          "sizeBytes"
+        ],
+        "additionalProperties": false
+      },
+      "CapabilitiesResponse": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "const": "v1"
+          },
+          "credentialMode": {
+            "type": "string",
+            "const": "router"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "google",
+                    "xai",
+                    "mistral",
+                    "cohere",
+                    "fireworks",
+                    "deepseek"
+                  ]
+                },
+                "configured": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "provider",
+                "configured"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "webRetrieval": {
+            "type": "object",
+            "properties": {
+              "providers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "parallel",
+                        "exa",
+                        "openai",
+                        "google",
+                        "anthropic",
+                        "xai"
+                      ]
+                    },
+                    "configured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "configured"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "providers"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "apiVersion",
+          "credentialMode",
+          "providers",
+          "webRetrieval"
+        ],
+        "additionalProperties": false
+      },
+      "EmbedRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "routes": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai",
+                        "anthropic",
+                        "google",
+                        "xai",
+                        "mistral",
+                        "cohere",
+                        "fireworks",
+                        "deepseek"
+                      ]
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model"
+                  ]
+                }
+              },
+              "routeSources": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "broker",
+                    "global",
+                    "static"
+                  ]
+                }
+              },
+              "providerKeys": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          },
+          "texts": {
+            "minItems": 1,
+            "maxItems": 2048,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dimensions": {
+            "default": 1536,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 4096
+          },
+          "trace": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "tenantId",
+          "texts"
+        ],
+        "description": "The product of texts.length and dimensions (default 1536) must not exceed 200000. Chunk larger batches before sending them."
+      },
+      "EmbedResponse": {
+        "type": "object",
+        "properties": {
+          "embeddings": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "outputTokens": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cachedInputTokens": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cacheWriteTokens": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "reasoningTokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens",
+              "cachedInputTokens",
+              "cacheWriteTokens"
+            ],
+            "additionalProperties": false
+          },
+          "costUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "priced",
+              "unpriced"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "google",
+                  "xai",
+                  "mistral",
+                  "cohere",
+                  "fireworks",
+                  "deepseek"
+                ]
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "provider",
+              "model"
+            ],
+            "additionalProperties": false
+          },
+          "routing": {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string"
+              },
+              "candidatesConsidered": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai",
+                        "anthropic",
+                        "google",
+                        "xai",
+                        "mistral",
+                        "cohere",
+                        "fireworks",
+                        "deepseek"
+                      ]
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "policyVersion": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cacheStickinessApplied": {
+                "type": "boolean"
+              },
+              "routeSource": {
+                "type": "string",
+                "enum": [
+                  "broker",
+                  "global",
+                  "static",
+                  "fallback",
+                  "request_pin",
+                  "operator_pin",
+                  "autonomous"
+                ]
+              },
+              "attemptCount": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "shadowMode": {
+                "default": false,
+                "type": "boolean"
+              },
+              "wouldHaveChosen": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "openai",
+                      "anthropic",
+                      "google",
+                      "xai",
+                      "mistral",
+                      "cohere",
+                      "fireworks",
+                      "deepseek"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "decision": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model",
+                  "decision"
+                ],
+                "additionalProperties": false
+              },
+              "wouldHaveMatched": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "decision",
+              "candidatesConsidered",
+              "policyVersion",
+              "cacheStickinessApplied",
+              "attemptCount",
+              "shadowMode"
+            ],
+            "additionalProperties": false
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "embeddings",
+          "usage",
+          "costUsd",
+          "costStatus",
+          "model",
+          "routing",
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "FeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "default": "system",
+            "type": "string",
+            "enum": [
+              "web",
+              "slack",
+              "imessage",
+              "operator_extraction",
+              "system"
+            ]
+          },
+          "signals": {
+            "type": "object",
+            "properties": {
+              "rating": {
+                "type": "string",
+                "enum": [
+                  "up",
+                  "down"
+                ]
+              },
+              "reviewCorrectionCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "reviewedFieldCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "ungroundedStripCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sensitiveFieldCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "escalationCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "humanEditCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "editedFieldCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "qualityScore": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "rating": {}
+                },
+                "required": [
+                  "rating"
+                ]
+              },
+              {
+                "properties": {
+                  "reviewCorrectionCount": {}
+                },
+                "required": [
+                  "reviewCorrectionCount"
+                ]
+              },
+              {
+                "properties": {
+                  "reviewedFieldCount": {}
+                },
+                "required": [
+                  "reviewedFieldCount"
+                ]
+              },
+              {
+                "properties": {
+                  "ungroundedStripCount": {}
+                },
+                "required": [
+                  "ungroundedStripCount"
+                ]
+              },
+              {
+                "properties": {
+                  "sensitiveFieldCount": {}
+                },
+                "required": [
+                  "sensitiveFieldCount"
+                ]
+              },
+              {
+                "properties": {
+                  "escalationCount": {}
+                },
+                "required": [
+                  "escalationCount"
+                ]
+              },
+              {
+                "properties": {
+                  "humanEditCount": {}
+                },
+                "required": [
+                  "humanEditCount"
+                ]
+              },
+              {
+                "properties": {
+                  "editedFieldCount": {}
+                },
+                "required": [
+                  "editedFieldCount"
+                ]
+              },
+              {
+                "properties": {
+                  "qualityScore": {}
+                },
+                "required": [
+                  "qualityScore"
+                ]
+              }
+            ]
+          },
+          "trace": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "requestId",
+          "tenantId",
+          "idempotencyKey",
+          "signals"
+        ]
+      },
+      "FeedbackResponse": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "const": true
+          },
+          "duplicate": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicate"
+        ],
+        "additionalProperties": false
+      },
+      "FreezeRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "default": "glass",
+            "type": "string",
+            "minLength": 1
+          },
+          "taskFamily": {
+            "type": "string",
+            "minLength": 1
+          },
+          "frozen": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "frozen",
+          "reason"
+        ]
+      },
+      "FreezeResponse": {
+        "type": "object",
+        "properties": {
+          "frozen": {
+            "type": "boolean"
+          },
+          "policyVersion": {
+            "type": "string"
+          },
+          "controlVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "frozen",
+          "policyVersion",
+          "controlVersion"
+        ],
+        "additionalProperties": false
+      },
       "GenerateRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "task": {
@@ -505,8 +2851,7 @@
                   "required": [
                     "provider",
                     "model"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               },
               "routeSources": {
@@ -525,25 +2870,10 @@
               },
               "providerKeys": {
                 "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "enum": [
-                    "openai",
-                    "anthropic",
-                    "google",
-                    "xai",
-                    "mistral",
-                    "cohere",
-                    "fireworks",
-                    "deepseek"
-                  ]
-                },
-                "additionalProperties": {
-                  "type": "string"
-                }
+                "properties": {},
+                "additionalProperties": false
               }
-            },
-            "additionalProperties": false
+            }
           },
           "system": {
             "type": "string"
@@ -570,7 +2900,7 @@
                     {
                       "type": "array",
                       "items": {
-                        "oneOf": [
+                        "anyOf": [
                           {
                             "type": "object",
                             "properties": {
@@ -585,55 +2915,148 @@
                             "required": [
                               "type",
                               "text"
-                            ],
-                            "additionalProperties": false
+                            ]
                           },
                           {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "image"
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "image"
+                                  },
+                                  "image": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "mediaType": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "image"
+                                ]
                               },
-                              "image": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "mediaType": {
-                                "type": "string"
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "image"
+                                  },
+                                  "source": {
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "pattern": "^https:\\/\\/.*"
+                                      },
+                                      "mediaType": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "filename": {
+                                        "type": "string"
+                                      },
+                                      "sizeBytes": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 12582912
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "url",
+                                      "mediaType",
+                                      "sizeBytes"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "source"
+                                ]
                               }
-                            },
-                            "required": [
-                              "type",
-                              "image"
-                            ],
-                            "additionalProperties": false
+                            ]
                           },
                           {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "file"
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "file"
+                                  },
+                                  "data": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "mediaType": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "filename": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "data",
+                                  "mediaType"
+                                ]
                               },
-                              "data": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "mediaType": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "filename": {
-                                "type": "string"
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "file"
+                                  },
+                                  "source": {
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "pattern": "^https:\\/\\/.*"
+                                      },
+                                      "mediaType": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "filename": {
+                                        "type": "string"
+                                      },
+                                      "sizeBytes": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 12582912
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "url",
+                                      "mediaType",
+                                      "sizeBytes"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "source"
+                                ]
                               }
-                            },
-                            "required": [
-                              "type",
-                              "data",
-                              "mediaType"
-                            ],
-                            "additionalProperties": false
+                            ]
                           },
                           {
                             "type": "object",
@@ -657,8 +3080,7 @@
                               "toolCallId",
                               "toolName",
                               "input"
-                            ],
-                            "additionalProperties": false
+                            ]
                           },
                           {
                             "type": "object",
@@ -682,8 +3104,7 @@
                               "toolCallId",
                               "toolName",
                               "output"
-                            ],
-                            "additionalProperties": false
+                            ]
                           }
                         ]
                       }
@@ -694,8 +3115,7 @@
               "required": [
                 "role",
                 "content"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "prompt": {
@@ -716,6 +3136,11 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 900000
           },
           "sessionKey": {
             "type": "string",
@@ -744,8 +3169,7 @@
               "required": [
                 "name",
                 "inputSchema"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "toolChoice": {
@@ -773,8 +3197,7 @@
                 "required": [
                   "type",
                   "toolName"
-                ],
-                "additionalProperties": false
+                ]
               }
             ]
           },
@@ -805,14 +3228,12 @@
                 "required": [
                   "provider",
                   "model"
-                ],
-                "additionalProperties": false
+                ]
               },
               "allowFallback": {
                 "type": "boolean"
               }
-            },
-            "additionalProperties": false
+            }
           },
           "trace": {
             "type": "object",
@@ -840,10 +3261,28 @@
           "task",
           "tenantId"
         ],
-        "additionalProperties": false
+        "oneOf": [
+          {
+            "properties": {
+              "prompt": {},
+              "messages": false
+            },
+            "required": [
+              "prompt"
+            ]
+          },
+          {
+            "properties": {
+              "messages": {},
+              "prompt": false
+            },
+            "required": [
+              "messages"
+            ]
+          }
+        ]
       },
       "GenerateResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "output": {},
@@ -1068,8 +3507,506 @@
         ],
         "additionalProperties": false
       },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ]
+          },
+          "environment": {
+            "type": "string"
+          },
+          "database": {
+            "type": "boolean"
+          },
+          "frozen": {
+            "type": "boolean"
+          },
+          "policyVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtime": {
+            "type": "string",
+            "const": "convex"
+          },
+          "apiVersion": {
+            "type": "string",
+            "const": "v1"
+          }
+        },
+        "required": [
+          "status",
+          "environment",
+          "database",
+          "frozen",
+          "policyVersion"
+        ],
+        "additionalProperties": false
+      },
+      "LegacyTranscriptionErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "missing_audio",
+                  "audio_too_large"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "LegacyValidationResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "invalid_request"
+              },
+              "message": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "PinRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "default": "glass",
+            "type": "string",
+            "minLength": 1
+          },
+          "taskFamily": {
+            "type": "string",
+            "minLength": 1
+          },
+          "route": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "openai",
+                      "anthropic",
+                      "google",
+                      "xai",
+                      "mistral",
+                      "cohere",
+                      "fireworks",
+                      "deepseek"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "taskFamily",
+          "route",
+          "reason"
+        ]
+      },
+      "PinResponse": {
+        "type": "object",
+        "properties": {
+          "pinned": {
+            "type": "boolean"
+          },
+          "controlVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pinned",
+          "controlVersion"
+        ],
+        "additionalProperties": false
+      },
+      "RetrieveRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "url": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "allowedDomains": {
+                "default": [],
+                "maxItems": 5,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "maxResults": {
+                "default": 5,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              }
+            },
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "properties": {
+                  "query": {}
+                },
+                "required": [
+                  "query"
+                ]
+              },
+              {
+                "properties": {
+                  "url": {}
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "primary": {
+                "type": "string",
+                "enum": [
+                  "parallel",
+                  "exa",
+                  "model_default",
+                  "openai",
+                  "google",
+                  "anthropic",
+                  "xai"
+                ]
+              },
+              "route": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "openai",
+                      "anthropic",
+                      "google",
+                      "xai",
+                      "mistral",
+                      "cohere",
+                      "fireworks",
+                      "deepseek"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "primary"
+            ],
+            "additionalProperties": false
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 900000
+          }
+        },
+        "required": [
+          "tenantId",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "RetrieveResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "parallel",
+              "exa",
+              "model_default",
+              "openai",
+              "google",
+              "anthropic",
+              "xai"
+            ]
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "parallel",
+                    "exa",
+                    "model_default",
+                    "openai",
+                    "google",
+                    "anthropic",
+                    "xai"
+                  ]
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "ok"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "snippet": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "attempts",
+          "text",
+          "sources"
+        ],
+        "additionalProperties": false
+      },
+      "RouterFailureResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "router_unavailable",
+                  "router_candidates_exhausted",
+                  "router_budget_exhausted",
+                  "router_rejected",
+                  "router_internal"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "executionStarted": {
+                "type": "boolean"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "attempts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "attempt": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "error",
+                        "timeout"
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model",
+                    "attempt",
+                    "outcome"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "retryable",
+              "executionStarted"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "ScoreRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "default": "glass",
+            "type": "string",
+            "minLength": 1
+          },
+          "taskFamily": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
       "StreamEvent": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
             "type": "object",
@@ -1354,19 +4291,81 @@
                 "type": "object",
                 "properties": {
                   "code": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "router_unavailable",
+                      "router_candidates_exhausted",
+                      "router_budget_exhausted",
+                      "router_rejected",
+                      "router_internal"
+                    ]
                   },
                   "message": {
                     "type": "string"
                   },
                   "retryable": {
                     "type": "boolean"
+                  },
+                  "executionStarted": {
+                    "type": "boolean"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "attempts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "enum": [
+                            "openai",
+                            "anthropic",
+                            "google",
+                            "xai",
+                            "mistral",
+                            "cohere",
+                            "fireworks",
+                            "deepseek"
+                          ]
+                        },
+                        "model": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "attempt": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "error",
+                            "timeout"
+                          ]
+                        },
+                        "errorCode": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model",
+                        "attempt",
+                        "outcome"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "required": [
                   "code",
                   "message",
-                  "retryable"
+                  "retryable",
+                  "executionStarted"
                 ],
                 "additionalProperties": false
               }
@@ -1379,351 +4378,7 @@
           }
         ]
       },
-      "EmbedRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "orgId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "settings": {
-            "type": "object",
-            "properties": {
-              "routes": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "routeSources": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "enum": [
-                    "broker",
-                    "global",
-                    "static"
-                  ]
-                }
-              },
-              "providerKeys": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "enum": [
-                    "openai",
-                    "anthropic",
-                    "google",
-                    "xai",
-                    "mistral",
-                    "cohere",
-                    "fireworks",
-                    "deepseek"
-                  ]
-                },
-                "additionalProperties": {
-                  "type": "string"
-                }
-              }
-            },
-            "additionalProperties": false
-          },
-          "texts": {
-            "minItems": 1,
-            "maxItems": 2048,
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "dimensions": {
-            "default": 1536,
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 4096
-          },
-          "trace": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": [
-          "tenantId",
-          "texts",
-          "dimensions"
-        ],
-        "additionalProperties": false
-      },
-      "EmbedResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "embeddings": {
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "number"
-              }
-            }
-          },
-          "usage": {
-            "type": "object",
-            "properties": {
-              "inputTokens": {
-                "default": 0,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "outputTokens": {
-                "default": 0,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "cachedInputTokens": {
-                "default": 0,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "cacheWriteTokens": {
-                "default": 0,
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "reasoningTokens": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              }
-            },
-            "required": [
-              "inputTokens",
-              "outputTokens",
-              "cachedInputTokens",
-              "cacheWriteTokens"
-            ],
-            "additionalProperties": false
-          },
-          "costUsd": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "costStatus": {
-            "type": "string",
-            "enum": [
-              "priced",
-              "unpriced"
-            ]
-          },
-          "model": {
-            "type": "object",
-            "properties": {
-              "provider": {
-                "type": "string",
-                "enum": [
-                  "openai",
-                  "anthropic",
-                  "google",
-                  "xai",
-                  "mistral",
-                  "cohere",
-                  "fireworks",
-                  "deepseek"
-                ]
-              },
-              "model": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "required": [
-              "provider",
-              "model"
-            ],
-            "additionalProperties": false
-          },
-          "routing": {
-            "type": "object",
-            "properties": {
-              "decision": {
-                "type": "string"
-              },
-              "candidatesConsidered": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "policyVersion": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "cacheStickinessApplied": {
-                "type": "boolean"
-              },
-              "routeSource": {
-                "type": "string",
-                "enum": [
-                  "broker",
-                  "global",
-                  "static",
-                  "fallback",
-                  "request_pin",
-                  "operator_pin",
-                  "autonomous"
-                ]
-              },
-              "attemptCount": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "shadowMode": {
-                "default": false,
-                "type": "boolean"
-              },
-              "wouldHaveChosen": {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "google",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek"
-                    ]
-                  },
-                  "model": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "decision": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "provider",
-                  "model",
-                  "decision"
-                ],
-                "additionalProperties": false
-              },
-              "wouldHaveMatched": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "decision",
-              "candidatesConsidered",
-              "policyVersion",
-              "cacheStickinessApplied",
-              "attemptCount",
-              "shadowMode"
-            ],
-            "additionalProperties": false
-          },
-          "requestId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "embeddings",
-          "usage",
-          "costUsd",
-          "costStatus",
-          "model",
-          "routing",
-          "requestId"
-        ],
-        "additionalProperties": false
-      },
       "TranscribeMetadata": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "tenantId": {
@@ -1766,8 +4421,7 @@
                   "required": [
                     "provider",
                     "model"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               },
               "routeSources": {
@@ -1786,25 +4440,10 @@
               },
               "providerKeys": {
                 "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "enum": [
-                    "openai",
-                    "anthropic",
-                    "google",
-                    "xai",
-                    "mistral",
-                    "cohere",
-                    "fireworks",
-                    "deepseek"
-                  ]
-                },
-                "additionalProperties": {
-                  "type": "string"
-                }
+                "properties": {},
+                "additionalProperties": false
               }
-            },
-            "additionalProperties": false
+            }
           },
           "prompt": {
             "type": "string"
@@ -1825,11 +4464,129 @@
         },
         "required": [
           "tenantId"
-        ],
-        "additionalProperties": false
+        ]
+      },
+      "TranscribeRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "routes": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "openai",
+                        "anthropic",
+                        "google",
+                        "xai",
+                        "mistral",
+                        "cohere",
+                        "fireworks",
+                        "deepseek"
+                      ]
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "model"
+                  ]
+                }
+              },
+              "routeSources": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "broker",
+                    "global",
+                    "static"
+                  ]
+                }
+              },
+              "providerKeys": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "trace": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "audio": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https:\\/\\/.*"
+              },
+              "mediaType": {
+                "type": "string",
+                "minLength": 1
+              },
+              "filename": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 12582912
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "url",
+              "mediaType",
+              "sizeBytes"
+            ]
+          }
+        },
+        "required": [
+          "tenantId",
+          "audio"
+        ]
       },
       "TranscribeResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "text": {
@@ -2056,1817 +4813,31 @@
         ],
         "additionalProperties": false
       },
-      "FeedbackRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "UnauthorizedResponse": {
         "type": "object",
         "properties": {
-          "requestId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "tenantId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "idempotencyKey": {
-            "type": "string",
-            "minLength": 1
-          },
-          "signals": {
+          "error": {
             "type": "object",
             "properties": {
-              "reviewCorrectionCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "reviewedFieldCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "ungroundedStripCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "sensitiveFieldCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "escalationCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "humanEditCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "editedFieldCount": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "qualityScore": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1
-              }
-            },
-            "additionalProperties": false
-          },
-          "trace": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": [
-          "requestId",
-          "tenantId",
-          "idempotencyKey",
-          "signals"
-        ],
-        "additionalProperties": false
-      },
-      "FreezeRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "default": "glass",
-            "type": "string",
-            "minLength": 1
-          },
-          "taskFamily": {
-            "type": "string",
-            "minLength": 1
-          },
-          "frozen": {
-            "type": "boolean"
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "tenantId",
-          "frozen",
-          "reason"
-        ],
-        "additionalProperties": false
-      },
-      "PinRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "default": "glass",
-            "type": "string",
-            "minLength": 1
-          },
-          "taskFamily": {
-            "type": "string",
-            "minLength": 1
-          },
-          "route": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "google",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek"
-                    ]
-                  },
-                  "model": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "provider",
-                  "model"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "tenantId",
-          "taskFamily",
-          "route",
-          "reason"
-        ],
-        "additionalProperties": false
-      },
-      "CalibrationSeedImportRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "default": "glass",
-            "type": "string",
-            "minLength": 1
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1
-          },
-          "reportUri": {
-            "type": "string",
-            "format": "uri"
-          },
-          "expectedPolicyVersionIds": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string",
-              "minLength": 1
-            },
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "seed": {
-            "type": "object",
-            "properties": {
-              "formatVersion": {
-                "type": "number",
-                "const": 1
-              },
-              "sourceRunId": {
+              "code": {
                 "type": "string",
-                "minLength": 1
+                "const": "unauthorized"
               },
-              "replicateCount": {
-                "type": "number",
-                "const": 3
-              },
-              "activationReady": {
-                "type": "boolean",
-                "const": true
-              },
-              "qualificationSpec": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "task": {
-                    "type": "string",
-                    "enum": [
-                      "chat",
-                      "chat_vision",
-                      "voice_transcription",
-                      "email_draft",
-                      "email_reply",
-                      "extraction",
-                      "extraction_preview",
-                      "extraction_coverage_recovery",
-                      "classification",
-                      "requirement_extraction",
-                      "org_memory_extraction",
-                      "analysis",
-                      "summary",
-                      "triage",
-                      "email_extraction",
-                      "document_extraction",
-                      "security",
-                      "mailbox_coordinator",
-                      "embeddings"
-                    ]
-                  },
-                  "taskFamily": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "classification": {
-                    "type": "string",
-                    "enum": [
-                      "proxy_benchmark",
-                      "published_runtime_contract"
-                    ]
-                  },
-                  "activationEligibility": {
-                    "type": "string",
-                    "enum": [
-                      "benchmark_only",
-                      "autonomous_production"
-                    ]
-                  },
-                  "runtimeContract": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "packageName": {
-                            "type": "string",
-                            "const": "@claritylabs/cl-sdk"
-                          },
-                          "packageVersion": {
-                            "type": "string",
-                            "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$"
-                          },
-                          "extractorContractId": {
-                            "type": "string",
-                            "pattern": "#sha256=[a-f0-9]{64}$"
-                          },
-                          "promptContractId": {
-                            "type": "string",
-                            "pattern": "#sha256=[a-f0-9]{64}$"
-                          },
-                          "schemaContractId": {
-                            "type": "string",
-                            "pattern": "#sha256=[a-f0-9]{64}$"
-                          }
-                        },
-                        "required": [
-                          "packageName",
-                          "packageVersion",
-                          "extractorContractId",
-                          "promptContractId",
-                          "schemaContractId"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "promptContractId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "schemaContractId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "validationContractId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "scorerContractId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "requiredOpenBenchmarks": {
-                    "minItems": 1,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "docvqa",
-                        "vrdu",
-                        "cord",
-                        "kleister"
-                      ]
-                    }
-                  }
-                },
-                "required": [
-                  "id",
-                  "task",
-                  "taskFamily",
-                  "classification",
-                  "activationEligibility",
-                  "runtimeContract",
-                  "promptContractId",
-                  "schemaContractId",
-                  "validationContractId",
-                  "scorerContractId",
-                  "requiredOpenBenchmarks"
-                ],
-                "additionalProperties": false
-              },
-              "corpusVersions": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "corpusEvidence": {
-                "minItems": 1,
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "corpusId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "corpusVersion": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "benchmark": {
-                      "type": "string",
-                      "enum": [
-                        "in_house",
-                        "docvqa",
-                        "vrdu",
-                        "cord",
-                        "kleister"
-                      ]
-                    },
-                    "benchmarkVersion": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "qualificationSpecId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "purpose": {
-                      "type": "string",
-                      "enum": [
-                        "synthetic_smoke",
-                        "production_qualification",
-                        "open_benchmark"
-                      ]
-                    },
-                    "sourceKind": {
-                      "type": "string",
-                      "enum": [
-                        "local",
-                        "private_bucket"
-                      ]
-                    },
-                    "caseCount": {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "manifestSha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "corpusSha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "documents": {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "assetSha256": {
-                            "type": "string",
-                            "pattern": "^[a-f0-9]{64}$"
-                          },
-                          "labelsSha256": {
-                            "type": "string",
-                            "pattern": "^[a-f0-9]{64}$"
-                          },
-                          "documentSha256": {
-                            "type": "string",
-                            "pattern": "^[a-f0-9]{64}$"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "assetSha256",
-                          "labelsSha256",
-                          "documentSha256"
-                        ],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": [
-                    "corpusId",
-                    "corpusVersion",
-                    "benchmark",
-                    "benchmarkVersion",
-                    "qualificationSpecId",
-                    "purpose",
-                    "sourceKind",
-                    "caseCount",
-                    "manifestSha256",
-                    "corpusSha256",
-                    "documents"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "productionReview": {
-                "type": "object",
-                "properties": {
-                  "privateCorpusId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "provenance": {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "private_bucket"
-                      },
-                      "uri": {
-                        "type": "string",
-                        "pattern": "^(?:s3|gs|azure):\\/\\/"
-                      },
-                      "accessControlled": {
-                        "type": "boolean",
-                        "const": true
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "uri",
-                      "accessControlled"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "brokerConsent": {
-                    "type": "object",
-                    "properties": {
-                      "attested": {
-                        "type": "boolean",
-                        "const": true
-                      },
-                      "attestationId": {
-                        "type": "string",
-                        "minLength": 8
-                      },
-                      "attestedAt": {
-                        "type": "string",
-                        "format": "date-time",
-                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                      }
-                    },
-                    "required": [
-                      "attested",
-                      "attestationId",
-                      "attestedAt"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "piiScrub": {
-                    "type": "object",
-                    "properties": {
-                      "attested": {
-                        "type": "boolean",
-                        "const": true
-                      },
-                      "attestationId": {
-                        "type": "string",
-                        "minLength": 8
-                      },
-                      "attestedAt": {
-                        "type": "string",
-                        "format": "date-time",
-                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                      }
-                    },
-                    "required": [
-                      "attested",
-                      "attestationId",
-                      "attestedAt"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "coverageDocumentHashes": {
-                    "type": "object",
-                    "properties": {
-                      "generalLiability": {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[a-f0-9]{64}$"
-                        }
-                      },
-                      "property": {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[a-f0-9]{64}$"
-                        }
-                      },
-                      "auto": {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[a-f0-9]{64}$"
-                        }
-                      },
-                      "workersCompensation": {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[a-f0-9]{64}$"
-                        }
-                      },
-                      "professionalLiability": {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[a-f0-9]{64}$"
-                        }
-                      }
-                    },
-                    "required": [
-                      "generalLiability",
-                      "property",
-                      "auto",
-                      "workersCompensation",
-                      "professionalLiability"
-                    ],
-                    "additionalProperties": false
-                  }
-                },
-                "required": [
-                  "privateCorpusId",
-                  "provenance",
-                  "brokerConsent",
-                  "piiScrub",
-                  "coverageDocumentHashes"
-                ],
-                "additionalProperties": false
-              },
-              "reproducibility": {
-                "type": "object",
-                "properties": {
-                  "maxAllowedAggregateScoreRange": {
-                    "type": "number",
-                    "const": 0.01
-                  },
-                  "candidates": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "additionalProperties": {
-                      "type": "object",
-                      "properties": {
-                        "caseCount": {
-                          "type": "integer",
-                          "exclusiveMinimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "verifiedCaseCount": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "maxAggregateScoreRange": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        }
-                      },
-                      "required": [
-                        "caseCount",
-                        "verifiedCaseCount",
-                        "maxAggregateScoreRange"
-                      ],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "required": [
-                  "maxAllowedAggregateScoreRange",
-                  "candidates"
-                ],
-                "additionalProperties": false
-              },
-              "qualityBars": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "baselineCandidateId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "baselineScore": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 1
-                    },
-                    "qualityBar": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 1
-                    }
-                  },
-                  "required": [
-                    "baselineCandidateId",
-                    "baselineScore",
-                    "qualityBar"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "candidates": {
-                "minItems": 1,
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "candidateId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "qualificationSpecId": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "task": {
-                      "type": "string",
-                      "enum": [
-                        "chat",
-                        "chat_vision",
-                        "voice_transcription",
-                        "email_draft",
-                        "email_reply",
-                        "extraction",
-                        "extraction_preview",
-                        "extraction_coverage_recovery",
-                        "classification",
-                        "requirement_extraction",
-                        "org_memory_extraction",
-                        "analysis",
-                        "summary",
-                        "triage",
-                        "email_extraction",
-                        "document_extraction",
-                        "security",
-                        "mailbox_coordinator",
-                        "embeddings"
-                      ]
-                    },
-                    "taskFamily": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "successfulCalls": {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "failedCalls": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "pricedCalls": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "meanScore": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 1
-                    },
-                    "totalCostNanoUsd": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "meanCostNanoUsd": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "nanoUsdPerScorePoint": {
-                      "anyOf": [
-                        {
-                          "type": "number",
-                          "minimum": 0
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "byBenchmark": {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "benchmark": {
-                            "type": "string",
-                            "enum": [
-                              "in_house",
-                              "docvqa",
-                              "vrdu",
-                              "cord",
-                              "kleister"
-                            ]
-                          },
-                          "weight": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          },
-                          "callCount": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "meanScore": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          }
-                        },
-                        "required": [
-                          "benchmark",
-                          "weight",
-                          "callCount",
-                          "meanScore"
-                        ],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": [
-                    "candidateId",
-                    "qualificationSpecId",
-                    "task",
-                    "taskFamily",
-                    "provider",
-                    "model",
-                    "successfulCalls",
-                    "failedCalls",
-                    "pricedCalls",
-                    "meanScore",
-                    "totalCostNanoUsd",
-                    "meanCostNanoUsd",
-                    "nanoUsdPerScorePoint",
-                    "byBenchmark"
-                  ],
-                  "additionalProperties": false
-                }
+              "message": {
+                "type": "string"
               }
             },
             "required": [
-              "formatVersion",
-              "sourceRunId",
-              "replicateCount",
-              "activationReady",
-              "qualificationSpec",
-              "corpusVersions",
-              "corpusEvidence",
-              "productionReview",
-              "reproducibility",
-              "qualityBars",
-              "candidates"
+              "code",
+              "message"
             ],
             "additionalProperties": false
           }
         },
         "required": [
-          "tenantId",
-          "reason",
-          "reportUri",
-          "expectedPolicyVersionIds",
-          "seed"
+          "error"
         ],
         "additionalProperties": false
-      },
-      "HealthResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "ok",
-              "degraded"
-            ]
-          },
-          "environment": {
-            "type": "string"
-          },
-          "database": {
-            "type": "boolean"
-          },
-          "frozen": {
-            "type": "boolean"
-          },
-          "policyVersion": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "status",
-          "environment",
-          "database",
-          "frozen",
-          "policyVersion"
-        ],
-        "additionalProperties": false
-      },
-      "FeedbackResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "accepted": {
-            "type": "boolean",
-            "const": true
-          },
-          "duplicate": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "accepted",
-          "duplicate"
-        ],
-        "additionalProperties": false
-      },
-      "FreezeResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "frozen": {
-            "type": "boolean"
-          },
-          "policyVersion": {
-            "type": "string"
-          },
-          "controlVersion": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "frozen",
-          "policyVersion",
-          "controlVersion"
-        ],
-        "additionalProperties": false
-      },
-      "PinResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "pinned": {
-            "type": "boolean"
-          },
-          "controlVersion": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "pinned",
-          "controlVersion"
-        ],
-        "additionalProperties": false
-      },
-      "CalibrationSeedImportResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "sourceRunId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "calibrationCount": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "policies": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "taskFamily": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "policyVersionId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "version": {
-                  "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "qualityBar": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1
-                },
-                "primary": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": false
-                },
-                "challengerCount": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "quarantinedCount": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                }
-              },
-              "required": [
-                "taskFamily",
-                "policyVersionId",
-                "version",
-                "qualityBar",
-                "primary",
-                "challengerCount",
-                "quarantinedCount"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "sourceRunId",
-          "calibrationCount",
-          "policies"
-        ],
-        "additionalProperties": false
-      },
-      "ScoreRequest": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "default": "glass",
-            "type": "string",
-            "minLength": 1
-          },
-          "taskFamily": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "tenantId"
-        ],
-        "additionalProperties": false
-      },
-      "AdminPolicyResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "anyOf": [
-          {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
-                  "version": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "taskFamily": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "qualityBar": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  "explorationPct": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 0.1
-                  },
-                  "frozen": {
-                    "type": "boolean"
-                  },
-                  "frozenRoute": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "provider": {
-                            "type": "string",
-                            "enum": [
-                              "openai",
-                              "anthropic",
-                              "google",
-                              "xai",
-                              "mistral",
-                              "cohere",
-                              "fireworks",
-                              "deepseek"
-                            ]
-                          },
-                          "model": {
-                            "type": "string",
-                            "minLength": 1
-                          }
-                        },
-                        "required": [
-                          "provider",
-                          "model"
-                        ],
-                        "additionalProperties": false
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "candidates": {
-                    "minItems": 1,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "enum": [
-                            "openai",
-                            "anthropic",
-                            "google",
-                            "xai",
-                            "mistral",
-                            "cohere",
-                            "fireworks",
-                            "deepseek"
-                          ]
-                        },
-                        "model": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "rank": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "role": {
-                          "type": "string",
-                          "enum": [
-                            "primary",
-                            "challenger",
-                            "quarantined"
-                          ]
-                        },
-                        "trafficPct": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 0.1
-                        },
-                        "offlineQualified": {
-                          "type": "boolean"
-                        },
-                        "offlineScore": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "rollingScore": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "onlineCallCount": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "projectedCostNanoUsd": {
-                          "anyOf": [
-                            {
-                              "type": "string",
-                              "pattern": "^\\d+$"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        }
-                      },
-                      "required": [
-                        "provider",
-                        "model",
-                        "rank",
-                        "role",
-                        "trafficPct",
-                        "offlineQualified",
-                        "offlineScore",
-                        "rollingScore",
-                        "onlineCallCount",
-                        "projectedCostNanoUsd"
-                      ],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "required": [
-                  "id",
-                  "version",
-                  "taskFamily",
-                  "qualityBar",
-                  "explorationPct",
-                  "frozen",
-                  "frozenRoute",
-                  "candidates"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "version": {
-                  "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "taskFamily": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "qualityBar": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1
-                },
-                "explorationPct": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 0.1
-                },
-                "frozen": {
-                  "type": "boolean"
-                },
-                "frozenRoute": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "enum": [
-                            "openai",
-                            "anthropic",
-                            "google",
-                            "xai",
-                            "mistral",
-                            "cohere",
-                            "fireworks",
-                            "deepseek"
-                          ]
-                        },
-                        "model": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "provider",
-                        "model"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "candidates": {
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "provider": {
-                        "type": "string",
-                        "enum": [
-                          "openai",
-                          "anthropic",
-                          "google",
-                          "xai",
-                          "mistral",
-                          "cohere",
-                          "fireworks",
-                          "deepseek"
-                        ]
-                      },
-                      "model": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "rank": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "role": {
-                        "type": "string",
-                        "enum": [
-                          "primary",
-                          "challenger",
-                          "quarantined"
-                        ]
-                      },
-                      "trafficPct": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 0.1
-                      },
-                      "offlineQualified": {
-                        "type": "boolean"
-                      },
-                      "offlineScore": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "rollingScore": {
-                        "anyOf": [
-                          {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "onlineCallCount": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "projectedCostNanoUsd": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "pattern": "^\\d+$"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "model",
-                      "rank",
-                      "role",
-                      "trafficPct",
-                      "offlineQualified",
-                      "offlineScore",
-                      "rollingScore",
-                      "onlineCallCount",
-                      "projectedCostNanoUsd"
-                    ],
-                    "additionalProperties": false
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "version",
-                "taskFamily",
-                "qualityBar",
-                "explorationPct",
-                "frozen",
-                "frozenRoute",
-                "candidates"
-              ],
-              "additionalProperties": false
-            }
-          }
-        ]
-      },
-      "AdminRollupResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "hourStart": {
-              "type": "string",
-              "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-            },
-            "tenantId": {
-              "type": "string",
-              "minLength": 1
-            },
-            "taskFamily": {
-              "type": "string",
-              "minLength": 1
-            },
-            "provider": {
-              "type": "string",
-              "minLength": 1
-            },
-            "model": {
-              "type": "string",
-              "minLength": 1
-            },
-            "callCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "successCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "schemaCheckedCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "schemaValidCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "softFailCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "fallbackCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "providerErrorCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "truncatedCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "cacheHitCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "feedbackCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "reviewFeedbackCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "reviewPassCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "correctionCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "reviewedFieldCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "ungroundedStripCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "sensitiveFieldCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "escalationCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "humanEditCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "editedFieldCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "latencyP50Ms": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "latencyP95Ms": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "inputTokens": {
-              "type": "string",
-              "pattern": "^\\d+$"
-            },
-            "outputTokens": {
-              "type": "string",
-              "pattern": "^\\d+$"
-            },
-            "cachedInputTokens": {
-              "type": "string",
-              "pattern": "^\\d+$"
-            },
-            "cacheWriteTokens": {
-              "type": "string",
-              "pattern": "^\\d+$"
-            },
-            "pricedCallCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "costNanoUsd": {
-              "type": "string",
-              "pattern": "^\\d+$"
-            },
-            "rolledUpAt": {
-              "type": "string",
-              "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-            }
-          },
-          "required": [
-            "hourStart",
-            "tenantId",
-            "taskFamily",
-            "provider",
-            "model",
-            "callCount",
-            "successCount",
-            "schemaCheckedCount",
-            "schemaValidCount",
-            "softFailCount",
-            "fallbackCount",
-            "providerErrorCount",
-            "truncatedCount",
-            "cacheHitCount",
-            "feedbackCount",
-            "reviewFeedbackCount",
-            "reviewPassCount",
-            "correctionCount",
-            "reviewedFieldCount",
-            "ungroundedStripCount",
-            "sensitiveFieldCount",
-            "escalationCount",
-            "humanEditCount",
-            "editedFieldCount",
-            "latencyP50Ms",
-            "latencyP95Ms",
-            "inputTokens",
-            "outputTokens",
-            "cachedInputTokens",
-            "cacheWriteTokens",
-            "pricedCallCount",
-            "costNanoUsd",
-            "rolledUpAt"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "AdminScoreResponse": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "none",
-                "promote_challenger",
-                "demote_primary",
-                "below_bar_no_safe_replacement",
-                "frozen"
-              ]
-            },
-            "incumbent": {
-              "type": "object",
-              "properties": {
-                "provider": {
-                  "type": "string",
-                  "enum": [
-                    "openai",
-                    "anthropic",
-                    "google",
-                    "xai",
-                    "mistral",
-                    "cohere",
-                    "fireworks",
-                    "deepseek"
-                  ]
-                },
-                "model": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "rank": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "role": {
-                  "type": "string",
-                  "enum": [
-                    "primary",
-                    "challenger",
-                    "quarantined"
-                  ]
-                }
-              },
-              "required": [
-                "provider",
-                "model"
-              ],
-              "additionalProperties": {}
-            },
-            "replacement": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "rank": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "primary",
-                        "challenger",
-                        "quarantined"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": {}
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "reason": {
-              "type": "string"
-            },
-            "scores": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "effectiveScore": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  "lowerConfidenceBound95": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  "callCount": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "required": [
-                  "effectiveScore",
-                  "lowerConfidenceBound95",
-                  "callCount"
-                ],
-                "additionalProperties": false
-              }
-            }
-          },
-          "required": [
-            "kind",
-            "incumbent",
-            "replacement",
-            "reason",
-            "scores"
-          ],
-          "additionalProperties": false
-        }
       }
     }
   }

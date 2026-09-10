@@ -34,8 +34,10 @@ describe("operator iMessage inbound", () => {
       });
     });
     vi.stubEnv("OPERATOR_IMESSAGE_TERMINAL_ENABLED", "true");
-    vi.stubEnv("CL_ROUTER_TASKS", "");
-    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("CL_ROUTER_URL", "http://localhost:4010");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
+    vi.stubEnv("SPOT_ENV", "local");
     const fetchMock = vi.fn(async () =>
       Response.json({ error: "transcription unavailable" }, { status: 503 }),
     );
@@ -65,7 +67,8 @@ describe("operator iMessage inbound", () => {
         Promise.all([
           ctx.db.query("operatorAgentThreads").collect(),
           ctx.db.query("operatorAgentMessages").collect(),
-        ])),
+        ]),
+      ),
     ).toEqual([[], []]);
   });
 });

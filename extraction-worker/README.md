@@ -18,29 +18,27 @@ npm run start
 Required env:
 
 - `CONVEX_URL` - Convex deployment URL, for example `https://acoustic-caiman-755.convex.cloud`
+- `CONVEX_SITE_URL` - exact HTTP actions origin for authenticated temporary router assets; shared dev is `https://acoustic-caiman-755.convex.site` and production is `https://actions.spot.insure`
 - `EXTRACTION_WORKER_SECRET` - shared secret that also exists on the Convex deployment
-- provider keys for default routing, usually `OPENAI_API_KEY`; broker-owned provider keys are returned with each trusted claim when configured
+- `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, and `CL_ROUTER_TENANT_ID=glass` - the authenticated inference endpoint and stable tenant identity; provider credentials exist only in cl-router
 - `PORT` - set by Railway; when present, the worker serves `POST /liteparse/convert`
 
 Set `EXTRACTION_WORKER_MODE=external` on the Convex deployment to queue new and retried extraction jobs for this worker.
 
-## cl-router rollout
+## cl-router execution
 
-The worker can forward structured full-extraction and provisional-extraction model calls to the internal task-aware router. It sends the claimed job's resolved broker/operator settings snapshot, organization context, exact JSON schema, trace metadata, and base64 document/image parts on every request. The returned provider/model, request ID, routing decision, cached-token usage, and dollar cost are copied into the existing extraction trace details. Provider keys are forwarded only inside the authenticated request and are never logged.
+Every full extraction, provisional extraction, coverage cleanup, and proposal supplement model call goes through cl-router. The worker sends a key-free route snapshot, organization context, exact JSON schema, execution budget, explicit configured pin when present, and trace metadata. The returned provider/model, request ID, routing decision, cached-token usage, and dollar cost are copied into the existing extraction trace details. Router failures fail closed; the worker has no direct provider client or break-glass path.
 
-Routing is opt-in per task:
+Router configuration is mandatory:
 
 ```bash
-CL_ROUTER_URL=https://cl-router-dev.up.railway.app
+CL_ROUTER_URL=https://router.toolsforenlightenment.org
 CL_ROUTER_SECRET=shared-router-secret
-CL_ROUTER_TASKS=extraction,extraction_preview
 CL_ROUTER_TENANT_ID=glass # Stable internal key retained across the Spot rebrand
 CL_ROUTER_TIMEOUT_MS=180000
 ```
 
-`extraction` covers the full extraction pipeline, including its classification and coverage subtasks. `extraction_preview` controls the provisional path independently. Exact model task or task-kind names can be listed for a narrower rollout, and `*` enables every worker model call. An empty `CL_ROUTER_TASKS` preserves direct-only behavior and does not require router configuration.
-
-The direct provider implementation remains a production-only break-glass path. It is used automatically only for a typed `router_unavailable` response with `executionStarted: false`, or a proven pre-connection refusal/DNS failure. Timeouts, generic 5xx responses, authentication/validation failures, other 4xx responses, malformed responses, and every enabled local or shared-development call fail closed. Each routed generation sends one total execution budget; direct primary and fallback attempts continue to rebuild route-specific input and structured-output schema independently.
+Router requests are limited to eight assets, 12 MiB per asset, 16 MiB decoded in aggregate, and a strict 4 MiB serialized JSON envelope. The original policy/proposal PDF uses its existing signed Convex claim URL when it fits the asset limits. Generated LiteParse screenshots stay inline only while the JSON envelope fits; larger screenshots are uploaded through a worker-authenticated, lease- and organization-bound Convex handoff and represented by a short-lived signed `AssetReference`. The worker deletes staged assets in `finally`, while Convex retains a bounded expiry cleanup for interrupted calls. Production references use `https://actions.spot.insure/router-assets`; shared dev uses `https://acoustic-caiman-755.convex.site/router-assets`.
 
 Convex rejects stale external workers before they can claim jobs when expected-version env vars are set. Workers send `workerProtocolVersion`, `workerVersion`, and `clSdkVersion` on every claim and expose the same values at `GET /health`. Dev Convex should set `EXTRACTION_WORKER_EXPECTED_PROTOCOL_VERSION` to the current worker protocol and `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION` to the package spec in `extraction-worker/package.json`.
 

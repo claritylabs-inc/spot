@@ -12,6 +12,7 @@ import {
   spreadsheetBufferToText,
 } from "./spreadsheetText";
 import type { AgentToolSurface } from "./agentMessageHistory";
+import { MAX_ROUTER_ATTACHMENT_BYTES } from "./agentAttachmentLimits";
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_ATTACHMENT_TEXT_CHARS = 80_000;
@@ -59,6 +60,61 @@ async function readBoundedResponseBuffer(response: Response) {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
 }
 
+async function describeStoredImage(
+  ctx: ActionCtx,
+  args: {
+    orgId: Id<"organizations">;
+    surface: AgentToolSurface;
+    threadId: Id<"threads">;
+    messageId: Id<"threadMessages">;
+    contentType: string;
+  },
+  image: string | URL,
+  size?: number,
+): Promise<string> {
+  const messages: ModelMessage[] = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          image,
+          mediaType: args.contentType,
+          ...(size
+            ? {
+                providerOptions: {
+                  spot: { routerAssetSizeBytes: size },
+                },
+              }
+            : {}),
+        },
+        {
+          type: "text",
+          text: "Describe the information visible in this older conversation attachment. Transcribe material text, names, dates, identifiers, and user annotations. Do not infer policy facts that are not visible.",
+        },
+      ],
+    },
+  ];
+  const result = await generateAgentTextForOrg(
+    ctx,
+    args.orgId,
+    "chat_vision",
+    { maxOutputTokens: 1_200, messages },
+    {
+      taskKind: "query_attachment",
+      sessionKey: String(args.threadId),
+      trace: {
+        traceId: `${String(args.messageId)}:thread-attachment`,
+        parentRequestId: String(args.messageId),
+        label: "convex.readThreadAttachment",
+        phase: "query_attachment",
+        channel: args.surface,
+      },
+    },
+  );
+  return generatedTextFromResult(result);
+}
+
 export async function readStoredThreadAttachment(
   ctx: ActionCtx,
   args: {
@@ -80,6 +136,42 @@ export async function readStoredThreadAttachment(
         "That attachment is too large to reopen in conversation history.",
     };
   }
+  const isImage = args.contentType.startsWith("image/");
+  if (isImage && args.size > MAX_ROUTER_ATTACHMENT_BYTES) {
+    return {
+      status: "unavailable" as const,
+      filename: args.filename,
+      message:
+        "That image is too large to reopen in conversation history. Ask the user to upload a resized copy.",
+    };
+  }
+
+  const preferStoredReference =
+    process.env.SPOT_ENV === "dev" || process.env.SPOT_ENV === "production";
+  if (isImage && preferStoredReference) {
+    const extracted = await describeStoredImage(
+      ctx,
+      args,
+      new URL(args.url),
+      args.size,
+    );
+    if (!extracted.trim()) {
+      return {
+        status: "unavailable" as const,
+        filename: args.filename,
+        message: "No readable content could be recovered from that attachment.",
+      };
+    }
+    const clipped = clipText(extracted);
+    return {
+      status: "ok" as const,
+      filename: args.filename,
+      contentType: args.contentType,
+      text: clipped.text,
+      truncated: clipped.truncated,
+    };
+  }
+
   const response = await fetch(args.url);
   if (!response.ok) {
     return {
@@ -120,41 +212,8 @@ export async function readStoredThreadAttachment(
     extracted = await spreadsheetBufferToText(buffer);
   } else if (isTextAttachment(args.filename, args.contentType)) {
     extracted = buffer.toString("utf8");
-  } else if (args.contentType.startsWith("image/")) {
-    const messages: ModelMessage[] = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            image: buffer.toString("base64"),
-            mediaType: args.contentType,
-          },
-          {
-            type: "text",
-            text: "Describe the information visible in this older conversation attachment. Transcribe material text, names, dates, identifiers, and user annotations. Do not infer policy facts that are not visible.",
-          },
-        ],
-      },
-    ];
-    const result = await generateAgentTextForOrg(
-      ctx,
-      args.orgId,
-      "chat_vision",
-      { maxOutputTokens: 1_200, messages },
-      {
-        taskKind: "query_attachment",
-        sessionKey: String(args.threadId),
-        trace: {
-          traceId: `${String(args.messageId)}:thread-attachment`,
-          parentRequestId: String(args.messageId),
-          label: "convex.readThreadAttachment",
-          phase: "query_attachment",
-          channel: args.surface,
-        },
-      },
-    );
-    extracted = generatedTextFromResult(result);
+  } else if (isImage) {
+    extracted = await describeStoredImage(ctx, args, buffer.toString("base64"));
   } else {
     return {
       status: "unsupported" as const,

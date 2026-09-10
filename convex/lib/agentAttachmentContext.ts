@@ -6,7 +6,13 @@ import mammoth from "mammoth";
 
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { MAX_AGENT_ATTACHMENT_BYTES } from "./agentAttachmentLimits";
+import {
+  AgentAttachmentLimitError,
+  MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
+  MAX_AGENT_ATTACHMENT_BYTES,
+  accountRouterAttachment,
+  assertAgentAttachmentLimits,
+} from "./agentAttachmentLimits";
 import {
   preparePdfTextWithPdfJs,
   tryBuildParsedPdfText,
@@ -26,10 +32,31 @@ export type AgentAttachment = {
 
 export type AgentAttachmentContentPart =
   | { type: "text"; text: string }
-  | { type: "image"; image: string; mediaType: string }
-  | { type: "file"; data: string; mediaType: string; filename?: string };
+  | {
+      type: "image";
+      image: string | URL;
+      mediaType: string;
+      providerOptions?: { spot: { routerAssetSizeBytes: number } };
+    }
+  | {
+      type: "file";
+      data: string | URL;
+      mediaType: string;
+      filename?: string;
+      providerOptions?: { spot: { routerAssetSizeBytes: number } };
+    };
 
 export { MAX_AGENT_ATTACHMENT_TEXT_CHARS } from "./agentAttachmentLimits";
+
+export type AgentAttachmentRouterBudget = {
+  rich: { count: number; bytes: number };
+};
+
+export function createAgentAttachmentRouterBudget(): AgentAttachmentRouterBudget {
+  return {
+    rich: { count: 0, bytes: 0 },
+  };
+}
 
 function isTextLikeAttachment(filename: string, contentType: string) {
   const lowerName = filename.toLowerCase();
@@ -204,18 +231,31 @@ export function modelMessagesHaveImageInput(history: ModelMessage[]) {
 }
 
 export async function buildAgentAttachmentParts(
-  ctx: Pick<ActionCtx, "storage">,
+  ctx: {
+    storage: Pick<ActionCtx["storage"], "get" | "getUrl">;
+  },
   attachments: AgentAttachment[],
   options: {
     includeRichParts: boolean;
     remainingTextChars: { value: number };
+    routerBudget?: AgentAttachmentRouterBudget;
   },
 ): Promise<{ parts: AgentAttachmentContentPart[]; names: string[] }> {
   const parts: AgentAttachmentContentPart[] = [];
   const names: string[] = [];
+  const storedAttachments = attachments.filter(
+    (attachment): attachment is AgentAttachment & { fileId: Id<"_storage"> } =>
+      Boolean(attachment.fileId),
+  );
+  assertAgentAttachmentLimits(storedAttachments);
+  let actualAggregateBytes = 0;
+  const routerBudget =
+    options.routerBudget ?? createAgentAttachmentRouterBudget();
+  const spotEnvironment = process.env.SPOT_ENV?.trim().toLowerCase() ?? "local";
+  const preferStoredReferences =
+    spotEnvironment === "dev" || spotEnvironment === "production";
 
-  for (const attachment of attachments) {
-    if (!attachment.fileId) continue;
+  for (const attachment of storedAttachments) {
     try {
       const blob = await ctx.storage.get(attachment.fileId);
       if (!blob) {
@@ -226,16 +266,16 @@ export async function buildAgentAttachmentParts(
         names.push(attachment.filename);
         continue;
       }
-      if (
-        attachment.size > MAX_AGENT_ATTACHMENT_BYTES ||
-        blob.size > MAX_AGENT_ATTACHMENT_BYTES
-      ) {
-        parts.push({
-          type: "text",
-          text: `--- Attachment unavailable: ${attachment.filename} ---\nThis file is larger than the 25 MB model-input limit.\n--- End unavailable attachment ---`,
-        });
-        names.push(attachment.filename);
-        continue;
+      actualAggregateBytes += blob.size;
+      if (blob.size > MAX_AGENT_ATTACHMENT_BYTES) {
+        throw new AgentAttachmentLimitError(
+          `${attachment.filename} exceeds the 25 MiB attachment intake limit`,
+        );
+      }
+      if (actualAggregateBytes > MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES) {
+        throw new AgentAttachmentLimitError(
+          "Attachments exceed the 50 MiB aggregate intake limit",
+        );
       }
       const buffer = Buffer.from(await blob.arrayBuffer());
 
@@ -275,15 +315,33 @@ export async function buildAgentAttachmentParts(
           });
           if (part) parts.push(part);
         } else {
+          accountRouterAttachment(routerBudget.rich, {
+            filename: attachment.filename,
+            size: blob.size,
+          });
+          const referenceUrl = preferStoredReferences
+            ? await ctx.storage.getUrl(attachment.fileId)
+            : null;
+          if (preferStoredReferences && !referenceUrl)
+            throw new Error("Stored attachment URL is unavailable");
           parts.push({
             type: "text",
             text: `--- PDF attachment: ${attachment.filename} ---`,
           });
           parts.push({
             type: "file",
-            data: buffer.toString("base64"),
+            data: referenceUrl
+              ? new URL(referenceUrl)
+              : buffer.toString("base64"),
             mediaType: "application/pdf",
             filename: attachment.filename,
+            ...(referenceUrl
+              ? {
+                  providerOptions: {
+                    spot: { routerAssetSizeBytes: blob.size },
+                  },
+                }
+              : {}),
           });
         }
         names.push(attachment.filename);
@@ -291,17 +349,35 @@ export async function buildAgentAttachmentParts(
         isImageAttachment(attachment.filename, attachment.contentType)
       ) {
         if (!options.includeRichParts) continue;
+        accountRouterAttachment(routerBudget.rich, {
+          filename: attachment.filename,
+          size: blob.size,
+        });
+        const referenceUrl = preferStoredReferences
+          ? await ctx.storage.getUrl(attachment.fileId)
+          : null;
+        if (preferStoredReferences && !referenceUrl)
+          throw new Error("Stored attachment URL is unavailable");
         parts.push({
           type: "text",
           text: `--- Image attachment: ${attachment.filename} ---`,
         });
         parts.push({
           type: "image",
-          image: buffer.toString("base64"),
+          image: referenceUrl
+            ? new URL(referenceUrl)
+            : buffer.toString("base64"),
           mediaType: inferredImageMediaType(
             attachment.filename,
             attachment.contentType,
           ),
+          ...(referenceUrl
+            ? {
+                providerOptions: {
+                  spot: { routerAssetSizeBytes: blob.size },
+                },
+              }
+            : {}),
         });
         names.push(attachment.filename);
       } else if (
@@ -376,6 +452,7 @@ export async function buildAgentAttachmentParts(
         names.push(attachment.filename);
       }
     } catch (error) {
+      if (error instanceof AgentAttachmentLimitError) throw error;
       console.warn(
         `[agent-attachment] Failed to read ${attachment.filename}`,
         error,
