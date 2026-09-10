@@ -38,8 +38,8 @@ Acceptance criteria:
 - An active operator can configure manual or Directory mode and run redacted
   verification from **Channels → Google Workspace** without reading code.
 - Manual mode searches only explicitly configured company mailboxes. Directory
-  mode enumerates all eligible users across the Workspace customer and clearly
-  reports skipped or failed entries.
+  mode enumerates eligible users across the Workspace customer, excludes
+  suspended, archived, and known non-mailbox accounts, and reports access failures.
 - Search and read results always retain their mailbox-scoped Gmail IDs and
   source provenance. Original attachments remain bound to the stated mailbox
   and parent message.
@@ -207,7 +207,7 @@ The Gmail API accepts most Gmail search-box syntax, including `from:`, `to:`,
 - The API does not perform thread-wide matching; it returns messages that match
   the query, after which Spot can read the associated thread.
 
-Date-only filters are interpreted by Gmail at midnight Pacific time. Use Unix
+Date-only filters are interpreted by Gmail at midnight PST. Use Unix
 seconds in `after:` and `before:` when an exact timezone boundary matters. See
 Google's [Gmail search and filtering guide](https://developers.google.com/workspace/gmail/api/guides/filtering) and
 [`users.messages.list` reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list).
@@ -220,6 +220,20 @@ Full thread reads use Gmail's full message payload, and attachments remain
 bound to the mailbox and parent message that identified them. See the
 [`users.threads.get` reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.threads/get) and
 [`users.messages.attachments.get` reference](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages.attachments/get).
+
+Pages default to 20 entries and accept at most 50. Search traverses mailboxes
+in bounded batches; it does not promise globally newest-first ordering. Pass
+each `nextCursor` unchanged with the same query, mailbox filters, and page size.
+Settings changes or credential rotation invalidate existing cursors. Earlier
+access failures keep the final search incomplete even when later pages succeed.
+
+Thread pages contain at most 80,000 body characters. Text body parts stored
+separately by Gmail have a 2 MiB aggregate retrieval budget per page; unavailable
+parts include explicit attachment references and reasons. Follow thread
+continuations, and use `get_company_email_attachment` for any remaining original
+parts. Original attachments are limited to 15 MiB. Results exceeding 512 KiB of
+serialized text fail explicitly and require a smaller page or narrower search;
+successful results retain their full structure on an idempotent retry.
 
 ## Troubleshooting
 
