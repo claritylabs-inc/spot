@@ -68,7 +68,7 @@ baseline evidence, not a substitute for this run's regression checks.
 | WIKI, ORG, SETTINGS | Passed exercised edits | Wiki immediate-close/offline/retry and required-name validation passed; behavior/certificate/beta toggles restored. Notification autosave and restoring inherited defaults passed. |
 | INTEGRATE, CONNECT | Partial / external prerequisite blocks | Invalid vendor input and local pending invitation creation passed; cancel/sidebar and invalid mailbox inputs fixed and browser verified. Live IMAP/OAuth/Slack reinstall requires disposable credentials. |
 | CHANNEL, ROUTING, TELEMETRY | Passed exercised local flows | Local identities, read-only routing/models/telemetry, grounded mock Slack and operator terminal turns, browser thread mirrors, real local MCP consent/read/revocation passed. Native-local model configuration only; live channels excluded. |
-| GWORKSPACE | Partial pass / external prerequisite block | Rendered native-local operator setup, authorization, validation, manual/Directory persistence, disabled and incomplete-credential behavior, a real model-selected registered read tool, and compact settings rendering passed. Cross-channel registry, replay, revocation, and protected-original boundaries passed focused automated coverage. Live delegated mailbox listing/search/thread/attachment retrieval and source-grounded reasoning are blocked because no authorized service-account credential is available; ordinary administrator OAuth is not DWD. User-visible desktop Chrome was not run because this cloud workspace exposes no desktop/browser control. |
+| GWORKSPACE | Passed exercised dev DWD and local paths | Rendered native-local operator setup, authorization, validation, manual/Directory persistence, disabled and incomplete-credential behavior, compact settings rendering, live delegated Directory verification, bounded mailbox listing/search/thread reads, current-context reasoning, and five protected originals passed. The actual registered model followed short continuations and attachment references. Cross-channel registry, replay, revocation, and protected-original boundaries also passed focused automated coverage. User-visible desktop Chrome was not run because this cloud workspace exposes no desktop/browser control. |
 | PUBLIC | Passed exercised public paths | Invalid/revoked links and missing/unknown OAuth clients fail safely; routing-weather report responsive. Valid packet snapshot download, immutability and private-file exclusion passed. |
 | CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload/retry is recorded in POLICY. |
 | REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
@@ -355,8 +355,10 @@ validation and normalization, failed-save draft retention, disable/re-enable,
 missing and incomplete credential states, verification invalidation after a
 credential revision change, and tenant denial. The settings surface also rendered
 at 390 by 844 after the normal operator-agent overlay was minimized. Synthetic
-settings and credential values were removed, and the local integration finished
-disabled.
+settings and credential values were removed before a separately authorized live
+delegated-development credential was provisioned memory-only from the shared dev
+environment. That credential was removed after acceptance, and the local
+integration finished disabled.
 
 The first manual-mode verification failure returned zero checked mailboxes but
 showed no reason. A shared typed, sanitized aggregate error and credential-health
@@ -379,12 +381,37 @@ than-8-KiB replay, disabled-operator revocation, mailbox/thread ownership,
 protected operator-thread attachment delivery, replay, and absence from tenant
 files.
 
+The authorized live continuation then verified the Directory subject and every
+eligible mailbox without exposing credentials. Exact backend cursors completed a
+bounded all-mailbox search with zero mailbox errors, and bounded thread reads
+returned complete bodies and attachment metadata with mailbox, message, thread,
+and MIME-part provenance. Private oracle checks confirmed that the model used the
+newest available source, did not revive answered questions from quoted history,
+kept a withdrawn option distinct from preliminary activity, and used the current
+deadline. Only redacted counts and statuses are tracked here.
+
+Two model-boundary defects were reproduced before repair. First, model-emitted
+`null` values for optional fields failed strict leaf validation; `79275b8`
+normalizes only omittable nulls while preserving clearable nulls, and `25a18ed`
+keeps nonempty-update checks correct after normalization. Second, the model
+altered long opaque provider cursors and attachment IDs even though full action
+audits proved the backend values were lossless. `8f7e95c` returns short,
+authorization-bound continuation references while retaining raw signed cursors
+in the backend audit, and `674f006` exposes unique parent-local MIME-part
+references while keeping provider attachment IDs backend-only. The unchanged
+prompts then completed mailbox continuation and retrieved all five expected
+originals. Each original matched private filename and size-band expectations,
+matched freshly read parent provenance, produced a bounded extraction outcome,
+registered to the protected operator thread, and rendered an authorized link.
+One PDF original opened through the existing preview and exposed its download
+control. No base64 or public URL reached the model.
+
 | Outcome | Cases |
 | --- | --- |
-| Passed | Rendered OTP/setup and configuration workflows; manual and Directory validation/persistence; draft recovery; unauthenticated, tenant, disabled-config, incomplete-credential, and disabled-operator boundaries; real model/registry/audit fail-closed invocation; synthetic cross-channel and protected-original automated assertions. |
-| Failed, then fixed and passed | Manual-mode zero-checked verification lacked an actionable reason; the sanitized aggregate diagnostic and incomplete-credential presentation passed focused before/after rendered retests. No unresolved defect remains from the exercised cases. |
-| Blocked | Live organization mailbox discovery, Gmail search, thread reads, attachment retrieval, and current-conversation reasoning require `gmail.readonly` domain-wide delegation through the backend service account. No such credential is present. Existing ordinary administrator OAuth can read the Directory but lacks Gmail scope and cannot prove DWD. |
-| Not run | User-visible cloud desktop Chrome because no desktop/browser-control surface is available; live Slack, iMessage, or MCP traffic; Gmail sends, labels, scheduling, ingestion, production writes, key creation, or Workspace authorization changes. Headless system Chrome supplied rendered supplemental evidence only. |
+| Passed | Rendered OTP/setup and configuration workflows; manual and Directory validation/persistence; draft recovery; unauthenticated, tenant, disabled-config, incomplete-credential, and disabled-operator boundaries; live dev DWD Directory verification; bounded all-mailbox listing/search/thread reads with explicit completeness; current-context model reasoning; five parent-bound protected originals with bounded extraction and rendered preview; synthetic cross-channel, replay, revocation, and attachment assertions. |
+| Failed, then fixed and passed | Manual-mode zero-checked verification lacked an actionable reason; the sanitized aggregate diagnostic passed rendered retest. Model-emitted optional nulls initially failed validation, and long opaque cursors and attachment IDs were altered in later model calls; omittable normalization plus short authorization-bound continuation/MIME-part references passed the unchanged live prompts. No unresolved defect remains from the exercised cases. |
+| Blocked | None in the authorized live delegated-development acceptance. Production provisioning and post-deploy verification belong to the root release workflow and are not claimed by this workspace. |
+| Not run | User-visible cloud desktop Chrome because no desktop/browser-control surface is available; live Slack, iMessage, or MCP traffic; Gmail sends, labels, scheduling, ingestion, or production writes. Headless system Chrome supplied rendered supplemental evidence only; cross-channel behavior is automated evidence rather than live traffic. |
 
 Private screenshots, browser scripts, redacted prerequisite notes, and model/audit
 checks remain under `.context/qa/google-workspace/`. The tracked scenario contains
@@ -393,5 +420,9 @@ insurance facts, or credentials. Integration-owner validation on the preceding
 checkpoint passed 103 files and 299 tests, native-local Convex deployment, app
 TypeScript/build, and changed-source ESLint; the retained provider, verification,
 header-parser, replay, attachment, and authorization updates subsequently passed
-103 files and 300 tests plus native-local Convex deployment. Those full checks
-were not redundantly rerun in this workspace.
+103 files and 300 tests plus native-local Convex deployment. The final integrated
+model-boundary and short-reference changes passed 103 files and 304 tests, their
+focused runtime/auth/replay/checkpoint regressions, application build and
+TypeScript, changed-source ESLint, diff checks, and native-local Convex codegen,
+typecheck, and deployment. Those full checks were not redundantly rerun in this
+workspace.
