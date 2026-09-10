@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
-import { CL_ROUTER_MAX_JSON_BYTES } from "./clRouterClient.js";
+import {
+  CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES,
+  CL_ROUTER_MAX_ASSET_BYTES,
+  CL_ROUTER_MAX_ASSETS,
+  CL_ROUTER_MAX_JSON_BYTES,
+} from "./clRouterClient.js";
 import type { ClRouterAssetReference } from "./clRouterClient.js";
 
 export type RouterAssetLease = {
@@ -27,7 +32,130 @@ export type StagedRouterAsset = {
   cleanup: StagedRouterAssetCleanup;
 };
 
+export type ExplicitRouterImage = {
+  imageBase64: string;
+  mimeType: string;
+};
+
+export type ExplicitRouterAssetPlan = {
+  images: ExplicitRouterImage[];
+  imageSizes: number[];
+  pdfBase64?: string;
+  pdfBytes?: Uint8Array;
+  pdfSize: number;
+};
+
 const ROUTER_IMAGE_PART_OVERHEAD_BYTES = 128;
+
+function canonicalBase64(value: string, label: string): string {
+  const normalized = value.replace(/\s/g, "");
+  if (
+    normalized.length === 0 ||
+    normalized.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)
+  ) {
+    throw new Error(`${label} must be nonempty canonical base64`);
+  }
+  const bytes = Buffer.from(normalized, "base64");
+  if (bytes.toString("base64") !== normalized) {
+    throw new Error(`${label} must be nonempty canonical base64`);
+  }
+  return normalized;
+}
+
+export function planExplicitRouterAssets(
+  providerOptions: Record<string, unknown>,
+): ExplicitRouterAssetPlan {
+  const suppliedPdfBase64 = providerOptions.pdfBase64 !== undefined;
+  const suppliedPdfBytes = providerOptions.pdfBytes !== undefined;
+  if (suppliedPdfBase64 && suppliedPdfBytes) {
+    throw new Error("Extraction input supplied two PDF representations");
+  }
+
+  let pdfBase64: string | undefined;
+  let pdfBytes: Uint8Array | undefined;
+  let pdfSize = 0;
+  if (suppliedPdfBase64) {
+    if (typeof providerOptions.pdfBase64 !== "string") {
+      throw new Error("Extraction PDF base64 must be a string");
+    }
+    pdfBase64 = canonicalBase64(
+      providerOptions.pdfBase64,
+      "Extraction PDF base64",
+    );
+    pdfSize = Buffer.from(pdfBase64, "base64").byteLength;
+  } else if (suppliedPdfBytes) {
+    if (!(providerOptions.pdfBytes instanceof Uint8Array)) {
+      throw new Error("Extraction PDF bytes must be a Uint8Array");
+    }
+    if (providerOptions.pdfBytes.byteLength === 0) {
+      throw new Error("Extraction PDF bytes must be nonempty");
+    }
+    pdfBytes = providerOptions.pdfBytes;
+    pdfSize = pdfBytes.byteLength;
+  }
+  if (pdfSize > CL_ROUTER_MAX_ASSET_BYTES) {
+    throw new Error(
+      `Extraction PDF exceeds the ${CL_ROUTER_MAX_ASSET_BYTES}-byte router asset limit`,
+    );
+  }
+
+  if (
+    providerOptions.images !== undefined &&
+    !Array.isArray(providerOptions.images)
+  ) {
+    throw new Error("Extraction images must be an array");
+  }
+  const rawImages = providerOptions.images ?? [];
+  const images = rawImages.map((value, index) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`Extraction image ${index + 1} is malformed`);
+    }
+    const image = value as Record<string, unknown>;
+    if (
+      typeof image.imageBase64 !== "string" ||
+      typeof image.mimeType !== "string" ||
+      !image.mimeType.trim().toLowerCase().startsWith("image/")
+    ) {
+      throw new Error(`Extraction image ${index + 1} is malformed`);
+    }
+    return {
+      imageBase64: canonicalBase64(
+        image.imageBase64,
+        `Extraction image ${index + 1}`,
+      ),
+      mimeType: image.mimeType.trim().toLowerCase(),
+    };
+  });
+  const imageSizes = images.map(
+    (image) => Buffer.from(image.imageBase64, "base64").byteLength,
+  );
+  if (imageSizes.some((size) => size > CL_ROUTER_MAX_ASSET_BYTES)) {
+    throw new Error(
+      `A generated page image exceeds the ${CL_ROUTER_MAX_ASSET_BYTES}-byte router asset limit`,
+    );
+  }
+  if (images.length + (pdfSize > 0 ? 1 : 0) > CL_ROUTER_MAX_ASSETS) {
+    throw new Error(
+      `Extraction input exceeds the ${CL_ROUTER_MAX_ASSETS}-asset router limit`,
+    );
+  }
+  if (
+    pdfSize + imageSizes.reduce((total, size) => total + size, 0) >
+    CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES
+  ) {
+    throw new Error(
+      `Extraction input exceeds the ${CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES}-byte router aggregate limit`,
+    );
+  }
+  return {
+    images,
+    imageSizes,
+    ...(pdfBase64 ? { pdfBase64 } : {}),
+    ...(pdfBytes ? { pdfBytes } : {}),
+    pdfSize,
+  };
+}
 
 export function inlineRouterImageFits(
   currentEnvelopeBytes: number,

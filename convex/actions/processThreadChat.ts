@@ -66,7 +66,7 @@ import {
   buildAgentAttachmentParts,
   createAgentAttachmentRouterBudget,
   MAX_AGENT_ATTACHMENT_TEXT_CHARS,
-  modelMessagesHaveImageInput,
+  modelMessagesHaveRichInput,
 } from "../lib/agentAttachmentContext";
 import {
   loadBoundedAgentHistory,
@@ -436,7 +436,7 @@ export const run = internalAction({
           allMessages,
           latestUserMsg?._id ? String(latestUserMsg._id) : undefined,
         );
-      const hasImageInput = modelMessagesHaveImageInput(messageHistory);
+      const hasRichInput = modelMessagesHaveRichInput(messageHistory);
 
       const thread = await ctx.runQuery(internal.threads.getInternal, {
         id: args.threadId,
@@ -795,7 +795,7 @@ export const run = internalAction({
         "email_expert",
         "coordinate_mailbox_task",
       ]);
-      const chatTask = hasImageInput ? "chat_vision" : "chat";
+      const chatTask = hasRichInput ? "chat_vision" : "chat";
       const turn = await runAgentTurn(ctx, {
         orgId: args.orgId,
         task: chatTask,

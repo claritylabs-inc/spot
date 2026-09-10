@@ -222,11 +222,13 @@ function boundedTextPart(args: {
   };
 }
 
-export function modelMessagesHaveImageInput(history: ModelMessage[]) {
+export function modelMessagesHaveRichInput(history: ModelMessage[]) {
   return history.some(
     (message) =>
       Array.isArray(message.content) &&
-      message.content.some((part) => part.type === "image"),
+      message.content.some(
+        (part) => part.type === "image" || part.type === "file",
+      ),
   );
 }
 

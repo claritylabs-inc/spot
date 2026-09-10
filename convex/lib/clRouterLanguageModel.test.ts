@@ -276,6 +276,63 @@ describe("cl-router LanguageModelV3 adapter", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  test("forwards a required PDF and propagates one typed unsupported-input failure", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json(
+        {
+          error: {
+            code: "router_candidates_exhausted",
+            message: "No compatible candidate supports the required PDF input",
+            retryable: false,
+            executionStarted: false,
+            attempts: [],
+          },
+        },
+        { status: 422 },
+      ),
+    );
+    const model = createClRouterLanguageModel({
+      ...adapterOptions(fetchMock),
+      task: "chat_vision",
+    });
+
+    await expect(
+      model.doGenerate({
+        prompt: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "file",
+                data: new URL(
+                  "https://merry-platypus-82.convex.cloud/api/storage/scanned-policy",
+                ),
+                mediaType: "application/pdf",
+                filename: "scanned-policy.pdf",
+                providerOptions: { spot: { routerAssetSizeBytes: 4 } },
+              },
+              { type: "text", text: "Summarize this policy." },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      routerCode: "router_candidates_exhausted",
+      retryable: false,
+      executionStarted: false,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(request.task).toBe("chat_vision");
+    expect(request.messages[0].content).toContainEqual({
+      type: "file",
+      source: expect.objectContaining({
+        mediaType: "application/pdf",
+        sizeBytes: 4,
+      }),
+    });
+  });
+
   test("keeps an explicit operator route pinned without router fallback", async () => {
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({ ...doneEvent("stop"), output: "done" }),

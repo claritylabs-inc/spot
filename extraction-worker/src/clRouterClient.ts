@@ -402,7 +402,12 @@ function requestInput(
       continue;
     }
     const imageBase64 = image.imageBase64.replace(/\s/g, "");
-    if (imageBase64) images.push({ ...image, imageBase64 });
+    if (!imageBase64) {
+      throw new ClRouterProtocolError(
+        "Router image input must contain nonempty base64 data",
+      );
+    }
+    images.push({ ...image, imageBase64 });
   }
   const pdfBase64 = assets?.pdfBytes
     ? Buffer.from(assets.pdfBytes).toString("base64")

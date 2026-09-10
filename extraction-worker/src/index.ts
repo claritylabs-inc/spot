@@ -43,9 +43,6 @@ import { resolveConvexStorageUrl } from "./convexStorageUrl.js";
 import {
   ClRouterProtocolError,
   createClRouterClient,
-  CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES,
-  CL_ROUTER_MAX_ASSET_BYTES,
-  CL_ROUTER_MAX_ASSETS,
   type ClRouterAssetReference,
   type ClRouterGenerateResponse,
   type ClRouterProviderAssets,
@@ -56,6 +53,7 @@ import { createPdfWorkAdmission } from "./pdfWorkAdmission.js";
 import { resolveWorkerRuntimeAccess } from "./railwayRuntime.js";
 import {
   inlineRouterImageFits,
+  planExplicitRouterAssets,
   stageRouterAsset,
   validatedConvexSiteUrl,
 } from "./routerAssetUpload.js";
@@ -1192,47 +1190,9 @@ async function prepareClRouterAssets(
   staged: StagedRouterAsset[];
 }> {
   const options = providerOptions as ExtractionProviderOptions;
-  const images = Array.isArray(options.images)
-    ? options.images.filter(
-        (image) =>
-          typeof image.imageBase64 === "string" && image.imageBase64.length > 0,
-      )
-    : [];
-  const pdfBase64 =
-    typeof options.pdfBase64 === "string"
-      ? options.pdfBase64.replace(/\s/g, "")
-      : options.pdfBytes instanceof Uint8Array
-        ? Buffer.from(options.pdfBytes).toString("base64")
-        : undefined;
-  const pdfBytes = pdfBase64 ? Buffer.from(pdfBase64, "base64").byteLength : 0;
-  const imageBytes = images.map(
-    (image) =>
-      Buffer.from(image.imageBase64.replace(/\s/g, ""), "base64").byteLength,
-  );
-  if (
-    imageBytes.some((size) => size <= 0 || size > CL_ROUTER_MAX_ASSET_BYTES)
-  ) {
-    throw new Error(
-      `A generated page image exceeds the ${CL_ROUTER_MAX_ASSET_BYTES}-byte router asset limit`,
-    );
-  }
-  if (images.length + (pdfBytes > 0 ? 1 : 0) > CL_ROUTER_MAX_ASSETS) {
-    throw new Error(
-      `Extraction input exceeds the ${CL_ROUTER_MAX_ASSETS}-asset router limit`,
-    );
-  }
-  const totalImageBytes = imageBytes.reduce((total, size) => total + size, 0);
-  if (totalImageBytes > CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES) {
-    throw new Error(
-      `Generated page images exceed the ${CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES}-byte router aggregate limit`,
-    );
-  }
-  const includePdf = Boolean(
-    job.fileUrl &&
-    pdfBytes > 0 &&
-    pdfBytes <= CL_ROUTER_MAX_ASSET_BYTES &&
-    pdfBytes + totalImageBytes <= CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES,
-  );
+  const { images, pdfBase64, pdfBytes, pdfSize } =
+    planExplicitRouterAssets(providerOptions);
+  const includePdf = pdfSize > 0;
   const staged: StagedRouterAsset[] = [];
   const routerImages: NonNullable<ClRouterProviderAssets["images"]> = [];
   let inlineEnvelopeBytes = baseEnvelopeBytes;
@@ -1257,9 +1217,7 @@ async function prepareClRouterAssets(
   return {
     assets: {
       ...(includePdf ? { pdfUrl: job.fileUrl, pdfBase64 } : {}),
-      ...(includePdf && options.pdfBytes instanceof Uint8Array
-        ? { pdfBytes: options.pdfBytes }
-        : {}),
+      ...(includePdf && pdfBytes ? { pdfBytes } : {}),
       ...(typeof options.mimeType === "string"
         ? { mimeType: options.mimeType }
         : {}),

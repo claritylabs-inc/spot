@@ -306,6 +306,34 @@ test("client rejects an oversized request as a protocol error before fetch", asy
   assert.equal(fetchCalls, 0);
 });
 
+test("client rejects an explicitly empty image before fetch", async () => {
+  let fetchCalls = 0;
+  const client = createClRouterClient({
+    baseUrl: "https://router.internal",
+    secret: "shared-secret",
+    timeoutMs: 1000,
+    fetch: async () => {
+      fetchCalls += 1;
+      return Response.json(responseBody);
+    },
+  });
+  await assert.rejects(
+    client.generate({
+      task: "extraction",
+      tenantId: "glass",
+      prompt: "Extract.",
+      schema: { type: "object" },
+      assets: {
+        images: [{ imageBase64: " \n\t", mimeType: "image/png" }],
+      },
+    }),
+    (error) =>
+      error instanceof ClRouterProtocolError &&
+      /nonempty base64 data/.test(error.message),
+  );
+  assert.equal(fetchCalls, 0);
+});
+
 test("client rejects loopback assets before calling a cloud router", async () => {
   let fetchCalls = 0;
   const client = createClRouterClient({

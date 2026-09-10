@@ -193,17 +193,6 @@ export function buildRecentImessageTextContext(
     .join("\n");
 }
 
-export function imessageAgentTaskForAttachments(
-  attachmentRecords: StoredImessageAttachmentRecord[],
-): "chat" | "chat_vision" {
-  return attachmentRecords.some(
-    (attachment) =>
-      Boolean(attachment.buffer) && attachment.contentType.startsWith("image/"),
-  )
-    ? "chat_vision"
-    : "chat";
-}
-
 export async function buildImessageModelMessages(args: {
   history: ImessageHistoryMessage[];
   messageText: string;

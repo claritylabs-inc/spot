@@ -3,12 +3,109 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   inlineRouterImageFits,
+  planExplicitRouterAssets,
   routerAssetUploadRequest,
   stageRouterAsset,
   validateRouterAssetUploadResponse,
   validatedConvexSiteUrl,
 } from "../src/routerAssetUpload.js";
-import { CL_ROUTER_MAX_JSON_BYTES } from "../src/clRouterClient.js";
+import {
+  CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES,
+  CL_ROUTER_MAX_ASSET_BYTES,
+  CL_ROUTER_MAX_JSON_BYTES,
+} from "../src/clRouterClient.js";
+
+test("explicit extraction assets are preserved and validated as one router budget", () => {
+  const screenshot = {
+    imageBase64: Buffer.from("screenshot").toString("base64"),
+    mimeType: "image/png",
+  };
+  assert.deepEqual(
+    planExplicitRouterAssets({ pdfBase64: undefined, images: [screenshot] }),
+    {
+      images: [screenshot],
+      imageSizes: [Buffer.byteLength("screenshot")],
+      pdfSize: 0,
+    },
+  );
+
+  const pdfBase64 = Buffer.from("pdf").toString("base64");
+  assert.deepEqual(planExplicitRouterAssets({ pdfBase64 }), {
+    images: [],
+    imageSizes: [],
+    pdfBase64,
+    pdfSize: 3,
+  });
+
+  assert.throws(
+    () =>
+      planExplicitRouterAssets({
+        images: [screenshot, { imageBase64: "", mimeType: "image/png" }],
+      }),
+    /image 2.*nonempty canonical base64/i,
+  );
+  assert.throws(
+    () =>
+      planExplicitRouterAssets({
+        images: [
+          { imageBase64: screenshot.imageBase64, mimeType: "text/plain" },
+        ],
+      }),
+    /image 1.*malformed/i,
+  );
+  assert.throws(
+    () => planExplicitRouterAssets({ pdfBase64: "", images: [] }),
+    /PDF base64.*nonempty canonical base64/i,
+  );
+  assert.throws(
+    () =>
+      planExplicitRouterAssets({
+        pdfBase64,
+        pdfBytes: Uint8Array.from([1]),
+      }),
+    /two PDF representations/i,
+  );
+});
+
+test("explicit extraction assets fail before exceeding router binary limits", () => {
+  assert.throws(
+    () =>
+      planExplicitRouterAssets({
+        pdfBytes: new Uint8Array(CL_ROUTER_MAX_ASSET_BYTES + 1),
+      }),
+    /PDF exceeds.*asset limit/i,
+  );
+
+  const onePixel = Buffer.from("pixel").toString("base64");
+  assert.throws(
+    () =>
+      planExplicitRouterAssets({
+        images: Array.from({ length: 9 }, () => ({
+          imageBase64: onePixel,
+          mimeType: "image/png",
+        })),
+      }),
+    /8-asset router limit/i,
+  );
+
+  const pdfBytes = new Uint8Array(10 * 1024 * 1024);
+  const imageBytes = Buffer.alloc(
+    CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES - pdfBytes.byteLength + 1,
+  );
+  assert.throws(
+    () =>
+      planExplicitRouterAssets({
+        pdfBytes,
+        images: [
+          {
+            imageBase64: imageBytes.toString("base64"),
+            mimeType: "image/png",
+          },
+        ],
+      }),
+    /aggregate limit/i,
+  );
+});
 
 test("generated images are staged before the 4 MiB JSON envelope is exceeded", () => {
   assert.equal(inlineRouterImageFits(1_000, "a".repeat(1_000)), true);

@@ -1,3 +1,4 @@
+import type { ModelMessage } from "ai";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -14,7 +15,10 @@ vi.mock("./liteparsePreprocessor", () => ({
 }));
 
 import type { Id } from "../_generated/dataModel";
-import { buildAgentAttachmentParts } from "./agentAttachmentContext";
+import {
+  buildAgentAttachmentParts,
+  modelMessagesHaveRichInput,
+} from "./agentAttachmentContext";
 import {
   MAX_AGENT_ATTACHMENT_BYTES,
   MAX_AGENT_ATTACHMENT_FILES,
@@ -156,6 +160,57 @@ describe("shared agent attachment context", () => {
         spot: { routerAssetSizeBytes: bytes.byteLength },
       },
     });
+  });
+
+  test("keeps a PDF as required rich chat input when both parsers fail", async () => {
+    vi.stubEnv("SPOT_ENV", "production");
+    const fileId = "empty-parser-pdf" as Id<"_storage">;
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    const reference = `https://merry-platypus-82.convex.cloud/api/storage/${String(fileId)}`;
+    const context = await buildAgentAttachmentParts(
+      {
+        storage: {
+          get: vi.fn(
+            async () => new Blob([bytes], { type: "application/pdf" }),
+          ),
+          getUrl: vi.fn(async () => reference),
+        },
+      } as never,
+      [
+        {
+          fileId,
+          filename: "scanned-policy.pdf",
+          contentType: "application/pdf",
+          size: bytes.byteLength,
+        },
+      ],
+      { includeRichParts: true, remainingTextChars: { value: 80_000 } },
+    );
+    const messages: ModelMessage[] = [
+      {
+        role: "user",
+        content: [
+          ...context.parts,
+          { type: "text", text: "Summarize this policy." },
+        ],
+      },
+    ];
+
+    expect(tryBuildParsedPdfTextMock).toHaveBeenCalledOnce();
+    expect(preparePdfTextWithPdfJsMock).toHaveBeenCalledOnce();
+    expect(context.parts).toContainEqual({
+      type: "file",
+      data: new URL(reference),
+      mediaType: "application/pdf",
+      filename: "scanned-policy.pdf",
+      providerOptions: {
+        spot: { routerAssetSizeBytes: bytes.byteLength },
+      },
+    });
+    expect(modelMessagesHaveRichInput(messages)).toBe(true);
+    expect(modelMessagesHaveRichInput(messages) ? "chat_vision" : "chat").toBe(
+      "chat_vision",
+    );
   });
 
   test("keeps local rich bytes inline for central cumulative envelope staging", async () => {

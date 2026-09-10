@@ -41,11 +41,11 @@ import { runWebRetrieval, type WebRetrievalInput } from "../lib/webRetrieval";
 import {
   buildImessageModelMessages,
   buildRecentImessageTextContext,
-  imessageAgentTaskForAttachments,
   isImessageStatusCue,
   prepareInboundImessageTurn,
   type ImessageHistoryMessage,
 } from "../lib/imessageAgentContext";
+import { modelMessagesHaveRichInput } from "../lib/agentAttachmentContext";
 import {
   formatPolicyFocusHints,
   selectPolicyFocusIds,
@@ -658,7 +658,9 @@ export const processInbound = internalAction({
         attachmentRecords,
         currentMessageId: inboundThreadMessageId,
       });
-      const chatTask = imessageAgentTaskForAttachments(attachmentRecords);
+      const chatTask = modelMessagesHaveRichInput(modelMessages)
+        ? "chat_vision"
+        : "chat";
 
       const systemPrompt =
         buildSystemPromptForContext({

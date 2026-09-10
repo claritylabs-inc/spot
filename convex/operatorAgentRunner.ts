@@ -10,7 +10,7 @@ import {
   buildAgentAttachmentParts,
   createAgentAttachmentRouterBudget,
   MAX_AGENT_ATTACHMENT_TEXT_CHARS,
-  modelMessagesHaveImageInput,
+  modelMessagesHaveRichInput,
 } from "./lib/agentAttachmentContext";
 import { MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES } from "./lib/agentAttachmentLimits";
 import {
@@ -242,7 +242,7 @@ export const run = internalAction({
         });
       }
 
-      const modelTask = modelMessagesHaveImageInput(messages)
+      const modelTask = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
         : "chat";
       const result = await generateAgentTextForOperatorTask(

@@ -23,6 +23,7 @@ vi.mock("./models", () => ({
 }));
 
 import type { Id } from "../_generated/dataModel";
+import { modelMessagesHaveRichInput } from "./agentAttachmentContext";
 import {
   buildImessageModelMessages,
   prepareInboundImessageTurn,
@@ -122,6 +123,34 @@ describe("iMessage agent context", () => {
     expect((images[0]?.image as string).length).toBeGreaterThan(
       bytes.byteLength,
     );
+  });
+
+  test("treats a parser-empty iMessage PDF as rich chat input", async () => {
+    const bytes = Buffer.from("%PDF");
+    const messages = await buildImessageModelMessages({
+      history: [],
+      messageText: "Please inspect this PDF",
+      currentSpeakerLabel: "Client",
+      attachmentRecords: [
+        {
+          filename: "scan.pdf",
+          contentType: "application/pdf",
+          size: bytes.byteLength,
+          buffer: bytes,
+        },
+      ],
+      currentMessageId: "message" as Id<"threadMessages">,
+    });
+
+    const message = messages.at(-1);
+    const content =
+      message && Array.isArray(message.content) ? message.content : [];
+    expect(content).toContainEqual({
+      type: "file",
+      data: bytes.toString("base64"),
+      mediaType: "application/pdf",
+    });
+    expect(modelMessagesHaveRichInput(messages)).toBe(true);
   });
 
   test("rejects rich iMessage asset size, count, and aggregate bounds before inference", async () => {

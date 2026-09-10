@@ -22,8 +22,8 @@ export const WORKER_ROUTER_TRANSPORT_SMOKE_MARKER =
 const REQUEST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-const SYNTHETIC_PIXEL = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlP5ZkAAAAASUVORK5CYII=",
+export const WORKER_ROUTER_TRANSPORT_SMOKE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGPQcmigKWIYtWDUglELRi0YtWDUglELRi0YtWDUglELhooFAICWqC5sy2ZgAAAAAElFTkSuQmCC",
   "base64",
 );
 
@@ -121,7 +121,7 @@ function defaultAdapters(): WorkerRouterTransportSmokeAdapters {
         lease,
         mediaType: "image/png",
         filename: "synthetic-pixel.png",
-        bytes: SYNTHETIC_PIXEL,
+        bytes: WORKER_ROUTER_TRANSPORT_SMOKE_PNG,
         cleanupInvalidResponse: async (cleanup) => {
           await removeAsset(cleanup);
         },

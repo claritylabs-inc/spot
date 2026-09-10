@@ -10,7 +10,7 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import {
   buildAgentAttachmentParts,
   MAX_AGENT_ATTACHMENT_TEXT_CHARS,
-  modelMessagesHaveImageInput,
+  modelMessagesHaveRichInput,
 } from "../lib/agentAttachmentContext";
 import {
   CompanyInformationExtractionSchema,
@@ -93,18 +93,13 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function readableAttachmentParts(
-  parts: Awaited<ReturnType<typeof buildAgentAttachmentParts>>["parts"],
-) {
-  return parts.filter((part) => part.type !== "file");
-}
-
 function hasReadableAttachmentContent(
-  parts: ReturnType<typeof readableAttachmentParts>,
+  parts: Awaited<ReturnType<typeof buildAgentAttachmentParts>>["parts"],
 ) {
   return parts.some(
     (part) =>
       part.type === "image" ||
+      part.type === "file" ||
       (part.type === "text" &&
         !/\b(unavailable|unsupported|omitted|no readable text)\b/i.test(
           part.text,
@@ -214,7 +209,7 @@ export const extractClientFile = internalAction({
         includeRichParts: true,
         remainingTextChars: { value: MAX_AGENT_ATTACHMENT_TEXT_CHARS },
       });
-      const parts = readableAttachmentParts(context.parts);
+      const parts = context.parts;
       if (!hasReadableAttachmentContent(parts)) {
         throw new Error("No readable file content was available for extraction");
       }
@@ -236,7 +231,7 @@ export const extractClientFile = internalAction({
           ],
         },
       ];
-      const task = modelMessagesHaveImageInput(messages)
+      const task = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
         : "document_extraction";
       const result = await generateObjectForOrg(
