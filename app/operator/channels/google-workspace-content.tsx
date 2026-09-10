@@ -174,6 +174,13 @@ function VerificationDiagnostics({
               ? `. This run is capped at ${result.maxMailboxChecks.toLocaleString()} mailboxes and does not establish company-wide access.`
               : "."}
           </p>
+          {result.error ? (
+            <p
+              className={`mt-1 text-destructive ${typeStyle("caption.default")}`}
+            >
+              {result.error}
+            </p>
+          ) : null}
         </div>
         <DirectoryDiagnostic result={result} />
         {result.mailboxes.map((diagnostic) => (
@@ -228,7 +235,14 @@ export function OperatorGoogleWorkspaceContent({
 
   const config = status.config;
   const verification = status.savedVerification;
-  const readyToVerify = Boolean(config?.enabled && status.credentials.present);
+  const credentialIdentitiesAvailable = Boolean(
+    status.credentials.present &&
+      status.credentials.serviceAccountEmail &&
+      status.credentials.clientId,
+  );
+  const readyToVerify = Boolean(
+    config?.enabled && credentialIdentitiesAvailable,
+  );
   const presentation: StatusPresentation = verification
     ? verificationPresentation(verification)
     : !config
@@ -237,7 +251,9 @@ export function OperatorGoogleWorkspaceContent({
         ? { label: "Disabled", tone: "neutral" }
         : !status.credentials.present
           ? { label: "Credential missing", tone: "warning" }
-          : { label: "Ready to verify", tone: "info" };
+          : !credentialIdentitiesAvailable
+            ? { label: "Credential incomplete", tone: "warning" }
+            : { label: "Ready to verify", tone: "info" };
   const roster = !config
     ? "Not configured"
     : config.mailboxMode === "directory"
@@ -281,7 +297,13 @@ export function OperatorGoogleWorkspaceContent({
         <OperationalLabelValueRow label="Mailbox roster" value={roster} />
         <OperationalLabelValueRow
           label="Backend credential"
-          value={status.credentials.present ? "Configured" : "Missing"}
+          value={
+            !status.credentials.present
+              ? "Missing"
+              : credentialIdentitiesAvailable
+                ? "Configured"
+                : "Incomplete"
+          }
         />
         <OperationalLabelValueRow
           label="Service account"
