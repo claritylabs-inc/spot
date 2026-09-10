@@ -41,6 +41,19 @@ audit/cleanup migration and must not be read by runtime code. When an older
 paragraph conflicts with this boundary, follow this boundary and the active
 router client, settings, migration, and worker contracts.
 
+Router rollout acceptance uses only the bounded internal fixtures documented in
+`docs/deployment/environments.md`. `convex/operationalRouterSmoke.ts` owns the
+random marker ledger and `convex/actions/operationalRouterSmoke.ts` owns the
+deploy-key-only generation/object/tool/embedding/retrieval/transcription/PDF
+action. It accepts only bounded M4A bytes and returns booleans, counts, and
+request IDs. The extraction-worker transport proof uses the separate
+never-queued active-lease fixture in `convex/workerRouterTransportSmoke.ts`, the
+worker-authenticated actions in `convex/actions/workerRouterTransportSmoke.ts`,
+and `/app/dist/routerTransportSmoke.js`; it must never call global claim,
+completion, enrichment, or delivery paths. Both fixtures have marker-validated
+cleanup plus scheduled bounded retry. Do not broaden either API with caller
+selected organizations, users, URLs, models, storage IDs, or deletion targets.
+
 ## Workflow
 
 - After major architecture or data-flow changes, update `AGENTS.md`.
@@ -79,6 +92,8 @@ router client, settings, migration, and worker contracts.
 - `npm run check:shared-package-versions` — verify the root app and extraction worker consume the same exact `@claritylabs/cl-sdk` and `@claritylabs/cl-router-policy` package specs
 - `npm run check:agent-workers` — build/syntax-check mission-critical Railway agent workers before deployment
 - `npm run check:agent-health` — smoke-check Convex agent config plus configured extraction, iMessage, Slack, and router worker health
+- `npx convex run actions/operationalRouterSmoke:run '{"audioBase64":"<canonical-M4A-base64>"}'` — run the deploy-key-authenticated, marker-owned router acceptance action; follow `docs/deployment/environments.md` for the exact fixture, lane, result, and cleanup contract
+- `npm --prefix extraction-worker run smoke:router-transport -- <request-id>` — run the transport-only worker acceptance script after creating its never-queued fixture; this is not a full extraction smoke and must be launched with every consumer provider credential and `CL_ROUTER_TASKS` removed from the child environment
 - `npm run container:doctor` — verify local Apple `container` prerequisites and installation
 - `npm run container:system:start` — start or initialize Apple's local container service
 - `npm run container:build:workers` — build all Railway worker Dockerfiles locally with Apple's `container` CLI for `linux/amd64` production parity
@@ -321,6 +336,7 @@ Usage notes:
 - Spot passes LiteParse/PDF.js text plus bounded signed PDF/image references through cl-router. Generated screenshots stay inline only when the complete serialized request remains safely below 4 MiB; larger combined visual inputs use the lease-bound temporary Spot asset ledger.
 
 Fallback behavior is router-owned. Spot resolves the operator/global or static route, submits it to cl-router with the remaining execution budget, and never retries through a direct provider. Tool loops preserve the selected route pin and do not replay completed business tools after visible output.
+
 - Provider availability is reported by the authenticated router capabilities endpoint. Missing router credentials or candidate exhaustion produces a typed, sanitized router failure; Spot never interprets local provider-key presence and never changes transport.
 - Authenticated `query_reason` and extraction-family routing retain their task-compatible router candidate policy. cl-router owns candidate reconciliation and pre-execution failover within the submitted budget. Router failures retain the router-owned request ID and sanitized per-attempt provider/model/error category in `modelRoutingEvents` so `/operator/routing` can correlate the persisted router call instead of displaying the configured seed route as an actual attempt.
 - Web chat generation in [processThreadChat.ts](convex/actions/processThreadChat.ts) and current-turn iMessage image handling in [handleInboundImessage.ts](convex/actions/handleInboundImessage.ts) use `chat` for text-only turns and `chat_vision` when their emitted model input contains an image part. The shared channel runtime buffers the model run and publishes one completed reply. If a completed tool loop ends blank or truncated, Spot may make one tool-free continuation from the existing tool results on the same router route pin; this is output completion, not provider fallback, and it cannot rerun the business tools.

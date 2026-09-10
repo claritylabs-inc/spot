@@ -41,6 +41,7 @@ import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.
 import type * as actions_mailboxCoordinator from "../actions/mailboxCoordinator.js";
 import type * as actions_mcpChat from "../actions/mcpChat.js";
 import type * as actions_mirrorWebChatToImessage from "../actions/mirrorWebChatToImessage.js";
+import type * as actions_operationalRouterSmoke from "../actions/operationalRouterSmoke.js";
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
@@ -72,6 +73,7 @@ import type * as actions_slackReconciliation from "../actions/slackReconciliatio
 import type * as actions_threadTitle from "../actions/threadTitle.js";
 import type * as actions_updateDocumentChunk from "../actions/updateDocumentChunk.js";
 import type * as actions_vendorComplianceMonitor from "../actions/vendorComplianceMonitor.js";
+import type * as actions_workerRouterTransportSmoke from "../actions/workerRouterTransportSmoke.js";
 import type * as agentChannels from "../agentChannels.js";
 import type * as agentHistory from "../agentHistory.js";
 import type * as agentResponseFeedback from "../agentResponseFeedback.js";
@@ -321,6 +323,7 @@ import type * as notificationPreferences from "../notificationPreferences.js";
 import type * as notificationSlack from "../notificationSlack.js";
 import type * as notifications from "../notifications.js";
 import type * as oauth from "../oauth.js";
+import type * as operationalRouterSmoke from "../operationalRouterSmoke.js";
 import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
@@ -363,6 +366,7 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
+import type * as workerRouterTransportSmoke from "../workerRouterTransportSmoke.js";
 
 import type {
   ApiFromModules,
@@ -404,6 +408,7 @@ declare const fullApi: ApiFromModules<{
   "actions/mailboxCoordinator": typeof actions_mailboxCoordinator;
   "actions/mcpChat": typeof actions_mcpChat;
   "actions/mirrorWebChatToImessage": typeof actions_mirrorWebChatToImessage;
+  "actions/operationalRouterSmoke": typeof actions_operationalRouterSmoke;
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
@@ -435,6 +440,7 @@ declare const fullApi: ApiFromModules<{
   "actions/threadTitle": typeof actions_threadTitle;
   "actions/updateDocumentChunk": typeof actions_updateDocumentChunk;
   "actions/vendorComplianceMonitor": typeof actions_vendorComplianceMonitor;
+  "actions/workerRouterTransportSmoke": typeof actions_workerRouterTransportSmoke;
   agentChannels: typeof agentChannels;
   agentHistory: typeof agentHistory;
   agentResponseFeedback: typeof agentResponseFeedback;
@@ -684,6 +690,7 @@ declare const fullApi: ApiFromModules<{
   notificationSlack: typeof notificationSlack;
   notifications: typeof notifications;
   oauth: typeof oauth;
+  operationalRouterSmoke: typeof operationalRouterSmoke;
   operator: typeof operator;
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
@@ -726,6 +733,7 @@ declare const fullApi: ApiFromModules<{
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
+  workerRouterTransportSmoke: typeof workerRouterTransportSmoke;
 }>;
 
 /**

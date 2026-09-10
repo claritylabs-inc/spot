@@ -1,5 +1,4 @@
 import dayjs from "dayjs";
-import { createHash } from "node:crypto";
 import { createRequire } from "module";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { z } from "zod";
@@ -57,10 +56,8 @@ import { createPdfWorkAdmission } from "./pdfWorkAdmission.js";
 import { resolveWorkerRuntimeAccess } from "./railwayRuntime.js";
 import {
   inlineRouterImageFits,
-  routerAssetUploadRequest,
-  validateRouterAssetUploadResponse,
+  stageRouterAsset,
   validatedConvexSiteUrl,
-  type RouterAssetUploadResponse,
 } from "./routerAssetUpload.js";
 import { preparePdfSourceWithLiteParseFallback } from "./pdfSourceFallback.js";
 import {
@@ -1173,46 +1170,17 @@ async function stageRouterImage(
   image: ExtractionImage,
 ): Promise<{ reference: ClRouterAssetReference; cleanup: StagedRouterAsset }> {
   const bytes = Buffer.from(image.imageBase64.replace(/\s/g, ""), "base64");
-  const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const lease = routerAssetLease(job);
-  const request = routerAssetUploadRequest({
+  return await stageRouterAsset({
     siteUrl: CONVEX_SITE_URL,
     secret: SECRET,
-    lease,
+    lease: routerAssetLease(job),
     mediaType: image.mimeType,
     filename: "page.png",
-    contentLength: bytes.byteLength,
-    body: bytes,
+    bytes,
+    cleanupInvalidResponse: async (cleanup) => {
+      await deleteStagedRouterAssets([cleanup]);
+    },
   });
-  const upload = await fetch(request.url, request.init);
-  if (!upload.ok) {
-    throw new Error(`Failed to stage router image (${upload.status})`);
-  }
-  const finalized = (await upload.json()) as RouterAssetUploadResponse;
-  try {
-    return validateRouterAssetUploadResponse({
-      siteUrl: CONVEX_SITE_URL,
-      response: finalized,
-      mediaType: image.mimeType,
-      sizeBytes: bytes.byteLength,
-      sha256,
-    });
-  } catch (error) {
-    if (
-      typeof finalized?.assetId === "string" &&
-      Number.isSafeInteger(finalized?.cleanup?.expiresAt) &&
-      typeof finalized?.cleanup?.signature === "string"
-    ) {
-      await deleteStagedRouterAssets([
-        {
-          assetId: finalized.assetId,
-          expiresAt: finalized.cleanup.expiresAt,
-          signature: finalized.cleanup.signature,
-        },
-      ]);
-    }
-    throw error;
-  }
 }
 
 async function prepareClRouterAssets(

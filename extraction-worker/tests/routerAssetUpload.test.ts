@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   inlineRouterImageFits,
   routerAssetUploadRequest,
+  stageRouterAsset,
   validateRouterAssetUploadResponse,
   validatedConvexSiteUrl,
 } from "../src/routerAssetUpload.js";
@@ -128,4 +130,98 @@ test("staged references stay on the exact site path and bind their expiry signat
       }),
     );
   }
+});
+
+test("the shared runtime staging helper uploads, hashes, and validates one asset", async () => {
+  const bytes = Uint8Array.from([1, 2, 3]);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const result = await stageRouterAsset({
+    siteUrl: "https://actions.spot.insure",
+    secret: "worker-secret",
+    lease: {
+      jobKind: "policy",
+      jobId: "policy-id",
+      leaseId: "lease-id",
+      orgId: "org-id",
+    },
+    mediaType: "image/png",
+    filename: "pixel.png",
+    bytes,
+    fetch: async (_input, init) => {
+      assert.deepEqual(
+        Buffer.from(init?.body as Uint8Array),
+        Buffer.from(bytes),
+      );
+      return Response.json(
+        {
+          assetId: "asset-id",
+          reference: {
+            url: "https://actions.spot.insure/router-assets?assetId=asset-id&expiresAt=2000000000000&signature=signature",
+            mediaType: "image/png",
+            filename: "pixel.png",
+            sizeBytes: bytes.byteLength,
+            sha256,
+          },
+          cleanup: {
+            expiresAt: 2_000_000_000_000,
+            signature: "signature",
+          },
+        },
+        { status: 201 },
+      );
+    },
+  });
+  assert.equal(result.reference.sha256, sha256);
+  assert.deepEqual(result.cleanup, {
+    assetId: "asset-id",
+    expiresAt: 2_000_000_000_000,
+    signature: "signature",
+  });
+});
+
+test("invalid staging responses trigger marker-bound cleanup without masking validation", async () => {
+  const cleanups: unknown[] = [];
+  await assert.rejects(
+    stageRouterAsset({
+      siteUrl: "https://actions.spot.insure",
+      secret: "worker-secret",
+      lease: {
+        jobKind: "policy",
+        jobId: "policy-id",
+        leaseId: "lease-id",
+        orgId: "org-id",
+      },
+      mediaType: "image/png",
+      filename: "pixel.png",
+      bytes: Uint8Array.from([1, 2, 3]),
+      fetch: async () =>
+        Response.json(
+          {
+            assetId: "asset-id",
+            reference: {
+              url: "https://evil.example/router-assets",
+              mediaType: "image/png",
+              sizeBytes: 3,
+            },
+            cleanup: {
+              expiresAt: 2_000_000_000_000,
+              signature: "signature",
+            },
+          },
+          { status: 201 },
+        ),
+      cleanupInvalidResponse: async (cleanup) => {
+        cleanups.push(cleanup);
+        throw new Error("cleanup transport failed");
+      },
+    }),
+    /invalid staged router asset reference/i,
+  );
+  assert.deepEqual(cleanups, [
+    {
+      assetId: "asset-id",
+      expiresAt: 2_000_000_000_000,
+      signature: "signature",
+    },
+  ]);
 });

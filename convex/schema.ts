@@ -2690,7 +2690,34 @@ export default defineSchema({
   })
     .index("job", ["jobKind", "jobId"])
     .index("session", ["ownerKind", "surface", "sessionKey"])
+    .index("organization", ["orgId"])
     .index("expiry", ["expiresAt"]),
+
+  // Short-lived, server-owned fixtures for the internal router acceptance
+  // harness. The marker row is the only authority for cleanup targets.
+  operationalRouterSmokeRuns: defineTable({
+    marker: v.string(),
+    orgId: v.id("organizations"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("expiration", ["expiresAt"]),
+
+  // One short-lived, never-queued policy lease used to smoke-test the deployed
+  // extraction worker's authenticated asset and cl-router transports.
+  workerRouterTransportSmokeRuns: defineTable({
+    singleton: v.literal("active"),
+    requestId: v.string(),
+    orgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    runId: v.id("policyExtractionRuns"),
+    leaseId: v.string(),
+    status: v.union(v.literal("ready"), v.literal("running")),
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("singleton", ["singleton"])
+    .index("request", ["requestId"]),
 
   policyExtractionTraceSessions: defineTable({
     traceId: v.string(),

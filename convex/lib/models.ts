@@ -184,12 +184,17 @@ export function generatedTextFromResult(result: unknown): string {
   return "";
 }
 
-function withGeneratedText<T extends AiGenerateTextResult>(result: T): T {
+function withGeneratedText<T extends AiGenerateTextResult>(
+  result: T,
+  preserveStructuredOutput = false,
+): T {
   const finishReason = generatedFinishReasonFromResult(result);
+  const output = preserveStructuredOutput ? result.output : undefined;
   return {
     ...result,
     text: generatedTextFromResult(result),
     ...(finishReason ? { finishReason } : {}),
+    ...(preserveStructuredOutput ? { output } : {}),
   } as T;
 }
 
@@ -1228,6 +1233,7 @@ async function generateAgentTextForResolvedModel(
         model: resolved.model,
       } as AiGenerateTextOptions),
     ),
+    options.output !== undefined,
   );
   const audit = collectToolAudit(result);
   if (

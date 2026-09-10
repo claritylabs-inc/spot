@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { CL_ROUTER_MAX_JSON_BYTES } from "./clRouterClient.js";
 import type { ClRouterAssetReference } from "./clRouterClient.js";
 
@@ -18,6 +20,11 @@ export type RouterAssetUploadResponse = {
   assetId: string;
   reference: ClRouterAssetReference;
   cleanup: Omit<StagedRouterAssetCleanup, "assetId">;
+};
+
+export type StagedRouterAsset = {
+  reference: ClRouterAssetReference;
+  cleanup: StagedRouterAssetCleanup;
 };
 
 const ROUTER_IMAGE_PART_OVERHEAD_BYTES = 128;
@@ -156,4 +163,59 @@ export function validateRouterAssetUploadResponse(options: {
     throw new Error("Convex returned an invalid staged router asset reference");
   }
   return { reference: response.reference, cleanup };
+}
+
+export async function stageRouterAsset(options: {
+  siteUrl: string;
+  secret: string;
+  lease: RouterAssetLease;
+  mediaType: string;
+  filename: string;
+  bytes: Uint8Array;
+  fetch?: typeof fetch;
+  cleanupInvalidResponse?: (
+    cleanup: StagedRouterAssetCleanup,
+  ) => void | Promise<void>;
+}): Promise<StagedRouterAsset> {
+  const body = Buffer.from(options.bytes);
+  const sha256 = createHash("sha256").update(body).digest("hex");
+  const request = routerAssetUploadRequest({
+    siteUrl: options.siteUrl,
+    secret: options.secret,
+    lease: options.lease,
+    mediaType: options.mediaType,
+    filename: options.filename,
+    contentLength: body.byteLength,
+    body,
+  });
+  const upload = await (options.fetch ?? fetch)(request.url, request.init);
+  if (!upload.ok) {
+    throw new Error(`Failed to stage router asset (${upload.status})`);
+  }
+  const finalized = (await upload.json()) as RouterAssetUploadResponse;
+  try {
+    return validateRouterAssetUploadResponse({
+      siteUrl: options.siteUrl,
+      response: finalized,
+      mediaType: options.mediaType,
+      sizeBytes: body.byteLength,
+      sha256,
+    });
+  } catch (error) {
+    if (
+      typeof finalized?.assetId === "string" &&
+      Number.isSafeInteger(finalized?.cleanup?.expiresAt) &&
+      typeof finalized?.cleanup?.signature === "string" &&
+      options.cleanupInvalidResponse
+    ) {
+      await Promise.allSettled([
+        options.cleanupInvalidResponse({
+          assetId: finalized.assetId,
+          expiresAt: finalized.cleanup.expiresAt,
+          signature: finalized.cleanup.signature,
+        }),
+      ]);
+    }
+    throw error;
+  }
 }

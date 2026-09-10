@@ -13,6 +13,7 @@
     "prebuild": "node ../scripts/check-shared-package-versions.mjs",
     "build": "tsc -p tsconfig.json",
     "test": "node --import tsx --test tests/*.test.ts",
+    "smoke:router-transport": "node dist/routerTransportSmoke.js",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
