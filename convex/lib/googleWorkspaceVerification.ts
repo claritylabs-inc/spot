@@ -19,9 +19,40 @@ const MAX_DIRECTORY_PAGES = 20;
 const VERIFY_CONCURRENCY = 10;
 const VERIFY_DEADLINE_MS = 60_000;
 
+class VerificationDeadlineError extends Error {
+  constructor() {
+    super("Google Workspace verification reached its time limit.");
+    this.name = "VerificationDeadlineError";
+  }
+}
+
+async function withVerificationDeadline<T>(
+  deadlineAt: number,
+  operation: (signal: AbortSignal) => Promise<T>,
+) {
+  const remainingMs = deadlineAt - dayjs().valueOf();
+  if (remainingMs <= 0) throw new VerificationDeadlineError();
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation(controller.signal),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          reject(new VerificationDeadlineError());
+        }, remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 async function directoryTargets(
   provider: GoogleWorkspaceProvider,
   config: OperatorGoogleWorkspaceConfig,
+  deadlineAt: number,
 ): Promise<{
   mailboxes: string[];
   diagnostic: OperatorGoogleWorkspaceDirectoryDiagnostic;
@@ -45,11 +76,14 @@ async function directoryTargets(
   let pages = 0;
   try {
     do {
-      const page = await provider.listDirectoryUsers({
-        subject: adminEmail,
-        pageToken,
-        maxResults: DIRECTORY_PAGE_SIZE,
-      });
+      const page = await withVerificationDeadline(deadlineAt, (signal) =>
+        provider.listDirectoryUsers({
+          subject: adminEmail,
+          pageToken,
+          maxResults: DIRECTORY_PAGE_SIZE,
+          signal,
+        }),
+      );
       pages += 1;
       for (const user of page.users) {
         if (isEligibleDirectoryMailbox(user)) mailboxes.push(user.primaryEmail);
@@ -64,15 +98,23 @@ async function directoryTargets(
       mailboxes.length <= GOOGLE_WORKSPACE_LIMITS.maxVerificationMailboxes
     );
   } catch (error) {
+    const deadlineReached = error instanceof VerificationDeadlineError;
     return {
-      mailboxes: [],
+      mailboxes: deadlineReached
+        ? mailboxes.slice(0, GOOGLE_WORKSPACE_LIMITS.maxVerificationMailboxes)
+        : [],
       diagnostic: {
-        status: "failed",
+        status: deadlineReached && mailboxes.length ? "partial" : "failed",
         adminEmail,
-        discoveredMailboxCount: mailboxes.length,
+        discoveredMailboxCount: Math.min(
+          mailboxes.length,
+          GOOGLE_WORKSPACE_LIMITS.maxVerificationMailboxes,
+        ),
         totalMailboxCount: null,
-        hasMore: Boolean(pageToken),
-        error: sanitizeGoogleWorkspaceError(error),
+        hasMore: deadlineReached || Boolean(pageToken),
+        error: deadlineReached
+          ? error.message
+          : sanitizeGoogleWorkspaceError(error),
       },
     };
   }
@@ -128,10 +170,13 @@ export async function verifyGoogleWorkspaceConnection(
   config: OperatorGoogleWorkspaceConfig,
   options: { deadlineMs?: number } = {},
 ): Promise<OperatorGoogleWorkspaceVerificationResult> {
+  const deadlineAt = dayjs()
+    .add(options.deadlineMs ?? VERIFY_DEADLINE_MS, "millisecond")
+    .valueOf();
   let directory: OperatorGoogleWorkspaceDirectoryDiagnostic;
   let mailboxes: string[];
   if (config.mailboxMode === "directory") {
-    const resolved = await directoryTargets(provider, config);
+    const resolved = await directoryTargets(provider, config, deadlineAt);
     directory = resolved.diagnostic;
     mailboxes = resolved.mailboxes;
     if (directory.status === "failed") {
@@ -165,38 +210,50 @@ export async function verifyGoogleWorkspaceConnection(
   }
 
   const diagnostics: OperatorGoogleWorkspaceMailboxDiagnostic[] = [];
-  const deadlineAt = dayjs()
-    .add(options.deadlineMs ?? VERIFY_DEADLINE_MS, "millisecond")
-    .valueOf();
   for (let offset = 0; offset < mailboxes.length; offset += VERIFY_CONCURRENCY) {
-    const remainingMs = deadlineAt - dayjs().valueOf();
-    if (remainingMs <= 0) {
-      break;
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), remainingMs);
     const batch = mailboxes.slice(offset, offset + VERIFY_CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async (mailbox): Promise<OperatorGoogleWorkspaceMailboxDiagnostic> => {
-        try {
-          await provider.getMailboxProfile(mailbox, {
-            signal: controller.signal,
-          });
-          return { mailbox, status: "verified", error: null };
-        } catch (error) {
-          return {
-            mailbox,
-            status: "failed",
-            error: controller.signal.aborted
-              ? "Google Workspace verification reached its time limit."
-              : sanitizeGoogleWorkspaceError(error),
-          };
-        }
-      }),
-    );
-    clearTimeout(timeout);
-    diagnostics.push(...results);
-    if (controller.signal.aborted) {
+    const settled: Array<OperatorGoogleWorkspaceMailboxDiagnostic | undefined> =
+      new Array(batch.length);
+    try {
+      const results = await withVerificationDeadline(
+        deadlineAt,
+        (signal) =>
+          Promise.all(
+            batch.map(
+              async (
+                mailbox,
+                index,
+              ): Promise<OperatorGoogleWorkspaceMailboxDiagnostic> => {
+                let diagnostic: OperatorGoogleWorkspaceMailboxDiagnostic;
+                try {
+                  await provider.getMailboxProfile(mailbox, { signal });
+                  diagnostic = { mailbox, status: "verified", error: null };
+                } catch (error) {
+                  diagnostic = {
+                    mailbox,
+                    status: "failed",
+                    error: signal.aborted
+                      ? "Google Workspace verification reached its time limit."
+                      : sanitizeGoogleWorkspaceError(error),
+                  };
+                }
+                if (!signal.aborted) settled[index] = diagnostic;
+                return diagnostic;
+              },
+            ),
+          ),
+      );
+      diagnostics.push(...results);
+    } catch (error) {
+      if (!(error instanceof VerificationDeadlineError)) throw error;
+      diagnostics.push(
+        ...settled.filter(
+          (
+            diagnostic,
+          ): diagnostic is OperatorGoogleWorkspaceMailboxDiagnostic =>
+            diagnostic !== undefined,
+        ),
+      );
       break;
     }
   }

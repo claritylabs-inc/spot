@@ -50,6 +50,7 @@ export type GoogleWorkspaceProvider = {
     subject: string;
     pageToken?: string;
     maxResults: number;
+    signal?: AbortSignal;
   }): Promise<{
     users: GoogleWorkspaceDirectoryUser[];
     nextPageToken: string | null;
@@ -240,7 +241,7 @@ export function createGoogleWorkspaceProvider(
   };
 
   return {
-    async listDirectoryUsers({ subject, pageToken, maxResults }) {
+    async listDirectoryUsers({ subject, pageToken, maxResults, signal }) {
       const response = await request(() =>
         directoryFor(subject).users.list(
           {
@@ -251,7 +252,7 @@ export function createGoogleWorkspaceProvider(
             pageToken,
             maxResults,
           },
-          GOOGLE_REQUEST_OPTIONS,
+          { ...GOOGLE_REQUEST_OPTIONS, signal },
         ),
       );
       return {
