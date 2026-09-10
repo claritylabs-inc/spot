@@ -1044,7 +1044,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       })
       .refine(
         (input) =>
-          Object.keys(input).some((key) => key !== "procurementRequestId"),
+          Object.entries(input).some(
+            ([key, value]) =>
+              key !== "procurementRequestId" && value !== undefined,
+          ),
         "At least one procurement request field is required",
       ),
     capability: "operator.procurement.write",
@@ -1326,7 +1329,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         website: clearable(z.string().max(2_000)),
       })
       .refine(
-        (input) => Object.keys(input).some((key) => key !== "brokerOrgId"),
+        (input) =>
+          Object.entries(input).some(
+            ([key, value]) => key !== "brokerOrgId" && value !== undefined,
+          ),
         "At least one broker profile field is required",
       ),
     capability: "operator.organizations.write",
@@ -1376,7 +1382,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       })
       .refine(
         (input) =>
-          Object.keys(input).some((key) => key !== "procurementOutreachId"),
+          Object.entries(input).some(
+            ([key, value]) =>
+              key !== "procurementOutreachId" && value !== undefined,
+          ),
         "At least one broker outreach field is required",
       ),
     capability: "operator.procurement.write",
@@ -1434,7 +1443,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       })
       .refine(
         (input) =>
-          Object.keys(input).some((key) => key !== "procurementFileItemId"),
+          Object.entries(input).some(
+            ([key, value]) =>
+              key !== "procurementFileItemId" && value !== undefined,
+          ),
         "At least one procurement file field is required",
       ),
     capability: "operator.procurement.write",

@@ -7,6 +7,44 @@ import {
 import { buildOperatorMcpToolCatalog } from "./operatorMcpToolCatalog";
 
 describe("operator MCP tool catalog", () => {
+  test("rejects null-only omitted updates but accepts explicit clears", () => {
+    const cases = [
+      {
+        name: "update_procurement_request",
+        id: "procurementRequestId",
+        omitted: "title",
+        cleared: "targetEffectiveDate",
+      },
+      {
+        name: "update_broker_network_profile",
+        id: "brokerOrgId",
+        omitted: "name",
+        cleared: "website",
+      },
+      {
+        name: "update_procurement_broker_outreach",
+        id: "procurementOutreachId",
+        omitted: "status",
+        cleared: "log",
+      },
+      {
+        name: "update_procurement_file_item",
+        id: "procurementFileItemId",
+        omitted: "label",
+        cleared: "notes",
+      },
+    ];
+    for (const { name, id, omitted, cleared } of cases) {
+      expect(() =>
+        parseOperatorAgentToolInput(name, {
+          [id]: "record-1",
+          [omitted]: null,
+        }),
+      ).toThrow("At least one");
+      const clear = { [id]: "record-1", [cleared]: null };
+      expect(parseOperatorAgentToolInput(name, clear)).toStrictEqual(clear);
+    }
+  });
   test("omits absent inputs while preserving explicit clears and rejecting invalid types", () => {
     expect(
       parseOperatorAgentToolInput("create_broker_network_profile", {
