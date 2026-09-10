@@ -7,6 +7,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import {
   buildOperatorSlackConfirmationBlocks,
   buildOperatorSlackConfirmationResolvedBlocks,
+  OPERATOR_SLACK_CONFIRMATION_LABELS,
   formatSlackAnswerText,
 } from "../lib/slackBlocks";
 import {
@@ -231,7 +232,7 @@ async function updateOperatorSlackConfirmation(
     delivery: OperatorSlackDelivery;
     messageTs: string;
     summary: string;
-    decision: "approve" | "reject";
+    decision: keyof typeof OPERATOR_SLACK_CONFIRMATION_LABELS;
   },
 ) {
   const worker = workerConfig();
@@ -245,7 +246,7 @@ async function updateOperatorSlackConfirmation(
       teamId: args.delivery.teamId,
       channelId: args.delivery.channelId,
       messageTs: args.messageTs,
-      mrkdwnText: `${args.decision === "approve" ? "Confirmed" : "Cancelled"}: ${args.summary}`,
+      mrkdwnText: `${OPERATOR_SLACK_CONFIRMATION_LABELS[args.decision]}: ${args.summary}`,
       blocks: buildOperatorSlackConfirmationResolvedBlocks({
         summary: args.summary,
         decision: args.decision,
@@ -829,43 +830,60 @@ export const processOperatorConfirmationInteraction = internalAction({
     messageTs: v.string(),
     threadTs: v.optional(v.string()),
     summary: v.string(),
+    unavailableReason: v.optional(
+      v.union(v.literal("expired"), v.literal("inactive")),
+    ),
   },
   handler: async (ctx, args) => {
-    const result = await ctx.runMutation(
-      internalApi.operatorAgent.confirmActionInternal,
-      {
-        operatorUserId: args.operatorUserId,
-        threadId: args.threadId,
-        confirmationId: args.confirmationId,
-        decision: args.decision,
-        channel: "slack",
-      },
-    );
-    if (result.status === "needs_refresh") return result;
-
     const delivery = {
       teamId: args.teamId,
       channelId: args.channelId,
       threadTs: args.threadTs,
     };
+    if (args.unavailableReason) {
+      await updateOperatorSlackConfirmation(ctx, {
+        delivery,
+        messageTs: args.messageTs,
+        summary: args.summary,
+        decision: args.unavailableReason,
+      });
+      return { status: args.unavailableReason };
+    }
+    const result = await ctx
+      .runMutation(internalApi.operatorAgent.confirmActionInternal, {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        confirmationId: args.confirmationId,
+        decision: args.decision,
+        channel: "slack",
+      })
+      .catch(async (error: unknown) => {
+        console.warn("[slack] Could not confirm operator action", error);
+        await updateOperatorSlackConfirmation(ctx, {
+          delivery,
+          messageTs: args.messageTs,
+          summary: `${args.summary}\n\n${error instanceof Error ? error.message : "The action could not be validated."}`,
+          decision: "failed",
+        });
+        return { status: "failed" as const };
+      });
+    if (result.status === "failed") return result;
     try {
       await updateOperatorSlackConfirmation(ctx, {
         delivery,
         messageTs: args.messageTs,
         summary: args.summary,
-        decision: args.decision,
+        decision:
+          result.status === "needs_refresh" ? "inactive" : args.decision,
       });
     } catch (error) {
       console.warn("[slack] Could not resolve operator confirmation UI", error);
     }
+    if (result.status === "needs_refresh") return result;
 
     const response =
       result.status === "queued"
-        ? await waitForOperatorAgentRun(
-            ctx,
-            args.operatorUserId,
-            result.runId,
-          )
+        ? await waitForOperatorAgentRun(ctx, args.operatorUserId, result.runId)
         : { response: { content: result.content } };
     await sendOperatorSlackResponse(ctx, {
       delivery,

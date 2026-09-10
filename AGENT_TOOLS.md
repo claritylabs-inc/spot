@@ -99,7 +99,7 @@ Company email uses the global connection configured in Channels → Google Works
 
 Operator MCP exposes registered read tools to read-scoped operator tokens, registered write tools only to write-scoped tokens, and owner-only tools only to owners. `docs/deployment/operator-mcp.md` covers connecting Claude Code, Codex, and Conductor sessions to it. It adds these lifecycle tools outside the operator-agent registry:
 
-An operator conversation permits one live exact confirmation at a time. A competing registered write returns `blocked_by_confirmation` with the existing confirmation and run IDs instead of an MCP error, and the blocked invocation terminates without executing. Expired confirmations are closed before a later write requests confirmation.
+An operator conversation permits one live exact confirmation at a time. A competing registered write returns `blocked_by_confirmation` with the existing confirmation and run IDs instead of an MCP error, and the blocked invocation terminates without executing. Pending operator confirmations have no time limit; they remain live until approved, cancelled, or superseded. Approval reruns the shared reference preflight before execution, in addition to the existing identity, role, fingerprint, and write-boundary checks. Already-expired confirmations remain terminal and require a fresh proposal.
 
 | Tool                      | Purpose                                                                            | Availability        |
 | ------------------------- | ---------------------------------------------------------------------------------- | ------------------- |

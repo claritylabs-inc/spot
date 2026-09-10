@@ -4933,7 +4933,7 @@ export default defineSchema({
     promptMessageId: v.id("operatorAgentMessages"),
     payload: operatorToolActionConfirmationPayloadValidator,
     status: threadActionConfirmationStatusValidator,
-    expiresAt: v.number(),
+    expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),

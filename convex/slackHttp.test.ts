@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import dayjs from "dayjs";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { internal } from "./_generated/api";
 import { signSlackRequest } from "./lib/slackSecurity";
@@ -15,9 +15,173 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
   delete process.env.SLACK_ENABLED;
   delete process.env.SLACK_SIGNING_SECRET;
 });
+
+test.each([
+  { decision: "approve", status: "expired" },
+  { decision: "reject", status: "expired" },
+  { decision: "reject", status: "pending" },
+  { decision: "approve", status: "pending" },
+] as const)(
+  "operator $decision click on a $status confirmation updates Slack without executing the write",
+  async ({ decision, status }) => {
+    vi.useFakeTimers();
+    vi.stubEnv("OPERATOR_SLACK_ENABLED", "true");
+    vi.stubEnv("SLACK_CLARITY_TEAM_ID", "T-SPOT");
+    vi.stubEnv("SLACK_WORKER_URL", "https://slack-worker.example.com");
+    vi.stubEnv("SLACK_WORKER_SECRET", "worker-test-secret");
+    const workerFetch = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ ok: true })),
+    );
+    vi.stubGlobal("fetch", workerFetch);
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const now = dayjs().valueOf();
+      const operatorUserId = await ctx.db.insert("users", {
+        accountKind: "operator",
+      });
+      await ctx.db.insert("operatorProfiles", {
+        userId: operatorUserId,
+        email: "operator@example.com",
+        role: "operator",
+        status: "active",
+        slackTeamId: "T-SPOT",
+        slackUserId: "U-OPERATOR",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const threadId = await ctx.db.insert("operatorAgentThreads", {
+        ownerUserId: operatorUserId,
+        visibility: "shared",
+        channel: "slack",
+        conversationKey: "T-SPOT:C-OPERATOR:1800000000.100",
+        title: "Create client",
+        lastMessageAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const messageId = await ctx.db.insert("operatorAgentMessages", {
+        threadId,
+        ownerUserId: operatorUserId,
+        channel: "slack",
+        role: "agent",
+        content: "Create client",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const runId = await ctx.db.insert("operatorAgentRuns", {
+        threadId,
+        operatorUserId,
+        userMessageId: messageId,
+        agentMessageId: messageId,
+        objective: "Create client",
+        status: status === "pending" ? "waiting_confirmation" : "completed",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
+        threadId,
+        operatorUserId,
+        promptMessageId: messageId,
+        status,
+        expiresAt: dayjs().subtract(30, "day").valueOf(),
+        createdAt: now,
+        updatedAt: now,
+        payload: {
+          kind: "operator_tool_action",
+          runId,
+          toolName: "create_client_organization",
+          toolVersion: 1,
+          input: '{"name":"Test client"}',
+          inputHash: "test-hash",
+          idempotencyKey: "test-create-client",
+          capability: "operator.organizations.write",
+          effect: "reversible_write",
+          requiredRole: "operator",
+          summary: "Create test client",
+        },
+      });
+      if (status === "pending") {
+        await ctx.db.patch(runId, {
+          checkpoint: {
+            iteration: 1,
+            executionCount: 1,
+            pendingConfirmationId: confirmationId,
+          },
+        });
+      }
+      return { confirmationId, runId };
+    });
+    const payload = {
+      type: "block_actions",
+      team: { id: "T-SPOT" },
+      user: { id: "U-OPERATOR", team_id: "T-SPOT" },
+      channel: { id: "C-OPERATOR" },
+      message: { ts: "1800000000.200", thread_ts: "1800000000.100" },
+      actions: [
+        {
+          action_id: `spot_operator_confirmation_${decision}`,
+          value: ids.confirmationId,
+        },
+      ],
+    };
+
+    // An unrelated actor or channel must not learn or update the confirmation.
+    for (const unauthorized of [
+      { ...payload, user: { id: "U-UNKNOWN", team_id: "T-SPOT" } },
+      { ...payload, channel: { id: "C-OTHER" } },
+    ]) {
+      expect((await signedInteraction(t, unauthorized)).status).toBe(200);
+    }
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(workerFetch).not.toHaveBeenCalled();
+
+    expect((await signedInteraction(t, payload)).status).toBe(200);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(workerFetch).toHaveBeenCalledTimes(
+      status === "pending" && decision === "reject" ? 2 : 1,
+    );
+    const [url, options] = workerFetch.mock.calls[0];
+    expect(url).toBe("https://slack-worker.example.com/message/update");
+    const update = JSON.parse(String(options?.body));
+    expect(update).toMatchObject({
+      channelId: "C-OPERATOR",
+      messageTs: "1800000000.200",
+    });
+    expect(
+      update.blocks.some((block: { type: string }) => block.type === "actions"),
+    ).toBe(false);
+    expect(JSON.stringify(update.blocks)).toContain(
+      status === "pending"
+        ? decision === "reject"
+          ? "Cancelled"
+          : "Could not confirm"
+        : "expired",
+    );
+    if (status === "expired")
+      expect(JSON.stringify(update.blocks)).toContain("fresh confirmation");
+    await t.run(async (ctx) => {
+      expect((await ctx.db.get(ids.confirmationId))?.status).toBe(
+        status === "pending"
+          ? decision === "reject"
+            ? "stale"
+            : "pending"
+          : "expired",
+      );
+      expect((await ctx.db.get(ids.runId))?.status).toBe(
+        status === "pending" && decision === "approve"
+          ? "waiting_confirmation"
+          : "completed",
+      );
+      expect(await ctx.db.query("organizations").collect()).toEqual([]);
+    });
+  },
+);
 
 async function seedConnection(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {

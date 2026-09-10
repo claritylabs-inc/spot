@@ -117,9 +117,17 @@ export function buildOperatorSlackConfirmationBlocks(args: {
   ];
 }
 
+export const OPERATOR_SLACK_CONFIRMATION_LABELS = {
+  approve: "Confirmed",
+  reject: "Cancelled",
+  expired: "Confirmation expired",
+  inactive: "Confirmation no longer active",
+  failed: "Could not confirm action",
+} as const;
+
 export function buildOperatorSlackConfirmationResolvedBlocks(args: {
   summary: string;
-  decision: "approve" | "reject";
+  decision: keyof typeof OPERATOR_SLACK_CONFIRMATION_LABELS;
 }): SlackBlock[] {
   return [
     {
@@ -127,10 +135,10 @@ export function buildOperatorSlackConfirmationResolvedBlocks(args: {
       block_id: blockId("spot-operator-confirmation-resolved", args.decision),
       text: {
         type: "mrkdwn",
-        text: `*${args.decision === "approve" ? "Confirmed" : "Cancelled"}*\n${truncate(
+        text: `*${OPERATOR_SLACK_CONFIRMATION_LABELS[args.decision]}*\n${truncate(
           escapeMrkdwn(args.summary.trim()),
           2_800,
-        )}`,
+        )}${args.decision !== "approve" && args.decision !== "reject" ? "\nAsk Spot to continue in this thread for a fresh confirmation." : ""}`,
       },
     },
   ];
