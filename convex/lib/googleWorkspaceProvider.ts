@@ -58,7 +58,10 @@ export type GoogleWorkspaceProvider = {
     subject: string;
     userKey: string;
   }): Promise<GoogleWorkspaceDirectoryUser>;
-  getMailboxProfile(mailbox: string): Promise<{ emailAddress: string }>;
+  getMailboxProfile(
+    mailbox: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ emailAddress: string }>;
   listMessages(args: {
     mailbox: string;
     query: string;
@@ -267,11 +270,11 @@ export function createGoogleWorkspaceProvider(
       return normalizedDirectoryUser(response.data);
     },
 
-    async getMailboxProfile(mailbox) {
+    async getMailboxProfile(mailbox, options) {
       const response = await request(() =>
         gmailFor(mailbox).users.getProfile(
           { userId: "me" },
-          GOOGLE_REQUEST_OPTIONS,
+          { ...GOOGLE_REQUEST_OPTIONS, signal: options?.signal },
         ),
       );
       if (!response.data.emailAddress) {

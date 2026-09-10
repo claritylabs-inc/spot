@@ -16,23 +16,8 @@ import {
 
 const DIRECTORY_PAGE_SIZE = 50;
 const MAX_DIRECTORY_PAGES = 20;
-const VERIFY_CONCURRENCY = 5;
-
-async function mapConcurrent<T, R>(
-  values: T[],
-  concurrency: number,
-  operation: (value: T) => Promise<R>,
-) {
-  const results: R[] = [];
-  for (let offset = 0; offset < values.length; offset += concurrency) {
-    results.push(
-      ...(await Promise.all(
-        values.slice(offset, offset + concurrency).map(operation),
-      )),
-    );
-  }
-  return results;
-}
+const VERIFY_CONCURRENCY = 10;
+const VERIFY_DEADLINE_MS = 60_000;
 
 async function directoryTargets(
   provider: GoogleWorkspaceProvider,
@@ -141,6 +126,7 @@ export function failedGoogleWorkspaceVerification(
 export async function verifyGoogleWorkspaceConnection(
   provider: GoogleWorkspaceProvider,
   config: OperatorGoogleWorkspaceConfig,
+  options: { deadlineMs?: number } = {},
 ): Promise<OperatorGoogleWorkspaceVerificationResult> {
   let directory: OperatorGoogleWorkspaceDirectoryDiagnostic;
   let mailboxes: string[];
@@ -178,29 +164,52 @@ export async function verifyGoogleWorkspaceConnection(
     };
   }
 
-  const diagnostics = await mapConcurrent(
-    mailboxes,
-    VERIFY_CONCURRENCY,
-    async (mailbox): Promise<OperatorGoogleWorkspaceMailboxDiagnostic> => {
-      try {
-        await provider.getMailboxProfile(mailbox);
-        return { mailbox, status: "verified", error: null };
-      } catch (error) {
-        return {
-          mailbox,
-          status: "failed",
-          error: sanitizeGoogleWorkspaceError(error),
-        };
-      }
-    },
-  );
+  const diagnostics: OperatorGoogleWorkspaceMailboxDiagnostic[] = [];
+  const deadlineAt = dayjs()
+    .add(options.deadlineMs ?? VERIFY_DEADLINE_MS, "millisecond")
+    .valueOf();
+  for (let offset = 0; offset < mailboxes.length; offset += VERIFY_CONCURRENCY) {
+    const remainingMs = deadlineAt - dayjs().valueOf();
+    if (remainingMs <= 0) {
+      break;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), remainingMs);
+    const batch = mailboxes.slice(offset, offset + VERIFY_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (mailbox): Promise<OperatorGoogleWorkspaceMailboxDiagnostic> => {
+        try {
+          await provider.getMailboxProfile(mailbox, {
+            signal: controller.signal,
+          });
+          return { mailbox, status: "verified", error: null };
+        } catch (error) {
+          return {
+            mailbox,
+            status: "failed",
+            error: controller.signal.aborted
+              ? "Google Workspace verification reached its time limit."
+              : sanitizeGoogleWorkspaceError(error),
+          };
+        }
+      }),
+    );
+    clearTimeout(timeout);
+    diagnostics.push(...results);
+    if (controller.signal.aborted) {
+      break;
+    }
+  }
   const successful = diagnostics.filter(
     (diagnostic) => diagnostic.status === "verified",
   ).length;
   const enumerationComplete = !directory.hasMore;
   const allSucceeded = diagnostics.length > 0 && successful === diagnostics.length;
+  const allMailboxesChecked = diagnostics.length === mailboxes.length;
   const completeness =
-    enumerationComplete && allSucceeded ? "complete" : "partial";
+    enumerationComplete && allMailboxesChecked && allSucceeded
+      ? "complete"
+      : "partial";
   return {
     status:
       completeness === "complete"
@@ -212,7 +221,7 @@ export async function verifyGoogleWorkspaceConnection(
     verifiedAt: dayjs().valueOf(),
     configUpdatedAt: config.updatedAt,
     checkedMailboxCount: diagnostics.length,
-    totalMailboxCount: enumerationComplete ? diagnostics.length : null,
+    totalMailboxCount: enumerationComplete ? mailboxes.length : null,
     maxMailboxChecks: GOOGLE_WORKSPACE_LIMITS.maxVerificationMailboxes,
     directory,
     mailboxes: diagnostics,
