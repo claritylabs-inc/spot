@@ -3680,6 +3680,9 @@ export default defineSchema({
     generationBatchId: v.optional(v.string()),
     formCode: v.optional(certificateFormCodeValidator),
     requestSignature: v.optional(v.string()),
+    // Widening bridge for certificate versions created before holder-backed
+    // policy certificates became canonical. Runtime writers leave this unset.
+    legacyCertificateId: v.optional(v.id("certificates")),
     issuedAt: v.optional(v.number()),
     supersededAt: v.optional(v.number()),
     voidedAt: v.optional(v.number()),

@@ -65,8 +65,10 @@ clean checkout:
    `CL_ROUTER_URL=https://disciplined-dove-883.convex.site`, matching inference
    `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass`, and matching optional
    timeout. Set `CONVEX_SITE_URL=https://acoustic-caiman-755.convex.site` on
-   both shared-dev Convex and its Railway extraction worker before deploying
-   either consumer. Before changing either caller, audit the legacy
+   the Railway extraction worker and verify Convex's built-in
+   `CONVEX_SITE_URL` resolves to that same canonical site before deploying
+   either consumer. Do not try to overwrite the Convex system variable with
+   `npx convex env set`. Before changing either caller, audit the legacy
    `https://cl-router-dev.up.railway.app` routing state, pins, and freeze posture
    against the new router, export while the source is briefly paused, import
    into `disciplined-dove-883`, and verify the imported controls before changing
@@ -275,7 +277,7 @@ Every deployed lane needs matching values:
 
 | Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Convex            | Exact lane `CONVEX_SITE_URL` (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production), `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, optional `CL_ROUTER_TIMEOUT_MS`; `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled                                                                                                        |
+| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, optional `CL_ROUTER_TIMEOUT_MS`; configure `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled. |
 | Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state), optional `CL_ROUTER_TIMEOUT_MS`                                                                                                                                                                                                |
 | cl-router         | `SPOT_ENV`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, exact comma-separated `CL_ROUTER_ASSET_HOSTS`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, and provider/retrieval credentials. Do not set `DATABASE_URL`, `PORT`, Railway variables, or the retired Fastify refresh/scoring interval variables on the Convex router deployments. |
 
@@ -423,7 +425,9 @@ wildcard asset origins on a cloud router.
    Convex deployments must not receive Postgres or Railway runtime variables.
 4. Configure the same bearer secret in the caller and router for that lane.
    Before deploying callers or the extraction worker, set the exact lane
-   `CONVEX_SITE_URL` on both Convex and the worker: the shared-dev value is
+   `CONVEX_SITE_URL` normally on the Railway worker and verify Convex's built-in
+   system value resolves to the same canonical origin; do not run
+   `npx convex env set CONVEX_SITE_URL`. The shared-dev value is
    `https://acoustic-caiman-755.convex.site` and production is
    `https://actions.spot.insure`.
 5. Before merging a commit whose Railway image uses the new asset actions,
