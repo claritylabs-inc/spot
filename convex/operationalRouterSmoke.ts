@@ -89,7 +89,12 @@ export const cleanupFixture = internalMutation({
         .withIndex("run_time", (query) => query.eq("runId", runId))
         .take(20);
       for (const event of events) {
-        if (event.orgId !== smokeRun.orgId) {
+        if (
+          event.orgId !== undefined ||
+          event.sessionKey !== smokeRun.marker ||
+          event.taskKind !== "operator_agent" ||
+          event.task !== (suffix === "tool" ? "chat" : "chat_vision")
+        ) {
           throw new Error(
             "Operational router smoke routing-event ownership mismatch",
           );
@@ -99,9 +104,18 @@ export const cleanupFixture = internalMutation({
       }
     }
 
-    const durableAssetLedgers = await ctx.db
+    const orgAssetLedgers = await ctx.db
       .query("routerAssets")
       .withIndex("organization", (query) => query.eq("orgId", smokeRun.orgId))
+      .take(20);
+    const operatorAssetLedgers = await ctx.db
+      .query("routerAssets")
+      .withIndex("session", (query) =>
+        query
+          .eq("ownerKind", "action")
+          .eq("surface", "agent_operator_agent")
+          .eq("sessionKey", smokeRun.marker),
+      )
       .take(20);
 
     await ctx.db.delete(smokeRun.orgId);
@@ -109,7 +123,11 @@ export const cleanupFixture = internalMutation({
     return {
       fixtureDeleted: true,
       routingEventCount,
-      durableAssetLedgerCount: durableAssetLedgers.length,
+      durableAssetLedgerCount: new Set(
+        [...orgAssetLedgers, ...operatorAssetLedgers].map((asset) =>
+          String(asset._id),
+        ),
+      ).size,
     };
   },
 });

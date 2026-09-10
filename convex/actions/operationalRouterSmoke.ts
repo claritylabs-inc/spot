@@ -10,7 +10,7 @@ import type { Id } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { EMBEDDING_DIMENSIONS, makeEmbedTexts } from "../lib/sdkCallbacks";
 import {
-  generateAgentTextForOrg,
+  generateAgentTextForOperatorTask,
   generateObjectForOrg,
   generatedTextFromResult,
   generateTextForOrg,
@@ -165,9 +165,12 @@ function pdfCommentPadding(length: number): string {
 function renderPdf(paddingBytes: number, validationToken: string): Buffer {
   const content = [
     "BT\n",
-    "/F1 18 Tf\n",
+    "/F1 16 Tf\n",
     "72 720 Td\n",
-    `(${PDF_VALUE} ${validationToken}) Tj\n`,
+    `(${PDF_VALUE}) Tj\n`,
+    "0 -28 Td\n",
+    "/F1 12 Tf\n",
+    `(${validationToken}) Tj\n`,
     "ET\n",
     pdfCommentPadding(paddingBytes),
   ].join("");
@@ -222,7 +225,7 @@ async function runGeneration(
   orgId: Id<"organizations">,
 ): Promise<PhaseResult["generation"]> {
   const result = await generateTextForOrg(ctx, orgId, "classification", {
-    maxOutputTokens: 32,
+    maxOutputTokens: 256,
     system: "This is a synthetic operational health check.",
     prompt: "Reply with a short acknowledgement.",
   });
@@ -237,7 +240,7 @@ async function runStructuredOutput(
   orgId: Id<"organizations">,
 ): Promise<PhaseResult["structuredOutput"]> {
   const result = await generateObjectForOrg(ctx, orgId, "classification", {
-    maxOutputTokens: 32,
+    maxOutputTokens: 256,
     schema: z.object({ ok: z.literal(true) }),
     system: "This is a synthetic operational health check.",
     prompt: "Return ok=true.",
@@ -250,17 +253,16 @@ async function runStructuredOutput(
 
 async function runEchoToolLoop(
   ctx: ActionCtx,
-  orgId: Id<"organizations">,
+  _orgId: Id<"organizations">,
   marker: string,
 ): Promise<PhaseResult["toolLoop"]> {
   let toolCallCount = 0;
   const steps: RouterStep[] = [];
-  const result = await generateAgentTextForOrg(
+  const result = await generateAgentTextForOperatorTask(
     ctx,
-    orgId,
     "chat",
     {
-      maxOutputTokens: 64,
+      maxOutputTokens: 512,
       system:
         "This is an isolated operational health check. Use only the provided echo tool, then acknowledge its result.",
       prompt:
@@ -286,7 +288,7 @@ async function runEchoToolLoop(
           : { activeTools: [] },
     },
     {
-      taskKind: "operational_router_smoke",
+      taskKind: "operator_agent",
       sessionKey: marker,
       trace: {
         traceId: `${marker}:tool`,
@@ -403,7 +405,7 @@ async function runTranscription(
 
 async function runPdfAsset(
   ctx: ActionCtx,
-  orgId: Id<"organizations">,
+  _orgId: Id<"organizations">,
   marker: string,
 ): Promise<PhaseResult["pdfAsset"]> {
   const validationToken = crypto.randomUUID();
@@ -425,19 +427,18 @@ async function runPdfAsset(
       ],
     },
   ];
-  const result = await generateAgentTextForOrg(
+  const result = await generateAgentTextForOperatorTask(
     ctx,
-    orgId,
     "chat_vision",
     {
-      maxOutputTokens: 64,
+      maxOutputTokens: 512,
       messages,
       output: Output.object({
         schema: z.object({ validationToken: z.string() }),
       }),
     },
     {
-      taskKind: "operational_router_smoke",
+      taskKind: "operator_agent",
       sessionKey: marker,
       trace: {
         traceId: `${marker}:pdf`,

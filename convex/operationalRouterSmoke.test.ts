@@ -16,6 +16,7 @@ import {
   OPERATIONAL_ROUTER_SMOKE_AUDIO_MIN_BYTES,
   OPERATIONAL_ROUTER_SMOKE_PDF_BYTES,
   OPERATIONAL_ROUTER_SMOKE_RETRIEVAL_URL,
+  createOperationalSmokePdf,
   decodeOperationalSmokeAudio,
   runOperationalRouterSmoke,
   summarizeOperationalSmokeEmbeddings,
@@ -109,6 +110,24 @@ function successfulAdapters(
 }
 
 describe("operational router smoke input boundary", () => {
+  test("keeps the complete validation token visible in the exact-size PDF", async () => {
+    const validationToken = "12345678-1234-4123-8123-123456789abc";
+    const pdf = await createOperationalSmokePdf(validationToken);
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const document = await getDocument({ data: pdf.slice() }).promise;
+    const page = await document.getPage(1);
+    const content = await page.getTextContent();
+    const visibleText = content.items
+      .flatMap((item) => ("str" in item ? [item.str] : []))
+      .join(" ");
+
+    expect(pdf.byteLength).toBe(OPERATIONAL_ROUTER_SMOKE_PDF_BYTES);
+    expect(document.numPages).toBe(1);
+    expect(visibleText).toContain("SPOT ROUTER ASSET ACCEPTANCE");
+    expect(visibleText).toContain(validationToken);
+    await document.destroy();
+  });
+
   test("accepts only canonical, bounded M4A container bytes", () => {
     const minimum = validM4a();
     const maximum = validM4a(OPERATIONAL_ROUTER_SMOKE_AUDIO_MAX_BYTES);
@@ -300,16 +319,31 @@ describe("operational router smoke live-path contract", () => {
     vi.stubEnv("CL_ROUTER_URL", "http://127.0.0.1:8787");
     vi.stubEnv("CL_ROUTER_SECRET", "router-smoke-secret");
 
+    const fallbackRoute = {
+      provider: "openai" as const,
+      model: "gpt-5.6-terra",
+    };
     const t = convexTest(schema, modules);
-    const unrelatedOrgId = await t.run(async (ctx) =>
-      ctx.db.insert("organizations", {
+    const unrelatedOrgId = await t.run(async (ctx) => {
+      const orgId = await ctx.db.insert("organizations", {
         name: "Unrelated cleanup sentinel",
         type: "client",
-      }),
-    );
+      });
+      const operatorUserId = await ctx.db.insert("users", {
+        email: "router-smoke-operator@example.test",
+        accountKind: "operator",
+      });
+      await ctx.db.insert("globalModelSettings", {
+        key: "default",
+        routes: { operator_agent: fallbackRoute },
+        explicitRouteOverrides: ["operator_agent"],
+        updatedBy: operatorUserId,
+        updatedAt: 1,
+      });
+      return orgId;
+    });
     const requests: Array<{ url: string; headers: Headers; body: any }> = [];
     let generateCount = 0;
-    const fallbackRoute = { provider: "openai", model: "gpt-5.6-terra" };
     const fetchMock = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       const url = String(input);
       if (!url.startsWith("http://127.0.0.1:8787/v1/")) {
@@ -453,17 +487,42 @@ describe("operational router smoke live-path contract", () => {
       ).toBeLessThanOrEqual(4 * 1024 * 1024);
     }
 
+    const generationRequests = requests.filter(({ url }) =>
+      url.endsWith("/v1/generate"),
+    );
+    expect(generationRequests.slice(0, 2).map(({ body }) => body.task)).toEqual(
+      ["classification", "classification"],
+    );
+    expect(
+      generationRequests.slice(0, 2).map(({ body }) => body.maxTokens),
+    ).toEqual([256, 256]);
+    expect(
+      generationRequests.slice(0, 2).every(({ body }) => !body.taskKind),
+    ).toBe(true);
+    expect(
+      generationRequests.some(
+        ({ body }) => body.taskKind === "operational_router_smoke",
+      ),
+    ).toBe(false);
+
     const toolRequests = requests.filter(
       ({ body }) =>
-        body.taskKind === "operational_router_smoke" &&
-        body.trace?.phase === "tool_loop",
+        body.taskKind === "operator_agent" && body.trace?.phase === "tool_loop",
     );
     expect(toolRequests).toHaveLength(2);
+    expect(toolRequests.map(({ body }) => body.maxTokens)).toEqual([512, 512]);
+    expect(toolRequests[0]?.body.settings).toMatchObject({
+      routes: { operator_agent: fallbackRoute },
+      routeSources: { operator_agent: "global" },
+    });
     expect(toolRequests[0]?.body.toolChoice).toEqual({
       type: "tool",
       toolName: "echo_smoke_marker",
     });
-    expect(toolRequests[0]?.body.routing).toEqual({ allowFallback: true });
+    expect(toolRequests[0]?.body.routing).toEqual({
+      pin: fallbackRoute,
+      allowFallback: false,
+    });
     expect(toolRequests[1]?.body.routing).toEqual({
       pin: fallbackRoute,
       allowFallback: false,
@@ -498,6 +557,12 @@ describe("operational router smoke live-path contract", () => {
     const pdfRequest = requests.find(
       ({ body }) => body.trace?.phase === "asset_fetch",
     );
+    expect(pdfRequest?.body).toMatchObject({
+      task: "chat_vision",
+      taskKind: "operator_agent",
+      maxTokens: 512,
+      routing: { pin: fallbackRoute, allowFallback: false },
+    });
     const pdfPart = pdfRequest?.body.messages
       .flatMap((message: { content?: unknown }) =>
         Array.isArray(message.content) ? message.content : [],
@@ -516,6 +581,7 @@ describe("operational router smoke live-path contract", () => {
       const tableNames = [
         "organizations",
         "users",
+        "globalModelSettings",
         "orgMemberships",
         "agentChannelSettings",
         "slackChannelBindings",
@@ -547,6 +613,8 @@ describe("operational router smoke live-path contract", () => {
         Object.keys(tableCounts).map((table) => [table, 0]),
       ),
       organizations: 1,
+      users: 1,
+      globalModelSettings: 1,
     });
     expect(JSON.stringify(result)).not.toMatch(
       /router-smoke-secret|spot-router-operational-smoke|audioBase64|storageId|orgId|userId|url|provider|model/i,
