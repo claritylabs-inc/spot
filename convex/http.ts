@@ -525,6 +525,7 @@ http.route({
               messageTs: payload.messageTs,
               threadTs: payload.threadTs,
               summary: authorized.summary,
+              unavailableReason: authorized.unavailableReason,
             },
           );
         }

@@ -137,12 +137,7 @@ export const authorizeConfirmationInteraction = internalQuery({
     );
     if (!confirmationId) return null;
     const confirmation = await ctx.db.get(confirmationId);
-    if (
-      !confirmation ||
-      confirmation.status !== "pending" ||
-      confirmation.operatorUserId !== operator.userId ||
-      confirmation.expiresAt <= dayjs().valueOf()
-    ) {
+    if (!confirmation || confirmation.operatorUserId !== operator.userId) {
       return null;
     }
     const [thread, run] = await Promise.all([
@@ -153,14 +148,10 @@ export const authorizeConfirmationInteraction = internalQuery({
       !thread ||
       thread.channel !== "slack" ||
       !thread.conversationKey ||
-      !thread.conversationKey.startsWith(
-        `${args.teamId}:${args.channelId}:`,
-      ) ||
+      !thread.conversationKey.startsWith(`${args.teamId}:${args.channelId}:`) ||
       !run ||
       run.operatorUserId !== operator.userId ||
-      run.threadId !== thread._id ||
-      run.status !== "waiting_confirmation" ||
-      run.checkpoint?.pendingConfirmationId !== confirmation._id
+      run.threadId !== thread._id
     ) {
       return null;
     }
@@ -171,6 +162,15 @@ export const authorizeConfirmationInteraction = internalQuery({
       runId: run._id,
       summary: confirmation.payload.summary,
       destructive: confirmation.payload.effect === "destructive",
+      unavailableReason:
+        confirmation.status === "expired"
+          ? ("expired" as const)
+          : confirmation.status !== "pending" ||
+              run.status !== "waiting_confirmation" ||
+              run.cancellationRequestedAt ||
+              run.checkpoint?.pendingConfirmationId !== confirmation._id
+            ? ("inactive" as const)
+            : undefined,
     };
   },
 });

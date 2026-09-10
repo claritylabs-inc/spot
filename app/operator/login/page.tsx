@@ -109,7 +109,7 @@ export default function OperatorLoginPage() {
             </PillButton>
             <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
               Looking for Spot?{" "}
-              <Link href="/login" className={`text-foreground hover:opacity-70 ${typeStyle("control.button")}`}>
+              <Link href="/login" className={`text-foreground hover:opacity-70 ${typeStyle("control.buttonCompact")}`}>
                 Go to the main login
               </Link>
             </p>
@@ -133,7 +133,7 @@ export default function OperatorLoginPage() {
             </PillButton>
             <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
               Not an operator?{" "}
-              <Link href="/login" className={`text-foreground hover:opacity-70 ${typeStyle("control.button")}`}>
+              <Link href="/login" className={`text-foreground hover:opacity-70 ${typeStyle("control.buttonCompact")}`}>
                 Go to the main login
               </Link>
             </p>

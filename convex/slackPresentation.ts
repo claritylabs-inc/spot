@@ -8,7 +8,14 @@ import {
 import type { Doc } from "./_generated/dataModel";
 import { isSlackOperatorClassification } from "./lib/slackInteractions";
 
-const ACTION_TOKEN_TTL_DAYS = 30;
+function actionsRevoked(presentation: Doc<"slackMessagePresentations">) {
+  return (
+    presentation.actionTokenRevokedAt !== undefined ||
+    // Older plaintext fallbacks revoked controls by setting expiry to updatedAt.
+    (presentation.actionTokenExpiresAt !== undefined &&
+      presentation.actionTokenExpiresAt <= presentation.updatedAt)
+  );
+}
 
 async function hashToken(token: string): Promise<string> {
   const bytes = new TextEncoder().encode(token);
@@ -105,9 +112,8 @@ export const create = internalMutation({
       const now = dayjs().valueOf();
       await ctx.db.patch(existing._id, {
         actionTokenHash: await hashToken(actionToken),
-        actionTokenExpiresAt: dayjs(now)
-          .add(ACTION_TOKEN_TTL_DAYS, "day")
-          .valueOf(),
+        actionTokenRevokedAt: undefined,
+        actionTokenExpiresAt: undefined,
         ...(existing.phase === "failed"
           ? {
               phase: existing.providerMessageId
@@ -133,9 +139,6 @@ export const create = internalMutation({
       revision: 0,
       renderVersion: 1,
       actionTokenHash: await hashToken(actionToken),
-      actionTokenExpiresAt: dayjs(now)
-        .add(ACTION_TOKEN_TTL_DAYS, "day")
-        .valueOf(),
       createdAt: now,
       updatedAt: now,
     });
@@ -188,8 +191,7 @@ export const markActive = internalMutation({
       phase: "active",
       revision: row.revision + 1,
       lastPayloadHash: args.lastPayloadHash,
-      processingReaction:
-        args.processingReaction ?? row.processingReaction,
+      processingReaction: args.processingReaction ?? row.processingReaction,
       error: undefined,
       providerErrorCode: undefined,
       retryable: undefined,
@@ -228,6 +230,10 @@ export const markFinal = internalMutation({
       providerMessageId: args.providerMessageId,
       phase: "final",
       revision: row.revision + 1,
+      actionTokenRevokedAt: actionsRevoked(row)
+        ? (row.actionTokenRevokedAt ?? row.actionTokenExpiresAt)
+        : undefined,
+      actionTokenExpiresAt: undefined,
       lastPayloadHash: args.lastPayloadHash,
       error: undefined,
       providerErrorCode: undefined,
@@ -277,7 +283,7 @@ export const markPlaintextFallback = internalMutation({
       providerMessageId: args.providerMessageId ?? row.providerMessageId,
       phase: "final",
       revision: row.revision + 1,
-      actionTokenExpiresAt: now,
+      actionTokenRevokedAt: now,
       error: undefined,
       providerErrorCode: undefined,
       retryable: undefined,
@@ -316,20 +322,18 @@ export const claimInteraction = internalMutation({
     const actionTokenHash = await hashToken(args.actionToken);
     const presentation = await ctx.db
       .query("slackMessagePresentations")
-      .withIndex("action", (q) =>
-        q.eq("actionTokenHash", actionTokenHash),
-      )
+      .withIndex("action", (q) => q.eq("actionTokenHash", actionTokenHash))
       .first();
     if (
       !presentation ||
       presentation.phase !== "final" ||
-      presentation.actionTokenExpiresAt < dayjs().valueOf() ||
+      actionsRevoked(presentation) ||
       presentation.teamId !== args.teamId ||
       presentation.channelId !== args.channelId ||
       !args.messageTs ||
       presentation.providerMessageId !== args.messageTs
     ) {
-      throw new Error("Slack action is invalid or expired");
+      throw new Error("Slack action is invalid or no longer available");
     }
     const actor = await interactionActor(
       ctx,
@@ -461,9 +465,11 @@ export const submitFeedbackComment = internalMutation({
       presentation.teamId !== args.teamId ||
       !interaction.actionId.startsWith("spot_response_feedback") ||
       interaction.value !== "negative" ||
-      presentation.actionTokenExpiresAt < dayjs().valueOf()
+      actionsRevoked(presentation)
     ) {
-      throw new Error("Slack feedback submission is invalid or expired");
+      throw new Error(
+        "Slack feedback submission is invalid or no longer available",
+      );
     }
     const actor = await interactionActor(
       ctx,

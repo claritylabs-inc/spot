@@ -1393,7 +1393,6 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
         {isOperatorInitiated ? (
           <LogoIcon
             size={15}
-            color="#A0D2FA"
             static
             className="h-[15px] w-[15px]"
           />

@@ -1,10 +1,12 @@
 import { ImageResponse } from "next/og";
-import { GLOBE_PATH, ogFonts } from "../../../opengraph-image";
+import { ogFonts } from "../../../opengraph-image";
 import {
   policyAsciiShaderDataUri,
   policyCardBranding,
 } from "@/lib/policy-card-branding";
 import { readCarrierIdentity } from "@/convex/lib/carrierIdentity";
+import { SPOT_BLUE, SPOT_MARK_PATH } from "@/lib/spot-mark";
+import { SPOT_WORDMARK } from "@/lib/spot-wordmark";
 import {
   compactList,
   loadAppCardView,
@@ -16,7 +18,6 @@ import {
 } from "./view";
 
 type ImageParams = { token: string };
-const BRAND_BLUE = "#A0D2FA";
 
 export const alt = "Spot shared record";
 export const size = { width: 1200, height: 630 };
@@ -62,22 +63,25 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function globeSvg(size: number, color = BRAND_BLUE): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 65 65" width="${size}" height="${size}"><circle cx="32.5" cy="32.5" r="31" fill="none" stroke="${color}" stroke-width="1.25"/><path fill="${color}" fill-rule="evenodd" d="${GLOBE_PATH}"/></svg>`;
+function spotLockupSvg(height: number, wordColor: string): string {
+  const width = (SPOT_WORDMARK.width / SPOT_WORDMARK.height) * height;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SPOT_WORDMARK.width} ${SPOT_WORDMARK.height}" width="${width}" height="${height}" fill="none"><path d="${SPOT_WORDMARK.path}" fill="${wordColor}"/><g transform="translate(0 0) scale(3.076923)"><circle cx="32.5" cy="32.5" r="31" fill="none" stroke="${SPOT_BLUE}" stroke-width="1.25"/><path d="${SPOT_MARK_PATH}" fill="${SPOT_BLUE}"/></g></svg>`;
 }
 
-function globeDataUri(size: number, color = BRAND_BLUE): string {
-  return `data:image/svg+xml;utf8,${encodeURIComponent(globeSvg(size, color))}`;
+function spotLockupDataUri(height: number, wordColor: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(spotLockupSvg(height, wordColor))}`;
 }
 
 function SpotMark({ color = "#000000" }: { color?: string }) {
+  const height = 34;
+  const width = (SPOT_WORDMARK.width / SPOT_WORDMARK.height) * height;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <img src={globeDataUri(34, color)} alt="" width={34} height={34} />
-      <div style={{ fontSize: 28, fontWeight: 500, color, letterSpacing: 0 }}>
-        Spot
-      </div>
-    </div>
+    <img
+      src={spotLockupDataUri(height, color)}
+      alt="Spot"
+      width={width}
+      height={height}
+    />
   );
 }
 

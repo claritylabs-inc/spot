@@ -5,6 +5,7 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { pendingEmailDraftFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
@@ -12,8 +13,6 @@ import {
   threadActionActorValidator,
   threadActionConfirmationPayloadValidator,
 } from "./lib/threadActionConfirmationValidators";
-
-const CONFIRMATION_TTL_HOURS = 24;
 
 type ThreadActionConfirmationResult =
   | "completed"
@@ -79,6 +78,17 @@ async function currentDraftFingerprints(
     return undefined;
   }
   return Promise.all(drafts.map(pendingEmailDraftFingerprint));
+}
+
+export async function confirmationMatchesTask(
+  ctx: QueryCtx | MutationCtx,
+  confirmation: Doc<"threadActionConfirmations">,
+) {
+  const state = await ctx.db
+    .query("threadContextStates")
+    .withIndex("thread", (query) => query.eq("threadId", confirmation.threadId))
+    .unique();
+  return (state?.taskEpoch ?? 0) === confirmation.taskEpoch;
 }
 
 async function confirmationMatchesCurrentState(
@@ -150,7 +160,6 @@ export const createInternal = internalMutation({
       ...args,
       taskEpoch: state?.taskEpoch ?? 0,
       status: "pending",
-      expiresAt: dayjs(now).add(CONFIRMATION_TTL_HOURS, "hour").valueOf(),
       createdAt: now,
       updatedAt: now,
     });
@@ -170,25 +179,10 @@ export const consumeInternal = internalMutation({
       return "needs_refresh";
     }
     const now = dayjs().valueOf();
-    if (confirmation.expiresAt <= now) {
-      await ctx.db.patch(confirmation._id, {
-        status: "expired",
-        invalidatedAt: now,
-        invalidationReason: "expired",
-        updatedAt: now,
-      });
-      return "expired";
-    }
     if (!threadActionActorsMatch(confirmation.actor, args.actor)) {
       return "needs_refresh";
     }
-    const state = await ctx.db
-      .query("threadContextStates")
-      .withIndex("thread", (query) =>
-        query.eq("threadId", confirmation.threadId),
-      )
-      .unique();
-    if ((state?.taskEpoch ?? 0) !== confirmation.taskEpoch) {
+    if (!(await confirmationMatchesTask(ctx, confirmation))) {
       return invalidate(ctx, confirmation, "task_reset");
     }
     if (args.requireAdjacentPrompt) {
@@ -256,5 +250,10 @@ export const latestPendingInternal = internalQuery({
 
 export const getInternal = internalQuery({
   args: { id: v.id("threadActionConfirmations") },
-  handler: (ctx, args) => ctx.db.get(args.id),
+  handler: async (ctx, args) => {
+    const confirmation = await ctx.db.get(args.id);
+    return confirmation && (await confirmationMatchesTask(ctx, confirmation))
+      ? confirmation
+      : null;
+  },
 });

@@ -155,10 +155,34 @@ export async function runWebRetrieval(
   orgId: Id<"organizations">,
   rawInput: WebRetrievalInput,
 ): Promise<WebRetrievalResult> {
-  const input = normalizeInput(rawInput);
   const config = await resolveWebRetrievalForOrg(ctx, orgId);
+  return runWebRetrievalWithConfig(config, rawInput, String(orgId));
+}
+
+export async function runOperatorWebRetrieval(
+  ctx: ActionCtx,
+  rawInput: WebRetrievalInput,
+): Promise<WebRetrievalResult> {
+  const settings = await ctx.runQuery(
+    internal.modelSettings.resolvePublicDefaults,
+    {},
+  );
+  const config = normalizeRoute(settings.webRetrieval);
+  const route =
+    config.primary === "model_default"
+      ? await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {})
+      : undefined;
+  return runWebRetrievalWithConfig({ ...config, route }, rawInput);
+}
+
+async function runWebRetrievalWithConfig(
+  config: ResolvedWebRetrievalRoute,
+  rawInput: WebRetrievalInput,
+  orgId?: string,
+): Promise<WebRetrievalResult> {
+  const input = normalizeInput(rawInput);
   return clRouterRetrieve({
-    orgId: String(orgId),
+    ...(orgId ? { orgId } : {}),
     input,
     config: {
       primary: config.primary,

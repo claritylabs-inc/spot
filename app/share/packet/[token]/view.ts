@@ -3,7 +3,7 @@ import { makeFunctionReference } from "convex/server";
 export type PacketView = {
   state: "ready";
   recipientLabel: string;
-  expiresAt: number;
+  expiresAt?: number;
   markdown: string;
   files: Array<{
     _id: string;

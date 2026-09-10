@@ -4,15 +4,6 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 const internalApi = internal as any;
 
-// Sweep stale info-level notifications every Sunday at 03:00 UTC
-crons.cron(
-  "sweep stale info notifications",
-  "0 3 * * 0",
-
-  internal.notifications.sweepStale,
-  {},
-);
-
 crons.cron(
   "monitor vendor compliance",
   "0 14 * * *",
@@ -66,13 +57,6 @@ crons.cron(
   "sweep requirement extraction runs",
   "50 3 * * *",
   internalApi.requirementExtractionRuns.sweepExpired,
-  {},
-);
-
-crons.cron(
-  "sweep email draft review links",
-  "0 4 * * *",
-  internalApi.emailDraftReviewLinks.sweepExpired,
   {},
 );
 

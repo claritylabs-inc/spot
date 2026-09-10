@@ -1,6 +1,5 @@
 "use node";
 
-import dayjs from "dayjs";
 import { v, type Infer } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
@@ -62,8 +61,7 @@ function isCurrentCompletedConfirmation(
   confirmation: Doc<"threadActionConfirmations"> | null,
 ): confirmation is Doc<"threadActionConfirmations"> {
   return (
-    confirmation?.status === "completed" &&
-    confirmation.expiresAt > dayjs().valueOf()
+    confirmation?.status === "completed"
   );
 }
 

@@ -11,10 +11,8 @@ import {
 } from "./_generated/server";
 import {
   AGENT_CHANNEL_HISTORY_POLICY,
-  IMESSAGE_TASK_INACTIVITY_MS,
   THREAD_SUMMARY_VERSION,
   selectBoundedAgentHistory,
-  shouldStartNewImessageTask,
 } from "./lib/agentMessageHistory";
 import { invalidatePendingConfirmations } from "./threadActionConfirmations";
 
@@ -27,26 +25,6 @@ const surfaceValidator = v.union(
 );
 
 const SUMMARY_SOURCE_BATCH_SIZE = 48;
-
-function deriveLegacyTaskStart(
-  messages: Doc<"threadMessages">[],
-  fallback: number,
-) {
-  const userMessages = messages
-    .filter((message) => message.role === "user")
-    .sort((left, right) => left._creationTime - right._creationTime);
-  let taskStartedAt = userMessages[0]?._creationTime ?? fallback;
-  for (let index = 1; index < userMessages.length; index += 1) {
-    if (
-      userMessages[index]._creationTime -
-        userMessages[index - 1]._creationTime >=
-      IMESSAGE_TASK_INACTIVITY_MS
-    ) {
-      taskStartedAt = userMessages[index]._creationTime;
-    }
-  }
-  return taskStartedAt;
-}
 
 export const prepareForTurn = internalMutation({
   args: {
@@ -71,21 +49,12 @@ export const prepareForTurn = internalMutation({
     const continuityMode = policy.continuityMode;
     const now = dayjs().valueOf();
     if (!existing) {
-      const recentMessages = await ctx.db
-        .query("threadMessages")
-        .withIndex("thread", (q) => q.eq("threadId", thread._id))
-        .order("desc")
-        .take(256);
-      const taskStartedAt =
-        continuityMode === "task_scoped"
-          ? deriveLegacyTaskStart(recentMessages, currentMessage._creationTime)
-          : thread._creationTime;
       const stateId = await ctx.db.insert("threadContextStates", {
         threadId: thread._id,
         orgId: thread.orgId,
         continuityMode,
         taskEpoch: 0,
-        taskStartedAt,
+        taskStartedAt: thread._creationTime,
         lastUserMessageAt: currentMessage._creationTime,
         summaryVersion: THREAD_SUMMARY_VERSION,
         status: "idle",
@@ -96,14 +65,8 @@ export const prepareForTurn = internalMutation({
       return ctx.db.get(stateId);
     }
 
-    const inactiveReset =
-      continuityMode === "task_scoped" &&
-      shouldStartNewImessageTask(
-        existing.lastUserMessageAt,
-        currentMessage._creationTime,
-      );
     const modeChanged = existing.continuityMode !== continuityMode;
-    if (inactiveReset || modeChanged) {
+    if (modeChanged) {
       await invalidatePendingConfirmations(
         ctx,
         args.threadId,
@@ -113,7 +76,7 @@ export const prepareForTurn = internalMutation({
     await ctx.db.patch(existing._id, {
       continuityMode,
       lastUserMessageAt: currentMessage._creationTime,
-      ...(inactiveReset || modeChanged
+      ...(modeChanged
         ? {
             taskEpoch: existing.taskEpoch + 1,
             taskStartedAt:

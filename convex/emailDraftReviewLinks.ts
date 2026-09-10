@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
+import { confirmationMatchesTask } from "./threadActionConfirmations";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -18,8 +18,6 @@ import {
   threadActionActorsMatch,
   threadActionActorValidator,
 } from "./lib/threadActionConfirmationValidators";
-
-const REVIEW_LINK_TTL_HOURS = 24;
 
 const channelValidator = v.union(
   v.literal("imessage"),
@@ -47,18 +45,16 @@ function confirmationIncludesDraft(
   const index = payload.pendingEmailIds.findIndex(
     (id) => id === pendingEmailId,
   );
-  return (
-    index >= 0 && payload.draftFingerprints[index] === draftFingerprint
-  );
+  return index >= 0 && payload.draftFingerprints[index] === draftFingerprint;
 }
 
-function confirmationCanAuthorize(
+async function confirmationCanAuthorize(
+  ctx: QueryCtx | MutationCtx,
   confirmation: ReviewConfirmation,
   args: {
     draft: Doc<"pendingEmails">;
     fingerprint: string;
     actor: ReviewActor;
-    now: number;
   },
 ) {
   return (
@@ -66,13 +62,9 @@ function confirmationCanAuthorize(
     confirmation.threadId === args.draft.threadId &&
     (confirmation.status === "pending" ||
       confirmation.status === "completed") &&
-    confirmation.expiresAt > args.now &&
+    (await confirmationMatchesTask(ctx, confirmation)) &&
     threadActionActorsMatch(confirmation.actor, args.actor) &&
-    confirmationIncludesDraft(
-      confirmation,
-      args.draft._id,
-      args.fingerprint,
-    )
+    confirmationIncludesDraft(confirmation, args.draft._id, args.fingerprint)
   );
 }
 
@@ -96,10 +88,7 @@ async function latestMatchingConfirmation(
   );
 }
 
-async function resolveLinkByToken(
-  ctx: QueryCtx | MutationCtx,
-  token: string,
-) {
+async function resolveLinkByToken(ctx: QueryCtx | MutationCtx, token: string) {
   const normalized = token.trim();
   if (!normalized) return null;
   const tokenHash = await hashMagicLinkToken(normalized);
@@ -138,12 +127,11 @@ export const createInternal = internalMutation({
     const now = dayjs().valueOf();
     if (
       confirmation &&
-      !confirmationCanAuthorize(confirmation, {
+      !(await confirmationCanAuthorize(ctx, confirmation, {
         draft,
         fingerprint,
         actor,
-        now,
-      })
+      }))
     ) {
       throw new Error("The draft confirmation is stale or does not match.");
     }
@@ -151,9 +139,7 @@ export const createInternal = internalMutation({
     const existing = await ctx.db
       .query("emailDraftReviewLinks")
       .withIndex("draft_channel", (query) =>
-        query
-          .eq("pendingEmailId", draft._id)
-          .eq("channel", args.channel),
+        query.eq("pendingEmailId", draft._id).eq("channel", args.channel),
       )
       .collect();
     for (const link of existing) {
@@ -163,10 +149,6 @@ export const createInternal = internalMutation({
     }
 
     const token = createMagicLinkToken();
-    const expiresAt = Math.min(
-      dayjs(now).add(REVIEW_LINK_TTL_HOURS, "hour").valueOf(),
-      confirmation?.expiresAt ?? Number.POSITIVE_INFINITY,
-    );
     const id = await ctx.db.insert("emailDraftReviewLinks", {
       orgId: draft.orgId,
       pendingEmailId: draft._id,
@@ -177,7 +159,6 @@ export const createInternal = internalMutation({
       actor,
       sourceThreadId: draft.threadId,
       sourceThreadMessageId: args.sourceThreadMessageId,
-      expiresAt,
       sendAttempts: 0,
       createdAt: now,
       updatedAt: now,
@@ -207,20 +188,17 @@ export const bindConfirmationInternal = internalMutation({
       !draft ||
       draft.status !== "draft" ||
       link.revokedAt ||
-      link.expiresAt <= now ||
       (await pendingEmailDraftFingerprint(draft)) !== link.draftFingerprint ||
-      !confirmationCanAuthorize(confirmation, {
+      !(await confirmationCanAuthorize(ctx, confirmation, {
         draft,
         fingerprint: link.draftFingerprint,
         actor: link.actor,
-        now,
-      })
+      }))
     ) {
       throw new Error("The review link no longer matches this draft.");
     }
     await ctx.db.patch(link._id, {
       confirmationId: confirmation._id,
-      expiresAt: Math.min(link.expiresAt, confirmation.expiresAt),
       updatedAt: now,
     });
   },
@@ -231,9 +209,6 @@ export const getByToken = query({
   handler: async (ctx, args) => {
     const link = await resolveLinkByToken(ctx, args.token);
     if (!link || link.revokedAt) return null;
-    const now = dayjs().valueOf();
-    if (link.expiresAt <= now) return { state: "expired" as const };
-
     const [draft, org, confirmation] = await Promise.all([
       ctx.db.get(link.pendingEmailId),
       ctx.db.get(link.orgId),
@@ -247,17 +222,14 @@ export const getByToken = query({
 
     const confirmationReady = Boolean(
       confirmation &&
-        confirmationCanAuthorize(confirmation, {
-          draft,
-          fingerprint,
-          actor: link.actor,
-          now,
-        }),
+      (await confirmationCanAuthorize(ctx, confirmation, {
+        draft,
+        fingerprint,
+        actor: link.actor,
+      })),
     );
     const state =
-      draft.status === "draft" && link.sendStartedAt
-        ? "sending"
-        : draft.status;
+      draft.status === "draft" && link.sendStartedAt ? "sending" : draft.status;
     return {
       state,
       orgName: org.name,
@@ -286,7 +258,7 @@ export const claimSendInternal = internalMutation({
   handler: async (ctx, args) => {
     const link = await resolveLinkByToken(ctx, args.token);
     const now = dayjs().valueOf();
-    if (!link || link.revokedAt || link.expiresAt <= now) {
+    if (!link || link.revokedAt) {
       throw new Error("This email draft review link is no longer available.");
     }
     if (link.sendCompletedAt) {
@@ -306,8 +278,7 @@ export const claimSendInternal = internalMutation({
         (candidate) =>
           candidate._id !== link._id &&
           Boolean(candidate.sendStartedAt) &&
-          !candidate.sendCompletedAt &&
-          candidate.expiresAt > now,
+          !candidate.sendCompletedAt,
       )
     ) {
       throw new Error("This email draft is already being sent.");
@@ -323,14 +294,15 @@ export const claimSendInternal = internalMutation({
     if (
       fingerprint !== link.draftFingerprint ||
       !confirmation ||
-      !confirmationCanAuthorize(confirmation, {
+      !(await confirmationCanAuthorize(ctx, confirmation, {
         draft,
         fingerprint,
         actor: link.actor,
-        now,
-      })
+      }))
     ) {
-      throw new Error("This draft changed or its confirmation expired.");
+      throw new Error(
+        "This draft changed or its confirmation is no longer current.",
+      );
     }
     await ctx.db.patch(link._id, {
       sendStartedAt: now,
@@ -380,25 +352,6 @@ export const completeSendInternal = internalMutation({
 
 export const sweepExpired = internalMutation({
   args: { batchSize: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const batchSize = Math.max(
-      1,
-      Math.min(Math.floor(args.batchSize ?? 500), 1_000),
-    );
-    const expired = await ctx.db
-      .query("emailDraftReviewLinks")
-      .withIndex("expiration", (query) =>
-        query.lt("expiresAt", dayjs().valueOf()),
-      )
-      .take(batchSize);
-    for (const link of expired) await ctx.db.delete(link._id);
-    if (expired.length === batchSize) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.emailDraftReviewLinks.sweepExpired,
-        { batchSize },
-      );
-    }
-    return { deleted: expired.length };
-  },
+  // Previously scheduled sweeps must not delete durable review links.
+  handler: async () => ({ deleted: 0 }),
 });

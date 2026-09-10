@@ -64,7 +64,7 @@ type BackendConfirmation = {
     | "superseded"
     | "unavailable";
   actionable: boolean;
-  expiresAt: number;
+  expiresAt?: number;
 };
 
 type ListThreadsArgs = { limit?: number; archived?: boolean };
