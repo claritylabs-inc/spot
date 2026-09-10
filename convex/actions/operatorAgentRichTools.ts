@@ -7,6 +7,9 @@ import { internalAction } from "../_generated/server";
 import type { AgentScope } from "../lib/agentScope";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import { readStoredAgentFile } from "../lib/storedAgentFile";
+import { runOperatorWebRetrieval } from "../lib/webRetrieval";
+import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
+import { mergePdfsFromUrls, mergedFileName } from "../lib/mergePdfs";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -38,6 +41,7 @@ export const runInternal = internalAction({
     toolName: v.string(),
     input: v.any(),
     channel: operatorChannelValidator,
+    confirmationId: v.optional(v.id("operatorAgentConfirmations")),
   },
   handler: async (
     ctx,
@@ -49,6 +53,81 @@ export const runInternal = internalAction({
     await ctx.runQuery(internal.operator.requireOperatorForUserInternal, {
       userId: args.operatorUserId,
     });
+
+    if (args.toolName === "web_search") {
+      const input = parseOperatorAgentToolInput("web_search", args.input);
+      return { result: await runOperatorWebRetrieval(ctx, input) };
+    }
+
+    if (args.toolName === "import_policy_files") {
+      if (!args.confirmationId)
+        throw new Error("Policy import confirmation is required");
+      const input = parseOperatorAgentToolInput(
+        "import_policy_files",
+        args.input,
+      );
+      const sourceArgs = {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        orgId: input.orgId as Id<"organizations">,
+        attachmentFileIds: input.attachmentFileIds as string[] | undefined,
+        clientFileIds: input.clientFileIds as string[] | undefined,
+      };
+      const files = await ctx.runQuery(
+        internal.operatorPolicyImports.getSourcesInternal,
+        sourceArgs,
+      );
+      for (const file of files) {
+        const blob = await ctx.storage.get(file.fileId);
+        if (!blob || !(await blob.slice(0, 1024).text()).includes("%PDF-"))
+          throw new Error(`${file.fileName} is not a PDF`);
+      }
+      let mergedFileId: Id<"_storage"> | undefined;
+      let mergedName: string | undefined;
+      if (input.mode === "combined" && files.length > 1) {
+        const urls = await Promise.all(
+          files.map(async (file) => {
+            const url = await ctx.storage.getUrl(file.fileId);
+            if (!url) throw new Error("Policy PDF is unavailable");
+            return url;
+          }),
+        );
+        const bytes = await mergePdfsFromUrls(urls);
+        mergedFileId = await ctx.storage.store(
+          new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
+        );
+        mergedName = mergedFileName(files[0].fileName, files.length);
+      }
+      let committed = false;
+      try {
+        const policies = await ctx.runMutation(
+          internal.operatorPolicyImports.commitInternal,
+          {
+            ...sourceArgs,
+            confirmationId: args.confirmationId,
+            mode: input.mode as "combined" | "separate",
+            mergedFileId,
+            mergedFileName: mergedName,
+          },
+        );
+        committed = true;
+        if (
+          mergedFileId &&
+          policies.every((policy) => policy.status === "duplicate")
+        )
+          await ctx.storage.delete(mergedFileId);
+        return {
+          result: {
+            status: "imported",
+            policies,
+            message:
+              "New policies are queued for extraction; existing policies were reused.",
+          },
+        };
+      } finally {
+        if (mergedFileId && !committed) await ctx.storage.delete(mergedFileId);
+      }
+    }
 
     if (RICH_POLICY_TOOLS.has(args.toolName)) {
       const input = args.input as Record<string, unknown>;

@@ -13,6 +13,7 @@ import { isCompanyWikiFact, normalizeWikiContent } from "./orgWikiPolicy";
 import { isOrgWikiSectionKey, wikiBulletLines } from "./orgWiki";
 import { defaultPacketSection } from "./procurementPacket";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
+import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "confirm_policy_fact",
@@ -20,6 +21,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_procurement_packet_section",
   "retry_failed_policy_extraction",
   "generate_coi",
+  "import_policy_files",
   "update_client_file",
   "create_procurement_request",
   "update_procurement_request",
@@ -797,6 +799,24 @@ export async function preflightOperatorToolConfirmation(
   await assertNoOperatorImpersonation(ctx, args.operatorUserId);
 
   switch (args.toolName) {
+    case "import_policy_files":
+      await resolveOperatorPolicySources(ctx, {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        orgId: exactId(
+          ctx,
+          "organizations",
+          args.input.orgId,
+          "Client organization",
+        ),
+        attachmentFileIds: Array.isArray(args.input.attachmentFileIds)
+          ? args.input.attachmentFileIds
+          : undefined,
+        clientFileIds: Array.isArray(args.input.clientFileIds)
+          ? args.input.clientFileIds
+          : undefined,
+      });
+      return;
     case "confirm_policy_fact":
       await preflightConfirmPolicyFact(ctx, args.input);
       return;

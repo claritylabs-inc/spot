@@ -325,6 +325,7 @@ import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
 import type * as operatorImessage from "../operatorImessage.js";
+import type * as operatorPolicyImports from "../operatorPolicyImports.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
 import type * as operatorSlack from "../operatorSlack.js";
 import type * as orgWiki from "../orgWiki.js";
@@ -686,6 +687,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
   operatorImessage: typeof operatorImessage;
+  operatorPolicyImports: typeof operatorPolicyImports;
   operatorProvisioning: typeof operatorProvisioning;
   operatorSlack: typeof operatorSlack;
   orgWiki: typeof orgWiki;

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import dayjs from "dayjs";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -12,6 +12,98 @@ import { buildOperatorRunCheckpointSummary } from "./lib/operatorAgentContinuati
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+test("operator web research falls back to Exa, preserves source evidence on replay, and rejects revoked operators", async () => {
+  vi.stubEnv("PARALLEL_API_KEY", "test-parallel");
+  vi.stubEnv("EXA_API_KEY", "test-exa");
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    const now = dayjs().valueOf();
+    const operatorUserId = await ctx.db.insert("users", {
+      email: "operator@example.com",
+      accountKind: "operator",
+    });
+    const profileId = await ctx.db.insert("operatorProfiles", {
+      userId: operatorUserId,
+      email: "operator@example.com",
+      role: "operator",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("globalModelSettings", {
+      key: "default",
+      routes: {},
+      webRetrieval: { primary: "parallel" },
+      updatedBy: operatorUserId,
+      updatedAt: now,
+    });
+    return { operatorUserId, profileId };
+  });
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url === "https://api.parallel.ai/v1/search")
+      return new Response("unavailable", { status: 503 });
+    if (url === "https://api.exa.ai/search")
+      return Response.json({
+        results: [
+          {
+            title: "Miller Brokerage",
+            url: "https://miller.example/about",
+            text: "Public broker background. ".repeat(400),
+          },
+        ],
+      });
+    throw new Error(`Unexpected provider URL: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const args = {
+    operatorUserId: ids.operatorUserId,
+    channel: "slack" as const,
+    toolName: "web_search",
+    input: { query: "Miller Brokerage", maxResults: 1 },
+    idempotencyKey: "broker-web-research",
+  };
+  const first = await t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    args,
+  );
+  expect(first.outcome).toMatchObject({
+    status: "succeeded",
+    result: {
+      provider: "exa",
+      sources: [{ url: "https://miller.example/about" }],
+      attempts: [
+        { provider: "parallel", ok: false },
+        { provider: "exa", ok: true },
+      ],
+    },
+  });
+  const replay = await t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    args,
+  );
+  if (
+    first.outcome.status !== "succeeded" ||
+    replay.outcome.status !== "succeeded"
+  )
+    throw new Error("Expected web research results");
+  expect(JSON.stringify(first.outcome.result).length).toBeGreaterThan(8_000);
+  expect(replay.outcome.result).toEqual(first.outcome.result);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await t.run((ctx) => ctx.db.patch(ids.profileId, { status: "disabled" }));
+  await expect(
+    t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
+      ...args,
+      idempotencyKey: "revoked",
+    }),
+  ).rejects.toThrow();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
 
 test("company email reads share operator authorization, auditing and private attachment delivery across channels", async () => {
   const providerCall = vi.fn();

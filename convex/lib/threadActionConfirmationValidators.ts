@@ -37,6 +37,7 @@ export const operatorToolActionConfirmationPayloadValidator = v.object({
   toolVersion: v.number(),
   input: v.string(),
   inputHash: v.string(),
+  sourceFingerprint: v.optional(v.string()),
   idempotencyKey: v.string(),
   capability: v.string(),
   effect: v.union(
