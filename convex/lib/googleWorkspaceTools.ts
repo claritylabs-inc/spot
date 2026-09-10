@@ -2,6 +2,7 @@
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { convert } from "html-to-text";
+import { simpleParser } from "mailparser";
 import dayjs from "dayjs";
 import {
   normalizeAgentAttachmentFilename,
@@ -538,28 +539,40 @@ export async function listCompanyMailboxes(
   }
 }
 
-function messageHeaders(message: GoogleWorkspaceMessage) {
+async function messageHeaders(message: GoogleWorkspaceMessage) {
   const headers = message.payload?.headers ?? [];
   const value = (name: string) =>
     headers.find((header) => header.name.toLowerCase() === name.toLowerCase())
       ?.value ?? null;
-  const addresses = (name: string) => {
-    const header = value(name);
-    return header
-      ? header
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean)
-      : [];
+  const parsed = await simpleParser(
+    ["To", "Cc", "Bcc"]
+      .flatMap((name) => (value(name) ? [`${name}: ${value(name)}`] : []))
+      .join("\r\n") + "\r\n\r\n",
+  );
+  const addresses = (name: "To" | "Cc" | "Bcc") => {
+    const field =
+      name === "To" ? parsed.to : name === "Cc" ? parsed.cc : parsed.bcc;
+    return (Array.isArray(field) ? field : field ? [field] : []).flatMap(
+      (group) =>
+        group.value.flatMap((address) =>
+          address.address
+            ? [
+                address.name
+                  ? `${address.name} <${address.address}>`
+                  : address.address,
+              ]
+            : [],
+        ),
+    );
   };
   return { value, addresses };
 }
 
-function searchMessage(
+async function searchMessage(
   mailbox: string,
   reference: { id: string; threadId: string },
   metadata: GoogleWorkspaceMessage | null,
-): OperatorGoogleWorkspaceSearchMessage {
+): Promise<OperatorGoogleWorkspaceSearchMessage> {
   if (!metadata) {
     return {
       mailbox,
@@ -574,7 +587,7 @@ function searchMessage(
       metadataComplete: false,
     };
   }
-  const headers = messageHeaders(metadata);
+  const headers = await messageHeaders(metadata);
   return {
     mailbox,
     messageId: reference.id,
@@ -725,9 +738,11 @@ export async function searchCompanyEmail(
         );
       }
       messages.push(
-        ...page.messages.map((reference, index) =>
-          searchMessage(mailbox, reference, metadata[index]),
-        ),
+        ...(await Promise.all(
+          page.messages.map((reference, index) =>
+            searchMessage(mailbox, reference, metadata[index]),
+          ),
+        )),
       );
       if (page.nextPageToken) {
         state.gmailPageToken = page.nextPageToken;
@@ -942,14 +957,14 @@ async function loadExternalBodyParts(
   return unavailable;
 }
 
-function threadMessage(
+async function threadMessage(
   mailbox: string,
   message: GoogleWorkspaceMessage,
   bodyOffset: number,
   remainingChars: number,
   unavailable: OperatorGoogleWorkspaceThreadMessage["bodyUnavailableParts"],
 ) {
-  const headers = messageHeaders(message);
+  const headers = await messageHeaders(message);
   const content = messageBody(message);
   if (bodyOffset > content.body.length)
     throw new Error("The Gmail body changed; restart the thread read.");
@@ -1053,7 +1068,7 @@ export async function readCompanyEmailThread(
       message,
       bodyBudget,
     );
-    const rendered = threadMessage(
+    const rendered = await threadMessage(
       mailbox,
       message,
       state.bodyOffset,

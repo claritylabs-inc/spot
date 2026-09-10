@@ -461,3 +461,27 @@ test("cleans an original if extraction would exceed lossless replay storage", as
   ).rejects.toThrow("result is too large");
   expect(deps.attachmentStorage.delete).toHaveBeenCalledWith("original");
 });
+
+test("preserves recipients whose quoted display names contain commas", async () => {
+  const deps = setup({
+    getMessageMetadata: vi.fn(async () =>
+      message(
+        "m1",
+        part({
+          headers: [
+            {
+              name: "To",
+              value: '\"Doe, Jane\" <jane@example.com>, Bob <bob@example.com>',
+            },
+            { name: "Cc", value: "team@example.com" },
+          ],
+        }),
+      ),
+    ),
+  });
+  const page = await searchCompanyEmail(deps, { query: "insurance", limit: 1 });
+  expect(page.messages[0]).toMatchObject({
+    to: ["Doe, Jane <jane@example.com>", "Bob <bob@example.com>"],
+    cc: ["team@example.com"],
+  });
+});
