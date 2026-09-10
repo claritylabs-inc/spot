@@ -116,7 +116,7 @@ function Shell({
         >
           <div className="justify-self-start min-w-0">
             <div className="sm:hidden">
-              <LogoIcon size={18} color="#A0D2FA" static />
+              <LogoIcon size={18} static />
             </div>
             <div className="hidden sm:block">
               <BrandWordmark />

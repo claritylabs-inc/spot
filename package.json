@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "next dev -p 8080",
+    "brand:export": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/export-spot-brand-assets.mjs",
     "conductor:setup": "node scripts/setup-conductor-workspace.mjs",
     "conductor:setup:cloud": "node scripts/setup-conductor-cloud.mjs",
     "conductor:archive": "node scripts/archive-conductor-workspace.mjs",

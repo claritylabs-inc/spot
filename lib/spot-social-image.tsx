@@ -5,7 +5,6 @@ import { ImageResponse } from "next/og";
 import {
   spotSocialAsciiTypographyStyle,
   spotSocialUrlTypographyStyle,
-  spotSocialWordmarkTypographyStyle,
 } from "@/lib/typography";
 
 export const SPOT_SOCIAL_IMAGE_SIZE = { width: 1200, height: 630 };
@@ -41,25 +40,22 @@ function imageDataUrl(mimeType: string, data: Buffer) {
 }
 
 type SpotSocialAssets = {
-  redaction: Buffer;
   geist: Buffer;
   skySrc: string;
-  iconSrc: string;
+  lockupSrc: string;
 };
 
 let assetsPromise: Promise<SpotSocialAssets> | undefined;
 
 function loadSpotSocialAssets() {
   assetsPromise ??= Promise.all([
-    readFile(join(process.cwd(), "app/fonts/redaction/Redaction-Regular.ttf")),
     readFile(join(process.cwd(), "app/fonts/geist/Geist-Regular.ttf")),
     readFile(join(process.cwd(), "public/spot/hero-clouds-v1.jpg")),
-    readFile(join(process.cwd(), "public/spot/logo-icon.png")),
-  ]).then(([redaction, geist, sky, icon]) => ({
-    redaction,
+    readFile(join(process.cwd(), "public/brand/spot-lockup.svg")),
+  ]).then(([geist, sky, lockup]) => ({
     geist,
     skySrc: imageDataUrl("image/jpeg", sky),
-    iconSrc: imageDataUrl("image/png", icon),
+    lockupSrc: imageDataUrl("image/svg+xml", lockup),
   }));
 
   return assetsPromise;
@@ -67,8 +63,8 @@ function loadSpotSocialAssets() {
 
 function SpotSocialCard({
   skySrc,
-  iconSrc,
-}: Omit<SpotSocialAssets, "redaction" | "geist">) {
+  lockupSrc,
+}: Omit<SpotSocialAssets, "geist">) {
   return (
     <div
       style={{
@@ -149,13 +145,14 @@ function SpotSocialCard({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 18,
-              color: "#000000",
-              ...spotSocialWordmarkTypographyStyle,
             }}
           >
-            <img src={iconSrc} alt="" width={96} height={96} />
-            <span>spot</span>
+            <img
+              src={lockupSrc}
+              alt="Spot"
+              width={520}
+              height={101}
+            />
           </div>
         </div>
 
@@ -175,16 +172,10 @@ function SpotSocialCard({
 
 export async function createSpotSocialImage() {
   const assets = await loadSpotSocialAssets();
-  const { redaction, geist, ...cardAssets } = assets;
+  const { geist, ...cardAssets } = assets;
   return new ImageResponse(<SpotSocialCard {...cardAssets} />, {
     ...SPOT_SOCIAL_IMAGE_SIZE,
     fonts: [
-      {
-        name: "Redaction",
-        data: redaction,
-        style: "normal",
-        weight: 400,
-      },
       {
         name: "Geist",
         data: geist,

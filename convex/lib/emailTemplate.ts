@@ -9,9 +9,6 @@ import { SLACK_INSTALL_INVITE_EXPIRATION_DAYS } from "./slackOAuthPolicy";
 
 const SITE_URL = getClientPortalUrl();
 const EMAIL_ASSET_BASE_URL = getEmailAssetBaseUrl();
-const SPOT_BRAND_ASSET_BASE_URL = "https://www.claritylabs.inc/brand";
-const SPOT_LOCKUP_URL = `${SPOT_BRAND_ASSET_BASE_URL}/spot-lockup@2x.png`;
-const SPOT_LOCKUP_DARK_URL = `${SPOT_BRAND_ASSET_BASE_URL}/spot-lockup-light@2x.png`;
 const SLACK_ADD_TO_BUTTON_URL =
   "https://platform.slack-edge.com/img/add_to_slack.png";
 const SLACK_ADD_TO_BUTTON_2X_URL =
@@ -178,11 +175,13 @@ export function buildEmailLogoHtml(branding: BrandingContext = getDefaultBrandin
   <tr>
     <td align="center">
       ${buildThemeAwareEmailLockup({
-        lightBackgroundUrl: SPOT_LOCKUP_URL,
-        darkBackgroundUrl: SPOT_LOCKUP_DARK_URL,
+        lightBackgroundUrl: absoluteEmailAssetUrl("/brand/spot-lockup@2x.png"),
+        darkBackgroundUrl: absoluteEmailAssetUrl(
+          "/brand/spot-lockup-light@2x.png",
+        ),
         alt: "Spot",
-        width: 72,
-        height: 23,
+        width: 103,
+        height: 20,
       })}
     </td>
   </tr>

@@ -27,7 +27,7 @@ export function SidebarHeader({
   icon?: ReactNode;
 }) {
   const iconContainerClass = icon
-    ? "rounded-md bg-black text-white"
+    ? "rounded-md bg-transparent text-foreground"
     : headerOrgIcon
       ? "rounded-md bg-transparent text-foreground"
     : "rounded-full bg-foreground/8 text-foreground";
@@ -82,9 +82,13 @@ export function SidebarHeader({
       <button
         type="button"
         onClick={onToggleCollapse}
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        title={collapsed ? "Expand navigation" : "Collapse navigation"}
         className="w-7 h-7 hidden lg:flex items-center justify-center rounded-md text-muted-foreground/40 hover:text-foreground hover:bg-foreground/4 transition-colors shrink-0"
       >
-        {collapsed ? (
+        {collapsed && icon ? (
+          icon
+        ) : collapsed ? (
           <ChevronRight className="w-3.5 h-3.5" />
         ) : (
           <ChevronLeft className="w-3.5 h-3.5" />
