@@ -170,6 +170,7 @@ describe("Google Workspace verification", () => {
   });
 
   it("bounds mailbox verification by an overall deadline", async () => {
+    vi.useFakeTimers();
     const getMailboxProfile = vi.fn(
       (_mailbox: string, options?: { signal?: AbortSignal }) =>
         new Promise<{ emailAddress: string }>((_resolve, reject) => {
@@ -182,20 +183,26 @@ describe("Google Workspace verification", () => {
       { length: 11 },
       (_, index) => `person-${index}@example.com`,
     );
-    const result = await verifyGoogleWorkspaceConnection(
-      provider({ getMailboxProfile }),
-      config({ mailboxes }),
-      { deadlineMs: 5 },
-    );
-    expect(result).toMatchObject({
-      status: "failed",
-      completeness: "partial",
-      checkedMailboxCount: 0,
-      totalMailboxCount: 11,
-      error: "Google Workspace verification reached its time limit.",
-    });
-    expect(result.mailboxes).toHaveLength(0);
-    expect(getMailboxProfile).toHaveBeenCalledTimes(10);
+    try {
+      const verification = verifyGoogleWorkspaceConnection(
+        provider({ getMailboxProfile }),
+        config({ mailboxes }),
+        { deadlineMs: 5 },
+      );
+      await vi.advanceTimersByTimeAsync(5);
+      const result = await verification;
+      expect(result).toMatchObject({
+        status: "failed",
+        completeness: "partial",
+        checkedMailboxCount: 0,
+        totalMailboxCount: 11,
+        error: "Google Workspace verification reached its time limit.",
+      });
+      expect(result.mailboxes).toHaveLength(0);
+      expect(getMailboxProfile).toHaveBeenCalledTimes(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("applies the same deadline to Directory enumeration even when token fetch ignores abort", async () => {
