@@ -8,8 +8,9 @@ import { internalAction } from "./_generated/server";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   buildAgentAttachmentParts,
+  createAgentAttachmentRouterBudget,
   MAX_AGENT_ATTACHMENT_TEXT_CHARS,
-  modelMessagesHaveImageInput,
+  modelMessagesHaveRichInput,
 } from "./lib/agentAttachmentContext";
 import { MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES } from "./lib/agentAttachmentLimits";
 import {
@@ -87,6 +88,7 @@ export async function buildOperatorHistoryWithAttachments(
   sourceMessages: Array<Doc<"operatorAgentMessages">>,
 ): Promise<ModelMessage[]> {
   const remainingTextChars = { value: MAX_AGENT_ATTACHMENT_TEXT_CHARS };
+  const routerBudget = createAgentAttachmentRouterBudget();
   const selectedAttachments = new Map<
     string,
     NonNullable<Doc<"operatorAgentMessages">["attachments"]>
@@ -132,6 +134,7 @@ export async function buildOperatorHistoryWithAttachments(
     const context = await buildAgentAttachmentParts(ctx, attachments, {
       includeRichParts: true,
       remainingTextChars,
+      routerBudget,
     });
     const attachmentReferences = attachments
       .map(
@@ -279,7 +282,7 @@ export const run = internalAction({
         });
       }
 
-      const modelTask = modelMessagesHaveImageInput(messages)
+      const modelTask = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
         : "chat";
       const result = await generateAgentTextForOperatorTask(

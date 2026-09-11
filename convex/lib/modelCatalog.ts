@@ -84,7 +84,7 @@ export const PROVIDER_LABELS: Record<ModelProvider, string> = {
 
 export const MODEL_TASK_LABELS: Record<ModelTask, string> = {
   chat: "Chat assistant",
-  chat_vision: "Chat image understanding",
+  chat_vision: "Chat rich-input understanding",
   voice_transcription: "Voice memo transcription",
   email_draft: "Email drafting",
   email_reply: "Inbound email replies",
@@ -107,7 +107,7 @@ export const MODEL_TASK_LABELS: Record<ModelTask, string> = {
 export const MODEL_TASK_DESCRIPTIONS: Record<ModelTask, string> = {
   chat: "Interactive assistant route for web chat, MCP/CLI chat, iMessage/SMS, retrieval orchestration, and tool calls.",
   chat_vision:
-    "Image-capable web and iMessage route for reading user image attachments while preserving normal chat tools and side effects.",
+    "Rich-input-capable web, iMessage, and operator route for reading user images and parser-empty PDFs while preserving normal chat tools and side effects.",
   voice_transcription:
     "Speech-to-text route for bounded iMessage voice memos before the transcript enters the normal tool-capable chat workflow.",
   email_draft:
@@ -344,7 +344,7 @@ export const MODEL_ROUTE_LABELS: Record<ModelRouteId, string> = {
 export const MODEL_ROUTE_DESCRIPTIONS: Record<ModelRouteId, string> = {
   ...MODEL_TASK_DESCRIPTIONS,
   operator_agent:
-    "Required direct-provider route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support image input and is never delegated to automated routing.",
+    "Required router-pinned route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support rich attachment input and never uses automated fallback.",
   extraction_quality:
     "Proactive primary route for source-tree generation and operational-profile extraction before any failure occurs.",
   extraction_coverage_cleanup:
@@ -420,7 +420,7 @@ export const OPERATOR_MODEL_ROUTE_GROUPS = [
     id: "internal_operations",
     label: "Internal operations",
     description:
-      "Required manually selected direct-provider routes for Clarity Labs operator workflows.",
+      "Required manually selected router-pinned routes for Clarity Labs operator workflows.",
     tasks: [OPERATOR_AGENT_MODEL_ROUTE_ID],
   },
   MODEL_TASK_GROUPS[0],

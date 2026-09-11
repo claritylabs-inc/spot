@@ -9,7 +9,7 @@ import { internalAction } from "../_generated/server";
 import {
   buildAgentAttachmentParts,
   MAX_AGENT_ATTACHMENT_TEXT_CHARS,
-  modelMessagesHaveImageInput,
+  modelMessagesHaveRichInput,
 } from "../lib/agentAttachmentContext";
 import { generateObjectForOrg } from "../lib/models";
 
@@ -23,6 +23,7 @@ function hasReadableContent(
   return parts.some(
     (part) =>
       part.type === "image" ||
+      part.type === "file" ||
       (part.type === "text" &&
         part.text.length > 40 &&
         !part.text.includes("could not be read") &&
@@ -66,7 +67,6 @@ export const infer = internalAction({
           remainingTextChars: { value: MAX_AGENT_ATTACHMENT_TEXT_CHARS },
         },
       );
-      const usableParts = context.parts.filter((part) => part.type !== "file");
       const prompt = `Create a short, specific client-facing document title for this uploaded file.
 
 Original filename: ${file.originalName}
@@ -77,15 +77,15 @@ Use the file contents as the primary evidence and the operator hint only as cont
         {
           role: "user",
           content: [
-            ...usableParts,
+            ...context.parts,
             { type: "text" as const, text: prompt },
           ],
         },
       ];
-      if (!hasReadableContent(usableParts) && !args.hint) {
+      if (!hasReadableContent(context.parts) && !args.hint) {
         throw new Error("No readable file content was available for naming");
       }
-      const task = modelMessagesHaveImageInput(messages)
+      const task = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
         : "classification";
       const result = await generateObjectForOrg(

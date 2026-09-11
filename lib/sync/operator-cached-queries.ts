@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -17,18 +18,17 @@ type OperatorClientRow = OperatorClientList[number];
 type OperatorGlobalModelSettings = FunctionReturnType<
   typeof api.modelSettings.getGlobal
 >;
+export type OperatorRouterCapabilities = FunctionReturnType<
+  typeof api.clRouterOperations.getCapabilities
+>;
 type GlobalWebRetrieval = FunctionArgs<
   typeof api.modelSettings.updateGlobalWebRetrieval
 >["webRetrieval"];
-type GlobalWebRetrievalProvider =
-  OperatorGlobalModelSettings["webRetrievalProviders"][number];
 type OperatorGlobalToolSettings = {
   webRetrieval: GlobalWebRetrieval;
-  webRetrievalProviders: Array<
-    Omit<GlobalWebRetrievalProvider, "defaultRoute"> & {
-      defaultRoute: NonNullable<GlobalWebRetrieval["route"]> | null;
-    }
-  >;
+  webRetrievalProviders: OperatorGlobalModelSettings["webRetrievalProviders"];
+  routes: OperatorGlobalModelSettings["routes"];
+  tasks: OperatorGlobalModelSettings["tasks"];
 };
 type OperatorExtractionTraceList = FunctionReturnType<
   typeof api.operator.listExtractionTraces
@@ -148,6 +148,45 @@ export function useCachedOperatorGlobalToolSettings() {
     api.modelSettings.getGlobal,
     {},
   ) as OperatorGlobalToolSettings | undefined;
+}
+
+export function useOperatorRouterCapabilities() {
+  const getCapabilities = useAction(api.clRouterOperations.getCapabilities);
+  const [capabilities, setCapabilities] =
+    useState<OperatorRouterCapabilities>();
+  const [loading, setLoading] = useState(true);
+
+  const fetchCapabilities = useCallback(async () => {
+    try {
+      return await getCapabilities({});
+    } catch {
+      return {
+        availability: "unavailable",
+        fetchedAt: dayjs().valueOf(),
+        message: "Router capabilities are temporarily unavailable.",
+      } as const;
+    }
+  }, [getCapabilities]);
+
+  useEffect(() => {
+    let active = true;
+    void fetchCapabilities().then((next) => {
+      if (!active) return;
+      setCapabilities(next);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fetchCapabilities]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setCapabilities(await fetchCapabilities());
+    setLoading(false);
+  }, [fetchCapabilities]);
+
+  return { capabilities, loading, refresh };
 }
 
 export function useCachedOperatorExtractionTraces(

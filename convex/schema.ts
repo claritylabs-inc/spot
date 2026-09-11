@@ -566,6 +566,15 @@ export default defineSchema({
     emailVerification: v.optional(
       v.union(v.literal("strict"), v.literal("domain"), v.literal("open")),
     ),
+    // Legacy certificate/email settings retained only so deployed rows remain
+    // valid during the widening release. Runtime code does not read them.
+    coiHandling: v.optional(
+      v.union(v.literal("broker"), v.literal("member"), v.literal("ignore")),
+    ),
+    autoGenerateCoi: v.optional(v.boolean()),
+    autoSendEmails: v.optional(v.boolean()),
+    policyChangeRequestsEnabled: v.optional(v.boolean()),
+    certificateChangeRequestsEnabled: v.optional(v.boolean()),
     // Agent
     agentHandle: v.optional(v.string()),
     // Primary insurance contact for the org
@@ -916,6 +925,8 @@ export default defineSchema({
 
   brokerModelSettings: defineTable({
     brokerOrgId: v.id("organizations"),
+    // Legacy consumer-owned credentials. Keep optional through the audited
+    // widen/migrate/narrow rollout; runtime code must never read this field.
     providerKeys: v.optional(
       v.object({
         openai: v.optional(v.string()),
@@ -984,6 +995,9 @@ export default defineSchema({
         extraction_quality: v.optional(modelRouteValidator),
         extraction_form_inventory: v.optional(modelRouteValidator),
         extraction_coverage_cleanup: v.optional(modelRouteValidator),
+        // Legacy route key retained only for stored settings compatibility.
+        // Runtime resolution never selects this retired task.
+        extraction_visual_table_repair: v.optional(modelRouteValidator),
         fallback: v.optional(modelRouteValidator),
       }),
     ),
@@ -2512,6 +2526,8 @@ export default defineSchema({
     dismissed: v.optional(v.boolean()),
     // Typed declarations (cl-sdk 1.4+) — line-specific structured data
     declarations: v.optional(v.any()),
+    // Legacy extraction output; current runtime does not read or write it.
+    analysis: v.optional(v.any()),
     // cl-sdk 3.0+ fields
     policyTermType: v.optional(v.string()),
     nextReviewDate: v.optional(v.string()),
@@ -2664,6 +2680,58 @@ export default defineSchema({
   })
     .index("policy", ["policyId"])
     .index("policy_kind", ["policyId", "kind"]),
+
+  // Short-lived model-input assets staged by authenticated extraction workers
+  // or trusted Convex actions. Public URLs are signed and never persisted.
+  routerAssets: defineTable({
+    ownerKind: v.union(v.literal("worker"), v.literal("action")),
+    jobKind: v.optional(
+      v.union(v.literal("policy"), v.literal("preview"), v.literal("proposal")),
+    ),
+    jobId: v.optional(v.string()),
+    leaseId: v.optional(v.string()),
+    orgId: v.optional(v.id("organizations")),
+    surface: v.optional(v.string()),
+    sessionKey: v.optional(v.string()),
+    storageId: v.id("_storage"),
+    mediaType: v.string(),
+    filename: v.optional(v.string()),
+    sizeBytes: v.number(),
+    sha256: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    cleanupAttempts: v.optional(v.number()),
+  })
+    .index("job", ["jobKind", "jobId"])
+    .index("session", ["ownerKind", "surface", "sessionKey"])
+    .index("organization", ["orgId"])
+    .index("expiry", ["expiresAt"]),
+
+  // Short-lived, server-owned fixtures for the internal router acceptance
+  // harness. The marker row is the only authority for cleanup targets.
+  operationalRouterSmokeRuns: defineTable({
+    marker: v.string(),
+    orgId: v.id("organizations"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("expiration", ["expiresAt"]),
+
+  // One short-lived, never-queued policy lease used to smoke-test the deployed
+  // extraction worker's authenticated asset and cl-router transports.
+  workerRouterTransportSmokeRuns: defineTable({
+    singleton: v.literal("active"),
+    requestId: v.string(),
+    orgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    runId: v.id("policyExtractionRuns"),
+    leaseId: v.string(),
+    status: v.union(v.literal("ready"), v.literal("running")),
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("singleton", ["singleton"])
+    .index("request", ["requestId"]),
 
   policyExtractionTraceSessions: defineTable({
     traceId: v.string(),
@@ -3498,6 +3566,8 @@ export default defineSchema({
     policyNumber: v.optional(v.string()),
     sourcePolicyFileIds: v.optional(v.array(v.id("policyFiles"))),
     sourceFileIds: v.optional(v.array(v.id("_storage"))),
+    // Legacy link to the retired policy-change table; runtime leaves it unset.
+    caseId: v.optional(v.id("policyChangeCases")),
     extractionRunId: v.optional(v.id("policyExtractionRuns")),
     snapshot: v.optional(v.any()),
     fieldDiffs: v.optional(v.array(v.any())),
@@ -3626,6 +3696,9 @@ export default defineSchema({
     generationBatchId: v.optional(v.string()),
     formCode: v.optional(certificateFormCodeValidator),
     requestSignature: v.optional(v.string()),
+    // Widening bridge for certificate versions created before holder-backed
+    // policy certificates became canonical. Runtime writers leave this unset.
+    legacyCertificateId: v.optional(v.id("certificates")),
     issuedAt: v.optional(v.number()),
     supersededAt: v.optional(v.number()),
     voidedAt: v.optional(v.number()),
@@ -3767,6 +3840,8 @@ export default defineSchema({
     ),
     status: v.union(
       v.literal("held"),
+      // Legacy status retained only for stored request holds.
+      v.literal("policy_change_opened"),
       v.literal("broker_handoff_offered"),
       v.literal("resolved"),
       v.literal("cancelled"),
@@ -3781,6 +3856,8 @@ export default defineSchema({
     requiredChanges: v.array(v.string()),
     evidence: v.optional(v.any()),
     emailDraft: v.optional(certificateEmailDraftValidator),
+    // Legacy link to the retired policy-change table; runtime leaves it unset.
+    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
     pendingEmailId: v.optional(v.id("pendingEmails")),
     createdByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
@@ -3797,6 +3874,9 @@ export default defineSchema({
     orgId: v.id("organizations"),
     userId: v.optional(v.id("users")), // null = org-wide
     type: v.union(
+      // Retired values retained so historical notifications remain readable.
+      v.literal("merge_suggestion"),
+      v.literal("policy_declaration_discrepancy"),
       v.literal("coverage_gap"),
       v.literal("renewal_reminder"),
       v.literal("policy_lapsed"),
@@ -3818,6 +3898,8 @@ export default defineSchema({
       v.literal("vendor_compliance_gap"),
       v.literal("vendor_policy_expiring"),
       v.literal("vendor_policy_expired"),
+      v.literal("policy_change_needs_info"),
+      v.literal("policy_change_completed"),
       v.literal("mailbox_attention"),
       v.literal("own_compliance_gap"),
       v.literal("own_compliance_resolved"),
@@ -4025,6 +4107,8 @@ export default defineSchema({
   policyUpdateRuns: defineTable({
     orgId: v.id("organizations"),
     policyId: v.id("policies"),
+    // Legacy link to the retired policy-change table; runtime leaves it unset.
+    caseId: v.optional(v.id("policyChangeCases")),
     sourcePolicyFileIds: v.optional(v.array(v.id("policyFiles"))),
     sourceFileIds: v.optional(v.array(v.id("_storage"))),
     updateMode: v.union(v.literal("append_to_existing")),
@@ -4200,6 +4284,8 @@ export default defineSchema({
     orgId: v.id("organizations"),
     title: v.string(),
     threadEmail: v.optional(v.string()),
+    // Legacy delivery lookup key; current routing does not read or write it.
+    deliveryContactKey: v.optional(v.string()),
     createdBy: v.id("users"),
     clientMutationId: v.optional(v.string()),
     lastMessageAt: v.number(),
@@ -4385,6 +4471,8 @@ export default defineSchema({
     agentRunStartedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     pendingEmailId: v.optional(v.id("pendingEmails")),
+    // Legacy link to the retired policy-change table; runtime leaves it unset.
+    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
   })
     .index("thread", ["threadId"])
     .index("organization_mutation", ["orgId", "clientMutationId"])
@@ -5107,11 +5195,18 @@ export default defineSchema({
   appCardAccessLinks: defineTable({
     orgId: v.id("organizations"),
     tokenHash: v.string(),
-    kind: v.union(v.literal("policy"), v.literal("certificate")),
+    kind: v.union(
+      v.literal("policy"),
+      v.literal("certificate"),
+      // Legacy links remain schema-compatible but are not minted by runtime.
+      v.literal("policy_change"),
+    ),
     policyId: v.optional(v.id("policies")),
     certificateId: v.optional(v.id("certificates")),
     policyCertificateId: v.optional(v.id("policyCertificates")),
     certificateVersionId: v.optional(v.id("certificateVersions")),
+    // Legacy link to the retired policy-change table; runtime leaves it unset.
+    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
     label: v.optional(v.string()),
     sourceThreadId: v.optional(v.id("threads")),
     sourceThreadMessageId: v.optional(v.id("threadMessages")),
@@ -5217,6 +5312,8 @@ export default defineSchema({
     // For updating the chat message after send
     chatMessageId: v.optional(v.id("threadMessages")),
     threadMessageId: v.optional(v.id("threadMessages")),
+    // Legacy link to the retired policy-change table; runtime leaves it unset.
+    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
     // Metadata for the sent email record
     recipientEmail: v.string(),
     ccAddresses: v.optional(v.array(v.string())),

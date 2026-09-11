@@ -38,14 +38,12 @@ import {
   type ModelRoute,
   type ModelRouteId,
   type ModelTask,
-  type WebRetrievalProvider,
   type WebRetrievalRoute,
   defaultModelRouteForId,
 } from "./lib/modelCatalog";
 
 type GlobalRoutes = Partial<Record<ModelRouteId, ModelRoute>>;
 type RouteSource = "global" | "static";
-type ProviderKeys = Partial<Record<ModelProvider, string>>;
 
 const configurableProviderValidator = v.union(
   v.literal("openai"),
@@ -116,7 +114,7 @@ function assertSupportedRoute(routeId: ModelRouteId, route: ModelRoute) {
   }
   if (!directProviderModelForRoute(route)) {
     throw new Error(
-      `${PROVIDER_LABELS[route.provider]} model ${route.model} is not available through direct provider routing`,
+      `${PROVIDER_LABELS[route.provider]} model ${route.model} is not available in the routing catalog`,
     );
   }
   const models =
@@ -145,72 +143,31 @@ function assertSupportedRoute(routeId: ModelRouteId, route: ModelRoute) {
   }
 }
 
-function configuredEnv(value: string | undefined) {
-  const trimmed = value?.trim();
-  return trimmed || undefined;
-}
-
-function languageProviderEnvConfigured(provider: ModelProvider) {
-  switch (provider) {
-    case "fireworks":
-      return !!configuredEnv(process.env.FIREWORKS_API_KEY);
-    case "openai":
-      return !!configuredEnv(process.env.OPENAI_API_KEY);
-    case "anthropic":
-      return !!configuredEnv(process.env.ANTHROPIC_API_KEY);
-    case "google":
-      return !!(
-        configuredEnv(process.env.GOOGLE_GENERATIVE_AI_API_KEY) ??
-        configuredEnv(process.env.GOOGLE_API_KEY)
-      );
-    case "xai":
-      return !!configuredEnv(process.env.XAI_API_KEY);
-    case "mistral":
-      return !!configuredEnv(process.env.MISTRAL_API_KEY);
-    case "cohere":
-      return !!configuredEnv(process.env.COHERE_API_KEY);
-    case "deepseek":
-      return !!configuredEnv(process.env.DEEPSEEK_API_KEY);
-    case "moonshot":
-      return false;
+function routeStaticallySupported(routeId: ModelRouteId, route: ModelRoute) {
+  if (isRetiredModelRoute(route) || !directProviderModelForRoute(route)) {
+    return false;
   }
-}
-
-function routeDirectlyConfigured(route: ModelRoute) {
-  return (
-    !!directProviderModelForRoute(route) &&
-    languageProviderEnvConfigured(route.provider)
-  );
-}
-
-function providerTransport(provider: ModelProvider) {
-  if (!languageProviderEnvConfigured(provider)) return null;
-  const routes = [
-    ...(LANGUAGE_MODEL_CATALOG[provider] ?? []),
-    ...(AUDIO_TRANSCRIPTION_MODEL_CATALOG[provider] ?? []),
-    ...(EMBEDDING_MODEL_CATALOG[provider] ?? []),
-  ];
-  return routes.some((model) =>
-    directProviderModelForRoute({ provider, model }),
-  )
-    ? "direct"
-    : null;
-}
-
-function globalProviderConfigured(provider: ModelProvider) {
-  return providerTransport(provider) !== null;
+  const models =
+    routeId === "embeddings"
+      ? EMBEDDING_MODEL_CATALOG[route.provider]
+      : routeId === "voice_transcription"
+        ? AUDIO_TRANSCRIPTION_MODEL_CATALOG[route.provider]
+        : LANGUAGE_MODEL_CATALOG[route.provider];
+  if (!models?.includes(route.model)) return false;
+  if (
+    routeId === OPERATOR_AGENT_MODEL_ROUTE_ID &&
+    !modelRouteSupportsTask("chat_vision", route)
+  ) {
+    return false;
+  }
+  return !isModelTask(routeId) || modelRouteSupportsTask(routeId, route);
 }
 
 function nullableGlobalRoutes(routes: GlobalRoutes | undefined) {
   return Object.fromEntries(
     MODEL_ROUTE_IDS.map((id) => {
       const route = routes?.[id];
-      return [
-        id,
-        route && !isRetiredModelRoute(route) && routeDirectlyConfigured(route)
-          ? route
-          : null,
-      ];
+      return [id, route && routeStaticallySupported(id, route) ? route : null];
     }),
   ) as Record<ModelRouteId, ModelRoute | null>;
 }
@@ -279,28 +236,6 @@ function availableAudioModels(provider: ModelProvider) {
   );
 }
 
-function webRetrievalEnvConfigured(provider: WebRetrievalProvider) {
-  switch (provider) {
-    case "parallel":
-      return !!configuredEnv(process.env.PARALLEL_API_KEY);
-    case "exa":
-      return !!configuredEnv(process.env.EXA_API_KEY);
-    case "model_default":
-      return true;
-    case "openai":
-      return !!configuredEnv(process.env.OPENAI_API_KEY);
-    case "google":
-      return !!(
-        configuredEnv(process.env.GOOGLE_GENERATIVE_AI_API_KEY) ??
-        configuredEnv(process.env.GOOGLE_API_KEY)
-      );
-    case "anthropic":
-      return !!configuredEnv(process.env.ANTHROPIC_API_KEY);
-    case "xai":
-      return !!configuredEnv(process.env.XAI_API_KEY);
-  }
-}
-
 function normalizeWebRetrieval(
   config: WebRetrievalRoute | undefined,
 ): WebRetrievalRoute {
@@ -360,8 +295,6 @@ export const getGlobal = query({
       providers: CONFIGURABLE_MODEL_PROVIDERS.map((id) => ({
         id,
         label: PROVIDER_LABELS[id],
-        configured: globalProviderConfigured(id),
-        transport: providerTransport(id),
         languageModels: availableLanguageModels(id),
         audioModels: availableAudioModels(id),
         embeddingModels: availableEmbeddingModels(id),
@@ -384,7 +317,6 @@ export const getGlobal = query({
       webRetrievalProviders: OPERATOR_WEB_RETRIEVAL_PROVIDERS.map((id) => ({
         id,
         label: WEB_RETRIEVAL_LABELS[id],
-        configured: webRetrievalEnvConfigured(id),
       })),
       modelCapabilities: modelCapabilityCatalog(),
       updatedAt: settings?.updatedAt ?? null,
@@ -410,11 +342,6 @@ export const updateGlobalRoutes = mutation({
       if (!route) continue;
       if (!isModelRouteId(task)) throw new Error(`Unknown model route ${task}`);
       assertSupportedRoute(task, route);
-      if (!routeDirectlyConfigured(route)) {
-        throw new Error(
-          `${PROVIDER_LABELS[route.provider]} is not configured for direct model routing`,
-        );
-      }
     }
 
     const now = dayjs().valueOf();
@@ -472,11 +399,6 @@ export const resolveOperatorAgentRoute = internalQuery({
       );
     }
     assertSupportedRoute(OPERATOR_AGENT_MODEL_ROUTE_ID, route);
-    if (!routeDirectlyConfigured(route)) {
-      throw new Error(
-        `${PROVIDER_LABELS[route.provider]} is not configured for direct operator-agent inference`,
-      );
-    }
     return route;
   },
 });
@@ -528,9 +450,7 @@ export const resolveForOrg = internalQuery({
       if (
         globalRoute &&
         globalRoute.provider !== "moonshot" &&
-        !isRetiredModelRoute(globalRoute) &&
-        modelRouteSupportsTask(task, globalRoute) &&
-        routeDirectlyConfigured(globalRoute)
+        routeStaticallySupported(task, globalRoute)
       ) {
         routes[task] = globalRoute;
         routeSources[task] = "global";
@@ -548,8 +468,7 @@ export const resolveForOrg = internalQuery({
       if (
         globalRoute &&
         globalRoute.provider !== "moonshot" &&
-        !isRetiredModelRoute(globalRoute) &&
-        routeDirectlyConfigured(globalRoute)
+        routeStaticallySupported(routeId, globalRoute)
       ) {
         routes[routeId] = globalRoute;
         routeSources[routeId] = "global";
@@ -562,7 +481,6 @@ export const resolveForOrg = internalQuery({
     return {
       routes,
       routeSources,
-      providerKeys: {} as ProviderKeys,
       webRetrieval: normalizeWebRetrieval(globalSettings?.webRetrieval),
     };
   },
@@ -584,9 +502,7 @@ export async function resolvePublicModelDefaults(ctx: QueryCtx) {
     if (
       globalRoute &&
       globalRoute.provider !== "moonshot" &&
-      !isRetiredModelRoute(globalRoute) &&
-      modelRouteSupportsTask(task, globalRoute) &&
-      routeDirectlyConfigured(globalRoute)
+      routeStaticallySupported(task, globalRoute)
     ) {
       routes[task] = globalRoute;
       routeSources[task] = "global";
@@ -604,8 +520,7 @@ export async function resolvePublicModelDefaults(ctx: QueryCtx) {
     if (
       globalRoute &&
       globalRoute.provider !== "moonshot" &&
-      !isRetiredModelRoute(globalRoute) &&
-      routeDirectlyConfigured(globalRoute)
+      routeStaticallySupported(routeId, globalRoute)
     ) {
       routes[routeId] = globalRoute;
       routeSources[routeId] = "global";

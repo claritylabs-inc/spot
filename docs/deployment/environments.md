@@ -49,6 +49,173 @@ runtimes are not atomic. Keep expand/contract compatibility for destructive
 query-shape changes and version worker protocol changes so the old frontend and
 workers remain compatible while the new backend rolls out.
 
+## Shared-dev deployment
+
+Shared dev (`acoustic-caiman-755`) is an active integration lane and is not
+updated by the production-only `main` release workflow. Its Railway extraction
+worker is also active: it claims jobs and serves conversions rather than running
+health-only. Roll out an approved Spot commit to this lane separately from a
+clean checkout:
+
+1. Create a private env file containing the dev-scoped `CONVEX_DEPLOY_KEY` and
+   `CONVEX_DEPLOYMENT=dev:acoustic-caiman-755`. Verify the selected deployment
+   before making changes with
+   `npx convex function-spec --deployment acoustic-caiman-755`.
+2. Configure the shared-dev Convex and Railway worker with the migrated lane's
+   `CL_ROUTER_URL=https://tangible-warbler-253.convex.site`, matching inference
+   `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass`, and matching optional
+   timeout. Set `CONVEX_SITE_URL=https://acoustic-caiman-755.convex.site` on
+   the Railway extraction worker and verify Convex's built-in
+   `CONVEX_SITE_URL` resolves to that same canonical site before deploying
+   either consumer. Do not try to overwrite the Convex system variable with
+   `npx convex env set`. Before changing either caller, audit the legacy
+   `https://cl-router-dev.up.railway.app` routing state, pins, and freeze posture
+   against the new router, export while the source is briefly paused, import
+   into `tangible-warbler-253`, and verify the imported controls before changing
+   both callers as one coordinated lane. Do not execute inference or mutate
+   controls on the destination before that import. Keep the legacy service and
+   database intact as rollback evidence. `disciplined-dove-883` is the retained
+   abandoned first import and `intent-egret-409` is the preserved prior
+   synthetic-data target; neither is an active caller destination or the target
+   for this history import. `tangible-warbler-253` is deployed from cl-router
+   `402b7a2d38fa8453770a868bc4163363f33e99b5` by successful workflow
+   `34531575428`; all 16 environment values were verified and all canonical
+   tables and migration checkpoints were empty. It must remain guarded and
+   frozen until the next fresh transfer. Both active Spot shared-dev callers
+   remain on the legacy router until that coordinated cutover.
+   Keep existing consumer provider keys until the new code has been deployed
+   and exercised; the new runtime does not read them.
+3. From the exact approved Spot commit, deploy the widening Convex schema and
+   functions with `npx convex dev --once --env-file <shared-dev-env>`. The
+   optional legacy `brokerModelSettings.providerKeys` field must remain in this
+   release, and the new `routerAssets` table/HTTP handler must be present before
+   the worker is updated.
+4. Deploy the same commit explicitly to Railway environment `dev`, service
+   `spot-extraction-worker`. Set
+   `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION` in Convex to the exact
+   `@claritylabs/cl-sdk` spec reported by the worker, then require both health
+   responses to agree before allowing new extraction jobs.
+5. Run the representative caller and worker smokes below. Only after those pass,
+   run the legacy-key cleanup and remove AI, retrieval, retired gateway, and
+   Moonshot credentials from shared-dev Convex and the Railway dev worker.
+
+Do not use a Conductor worktree's ordinary `npx convex dev --once` for this
+step: it targets that worktree's native local deployment. Do not retire or
+disable the shared-dev worker while this lane remains the Conductor source and
+integration environment.
+
+### Router migration smoke paths
+
+The authenticated capabilities action is the read-only model-control check:
+
+```bash
+npx convex run --deployment acoustic-caiman-755 --inline-query \
+  'const p = await ctx.db.query("operatorProfiles").withIndex("status", q => q.eq("status", "active")).first(); return p?.userId ?? null'
+npx convex run --deployment acoustic-caiman-755 \
+  --identity '{"subject":"<operator-user-id>|router-migration-smoke"}' \
+  clRouterOperations:getCapabilities '{}'
+```
+
+It must return `availability: "available"`, `credentialMode: "router"`, and
+the configured provider booleans without any key material. Use `--prod` only
+for the explicitly approved production check.
+
+Use the bounded internal acceptance action for live inference. It accepts only
+canonical base64 M4A bytes between 1 KiB and 256 KiB; it accepts no organization,
+user, URL, model, storage, marker, task, or deletion selector. The action creates
+one random marker-owned organization with no users, memberships, contacts, or
+channels, exercises generation, structured output, a deterministic local echo
+tool and pinned continuation, embeddings, fixed `https://example.com/`
+retrieval, meaningful transcription, and a parser-valid exact 4 MiB PDF. A
+per-run token exists only inside the PDF content stream, and the action reports
+only whether the routed model returned that token. It attempts to remove its
+rows and storage before returning; a scheduled bounded cleanup remains if eager
+cleanup fails.
+
+Generate the supplied phrase locally or use the reviewed fixture with SHA-256
+`e674f6b0da5b03c5454c28320d81feebbf82bde916b39a510e07f1c899a6b61d`:
+
+```bash
+say -v Samantha \
+  'This is a synthetic router migration test. The sample number is forty two.' \
+  -o "$TMPDIR/spot-router-smoke.aiff"
+afconvert -f m4af -d aac \
+  "$TMPDIR/spot-router-smoke.aiff" \
+  "$TMPDIR/synthetic-audio.m4a"
+
+AUDIO_B64="$(base64 < "$TMPDIR/synthetic-audio.m4a" | tr -d '\n')"
+npx convex run --deployment acoustic-caiman-755 \
+  actions/operationalRouterSmoke:run \
+  "$(jq -nc --arg audioBase64 "$AUDIO_B64" '{audioBase64:$audioBase64}')"
+```
+
+The deploy key stays in the environment rather than the action arguments. A
+pass has top-level `ok: true`, every phase boolean true, nonzero request IDs and
+counts, `toolLoop.toolCallCount: 1`, `toolLoop.stepCount: 2`,
+`toolLoop.routePinned: true`, and `cleanup.fixtureDeleted: true`. The result
+contains no transcript, PDF token, source text, organization ID, storage ID,
+provider, model, or secret. If eager fixture cleanup reports false, rerun only
+the marker-ledger cleanup ID returned by that invocation:
+
+```bash
+npx convex run --deployment acoustic-caiman-755 \
+  operationalRouterSmoke:cleanupFixture \
+  '{"smokeRunId":"<result.cleanup.cleanupRequestId>"}'
+```
+
+The extraction worker has a separate transport-only smoke. It does not create
+or claim a queue item and never invokes extraction completion, enrichment, or
+notifications. First create its single random, no-user/no-customer active-lease
+fixture with deploy-key authentication:
+
+```bash
+WORKER_SMOKE_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+npx convex run --deployment acoustic-caiman-755 \
+  workerRouterTransportSmoke:createFixture \
+  "$(jq -nc --arg requestId "$WORKER_SMOKE_ID" '{requestId:$requestId}')"
+```
+
+Then use authenticated Railway SSH against the exact reviewed worker instance
+and run its compiled transport script. Keep the worker and router secrets in
+the service environment; explicitly remove every prohibited consumer routing
+flag and provider/retrieval credential from the child process:
+
+```bash
+railway ssh \
+  -p 21798fb8-c164-4eed-800c-c964978a9639 \
+  -s e8a4f55a-ae25-4d5e-ba0d-e18ea11271ac \
+  -e "$RAILWAY_ENVIRONMENT_ID" \
+  --deployment-instance "$RAILWAY_DEPLOYMENT_INSTANCE_ID" \
+  -- env \
+  -u AI_GATEWAY_API_KEY -u ANTHROPIC_API_KEY -u COHERE_API_KEY \
+  -u DEEPSEEK_API_KEY -u EXA_API_KEY -u FIREWORKS_API_KEY \
+  -u GOOGLE_API_KEY -u GOOGLE_GENERATIVE_AI_API_KEY -u MISTRAL_API_KEY \
+  -u MOONSHOTAI_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY \
+  -u PARALLEL_API_KEY -u VERCEL_AI_GATEWAY_API_KEY -u XAI_API_KEY \
+  -u CL_ROUTER_TASKS \
+  node /app/dist/routerTransportSmoke.js "$WORKER_SMOKE_ID"
+```
+
+The one stdout record must start with
+`[spot:worker-router-transport-smoke]` and contain sanitized JSON with
+`ok: true`, both cleanup acknowledgements true, and a nonempty router request
+ID. On interruption or a false cleanup acknowledgement, invoke the bounded
+marker-owned cleanup and repeat it after the asset-ledger retry if necessary:
+
+```bash
+npx convex run --deployment acoustic-caiman-755 \
+  actions/workerRouterTransportSmoke:cleanup \
+  "$(jq -nc --arg requestId "$WORKER_SMOKE_ID" '{requestId:$requestId}')"
+```
+
+Repeat both smokes with `--prod` only during the explicitly approved production
+acceptance window. Neither smoke proves the full extraction pipeline; that
+pipeline remains unverified until a separately approved synthetic product flow
+can run without customer or external-message effects. Never call a global
+worker claim RPC for smoke testing. Native-local Spot references are unreachable
+from the cloud router, so these staged-reference smokes target shared dev and
+production rather than ordinary Conductor-local Convex.
+
 The iMessage number follows the same expand-first rule. Browser surfaces prefer
 `NEXT_PUBLIC_SPOT_IMESSAGE_NUMBER` and its `_DISPLAY` companion, and the worker
 prefers `SPOT_IMESSAGE_CONTACT_PHONE` before the public Spot value. Both paths
@@ -108,17 +275,23 @@ mock path. Photon is not part of the Slack deployment path.
 
 ## cl-router
 
-`cl-router` is a separate Node 24/Fastify service with its own Railway
-Postgres database. Spot and the extraction worker call it over authenticated
-TLS; the router never calls Convex.
+`cl-router` runs as separate Convex deployments. Spot and the extraction worker
+call it over authenticated TLS. It has no general Spot Convex API or data
+client; its only Spot-origin access is bounded `GET` requests for exact
+allowlisted, signed asset URLs and allowlisted permanent storage URLs.
 
 Every deployed lane needs matching values:
 
-| Runtime           | Required values                                                                                                                                                                                                                                                                      |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Convex            | `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TASKS`, optional `CL_ROUTER_TIMEOUT_MS`; `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled                                                                                         |
-| Extraction worker | `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TASKS`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state), optional `CL_ROUTER_TIMEOUT_MS`                                                                                                 |
-| cl-router         | `SPOT_ENV`, `DATABASE_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, optional `CL_ROUTER_POLICY_REFRESH_MS`, `CL_ROUTER_SCORING_INTERVAL_MS`, and provider keys |
+| Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, optional `CL_ROUTER_TIMEOUT_MS`; configure `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled. |
+| Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state), optional `CL_ROUTER_TIMEOUT_MS`                                                                                                                                                                                                |
+| cl-router         | `SPOT_ENV`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, exact comma-separated `CL_ROUTER_ASSET_HOSTS`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, and provider/retrieval credentials. Do not set `DATABASE_URL`, `PORT`, Railway variables, or the retired Fastify refresh/scoring interval variables on the Convex router deployments. |
+
+Production callers use the canonical origin
+`https://router.toolsforenlightenment.org`. The underlying Convex site URL may
+be used as an external diagnostic when the custom domain is inaccessible from a
+particular network, but it is not a product-config fallback.
 
 The inference, admin, and session-HMAC secrets must be distinct within each
 lane and different between shared dev and production. The admin secret may
@@ -126,39 +299,54 @@ be copied only to Convex for the operator-authenticated, server-side
 `clRouterOperations.getDashboard` and `setGlobalFreeze` actions. They call the
 read-only policy and rollup endpoints and the versioned `/admin/freeze`
 control. Never expose the secret to browsers or configure it on extraction,
-iMessage, or mailbox workers. Provider keys live only in the router environment
-unless a broker route is selected; broker keys then transit in the per-request
-resolved settings snapshot and must never be logged.
+iMessage, or mailbox workers. AI provider, Parallel, and Exa credentials live
+only in the router environment. Spot settings snapshots, Convex, workers, and
+browser payloads never contain provider credentials.
 
-Rollout is task-scoped through `CL_ROUTER_TASKS`, except authenticated
-`query_reason`, which uses cl-router whenever `CL_ROUTER_URL` and
-`CL_ROUTER_SECRET` are configured. An empty task list keeps other calls on the
-existing direct-provider path. Enable classification, embeddings, and voice
-transcription first; enable extraction only after the worker and cl-sdk prompt
-versions match.
+`CL_ROUTER_URL` and `CL_ROUTER_SECRET` are required for every Spot AI and
+credentialed retrieval call. There is no task gate, consumer-side direct path,
+or break-glass provider fallback. A missing or unavailable router produces the
+typed unavailable state or failure for that operation.
 
 Tool-bearing agent loops use `getAgentLanguageModelForOrg`,
 `getAgentLanguageModelForPublicTask`, `generateAgentTextForOrg`, or
 `generateAgentTextForPublicTask`. These helpers preserve AI SDK tools and
 `stopWhen`, require stable run and surface metadata, select through cl-router
-once, pin the chosen route for the remaining steps, and disable router fallback
-after the first successful model step. Routed generation carries one total
-execution budget. Production may switch a no-tool call to the configured
-fallback for typed pre-execution unavailability, a proven pre-connection
-refusal/DNS failure, initial candidate exhaustion before visible output or tool
-execution, or a blank/output-limited completion. `query_reason` always retains
+once, and pin the chosen route for the remaining steps. Routed generation
+carries one total execution budget. The router may select its configured
+fallback inside the same request before visible output or tool execution.
+`query_reason` always retains
 a cross-provider router candidate even when a stale static settings snapshot
 contains a same-provider fallback. A blank or truncated
 turn that already completed tools instead receives one tool-free continuation
 over the existing results, so imports and other actions are not replayed.
 Generic text/object helpers still fail closed when passed tool-loop-only options.
+Every task family, including `operator_agent`, public/default calls, extraction,
+embeddings, and voice transcription, uses the same router-only boundary.
 
-Production may append `chat_vision`, `email_draft`,
-`email_reply`, and `mailbox_coordinator` to `CL_ROUTER_TASKS`. Authenticated
-web, iMessage, Slack, and MCP `query_reason` traffic is already router-owned;
-these flags add image chat, public-demo base-chat calls, inbound email,
-email-draft, and mailbox-coordinator steps. Do not enable `*`: task gates remain
-an explicit rollback boundary for every family other than `query_reason`.
+Router asset requests accept at most eight assets, 12 MiB for any one decoded
+asset, and 16 MiB decoded in aggregate. Spot callers additionally enforce the
+Convex runtime's stricter 4 MiB serialized UTF-8 JSON request ceiling, including
+base64 expansion. General attachment intake remains separately bounded at ten
+files, 25 MiB each, and 50 MiB aggregate because parseable documents become
+bounded text and are not router assets. `clRouterLanguageModel` is the final
+guard for every AI-SDK image/file part: it counts mixed inline and referenced
+binary inputs together and replaces inline bytes with an ActionCtx-backed,
+signed Spot reference when the exact serialized request would exceed 4 MiB.
+The direct cl-sdk callback request builder applies the same staging and cleanup
+rule independently. Existing stored email, thread, web, and operator assets use
+their authorized Spot storage URL plus known size. PDFs and audio that require
+temporary storage use short-lived signed Spot references.
+Generated extraction screenshots that cannot safely remain inline are staged
+through the worker-authenticated, current-lease-bound Spot asset ledger and are
+deleted after the model call or by bounded expiry cleanup. The router never
+persists prompt documents, images, or audio.
+
+Router asset host allowlists are exact. Shared dev permits permanent storage on
+`acoustic-caiman-755.convex.cloud` and expiry-enforced HTTP-action references on
+`acoustic-caiman-755.convex.site`; production permits permanent storage on
+`merry-platypus-82.convex.cloud` and expiry-enforced references on the canonical
+`actions.spot.insure` host. Do not add wildcard or underlying-site fallbacks.
 
 The exact-pinned `@claritylabs/cl-router-policy` contract owns model and task
 capability metadata. Spot validates function-tool schemas and fails closed on
@@ -175,14 +363,17 @@ or admin API is unavailable; it deliberately cannot be overridden by the UI.
 `CL_ROUTER_SHADOW=1` is a separate diagnostic override and is not controlled by
 the freeze toggle.
 
-During the guarded rollout, Spot uses direct break-glass only in production
-before it has observed output or tool execution. Proven pre-connection outages,
-the bounded initial interactive timeout, and typed candidate exhaustion are
-eligible; authentication/validation failures, other 4xx responses, malformed
-responses, and every failure after a successful step fail closed. Enabled tasks in local
-and shared development also fail closed so analytics cannot be
-silently bypassed. Chat never switches routes after visible streamed output or
-a tool result.
+`CL_ROUTER_MIGRATION_MODE=1` is a temporary state-import guard only. Set it on
+an otherwise idle destination immediately before export/import,
+verify the imported counts and history while the guard remains active, and
+clear it before caller cutover. It is not part of normal router runtime
+configuration and must not remain enabled after migration verification.
+
+Spot never changes transport after a router failure. Authentication/validation
+failures, typed candidate exhaustion, transport failures, malformed responses,
+and every failure after a successful step all fail closed at the consumer
+boundary. Chat preserves the first successful router route pin across later
+steps and never replays completed business tools after visible output.
 
 `/operator/routing` combines router health, policy and hourly rollups with
 30-day Spot routing events. It shows actual versus shadow routes, router-owned
@@ -210,38 +401,77 @@ or during an explicitly controlled production rollout.
 
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.
-Conductor setup keeps any imported router URL, admin secret, and timeout so
-the operator routing dashboard can observe shared-dev routing, but removes the
-imported task flags and caller secret so an isolated worktree cannot send
-traffic through the shared router. Configure those values explicitly only when
-deliberately running a local router.
+Conductor setup imports the source development router URL, inference secret,
+admin secret, tenant, and timeout into native-local Convex and passes only the
+execution subset to the extraction worker. New setup filters provider keys from
+the copied root env and cloud import. Because Convex environment imports are
+additive, filtering alone does not delete values already stored by an older
+workspace; every setup run now explicitly removes those legacy AI, retrieval,
+gateway, and Moonshot variables from native-local Convex. Rerun
+`npm run conductor:setup` once in each retained workspace to apply the cleanup.
+That cloud router cannot fetch native-local Convex storage or signed HTTP-action
+URLs on loopback. Parseable documents may still become bounded text and small
+rich inputs may remain inline within the exact 4 MiB serialized request ceiling,
+but any local input that requires a reference must fail before inference rather
+than omit evidence or forward an unreachable URL. End-to-end local referenced
+asset testing requires a local cl-router paired with the native-local Spot
+deployment, or an explicitly provisioned exact HTTPS development host added to
+that router lane's asset allowlist. Never allow localhost, private-address, or
+wildcard asset origins on a cloud router.
 
 ## Promotion checklist
 
 1. Run root CI, worker builds, Convex typecheck, and the cl-router OpenAPI and
    full checks.
-2. In the target environment, explicitly save an image-capable direct-provider
-   route for `operator_agent` and confirm its provider key is present. The
-   operator route is environment-local, is excluded from cl-router snapshots,
-   and intentionally fails health and inference closed when it is missing.
-3. Deploy cl-router and migrate its Postgres database before enabling any task
-   flag in a caller.
+2. In the target environment, explicitly save an image-capable route for
+   `operator_agent` and confirm the router capabilities endpoint reports its
+   provider configured. Spot sends this selection to cl-router as a request pin.
+3. Deploy the separate Convex cl-router lane and configure all required AI and
+   retrieval provider credentials there before deploying Spot consumers. State
+   import uses the temporary guarded migration procedure above; cl-router's
+   Convex deployments must not receive Postgres or Railway runtime variables.
 4. Configure the same bearer secret in the caller and router for that lane.
-5. Confirm `GET /health` and the Spot deployment health audit.
-6. Validate the task family in shared dev, then enable it through an explicitly
-   controlled production rollout. Compare route, error, latency, token, cost,
-   tool completion, and workflow-failure telemetry with the direct baseline in
-   `/operator/routing`.
-7. Keep the router environment panic and diagnostic overrides off. Use the
+   Before deploying callers or the extraction worker, set the exact lane
+   `CONVEX_SITE_URL` normally on the Railway worker and verify Convex's built-in
+   system value resolves to the same canonical origin; do not run
+   `npx convex env set CONVEX_SITE_URL`. The shared-dev value is
+   `https://acoustic-caiman-755.convex.site` and production is
+   `https://actions.spot.insure`.
+5. Before merging a commit whose Railway image uses the new asset actions,
+   explicitly deploy that exact commit's widening Convex schema/functions and
+   synchronize `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION`. The pre-migration
+   worker accepts the omitted optional `providerKeys` claim field and remains
+   compatible with this widening release while its process credentials remain;
+   this overlap is safe only after the value-free audit confirms there is no
+   broker/configured route that depended on a snapshot key. Then merge and let
+   the normal `main` workflow redeploy the same Convex commit and gate Railway
+   plus Vercel. This prevents Railway autodeploy from starting the new worker
+   against old Convex functions.
+6. Confirm `GET /health` and the Spot deployment health audit.
+7. Validate generation, tool loops, structured output, embeddings,
+   transcription, extraction assets, and retrieval in shared dev. Include a
+   staged asset whose router request remains small only because it uses the
+   lane's signed Spot reference, and confirm the router performs the bounded
+   allowlisted `GET`. Repeat that staged-reference smoke in production before
+   removing consumer credentials. Compare
+   route, error, latency, token, cost, tool completion, and workflow-failure
+   telemetry in `/operator/routing`.
+8. Keep the router environment panic and diagnostic overrides off. Use the
    `/operator/routing` global freeze toggle when autonomous route changes should
    pause or resume, then verify the new posture in the same dashboard.
-8. Review tool and structured-output compatibility plus calibrated workflow
-   quality before enabling autonomous selection for a task family. Introduce
-   read-only `chat`/`chat_vision` traffic before side-effectful `email_reply` or
-   `mailbox_coordinator`.
-9. For rollback, clear `CL_ROUTER_TASKS` for staged task families. Authenticated
-   `query_reason` remains router-owned while router credentials are configured;
-   use an operator model override for a targeted route, the operator global
-   freeze for autonomous-routing incidents, or remove the router inference
-   configuration for full direct-path break glass. Reserve
-   `CL_ROUTER_FROZEN=1` for incidents where the control surface is unavailable.
+9. Page through the value-free legacy key audit with
+   `npx convex run modelSettingsMigration:auditLegacyProviderKeys '{"paginationOpts":{"cursor":null,"numItems":100}}'`, passing each returned opaque cursor until
+   `isDone`. Review `configuredKeyProviders`, `configuredRouteProviders`, and
+   each `routeRows` organization against router capabilities. The audit returns
+   provider names, row IDs, and counts only—never credential values, lengths,
+   prefixes, or hints. Review the dry run from
+   `npx convex run migrations:unsetLegacyBrokerModelProviderKeys '{"dryRun":true}'`,
+   then run `npx convex run migrations:runLegacyBrokerModelProviderKeyCleanup`.
+   Repeat the full paginated audit until every page reports
+   `legacyFieldRows: 0`; only a later narrowing release may remove the optional
+   schema field.
+10. Remove AI and retrieval provider keys from Convex and every Spot worker only
+    after the router-backed consumer deploy is verified. Roll back by reverting
+    the consumer release or pinning/freezing router policy—not by restoring
+    consumer provider credentials. Reserve `CL_ROUTER_FROZEN=1` for incidents
+    where the control surface is unavailable.

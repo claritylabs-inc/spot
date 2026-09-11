@@ -41,6 +41,7 @@ import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.
 import type * as actions_mailboxCoordinator from "../actions/mailboxCoordinator.js";
 import type * as actions_mcpChat from "../actions/mcpChat.js";
 import type * as actions_mirrorWebChatToImessage from "../actions/mirrorWebChatToImessage.js";
+import type * as actions_operationalRouterSmoke from "../actions/operationalRouterSmoke.js";
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
 import type * as actions_operatorChannelDelivery from "../actions/operatorChannelDelivery.js";
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
@@ -57,6 +58,7 @@ import type * as actions_rechunkPolicy from "../actions/rechunkPolicy.js";
 import type * as actions_reconcilePolicy from "../actions/reconcilePolicy.js";
 import type * as actions_renderEmailPreview from "../actions/renderEmailPreview.js";
 import type * as actions_retryExtraction from "../actions/retryExtraction.js";
+import type * as actions_routerAssets from "../actions/routerAssets.js";
 import type * as actions_sendCertificateWorkflowJob from "../actions/sendCertificateWorkflowJob.js";
 import type * as actions_sendIntroImessage from "../actions/sendIntroImessage.js";
 import type * as actions_sendNotificationEmail from "../actions/sendNotificationEmail.js";
@@ -72,6 +74,7 @@ import type * as actions_slackReconciliation from "../actions/slackReconciliatio
 import type * as actions_threadTitle from "../actions/threadTitle.js";
 import type * as actions_updateDocumentChunk from "../actions/updateDocumentChunk.js";
 import type * as actions_vendorComplianceMonitor from "../actions/vendorComplianceMonitor.js";
+import type * as actions_workerRouterTransportSmoke from "../actions/workerRouterTransportSmoke.js";
 import type * as agentChannels from "../agentChannels.js";
 import type * as agentHistory from "../agentHistory.js";
 import type * as agentResponseFeedback from "../agentResponseFeedback.js";
@@ -199,7 +202,6 @@ import type * as lib_extractionPromotion from "../lib/extractionPromotion.js";
 import type * as lib_extractionPromptGuidance from "../lib/extractionPromptGuidance.js";
 import type * as lib_extractionTraceRouterFields from "../lib/extractionTraceRouterFields.js";
 import type * as lib_featureFlags from "../lib/featureFlags.js";
-import type * as lib_fireworksStructuredOutput from "../lib/fireworksStructuredOutput.js";
 import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js";
 import type * as lib_googleWorkspace from "../lib/googleWorkspace.js";
 import type * as lib_googleWorkspaceCredentials from "../lib/googleWorkspaceCredentials.js";
@@ -274,6 +276,7 @@ import type * as lib_publicDemoAgent from "../lib/publicDemoAgent.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
 import type * as lib_resend from "../lib/resend.js";
+import type * as lib_routerAssetSignature from "../lib/routerAssetSignature.js";
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
 import type * as lib_searchTokenizer from "../lib/searchTokenizer.js";
 import type * as lib_security from "../lib/security.js";
@@ -316,10 +319,12 @@ import type * as migrations from "../migrations.js";
 import type * as modelConfig from "../modelConfig.js";
 import type * as modelRoutingEvents from "../modelRoutingEvents.js";
 import type * as modelSettings from "../modelSettings.js";
+import type * as modelSettingsMigration from "../modelSettingsMigration.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
 import type * as notificationSlack from "../notificationSlack.js";
 import type * as notifications from "../notifications.js";
 import type * as oauth from "../oauth.js";
+import type * as operationalRouterSmoke from "../operationalRouterSmoke.js";
 import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
@@ -350,6 +355,7 @@ import type * as publicDemo from "../publicDemo.js";
 import type * as quoBrokerWebhook from "../quoBrokerWebhook.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as requirementExtractionRuns from "../requirementExtractionRuns.js";
+import type * as routerAssets from "../routerAssets.js";
 import type * as seed from "../seed.js";
 import type * as seedWorkflows from "../seedWorkflows.js";
 import type * as slack from "../slack.js";
@@ -362,6 +368,7 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
+import type * as workerRouterTransportSmoke from "../workerRouterTransportSmoke.js";
 
 import type {
   ApiFromModules,
@@ -403,6 +410,7 @@ declare const fullApi: ApiFromModules<{
   "actions/mailboxCoordinator": typeof actions_mailboxCoordinator;
   "actions/mcpChat": typeof actions_mcpChat;
   "actions/mirrorWebChatToImessage": typeof actions_mirrorWebChatToImessage;
+  "actions/operationalRouterSmoke": typeof actions_operationalRouterSmoke;
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
   "actions/operatorChannelDelivery": typeof actions_operatorChannelDelivery;
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
@@ -419,6 +427,7 @@ declare const fullApi: ApiFromModules<{
   "actions/reconcilePolicy": typeof actions_reconcilePolicy;
   "actions/renderEmailPreview": typeof actions_renderEmailPreview;
   "actions/retryExtraction": typeof actions_retryExtraction;
+  "actions/routerAssets": typeof actions_routerAssets;
   "actions/sendCertificateWorkflowJob": typeof actions_sendCertificateWorkflowJob;
   "actions/sendIntroImessage": typeof actions_sendIntroImessage;
   "actions/sendNotificationEmail": typeof actions_sendNotificationEmail;
@@ -434,6 +443,7 @@ declare const fullApi: ApiFromModules<{
   "actions/threadTitle": typeof actions_threadTitle;
   "actions/updateDocumentChunk": typeof actions_updateDocumentChunk;
   "actions/vendorComplianceMonitor": typeof actions_vendorComplianceMonitor;
+  "actions/workerRouterTransportSmoke": typeof actions_workerRouterTransportSmoke;
   agentChannels: typeof agentChannels;
   agentHistory: typeof agentHistory;
   agentResponseFeedback: typeof agentResponseFeedback;
@@ -561,7 +571,6 @@ declare const fullApi: ApiFromModules<{
   "lib/extractionPromptGuidance": typeof lib_extractionPromptGuidance;
   "lib/extractionTraceRouterFields": typeof lib_extractionTraceRouterFields;
   "lib/featureFlags": typeof lib_featureFlags;
-  "lib/fireworksStructuredOutput": typeof lib_fireworksStructuredOutput;
   "lib/forwardReplyDirection": typeof lib_forwardReplyDirection;
   "lib/googleWorkspace": typeof lib_googleWorkspace;
   "lib/googleWorkspaceCredentials": typeof lib_googleWorkspaceCredentials;
@@ -636,6 +645,7 @@ declare const fullApi: ApiFromModules<{
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;
   "lib/resend": typeof lib_resend;
+  "lib/routerAssetSignature": typeof lib_routerAssetSignature;
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
   "lib/searchTokenizer": typeof lib_searchTokenizer;
   "lib/security": typeof lib_security;
@@ -678,10 +688,12 @@ declare const fullApi: ApiFromModules<{
   modelConfig: typeof modelConfig;
   modelRoutingEvents: typeof modelRoutingEvents;
   modelSettings: typeof modelSettings;
+  modelSettingsMigration: typeof modelSettingsMigration;
   notificationPreferences: typeof notificationPreferences;
   notificationSlack: typeof notificationSlack;
   notifications: typeof notifications;
   oauth: typeof oauth;
+  operationalRouterSmoke: typeof operationalRouterSmoke;
   operator: typeof operator;
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
@@ -712,6 +724,7 @@ declare const fullApi: ApiFromModules<{
   quoBrokerWebhook: typeof quoBrokerWebhook;
   rateLimits: typeof rateLimits;
   requirementExtractionRuns: typeof requirementExtractionRuns;
+  routerAssets: typeof routerAssets;
   seed: typeof seed;
   seedWorkflows: typeof seedWorkflows;
   slack: typeof slack;
@@ -724,6 +737,7 @@ declare const fullApi: ApiFromModules<{
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
+  workerRouterTransportSmoke: typeof workerRouterTransportSmoke;
 }>;
 
 /**

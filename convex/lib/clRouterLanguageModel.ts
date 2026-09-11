@@ -15,12 +15,13 @@ import type {
 } from "@ai-sdk/provider";
 import {
   ClRouterRequestError,
+  MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
   clRouterGenerate,
   clRouterGenerateStream,
-  isClRouterDirectFallbackError,
   isClRouterFailureCode,
   type ClRouterClientOptions,
+  type ClRouterAssetReference,
   type ClRouterGenerateRequest,
   type ClRouterGenerateResponse,
   type ClRouterMessage,
@@ -32,6 +33,7 @@ import {
   type ClRouterUsage,
 } from "./clRouterClient";
 import type { ModelRoute, ModelTask } from "./modelCatalog";
+import { settleRouterAssetCleanups } from "../actions/routerAssets";
 
 export type ClRouterLanguageModelStep = {
   step: number;
@@ -51,16 +53,20 @@ export type ClRouterLanguageModelOptions = {
   settings: ClRouterSettingsSnapshot | null;
   sessionKey: string;
   trace?: ClRouterGenerateRequest["trace"];
-  directModel: LanguageModelV3;
   initialRoutePin?: ModelRoute;
+  allowFallback?: boolean;
+  assetStager?: (asset: {
+    bytes: Uint8Array;
+    mediaType: string;
+    filename?: string;
+  }) => Promise<{
+    reference: ClRouterAssetReference;
+    cleanup: () => void | Promise<void>;
+  }>;
   client?: ClRouterClientOptions;
   initialExecutionBudgetMs?: number;
   onResponse?: (
     response: ClRouterResponseMetadata,
-    step: ClRouterLanguageModelStep,
-  ) => void | Promise<void>;
-  onDirectFallback?: (
-    error: unknown,
     step: ClRouterLanguageModelStep,
   ) => void | Promise<void>;
 };
@@ -77,9 +83,8 @@ export class ClRouterToolContractError extends ClRouterRequestError {
     const expectation = expectedToolName
       ? `tool ${expectedToolName}`
       : "at least one tool call";
-    const actual = actualToolNames.length > 0
-      ? actualToolNames.join(", ")
-      : "none";
+    const actual =
+      actualToolNames.length > 0 ? actualToolNames.join(", ") : "none";
     super(
       "invalid_response",
       `cl-router violated the forced tool contract: expected ${expectation}, received ${actual}`,
@@ -105,7 +110,9 @@ function failureWithResponseContext(
   if (error instanceof ClRouterRequestError) {
     return new ClRouterRequestError(error.kind, error.message, {
       ...(error.status === undefined ? {} : { status: error.status }),
-      ...(error.routerCode === undefined ? {} : { routerCode: error.routerCode }),
+      ...(error.routerCode === undefined
+        ? {}
+        : { routerCode: error.routerCode }),
       ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
       ...(error.executionStarted === undefined
         ? {}
@@ -129,9 +136,67 @@ function dataContent(data: Uint8Array | string): string {
   return typeof data === "string" ? data : Buffer.from(data).toString("base64");
 }
 
+const MAX_ROUTER_ASSET_BYTES = 12 * 1024 * 1024;
+const MAX_ROUTER_ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
+const MAX_ROUTER_ASSET_COUNT = 8;
+
+type StagedAssetState = {
+  count: number;
+  decodedBytes: number;
+};
+
+function decodedData(data: Uint8Array | string): Uint8Array {
+  return typeof data === "string"
+    ? new Uint8Array(Buffer.from(data.replace(/\s/g, ""), "base64"))
+    : data;
+}
+
+function accountAsset(state: StagedAssetState, sizeBytes: number): void {
+  state.count += 1;
+  state.decodedBytes += sizeBytes;
+  if (sizeBytes <= 0 || sizeBytes > MAX_ROUTER_ASSET_BYTES) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Router assets must be nonempty and no larger than 12 MiB",
+    );
+  }
+  if (state.count > MAX_ROUTER_ASSET_COUNT) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Router requests may contain at most eight assets",
+    );
+  }
+  if (state.decodedBytes > MAX_ROUTER_ASSET_AGGREGATE_BYTES) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Router request assets may contain at most 16 MiB decoded data",
+    );
+  }
+}
+
+async function stageAsset(
+  state: StagedAssetState,
+  data: Uint8Array | string,
+  mediaType: string,
+  filename?: string,
+): Promise<ClRouterMessagePart> {
+  const bytes = decodedData(data);
+  accountAsset(state, bytes.byteLength);
+  return mediaType.startsWith("image/")
+    ? { type: "image", image: dataContent(bytes), mediaType }
+    : {
+        type: "file",
+        data: dataContent(bytes),
+        mediaType,
+        ...(filename ? { filename } : {}),
+      };
+}
+
 async function messageParts(
   content: Exclude<LanguageModelV3Prompt[number]["content"], string>,
   fetchImpl: typeof globalThis.fetch,
+  environment: Readonly<Record<string, string | undefined>>,
+  state: StagedAssetState,
 ): Promise<ClRouterMessagePart[]> {
   const parts: ClRouterMessagePart[] = [];
   for (const part of content) {
@@ -141,26 +206,42 @@ async function messageParts(
         break;
       case "file": {
         if (part.data instanceof URL) {
+          const spotOptions = part.providerOptions?.spot;
+          const configuredSize =
+            spotOptions && typeof spotOptions === "object"
+              ? (spotOptions as Record<string, unknown>).routerAssetSizeBytes
+              : undefined;
+          if (
+            configuredSize !== undefined &&
+            (!Number.isSafeInteger(configuredSize) ||
+              (configuredSize as number) <= 0)
+          ) {
+            throw new ClRouterRequestError(
+              "configuration",
+              "Router asset size metadata must be a positive integer",
+            );
+          }
           const source = await clRouterAssetReferenceFromUrl({
             url: part.data,
             mediaType: part.mediaType,
             filename: part.filename,
+            ...(typeof configuredSize === "number"
+              ? { sizeBytes: configuredSize }
+              : {}),
             fetch: fetchImpl,
+            environment,
           });
-          parts.push(part.mediaType.startsWith("image/")
-            ? { type: "image", source }
-            : { type: "file", source });
+          accountAsset(state, source.sizeBytes);
+          parts.push(
+            part.mediaType.startsWith("image/")
+              ? { type: "image", source }
+              : { type: "file", source },
+          );
           break;
         }
-        const data = dataContent(part.data);
-        parts.push(part.mediaType.startsWith("image/")
-          ? { type: "image", image: data, mediaType: part.mediaType }
-          : {
-            type: "file",
-            data,
-            mediaType: part.mediaType,
-            ...(part.filename ? { filename: part.filename } : {}),
-          });
+        parts.push(
+          await stageAsset(state, part.data, part.mediaType, part.filename),
+        );
         break;
       }
       case "tool-call":
@@ -192,19 +273,39 @@ async function messageParts(
   return parts;
 }
 
+async function clRouterMessagesFromPromptWithState(
+  prompt: LanguageModelV3Prompt,
+  fetchImpl: typeof globalThis.fetch,
+  environment: Readonly<Record<string, string | undefined>>,
+  state: StagedAssetState,
+): Promise<ClRouterMessage[]> {
+  const messages: ClRouterMessage[] = [];
+  for (const message of prompt) {
+    if (message.role === "system") {
+      messages.push({ role: "system", content: message.content });
+      continue;
+    }
+    messages.push({
+      role: message.role,
+      content: await messageParts(
+        message.content,
+        fetchImpl,
+        environment,
+        state,
+      ),
+    });
+  }
+  return messages;
+}
+
 export async function clRouterMessagesFromPrompt(
   prompt: LanguageModelV3Prompt,
   fetchImpl: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<ClRouterMessage[]> {
-  return Promise.all(prompt.map(async (message): Promise<ClRouterMessage> => {
-    if (message.role === "system") {
-      return { role: "system", content: message.content };
-    }
-    return {
-      role: message.role,
-      content: await messageParts(message.content, fetchImpl),
-    };
-  }));
+  return clRouterMessagesFromPromptWithState(prompt, fetchImpl, process.env, {
+    count: 0,
+    decodedBytes: 0,
+  });
 }
 
 function clRouterTools(
@@ -230,7 +331,9 @@ function clRouterTools(
     }
     return {
       name: definition.name,
-      ...(definition.description ? { description: definition.description } : {}),
+      ...(definition.description
+        ? { description: definition.description }
+        : {}),
       inputSchema: definition.inputSchema as Record<string, unknown>,
     };
   });
@@ -245,7 +348,9 @@ function clRouterToolChoice(
     : choice.type;
 }
 
-function unsupportedWarnings(options: LanguageModelV3CallOptions): SharedV3Warning[] {
+function unsupportedWarnings(
+  options: LanguageModelV3CallOptions,
+): SharedV3Warning[] {
   const unsupported = [
     ["temperature", options.temperature],
     ["stopSequences", options.stopSequences],
@@ -271,6 +376,7 @@ async function requestForCall(
   selectedRoute?: ModelRoute,
   allowFallback = true,
   executionBudgetMs?: number,
+  assetState?: StagedAssetState,
 ): Promise<ClRouterGenerateRequest> {
   const responseFormat = options.responseFormat;
   const schema =
@@ -284,15 +390,21 @@ async function requestForCall(
     ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
     ...(adapter.orgId ? { orgId: adapter.orgId } : {}),
     settings: adapter.settings,
-    messages: await clRouterMessagesFromPrompt(
+    messages: await clRouterMessagesFromPromptWithState(
       options.prompt,
       adapter.client?.fetch ?? globalThis.fetch,
+      adapter.client?.environment ?? process.env,
+      assetState ?? {
+        count: 0,
+        decodedBytes: 0,
+      },
     ),
     ...(schema
       ? {
-        schema,
-        schemaDialect: "https://json-schema.org/draft/2020-12/schema" as const,
-      }
+          schema,
+          schemaDialect:
+            "https://json-schema.org/draft/2020-12/schema" as const,
+        }
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
     ...(executionBudgetMs ? { executionBudgetMs } : {}),
@@ -301,7 +413,7 @@ async function requestForCall(
     ...(toolChoice ? { toolChoice } : {}),
     routing: {
       ...(selectedRoute ? { pin: selectedRoute } : {}),
-      allowFallback,
+      allowFallback: adapter.allowFallback ?? allowFallback,
     },
     ...(adapter.trace || parentRequestId
       ? {
@@ -312,6 +424,58 @@ async function requestForCall(
         }
       : {}),
   };
+}
+
+function requestJsonBytes(request: ClRouterGenerateRequest): number {
+  return new TextEncoder().encode(JSON.stringify(request)).byteLength;
+}
+
+async function stageOversizedInlineAssets(
+  request: ClRouterGenerateRequest,
+  stager: ClRouterLanguageModelOptions["assetStager"],
+  cleanups: Array<() => void | Promise<void>>,
+): Promise<ClRouterGenerateRequest> {
+  if (
+    !stager ||
+    requestJsonBytes(request) <= MAX_CL_ROUTER_JSON_REQUEST_BYTES - 1024
+  ) {
+    return request;
+  }
+  for (const message of request.messages ?? []) {
+    if (!Array.isArray(message.content)) continue;
+    for (let index = 0; index < message.content.length; index += 1) {
+      const part = message.content[index];
+      if (!part || (part.type !== "image" && part.type !== "file")) continue;
+      if (part.type === "image" && !("image" in part)) continue;
+      if (part.type === "file" && !("data" in part)) continue;
+      const inlineData = part.type === "image" ? part.image : part.data;
+      const mediaType = part.mediaType ?? "image/png";
+      const filename = part.type === "file" ? part.filename : undefined;
+      const staged = await stager({
+        bytes: decodedData(inlineData),
+        mediaType,
+        ...(filename ? { filename } : {}),
+      });
+      cleanups.push(staged.cleanup);
+      message.content[index] =
+        part.type === "image"
+          ? { type: "image", source: staged.reference }
+          : { type: "file", source: staged.reference };
+      if (
+        requestJsonBytes(request) <=
+        MAX_CL_ROUTER_JSON_REQUEST_BYTES - 1024
+      ) {
+        return request;
+      }
+    }
+  }
+  return request;
+}
+
+async function cleanupStagedAssets(
+  cleanups: Array<() => void | Promise<void>>,
+): Promise<void> {
+  await settleRouterAssetCleanups(cleanups);
 }
 
 function promptHasToolResults(prompt: LanguageModelV3Prompt): boolean {
@@ -345,15 +509,20 @@ function languageModelUsage(usage: ClRouterUsage): LanguageModelV3Usage {
 
 function finishReason(raw: string): LanguageModelV3FinishReason {
   const normalized = raw.toLowerCase().replace(/_/g, "-");
-  const unified = normalized === "stop" || normalized === "length" ||
-    normalized === "content-filter" || normalized === "tool-calls" ||
+  const unified =
+    normalized === "stop" ||
+    normalized === "length" ||
+    normalized === "content-filter" ||
+    normalized === "tool-calls" ||
     normalized === "error"
-    ? normalized
-    : "other";
+      ? normalized
+      : "other";
   return { unified, raw };
 }
 
-function providerMetadata(metadata: ClRouterResponseMetadata): SharedV3ProviderMetadata {
+function providerMetadata(
+  metadata: ClRouterResponseMetadata,
+): SharedV3ProviderMetadata {
   return {
     "cl-router": {
       requestId: metadata.requestId,
@@ -384,7 +553,9 @@ function jsonInput(input: unknown): string {
   return serialized;
 }
 
-function generatedContent(response: ClRouterGenerateResponse): LanguageModelV3Content[] {
+function generatedContent(
+  response: ClRouterGenerateResponse,
+): LanguageModelV3Content[] {
   if (typeof response.output === "string") {
     return response.output ? [{ type: "text", text: response.output }] : [];
   }
@@ -438,15 +609,19 @@ function validateForcedToolContract(
   if (
     expected === null
       ? toolNames.length > 0
-      : toolNames.length > 0 && toolNames.every((toolName) => toolName === expected)
-  ) return;
+      : toolNames.length > 0 &&
+        toolNames.every((toolName) => toolName === expected)
+  )
+    return;
   throw new ClRouterToolContractError(expected ?? undefined, toolNames);
 }
 
 function contentToolNames(content: LanguageModelV3Content[]): string[] {
   return content
-    .filter((part): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
-      part.type === "tool-call")
+    .filter(
+      (part): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+        part.type === "tool-call",
+    )
     .map((part) => part.toolName);
 }
 
@@ -475,89 +650,24 @@ function completedStepTelemetry(
   };
 }
 
-function isSafeInitialFallbackError(
-  error: unknown,
-  environment: NodeJS.ProcessEnv | Record<string, string | undefined>,
-  hasInitialExecutionBudget: boolean,
-): boolean {
-  const isProduction = environment.SPOT_ENV === "production";
-  return (isProduction && error instanceof ClRouterToolContractError) ||
-    (isProduction && error instanceof ClRouterRequestError &&
-      error.routerCode === "router_candidates_exhausted") ||
-    (isProduction && hasInitialExecutionBudget &&
-      error instanceof ClRouterRequestError &&
-      (error.kind === "timeout" || error.routerCode === "router_budget_exhausted")) ||
-    isClRouterDirectFallbackError(error, environment);
-}
-
-async function directGenerateWithContract(
-  model: LanguageModelV3,
-  options: LanguageModelV3CallOptions,
-): Promise<LanguageModelV3GenerateResult> {
-  const result = await model.doGenerate(options);
-  validateForcedToolContract(options.toolChoice, contentToolNames(result.content));
-  return result;
-}
-
-async function directStreamWithContract(
-  model: LanguageModelV3,
-  options: LanguageModelV3CallOptions,
-): Promise<LanguageModelV3StreamResult> {
-  const result = await model.doStream(options);
-  if (forcedToolExpectation(options.toolChoice) === undefined) return result;
-  return {
-    ...result,
-    stream: new ReadableStream<LanguageModelV3StreamPart>({
-      start(controller) {
-        void (async () => {
-          const reader = result.stream.getReader();
-          const toolNames: string[] = [];
-          let validatedAtFinish = false;
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              if (value.type === "tool-call") {
-                const expected = forcedToolExpectation(options.toolChoice);
-                if (typeof expected === "string" && value.toolName !== expected) {
-                  validateForcedToolContract(options.toolChoice, [value.toolName]);
-                }
-                toolNames.push(value.toolName);
-              } else if (value.type === "finish") {
-                validateForcedToolContract(options.toolChoice, toolNames);
-                validatedAtFinish = true;
-              }
-              controller.enqueue(value);
-            }
-            if (!validatedAtFinish) {
-              validateForcedToolContract(options.toolChoice, toolNames);
-            }
-            controller.close();
-          } catch (error) {
-            controller.error(error);
-          } finally {
-            reader.releaseLock();
-          }
-        })();
-      },
-    }),
-  };
-}
-
-async function pipeStream(
-  stream: ReadableStream<LanguageModelV3StreamPart>,
-  controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>,
-): Promise<void> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      controller.enqueue(value);
-    }
-  } finally {
-    reader.releaseLock();
+function supportedSpotAssetUrls(): RegExp[] {
+  const environment = process.env.SPOT_ENV?.trim().toLowerCase() ?? "local";
+  if (environment === "production") {
+    return [
+      /^https:\/\/merry-platypus-82\.convex\.cloud\/api\/storage\//,
+      /^https:\/\/actions\.spot\.insure\/router-assets\?/,
+    ];
   }
+  if (environment === "dev") {
+    return [
+      /^https:\/\/acoustic-caiman-755\.convex\.cloud\/api\/storage\//,
+      /^https:\/\/acoustic-caiman-755\.convex\.site\/router-assets\?/,
+    ];
+  }
+  return [
+    /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\/api\/storage\//,
+    /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?\/router-assets\?/,
+  ];
 }
 
 export function createClRouterLanguageModel(
@@ -566,7 +676,6 @@ export function createClRouterLanguageModel(
   let parentRequestId = adapter.trace?.parentRequestId;
   let selectedRoute: ModelRoute | undefined = adapter.initialRoutePin;
   let successfulRouterSteps = 0;
-  let useDirectForRun = false;
   const clientOptions = (
     abortSignal: AbortSignal | undefined,
     initialStep: boolean,
@@ -576,7 +685,9 @@ export function createClRouterLanguageModel(
       ? {
           environment: {
             ...(adapter.client?.environment ?? process.env),
-            CL_ROUTER_TIMEOUT_MS: String(adapter.initialExecutionBudgetMs + 5_000),
+            CL_ROUTER_TIMEOUT_MS: String(
+              adapter.initialExecutionBudgetMs + 5_000,
+            ),
           },
         }
       : {}),
@@ -599,42 +710,36 @@ export function createClRouterLanguageModel(
       console.warn("[cl-router] Failed to record routed model response", error);
     }
   };
-  const switchRunToDirect = async (
-    error: unknown,
-    step: ClRouterLanguageModelStep,
-  ) => {
-    useDirectForRun = true;
-    try {
-      await adapter.onDirectFallback?.(error, step);
-    } catch (recordingError) {
-      console.warn(
-        "[cl-router] Failed to record direct fallback",
-        recordingError,
-      );
-    }
-  };
-
   return {
     specificationVersion: "v3",
     provider: "cl-router",
     modelId: `cl-router/${adapter.task}`,
-    supportedUrls: { "*/*": [/^https:\/\/.*$/] },
+    supportedUrls: {
+      "*/*": supportedSpotAssetUrls(),
+    },
 
     async doGenerate(options): Promise<LanguageModelV3GenerateResult> {
-      if (useDirectForRun) {
-        return directGenerateWithContract(adapter.directModel, options);
-      }
       const step = stepContext(options);
+      const cleanups: Array<() => void | Promise<void>> = [];
+      const assetState: StagedAssetState = {
+        count: 0,
+        decodedBytes: 0,
+      };
       try {
-        const request = await requestForCall(
-          adapter,
-          options,
-          parentRequestId,
-          selectedRoute,
-          successfulRouterSteps === 0,
-          successfulRouterSteps === 0
-            ? adapter.initialExecutionBudgetMs
-            : undefined,
+        const request = await stageOversizedInlineAssets(
+          await requestForCall(
+            adapter,
+            options,
+            parentRequestId,
+            selectedRoute,
+            successfulRouterSteps === 0,
+            successfulRouterSteps === 0
+              ? adapter.initialExecutionBudgetMs
+              : undefined,
+            assetState,
+          ),
+          adapter.assetStager,
+          cleanups,
         );
         const response = await clRouterGenerate(
           request,
@@ -643,7 +748,10 @@ export function createClRouterLanguageModel(
         let content: LanguageModelV3Content[];
         try {
           content = generatedContent(response);
-          validateForcedToolContract(options.toolChoice, contentToolNames(content));
+          validateForcedToolContract(
+            options.toolChoice,
+            contentToolNames(content),
+          );
         } catch (error) {
           throw failureWithResponseContext(error, response);
         }
@@ -666,56 +774,42 @@ export function createClRouterLanguageModel(
           },
           warnings: unsupportedWarnings(options),
         };
-      } catch (error) {
-        if (
-          successfulRouterSteps > 0 ||
-          !isSafeInitialFallbackError(
-            error,
-            adapter.client?.environment ?? process.env,
-            adapter.initialExecutionBudgetMs !== undefined,
-          )
-        ) {
-          throw error;
-        }
-        await switchRunToDirect(error, step);
-        return directGenerateWithContract(adapter.directModel, options);
+      } finally {
+        await cleanupStagedAssets(cleanups);
       }
     },
 
     async doStream(options): Promise<LanguageModelV3StreamResult> {
-      if (useDirectForRun) {
-        return directStreamWithContract(adapter.directModel, options);
-      }
       const step = stepContext(options);
+      const cleanups: Array<() => void | Promise<void>> = [];
+      const assetState: StagedAssetState = {
+        count: 0,
+        decodedBytes: 0,
+      };
       let response: Awaited<ReturnType<typeof clRouterGenerateStream>>;
       try {
-        const request = await requestForCall(
-          adapter,
-          options,
-          parentRequestId,
-          selectedRoute,
-          successfulRouterSteps === 0,
-          successfulRouterSteps === 0
-            ? adapter.initialExecutionBudgetMs
-            : undefined,
+        const request = await stageOversizedInlineAssets(
+          await requestForCall(
+            adapter,
+            options,
+            parentRequestId,
+            selectedRoute,
+            successfulRouterSteps === 0,
+            successfulRouterSteps === 0
+              ? adapter.initialExecutionBudgetMs
+              : undefined,
+            assetState,
+          ),
+          adapter.assetStager,
+          cleanups,
         );
         response = await clRouterGenerateStream(
           request,
           clientOptions(options.abortSignal, successfulRouterSteps === 0),
         );
       } catch (error) {
-        if (
-          successfulRouterSteps > 0 ||
-          !isSafeInitialFallbackError(
-            error,
-            adapter.client?.environment ?? process.env,
-            adapter.initialExecutionBudgetMs !== undefined,
-          )
-        ) {
-          throw error;
-        }
-        await switchRunToDirect(error, step);
-        return directStreamWithContract(adapter.directModel, options);
+        await cleanupStagedAssets(cleanups);
+        throw error;
       }
 
       return {
@@ -767,7 +861,9 @@ export function createClRouterLanguageModel(
                       typeof expectedToolName === "string" &&
                       event.toolName !== expectedToolName
                     ) {
-                      validateForcedToolContract(options.toolChoice, [event.toolName]);
+                      validateForcedToolContract(options.toolChoice, [
+                        event.toolName,
+                      ]);
                     }
                     visibleRouterOutput = true;
                     routerToolNames.push(event.toolName);
@@ -790,7 +886,9 @@ export function createClRouterLanguageModel(
                         ...(event.error.executionStarted === undefined
                           ? {}
                           : { executionStarted: event.error.executionStarted }),
-                        ...(event.error.requestId ? { requestId: event.error.requestId } : {}),
+                        ...(event.error.requestId
+                          ? { requestId: event.error.requestId }
+                          : {}),
                         attempts: event.error.attempts,
                       },
                     );
@@ -839,29 +937,13 @@ export function createClRouterLanguageModel(
                 }
                 controller.close();
               } catch (error) {
-                if (
-                  !visibleRouterOutput &&
-                  successfulRouterSteps === 0 &&
-                  isSafeInitialFallbackError(
-                    error,
-                    adapter.client?.environment ?? process.env,
-                    adapter.initialExecutionBudgetMs !== undefined,
-                  )
-                ) {
-                  try {
-                    await switchRunToDirect(error, step);
-                    const fallback =
-                      await directStreamWithContract(adapter.directModel, options);
-                    await pipeStream(fallback.stream, controller);
-                    controller.close();
-                  } catch (fallbackError) {
-                    controller.error(fallbackError);
-                  }
-                  return;
-                }
                 controller.error(
-                  visibleRouterOutput ? new ClRouterVisibleOutputError(error) : error,
+                  visibleRouterOutput
+                    ? new ClRouterVisibleOutputError(error)
+                    : error,
                 );
+              } finally {
+                await cleanupStagedAssets(cleanups);
               }
             })();
           },

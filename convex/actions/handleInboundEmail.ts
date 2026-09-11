@@ -43,7 +43,10 @@ import {
   buildPolicyToolInstructions,
   stripMarkdown,
 } from "../lib/aiUtils";
-import { tryBuildParsedPdfText } from "../lib/liteparsePreprocessor";
+import {
+  buildAgentAttachmentParts,
+  MAX_AGENT_ATTACHMENT_TEXT_CHARS,
+} from "../lib/agentAttachmentContext";
 import {
   classifyPromptInjection,
   collectAllowedRecipients,
@@ -1090,54 +1093,30 @@ export const processInbound = internalAction({
       // Build the current message — include attachments if present
       const emailText = `Subject: ${subject}\n\nFrom: ${fromName ? `${fromName} <${fromEmail}>` : fromEmail}\n\n${bodyForAgent}`;
 
-      // Only include supported text/PDF attachments in Claude context
+      // Only include supported text/PDF attachments in model context.
       const claudeAttachments = attachments.filter((a) =>
         SUPPORTED_ATTACHMENT_TYPES.has(a.content_type),
       );
+      const storedModelAttachments = attachmentRecords.filter((attachment) =>
+        SUPPORTED_ATTACHMENT_TYPES.has(attachment.contentType),
+      );
+      const attachmentContext = await buildAgentAttachmentParts(
+        ctx,
+        storedModelAttachments,
+        {
+          includeRichParts: true,
+          remainingTextChars: { value: MAX_AGENT_ATTACHMENT_TEXT_CHARS },
+        },
+      );
 
-      if (claudeAttachments.length > 0) {
-        const contentParts: Array<
-          | { type: "text"; text: string }
-          | { type: "file"; data: string; mediaType: string }
-          | { type: "image"; image: string; mediaType: string }
-        > = [];
-
-        for (const att of claudeAttachments) {
-          if (att.content_type === "application/pdf") {
-            const parsedPdfText = await tryBuildParsedPdfText({
-              pdfBytes: att.buffer,
-              documentId: att.filename,
-              sourceKind: "attachment",
-              timeoutMs: 20_000,
-            });
-            if (parsedPdfText) {
-              contentParts.push({
-                type: "text",
-                text: `--- PDF attachment: ${att.filename} (LiteParse text) ---\n${parsedPdfText}\n--- End PDF attachment ---`,
-              });
-            } else {
-              contentParts.push({
-                type: "file",
-                data: att.buffer.toString("base64"),
-                mediaType: "application/pdf",
-              });
-            }
-          } else if (att.content_type.startsWith("image/")) {
-            contentParts.push({
-              type: "image",
-              image: att.buffer.toString("base64"),
-              mediaType: att.content_type,
-            });
-          } else {
-            contentParts.push({
-              type: "text",
-              text: `--- Attachment: ${att.filename} ---\n${att.buffer.toString("utf-8")}\n--- End attachment ---`,
-            });
-          }
-        }
-
-        contentParts.push({ type: "text", text: emailText });
-        messages.push({ role: "user", content: contentParts });
+      if (attachmentContext.parts.length > 0) {
+        messages.push({
+          role: "user",
+          content: [
+            ...attachmentContext.parts,
+            { type: "text", text: emailText },
+          ],
+        });
       } else {
         messages.push({ role: "user", content: emailText });
       }
@@ -1153,9 +1132,9 @@ export const processInbound = internalAction({
         (policyFocusBlock ? `\n\n${policyFocusBlock}` : "") +
         buildThreadHistoryToolInstructions() +
         buildThreadContinuityPrompt(boundedHistory.summary);
-      if (claudeAttachments.length > 0) {
-        const filenames = claudeAttachments.map((a) => a.filename).join(", ");
-        systemContext += `\n\nATTACHMENTS: The user's email includes ${claudeAttachments.length} attachment(s): ${filenames}. The content has been provided to you. Reference relevant information from attachments in your response when applicable.`;
+      if (attachmentContext.names.length > 0) {
+        const filenames = attachmentContext.names.join(", ");
+        systemContext += `\n\nATTACHMENTS: The user's email includes ${attachmentContext.names.length} attachment(s): ${filenames}. The content has been provided to you. Reference relevant information from attachments in your response when applicable.`;
       }
       const attachmentIndex: Record<
         string,

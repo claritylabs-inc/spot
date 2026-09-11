@@ -22,6 +22,26 @@ export const cloudConvexSelectionKeys = [
   "NEXT_PUBLIC_CONVEX_URL",
 ];
 
+// These credentials belong only in cl-router. Keep the list explicit so local
+// setup cannot accidentally strip unrelated integration credentials.
+export const consumerAiCredentialNames = [
+  "AI_GATEWAY_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "COHERE_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "EXA_API_KEY",
+  "FIREWORKS_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "MISTRAL_API_KEY",
+  "MOONSHOTAI_API_KEY",
+  "MOONSHOT_API_KEY",
+  "OPENAI_API_KEY",
+  "PARALLEL_API_KEY",
+  "VERCEL_AI_GATEWAY_API_KEY",
+  "XAI_API_KEY",
+];
+
 export function ensureNode24() {
   if (process.versions.node.split(".")[0] === "24") {
     const nodeBin = path.dirname(process.execPath);
@@ -121,6 +141,15 @@ function envAssignmentKey(rawLine) {
   const separator = line.indexOf("=");
   if (separator < 1) return undefined;
   return line.slice(0, separator).trim();
+}
+
+export function withoutConsumerAiCredentials(contents) {
+  const credentialNames = new Set(consumerAiCredentialNames);
+  return `${contents
+    .split(/\r?\n/)
+    .filter((line) => !credentialNames.has(envAssignmentKey(line)))
+    .join("\n")
+    .replace(/\n+$/, "")}\n`;
 }
 
 export function localConvexSelectionContents(contents, config) {
@@ -233,7 +262,6 @@ export function resolveConductorMapboxAccessToken(
 export function resolveConductorClRouterConfig(values, { required }) {
   const executionEntries = [
     ["CL_ROUTER_URL", values.url?.trim()],
-    ["CL_ROUTER_TASKS", values.tasks?.trim()],
     ["CL_ROUTER_SECRET", values.secret?.trim()],
   ];
   if (!required && executionEntries.every(([, value]) => !value)) {
@@ -251,8 +279,7 @@ export function resolveConductorClRouterConfig(values, { required }) {
 
   return {
     url: executionEntries[0][1],
-    tasks: executionEntries[1][1],
-    secret: executionEntries[2][1],
+    secret: executionEntries[1][1],
     timeoutMs: values.timeoutMs?.trim() || "180000",
     tenantId: values.tenantId?.trim() || "glass",
   };

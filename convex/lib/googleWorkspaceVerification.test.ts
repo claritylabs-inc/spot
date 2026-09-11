@@ -170,6 +170,7 @@ describe("Google Workspace verification", () => {
   });
 
   it("bounds mailbox verification by an overall deadline", async () => {
+    vi.useFakeTimers();
     const getMailboxProfile = vi.fn(
       (_mailbox: string, options?: { signal?: AbortSignal }) =>
         new Promise<{ emailAddress: string }>((_resolve, reject) => {
@@ -182,23 +183,30 @@ describe("Google Workspace verification", () => {
       { length: 11 },
       (_, index) => `person-${index}@example.com`,
     );
-    const result = await verifyGoogleWorkspaceConnection(
-      provider({ getMailboxProfile }),
-      config({ mailboxes }),
-      { deadlineMs: 5 },
-    );
-    expect(result).toMatchObject({
-      status: "failed",
-      completeness: "partial",
-      checkedMailboxCount: 0,
-      totalMailboxCount: 11,
-      error: "Google Workspace verification reached its time limit.",
-    });
-    expect(result.mailboxes).toHaveLength(0);
-    expect(getMailboxProfile).toHaveBeenCalledTimes(10);
+    try {
+      const verification = verifyGoogleWorkspaceConnection(
+        provider({ getMailboxProfile }),
+        config({ mailboxes }),
+        { deadlineMs: 5 },
+      );
+      await vi.advanceTimersByTimeAsync(5);
+      const result = await verification;
+      expect(result).toMatchObject({
+        status: "failed",
+        completeness: "partial",
+        checkedMailboxCount: 0,
+        totalMailboxCount: 11,
+        error: "Google Workspace verification reached its time limit.",
+      });
+      expect(result.mailboxes).toHaveLength(0);
+      expect(getMailboxProfile).toHaveBeenCalledTimes(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("applies the same deadline to Directory enumeration even when token fetch ignores abort", async () => {
+    vi.useFakeTimers();
     const listDirectoryUsers = vi
       .fn()
       .mockResolvedValueOnce({
@@ -206,34 +214,40 @@ describe("Google Workspace verification", () => {
         nextPageToken: "page-2",
       })
       .mockImplementationOnce(() => new Promise<never>(() => undefined));
-    const result = await verifyGoogleWorkspaceConnection(
-      provider({ listDirectoryUsers }),
-      config({
-        mailboxMode: "directory",
-        mailboxes: [],
-        directoryAdminEmail: "admin@claritylabs.inc",
-      }),
-      { deadlineMs: 5 },
-    );
+    try {
+      const verification = verifyGoogleWorkspaceConnection(
+        provider({ listDirectoryUsers }),
+        config({
+          mailboxMode: "directory",
+          mailboxes: [],
+          directoryAdminEmail: "admin@claritylabs.inc",
+        }),
+        { deadlineMs: 5 },
+      );
+      await vi.advanceTimersByTimeAsync(5);
+      const result = await verification;
 
-    expect(result).toMatchObject({
-      status: "failed",
-      completeness: "partial",
-      checkedMailboxCount: 0,
-      totalMailboxCount: null,
-      error: "Google Workspace verification reached its time limit.",
-      directory: {
-        status: "partial",
-        discoveredMailboxCount: 1,
+      expect(result).toMatchObject({
+        status: "failed",
+        completeness: "partial",
+        checkedMailboxCount: 0,
         totalMailboxCount: null,
-        hasMore: true,
         error: "Google Workspace verification reached its time limit.",
-      },
-      mailboxes: [],
-    });
-    expect(listDirectoryUsers).toHaveBeenCalledTimes(2);
-    expect(listDirectoryUsers.mock.calls[1][0].signal).toBeInstanceOf(
-      AbortSignal,
-    );
+        directory: {
+          status: "partial",
+          discoveredMailboxCount: 1,
+          totalMailboxCount: null,
+          hasMore: true,
+          error: "Google Workspace verification reached its time limit.",
+        },
+        mailboxes: [],
+      });
+      expect(listDirectoryUsers).toHaveBeenCalledTimes(2);
+      expect(listDirectoryUsers.mock.calls[1][0].signal).toBeInstanceOf(
+        AbortSignal,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

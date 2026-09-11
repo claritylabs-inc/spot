@@ -1,18 +1,7 @@
 import dayjs from "dayjs";
 import { createRequire } from "module";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import { Output, generateText as aiGenerateText, jsonSchema } from "ai";
-import type { LanguageModel } from "ai";
-import { zodSchema, type ProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createCohere } from "@ai-sdk/cohere";
-import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createMistral } from "@ai-sdk/mistral";
-import { createXai } from "@ai-sdk/xai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import {
@@ -33,17 +22,10 @@ import {
   DIRECT_MODEL_PROVIDERS,
   MODEL_ROUTING,
   SPECIAL_MODEL_ROUTES,
-  directProviderModelForRoute,
-  fallbackRouteForCall,
-  modelSupportsImageInput,
   primaryRouteForCall,
   type DirectModelProvider,
 } from "@claritylabs/cl-router-policy";
 import { modelCapabilitiesForRoute } from "./modelCapabilities.js";
-import {
-  normalizeJsonSchemaForFireworks,
-  structuredOutputSchemaForProvider,
-} from "./fireworksStructuredOutput.js";
 import {
   buildPdfSourceSpans,
   buildPdfTextSupplements,
@@ -61,9 +43,7 @@ import { resolveConvexStorageUrl } from "./convexStorageUrl.js";
 import {
   ClRouterProtocolError,
   createClRouterClient,
-  isClRouterTaskEnabled,
-  parseClRouterTaskFlags,
-  shouldFallBackFromClRouter,
+  type ClRouterAssetReference,
   type ClRouterGenerateResponse,
   type ClRouterProviderAssets,
 } from "./clRouterClient.js";
@@ -71,6 +51,12 @@ import { applyCarrierIdentityGuidance } from "./extractionPromptGuidance.js";
 import { watchClientDisconnect } from "./httpRequestCancellation.js";
 import { createPdfWorkAdmission } from "./pdfWorkAdmission.js";
 import { resolveWorkerRuntimeAccess } from "./railwayRuntime.js";
+import {
+  inlineRouterImageFits,
+  planExplicitRouterAssets,
+  stageRouterAsset,
+  validatedConvexSiteUrl,
+} from "./routerAssetUpload.js";
 import { preparePdfSourceWithLiteParseFallback } from "./pdfSourceFallback.js";
 import {
   aggregateProposalDocuments,
@@ -97,6 +83,10 @@ type ClaimedJob = {
   state: WorkerState;
   fileUrl: string;
   modelSettings?: WorkerModelSettings;
+  routerAssetLease?: {
+    jobKind: "policy" | "preview" | "proposal";
+    jobId: string;
+  };
 };
 
 type ClaimedPreviewJob = ClaimedJob;
@@ -139,17 +129,14 @@ type WorkerModelSettings = {
   routeSources?: Partial<
     Record<ModelTask | string, WorkerRouteSource | string>
   >;
-  providerKeys?: Partial<Record<ModelProvider | string, string>>;
 };
 
 type ResolvedWorkerModelRoute = {
   task: ModelTask;
-  model: LanguageModel;
   route: WorkerModelRoute;
   routeSource: WorkerRouteSource;
-  transport: "direct";
+  transport: "cl-router";
   capabilities: ModelCapabilities;
-  providerOptions?: ProviderOptions;
 };
 
 type TraceableModelRoute = {
@@ -220,6 +207,16 @@ const WORKER_PROTOCOL_VERSION =
     : "source-tree-v1";
 
 const actions = {
+  deleteWorkerRouterAsset: makeFunctionReference<
+    "action",
+    {
+      secret: string;
+      assetId: string;
+      expiresAt: number;
+      signature: string;
+    },
+    { deleted: boolean }
+  >("actions/routerAssets.js:deleteWorkerAsset"),
   saveExternalCompletionPayload: makeFunctionReference<
     "action",
     {
@@ -469,10 +466,14 @@ const actions = {
   >("actions/proposalExtraction.js:failExternalJob"),
 };
 
-const CONVEX_URL = requiredEnv("CONVEX_URL");
-const SECRET = requiredEnv("EXTRACTION_WORKER_SECRET");
 const SPOT_ENV =
   process.env.SPOT_ENV ?? process.env.RAILWAY_ENVIRONMENT_NAME ?? "local";
+const CONVEX_URL = requiredEnv("CONVEX_URL");
+const CONVEX_SITE_URL = validatedConvexSiteUrl(
+  requiredEnv("CONVEX_SITE_URL"),
+  SPOT_ENV,
+);
+const SECRET = requiredEnv("EXTRACTION_WORKER_SECRET");
 const WORKER_ID =
   process.env.EXTRACTION_WORKER_ID ?? `extraction-worker-${process.pid}`;
 const WORKER_VERSION =
@@ -518,9 +519,6 @@ const MODEL_CALL_TIMEOUT_MS = readBoundedIntEnv(
   30_000,
   15 * 60_000,
 );
-const CL_ROUTER_TASK_FLAGS = parseClRouterTaskFlags(
-  process.env.CL_ROUTER_TASKS,
-);
 const CL_ROUTER_TIMEOUT_MS = readBoundedIntEnv(
   "CL_ROUTER_TIMEOUT_MS",
   MODEL_CALL_TIMEOUT_MS,
@@ -529,16 +527,15 @@ const CL_ROUTER_TIMEOUT_MS = readBoundedIntEnv(
 );
 // Keep the original opaque tenant key so the rebrand does not fork learned
 // routing state from existing production policy history and telemetry.
-const CL_ROUTER_TENANT_ID =
-  cleanEnv(process.env.CL_ROUTER_TENANT_ID) ?? "glass";
-const clRouter =
-  CL_ROUTER_TASK_FLAGS.size > 0
-    ? createClRouterClient({
-        baseUrl: requiredEnv("CL_ROUTER_URL"),
-        secret: requiredEnv("CL_ROUTER_SECRET"),
-        timeoutMs: CL_ROUTER_TIMEOUT_MS,
-      })
-    : null;
+const CL_ROUTER_TENANT_ID = requiredEnv("CL_ROUTER_TENANT_ID").trim();
+if (CL_ROUTER_TENANT_ID !== "glass") {
+  throw new Error("CL_ROUTER_TENANT_ID must be glass");
+}
+const clRouter = createClRouterClient({
+  baseUrl: requiredEnv("CL_ROUTER_URL"),
+  secret: requiredEnv("CL_ROUTER_SECRET"),
+  timeoutMs: CL_ROUTER_TIMEOUT_MS,
+});
 const POLICY_PREVIEW_VERSION = "policy-preview-v2";
 const POLICY_PREVIEW_TEXT_LIMIT = readBoundedIntEnv(
   "EXTRACTION_PREVIEW_TEXT_LIMIT",
@@ -634,27 +631,6 @@ function nowMs(): number {
   return dayjs().valueOf();
 }
 
-function modelAbortSignal() {
-  return AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS);
-}
-
-async function withModelCallTimeout<T>(promise: Promise<T>): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error("The operation was aborted due to timeout"));
-        }, MODEL_CALL_TIMEOUT_MS + 1000);
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    void promise.catch(() => {});
-  }
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -735,10 +711,7 @@ const WORKER_COVERAGE_CLEANUP_ROUTE: WorkerModelRoute =
 const WORKER_QUALITY_ROUTE: WorkerModelRoute =
   SPECIAL_MODEL_ROUTES.extraction_quality;
 
-const WORKER_FALLBACK_ROUTE: WorkerModelRoute = SPECIAL_MODEL_ROUTES.fallback;
-
 const WORKER_MODEL_PROVIDERS = new Set<ModelProvider>(DIRECT_MODEL_PROVIDERS);
-const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
 
 function isModelProvider(value: string): value is ModelProvider {
   return WORKER_MODEL_PROVIDERS.has(value as ModelProvider);
@@ -769,162 +742,12 @@ function readRouteSource(value: unknown): WorkerRouteSource | undefined {
   return undefined;
 }
 
-function providerModel(
-  provider: ModelProvider,
-  model: string,
-  apiKey?: string,
-): LanguageModel {
-  switch (provider) {
-    case "openai":
-      return (apiKey ? createOpenAI({ apiKey }) : createOpenAI())(model);
-    case "anthropic":
-      return (apiKey ? createAnthropic({ apiKey }) : createAnthropic())(model);
-    case "google":
-      return (
-        apiKey
-          ? createGoogleGenerativeAI({ apiKey })
-          : createGoogleGenerativeAI()
-      )(model);
-    case "xai":
-      return (apiKey ? createXai({ apiKey }) : createXai())(model);
-    case "mistral":
-      return (apiKey ? createMistral({ apiKey }) : createMistral())(model);
-    case "cohere":
-      return (apiKey ? createCohere({ apiKey }) : createCohere())(model);
-    case "fireworks":
-      return createOpenAICompatible({
-        name: "fireworks",
-        baseURL: FIREWORKS_BASE_URL,
-        apiKey: apiKey ?? process.env.FIREWORKS_API_KEY,
-        includeUsage: true,
-        supportsStructuredOutputs: true,
-      })(model);
-    case "deepseek":
-      return (apiKey ? createDeepSeek({ apiKey }) : createDeepSeek())(model);
-  }
-}
-
-function cleanEnv(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed || undefined;
-}
-
-function directProviderApiKey(provider: ModelProvider): string | undefined {
-  switch (provider) {
-    case "openai":
-      return cleanEnv(process.env.OPENAI_API_KEY);
-    case "anthropic":
-      return cleanEnv(process.env.ANTHROPIC_API_KEY);
-    case "google":
-      return (
-        cleanEnv(process.env.GOOGLE_GENERATIVE_AI_API_KEY) ??
-        cleanEnv(process.env.GOOGLE_API_KEY)
-      );
-    case "xai":
-      return cleanEnv(process.env.XAI_API_KEY);
-    case "mistral":
-      return cleanEnv(process.env.MISTRAL_API_KEY);
-    case "cohere":
-      return cleanEnv(process.env.COHERE_API_KEY);
-    case "fireworks":
-      return cleanEnv(process.env.FIREWORKS_API_KEY);
-    case "deepseek":
-      return cleanEnv(process.env.DEEPSEEK_API_KEY);
-  }
-}
-
-function getProviderOptionsForRoute(
-  route: WorkerModelRoute,
-): ProviderOptions | undefined {
-  if (route.provider === "openai" && route.model === "gpt-5.5") {
-    return { openai: { reasoningEffort: "none" } };
-  }
-  return undefined;
-}
-
-function mergeProviderOptions(
-  ...options: Array<ProviderOptions | undefined>
-): ProviderOptions | undefined {
-  const merged: Record<string, unknown> = {};
-  for (const option of options) {
-    if (!option) continue;
-    for (const [provider, value] of Object.entries(option)) {
-      const existing = merged[provider];
-      if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        existing &&
-        typeof existing === "object" &&
-        !Array.isArray(existing)
-      ) {
-        merged[provider] = {
-          ...(existing as Record<string, unknown>),
-          ...(value as Record<string, unknown>),
-        };
-      } else {
-        merged[provider] = value;
-      }
-    }
-  }
-  return Object.keys(merged).length > 0
-    ? (merged as ProviderOptions)
-    : undefined;
-}
-
-function routeDirectApiKey(
-  route: WorkerModelRoute,
-  apiKey?: string,
-): string | undefined {
-  return cleanEnv(apiKey) ?? directProviderApiKey(route.provider);
-}
-
-function routeHasDirectAccess(
-  route: WorkerModelRoute,
-  apiKey?: string,
-): boolean {
-  return (
-    !!directProviderModelForRoute(route) && !!routeDirectApiKey(route, apiKey)
-  );
-}
-
-function routeTransport(_route: WorkerModelRoute, _apiKey?: string): "direct" {
-  return "direct";
-}
-
-function routeToModel(route: WorkerModelRoute, apiKey?: string): LanguageModel {
-  const nativeModel = directProviderModelForRoute(route);
-  if (!nativeModel) {
-    throw new Error(
-      `Model route ${route.provider}/${route.model} is not supported by the direct ${route.provider} provider. Configure a directly supported provider/model route instead.`,
-    );
-  }
-  const directApiKey = routeDirectApiKey(route, apiKey);
-  if (!directApiKey) {
-    throw new Error(
-      `Direct ${route.provider} API key is missing for model route ${route.provider}/${route.model}. AI Gateway is not a fallback for extraction worker model routing.`,
-    );
-  }
-  return providerModel(route.provider, nativeModel, directApiKey);
-}
-
 function modelTaskForTaskKind(taskKind?: string): ModelTask {
   if (taskKind === "extraction_preview") return "extraction_preview";
   if (taskKind === "extraction_classify") return "classification";
   if (taskKind === "extraction_coverage_recovery")
     return "extraction_coverage_recovery";
   return "extraction";
-}
-
-function apiKeyForRoute(
-  route: WorkerModelRoute,
-  routeSource: WorkerRouteSource,
-  settings?: WorkerModelSettings,
-): string | undefined {
-  if (routeSource === "broker" || routeSource === "configured") {
-    return cleanEnv(settings?.providerKeys?.[route.provider]);
-  }
-  return undefined;
 }
 
 function resolveConfiguredRoute(
@@ -935,7 +758,6 @@ function resolveConfiguredRoute(
 ): {
   route: WorkerModelRoute;
   routeSource: WorkerRouteSource;
-  apiKey?: string;
 } {
   const settingsRoute = settings?.routes?.[routeId];
   const configuredRoute = isWorkerModelRoute(settingsRoute)
@@ -945,29 +767,13 @@ function resolveConfiguredRoute(
     settings?.routeSources?.[routeId],
   );
   const routeSource = configuredRouteSource ?? "configured";
-  const configuredApiKey = configuredRoute
-    ? apiKeyForRoute(configuredRoute, routeSource, settings)
-    : undefined;
-  const canUseConfiguredRoute =
-    !!configuredRoute &&
-    routeHasDirectAccess(configuredRoute, configuredApiKey);
-  if (canUseConfiguredRoute) {
+  if (configuredRoute) {
     return {
       route: configuredRoute,
       routeSource,
-      apiKey: configuredApiKey,
     };
   }
   return { route: defaultRoute, routeSource: defaultRouteSource };
-}
-
-function resolveConfiguredFallbackRoute(settings?: WorkerModelSettings) {
-  return resolveConfiguredRoute(
-    "fallback",
-    WORKER_FALLBACK_ROUTE,
-    "fallback",
-    settings,
-  );
 }
 
 function resolveConfiguredQualityRoute(settings?: WorkerModelSettings) {
@@ -999,13 +805,7 @@ function resolveModelForTaskKind(
     : undefined;
   const configuredRouteSource = readRouteSource(settings?.routeSources?.[task]);
   const configuredSource = configuredRouteSource ?? "configured";
-  const configuredApiKey = configuredRoute
-    ? apiKeyForRoute(configuredRoute, configuredSource, settings)
-    : undefined;
-  const canUseConfiguredRoute =
-    !!configuredRoute &&
-    routeHasDirectAccess(configuredRoute, configuredApiKey);
-  const baseRoute = canUseConfiguredRoute
+  const baseRoute = configuredRoute
     ? configuredRoute
     : WORKER_STATIC_ROUTES[task];
   const quality = resolveConfiguredQualityRoute(settings);
@@ -1025,64 +825,16 @@ function resolveModelForTaskKind(
     coverageCleanup?.routeSource ??
     (useQualityPrimary
       ? quality.routeSource
-      : canUseConfiguredRoute
+      : configuredRoute
         ? configuredSource
         : "default");
-  const apiKey = coverageCleanup
-    ? coverageCleanup.apiKey
-    : useQualityPrimary
-      ? quality.apiKey
-      : canUseConfiguredRoute
-        ? configuredApiKey
-        : apiKeyForRoute(route, routeSource, settings);
   return {
-    model: routeToModel(route, apiKey),
     task,
     route,
     routeSource,
-    transport: routeTransport(route, apiKey),
+    transport: "cl-router",
     capabilities: modelCapabilitiesForRoute(route.model),
-    providerOptions: getProviderOptionsForRoute(route),
   };
-}
-
-function resolveFallbackModel(
-  task: ModelTask,
-  taskKind: string | undefined,
-  primaryRoute: WorkerModelRoute,
-  settings?: WorkerModelSettings,
-): ResolvedWorkerModelRoute | null {
-  const fallback = resolveConfiguredFallbackRoute(settings);
-  if (
-    !fallbackRouteForCall({
-      task,
-      taskKind,
-      primaryRoute,
-      fallbackRoute: fallback.route,
-    })
-  ) {
-    return null;
-  }
-  return {
-    task,
-    model: routeToModel(fallback.route, fallback.apiKey),
-    route: fallback.route,
-    routeSource: fallback.routeSource,
-    transport: routeTransport(fallback.route, fallback.apiKey),
-    capabilities: modelCapabilitiesForRoute(fallback.route.model),
-    providerOptions: getProviderOptionsForRoute(fallback.route),
-  };
-}
-
-function isMissingApiKeyError(error: unknown): boolean {
-  return /api key is missing/i.test(errorMessage(error));
-}
-
-function providerOptionsForModelCall(
-  route: ResolvedWorkerModelRoute,
-  providerOptions: ProviderOptions | undefined,
-): ProviderOptions | undefined {
-  return mergeProviderOptions(route.providerOptions, providerOptions);
 }
 
 function modelRouteTrace(route: TraceableModelRoute) {
@@ -1092,57 +844,6 @@ function modelRouteTrace(route: TraceableModelRoute) {
     routeSource: route.routeSource,
     transport: route.transport,
   };
-}
-
-async function recordModelCallError(opts: {
-  job: Pick<ClaimedJob, "state">;
-  route: TraceableModelRoute;
-  label: string;
-  taskKind?: string;
-  startedAt: number;
-  attempt: number;
-  error: unknown;
-  details: unknown;
-}) {
-  await recordTraceEvent(opts.job, {
-    kind: "model_call",
-    label: opts.label,
-    task: opts.route.task,
-    taskKind: opts.taskKind,
-    ...modelRouteTrace(opts.route),
-    attempt: opts.attempt,
-    status: "error",
-    durationMs: nowMs() - opts.startedAt,
-    error: errorMessage(opts.error),
-    details: opts.details,
-  });
-}
-
-async function recordModelCallStart(opts: {
-  job: Pick<ClaimedJob, "state">;
-  route: TraceableModelRoute;
-  label: string;
-  taskKind?: string;
-  attempt: number;
-  maxOutputTokens: number;
-  providerOptions?: ProviderOptions;
-  trace?: ModelCallTrace;
-}) {
-  await recordTraceEvent(opts.job, {
-    kind: "worker",
-    phase: "model_call",
-    label: opts.label,
-    task: opts.route.task,
-    taskKind: opts.taskKind,
-    ...modelRouteTrace(opts.route),
-    attempt: opts.attempt,
-    status: "started",
-    details: stripUndefined({
-      maxOutputTokens: opts.maxOutputTokens,
-      trace: opts.trace,
-      inputSummary: providerInputSummary(opts.providerOptions),
-    }),
-  });
 }
 
 async function recordModelCallSoftFailure(opts: {
@@ -1210,16 +911,6 @@ function maxOutputTokensForRoute(
       route.capabilities.maxOutputTokens)
     : route.capabilities.maxOutputTokens;
   return routeMax ? Math.min(maxTokens, routeMax) : maxTokens;
-}
-
-function logFallback(
-  primary: ResolvedWorkerModelRoute,
-  fallback: ResolvedWorkerModelRoute,
-  error: unknown,
-) {
-  console.warn(
-    `Primary extraction model (${primary.route.provider}/${primary.route.model}) failed: ${errorMessage(error)}. Retrying with ${fallback.route.provider}/${fallback.route.model}.`,
-  );
 }
 
 function readTraceDetails(params: {
@@ -1322,7 +1013,9 @@ function stripUndefined(value: unknown): unknown {
   );
 }
 
-function providerInputSummary(providerOptions: ProviderOptions | undefined) {
+function providerInputSummary(
+  providerOptions: Record<string, unknown> | undefined,
+) {
   const options = providerOptions as ExtractionProviderOptions | undefined;
   if (!options) return undefined;
   return {
@@ -1362,7 +1055,7 @@ function modelTraceDetails(params: {
   prompt: string;
   system?: string;
   maxOutputTokens: number;
-  providerOptions?: ProviderOptions;
+  providerOptions?: Record<string, unknown>;
   trace?: ModelCallTrace;
   output?: unknown;
   outputKind?: "text" | "object";
@@ -1401,111 +1094,6 @@ type ExtractionProviderOptions = Record<string, unknown> & {
   images?: ExtractionImage[];
 };
 
-function buildPdfFilePart(opts: {
-  pdfUrl?: URL | string;
-  pdfBytes?: Uint8Array;
-  pdfBase64?: string;
-  mimeType?: string;
-}) {
-  const mediaType = opts.mimeType ?? "application/pdf";
-  const filename = "document.pdf";
-  if (opts.pdfUrl) {
-    const url = opts.pdfUrl instanceof URL ? opts.pdfUrl : new URL(opts.pdfUrl);
-    return { type: "file" as const, data: url, mediaType, filename };
-  }
-  if (opts.pdfBytes) {
-    return { type: "file" as const, data: opts.pdfBytes, mediaType, filename };
-  }
-  if (opts.pdfBase64) {
-    return { type: "file" as const, data: opts.pdfBase64, mediaType, filename };
-  }
-  return null;
-}
-
-function extractEmbeddedPdf(
-  prompt: string,
-): { text: string; pdfBase64: string } | null {
-  const match = prompt.match(/^([\s\S]+?\n)(JVBER[A-Za-z0-9+/=\s]{200,})$/);
-  if (!match) return null;
-  return {
-    text: match[1].trim(),
-    pdfBase64: match[2].replace(/\s/g, ""),
-  };
-}
-
-function buildPromptInput(
-  prompt: string,
-  providerOptions?: Record<string, unknown>,
-  route?: WorkerModelRoute,
-) {
-  const options = providerOptions as ExtractionProviderOptions | undefined;
-  const supportsPdfFileInput = route?.provider !== "fireworks";
-  const supportsImageInput = route ? routeSupportsImageInput(route) : true;
-  const pdfPart = supportsPdfFileInput
-    ? buildPdfFilePart({
-        pdfUrl: options?.pdfUrl,
-        pdfBytes: options?.pdfBytes,
-        pdfBase64: options?.pdfBase64,
-        mimeType: options?.mimeType,
-      })
-    : null;
-  if (supportsImageInput && options?.images?.length) {
-    return {
-      messages: [
-        {
-          role: "user" as const,
-          content: [
-            ...options.images.map((img) => ({
-              type: "image" as const,
-              image: img.imageBase64,
-              mediaType: img.mimeType,
-            })),
-            ...(pdfPart ? [pdfPart] : []),
-            { type: "text" as const, text: prompt },
-          ],
-        },
-      ],
-    };
-  }
-
-  if (pdfPart) {
-    return {
-      messages: [
-        {
-          role: "user" as const,
-          content: [{ type: "text" as const, text: prompt }, pdfPart],
-        },
-      ],
-    };
-  }
-
-  const embedded = supportsPdfFileInput ? extractEmbeddedPdf(prompt) : null;
-  if (embedded) {
-    return {
-      messages: [
-        {
-          role: "user" as const,
-          content: [
-            { type: "text" as const, text: embedded.text },
-            {
-              type: "file" as const,
-              data: embedded.pdfBase64,
-              mediaType: "application/pdf",
-              filename: "document.pdf",
-            },
-          ],
-        },
-      ],
-    };
-  }
-
-  return { prompt };
-}
-
-function routeSupportsImageInput(route: WorkerModelRoute): boolean {
-  return modelSupportsImageInput(route);
-}
-
 async function recordTraceEvent(
   job: Pick<ClaimedJob, "state">,
   event: {
@@ -1539,36 +1127,103 @@ async function recordTraceEvent(
   }
 }
 
-function clRouterAssets(
-  providerOptions: Record<string, unknown>,
-  pdfUrl?: string,
-): ClRouterProviderAssets | undefined {
-  const options = providerOptions as ExtractionProviderOptions;
-  const images = Array.isArray(options.images)
-    ? options.images.filter(
-        (image) =>
-          typeof image.imageBase64 === "string" && image.imageBase64.length > 0,
-      )
-    : undefined;
-  if (
-    typeof options.pdfBase64 !== "string" &&
-    !(options.pdfBytes instanceof Uint8Array) &&
-    !images?.length
-  ) {
-    return undefined;
-  }
+type StagedRouterAsset = {
+  assetId: string;
+  expiresAt: number;
+  signature: string;
+};
+
+function routerAssetLease(job: ClaimedJob) {
   return {
-    ...(pdfUrl ? { pdfUrl } : {}),
-    ...(typeof options.pdfBase64 === "string"
-      ? { pdfBase64: options.pdfBase64 }
-      : {}),
-    ...(options.pdfBytes instanceof Uint8Array
-      ? { pdfBytes: options.pdfBytes }
-      : {}),
-    ...(typeof options.mimeType === "string"
-      ? { mimeType: options.mimeType }
-      : {}),
-    ...(images?.length ? { images } : {}),
+    jobKind: job.routerAssetLease?.jobKind ?? "policy",
+    jobId: job.routerAssetLease?.jobId ?? job.policyId,
+    leaseId: job.leaseId,
+    orgId: job.state.orgId,
+  } as const;
+}
+
+async function deleteStagedRouterAssets(assets: StagedRouterAsset[]) {
+  const results = await Promise.allSettled(
+    assets.map((asset) =>
+      convex.action(actions.deleteWorkerRouterAsset, {
+        secret: SECRET,
+        assetId: asset.assetId,
+        expiresAt: asset.expiresAt,
+        signature: asset.signature,
+      }),
+    ),
+  );
+  const failed = results.filter(
+    (result) => result.status === "rejected",
+  ).length;
+  if (failed > 0) {
+    console.warn(
+      `Failed to delete ${failed} staged router asset${failed === 1 ? "" : "s"}; scheduled expiry cleanup remains active.`,
+    );
+  }
+}
+
+async function stageRouterImage(
+  job: ClaimedJob,
+  image: ExtractionImage,
+): Promise<{ reference: ClRouterAssetReference; cleanup: StagedRouterAsset }> {
+  const bytes = Buffer.from(image.imageBase64.replace(/\s/g, ""), "base64");
+  return await stageRouterAsset({
+    siteUrl: CONVEX_SITE_URL,
+    secret: SECRET,
+    lease: routerAssetLease(job),
+    mediaType: image.mimeType,
+    filename: "page.png",
+    bytes,
+    cleanupInvalidResponse: async (cleanup) => {
+      await deleteStagedRouterAssets([cleanup]);
+    },
+  });
+}
+
+async function prepareClRouterAssets(
+  job: ClaimedJob,
+  providerOptions: Record<string, unknown>,
+  baseEnvelopeBytes: number,
+): Promise<{
+  assets?: ClRouterProviderAssets;
+  staged: StagedRouterAsset[];
+}> {
+  const options = providerOptions as ExtractionProviderOptions;
+  const { images, pdfBase64, pdfBytes, pdfSize } =
+    planExplicitRouterAssets(providerOptions);
+  const includePdf = pdfSize > 0;
+  const staged: StagedRouterAsset[] = [];
+  const routerImages: NonNullable<ClRouterProviderAssets["images"]> = [];
+  let inlineEnvelopeBytes = baseEnvelopeBytes;
+  try {
+    for (const image of images) {
+      const normalized = image.imageBase64.replace(/\s/g, "");
+      const inlineBytes = Buffer.byteLength(normalized) + 128;
+      if (inlineRouterImageFits(inlineEnvelopeBytes, normalized)) {
+        routerImages.push({ ...image, imageBase64: normalized });
+        inlineEnvelopeBytes += inlineBytes;
+        continue;
+      }
+      const uploaded = await stageRouterImage(job, image);
+      routerImages.push({ source: uploaded.reference });
+      staged.push(uploaded.cleanup);
+    }
+  } catch (error) {
+    await deleteStagedRouterAssets(staged);
+    throw error;
+  }
+  if (!includePdf && routerImages.length === 0) return { staged };
+  return {
+    assets: {
+      ...(includePdf ? { pdfUrl: job.fileUrl, pdfBase64 } : {}),
+      ...(includePdf && pdfBytes ? { pdfBytes } : {}),
+      ...(typeof options.mimeType === "string"
+        ? { mimeType: options.mimeType }
+        : {}),
+      ...(routerImages.length ? { images: routerImages } : {}),
+    },
+    staged,
   };
 }
 
@@ -1597,9 +1252,25 @@ function clRouterTraceDetails(response: ClRouterGenerateResponse) {
   };
 }
 
+function routerSettingsSnapshot(settings?: WorkerModelSettings) {
+  if (!settings) return undefined;
+  return {
+    ...(settings.routes ? { routes: settings.routes } : {}),
+    ...(settings.routeSources ? { routeSources: settings.routeSources } : {}),
+  };
+}
+
+function explicitRouterPin(route: ResolvedWorkerModelRoute) {
+  return route.routeSource === "broker" ||
+    route.routeSource === "global" ||
+    route.routeSource === "configured"
+    ? { pin: route.route, allowFallback: true }
+    : undefined;
+}
+
 async function generateObjectWithClRouter<T>(opts: {
   job: ClaimedJob;
-  task: ModelTask;
+  route: ResolvedWorkerModelRoute;
   taskKind?: string;
   label: string;
   prompt: string;
@@ -1614,19 +1285,13 @@ async function generateObjectWithClRouter<T>(opts: {
   object: T;
   usage: ReturnType<typeof mapUsage>;
   route: TraceableModelRoute;
-} | null> {
-  if (
-    !clRouter ||
-    !isClRouterTaskEnabled(CL_ROUTER_TASK_FLAGS, opts.task, opts.taskKind)
-  ) {
-    return null;
-  }
+}> {
   const startedAt = nowMs();
   await recordTraceEvent(opts.job, {
     kind: "worker",
     phase: "model_call",
     label: opts.label,
-    task: opts.task,
+    task: opts.route.task,
     taskKind: opts.taskKind,
     transport: "cl-router",
     attempt: 1,
@@ -1634,25 +1299,49 @@ async function generateObjectWithClRouter<T>(opts: {
     details: stripUndefined({
       maxOutputTokens: opts.maxOutputTokens,
       trace: opts.trace,
-      inputSummary: providerInputSummary(
-        opts.providerOptions as ProviderOptions,
-      ),
+      inputSummary: providerInputSummary(opts.providerOptions),
       schemaBytes: Buffer.byteLength(JSON.stringify(opts.schema)),
     }),
   });
+  const settings = routerSettingsSnapshot(opts.modelSettings);
+  const routing = explicitRouterPin(opts.route);
+  const baseEnvelopeBytes =
+    Buffer.byteLength(
+      JSON.stringify(
+        stripUndefined({
+          task: opts.route.task,
+          taskKind: opts.taskKind,
+          tenantId: CL_ROUTER_TENANT_ID,
+          orgId: opts.job.state.orgId,
+          settings,
+          system: opts.system,
+          prompt: opts.prompt,
+          schema: opts.schema,
+          maxTokens: opts.maxOutputTokens,
+          sessionKey: opts.job.state.traceId ?? opts.job.policyId,
+          routing,
+        }),
+      ),
+    ) + 8_192;
+  const preparedAssets = await prepareClRouterAssets(
+    opts.job,
+    opts.providerOptions,
+    baseEnvelopeBytes,
+  );
   try {
     const response = await clRouter.generate({
-      task: opts.task,
+      task: opts.route.task,
       taskKind: opts.taskKind,
       tenantId: CL_ROUTER_TENANT_ID,
       orgId: opts.job.state.orgId,
-      settings: opts.modelSettings,
+      settings,
       system: opts.system,
       prompt: opts.prompt,
       schema: opts.schema,
       maxTokens: opts.maxOutputTokens,
       sessionKey: opts.job.state.traceId ?? opts.job.policyId,
-      assets: clRouterAssets(opts.providerOptions, opts.job.fileUrl),
+      assets: preparedAssets.assets,
+      routing,
       trace: stripUndefined({
         traceId: opts.job.state.traceId,
         label: opts.label,
@@ -1663,7 +1352,7 @@ async function generateObjectWithClRouter<T>(opts: {
       }) as Record<string, unknown>,
     });
     const object = opts.validate(response.output);
-    const route = clRouterTraceRoute(opts.task, response);
+    const route = clRouterTraceRoute(opts.route.task, response);
     const usage = mapUsage(response.usage);
     await recordModelCallComplete({
       job: opts.job,
@@ -1677,12 +1366,12 @@ async function generateObjectWithClRouter<T>(opts: {
         ...(modelTraceDetails({
           kind: "generateObject",
           label: opts.label,
-          task: opts.task,
+          task: opts.route.task,
           taskKind: opts.taskKind,
           prompt: opts.prompt,
           system: opts.system,
           maxOutputTokens: opts.maxOutputTokens,
-          providerOptions: opts.providerOptions as ProviderOptions,
+          providerOptions: opts.providerOptions,
           trace: opts.trace,
           output: object,
           outputKind: "object",
@@ -1692,13 +1381,10 @@ async function generateObjectWithClRouter<T>(opts: {
     });
     return { object, usage, route };
   } catch (error) {
-    const canUseDirectFallback = shouldFallBackFromClRouter(error, {
-      SPOT_ENV,
-    });
     await recordTraceEvent(opts.job, {
       kind: "model_call",
       label: opts.label,
-      task: opts.task,
+      task: opts.route.task,
       taskKind: opts.taskKind,
       transport: "cl-router",
       attempt: 1,
@@ -1707,14 +1393,11 @@ async function generateObjectWithClRouter<T>(opts: {
       error: errorMessage(error),
       details: stripUndefined({
         trace: opts.trace,
-        directFallbackEligible: canUseDirectFallback,
       }),
     });
-    if (!canUseDirectFallback) throw error;
-    console.warn(
-      `cl-router failed safely for ${opts.taskKind ?? opts.task}: ${errorMessage(error)}. Retrying through the direct provider path.`,
-    );
-    return null;
+    throw error;
+  } finally {
+    await deleteStagedRouterAssets(preparedAssets.staged);
   }
 }
 
@@ -1749,14 +1432,12 @@ function buildWorkerExtractor(opts: {
       route,
       taskKind,
     );
-    if (
-      clRouter &&
-      isClRouterTaskEnabled(CL_ROUTER_TASK_FLAGS, route.task, taskKind)
-    ) {
-      const routerSchema = await zodSchema(params.schema).jsonSchema;
+    const startedAt = nowMs();
+    try {
+      const routerSchema = z.toJSONSchema(params.schema);
       const routerResult = await generateObjectWithClRouter({
         job: opts.job,
-        task: route.task,
+        route,
         taskKind,
         label,
         prompt,
@@ -1776,69 +1457,7 @@ function buildWorkerExtractor(opts: {
           return parsed.data;
         },
       });
-      if (routerResult) {
-        return { object: routerResult.object, usage: routerResult.usage };
-      }
-    }
-    const callProviderOptions = providerOptionsForModelCall(
-      route,
-      providerOptions as ProviderOptions | undefined,
-    );
-    const startedAt = nowMs();
-    try {
-      await recordModelCallStart({
-        job: opts.job,
-        route,
-        label,
-        taskKind,
-        attempt: 1,
-        maxOutputTokens,
-        providerOptions: callProviderOptions,
-        trace,
-      });
-      const result = await withModelCallTimeout(
-        aiGenerateText({
-          model: route.model,
-          system: params.system,
-          ...buildPromptInput(prompt, providerOptions, route.route),
-          output: Output.object({
-            schema: structuredOutputSchemaForProvider(
-              params.schema,
-              route.route.provider,
-            ),
-          }),
-          maxOutputTokens,
-          providerOptions: callProviderOptions,
-          abortSignal: modelAbortSignal(),
-        }),
-      );
-      const usage = mapUsage(result.usage);
-      await recordModelCallComplete({
-        job: opts.job,
-        route,
-        label,
-        taskKind,
-        attempt: 1,
-        startedAt,
-        usage,
-        details: modelTraceDetails({
-          kind: "generateObject",
-          label,
-          task: route.task,
-          taskKind,
-          prompt,
-          system: params.system,
-          maxOutputTokens,
-          providerOptions: callProviderOptions,
-          trace,
-          output: result.output,
-          outputKind: "object",
-        }),
-      });
-      return {
-        object: result.output!,
-        usage,
-      };
+      return { object: routerResult.object, usage: routerResult.usage };
     } catch (error) {
       if (shouldReturnEmptySections(prompt, error)) {
         await recordModelCallSoftFailure({
@@ -1856,7 +1475,7 @@ function buildWorkerExtractor(opts: {
             prompt,
             system: params.system,
             maxOutputTokens,
-            providerOptions: callProviderOptions,
+            providerOptions,
             trace,
             output: { sections: [] },
             outputKind: "object",
@@ -1864,126 +1483,7 @@ function buildWorkerExtractor(opts: {
         });
         return { object: { sections: [] }, usage: undefined };
       }
-
-      await recordModelCallError({
-        job: opts.job,
-        route,
-        label,
-        taskKind,
-        attempt: 1,
-        startedAt,
-        error,
-        details: modelTraceDetails({
-          kind: "generateObject",
-          label,
-          task: route.task,
-          taskKind,
-          prompt,
-          system: params.system,
-          maxOutputTokens,
-          providerOptions: callProviderOptions,
-          trace,
-        }),
-      });
-
-      const fallback = isMissingApiKeyError(error)
-        ? null
-        : resolveFallbackModel(
-            route.task,
-            taskKind,
-            route.route,
-            opts.modelSettings,
-          );
-      if (!fallback) throw error;
-
-      logFallback(route, fallback, error);
-      const fallbackMaxOutputTokens = maxOutputTokensForRoute(
-        params.maxTokens,
-        fallback,
-        taskKind,
-      );
-      const fallbackProviderOptions = providerOptionsForModelCall(
-        fallback,
-        providerOptions as ProviderOptions | undefined,
-      );
-      const fallbackStartedAt = nowMs();
-      try {
-        await recordModelCallStart({
-          job: opts.job,
-          route: fallback,
-          label,
-          taskKind,
-          attempt: 2,
-          maxOutputTokens: fallbackMaxOutputTokens,
-          providerOptions: fallbackProviderOptions,
-          trace,
-        });
-        const fallbackResult = await withModelCallTimeout(
-          aiGenerateText({
-            model: fallback.model,
-            system: params.system,
-            ...buildPromptInput(prompt, providerOptions, fallback.route),
-            output: Output.object({
-              schema: structuredOutputSchemaForProvider(
-                params.schema,
-                fallback.route.provider,
-              ),
-            }),
-            maxOutputTokens: fallbackMaxOutputTokens,
-            providerOptions: fallbackProviderOptions,
-            abortSignal: modelAbortSignal(),
-          }),
-        );
-        const usage = mapUsage(fallbackResult.usage);
-        await recordModelCallComplete({
-          job: opts.job,
-          route: fallback,
-          label,
-          taskKind,
-          attempt: 2,
-          startedAt: fallbackStartedAt,
-          usage,
-          details: modelTraceDetails({
-            kind: "generateObject",
-            label,
-            task: fallback.task,
-            taskKind,
-            prompt,
-            system: params.system,
-            maxOutputTokens: fallbackMaxOutputTokens,
-            providerOptions: fallbackProviderOptions,
-            trace,
-            output: fallbackResult.output,
-            outputKind: "object",
-          }),
-        });
-        return {
-          object: fallbackResult.output!,
-          usage,
-        };
-      } catch (fallbackError) {
-        await recordModelCallError({
-          job: opts.job,
-          route: fallback,
-          label,
-          taskKind,
-          attempt: 2,
-          startedAt: fallbackStartedAt,
-          error: fallbackError,
-          details: modelTraceDetails({
-            kind: "generateObject",
-            label,
-            task: fallback.task,
-            taskKind,
-            prompt,
-            system: params.system,
-            maxOutputTokens: fallbackMaxOutputTokens,
-            providerOptions: fallbackProviderOptions,
-            trace,
-          }),
-        });
-        throw fallbackError;
-      }
+      throw error;
     }
   };
 
@@ -2183,8 +1683,7 @@ function startHttpServer(): { close: () => void } | null {
         workerMode: RUNTIME_ACCESS.mode,
         jobsEnabled: RUNTIME_ACCESS.jobsEnabled,
         conversionsEnabled: RUNTIME_ACCESS.conversionsEnabled,
-        clRouterEnabled: clRouter !== null,
-        clRouterTasks: [...CL_ROUTER_TASK_FLAGS].sort(),
+        clRouterEnabled: true,
         extractionJobConcurrency: EXTRACTION_JOB_CONCURRENCY,
         previewJobConcurrency: PREVIEW_JOB_CONCURRENCY,
         pdfWorkMaxActive: PDF_WORK_MAX_ACTIVE,
@@ -2597,7 +2096,7 @@ const PREVIEW_COVERAGE_FIELDS = [
   "deductibleType",
 ] as const;
 
-const previewExtractionSchema: Parameters<typeof jsonSchema>[0] = {
+const previewExtractionSchema: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -2668,19 +2167,6 @@ const previewExtractionSchema: Parameters<typeof jsonSchema>[0] = {
   },
   required: [...PREVIEW_TOP_LEVEL_FIELDS],
 };
-
-const previewExtractionOutputSchema = jsonSchema<Record<string, unknown>>(
-  previewExtractionSchema,
-);
-
-function previewExtractionOutputSchemaForProvider(provider: string) {
-  if (provider !== "fireworks") return previewExtractionOutputSchema;
-  return jsonSchema<Record<string, unknown>>(
-    normalizeJsonSchemaForFireworks(previewExtractionSchema) as Parameters<
-      typeof jsonSchema<Record<string, unknown>>
-    >[0],
-  );
-}
 
 function cleanPreviewString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -2849,197 +2335,32 @@ Document text:
 ${sourceText}`,
     "extraction_preview",
   );
-  if (
-    clRouter &&
-    isClRouterTaskEnabled(
-      CL_ROUTER_TASK_FLAGS,
-      route.task,
-      "extraction_preview",
-    )
-  ) {
-    const routerResult = await generateObjectWithClRouter({
-      job,
-      task: route.task,
-      taskKind: "extraction_preview",
-      label: "Extract provisional policy fields",
-      prompt,
-      system,
-      schema: previewExtractionSchema as Record<string, unknown>,
-      maxOutputTokens,
-      providerOptions: {},
-      trace: { phase: "preview", label: "Extract provisional policy fields" },
-      modelSettings: job.modelSettings,
-      validate: (output) => {
-        if (!output || typeof output !== "object" || Array.isArray(output)) {
-          throw new ClRouterProtocolError(
-            "cl-router returned an invalid preview extraction object",
-          );
-        }
-        return output as Record<string, unknown>;
-      },
-    });
-    if (routerResult) {
-      return {
-        fields: normalizePreviewFields(routerResult.object),
-        route: routerResult.route,
-      };
-    }
-  }
-  const callProviderOptions = providerOptionsForModelCall(route, undefined);
-  const startedAt = nowMs();
   const label = "Extract provisional policy fields";
-  try {
-    const result = await withModelCallTimeout(
-      aiGenerateText({
-        model: route.model,
-        system,
-        prompt,
-        output: Output.object({
-          schema: previewExtractionOutputSchemaForProvider(
-            route.route.provider,
-          ),
-        }),
-        maxOutputTokens,
-        providerOptions: callProviderOptions,
-        abortSignal: modelAbortSignal(),
-      }),
-    );
-    const usage = mapUsage(result.usage);
-    await recordModelCallComplete({
-      job,
-      route,
-      label,
-      taskKind: "extraction_preview",
-      attempt: 1,
-      startedAt,
-      usage,
-      details: modelTraceDetails({
-        kind: "generateObject",
-        label,
-        task: route.task,
-        taskKind: "extraction_preview",
-        prompt,
-        system,
-        maxOutputTokens,
-        providerOptions: callProviderOptions,
-        trace: { phase: "preview", label },
-        output: result.output,
-        outputKind: "object",
-      }),
-    });
-    return {
-      fields: normalizePreviewFields(result.output),
-      route,
-    };
-  } catch (error) {
-    await recordModelCallError({
-      job,
-      route,
-      label,
-      taskKind: "extraction_preview",
-      attempt: 1,
-      startedAt,
-      error,
-      details: modelTraceDetails({
-        kind: "generateObject",
-        label,
-        task: route.task,
-        taskKind: "extraction_preview",
-        prompt,
-        system,
-        maxOutputTokens,
-        providerOptions: callProviderOptions,
-        trace: { phase: "preview", label },
-      }),
-    });
-
-    const fallback = isMissingApiKeyError(error)
-      ? null
-      : resolveFallbackModel(
-          route.task,
-          "extraction_preview",
-          route.route,
-          job.modelSettings,
+  const routerResult = await generateObjectWithClRouter({
+    job,
+    route,
+    taskKind: "extraction_preview",
+    label,
+    prompt,
+    system,
+    schema: previewExtractionSchema,
+    maxOutputTokens,
+    providerOptions: {},
+    trace: { phase: "preview", label },
+    modelSettings: job.modelSettings,
+    validate: (output) => {
+      if (!output || typeof output !== "object" || Array.isArray(output)) {
+        throw new ClRouterProtocolError(
+          "cl-router returned an invalid preview extraction object",
         );
-    if (!fallback) throw error;
-
-    logFallback(route, fallback, error);
-    const fallbackMaxOutputTokens = Math.min(
-      maxOutputTokensForRoute(4096, fallback, "extraction_preview"),
-      8192,
-    );
-    const fallbackProviderOptions = providerOptionsForModelCall(
-      fallback,
-      undefined,
-    );
-    const fallbackStartedAt = nowMs();
-    try {
-      const result = await withModelCallTimeout(
-        aiGenerateText({
-          model: fallback.model,
-          system,
-          prompt,
-          output: Output.object({
-            schema: previewExtractionOutputSchemaForProvider(
-              fallback.route.provider,
-            ),
-          }),
-          maxOutputTokens: fallbackMaxOutputTokens,
-          providerOptions: fallbackProviderOptions,
-          abortSignal: modelAbortSignal(),
-        }),
-      );
-      const usage = mapUsage(result.usage);
-      await recordModelCallComplete({
-        job,
-        route: fallback,
-        label,
-        taskKind: "extraction_preview",
-        attempt: 2,
-        startedAt: fallbackStartedAt,
-        usage,
-        details: modelTraceDetails({
-          kind: "generateObject",
-          label,
-          task: fallback.task,
-          taskKind: "extraction_preview",
-          prompt,
-          system,
-          maxOutputTokens: fallbackMaxOutputTokens,
-          providerOptions: fallbackProviderOptions,
-          trace: { phase: "preview", label },
-          output: result.output,
-          outputKind: "object",
-        }),
-      });
-      return {
-        fields: normalizePreviewFields(result.output),
-        route: fallback,
-      };
-    } catch (fallbackError) {
-      await recordModelCallError({
-        job,
-        route: fallback,
-        label,
-        taskKind: "extraction_preview",
-        attempt: 2,
-        startedAt: fallbackStartedAt,
-        error: fallbackError,
-        details: modelTraceDetails({
-          kind: "generateObject",
-          label,
-          task: fallback.task,
-          taskKind: "extraction_preview",
-          prompt,
-          system,
-          maxOutputTokens: fallbackMaxOutputTokens,
-          providerOptions: fallbackProviderOptions,
-          trace: { phase: "preview", label },
-        }),
-      });
-      throw fallbackError;
-    }
-  }
+      }
+      return output as Record<string, unknown>;
+    },
+  });
+  return {
+    fields: normalizePreviewFields(routerResult.object),
+    route: routerResult.route,
+  };
 }
 
 async function completeJob(
@@ -3505,6 +2826,10 @@ async function extractProposalDocument(
     },
     fileUrl: document.fileUrl,
     modelSettings: job.modelSettings,
+    routerAssetLease: {
+      jobKind: "proposal",
+      jobId: job.jobId,
+    },
   };
   const { extractor, generateObject } = buildWorkerExtractor({
     job: modelJob,

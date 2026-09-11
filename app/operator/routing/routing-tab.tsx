@@ -143,7 +143,7 @@ export function routingEventOutcome(event: RoutingEvent) {
       label: "Fell back",
       tone: "warning" as const,
       description:
-        "The routed path failed before Spot observed output or tool execution, so Spot used a direct fallback route.",
+        "A legacy routed path failed before Spot observed output or tool execution, so the retired consumer transport used a direct fallback route.",
     };
   }
   if (event.status === "error") {
@@ -179,7 +179,7 @@ export function routingEventOutcome(event: RoutingEvent) {
 
 export function routingEventSummary(event: RoutingEvent) {
   if (event.kind === "direct_fallback") {
-    return event.error ?? "Spot used its direct route.";
+    return event.error ?? "A legacy Spot caller used its retired direct route.";
   }
   if (event.kind === "run") {
     return event.error ?? formatIdentifier(event.completionIssue ?? event.status);
@@ -188,7 +188,7 @@ export function routingEventSummary(event: RoutingEvent) {
 }
 
 function eventDetailTitle(event: RoutingEvent) {
-  if (event.kind === "direct_fallback") return "Direct fallback";
+  if (event.kind === "direct_fallback") return "Legacy direct fallback";
   if (event.kind === "run") return "Agent run";
   return "Model call";
 }

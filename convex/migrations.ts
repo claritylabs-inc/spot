@@ -121,6 +121,15 @@ export const unsetLegacyCoiAttachmentAuthorization = migrations.define({
   },
 });
 
+export const unsetLegacyBrokerModelProviderKeys = migrations.define({
+  table: "brokerModelSettings",
+  batchSize: 100,
+  migrateOne: async (ctx, settings) => {
+    if (settings.providerKeys === undefined) return;
+    await ctx.db.patch(settings._id, { providerKeys: undefined });
+  },
+});
+
 export const backfillSlackInboundEventMentionsSpot = migrations.define({
   table: "slackInboundEvents",
   batchSize: 100,
@@ -414,6 +423,10 @@ export const runCarrierIdentityBackfill = migrations.runner([
 
 export const runLegacyCoiAttachmentAuthorizationCleanup = migrations.runner([
   internal.migrations.unsetLegacyCoiAttachmentAuthorization,
+]);
+
+export const runLegacyBrokerModelProviderKeyCleanup = migrations.runner([
+  internal.migrations.unsetLegacyBrokerModelProviderKeys,
 ]);
 
 export const runSlackInboundEventMentionsSpotBackfill = migrations.runner([

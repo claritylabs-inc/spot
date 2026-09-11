@@ -23,6 +23,7 @@ import {
 } from "@/components/model-provider-logo";
 import { toast } from "sonner";
 import {
+  type OperatorRouterCapabilities,
   useCachedOperatorGlobalModelSettings,
   useOperatorGlobalModelRouteCacheActions,
 } from "@/lib/sync/operator-cached-queries";
@@ -54,8 +55,6 @@ type ModelCapability = {
 type ProviderConfig = {
   id: ProviderId;
   label: string;
-  configured: boolean;
-  transport: "direct" | null;
   languageModels: string[];
   audioModels: string[];
   embeddingModels: string[];
@@ -150,7 +149,11 @@ function providerSortIndex(provider: ProviderId) {
   return index === -1 ? PROVIDER_PRIORITY.length : index;
 }
 
-export function ModelsTab() {
+export function ModelsTab({
+  capabilities,
+}: {
+  capabilities: OperatorRouterCapabilities | undefined;
+}) {
   const settings = useCachedOperatorGlobalModelSettings() as
     | Settings
     | undefined;
@@ -213,8 +216,9 @@ export function ModelsTab() {
     return [...(settings?.providers ?? [])]
       .filter((provider) => {
         const hasModels = modelsForTaskProvider(task, provider.id).length > 0;
+        const available = providerAvailability(provider.id);
         return (
-          hasModels && (provider.configured || provider.id === selectedProvider)
+          hasModels && (available !== false || provider.id === selectedProvider)
         );
       })
       .sort(
@@ -228,9 +232,19 @@ export function ModelsTab() {
     return models.includes(route.model) ? models : [route.model, ...models];
   }
 
+  function providerAvailability(provider: ProviderId) {
+    if (capabilities?.availability !== "available") return null;
+    return (
+      capabilities.providers.find((item) => item.provider === provider)
+        ?.configured ?? false
+    );
+  }
+
   function providerTransportLabel(provider: ProviderConfig) {
-    if (provider.transport === "direct") return "Env";
-    return "Unavailable";
+    const available = providerAvailability(provider.id);
+    if (available === true) return "Router";
+    if (available === false) return "Unavailable";
+    return "Unknown";
   }
 
   if (settings === undefined) {
@@ -245,6 +259,15 @@ export function ModelsTab() {
 
   return (
     <div className="@container/models grid gap-4">
+      {capabilities?.availability === "unavailable" ? (
+        <OperationalPanel>
+          <div
+            className={`px-4 py-3.5 text-muted-foreground ${typeStyle("body.default")}`}
+          >
+            {capabilities.message}
+          </div>
+        </OperationalPanel>
+      ) : null}
       {settings.groups.map((group) => {
         const tasks = group.tasks
           .map((taskId) => settings.tasks.find((task) => task.id === taskId))
@@ -375,7 +398,7 @@ export function ModelsTab() {
                         <SelectContent className="min-w-56">
                           {manualSelectionMissing ? (
                             <SelectItem value={MANUAL_REQUIRED_VALUE} disabled>
-                              Choose a direct provider
+                              Choose a provider
                             </SelectItem>
                           ) : null}
                           {task.automatedRouting ? (
@@ -402,7 +425,9 @@ export function ModelsTab() {
                             <SelectItem
                               key={provider.id}
                               value={provider.id}
-                              disabled={!provider.configured}
+                              disabled={
+                                providerAvailability(provider.id) === false
+                              }
                             >
                               <span className="flex min-w-0 flex-1 items-center gap-2">
                                 <ProviderLogo

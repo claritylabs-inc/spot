@@ -1,15 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { generateText, stepCountIs, streamText, tool } from "ai";
-import {
-  MockLanguageModelV3,
-  convertArrayToReadableStream,
-} from "ai/test";
+import { stepCountIs, streamText, tool } from "ai";
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
 } from "@ai-sdk/provider";
 import { z } from "zod";
+
 import {
   ClRouterVisibleOutputError,
   createClRouterLanguageModel,
@@ -19,11 +15,6 @@ const environment = {
   CL_ROUTER_URL: "https://router.example.test",
   CL_ROUTER_SECRET: "router-secret",
   SPOT_ENV: "production",
-};
-
-const usage: LanguageModelV3Usage = {
-  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-  outputTokens: { total: 1, text: 1, reasoning: 0 },
 };
 
 function doneEvent(finishReason: string) {
@@ -37,80 +28,43 @@ function doneEvent(finishReason: string) {
       candidatesConsidered: [{ provider: "openai", model: "gpt-5.5" }],
       policyVersion: "policy-v1",
       cacheStickinessApplied: true,
-      routeSource: "broker",
+      routeSource: "org",
       attemptCount: 1,
     },
-    usage: { inputTokens: 10, outputTokens: 3, cachedInputTokens: 2, cacheWriteTokens: 1 },
+    usage: {
+      inputTokens: 10,
+      outputTokens: 3,
+      cachedInputTokens: 2,
+      cacheWriteTokens: 1,
+    },
     costUsd: 0.001,
     costStatus: "priced",
   };
 }
 
 function sseResponse(events: unknown[]): Response {
-  const body = events.map((event) => {
-    const type = (event as { type: string }).type;
-    return `event: ${type}\ndata: ${JSON.stringify(event)}\n\n`;
-  }).join("");
+  const body = events
+    .map((event) => {
+      const type = (event as { type: string }).type;
+      return `event: ${type}\ndata: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
   return new Response(body, {
     headers: { "content-type": "text/event-stream; charset=utf-8" },
   });
 }
 
-function directStream(text: string) {
-  return {
-    stream: convertArrayToReadableStream<LanguageModelV3StreamPart>([
-      { type: "stream-start", warnings: [] },
-      { type: "text-start", id: "direct-text" },
-      { type: "text-delta", id: "direct-text", delta: text },
-      { type: "text-end", id: "direct-text" },
-      {
-        type: "finish",
-        usage,
-        finishReason: { unified: "stop", raw: "stop" },
-      },
-    ]),
-  };
-}
-
-function directToolStream(toolName: string) {
-  return {
-    stream: convertArrayToReadableStream<LanguageModelV3StreamPart>([
-      { type: "stream-start", warnings: [] },
-      {
-        type: "tool-call",
-        toolCallId: "direct-tool-call",
-        toolName,
-        input: "{}",
-      },
-      {
-        type: "finish",
-        usage,
-        finishReason: { unified: "tool-calls", raw: "tool-calls" },
-      },
-    ]),
-  };
-}
-
-function adapterOptions(
-  directModel: MockLanguageModelV3,
-  fetch: typeof globalThis.fetch,
-) {
+function adapterOptions(fetch: typeof globalThis.fetch) {
   return {
     task: "chat" as const,
     taskKind: "query_reason",
     orgId: "org-1",
     settings: {
       routes: { chat: { provider: "openai" as const, model: "gpt-5.5" } },
-      routeSources: { chat: "broker" },
-      providerKeys: { openai: "broker-openai-key" },
+      routeSources: { chat: "org" },
     },
     sessionKey: "thread-1",
-    trace: {
-      traceId: "agent-message-1",
-      parentRequestId: "user-message-1",
-      channel: "web",
-    },
-    directModel,
+    trace: { traceId: "agent-message-1", channel: "web" },
     client: { environment, fetch },
   };
 }
@@ -121,55 +75,43 @@ function rawCallOptions(): LanguageModelV3CallOptions {
   };
 }
 
-function forcedToolCallOptions(
-  toolName = "expected_tool",
-): LanguageModelV3CallOptions {
-  return {
-    ...rawCallOptions(),
-    tools: [{
-      type: "function",
-      name: toolName,
-      inputSchema: { type: "object", properties: {} },
-    }],
-    toolChoice: { type: "tool", toolName },
-  };
-}
-
 describe("cl-router LanguageModelV3 adapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
-  test("preserves the AI SDK tool loop across router model steps", async () => {
-    const execute = vi.fn(async ({ policyNumber }: { policyNumber: string }) => ({
-      carrier: "Acme",
-      policyNumber,
-    }));
+  test("keeps business tool execution in Spot and pins later router steps", async () => {
+    const execute = vi.fn(
+      async ({ policyNumber }: { policyNumber: string }) => ({
+        carrier: "Acme",
+        policyNumber,
+      }),
+    );
     const fetchMock = vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(sseResponse([
-        {
-          type: "tool-call",
-          toolCallId: "call-1",
-          toolName: "lookup_policy",
-          input: { policyNumber: "GL-100" },
-        },
-        doneEvent("tool-calls"),
-      ]))
-      .mockResolvedValueOnce(sseResponse([
-        { type: "text-delta", id: "text-2", delta: "Acme policy found." },
-        doneEvent("stop"),
-      ]));
-    const directModel = new MockLanguageModelV3();
-    const model = createClRouterLanguageModel(adapterOptions(directModel, fetchMock));
-
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "lookup_policy",
+            input: { policyNumber: "GL-100" },
+          },
+          doneEvent("tool-calls"),
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "text-delta", id: "text-2", delta: "Acme policy found." },
+          doneEvent("stop"),
+        ]),
+      );
     const result = streamText({
-      model,
-      system: "Use the policy tool before answering.",
+      model: createClRouterLanguageModel(adapterOptions(fetchMock)),
       prompt: "Find GL-100.",
       tools: {
         lookup_policy: tool({
-          description: "Look up a bound policy",
           inputSchema: z.object({ policyNumber: z.string() }),
           execute,
         }),
@@ -178,230 +120,71 @@ describe("cl-router LanguageModelV3 adapter", () => {
     });
 
     await expect(result.text).resolves.toBe("Acme policy found.");
-    expect(execute).toHaveBeenCalledWith(
-      { policyNumber: "GL-100" },
-      expect.anything(),
-    );
+    expect(execute).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    const firstRequest = JSON.parse(
-      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    const requests = fetchMock.mock.calls.map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)),
     );
-    expect(firstRequest).toMatchObject({
-      tenantId: "glass",
-      task: "chat",
-      taskKind: "query_reason",
-      orgId: "org-1",
-      sessionKey: "thread-1",
-      tools: [{ name: "lookup_policy", description: "Look up a bound policy" }],
-      trace: {
-        traceId: "agent-message-1",
-        parentRequestId: "user-message-1",
-      },
-      settings: { providerKeys: { openai: "broker-openai-key" } },
-      routing: { allowFallback: true },
-    });
-    expect(firstRequest.routing).not.toHaveProperty("pin");
-    expect(firstRequest.messages[0]).toEqual({
-      role: "system",
-      content: "Use the policy tool before answering.",
-    });
-
-    const secondRequest = JSON.parse(
-      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body),
-    );
-    expect(secondRequest.trace.parentRequestId).toBe("request-1");
-    expect(secondRequest.routing).toEqual({
+    expect(requests[0].routing).toEqual({ allowFallback: true });
+    expect(requests[1].routing).toEqual({
       pin: { provider: "openai", model: "gpt-5.5" },
       allowFallback: false,
     });
-    expect(secondRequest.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "assistant",
-          content: expect.arrayContaining([
-            expect.objectContaining({
-              type: "tool-call",
-              toolCallId: "call-1",
-              toolName: "lookup_policy",
-              input: { policyNumber: "GL-100" },
-            }),
-          ]),
-        }),
-        expect.objectContaining({
-          role: "tool",
-          content: expect.arrayContaining([
-            expect.objectContaining({
-              type: "tool-result",
-              toolCallId: "call-1",
-              toolName: "lookup_policy",
-            }),
-          ]),
-        }),
-      ]),
-    );
-    expect(directModel.doStreamCalls).toHaveLength(0);
+    expect(JSON.stringify(requests)).not.toContain("providerKeys");
   });
 
-  test("completes the iMessage requirements tool loop after candidate exhaustion", async () => {
-    const lookupPolicy = vi.fn(async () => ({
-      lineOfBusiness: "E&O",
-      limit: "$5,000,000",
-    }));
-    const lookupRequirements = vi.fn(async () => ([{
-      title: "E&O minimum",
-      amount: 7_500_000,
-      assessment: "unverified",
-    }]));
-    let directStep = 0;
-    const directModel = new MockLanguageModelV3({
-      doGenerate: async () => {
-        directStep += 1;
-        return directStep === 1
-          ? {
-              content: [
-                {
-                  type: "tool-call",
-                  toolCallId: "policy-call",
-                  toolName: "lookup_policy",
-                  input: "{}",
-                },
-                {
-                  type: "tool-call",
-                  toolCallId: "requirements-call",
-                  toolName: "lookup_compliance_requirements",
-                  input: "{}",
-                },
-              ],
-              finishReason: { unified: "tool-calls", raw: "tool-calls" },
-              usage,
-              warnings: [],
-            }
-          : {
-              content: [{
-                type: "text",
-                text: "The E&O requirement remains unverified because the policy lacks structured per-claim evidence.",
-              }],
-              finishReason: { unified: "stop", raw: "stop" },
-              usage,
-              warnings: [],
-            };
-      },
+  test("fails closed after one router failure", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json(
+        {
+          error: {
+            code: "router_candidates_exhausted",
+            message: "Every route failed",
+            retryable: true,
+            executionStarted: true,
+            attempts: [],
+          },
+        },
+        { status: 502 },
+      ),
+    );
+    const model = createClRouterLanguageModel(adapterOptions(fetchMock));
+    await expect(model.doGenerate(rawCallOptions())).rejects.toMatchObject({
+      routerCode: "router_candidates_exhausted",
     });
-    const fetchMock = vi.fn<typeof globalThis.fetch>(async () => Response.json({
-      error: {
-        code: "router_candidates_exhausted",
-        message: "Every eligible provider candidate failed",
-        retryable: true,
-        executionStarted: true,
-        requestId: "failed-query-request",
-        attempts: [{
-          attempt: 1,
-          provider: "fireworks",
-          model: "accounts/fireworks/models/deepseek-v4-flash-0731",
-          outcome: "error",
-          errorCode: "provider_500",
-        }],
-      },
-    }, { status: 502 }));
-    const onDirectFallback = vi.fn();
-    const model = createClRouterLanguageModel({
-      ...adapterOptions(directModel, fetchMock),
-      onDirectFallback,
-    });
-
-    const result = await generateText({
-      model,
-      prompt: "Does our E&O policy cover all of our requirements?",
-      tools: {
-        lookup_policy: tool({
-          inputSchema: z.object({}),
-          execute: lookupPolicy,
-        }),
-        lookup_compliance_requirements: tool({
-          inputSchema: z.object({}),
-          execute: lookupRequirements,
-        }),
-      },
-      stopWhen: stepCountIs(2),
-    });
-
-    expect(result.text).toContain("remains unverified");
-    expect(lookupPolicy).toHaveBeenCalledOnce();
-    expect(lookupRequirements).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(directModel.doGenerateCalls).toHaveLength(2);
-    expect(onDirectFallback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        routerCode: "router_candidates_exhausted",
-        requestId: "failed-query-request",
-      }),
-      expect.objectContaining({ step: 1 }),
-    );
   });
 
-  test("rejects a wrong streamed tool before exposing it and safely falls back", async () => {
-    const directModel = new MockLanguageModelV3({
-      doStream: directToolStream("expected_tool"),
-    });
-    const fetchMock = vi.fn<typeof globalThis.fetch>(async () => sseResponse([
-      {
-        type: "tool-call",
-        toolCallId: "wrong-router-call",
-        toolName: "lookup_policy",
-        input: {},
-      },
-      doneEvent("tool-calls"),
-    ]));
-    const model = createClRouterLanguageModel(adapterOptions(directModel, fetchMock));
-
-    const result = await model.doStream(forcedToolCallOptions());
-    const parts: LanguageModelV3StreamPart[] = [];
-    const reader = result.stream.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      parts.push(value);
-    }
-
-    expect(parts).toContainEqual(expect.objectContaining({
-      type: "tool-call",
-      toolName: "expected_tool",
-    }));
-    expect(parts).not.toContainEqual(expect.objectContaining({
-      type: "tool-call",
-      toolName: "lookup_policy",
-    }));
-    expect(directModel.doStreamCalls).toHaveLength(1);
-  });
-
-  test("never falls back after a visible router text delta", async () => {
+  test("never retries after visible streamed output", async () => {
     const encoder = new TextEncoder();
     let pullCount = 0;
-    const response = new Response(new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (pullCount++ === 0) {
-          controller.enqueue(encoder.encode(
-            `event: text-delta\ndata: ${JSON.stringify({
-              type: "text-delta",
-              id: "text-1",
-              delta: "Visible router output",
-            })}\n\n`,
-          ));
-          return;
-        }
-        controller.error(new TypeError("socket reset"));
-      },
-    }), { headers: { "content-type": "text/event-stream" } });
-    const directModel = new MockLanguageModelV3({ doStream: directStream("Direct answer.") });
-    const model = createClRouterLanguageModel(adapterOptions(
-      directModel,
-      vi.fn<typeof globalThis.fetch>(async () => response),
-    ));
-    const result = await model.doStream(rawCallOptions());
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pullCount++ === 0) {
+            controller.enqueue(
+              encoder.encode(
+                `event: text-delta\ndata: ${JSON.stringify({
+                  type: "text-delta",
+                  id: "text-1",
+                  delta: "Visible",
+                })}\n\n`,
+              ),
+            );
+            return;
+          }
+          controller.error(new TypeError("socket reset"));
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } },
+    );
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () => response);
+    const result = await createClRouterLanguageModel(
+      adapterOptions(fetchMock),
+    ).doStream(rawCallOptions());
     const reader = result.stream.getReader();
     const parts: LanguageModelV3StreamPart[] = [];
-    let streamError: unknown;
+    let failure: unknown;
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -409,15 +192,252 @@ describe("cl-router LanguageModelV3 adapter", () => {
         parts.push(value);
       }
     } catch (error) {
-      streamError = error;
+      failure = error;
     }
-
     expect(parts).toContainEqual({
       type: "text-delta",
       id: "text-1",
-      delta: "Visible router output",
+      delta: "Visible",
     });
-    expect(streamError).toBeInstanceOf(ClRouterVisibleOutputError);
-    expect(directModel.doStreamCalls).toHaveLength(0);
+    expect(failure).toBeInstanceOf(ClRouterVisibleOutputError);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  test("keeps small images inline and rejects arbitrary URLs before HEAD", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ ...doneEvent("stop"), output: "done" }),
+    );
+    const model = createClRouterLanguageModel(adapterOptions(fetchMock));
+    await model.doGenerate({
+      prompt: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "file",
+              data: new Uint8Array([1, 2, 3]),
+              mediaType: "image/png",
+            },
+          ],
+        },
+      ],
+    });
+    const request = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
+    );
+    expect(request.messages[0].content[0]).toMatchObject({
+      type: "image",
+      image: "AQID",
+    });
+
+    fetchMock.mockClear();
+    await model.doGenerate({
+      prompt: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "file",
+              data: new URL(
+                "https://merry-platypus-82.convex.cloud/api/storage/document",
+              ),
+              mediaType: "application/pdf",
+              providerOptions: { spot: { routerAssetSizeBytes: 123 } },
+            },
+          ],
+        },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const referencedRequest = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    );
+    expect(referencedRequest.messages[0].content[0].source).toMatchObject({
+      sizeBytes: 123,
+    });
+
+    fetchMock.mockClear();
+    await expect(
+      model.doGenerate({
+        prompt: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "file",
+                data: new URL("https://169.254.169.254/private"),
+                mediaType: "application/pdf",
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ kind: "configuration" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("forwards a required PDF and propagates one typed unsupported-input failure", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json(
+        {
+          error: {
+            code: "router_candidates_exhausted",
+            message: "No compatible candidate supports the required PDF input",
+            retryable: false,
+            executionStarted: false,
+            attempts: [],
+          },
+        },
+        { status: 422 },
+      ),
+    );
+    const model = createClRouterLanguageModel({
+      ...adapterOptions(fetchMock),
+      task: "chat_vision",
+    });
+
+    await expect(
+      model.doGenerate({
+        prompt: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "file",
+                data: new URL(
+                  "https://merry-platypus-82.convex.cloud/api/storage/scanned-policy",
+                ),
+                mediaType: "application/pdf",
+                filename: "scanned-policy.pdf",
+                providerOptions: { spot: { routerAssetSizeBytes: 4 } },
+              },
+              { type: "text", text: "Summarize this policy." },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      routerCode: "router_candidates_exhausted",
+      retryable: false,
+      executionStarted: false,
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(request.task).toBe("chat_vision");
+    expect(request.messages[0].content).toContainEqual({
+      type: "file",
+      source: expect.objectContaining({
+        mediaType: "application/pdf",
+        sizeBytes: 4,
+      }),
+    });
+  });
+
+  test("keeps an explicit operator route pinned without router fallback", async () => {
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ ...doneEvent("stop"), output: "done" }),
+    );
+    const model = createClRouterLanguageModel({
+      ...adapterOptions(fetchMock),
+      taskKind: "operator_agent",
+      initialRoutePin: { provider: "openai", model: "gpt-5.5" },
+      allowFallback: false,
+    });
+    await expect(model.doGenerate(rawCallOptions())).resolves.toBeDefined();
+    const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(request.routing).toEqual({
+      pin: { provider: "openai", model: "gpt-5.5" },
+      allowFallback: false,
+    });
+  });
+
+  test("stages byte-backed assets only when the exact request exceeds 4 MiB", async () => {
+    const cleanup = vi.fn(async () => undefined);
+    const assetStager = vi.fn(async () => ({
+      reference: {
+        url: "https://actions.spot.insure/router-assets?assetId=large",
+        mediaType: "image/png",
+        sizeBytes: 3 * 1024 * 1024,
+      },
+      cleanup,
+    }));
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ ...doneEvent("stop"), output: "done" }),
+    );
+    const model = createClRouterLanguageModel({
+      ...adapterOptions(fetchMock),
+      assetStager,
+    });
+    await model.doGenerate({
+      prompt: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "file",
+              data: new Uint8Array(3 * 1024 * 1024),
+              mediaType: "image/png",
+            },
+          ],
+        },
+      ],
+    });
+    const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(request.messages[0].content[0]).toMatchObject({
+      type: "image",
+      source: { sizeBytes: 3 * 1024 * 1024 },
+    });
+    expect(assetStager).toHaveBeenCalledOnce();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  test("cleans partial staging when a later asset cannot be staged", async () => {
+    const cleanup = vi.fn(async () => {
+      throw new Error("cleanup transport failed");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const assetStager = vi
+      .fn()
+      .mockResolvedValueOnce({
+        reference: {
+          url: "https://actions.spot.insure/router-assets?assetId=first",
+          mediaType: "image/png",
+          sizeBytes: 1024 * 1024,
+        },
+        cleanup,
+      })
+      .mockRejectedValueOnce(new Error("second staging failed"));
+    const fetchMock = vi.fn<typeof globalThis.fetch>();
+    const model = createClRouterLanguageModel({
+      ...adapterOptions(fetchMock),
+      assetStager,
+    });
+    await expect(
+      model.doGenerate({
+        prompt: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "file",
+                data: new Uint8Array(1024 * 1024),
+                mediaType: "image/png",
+              },
+              {
+                type: "file",
+                data: new Uint8Array(3 * 1024 * 1024),
+                mediaType: "image/png",
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow("second staging failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(assetStager).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "[cl-router] 1 staged asset cleanups failed",
+    );
   });
 });

@@ -41,11 +41,11 @@ import { runWebRetrieval, type WebRetrievalInput } from "../lib/webRetrieval";
 import {
   buildImessageModelMessages,
   buildRecentImessageTextContext,
-  imessageAgentTaskForAttachments,
   isImessageStatusCue,
   prepareInboundImessageTurn,
   type ImessageHistoryMessage,
 } from "../lib/imessageAgentContext";
+import { modelMessagesHaveRichInput } from "../lib/agentAttachmentContext";
 import {
   formatPolicyFocusHints,
   selectPolicyFocusIds,
@@ -353,14 +353,10 @@ export const processInbound = internalAction({
               chatGuid,
             });
           }
-          return await finish(
-            voiceMemoInput.failureResponse,
-            undefined,
-            {
-              leaveGroup: isGroup,
-              sendContactCard: chatSync.shouldSendContactCard,
-            },
-          );
+          return await finish(voiceMemoInput.failureResponse, undefined, {
+            leaveGroup: isGroup,
+            sendContactCard: chatSync.shouldSendContactCard,
+          });
         }
         const demo = await ctx.runAction(
           internal.actions.publicDemoAgent.respond,
@@ -484,7 +480,7 @@ export const processInbound = internalAction({
 
       const attachmentRecords = await storeImessageAttachments(
         ctx,
-        args.attachments,
+        voiceMemoInput.nonAudioAttachments,
       );
 
       const inboundThreadMessageId = await ctx.runMutation(
@@ -534,11 +530,9 @@ export const processInbound = internalAction({
           },
         );
         await scheduleThreadHistoryCompaction(ctx, threadId);
-        return await finish(
-          voiceMemoInput.failureResponse,
-          undefined,
-          { threadMessageId: failureMessageId },
-        );
+        return await finish(voiceMemoInput.failureResponse, undefined, {
+          threadMessageId: failureMessageId,
+        });
       }
 
       const history: ImessageHistoryMessage[] = boundedHistory.messages;
@@ -664,7 +658,9 @@ export const processInbound = internalAction({
         attachmentRecords,
         currentMessageId: inboundThreadMessageId,
       });
-      const chatTask = imessageAgentTaskForAttachments(attachmentRecords);
+      const chatTask = modelMessagesHaveRichInput(modelMessages)
+        ? "chat_vision"
+        : "chat";
 
       const systemPrompt =
         buildSystemPromptForContext({

@@ -16,10 +16,11 @@ const REQUIRED_OPERATION_KEYS = [
   "post /v1/generate/stream",
   "post /v1/embed",
   "post /v1/transcribe",
+  "get /v1/capabilities",
+  "post /v1/retrieve",
   "post /v1/feedback",
   "post /admin/freeze",
   "post /admin/pin",
-  "post /admin/calibration-seeds/import",
   "get /admin/policy",
   "get /admin/rollups",
   "post /admin/score",
@@ -31,7 +32,11 @@ const REQUIRED_FIXTURE_SCHEMAS = [
   "EmbedRequest",
   "EmbedResponse",
   "TranscribeMetadata",
+  "TranscribeRequest",
   "TranscribeResponse",
+  "CapabilitiesResponse",
+  "RetrieveRequest",
+  "RetrieveResponse",
   "FeedbackRequest",
   "FeedbackResponse",
   "HealthResponse",
@@ -39,8 +44,6 @@ const REQUIRED_FIXTURE_SCHEMAS = [
   "FreezeResponse",
   "PinRequest",
   "PinResponse",
-  "CalibrationSeedImportRequest",
-  "CalibrationSeedImportResponse",
   "ScoreRequest",
   "AdminPolicyResponse",
   "AdminRollupResponse",
@@ -196,22 +199,6 @@ function checkOperationBindings(openapi, operations) {
       );
     }
   }
-
-  const calibrationImport = operations.find(
-    (operation) => operation.method === "post" && operation.path === "/admin/calibration-seeds/import",
-  );
-  assert(
-    calibrationImport?.request?.schema === "CalibrationSeedImportRequest",
-    "admin calibration seed import must bind CalibrationSeedImportRequest",
-  );
-  assert(
-    calibrationImport.responses?.some(
-      (response) => response.status === "200"
-        && response.mediaType === "application/json"
-        && response.schema === "CalibrationSeedImportResponse",
-    ),
-    "admin calibration seed import must bind the 200 CalibrationSeedImportResponse",
-  );
 }
 
 function hasExactSecurityBinding(operation, schemeName) {
@@ -279,192 +266,6 @@ function checkFixtures(validators, fixtures) {
   }
 }
 
-function checkCalibrationFixture(fixtures) {
-  const fixture = fixtures.find(
-    (candidate) => candidate.schema === "CalibrationSeedImportRequest",
-  );
-  assert(fixture, "CalibrationSeedImportRequest fixture is missing");
-  const seed = fixture.value?.seed;
-  assert(isRecord(seed), "calibration fixture seed is missing");
-  const qualificationSpec = seed.qualificationSpec;
-  assert(isRecord(qualificationSpec), "calibration fixture qualification spec is missing");
-  assert(
-    qualificationSpec.id === "glass-policy-extraction-source-tree@1"
-      && qualificationSpec.task === "extraction"
-      && qualificationSpec.taskFamily === "extraction_source_tree",
-    "calibration fixture must use Spot's reviewed legacy-compatible policy extraction qualification spec",
-  );
-  assert(
-    qualificationSpec.classification === "proxy_benchmark"
-      && qualificationSpec.activationEligibility === "benchmark_only"
-      && qualificationSpec.runtimeContract === null,
-    "calibration fixture must classify the current extraction spec as a benchmark-only proxy",
-  );
-  for (const field of [
-    "promptContractId",
-    "schemaContractId",
-    "validationContractId",
-    "scorerContractId",
-  ]) {
-    assert(
-      typeof qualificationSpec[field] === "string"
-        && /#sha256=[a-f0-9]{64}$/.test(qualificationSpec[field]),
-      `calibration fixture ${field} must be bound to content-addressed reviewed artifacts`,
-    );
-  }
-  assert(
-    Array.isArray(qualificationSpec.requiredOpenBenchmarks)
-      && qualificationSpec.requiredOpenBenchmarks.length > 0,
-    "calibration fixture qualification spec must require open benchmarks",
-  );
-
-  const corpusEvidence = seed.corpusEvidence;
-  assert(
-    Array.isArray(corpusEvidence) && corpusEvidence.length > 0,
-    "calibration fixture corpus evidence is missing",
-  );
-  const corpusIds = new Set();
-  for (const corpus of corpusEvidence) {
-    assert(isRecord(corpus), "calibration fixture corpus evidence is malformed");
-    assert(!corpusIds.has(corpus.corpusId), `calibration corpus ${corpus.corpusId} is duplicated`);
-    corpusIds.add(corpus.corpusId);
-    assert(
-      seed.corpusVersions?.[corpus.corpusId] === corpus.corpusVersion,
-      `calibration corpus ${corpus.corpusId} version does not match corpusVersions`,
-    );
-    assert(
-      corpus.qualificationSpecId === qualificationSpec.id,
-      `calibration corpus ${corpus.corpusId} is not bound to the qualification spec`,
-    );
-    assert(
-      corpus.caseCount === corpus.documents?.length,
-      `calibration corpus ${corpus.corpusId} case count does not match its document evidence`,
-    );
-    const documentIds = new Set();
-    const documentHashes = new Set();
-    for (const document of corpus.documents) {
-      assert(!documentIds.has(document.id), `calibration corpus ${corpus.corpusId} document IDs are duplicated`);
-      assert(
-        !documentHashes.has(document.documentSha256),
-        `calibration corpus ${corpus.corpusId} document hashes are duplicated`,
-      );
-      documentIds.add(document.id);
-      documentHashes.add(document.documentSha256);
-      const expectedDocumentHash = sha256(JSON.stringify({
-        id: document.id,
-        assetSha256: document.assetSha256,
-        labelsSha256: document.labelsSha256,
-      }));
-      assert(
-        document.documentSha256 === expectedDocumentHash,
-        `calibration corpus ${corpus.corpusId} document ${document.id} integrity hash is invalid`,
-      );
-    }
-    const expectedCorpusHash = sha256(JSON.stringify(
-      corpus.documents.toSorted((left, right) => left.id.localeCompare(right.id)),
-    ));
-    assert(
-      corpus.corpusSha256 === expectedCorpusHash,
-      `calibration corpus ${corpus.corpusId} integrity hash is invalid`,
-    );
-  }
-  assert(
-    Object.keys(seed.corpusVersions ?? {}).length === corpusIds.size,
-    "calibration corpusVersions must exactly match corpus evidence",
-  );
-
-  const productionReview = seed.productionReview;
-  assert(isRecord(productionReview), "calibration fixture production review is missing");
-  assert(
-    !corpusEvidence.some((corpus) => corpus.purpose === "synthetic_smoke"),
-    "calibration fixture cannot use synthetic smoke evidence for activation",
-  );
-  const inHouseCorpora = corpusEvidence.filter((corpus) => corpus.benchmark === "in_house");
-  assert(inHouseCorpora.length === 1, "calibration fixture must contain one in-house corpus");
-  const privateCorpus = inHouseCorpora[0];
-  assert(
-    privateCorpus.purpose === "production_qualification"
-      && privateCorpus.sourceKind === "private_bucket",
-    "calibration in-house corpus must be private production qualification evidence",
-  );
-  assert(
-    privateCorpus.corpusId === productionReview.privateCorpusId,
-    "calibration production review must identify the private production corpus",
-  );
-  assert(
-    privateCorpus.documents.length >= 20,
-    "calibration private production corpus must contain at least 20 documents",
-  );
-  const privateDocumentHashes = new Set(
-    privateCorpus.documents.map((document) => document.documentSha256),
-  );
-  for (const [coverageClass, hashes] of Object.entries(
-    productionReview.coverageDocumentHashes ?? {},
-  )) {
-    assert(
-      hashes.every((hash) => privateDocumentHashes.has(hash)),
-      `calibration coverage ${coverageClass} must reference private corpus documents`,
-    );
-  }
-
-  for (const benchmark of qualificationSpec.requiredOpenBenchmarks) {
-    const matchingCorpora = corpusEvidence.filter(
-      (corpus) => corpus.benchmark === benchmark && corpus.purpose === "open_benchmark",
-    );
-    assert(
-      matchingCorpora.length === 1,
-      `calibration fixture must contain exactly one ${benchmark} open benchmark corpus`,
-    );
-  }
-  const requiredOpenBenchmarks = new Set(qualificationSpec.requiredOpenBenchmarks);
-  for (const corpus of corpusEvidence.filter((item) => item.purpose === "open_benchmark")) {
-    assert(
-      requiredOpenBenchmarks.has(corpus.benchmark),
-      `calibration fixture contains unexpected open benchmark ${corpus.benchmark}`,
-    );
-  }
-
-  const totalCases = corpusEvidence.reduce((sum, corpus) => sum + corpus.caseCount, 0);
-  const expectedCallsByBenchmark = new Map();
-  for (const corpus of corpusEvidence) {
-    expectedCallsByBenchmark.set(
-      corpus.benchmark,
-      (expectedCallsByBenchmark.get(corpus.benchmark) ?? 0)
-        + corpus.caseCount * seed.replicateCount,
-    );
-  }
-  for (const candidate of seed.candidates ?? []) {
-    assert(
-      candidate.qualificationSpecId === qualificationSpec.id,
-      `calibration candidate ${candidate.candidateId} is not bound to the qualification spec`,
-    );
-    assert(
-      candidate.task === qualificationSpec.task
-        && candidate.taskFamily === qualificationSpec.taskFamily,
-      `calibration candidate ${candidate.candidateId} does not match the qualification task`,
-    );
-    assert(
-      candidate.successfulCalls === totalCases * seed.replicateCount,
-      `calibration candidate ${candidate.candidateId} does not cover every corpus replicate`,
-    );
-    const benchmarkRows = new Map();
-    for (const row of candidate.byBenchmark) {
-      assert(
-        !benchmarkRows.has(row.benchmark),
-        `calibration candidate ${candidate.candidateId} duplicates ${row.benchmark} results`,
-      );
-      benchmarkRows.set(row.benchmark, row);
-      assert(
-        row.callCount === expectedCallsByBenchmark.get(row.benchmark),
-        `calibration candidate ${candidate.candidateId} ${row.benchmark} calls do not match corpus evidence`,
-      );
-    }
-    assert(
-      benchmarkRows.size === expectedCallsByBenchmark.size,
-      `calibration candidate ${candidate.candidateId} benchmark results are incomplete`,
-    );
-  }
-}
 
 const [{ source: openapiSource, value: openapi }, { value: fixtureFile }, { value: provenance }] =
   await Promise.all([
@@ -500,7 +301,6 @@ const validators = compileSchemas(openapi);
 checkOperationBindings(openapi, fixtureFile.operations);
 checkSecurityBindings(openapi);
 checkFixtures(validators, fixtureFile.fixtures);
-checkCalibrationFixture(fixtureFile.fixtures);
 
 console.log(
   `cl-router contract OK: ${fixtureFile.fixtures.length} fixtures, ${fixtureFile.operations.length} operations, sha256 ${actualDigest.slice(0, 12)}`,

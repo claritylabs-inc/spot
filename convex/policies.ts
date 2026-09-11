@@ -3865,7 +3865,11 @@ export const pipelineRequeueStale = internalMutation({
       const checkpoint = run.pipelineCheckpoint as
         | {
             nextPhase?: string;
-            state?: { externalWorker?: boolean };
+            state?: {
+              externalWorker?: boolean;
+              orgId?: string;
+              workerRouterTransportSmokeRequestId?: string;
+            };
             createdAt?: number;
             lease?: {
               id?: string;
@@ -3906,6 +3910,26 @@ export const pipelineRequeueStale = internalMutation({
       if (!heartbeatStale) {
         skipped.push(String(run.policyId));
         continue;
+      }
+
+      const smokeRequestId =
+        checkpoint.state?.workerRouterTransportSmokeRequestId;
+      if (smokeRequestId) {
+        const smoke = await ctx.db
+          .query("workerRouterTransportSmokeRuns")
+          .withIndex("request", (query) =>
+            query.eq("requestId", smokeRequestId),
+          )
+          .unique();
+        if (
+          smoke?.policyId === run.policyId &&
+          smoke.runId === run._id &&
+          smoke.leaseId === checkpoint.lease?.id &&
+          String(smoke.orgId) === checkpoint.state?.orgId
+        ) {
+          skipped.push(String(run.policyId));
+          continue;
+        }
       }
 
       if (

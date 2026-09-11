@@ -4,23 +4,33 @@ import {
   ClRouterConnectionError,
   ClRouterHttpError,
   ClRouterProtocolError,
+  CL_ROUTER_MAX_ASSET_BYTES,
+  CL_ROUTER_MAX_JSON_BYTES,
   buildClRouterGenerateRequest,
   createClRouterClient,
-  isClRouterTaskEnabled,
-  parseClRouterTaskFlags,
-  shouldFallBackFromClRouter,
 } from "../src/clRouterClient.js";
 
 const responseBody = {
   output: { policyNumber: "SYN-1" },
-  usage: { inputTokens: 20, outputTokens: 4, cachedInputTokens: 2, cacheWriteTokens: 1 },
+  usage: {
+    inputTokens: 20,
+    outputTokens: 4,
+    cachedInputTokens: 2,
+    cacheWriteTokens: 1,
+  },
   costUsd: 0.00004,
   costStatus: "priced",
-  model: { provider: "fireworks", model: "accounts/fireworks/models/deepseek-v3p2" },
+  model: {
+    provider: "fireworks",
+    model: "accounts/fireworks/models/deepseek-v3p2",
+  },
   routing: {
     decision: "autonomous",
     candidatesConsidered: [
-      { provider: "fireworks", model: "accounts/fireworks/models/deepseek-v3p2" },
+      {
+        provider: "fireworks",
+        model: "accounts/fireworks/models/deepseek-v3p2",
+      },
     ],
     policyVersion: "policy-v1",
     cacheStickinessApplied: false,
@@ -37,19 +47,16 @@ const responseBody = {
   requestId: "router-request-1",
 };
 
-test("task flags support full extraction, preview, exact tasks, and wildcard", () => {
-  const flags = parseClRouterTaskFlags(" extraction, extraction_preview ");
-  assert.equal(isClRouterTaskEnabled(flags, "extraction", "extraction_focused"), true);
-  assert.equal(isClRouterTaskEnabled(flags, "classification", "extraction_classify"), true);
-  assert.equal(isClRouterTaskEnabled(flags, "extraction_preview", "extraction_preview"), true);
-  assert.equal(isClRouterTaskEnabled(parseClRouterTaskFlags("classification"), "classification"), true);
-  assert.equal(isClRouterTaskEnabled(parseClRouterTaskFlags("*"), "summary"), true);
-  assert.equal(isClRouterTaskEnabled(parseClRouterTaskFlags(""), "extraction"), false);
-});
-
-test("request builder forwards schema, snapshot, and referenced PDF assets without mutation", () => {
-  const schema = { type: "object", properties: { policyNumber: { type: "string" } } };
-  const settings = {
+test("request builder strips provider keys and references the signed PDF with integrity", () => {
+  const schema = {
+    type: "object",
+    properties: { policyNumber: { type: "string" } },
+  };
+  const settings: {
+    routes: Record<string, { provider: string; model: string }>;
+    routeSources: Record<string, string>;
+    providerKeys?: Record<string, string>;
+  } = {
     routes: { extraction: { provider: "openai", model: "gpt-5.4-mini" } },
     routeSources: { extraction: "broker" },
     providerKeys: { openai: "broker-secret" },
@@ -63,13 +70,25 @@ test("request builder forwards schema, snapshot, and referenced PDF assets witho
     prompt: "Extract the policy.",
     schema,
     maxTokens: 4096,
+    routing: {
+      pin: { provider: "openai", model: "gpt-5.4-mini" },
+      allowFallback: true,
+    },
     assets: {
       pdfUrl: "https://storage.example.test/policy.pdf",
       pdfBytes: Uint8Array.from([1, 2, 3]),
       images: [{ imageBase64: "image-data", mimeType: "image/png" }],
     },
   });
-  assert.deepEqual(request.settings, settings);
+  assert.deepEqual(request.settings, {
+    routes: settings.routes,
+    routeSources: settings.routeSources,
+  });
+  assert.equal("providerKeys" in (request.settings ?? {}), false);
+  assert.deepEqual(request.routing, {
+    pin: { provider: "openai", model: "gpt-5.4-mini" },
+    allowFallback: true,
+  });
   assert.deepEqual(request.schema, schema);
   assert.equal(request.prompt, undefined);
   assert.equal(request.messages?.[0]?.content[0]?.type, "image");
@@ -80,8 +99,109 @@ test("request builder forwards schema, snapshot, and referenced PDF assets witho
       mediaType: "application/pdf",
       filename: "document.pdf",
       sizeBytes: 3,
+      sha256:
+        "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
     },
   });
+});
+
+test("request builder enforces fetchable references and exact router payload limits", () => {
+  const base = {
+    task: "extraction",
+    tenantId: "glass",
+    prompt: "Extract.",
+    schema: { type: "object" },
+  };
+  assert.throws(
+    () =>
+      buildClRouterGenerateRequest({
+        ...base,
+        assets: {
+          pdfUrl: "http://storage.example.test/policy.pdf",
+          pdfBytes: Uint8Array.from([1]),
+        },
+      }),
+    /HTTPS URLs/,
+  );
+  assert.doesNotThrow(() =>
+    buildClRouterGenerateRequest({
+      ...base,
+      assets: {
+        pdfUrl: "http://127.0.0.1:3211/router-assets?assetId=local",
+        pdfBytes: Uint8Array.from([1]),
+      },
+    }),
+  );
+  assert.throws(
+    () =>
+      buildClRouterGenerateRequest({
+        ...base,
+        assets: {
+          images: [
+            {
+              imageBase64: Buffer.alloc(CL_ROUTER_MAX_ASSET_BYTES + 1).toString(
+                "base64",
+              ),
+              mimeType: "image/png",
+            },
+          ],
+        },
+      }),
+    /asset limit|assets must be between/,
+  );
+  const jsonOverflowBytes = Math.floor(CL_ROUTER_MAX_JSON_BYTES * 0.76);
+  assert.throws(
+    () =>
+      buildClRouterGenerateRequest({
+        ...base,
+        assets: {
+          images: [
+            {
+              imageBase64: Buffer.alloc(jsonOverflowBytes).toString("base64"),
+              mimeType: "image/png",
+            },
+          ],
+        },
+      }),
+    /JSON limit/,
+  );
+  const reference = {
+    url: "https://actions.spot.insure/router-assets?assetId=asset-1&expiresAt=1&signature=sig",
+    mediaType: "image/png",
+    sizeBytes: 1,
+    sha256: "00",
+  };
+  const referenced = buildClRouterGenerateRequest({
+    ...base,
+    assets: { images: [{ source: reference }] },
+  });
+  assert.deepEqual(referenced.messages?.[0]?.content[0], {
+    type: "image",
+    source: reference,
+  });
+  assert.throws(
+    () =>
+      buildClRouterGenerateRequest({
+        ...base,
+        assets: {
+          images: Array.from({ length: 9 }, () => ({ source: reference })),
+        },
+      }),
+    /at most 8 assets/,
+  );
+  assert.throws(
+    () =>
+      buildClRouterGenerateRequest({
+        ...base,
+        assets: {
+          images: [
+            { source: { ...reference, sizeBytes: 9 * 1024 * 1024 } },
+            { source: { ...reference, sizeBytes: 8 * 1024 * 1024 } },
+          ],
+        },
+      }),
+    /aggregate limit/,
+  );
 });
 
 test("client authenticates and preserves routing lineage", async () => {
@@ -101,7 +221,10 @@ test("client authenticates and preserves routing lineage", async () => {
     prompt: "Extract preview.",
     schema: { type: "object" },
   });
-  assert.equal(new Headers(request?.headers).get("authorization"), "Bearer shared-secret");
+  assert.equal(
+    new Headers(request?.headers).get("authorization"),
+    "Bearer shared-secret",
+  );
   assert.equal(JSON.parse(String(request?.body)).executionBudgetMs, 100);
   assert.equal(result.requestId, "router-request-1");
   assert.equal(result.model.provider, "fireworks");
@@ -125,42 +248,25 @@ test("client permits plaintext only for loopback hosts", async () => {
   }
 
   assert.throws(
-    () => createClRouterClient({
-      baseUrl: "http://router.internal",
-      secret: "shared-secret",
-      timeoutMs: 1000,
-    }),
+    () =>
+      createClRouterClient({
+        baseUrl: "http://router.internal",
+        secret: "shared-secret",
+        timeoutMs: 1000,
+      }),
     /must use HTTPS/,
   );
 });
 
-test("only proven pre-execution production outages permit direct-provider fallback", () => {
-  const production = { SPOT_ENV: "production" };
-  const refused = Object.assign(new Error("offline"), { code: "ECONNREFUSED" });
-  assert.equal(
-    shouldFallBackFromClRouter(new ClRouterConnectionError("connection", refused), production),
-    true,
-  );
-  const unavailable = new ClRouterHttpError(503, "Unavailable", {
-    routerCode: "router_unavailable",
-    retryable: true,
-    executionStarted: false,
-  });
-  assert.equal(shouldFallBackFromClRouter(unavailable, production), true);
-  assert.equal(shouldFallBackFromClRouter(unavailable, { SPOT_ENV: "local" }), false);
-  assert.equal(shouldFallBackFromClRouter(new ClRouterConnectionError("timeout", new Error("slow")), production), false);
-  assert.equal(shouldFallBackFromClRouter(new ClRouterHttpError(503, "Unavailable"), production), false);
-  assert.equal(shouldFallBackFromClRouter(new ClRouterProtocolError("invalid"), production), false);
-});
-
-test("client wraps a proven connection refusal for fallback", async () => {
-  const production = { SPOT_ENV: "production" };
+test("client preserves connection failures without a direct-provider fallback", async () => {
   const disconnected = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
     timeoutMs: 1000,
     fetch: async () => {
-      throw Object.assign(new TypeError("fetch failed"), { code: "ECONNREFUSED" });
+      throw Object.assign(new TypeError("fetch failed"), {
+        code: "ECONNREFUSED",
+      });
     },
   });
   await assert.rejects(
@@ -170,10 +276,98 @@ test("client wraps a proven connection refusal for fallback", async () => {
       prompt: "Extract.",
       schema: { type: "object" },
     }),
-    (error) => error instanceof ClRouterConnectionError
-      && error.kind === "connection"
-      && shouldFallBackFromClRouter(error, production),
+    (error) =>
+      error instanceof ClRouterConnectionError && error.kind === "connection",
   );
+});
+
+test("client rejects an oversized request as a protocol error before fetch", async () => {
+  let fetchCalls = 0;
+  const client = createClRouterClient({
+    baseUrl: "https://router.internal",
+    secret: "shared-secret",
+    timeoutMs: 1000,
+    fetch: async () => {
+      fetchCalls += 1;
+      return Response.json(responseBody);
+    },
+  });
+  await assert.rejects(
+    client.generate({
+      task: "extraction",
+      tenantId: "glass",
+      prompt: "x".repeat(CL_ROUTER_MAX_JSON_BYTES),
+      schema: { type: "object" },
+    }),
+    (error) =>
+      error instanceof ClRouterProtocolError &&
+      /JSON limit/.test(error.message),
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test("client rejects an explicitly empty image before fetch", async () => {
+  let fetchCalls = 0;
+  const client = createClRouterClient({
+    baseUrl: "https://router.internal",
+    secret: "shared-secret",
+    timeoutMs: 1000,
+    fetch: async () => {
+      fetchCalls += 1;
+      return Response.json(responseBody);
+    },
+  });
+  await assert.rejects(
+    client.generate({
+      task: "extraction",
+      tenantId: "glass",
+      prompt: "Extract.",
+      schema: { type: "object" },
+      assets: {
+        images: [{ imageBase64: " \n\t", mimeType: "image/png" }],
+      },
+    }),
+    (error) =>
+      error instanceof ClRouterProtocolError &&
+      /nonempty base64 data/.test(error.message),
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test("client rejects loopback assets before calling a cloud router", async () => {
+  let fetchCalls = 0;
+  const client = createClRouterClient({
+    baseUrl: "https://router.internal",
+    secret: "shared-secret",
+    timeoutMs: 1000,
+    fetch: async () => {
+      fetchCalls += 1;
+      return Response.json(responseBody);
+    },
+  });
+  await assert.rejects(
+    client.generate({
+      task: "extraction",
+      tenantId: "glass",
+      prompt: "Extract.",
+      schema: { type: "object" },
+      assets: {
+        images: [
+          {
+            source: {
+              url: "http://127.0.0.1:3211/router-assets?assetId=local",
+              mediaType: "image/png",
+              sizeBytes: 3,
+            },
+          },
+        ],
+      },
+    }),
+    (error) =>
+      error instanceof ClRouterProtocolError &&
+      /loopback cl-router/.test(error.message),
+  );
+  assert.equal(fetchCalls, 0);
 });
 
 test("client preserves typed router failure metadata", async () => {
@@ -181,15 +375,19 @@ test("client preserves typed router failure metadata", async () => {
     baseUrl: "https://router.internal",
     secret: "shared-secret",
     timeoutMs: 1000,
-    fetch: async () => Response.json({
-      error: {
-        code: "router_unavailable",
-        message: "No eligible cross-provider route is available.",
-        retryable: true,
-        executionStarted: false,
-        requestId: "request-typed",
-      },
-    }, { status: 503 }),
+    fetch: async () =>
+      Response.json(
+        {
+          error: {
+            code: "router_unavailable",
+            message: "No eligible cross-provider route is available.",
+            retryable: true,
+            executionStarted: false,
+            requestId: "request-typed",
+          },
+        },
+        { status: 503 },
+      ),
   });
   await assert.rejects(
     client.generate({
@@ -198,10 +396,11 @@ test("client preserves typed router failure metadata", async () => {
       prompt: "Extract.",
       schema: { type: "object" },
     }),
-    (error) => error instanceof ClRouterHttpError
-      && error.routerCode === "router_unavailable"
-      && error.executionStarted === false
-      && error.requestId === "request-typed",
+    (error) =>
+      error instanceof ClRouterHttpError &&
+      error.routerCode === "router_unavailable" &&
+      error.executionStarted === false &&
+      error.requestId === "request-typed",
   );
 });
 
