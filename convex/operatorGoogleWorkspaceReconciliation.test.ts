@@ -33,7 +33,7 @@ async function fixture(){
 }
 test("atomically completes the exact request, preserves client/narrative/visibility, and deduplicates retry",async()=>{
  const f=await fixture();const prepared=await f.t.query(internal.operatorGoogleWorkspaceReconciliation.prepareInternal,f.args);
- await f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal,{...f.args,snapshot:prepared.snapshot});
+ const applied=await f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal,{...f.args,snapshot:prepared.snapshot});
  await f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal,{...f.args,snapshot:prepared.snapshot});
  await f.t.run(async ctx=>{
   expect(await ctx.db.get(f.requestId)).toMatchObject({status:"completed",narrative:"Original Auto request",clientVisible:true,completionOutcome:{kind:"placed_elsewhere",provider:"GEICO"}});
@@ -41,6 +41,13 @@ test("atomically completes the exact request, preserves client/narrative/visibil
   expect(await ctx.db.query("policies").collect()).toHaveLength(0);
   expect(await ctx.db.query("operatorWorkspaceScanChanges").collect()).toHaveLength(1);
  });
+ const operator=f.t.withIdentity({subject:`${f.userId}|session`});
+ for(const entityId of [f.requestId,f.orgId]) {
+  const activity=await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivity,{entityId,status:"updated",paginationOpts:{numItems:1,cursor:null}});
+  expect(activity.page.map(row=>row.id)).toEqual([applied.findingId]);
+  expect(activity.page[0].records[0].href).toBe(`/operator/clients/${f.orgId}/procurement/${f.requestId}`);
+ }
+ expect((await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivity,{entityId:f.requestId,status:"failed",paginationOpts:{numItems:1,cursor:null}})).page).toEqual([]);
 });
 test("rejects concurrent manual changes and paused standing authorization without writes",async()=>{
  const f=await fixture();const prepared=await f.t.query(internal.operatorGoogleWorkspaceReconciliation.prepareInternal,f.args);
@@ -67,4 +74,22 @@ test("conditional correction refuses later edits and tenant access",async()=>{
  expect(await operator.mutation(api.operatorGoogleWorkspaceScanActivity.correctActivity,{activityId:result.findingId})).toMatchObject({status:"conflict"});
  const tenant=await f.t.run(ctx=>ctx.db.insert("users",{email:"tenant@example.test",accountKind:"customer"}));
  await expect(f.t.withIdentity({subject:`${tenant}|session`}).query(api.operatorGoogleWorkspaceScanActivity.getActivity,{activityId:result.findingId})).rejects.toThrow();
+});
+test("reviewing a candidate organization loads only its request options without changing the finding", async () => {
+ const f=await fixture();
+ const findingId=await f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.recordFindingInternal,{...f.args,status:"needs_attention",explanation:"Choose the exact client",excerpt:body});
+ const other=await f.t.run(async ctx=>{
+  const orgId=await ctx.db.insert("organizations",{name:"Cove",type:"client",primaryContactEmail:"other@cove.test"});
+  const requestId=await ctx.db.insert("procurementRequests",{clientOrgId:orgId,title:"Auto",narrative:"Other client's auto request",status:"submitted",clientVisible:true,inboxToken:"other",createdByUserId:f.userId,updatedByUserId:f.userId,createdAt:1,updatedAt:1});
+  const brokerId=await ctx.db.insert("organizations",{name:"Broker",type:"broker"});
+  return {orgId,requestId,brokerId};
+ });
+ const operator=f.t.withIdentity({subject:`${f.userId}|session`});
+ const before=await operator.query(api.operatorGoogleWorkspaceScanActivity.getActivity,{activityId:findingId});
+ expect(before.candidates?.requests).toEqual([]);
+ const selected=await operator.query(api.operatorGoogleWorkspaceScanActivity.getActivity,{activityId:findingId,selectedOrgId:other.orgId});
+ expect(selected.candidates?.requests.map(request=>request.id)).toEqual([other.requestId]);
+ expect(selected.candidates?.organizations.find(org=>org.id===other.orgId)?.label).toContain("other@cove.test");
+ await expect(operator.query(api.operatorGoogleWorkspaceScanActivity.getActivity,{activityId:findingId,selectedOrgId:other.brokerId})).rejects.toThrow("correct type");
+ expect((await f.t.run(ctx=>ctx.db.get(findingId)))?.selectedOrgId).toBeUndefined();
 });

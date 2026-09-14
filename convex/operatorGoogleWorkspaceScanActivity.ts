@@ -13,6 +13,7 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { scanActivityStatus } from "./lib/scanReconciliationSchema";
 import { retryGoogleWorkspaceScanSource } from "./lib/googleWorkspaceScanState";
 import { scanOperationSchema } from "./lib/googleWorkspaceReconciliation";
+import { readPolicyPipelineState } from "./policies";
 import type {
   GoogleWorkspaceScanActivity,
   GoogleWorkspaceScanActivityActionResult,
@@ -29,6 +30,7 @@ async function activityDto(
   ctx: Ctx,
   finding: Doc<"operatorWorkspaceScanFindings">,
   detail = false,
+  selectedOrgId?: Id<"organizations">,
 ): Promise<GoogleWorkspaceScanActivity> {
   const source = await ctx.db.get(finding.sourceId);
   const evidence = source?.evidence;
@@ -40,13 +42,13 @@ async function activityDto(
   const imported = changes.find((change) => change.table === "policies");
   if (imported) {
     const id = ctx.db.normalizeId("policies", imported.entityId);
-    const policy = id ? await ctx.db.get(id) : null;
+    const pipeline = id ? await readPolicyPipelineState(ctx, id) : null;
     importState =
-      policy?.pipelineStatus === "complete"
+      pipeline?.pipelineStatus === "complete"
         ? "complete"
-        : policy?.pipelineStatus === "error"
+        : !pipeline || pipeline.pipelineStatus === "error"
           ? "error"
-          : policy?.pipelineStatus === "idle"
+          : pipeline.pipelineStatus === "idle"
             ? "queued"
             : "extracting";
   }
@@ -101,8 +103,14 @@ async function activityDto(
       .query("organizations")
       .withIndex("type", (q) => q.eq("type", operation.identity.kind))
       .take(100);
-    const orgId =
-      finding.selectedOrgId ?? (orgs.length === 1 ? orgs[0]._id : undefined);
+    const selected = selectedOrgId ? await ctx.db.get(selectedOrgId) : null;
+    if (
+      selectedOrgId &&
+      (!selected || selected.type !== operation.identity.kind)
+    ) {
+      throw new Error("Select an existing organization of the correct type");
+    }
+    const orgId = selected?._id ?? finding.selectedOrgId;
     const requests = orgId
       ? await ctx.db
           .query("procurementRequests")
@@ -110,10 +118,21 @@ async function activityDto(
           .take(100)
       : [];
     dto.candidates = {
-      organizations: orgs.map((org) => ({ id: org._id, label: org.name })),
+      organizations: orgs.map((org) => ({
+        id: org._id,
+        label: [org.name, org.primaryContactEmail, org.mailingAddress?.street1]
+          .filter(Boolean)
+          .join(" · "),
+      })),
       requests: requests.map((request) => ({
         id: request._id,
-        label: request.title,
+        label: [
+          request.title,
+          request.targetEffectiveDate,
+          request.status.replaceAll("_", " "),
+        ]
+          .filter(Boolean)
+          .join(" · "),
       })),
     };
   }
@@ -128,34 +147,59 @@ export const listActivity = query({
   handler: async (ctx, args) => {
     await requireOperator(ctx);
     const base = ctx.db.query("operatorWorkspaceScanFindings");
-    const rows = args.entityId
-      ? base
-          .withIndex("entity", (q) => q.eq("entityId", args.entityId))
-          .order("desc")
-      : args.status
-        ? base
-            .withIndex("status", (q) => q.eq("status", args.status!))
-            .order("desc")
-        : base.withIndex("recent").order("desc");
-    const page = await rows.paginate({
+    const requestId = args.entityId
+      ? ctx.db.normalizeId("procurementRequests", args.entityId)
+      : null;
+    const orgId = args.entityId
+      ? ctx.db.normalizeId("organizations", args.entityId)
+      : null;
+    let rows;
+    if (requestId) {
+      rows = args.status
+        ? base.withIndex("request_status", (q) =>
+            q.eq("requestId", requestId).eq("status", args.status!),
+          )
+        : base.withIndex("request", (q) => q.eq("requestId", requestId));
+    } else if (orgId) {
+      rows = args.status
+        ? base.withIndex("entity_status", (q) =>
+            q.eq("entityId", orgId).eq("status", args.status!),
+          )
+        : base.withIndex("entity", (q) => q.eq("entityId", orgId));
+    } else if (args.entityId) {
+      rows = args.status
+        ? base.withIndex("record_status", (q) =>
+            q.eq("recordId", args.entityId).eq("status", args.status!),
+          )
+        : base.withIndex("record", (q) => q.eq("recordId", args.entityId));
+    } else {
+      rows = args.status
+        ? base.withIndex("status", (q) => q.eq("status", args.status!))
+        : base.withIndex("recent");
+    }
+    const page = await rows.order("desc").paginate({
       ...args.paginationOpts,
       numItems: Math.min(50, args.paginationOpts.numItems),
     });
     return {
       ...page,
-      page: await Promise.all(
-        page.page
-          .filter((f) => !args.status || f.status === args.status)
-          .map((f) => activityDto(ctx, f)),
-      ),
+      page: await Promise.all(page.page.map((f) => activityDto(ctx, f))),
     };
   },
 });
 export const getActivity = query({
-  args: { activityId: v.string() },
+  args: {
+    activityId: v.string(),
+    selectedOrgId: v.optional(v.id("organizations")),
+  },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    return activityDto(ctx, await requireFinding(ctx, args.activityId), true);
+    return activityDto(
+      ctx,
+      await requireFinding(ctx, args.activityId),
+      true,
+      args.selectedOrgId,
+    );
   },
 });
 const resolutionArgs = { activityId: v.string(), note: v.optional(v.string()) };
