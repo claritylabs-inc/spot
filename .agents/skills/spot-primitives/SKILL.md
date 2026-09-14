@@ -12,9 +12,8 @@ retrieval, gateway, or Moonshot keys and never call those providers directly.
 All generation, tool-loop steps, structured output, embeddings, voice,
 extraction callbacks, and credentialed retrieval use cl-router; explicit
 operator routes are router pins, and router failures fail closed without a
-consumer transport fallback. Runtime settings and worker claims never include
-`providerKeys`; the optional legacy schema field exists only until the explicit
-audit/cleanup migration has completed. Availability comes from the
+consumer transport fallback. Runtime settings, schema, and worker claims do not
+contain `providerKeys`. Availability comes from the
 authenticated router capabilities action rather than process environment keys.
 Emitted rich binary assets preserve the 12 MiB per-asset, 16 MiB aggregate,
 eight-asset, and 4 MiB serialized-JSON limits after parsing/selection; general
