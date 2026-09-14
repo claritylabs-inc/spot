@@ -35,6 +35,36 @@ export interface NotifyArgs {
   nowMs?: number;
 }
 
+export const notifyPolicyExtractionReviewInternal = internalMutation({
+  args: { policyId: v.id("policies"), questionCount: v.number() },
+  handler: async (ctx, args): Promise<boolean> => {
+    const policy = await ctx.db.get(args.policyId);
+    if (!policy || args.questionCount < 1) return false;
+    const scanImport = await ctx.db
+      .query("operatorWorkspaceScanImports")
+      .withIndex("policy", (q) => q.eq("policyId", args.policyId))
+      .first();
+    if (scanImport) return false;
+    const label =
+      policy.policyNumber && policy.policyNumber !== "Unknown"
+        ? `policy ${policy.policyNumber}`
+        : policy.carrier
+          ? `${policy.carrier} policy`
+          : "a policy";
+    await ctx.runMutation(internal.lib.notify.notifyInternal, {
+      orgId: policy.orgId,
+      type: "incomplete_extraction",
+      title: "Policy extraction needs review",
+      body: `Spot finished extracting ${label}, but ${args.questionCount} coverage ${args.questionCount === 1 ? "term needs" : "terms need"} review.`,
+      severity: "warning",
+      actionType: "view_policy",
+      actionPayload: { policyId: args.policyId, tab: "review" },
+      sourceRef: { policyId: args.policyId, kind: "extraction_review" },
+    });
+    return true;
+  },
+});
+
 /**
  * Resolve whether a given user should receive email for a notification type.
  * Exported for testability.
