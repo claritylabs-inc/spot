@@ -8,6 +8,7 @@ import { internal } from "../_generated/api";
 import { generateObjectForPublicTask } from "../lib/models";
 import {
   scanExtractionSchema,
+  scanOperationKey,
   ScanAttention,
   scanAttentionMessage,
 } from "../lib/googleWorkspaceReconciliation";
@@ -322,6 +323,18 @@ export const reconcileSource = internalAction({
         maxOutputTokens: 10000,
         abortSignal: AbortSignal.timeout(90000),
       });
+      const operationKeys = new Set<string>();
+      for (const operation of generated.object.operations) {
+        const key = await scanOperationKey(
+          JSON.stringify(operation),
+          evidence.source,
+        );
+        if (operationKeys.has(key))
+          throw new ScanAttention(
+            "Mail analysis proposed overlapping changes to the same record. Review the source before retrying.",
+          );
+        operationKeys.add(key);
+      }
       for (const attention of generated.object.attention) {
         hadFinding = true;
         status = "needs_attention";

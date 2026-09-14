@@ -1,3 +1,5 @@
+import type { Doc } from "../_generated/dataModel";
+import { actionConfirmationFingerprint } from "./actionConfirmationFingerprint";
 import { USPS_STATE_NAMES } from "./brokerProfileValidation";
 import { lobLabel } from "./linesOfBusiness";
 import { ConvexError } from "convex/values";
@@ -368,4 +370,35 @@ export function assertUnchangedSnapshot(current: unknown, expected: string) {
     throw new ScanAttention(
       "The target changed during analysis; retry to re-evaluate current values",
     );
+}
+
+export async function scanOperationKey(
+  operationJson: string,
+  source: Doc<"operatorGoogleWorkspaceScanSources">,
+) {
+  const operation = scanOperationSchema.parse(JSON.parse(operationJson));
+  return actionConfirmationFingerprint({
+    toolName: "workspace_scan_event",
+    toolVersion: 2,
+    input: {
+      evidence: source.evidence?.contentFingerprint ?? source.messageId,
+      importSource:
+        operation.kind === "import_policy"
+          ? { mailbox: source.mailbox, messageId: source.messageId }
+          : null,
+      kind: operation.kind,
+      brokerIdentity:
+        operation.kind === "market_activity" ? operation.brokerIdentity : null,
+      identity: operation.identity,
+      effectiveDate: operation.effectiveDate,
+      target:
+        "request" in operation
+          ? operation.request
+          : operation.kind === "company_facts"
+            ? operation.section
+            : operation.kind === "import_policy"
+              ? operation.attachmentId
+              : null,
+    },
+  });
 }

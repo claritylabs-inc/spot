@@ -17,6 +17,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { assertGoogleWorkspaceScanSourceLease } from "./lib/googleWorkspaceScanState";
 import {
   scanOperationSchema,
+  scanOperationKey,
   sourceEffectiveAt,
   assertUnchangedSnapshot,
   ScanAttention,
@@ -31,7 +32,6 @@ import {
   writeOperatorAudit,
   requireOperatorForUser,
 } from "./lib/operatorIdentity";
-import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   commitValidatedOperatorPolicyImport,
   type OperatorPolicySource,
@@ -148,36 +148,6 @@ async function assertPdfTarget(
     throw new ScanAttention(
       "Original PDF insured does not match the current selected client",
     );
-}
-export async function scanOperationKey(
-  operationJson: string,
-  source: Doc<"operatorGoogleWorkspaceScanSources">,
-) {
-  const operation = scanOperationSchema.parse(JSON.parse(operationJson));
-  return actionConfirmationFingerprint({
-    toolName: "workspace_scan_event",
-    toolVersion: 2,
-    input: {
-      evidence: source.evidence?.contentFingerprint ?? source.messageId,
-      importSource:
-        operation.kind === "import_policy"
-          ? { mailbox: source.mailbox, messageId: source.messageId }
-          : null,
-      kind: operation.kind,
-      brokerIdentity:
-        operation.kind === "market_activity" ? operation.brokerIdentity : null,
-      identity: operation.identity,
-      effectiveDate: operation.effectiveDate,
-      target:
-        "request" in operation
-          ? operation.request
-          : operation.kind === "company_facts"
-            ? operation.section
-            : operation.kind === "import_policy"
-              ? operation.attachmentId
-              : null,
-    },
-  });
 }
 async function linkFindingSource(
   ctx: MutationCtx,

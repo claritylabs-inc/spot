@@ -95,6 +95,10 @@ export const collectMailbox = internalAction({
         user.primaryEmail !== mailbox.mailbox
       )
         throw new Error("Workspace mailbox is no longer eligible.");
+      await ctx.runQuery(
+        internal.operatorGoogleWorkspaceScan.assertMailboxLeaseInternal,
+        { ...args, leaseToken },
+      );
       if (mailbox.phase === "checkpoint") {
         // Capture before enumeration so arrivals during backfill are drained afterward.
         const historyCheckpoint = await provider.getHistoryCheckpoint(

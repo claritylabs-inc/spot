@@ -1660,6 +1660,74 @@ test("capability additions preserve existing states and lines; withdrawal remove
   ).rejects.toThrow("explicit sourced withdrawal");
 });
 
+test("overlapping fact proposals require attention before any batch changes apply", async () => {
+  const f = await fixture();
+  const facts = ["Cove has 10 employees.", "Cove builds software."];
+  const sourceBody = [body, ...facts].join("\n");
+  const evidence = {
+    ...f.evidence,
+    bodyFingerprint: await googleWorkspaceScanBodyFingerprint(sourceBody),
+  };
+  evidence.contentFingerprint = await googleWorkspaceScanContentFingerprint(
+    evidence,
+    sourceBody,
+  );
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.sourceId, {
+      evidence,
+      status: "ready",
+      leaseToken: undefined,
+      leaseUntil: undefined,
+    });
+    const part = await ctx.db
+      .query("operatorGoogleWorkspaceScanSourceParts")
+      .withIndex("source_ordinal", (q) => q.eq("sourceId", f.sourceId))
+      .first();
+    await ctx.db.patch(part!._id, { text: sourceBody });
+  });
+  mocks.provider.mockReturnValue({
+    getDirectoryUser: vi.fn().mockResolvedValue({
+      primaryEmail: "ops@example.test",
+      aliases: [],
+      displayName: null,
+      suspended: false,
+      archived: false,
+      mailboxSetup: true,
+    }),
+  });
+  const factOperations: ScanOperation[] = facts.map((fact) => ({
+    kind: "company_facts",
+    identity,
+    effectiveDate: "2026-09-13",
+    excerpt: fact,
+    explanation: "Observed company fact",
+    section: "operations",
+    body: fact,
+    replaces: [],
+  }));
+  mocks.generate.mockResolvedValueOnce({
+    object: { operations: [operation, ...factOperations], attention: [] },
+  });
+
+  await f.t.action(
+    internal.actions.operatorGoogleWorkspaceReconciliation.reconcileSource,
+    { sourceId: f.sourceId },
+  );
+
+  await f.t.run(async (ctx) => {
+    expect((await ctx.db.get(f.sourceId))?.status).toBe("needs_attention");
+    expect((await ctx.db.get(f.requestId))?.status).toBe("marketing");
+    expect(await ctx.db.query("orgWikiSections").collect()).toEqual([]);
+    expect(await ctx.db.query("operatorWorkspaceScanChanges").collect()).toEqual(
+      [],
+    );
+    const findings = await ctx.db.query("operatorWorkspaceScanFindings").collect();
+    expect(findings).toHaveLength(1);
+    expect(findings[0].status).toBe("needs_attention");
+    expect(findings[0].explanation).toContain("overlapping changes");
+  });
+});
+
 test("mixed action failures retain failed source and run counts", async () => {
   const f = await fixture();
   await f.t.run((ctx) =>

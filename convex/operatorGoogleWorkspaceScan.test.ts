@@ -548,6 +548,35 @@ async function collectionFixture() {
   return { ...f, runId, mailboxId: mailbox._id };
 }
 describe("Gmail baseline and history collection", () => {
+  it.each(["checkpoint", "baseline", "history"] as const)(
+    "stops %s Gmail reads when scanning is paused during Directory verification",
+    async (phase) => {
+      const { t, operator, mailboxId } = await collectionFixture();
+      await t.run((ctx) =>
+        ctx.db.patch(mailboxId, { phase, historyCheckpoint: "100" }),
+      );
+      providerMock.getDirectoryUser.mockImplementationOnce(async () => {
+        await operator.mutation(settings, {
+          enabled: false,
+          intervalMinutes: 60,
+        });
+        return directoryUser("mail@example.com");
+      });
+      await expect(
+        t.action(internal.actions.operatorGoogleWorkspaceScan.collectMailbox, {
+          mailboxId,
+        }),
+      ).rejects.toThrow("Workspace scanning is paused");
+      expect(providerMock.getHistoryCheckpoint).not.toHaveBeenCalled();
+      expect(providerMock.listMessages).not.toHaveBeenCalled();
+      expect(providerMock.listHistory).not.toHaveBeenCalled();
+      expect(
+        await t.run((ctx) =>
+          ctx.db.query("operatorGoogleWorkspaceScanSources").collect(),
+        ),
+      ).toHaveLength(0);
+    },
+  );
   it("exhausts a Directory roster beyond live-tool limits with durable paginated discovery", async () => {
     const { t, operator } = await fixture();
     await operator.mutation(settings, { enabled: true, intervalMinutes: 60 });

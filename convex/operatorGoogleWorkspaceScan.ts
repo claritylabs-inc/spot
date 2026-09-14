@@ -8,6 +8,7 @@ import {
   mutation,
   query,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import {
@@ -551,7 +552,7 @@ export const dispatchInternal = internalMutation({
 });
 
 async function liveRun(
-  ctx: MutationCtx,
+  ctx: QueryCtx | MutationCtx,
   runId: Id<"operatorGoogleWorkspaceScanRuns">,
   leaseToken?: string,
 ) {
@@ -573,7 +574,7 @@ async function liveRun(
   return { ...live, run };
 }
 async function liveMailbox(
-  ctx: MutationCtx,
+  ctx: QueryCtx | MutationCtx,
   mailboxId: Id<"operatorGoogleWorkspaceScanMailboxes">,
   leaseToken: string,
 ) {
@@ -588,6 +589,16 @@ async function liveMailbox(
     throw new Error("Workspace mailbox lease is no longer current.");
   return { ...live, mailbox };
 }
+export const assertMailboxLeaseInternal = internalQuery({
+  args: {
+    mailboxId: v.id("operatorGoogleWorkspaceScanMailboxes"),
+    leaseToken: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await liveMailbox(ctx, args.mailboxId, args.leaseToken);
+    return null;
+  },
+});
 export const claimDiscoveryInternal = internalMutation({
   args: { runId: v.id("operatorGoogleWorkspaceScanRuns") },
   handler: async (ctx, args) => {

@@ -66,6 +66,7 @@ export function TeamSection({
     : "settings.team.listInvitations";
   const viewer = useCachedQuery("settings.team.viewer", api.users.viewer, {});
   const currentOrgData = useCachedViewerOrg();
+  const isBroker = !operatorClient && currentOrgData?.org.type === "broker";
   const orgData = useMemo(
     () =>
       operatorClient
@@ -597,6 +598,7 @@ export function TeamSection({
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         operatorClientOrgId={operatorClientOrgId}
+        isBroker={isBroker}
       />,
     );
     return () => setRightPanel(null);
@@ -615,6 +617,7 @@ export function TeamSection({
     editTitle,
     editingMember,
     inviteOpen,
+    isBroker,
     operatorClientOrgId,
     adminCount,
     primaryContactId,

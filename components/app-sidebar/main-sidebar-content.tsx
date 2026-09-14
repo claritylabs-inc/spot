@@ -102,8 +102,8 @@ export function MainSidebarContent({
   onSignOut: () => void;
 }) {
   function isActive(href: string) {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+    if (href === "/" || href === "/broker") return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
 
   return (

@@ -20,10 +20,12 @@ export function InviteMemberDrawer({
   open,
   onOpenChange,
   operatorClientOrgId,
+  isBroker,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   operatorClientOrgId?: Id<"organizations">;
+  isBroker: boolean;
 }) {
   const sendMemberInvitation = useAction(api.orgs.sendMemberInvitation);
 
@@ -115,9 +117,13 @@ export function InviteMemberDrawer({
             ))}
           </div>
           <p className={`text-muted-foreground/60 mt-1.5 ${typeStyle("caption.default")}`}>
-            {role === "admin"
-              ? "Admins can manage connections, settings, and team members."
-              : "Members can view policies and use the agent, but can't manage connections or settings."}
+            {isBroker
+              ? role === "admin"
+                ? "Admins can manage the broker profile and team members."
+                : "Members can view the broker profile and team."
+              : role === "admin"
+                ? "Admins can manage connections, settings, and team members."
+                : "Members can view policies and use the agent, but can't manage connections or settings."}
           </p>
         </div>
       </form>
