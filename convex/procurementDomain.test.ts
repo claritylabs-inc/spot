@@ -1040,7 +1040,9 @@ describe("procurement domain boundaries", () => {
         requestId: request.requestId,
         expiresInDays: 0,
       }),
-    ).rejects.toThrow("Packet link lifetime must be a positive whole number of days");
+    ).rejects.toThrow(
+      "Packet link lifetime must be a positive whole number of days",
+    );
     await f.operator.mutation(api.procurementPacket.revokeLink, {
       linkId: replacementLink.id,
     });
@@ -1138,7 +1140,11 @@ describe("procurement domain boundaries", () => {
     });
     expect(issued.expiresAt).toBeUndefined();
     await f.t.mutation(internal.procurementPacket.sweepExpired, {});
-    expect(await f.t.query(api.procurementPacket.getByToken, { token: issued.token })).not.toBeNull();
+    expect(
+      await f.t.query(api.procurementPacket.getByToken, {
+        token: issued.token,
+      }),
+    ).not.toBeNull();
     const { originalFileId, replacementClientFileId } = await f.t.run(
       async (ctx) => {
         const original = await ctx.db.get(clientFileId);
@@ -1798,7 +1804,7 @@ describe("procurement domain boundaries", () => {
     ).toEqual([]);
   });
 
-  test("keeps delayed approvals pending, revalidates changed records, and lets cancellation unblock the thread", async () => {
+  test("keeps delayed approvals pending and releases stale approved input with recoverable feedback", async () => {
     vi.useFakeTimers();
     const f = await fixture();
     const threadId = await f.t.mutation(
@@ -1868,17 +1874,28 @@ describe("procurement domain boundaries", () => {
         type: "client",
       }),
     );
-    await expect(
-      f.t.mutation(internal.operatorAgent.confirmActionInternal, {
+    expect(
+      await f.t.mutation(internal.operatorAgent.confirmActionInternal, {
         operatorUserId: f.operatorUserId,
         threadId,
         confirmationId,
         decision: "approve",
         channel: "mcp",
       }),
-    ).rejects.toThrow(/already/i);
+    ).toMatchObject({
+      status: "failed",
+      result: {
+        status: "failed",
+        error: expect.stringMatching(/already/i),
+        failure: {
+          phase: "preflight",
+          recoverable: true,
+          writeState: "not_started",
+        },
+      },
+    });
     expect(await f.t.run((ctx) => ctx.db.get(confirmationId))).toMatchObject({
-      status: "pending",
+      status: "completed",
     });
     expect(
       await f.t.mutation(internal.operatorAgent.confirmActionInternal, {
@@ -1888,7 +1905,7 @@ describe("procurement domain boundaries", () => {
         decision: "reject",
         channel: "mcp",
       }),
-    ).toMatchObject({ status: "rejected" });
+    ).toMatchObject({ status: "needs_refresh" });
     expect(
       (await invoke("Other client", "unblocked-client")).outcome,
     ).toMatchObject({

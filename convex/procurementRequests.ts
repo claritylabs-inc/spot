@@ -18,6 +18,7 @@ import {
   requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
+import { NoWriteInputError } from "./lib/noWriteInputError";
 import {
   createProcurementInboxToken,
   inferProcurementEmailCategory,
@@ -1149,7 +1150,10 @@ export async function createProcurementFileItemByOperator(
       (args.brokerRelease && args.brokerRelease !== "hidden")) &&
     !args.clientFileId
   )
-    throw new Error("A visible procurement item must reference a client file");
+    throw new NoWriteInputError(
+      "missing_client_file",
+      "A visible procurement item must reference a client file",
+    );
   const now = dayjs().valueOf();
   const fileItemId = await ctx.db.insert("procurementFileItems", {
     requestId: request._id,
@@ -1280,7 +1284,10 @@ export async function updateProcurementFileItemByOperator(
     (effectiveClientVisible || effectiveBrokerRelease !== "hidden") &&
     !effectiveClientFileId
   )
-    throw new Error("A visible procurement item must reference a client file");
+    throw new NoWriteInputError(
+      "missing_client_file",
+      "A visible procurement item must reference a client file",
+    );
   if (args.notes !== undefined) patch.notes = optionalText(args.notes);
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),

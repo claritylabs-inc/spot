@@ -9,7 +9,10 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { getOrgAccess } from "./lib/access";
-import { isLobCode } from "./lib/linesOfBusiness";
+import {
+  normalizeBrokerLineOfBusinessCodes,
+  normalizeBrokerWritingStates,
+} from "./lib/brokerProfileValidation";
 import {
   requireOperator,
   requireOperatorForUser,
@@ -30,79 +33,6 @@ const addressValidator = v.object({
   postalCode: v.optional(v.string()),
   country: v.optional(v.string()),
 });
-const USPS_STATES = new Set([
-  "AL",
-  "AK",
-  "AZ",
-  "AR",
-  "CA",
-  "CO",
-  "CT",
-  "DE",
-  "FL",
-  "GA",
-  "HI",
-  "ID",
-  "IL",
-  "IN",
-  "IA",
-  "KS",
-  "KY",
-  "LA",
-  "ME",
-  "MD",
-  "MA",
-  "MI",
-  "MN",
-  "MS",
-  "MO",
-  "MT",
-  "NE",
-  "NV",
-  "NH",
-  "NJ",
-  "NM",
-  "NY",
-  "NC",
-  "ND",
-  "OH",
-  "OK",
-  "OR",
-  "PA",
-  "RI",
-  "SC",
-  "SD",
-  "TN",
-  "TX",
-  "UT",
-  "VT",
-  "VA",
-  "WA",
-  "WV",
-  "WI",
-  "WY",
-  "DC",
-]);
-
-function normalizeStates(values: string[]) {
-  const states = Array.from(
-    new Set(values.map((value) => value.trim().toUpperCase()).filter(Boolean)),
-  );
-  if (states.some((state) => !USPS_STATES.has(state)))
-    throw new Error("Writing states must use USPS abbreviations");
-  return states.sort();
-}
-
-function normalizeLines(values: string[]) {
-  const lines = Array.from(
-    new Set(values.map((value) => value.trim().toUpperCase()).filter(Boolean)),
-  );
-  if (lines.some((line) => !isLobCode(line))) {
-    throw new Error("Lines must use exact ACORD LOBCd values");
-  }
-  return lines.sort();
-}
-
 async function requireBroker(
   ctx: QueryCtx | MutationCtx,
   brokerOrgId: Id<"organizations">,
@@ -264,10 +194,10 @@ export async function updateBrokerProfileByOperator(
     networkStatus: args.networkStatus ?? existing?.networkStatus ?? "prospect",
     officeAddress: args.officeAddress ?? existing?.officeAddress,
     writingStates: args.writingStates
-      ? normalizeStates(args.writingStates)
+      ? normalizeBrokerWritingStates(args.writingStates)
       : (existing?.writingStates ?? []),
     lineOfBusinessCodes: args.lineOfBusinessCodes
-      ? normalizeLines(args.lineOfBusinessCodes)
+      ? normalizeBrokerLineOfBusinessCodes(args.lineOfBusinessCodes)
       : (existing?.lineOfBusinessCodes ?? []),
     updatedByUserId: operator.userId,
     updatedAt: now,
@@ -362,6 +292,14 @@ export const upsert = mutation({
       !(await ctx.storage.getMetadata(args.iconStorageId))
     )
       throw new Error("Broker logo not found");
+    const normalizedWritingStates =
+      args.writingStates === undefined
+        ? undefined
+        : normalizeBrokerWritingStates(args.writingStates);
+    const normalizedLineOfBusinessCodes =
+      args.lineOfBusinessCodes === undefined
+        ? undefined
+        : normalizeBrokerLineOfBusinessCodes(args.lineOfBusinessCodes);
     const brokerPatch: Partial<Doc<"organizations">> = {};
     if (args.name !== undefined)
       brokerPatch.name = args.name.trim() || broker.name;
@@ -392,13 +330,13 @@ export const upsert = mutation({
               ...args.officeAddress,
             },
       writingStates:
-        args.writingStates === undefined
+        normalizedWritingStates === undefined
           ? (existing?.writingStates ?? [])
-          : normalizeStates(args.writingStates),
+          : normalizedWritingStates,
       lineOfBusinessCodes:
-        args.lineOfBusinessCodes === undefined
+        normalizedLineOfBusinessCodes === undefined
           ? (existing?.lineOfBusinessCodes ?? [])
-          : normalizeLines(args.lineOfBusinessCodes),
+          : normalizedLineOfBusinessCodes,
       updatedByUserId: access.userId,
       updatedAt: now,
     };
@@ -454,6 +392,10 @@ export async function createStandaloneBrokerByOperator(
   const operator = await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const name = args.name.trim();
   if (!name) throw new Error("Broker name is required");
+  const writingStates = normalizeBrokerWritingStates(args.writingStates ?? []);
+  const lineOfBusinessCodes = normalizeBrokerLineOfBusinessCodes(
+    args.lineOfBusinessCodes ?? [],
+  );
   const now = dayjs().valueOf();
   const brokerOrgId = await ctx.db.insert("organizations", {
     name,
@@ -466,8 +408,8 @@ export async function createStandaloneBrokerByOperator(
     brokerOrgId,
     networkStatus: args.networkStatus ?? "prospect",
     officeAddress: args.officeAddress,
-    writingStates: normalizeStates(args.writingStates ?? []),
-    lineOfBusinessCodes: normalizeLines(args.lineOfBusinessCodes ?? []),
+    writingStates,
+    lineOfBusinessCodes,
     createdByUserId: operator.userId,
     updatedByUserId: operator.userId,
     createdAt: now,

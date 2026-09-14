@@ -96,6 +96,13 @@ import { isOrgWikiSectionKey } from "./lib/orgWiki";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
 import {
+  confirmedPreflightOperatorToolFailure,
+  executionOperatorToolFailure,
+  isRecoverableOperatorToolFailure,
+  preflightOperatorToolFailure,
+  type OperatorToolFailedOutcome,
+} from "./lib/operatorAgentToolFailure";
+import {
   resolveOperatorPolicySources,
   operatorPolicySourceFingerprint,
 } from "./operatorPolicyImports";
@@ -225,7 +232,7 @@ type DirectToolOutcome =
       result: unknown;
       idempotent: boolean;
     }
-  | { status: "failed"; error: string };
+  | OperatorToolFailedOutcome;
 
 type OperatorActionToolResult = {
   result: unknown;
@@ -3136,12 +3143,16 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     return { status: "succeeded" as const, result, idempotent: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const failure = executionOperatorToolFailure(
+      args.toolName as OperatorAgentToolName,
+      error,
+    );
     await ctx.db.patch(auditId, {
       status: "failed",
       error: message.slice(0, 1_000),
       updatedAt: dayjs().valueOf(),
     });
-    return { status: "failed" as const, error: message };
+    return failure;
   }
 }
 
@@ -3657,36 +3668,101 @@ async function confirmOperatorAction(
   const parsedInput = JSON.parse(payload.input) as unknown;
   const spec = getOperatorAgentToolSpec(payload.toolName);
   assertOperatorRole(operator.profile.role, spec.requiredRole);
-  await preflightOperatorToolConfirmation(ctx, {
-    operatorUserId: operator.userId,
-    threadId: args.threadId,
-    toolName: payload.toolName as OperatorAgentToolName,
-    input: parseOperatorAgentToolInput(payload.toolName, parsedInput),
-  });
-  if (payload.toolName === "import_policy_files") {
-    const input = parseOperatorAgentToolInput(payload.toolName, parsedInput);
-    const files = await resolveOperatorPolicySources(ctx, {
-      operatorUserId: operator.userId,
-      threadId: args.threadId,
-      orgId: normalizeOrganizationId(ctx, input.orgId),
-      attachmentFileIds: stringList(input.attachmentFileIds),
-      clientFileIds: stringList(input.clientFileIds),
-    });
-    if (
-      payload.sourceFingerprint !==
-      (await operatorPolicySourceFingerprint(files))
-    )
-      throw new Error(
-        "Policy sources changed since confirmation; request a fresh import approval",
+  const finishImmediateOutcome = async (
+    result:
+      | { status: "succeeded"; result: unknown; idempotent: boolean }
+      | OperatorToolFailedOutcome,
+  ) => {
+    const succeeded = result.status === "succeeded";
+    const recoverableFailure = isRecoverableOperatorToolFailure(result);
+    if ((succeeded || recoverableFailure) && run.executionKind === "goal") {
+      const toolCall = {
+        name: payload.toolName,
+        input: boundedJson(parsedInput, 500),
+        output: boundedJson(result, 500),
+      };
+      const currentMessage = await ctx.db.get(run.agentMessageId);
+      const usedTools = [
+        ...new Set([...(currentMessage?.usedTools ?? []), payload.toolName]),
+      ];
+      const toolCalls = [...(currentMessage?.toolCalls ?? []), toolCall].slice(
+        -100,
       );
-  }
-  await ctx.db.patch(confirmation._id, {
-    status: "completed",
-    completedAt: now,
-    updatedAt: now,
-  });
-  if (spec.execution === "action") {
-    const input = parseOperatorAgentToolInput(payload.toolName, parsedInput);
+      await ctx.db.patch(run.agentMessageId, {
+        content: "",
+        status: "processing",
+        usedTools,
+        toolCalls,
+        updatedAt: now,
+      });
+      await ctx.db.patch(run._id, {
+        status: "queued",
+        checkpoint: {
+          iteration: run.checkpoint?.iteration ?? 0,
+          executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
+          summary: buildOperatorRunCheckpointSummary({
+            previous: run.checkpoint?.summary,
+            audit: {
+              usedTools: [payload.toolName],
+              completedTools: succeeded ? [payload.toolName] : [],
+              toolCalls: [toolCall],
+              workflowOutcomes: [],
+            },
+          }),
+          lastToolName: payload.toolName,
+        },
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
+        runId: run._id,
+      });
+      return {
+        status: "queued" as const,
+        runId: run._id,
+        result,
+        content: succeeded
+          ? `Confirmed: ${payload.summary}. Continuing the operator task.`
+          : `The confirmed action did not write: ${result.error}. Continuing the operator task so the input can be corrected and approved again.`,
+      };
+    }
+    await ctx.db.patch(run._id, {
+      status: succeeded ? "completed" : "failed",
+      completedAt: now,
+      lastError: succeeded ? undefined : result.error,
+      updatedAt: now,
+    });
+    const content = succeeded
+      ? `Completed: ${payload.summary}.`
+      : `Could not complete ${payload.summary}: ${result.error}`;
+    await ctx.db.insert("operatorAgentMessages", {
+      threadId: args.threadId,
+      ownerUserId: operator.userId,
+      channel,
+      role: "agent",
+      content,
+      usedTools: [payload.toolName],
+      toolCalls: [
+        {
+          name: payload.toolName,
+          input: boundedJson(parsedInput, 500),
+          output: boundedJson(result, 500),
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(args.threadId, { lastMessageAt: now, updatedAt: now });
+    return {
+      status: succeeded ? ("completed" as const) : ("failed" as const),
+      runId: run._id,
+      result,
+      content,
+    };
+  };
+
+  let input: ReturnType<typeof parseOperatorAgentToolInput>;
+  try {
+    input = parseOperatorAgentToolInput(payload.toolName, parsedInput);
     const expectedHash = await actionConfirmationFingerprint({
       toolName: payload.toolName,
       toolVersion: spec.version,
@@ -3698,6 +3774,68 @@ async function confirmOperatorAction(
     ) {
       throw new Error("Operator tool changed before confirmed execution");
     }
+    await preflightOperatorToolConfirmation(ctx, {
+      operatorUserId: operator.userId,
+      threadId: args.threadId,
+      toolName: payload.toolName as OperatorAgentToolName,
+      input,
+    });
+    if (payload.toolName === "import_policy_files") {
+      const files = await resolveOperatorPolicySources(ctx, {
+        operatorUserId: operator.userId,
+        threadId: args.threadId,
+        orgId: normalizeOrganizationId(ctx, input.orgId),
+        attachmentFileIds: stringList(input.attachmentFileIds),
+        clientFileIds: stringList(input.clientFileIds),
+      });
+      if (
+        payload.sourceFingerprint !==
+        (await operatorPolicySourceFingerprint(files))
+      ) {
+        throw new Error(
+          "Policy sources changed since confirmation; request a fresh import approval",
+        );
+      }
+    }
+  } catch (error) {
+    const failure = confirmedPreflightOperatorToolFailure(
+      payload.toolName as OperatorAgentToolName,
+      error,
+    );
+    const ledger = await ctx.db
+      .query("agentActionAuditEvents")
+      .withIndex("idempotency", (index) =>
+        index
+          .eq("operatorUserId", operator.userId)
+          .eq("idempotencyKey", payload.idempotencyKey),
+      )
+      .unique();
+    if (
+      !ledger ||
+      ledger.action !== payload.toolName ||
+      ledger.inputHash !== payload.inputHash ||
+      ledger.operatorConfirmationId !== confirmation._id
+    ) {
+      throw new Error("Operator action audit does not match confirmation");
+    }
+    await ctx.db.patch(confirmation._id, {
+      status: "completed",
+      completedAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(ledger._id, {
+      status: "failed",
+      error: failure.error.slice(0, 1_000),
+      updatedAt: now,
+    });
+    return await finishImmediateOutcome(failure);
+  }
+  await ctx.db.patch(confirmation._id, {
+    status: "completed",
+    completedAt: now,
+    updatedAt: now,
+  });
+  if (spec.execution === "action") {
     const ledger = await ctx.db
       .query("agentActionAuditEvents")
       .withIndex("idempotency", (index) =>
@@ -3762,88 +3900,12 @@ async function confirmOperatorAction(
     channel,
     confirmationId: confirmation._id,
   });
-  const succeeded = result.status === "succeeded";
-  if (succeeded && run.executionKind === "goal") {
-    const toolCall = {
-      name: payload.toolName,
-      input: boundedJson(parsedInput, 500),
-      output: boundedJson(result, 500),
-    };
-    const currentMessage = await ctx.db.get(run.agentMessageId);
-    const usedTools = [
-      ...new Set([...(currentMessage?.usedTools ?? []), payload.toolName]),
-    ];
-    const toolCalls = [...(currentMessage?.toolCalls ?? []), toolCall].slice(
-      -100,
+  if (result.status === "confirmation_required") {
+    throw new Error(
+      "Confirmed operator action unexpectedly still requires confirmation",
     );
-    await ctx.db.patch(run.agentMessageId, {
-      content: "",
-      status: "processing",
-      usedTools,
-      toolCalls,
-      updatedAt: now,
-    });
-    await ctx.db.patch(run._id, {
-      status: "queued",
-      checkpoint: {
-        iteration: run.checkpoint?.iteration ?? 0,
-        executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
-        summary: buildOperatorRunCheckpointSummary({
-          previous: run.checkpoint?.summary,
-          audit: {
-            usedTools: [payload.toolName],
-            completedTools: [payload.toolName],
-            toolCalls: [toolCall],
-            workflowOutcomes: [],
-          },
-        }),
-        lastToolName: payload.toolName,
-      },
-      updatedAt: now,
-    });
-    await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
-      runId: run._id,
-    });
-    return {
-      status: "queued" as const,
-      runId: run._id,
-      result,
-      content: `Confirmed: ${payload.summary}. Continuing the operator task.`,
-    };
   }
-  await ctx.db.patch(run._id, {
-    status: succeeded ? "completed" : "failed",
-    completedAt: now,
-    lastError: succeeded ? undefined : result.error,
-    updatedAt: now,
-  });
-  const content = succeeded
-    ? `Completed: ${payload.summary}.`
-    : `Could not complete ${payload.summary}: ${result.error}`;
-  await ctx.db.insert("operatorAgentMessages", {
-    threadId: args.threadId,
-    ownerUserId: operator.userId,
-    channel,
-    role: "agent",
-    content,
-    usedTools: [payload.toolName],
-    toolCalls: [
-      {
-        name: payload.toolName,
-        input: boundedJson(parsedInput, 500),
-        output: boundedJson(result, 500),
-      },
-    ],
-    createdAt: now,
-    updatedAt: now,
-  });
-  await ctx.db.patch(args.threadId, { lastMessageAt: now, updatedAt: now });
-  return {
-    status: succeeded ? ("completed" as const) : ("failed" as const),
-    runId: run._id,
-    result,
-    content,
-  };
+  return await finishImmediateOutcome(result);
 }
 
 const confirmActionArgs = {
@@ -4000,7 +4062,10 @@ export const finishConfirmedActionToolInternal = internalMutation({
     const succeeded = !error;
     const outcome = succeeded
       ? { status: "succeeded" as const, result: args.result, idempotent: false }
-      : { status: "failed" as const, error };
+      : executionOperatorToolFailure(
+          payload.toolName as OperatorAgentToolName,
+          error,
+        );
     await ctx.db.patch(ledger._id, {
       status: succeeded ? "succeeded" : "failed",
       output: succeeded ? boundedJson(args.result) : ledger.output,
@@ -4825,7 +4890,10 @@ export const executeUnconfirmedActionToolInternal = internalAction({
         internal.operatorAgent.finishUnconfirmedActionToolInternal,
         { auditId: prepared.auditId, error: message },
       );
-      return { status: "failed" as const, error: message };
+      return executionOperatorToolFailure(
+        args.toolName as OperatorAgentToolName,
+        error,
+      );
     }
   },
 });
@@ -4914,10 +4982,10 @@ export const invokeRegisteredToolInternal = internalAction({
               );
     } catch (error) {
       if (invocation.duplicate) throw error;
-      outcome = {
-        status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-      };
+      outcome = executionOperatorToolFailure(
+        args.toolName as OperatorAgentToolName,
+        error,
+      );
     }
     const displaySummary =
       outcome.status === "confirmation_required" ||
@@ -5125,11 +5193,10 @@ export const requestToolConfirmationInternal = internalMutation({
           run.status !== "waiting_confirmation" ||
           run.checkpoint?.pendingConfirmationId !== confirmation._id
         ) {
-          return {
-            status: "failed" as const,
-            error:
-              "Operator confirmation is no longer active; retry with a new idempotency key",
-          };
+          return preflightOperatorToolFailure(
+            args.toolName as OperatorAgentToolName,
+            "Operator confirmation is no longer active; retry with a new idempotency key",
+          );
         }
         return {
           status: "confirmation_required" as const,
@@ -5137,13 +5204,12 @@ export const requestToolConfirmationInternal = internalMutation({
           summary: confirmation.payload.summary,
         };
       }
-      return {
-        status: "failed" as const,
-        error:
-          existing.status === "pending"
-            ? "Operator action is already in progress"
-            : `Operator action is ${existing.status}; retry with a new idempotency key`,
-      };
+      return preflightOperatorToolFailure(
+        args.toolName as OperatorAgentToolName,
+        existing.status === "pending"
+          ? "Operator action is already in progress"
+          : `Operator action is ${existing.status}; retry with a new idempotency key`,
+      );
     }
     if (run.cancellationRequestedAt || run.status !== "running") {
       throw new Error("Operator agent run is no longer active");
@@ -5172,10 +5238,10 @@ export const requestToolConfirmationInternal = internalMutation({
         input,
       });
     } catch (error) {
-      return {
-        status: "failed" as const,
-        error: error instanceof Error ? error.message : String(error),
-      };
+      return preflightOperatorToolFailure(
+        args.toolName as OperatorAgentToolName,
+        error,
+      );
     }
     const target = spec.target(input);
     const inputJson = JSON.stringify(input);
