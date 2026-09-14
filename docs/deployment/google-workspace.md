@@ -245,10 +245,11 @@ recollected when necessary; retry does not treat a pruned body as complete.
 
 Clear evidence can create standalone clients, prospect brokers and immediately
 client-visible requests; update company facts, broker capabilities, request
-dates/progress and private market logs; and import clearly bound policy PDFs
+dates/progress and private procurement prose in `private.md`; and import clearly
+bound policy PDFs
 through the normal extraction pipeline. New organizations receive no users,
 invitations or inherited access. Scan-created requests do not generate shared
-packet links. Existing request narrative and visibility remain intact.
+packet links. Existing public/private Markdown and visibility remain intact.
 
 Newer, explicitly dated evidence may replace a manual value. Ambiguous dates,
 identity, request coverage, conflicting values or attachment grouping require

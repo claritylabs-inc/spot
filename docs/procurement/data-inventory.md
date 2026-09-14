@@ -27,8 +27,8 @@ Updating `public.md` advances the request’s packet revision. Existing packet
 links retain immutable issued text/artifact snapshots until revoked or
 replaced; editing a file does not rewrite historical issuance. Released
 artifacts still require their current release state and file lifecycle checks.
-Source PDFs and other uploaded artifacts remain files in their own right;
-the two-file rule governs editable procurement prose.
+Source PDFs and other uploaded artifacts remain files in their own right; the
+two-file rule governs editable procurement prose.
 
 ## Stored artifacts
 
@@ -41,8 +41,8 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | Active table | Responsibility |
 | --- | --- |
 | `procurementRequests` | Request identity, workflow, effective date, packet revision, policy links, inbox routing and audit stamps. |
-| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s private.md. |
-| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing clientFileId means an outstanding request. |
+| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s `private.md`. |
+| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing `clientFileId` means an outstanding request. |
 | `procurementPacketLinks` | Token hash, recipient, revocation/expiry and immutable issued text/artifact snapshots. |
 | `procurementPacketViews` | Token-validated access audit without raw magic-link tokens. |
 | `procurementProposals` | Operator-private offer, selection/archive state and extraction identity. |
@@ -55,16 +55,37 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | `brokerProfiles` | Supplier network status, office, writing states and LOB filters; never client/proposal access. |
 | `operatorAuditEvents` | Append-only actor/action/request audit. |
 
-## Narrowing evidence
+## Conditional narrowing status
 
-The widening release completed in production in workflow `34901426209`.
-Production audit `34902173672` verified the retained legacy tables were empty,
-so the narrowing release can remove them without mapping or fabricating
-replacement records. Their schema removal is coordinated with the other
-narrowing domains.
+The narrowing candidate removes the migrated procurement narrative fields,
+section storage, separate intake/log/file-note document ownership, obsolete
+snapshot/revision fields, and the one-off migration APIs that operated on them.
+This is a code-state description, not evidence that production migration or
+deployment has completed. The approved production export, full audit pages,
+migration results, zero-residual verification, exact deployed commit, and
+rollback artifact are pending in
+[the execution record](../architecture/backend-simplification.md).
 
-Procurement runtime now reads and writes only `private.md` and `public.md`.
-The retired migration adapters, section-row model, sidecar document kinds,
-owner fields, and owner indices are removed. Existing issued packet links keep
-their immutable text and artifact snapshots, including snapshots issued before
-the two-file conversion.
+The narrowed tree intentionally has no broad schema-migration runner. Its
+remaining exported migrations are ongoing operator-email identity,
+declaration-fact, carrier-identity, and Slack compatibility work documented in
+[AGENTS.md](../../AGENTS.md).
+
+Eight inventory-only tables remain until production counts and content review
+are available:
+
+- `policyUpdateRuns`
+- `clientInvitations`
+- `brokerActivity`
+- `procurementRequirementDrafts`
+- `procurementRequestRequirements`
+- `procurementSpecifications`
+- `procurementRequestActivities`
+- `procurementRequestDocuments`
+
+Do not purge or narrow these tables from repository-only evidence. If a table
+is empty on the approved target, record the all-page count before removal. If
+it contains material history, preserve that evidence losslessly under an
+authorized current owner before proposing a later narrowing change.
+`insuranceRequirements` remains the canonical active compliance store and is
+not part of this inventory-only set.

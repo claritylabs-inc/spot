@@ -1,6 +1,6 @@
 # Backend simplification and client intake plan
 
-Status: implementation authorized; audited against 4f83f618 on 2026-09-14. Release and migration results will be recorded here. The operator authorized implementation, migrations, merging, and deployment. This document is the reviewable implementation contract, not evidence that deployment has completed.
+Status: implementation authorized; historical audit captured against `4f83f618` on 2026-09-14. The narrowed code candidate remains conditional. Production export, audit, migration, deployment, and rollback evidence are pending and will be recorded here by the release owner. This document is not evidence that deployment has completed.
 
 ## Accepted scope update
 
@@ -12,11 +12,34 @@ The canonical text lives in `markdownDocuments` for transactional persistence, w
 
 ## Execution record
 
-- Audited the full backend and implemented canonical client identity, mandatory source-cited research, standard Markdown storage, and bounded legacy cleanup.
-- The preceding widening implementation passed local deployment, a database/file-storage backup and migration, all-page zero-residual verification, and an idempotent second migration.
-- That preceding implementation passed 651 tests, lint, production and worker builds, router-contract checks, and focused wiki browser checks. These results predate the latest two-file procurement decision and do not validate its final implementation.
-- The two-file API, UI, agent-tool, and migration changes are being implemented. Combined tests, local migration/idempotency checks, and browser verification must run again against the final change.
+- The preceding widening implementation audited the backend and implemented canonical client identity, mandatory source-cited research, standard Markdown storage, and bounded legacy cleanup.
+- That widening implementation passed local deployment, a database/file-storage backup and migration, all-page zero-residual verification, and an idempotent second migration.
+- Widening commit `d7460184ec467f227db629604c212243ae7e37b8` passed 654 tests plus Convex typecheck, production build, and lint. These results predate reconciliation with the narrowed schema candidate and do not validate a production release.
+- The two-file procurement contract has been carried into the conditional narrowing documentation. Combined runtime validation and production migration evidence remain owned by the root orchestrator.
 - Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending. No production completion is claimed here.
+
+## Conditional narrowing release evidence
+
+The narrowed schema and deleted compatibility APIs may ship only after every
+pending field below is replaced with exact, reviewed evidence. Local candidate
+validation cannot substitute for approved-target proof.
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| Approved widening source commit | Pending | Root orchestrator to record exact SHA. |
+| Production database and file-storage rollback export | Pending | Root orchestrator to record artifact identity and retention location. |
+| Complete production audit pages and conflict review | Pending | Root orchestrator to record run IDs, page completion, counts, and reviewed exceptions. |
+| Production migration and idempotent rerun | Pending | Root orchestrator to record exact widening functions and zero-residual results. |
+| `policyUpdateRuns` plus seven inventory-only procurement table counts | Pending | Root orchestrator to record all-page counts and disposition; these tables remain in the candidate. |
+| Narrowed release commit and Convex deployment | Pending | Root orchestrator to record exact SHA, target, and deployment result. |
+| Railway, Vercel, compatibility, and post-deploy checks | Pending | Root orchestrator to record exact-commit results. |
+| Rollback decision and artifact verification | Pending | Root orchestrator to record reviewer and outcome. |
+
+The conditional narrowing tree intentionally removes the one-off broad schema
+migration workflow and runner. Production migration must execute from the
+approved widening release before the narrowed schema is deployed; the narrowed
+tree exposes only the ongoing operator-email identity, declaration-fact,
+carrier-identity, and Slack compatibility migrations listed in `AGENTS.md`.
 
 ## Outcome
 
@@ -49,7 +72,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 - Add client identity normalization, complete tool profile support, classification validation and durable research workflow.
 - Fix email preview to use the same canonical send envelope as actual delivery, including deliberate removal of CC/BCC. Preserve old rendered snapshots and legacy fallback while stored data remains mixed.
-- Consolidate request prose into private.md/public.md; route all request, outreach, file, scan, and agent prose writes through those two files. Stop separate intake/log/file-note writes and duplicate outreach contact/obsolete packet snapshots.
+- Consolidate request prose into `private.md` and `public.md`; route request, outreach, file, scan, and agent prose writes through those two files. Stop separate intake/log/file-note writes and duplicate outreach contact/obsolete packet snapshots.
 - Remove unused policy reconciliation state and compatibility source-chunk DB persistence; keep raw spans, nodes, vector document chunks and worker wire/manifest contracts.
 - Simplify certificate workflow settings to the actual per-client renewal toggle; widen obsolete required settings before stopping writes.
 - Stop obsolete conversation-vector storage/API references; preserve actual thread history and wiki.
@@ -60,14 +83,14 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 - Deploy A through the normal main release workflow. Record exact commit, Convex target, Railway readiness and Vercel result.
 - Export/retain a database backup before destructive cleanup; report counts, conflicts and legacy-only payloads without printing confidential content.
-- Run new fixed-scope migration pages and existing applicable wiki/provider-key/COI/Slack/procurement gates. Require complete cursors, zero residual fields/rows and no unresolved blockers before narrowing.
-- Merge legacy packet/intake/log/file-note content into the correct request file without changing its audience or issued snapshots. Preserve unique historical prose and source references; require verified conversion before deleting obsolete rows. Inventory unused history stores, archive material records losslessly where needed, then remove the dead stores. Keep uncertain client identities unresolved.
+- Run the approved widening commit’s fixed-scope migration pages and applicable compatibility gates. Require complete cursors, zero residual fields/rows and no unresolved blockers before narrowing; do not expect removed migration APIs to exist in the narrowed tree.
+- Merge legacy packet/intake/log/file-note content into the correct request file without changing its audience or issued snapshots. Preserve unique historical prose, private evidence, source references, policy update history, old certificate links, and uncertain client identities. A missing active writer is not permission to lose evidence.
 - Re-run pages to prove idempotency. Verify source removal/retry, manual edit preservation, exact approvals and legacy transport compatibility on bounded fixtures.
 
 ### C. Narrow verified obsolete schema
 
 - Remove only fields/tables proven migrated on the target; remove obsolete imports, indexes, migration writers, DTO branches and compatibility tests in the same batch.
-- Candidate removals: retired conversationTurns and sourceChunks; obsolete reconciliation/per-file extraction fields; no-op certificate settings; duplicate outreach snapshots and old revision counters; schema-only organization relationship contexts; established retired memory/delivery/ownership stores after their own gates.
+- The conditional candidate removes the verified compatibility fields, tables, imports, migration writers, and tests. It deliberately retains `policyUpdateRuns` and seven inventory-only procurement tables until approved-target counts and content review are recorded.
 - Shared-dev/local fixture compatibility must be handled explicitly. Never switch this worktree to the shared integration database for routine tests.
 - Release C, verify the same production gates, then run bounded read checks and migration verifiers against the deployed result.
 
@@ -91,7 +114,11 @@ Keep tenant/operator conversation separation, exact approval and audit records, 
 
 ## Domain evidence
 
-The following records are the pre-implementation audit; line numbers refer to the audited checkout. Current behavior and execution results above take precedence as changes land.
+The following records are the preserved pre-implementation audit baseline.
+Symbols, commands, schemas, and line numbers below refer to the audited checkout;
+some no longer exist in the narrowed candidate and none are current operational
+instructions. Use the current contracts and pending evidence table above for
+release decisions.
 
 
 # Policy, evidence, compliance, and certificate schema audit
@@ -172,7 +199,10 @@ Read-only repository audit. No target database row counts or migration execution
 5. Keep structured information that authorizes, filters, or binds evidence. Supplier networkStatus/writingStates/LOB codes drive directory filters (`convex/brokerProfiles.ts:160`), so they belong in fields. Company/supplier descriptions and placement narrative belong in wiki/packet prose. Proposal source evidence and findings must remain structured and private.
 6. Tighten typed output, rather than stuffing operational objects into markdown: proposal reviews have a precise normalized finding shape (`convex/lib/proposalReview.ts:39`) yet store and accept `v.array(v.any())` (`schema.ts:3350`, `convex/procurementProposals.ts:1376`). Use one shared Convex validator for accepted finding/evidence fields after audit/backfill of old review shapes. Proposal extractedOffer itself is intentionally extractor-version tolerant (`convex/lib/proposalMarkdown.ts:80`); do not blindly narrow it to one current provider format.
 
-## Existing migration gates and gaps
+## Historical migration gates and gaps
+
+This list records what existed at audit time. The referenced one-off functions
+are removed from the narrowed candidate and must not be invoked from it.
 
 - `procurementMigration:auditLegacyNarrowing` (`convex/procurementMigration.ts:4`) checks broker-owned clients, broker-uploaded policies and unlinked outreaches. It uses whole-table collect; replace with bounded cursor audit before operating against large production data. It does not report orphaned legacy request documents/activities, contact duplicates, revision residue, invitations or brokerActivity.
 - `migrations:runProcurementDomainBackfill` (`migrations.ts:460`) links brokers but also creates empty draft proposals for legacy quote summaries (`:320`). That conflicts with current atomic filing guarantee (no empty shells) and can revive obsolete extractedOffer fields. Audit legacy rows and use a targeted successor migration; do not rerun blindly for a cleanup.
@@ -180,7 +210,7 @@ Read-only repository audit. No target database row counts or migration execution
 - `migrations:runCompanyWikiLegacyPurge` (`:495`) backfills missing fact sections, unsets connectedEmailAutomationItems.memoryIds and companyInformationExtractions.procurementFacts, then deletes orgMemory/procurementMemory. This is an existing gate, not a novel finding.
 - `migrations:runProposalReviewPacketBackfill` only removes unconfirmable pre-packet reviews; extend cleanup + stop writers before revision-field narrowing.
 - `migrations:runLegacyCoiAttachmentAuthorizationCleanup` (`:444`) + `pendingEmails:verifyLegacyCoiAttachmentAuthorizationCleanup` gates removal of allowMultipleCoiAttachments. Preserve exact coiBatchAuthorization fingerprint binding.
-- At audit time, no dedicated migration preserved legacy procurementRequestDocuments, material procurementRequestActivities, or drafts/specifications in the request’s Markdown files. Must inventory and explicitly map; never automatically confirm extracted obligations or widen visibility.
+- At audit time, no dedicated migration preserved legacy `procurementRequestDocuments`, material `procurementRequestActivities`, or drafts/specifications in the request’s Markdown files. Inventory and explicitly map them; never automatically confirm extracted obligations or widen visibility.
 
 ## Table coverage: keep/change rationale
 
@@ -198,13 +228,13 @@ Read-only repository audit. No target database row counts or migration execution
 | procurementSmsEvents (3042) | Keep provider receipt/delivery ledger separate from customer channels. Provider event/message IDs serve different dedupe identities. |
 | procurementRequirementDrafts (3074) | Retire legacy callable intake path only after preserving drafts/evidence without confirming them. |
 | procurementRequestRequirements (3096) | Retire compatibility links after packet migration/review binding. Do not delete canonical insuranceRequirements shared with compliance. |
-| procurementSpecifications (3107) | Move request-only fact prose to private.md/public.md according to existing audience; currently still callable writer, so stop/redirect writer first. |
+| procurementSpecifications (3107) | Move request-only fact prose to `private.md` or `public.md` according to its existing audience; currently still callable writer, so stop/redirect writer first. |
 | procurementRequestActivities (3124) | Existing orphan store; migrate material messages/status evidence to canonical audit/correspondence, preserve client visibility, then drop. |
 | procurementRequestDocuments (3142) | Existing orphan store; canonical clientFiles + associations. Preserve blobs/visibility before removal. |
-| procurementPacketSections (3161) | Keep ordered markdown, audience ladder, proposed edits and source references. Proposals/manual ownership are workflow state, not redundant copies. |
+| procurementPacketSections (3161) | Historical section store superseded by the two-file contract. Preserve content, audience, proposed edits, and source references during conversion; the conditional candidate removes this table. |
 | procurementPacketLinks (3196) | Keep token hash, revocation, recipient and immutable snapshots. Existing optional legacy outreach/snapshot fields need explicit rotation; never snapshot old links to today's content and call it historical truth. |
 | procurementPacketViews (3252) | Keep bounded audit evidence; viewCount/lastViewedAt are useful aggregate cache. Avoid extra generic activity abstraction. |
-| procurementPacketUpdateRuns (3260) | Keep lease/fingerprint/retry ownership. Terminal diagnostic retention can be bounded, not approval lifetimes. |
+| procurementPacketUpdateRuns (3260) | Historical migration ledger. The conditional candidate removes it after verified conversion; it is not one of the eight inventory-only tables retained for production counts. |
 | procurementProposals (3275) | Keep private decision entity and atomic filing contract. Do not move selected status, premium offer evidence or extraction fingerprint into wiki. |
 | procurementProposalDocuments (3307) | Keep association/extraction evidence manifest. Existing planned cleanup: backfill clientFileId, then remove duplicate fileId/contentType/size only after reader compare and preserving extraction identity/hash. |
 | procurementProposalReviews (3325) | Keep model vs staff conclusion and exact extraction+packet binding. Tighten findings validator; complete counter cleanup before narrowing. |
@@ -309,4 +339,3 @@ Plan: normalize singular transport input to array at one ingress boundary, keep 
 Every deletion uses audit -> widen/canonical writer -> bounded resumable migration -> read-only verifier -> narrow -> focused runtime checks. Record actual target and migration counters; never assume source-level lack of writes proves rows absent. Run Node 24 and focused existing tests for touched boundaries, then required root/Convex type checks. Security-sensitive cases include exact draft approval after edits, stale confirmation invalidation, old Slack revocation preservation, OAuth conservative legacy scope conversion, replay/idempotency, tenant/operator isolation, and interrupt/resume during purge. No live messages or broad memory-clearing tools are needed for acceptance.
 
 Recommended first implementation batch is canonical email preview/delivery resolution, followed by notification validator consolidation. The migration-only retired conversation store and established legacy gates can run as a separate deployment lane once actual target audit is available. Avoid a simultaneous all-channel table rewrite.
-
