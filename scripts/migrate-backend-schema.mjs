@@ -100,6 +100,7 @@ const compatibilityTables = [
 ];
 const retiredTables = [
   "procurementPacketUpdateRuns",
+  "brokerActivity",
   "orgMemory",
   "procurementMemory",
   "brokerClientAssignments",
@@ -197,6 +198,17 @@ try {
     if (statSync(backup).size === 0)
       throw new Error("Database backup is empty");
     log("database and file-storage backup", { filename: backup });
+    for (const table of ["organizations", "policies"]) {
+      pages("backendSchemaLegacy:clearLegacyOwnershipPage", {
+        table,
+        dryRun: false,
+      });
+      requireZero(
+        pages("backendSchemaLegacy:ownershipAuditPage", { table }),
+        "blockers",
+        "legacyReferences",
+      );
+    }
     batches("orgWiki:migrateLegacyBatch");
     if (run("orgWiki:verifyLegacyMigration").complete !== true)
       throw new Error("Legacy wiki remains");
@@ -286,11 +298,25 @@ try {
       requireZero(pages("backendSchemaLegacy:audit", { table }), "count");
     }
     let blockers = 0;
-    for (const table of ownershipTables)
-      blockers += pages("backendSchemaLegacy:ownershipAuditPage", {
+    let legacyReferences = 0;
+    for (const table of ownershipTables) {
+      const ownership = pages("backendSchemaLegacy:ownershipAuditPage", {
         table,
-      }).blockers;
-    requireZero({ blockers }, "blockers");
+      });
+      blockers += ownership.blockers;
+      legacyReferences += ownership.legacyReferences;
+    }
+    requireZero({ blockers, legacyReferences }, "blockers", "legacyReferences");
+    const finalRetained = {
+      policyUpdateRuns: pages("backendSchemaLegacy:inventoryPolicyHistoryPage")
+        .count,
+    };
+    for (const table of retainedTables)
+      finalRetained[table] = pages(
+        "procurementSchemaCleanup:inventoryLegacyPage",
+        { table },
+      ).count;
+    report.finalRetainedLegacyRows = finalRetained;
     report.completedAt = dayjs().toISOString();
     report.readyForNarrowing = true;
     report.narrowingScope =

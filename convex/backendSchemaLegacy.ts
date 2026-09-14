@@ -1,8 +1,10 @@
+import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 
 const retiredTable = v.union(
   v.literal("procurementPacketUpdateRuns"),
+  v.literal("brokerActivity"),
   v.literal("orgMemory"),
   v.literal("procurementMemory"),
   v.literal("brokerClientAssignments"),
@@ -25,19 +27,85 @@ export const ownershipAuditPage = internalQuery({
       numItems: 10,
       maximumBytesRead: 2 * 1024 * 1024,
     });
-    const blockers = page.page.filter((row) => {
-      if (args.table === "organizations")
-        return "type" in row && row.type === "client" && "brokerOrgId" in row;
-      if (args.table === "policies")
-        return (
-          ("uploadedBySide" in row && row.uploadedBySide === "broker") ||
-          "uploadedByBrokerOrgId" in row
-        );
-      return !("brokerOrgId" in row);
-    }).length;
+    let blockers = 0;
+    let legacyReferences = 0;
+    for (const row of page.page) {
+      if ("name" in row) {
+        if (row.type !== "broker" && row.brokerOrgId) legacyReferences++;
+      } else if ("brokerName" in row) {
+        if (!row.brokerOrgId) blockers++;
+      } else {
+        const owner = row.orgId ? await ctx.db.get(row.orgId) : null;
+        if (owner?.type === "broker") blockers++;
+        if (row.uploadedByBrokerOrgId) {
+          legacyReferences++;
+          if (!owner) blockers++;
+        }
+      }
+    }
     return {
       checked: page.page.length,
       blockers,
+      legacyReferences,
+      isDone: page.isDone,
+      cursor: page.continueCursor,
+    };
+  },
+});
+
+export const clearLegacyOwnershipPage = internalMutation({
+  args: {
+    table: v.union(v.literal("organizations"), v.literal("policies")),
+    cursor: v.union(v.string(), v.null()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const page = await ctx.db.query(args.table).paginate({
+      cursor: args.cursor,
+      numItems: 10,
+      maximumBytesRead: 2 * 1024 * 1024,
+    });
+    let changed = 0;
+    for (const row of page.page) {
+      const field =
+        args.table === "organizations"
+          ? "brokerOrgId"
+          : "uploadedByBrokerOrgId";
+      if (!(field in row)) continue;
+      if ("name" in row && row.type === "broker") continue;
+      const orgId = "name" in row ? row._id : row.orgId;
+      const owner = orgId ? await ctx.db.get(orgId) : null;
+      if (!owner || owner.type === "broker")
+        throw new Error(
+          "Resolve the policy's actual client owner before removing its legacy broker reference",
+        );
+      changed++;
+      if (args.dryRun !== false) continue;
+      await ctx.db.insert("operatorAuditEvents", {
+        type: "setup_write",
+        targetOrgId: owner._id,
+        summary:
+          "Removed a retired broker association; client ownership and upload provenance are unchanged",
+        metadata: {
+          migration: "backend_schema_simplification",
+          table: args.table,
+          recordId: row._id,
+          previous: {
+            [field]:
+              "brokerOrgId" in row
+                ? row.brokerOrgId
+                : "uploadedByBrokerOrgId" in row
+                  ? row.uploadedByBrokerOrgId
+                  : undefined,
+          },
+        },
+        createdAt: dayjs().valueOf(),
+      });
+      await ctx.db.patch(row._id, { [field]: undefined });
+    }
+    return {
+      checked: page.page.length,
+      changed,
       isDone: page.isDone,
       cursor: page.continueCursor,
     };
