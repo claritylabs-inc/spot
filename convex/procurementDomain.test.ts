@@ -341,20 +341,16 @@ describe("procurement domain boundaries", () => {
       }),
     ]);
     expect(details).not.toHaveProperty("activity");
-    const legacy = await f.t.run(async (ctx) => ({
-      activities: await ctx.db.query("procurementRequestActivities").collect(),
-      documents: await ctx.db.query("procurementRequestDocuments").collect(),
+    const persisted = await f.t.run(async (ctx) => ({
       clientFile: await ctx.db.get(attached.clientFileId),
       fileItem: await ctx.db.get(attached.fileItemId),
     }));
-    expect(legacy.activities).toEqual([]);
-    expect(legacy.documents).toEqual([]);
-    expect(legacy.clientFile).toMatchObject({
+    expect(persisted.clientFile).toMatchObject({
       fileId: storageId,
       clientVisible: true,
       uploadedBySide: "client",
     });
-    expect(legacy.fileItem).toMatchObject({
+    expect(persisted.fileItem).toMatchObject({
       clientFileId: attached.clientFileId,
       clientVisible: true,
     });

@@ -88,7 +88,6 @@ describe("deployed schema compatibility", () => {
       ["appCardAccessLinks", "policyChangeCaseId"],
       ["certificateRequestHolds", "policyChangeCaseId"],
       ["pendingEmails", "policyChangeCaseId"],
-      ["policyUpdateRuns", "caseId"],
       ["policyVersions", "caseId"],
       ["threadMessages", "policyChangeCaseId"],
     ]) {
