@@ -10,6 +10,7 @@ import {
 import { googleWorkspaceCredentialEnvelope } from "../lib/googleWorkspaceCredentials";
 import {
   createGoogleWorkspaceProvider,
+  GoogleWorkspaceProviderError,
   googleWorkspaceErrorStatus,
   isEligibleDirectoryMailbox,
   sanitizeGoogleWorkspaceError,
@@ -254,11 +255,6 @@ export const collectSource = internalAction({
           ordinal: parts.length,
           text: parsed.body.slice(offset, offset + LIMITS.bodyPartChars),
         });
-      for (let offset = 0; offset < parts.length; offset += 8)
-        await ctx.runMutation(
-          internal.operatorGoogleWorkspaceScan.storeSourcePartsInternal,
-          { ...lease, parts: parts.slice(offset, offset + 8) },
-        );
       const internalDate =
         message.internalDate === null ? null : Number(message.internalDate);
       const evidence: GoogleWorkspaceScanSourceEvidence = {
@@ -287,6 +283,19 @@ export const collectSource = internalAction({
         evidence,
         parsed.body,
       );
+      if (
+        claim.source.originalContentFingerprint &&
+        claim.source.originalContentFingerprint !== evidence.contentFingerprint
+      ) {
+        throw new GoogleWorkspaceProviderError(
+          "The source message changed. Review its original evidence before retrying.",
+        );
+      }
+      for (let offset = 0; offset < parts.length; offset += 8)
+        await ctx.runMutation(
+          internal.operatorGoogleWorkspaceScan.storeSourcePartsInternal,
+          { ...lease, parts: parts.slice(offset, offset + 8) },
+        );
       await ctx.runMutation(
         internal.operatorGoogleWorkspaceScan.finishCollectionInternal,
         { ...lease, evidence, excluded: false },
