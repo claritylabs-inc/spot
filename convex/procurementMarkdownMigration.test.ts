@@ -177,7 +177,10 @@ test("consolidation preserves attribution and immutable snapshots, keeps unpubli
   ]) {
     let cursor: string | null = null;
     for (;;) {
-      const page = await f.t.mutation(migrate, { table, cursor });
+      const page: { isDone: boolean; cursor: string } = await f.t.mutation(
+        migrate,
+        { table, cursor },
+      );
       if (page.isDone) break;
       cursor = page.cursor;
     }
