@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";
+import { useRightPanelCloseGuard } from "@/lib/use-guarded-right-panel";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export function PacketLinkDrawer({
@@ -177,6 +178,7 @@ function LoadedPacketEditor({
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the packet"),
   });
+  useRightPanelCloseGuard(autoSave.saveNow);
   return (
     <SettingsDrawer
       open

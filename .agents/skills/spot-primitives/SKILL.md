@@ -55,7 +55,7 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Standard Markdown documents
 
-`components/ui/markdown-editor.tsx` owns the full-height Markdown source editor with YAML syntax support, formatting controls and prose preview. Packet editors open Notes and Shared independently and keep import/download actions in the drawer footer.
+`components/ui/markdown-editor.tsx` owns the full-height Markdown source editor with YAML syntax support, formatting controls and prose preview. Packet editors open Notes and Shared independently and keep import/download actions in the drawer footer. `useGuardedRightPanel` owns request sidebar replacements; the packet editor registers its save guard so changing files or opening another sidebar cannot discard a failed draft. Replacement waits for a successful save or explicit discard.
 
 Request overviews stay above one row of Notes (private.md), Shared (public.md), and the request’s workflow tabs. Document editors open the selected file directly. `ProseMarkdown` and the typography registry own distinct heading levels and wrapping table cells; use descriptive headings, comparison tables, and lists where they clarify authored content without forcing fixed sections.
 
