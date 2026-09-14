@@ -1012,7 +1012,7 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
 
 test("broker decline and later quote update one private market record without fabricating capability", async () => {
   const f = await fixture();
-  await f.t.run((ctx) =>
+  const brokerId = await f.t.run((ctx) =>
     ctx.db.insert("organizations", {
       name: "Montgomery",
       type: "broker",
@@ -1063,6 +1063,9 @@ test("broker decline and later quote update one private market record without fa
   expect(rows[0].notes).toContain("declined");
   expect(rows[0].notes).toContain("provided a quote");
   expect(rows[0].packetSnapshot).toBeUndefined();
+  const brokerActivity = await f.t.withIdentity({ subject: `${f.userId}|session` }).query(api.operatorGoogleWorkspaceScanActivity.listActivity, { entityId: brokerId, status: "updated", paginationOpts: { numItems: 20, cursor: null } });
+  expect(brokerActivity.page).toHaveLength(2);
+  expect(brokerActivity.page.every(item => item.records.some(link => link.href.includes(f.requestId)))).toBe(true);
 });
 test("same contact and address under a legal-name variant requires attention instead of a duplicate client", async () => {
   const f = await fixture();

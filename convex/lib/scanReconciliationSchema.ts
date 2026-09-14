@@ -72,6 +72,7 @@ export const scanReconciliationTables = {
     entityId: v.optional(v.string()),
     recordId: v.optional(v.string()),
     requestId: v.optional(v.id("procurementRequests")),
+    brokerId: v.optional(v.id("organizations")),
     selectedOrgId: v.optional(v.id("organizations")),
     selectedRequestId: v.optional(v.id("procurementRequests")),
     selectedByUserId: v.optional(v.id("users")),
@@ -90,6 +91,8 @@ export const scanReconciliationTables = {
     .index("record_status", ["recordId", "status", "createdAt"])
     .index("request", ["requestId", "createdAt"])
     .index("request_status", ["requestId", "status", "createdAt"])
+    .index("broker", ["brokerId", "createdAt"])
+    .index("broker_status", ["brokerId", "status", "createdAt"])
     .index("recent", ["createdAt"]),
   operatorWorkspaceScanChanges: defineTable({
     findingId: v.id("operatorWorkspaceScanFindings"),
