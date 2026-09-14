@@ -55,44 +55,16 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | `brokerProfiles` | Supplier network status, office, writing states and LOB filters; never client/proposal access. |
 | `operatorAuditEvents` | Append-only actor/action/request audit. |
 
-## Migration and narrowing gates
+## Narrowing evidence
 
-Run `procurementMarkdownMigration:auditPage` and then, after reviewing the
-approved deployment, `procurementMarkdownMigration:migratePage` with
-`{"table":"<table>","cursor":null}`. Pass every returned cursor unchanged until
-`isDone: true`; accumulate the complete audit. Migrate requests first, then
-outreaches, file items and legacy packet sections. Later passes verify cleanup
-and convert the owning request when needed.
+The widening release completed in production in workflow `34901426209`.
+Production audit `34902173672` verified the retained legacy tables were empty,
+so the narrowing release can remove them without mapping or fabricating
+replacement records. Their schema removal is coordinated with the other
+narrowing domains.
 
-The request conversion materializes `private.md` and `public.md` together,
-preserving the audience of each source. Existing private packet files, outreach
-logs, and file notes go into private content; existing shared packet/intake
-content goes into public content. Preserve unique text, source references,
-manual edits, and unresolved proposals without treating a proposal as accepted.
-Only after verified preservation may the transaction remove old canonical
-sidecar documents, legacy section rows, and inline narrative fields. No issued
-link snapshot changes. The migration must not create a required section or
-nested metadata model for future editing.
-
-After every Markdown phase reports total `remaining: 0`, the following can
-narrow: `procurementRequests.narrative`,
-`procurementBrokerOutreaches.notes/applicationUrl/applicationQuestions/quoteSummary/quoteAmount/quoteCurrency/quoteUrl`,
-`procurementFileItems.notes`, the `procurementPacketSections` table. Remove compatibility readers
-and migration-only source types in the same narrowing release.
-
-Separately, `procurementSchemaCleanup:auditPage` and `migratePage` handle
-outreach `contactSnapshot`/`packetSnapshot` and request/review
-`requirementRevision`/`specificationRevision`. The current cleanup deletes
-unconfirmable pre-packet reviews before clearing legacy counters. Require a
-complete audit with zero `changed` and `unboundReviews` before removing those
-fields and making review `packetRevision` required. The two-file revision is
-currently being implemented; final local validation and production migration
-results belong in [the execution record](../architecture/backend-simplification.md).
-
-`procurementSchemaCleanup:inventoryLegacyPage` inventories the retired
-requirement drafts/links/specifications, request activities/documents,
-clientInvitations and brokerActivity without deleting business evidence. These
-stores require empty-table proof or reviewed source mapping before narrowing.
-Canonical insuranceRequirements remain active in compliance. The unused `procurementPacketUpdateRuns` store requires a production count:
-remove it if empty, or preserve material history losslessly before removing it.
-Its retired writer is no longer active.
+Procurement runtime now reads and writes only `private.md` and `public.md`.
+The retired migration adapters, section-row model, sidecar document kinds,
+owner fields, and owner indices are removed. Existing issued packet links keep
+their immutable text and artifact snapshots, including snapshots issued before
+the two-file conversion.

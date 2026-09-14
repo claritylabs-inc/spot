@@ -27,7 +27,7 @@ test("clearing company memory preserves packet documents", async () => {
     return ctx.db.insert("markdownDocuments", {
       ...shared,
       kind: "packet",
-      filename: "request-intake.md",
+      filename: "private.md",
     });
   });
   expect(

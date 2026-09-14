@@ -1,9 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
-  readPacketProjection,
-  migratePacketDocuments,
+  initializePacketDocuments,
+  packetFileVisibility,
   readPacketDocument,
+  readPacketProjection,
 } from "./packetDocuments";
 import { saveMarkdownDocument } from "../markdownDocuments";
 import {
@@ -30,11 +31,12 @@ export async function seedRequestIntake(
   },
 ) {
   const request = await ctx.db.get(args.requestId);
-  if (!request) throw new Error("Procurement request not found");
+  if (!request || request.clientOrgId !== args.clientOrgId)
+    throw new Error("Procurement request not found");
   const visibility = parseDocumentVisibility(args.narrative, "shared");
   if (args.source === "client" && visibility !== "shared")
     throw new Error("Client request intake must be shared");
-  await migratePacketDocuments(ctx, args.requestId);
+  await initializePacketDocuments(ctx, args);
   if (!args.narrative.trim()) return;
   const filename = visibility === "private" ? "private.md" : "public.md";
   const document = await readPacketDocument(ctx, request, filename);
@@ -46,7 +48,11 @@ export async function seedRequestIntake(
     kind: "packet",
     filename,
     markdown: stringifyMarkdownDocument(
-      { ...previous.frontmatter, ...incoming.frontmatter, visibility },
+      {
+        ...previous.frontmatter,
+        ...incoming.frontmatter,
+        visibility: packetFileVisibility(filename),
+      },
       [previous.body, `## Request\n\n${incoming.body}`]
         .filter(Boolean)
         .join("\n\n"),

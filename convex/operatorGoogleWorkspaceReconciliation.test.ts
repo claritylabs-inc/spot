@@ -14,7 +14,10 @@ import dayjs from "dayjs";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { readOrgWiki } from "./orgWiki";
+import { manualWikiDocument } from "./lib/orgWikiDocument";
 import { api, internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import {
   sourceEffectiveAt,
@@ -81,6 +84,27 @@ const operation: ScanOperation = {
   excerpt: body,
   explanation: "Client reported completed external purchase.",
 };
+
+async function insertRequest(
+  ctx: MutationCtx,
+  args: Omit<Doc<"procurementRequests">, "_id" | "_creationTime"> & {
+    narrative?: string;
+  },
+) {
+  const { narrative, ...request } = args;
+  const requestId = await ctx.db.insert("procurementRequests", request);
+  if (narrative !== undefined)
+    await saveMarkdownDocument(ctx, {
+      orgId: request.clientOrgId,
+      requestId,
+      kind: "packet",
+      filename: "public.md",
+      expectedRevision: 0,
+      markdown: `---\nvisibility: shared\n---\n${narrative}`,
+    });
+  return requestId;
+}
+
 async function fixture() {
   const t = convexTest(schema, modules);
   const revision = (await googleWorkspaceCredentialEnvelope()).revision!;
@@ -197,7 +221,7 @@ async function fixture() {
       primaryContactEmail: "client@cove.test",
       operatorStatus: "live",
     });
-    const requestId = await ctx.db.insert("procurementRequests", {
+    const requestId = await insertRequest(ctx, {
       clientOrgId: orgId,
       title: "Auto",
       narrative: "Original Auto request",
@@ -218,7 +242,7 @@ async function fixture() {
   };
   return { t, ...ids, args };
 }
-test("atomically completes the exact request, preserves client/narrative/visibility, and deduplicates retry", async () => {
+test("atomically completes the exact request, preserves client intake visibility, and deduplicates retry", async () => {
   const f = await fixture();
   const prepared = await f.t.query(
     internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
@@ -235,10 +259,12 @@ test("atomically completes the exact request, preserves client/narrative/visibil
   await f.t.run(async (ctx) => {
     expect(await ctx.db.get(f.requestId)).toMatchObject({
       status: "completed",
-      narrative: "Original Auto request",
       clientVisible: true,
       completionOutcome: { kind: "placed_elsewhere", provider: "GEICO" },
     });
+    expect(await requestPacketText(ctx, (await ctx.db.get(f.requestId))!)).toBe(
+      "Original Auto request",
+    );
     expect((await ctx.db.get(f.orgId))?.operatorStatus).toBe("live");
     expect(await ctx.db.query("policies").collect()).toHaveLength(0);
     expect(
@@ -280,7 +306,14 @@ test("rejects concurrent manual changes and paused standing authorization withou
     f.args,
   );
   await f.t.run((ctx) =>
-    ctx.db.patch(f.requestId, { narrative: "Auto changed manually" }),
+    saveMarkdownDocument(ctx, {
+      orgId: f.orgId,
+      requestId: f.requestId,
+      kind: "packet",
+      filename: "public.md",
+      expectedRevision: 1,
+      markdown: "---\nvisibility: shared\n---\nAuto changed manually",
+    }),
   );
   await expect(
     f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal, {
@@ -384,7 +417,7 @@ test("reviewing a candidate organization loads only its request options without 
       type: "client",
       primaryContactEmail: "other@cove.test",
     });
-    const requestId = await ctx.db.insert("procurementRequests", {
+    const requestId = await insertRequest(ctx, {
       clientOrgId: orgId,
       title: "Auto",
       narrative: "Other client's auto request",
@@ -777,19 +810,18 @@ test("automatically creates one prospect broker without users, invitations or in
 });
 test("wiki facts retain unrelated manual bullets and correction restores removed outcome fields", async () => {
   const f = await fixture();
-  await f.t.run((ctx) =>
-    ctx.db.insert("orgWikiSections", {
+  await f.t.run(async (ctx) => {
+    const document = await saveMarkdownDocument(ctx, {
       orgId: f.orgId,
-      key: "operations",
-      heading: "Operations",
-      body: "- Cove builds software.\n- Cove has 5 employees.",
-      order: 1,
-      source: "manual",
-      manuallyEditedAt: 1,
-      createdAt: 1,
-      updatedAt: 1,
-    }),
-  );
+      kind: "company_wiki",
+      filename: "company-wiki.md",
+      markdown: manualWikiDocument(
+        "## Operations\n\n- Cove builds software.\n- Cove has 5 employees.",
+      ),
+      expectedRevision: 0,
+    });
+    await ctx.db.patch(document._id, { updatedAt: 1 });
+  });
   const text = "Cove has 10 employees.";
   await replaceEvidence(
     f,
@@ -1160,7 +1192,6 @@ test("broker decline and later quote update one private market record without fa
   );
   expect(log).toContain("declined");
   expect(log).toContain("provided a quote");
-  expect(rows[0].packetSnapshot).toBeUndefined();
   const brokerActivity = await f.t
     .withIdentity({ subject: `${f.userId}|session` })
     .query(api.operatorGoogleWorkspaceScanActivity.listActivity, {
@@ -1208,7 +1239,7 @@ test("same contact and address under a legal-name variant requires attention ins
 test("reviewed identity selection cannot redirect an Auto purchase to another coverage request", async () => {
   const f = await fixture();
   const cyberId = await f.t.run((ctx) =>
-    ctx.db.insert("procurementRequests", {
+    insertRequest(ctx, {
       clientOrgId: f.orgId,
       title: "Cyber",
       narrative: "Cyber liability",
@@ -1744,7 +1775,14 @@ test("overlapping fact proposals require attention before any batch changes appl
   await f.t.run(async (ctx) => {
     expect((await ctx.db.get(f.sourceId))?.status).toBe("needs_attention");
     expect((await ctx.db.get(f.requestId))?.status).toBe("marketing");
-    expect(await ctx.db.query("orgWikiSections").collect()).toEqual([]);
+    expect(
+      await ctx.db
+        .query("markdownDocuments")
+        .withIndex("organization_kind", (q) =>
+          q.eq("orgId", f.orgId).eq("kind", "company_wiki"),
+        )
+        .collect(),
+    ).toEqual([]);
     expect(
       await ctx.db.query("operatorWorkspaceScanChanges").collect(),
     ).toEqual([]);
@@ -2229,7 +2267,14 @@ test("matches coverage held only in canonical intake for a generically named req
   await f.t.run(async (ctx) => {
     await ctx.db.patch(f.requestId, {
       title: "Annual renewal",
-      narrative: undefined,
+    });
+    await saveMarkdownDocument(ctx, {
+      orgId: f.orgId,
+      requestId: f.requestId,
+      kind: "packet",
+      filename: "public.md",
+      expectedRevision: 1,
+      markdown: "---\nvisibility: shared\n---\nGeneric request",
     });
     await saveMarkdownDocument(ctx, {
       orgId: f.orgId,

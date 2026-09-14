@@ -1,5 +1,12 @@
-import { appendPrivatePacketNote } from "./lib/packetDocuments";
-import { readPacketProjection } from "./lib/packetDocuments";
+import {
+  appendPrivatePacketNote,
+  readPacketDocument,
+  readPacketProjection,
+} from "./lib/packetDocuments";
+import {
+  parseMarkdownDocument,
+  stringifyMarkdownDocument,
+} from "./lib/markdownDocument";
 import { readOrgWiki } from "./orgWiki";
 import dayjs from "dayjs";
 import { PDFDocument, StandardFonts } from "pdf-lib";
@@ -10,7 +17,7 @@ import type { ActionCtx, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { LOCAL_FIXTURE } from "./lib/localSeedData";
 import { upsertOrgWikiDocumentByOperator } from "./orgWiki";
-import { upsertPacketSectionByOperator } from "./procurementPacket";
+import { updatePacketDocumentByOperator } from "./procurementPacket";
 import {
   createProcurementRequestByOperator,
   createProcurementOutreachByOperator,
@@ -435,45 +442,62 @@ export const insert = internalMutation({
       replacingPolicyId: args.policyId,
     });
     await ctx.db.patch(requestId, { inboxToken: INBOX_TOKEN });
-    for (const [key, body, audience] of [
+    const packetSections = [
       [
-        "summary",
+        "Summary",
         "Synthetic renewal exercise for a technology company operating in Canada and the United States. No coverage has been bound.",
         "broker",
       ],
-      ["applicant_profile", LOCAL_FIXTURE.client.context, "broker"],
+      ["Applicant profile", LOCAL_FIXTURE.client.context, "broker"],
       [
-        "coverage_requested",
+        "Coverage requested",
         "Technology E&O: CAD 5,000,000. Cyber liability: CAD 3,000,000. Media liability: CAD 1,000,000. Target inception March 15, 2027.",
         "broker",
       ],
       [
-        "loss_history",
+        "Loss history",
         "Current loss runs have been requested. Claims history remains unverified; do not assume no losses.",
         "broker",
       ],
       [
-        "ask",
+        "The ask",
         "Provide terms meeting the requested limits and identify deductibles, exclusions, and outstanding subjectivities.",
         "broker",
       ],
       [
-        "market_strategy",
+        "Market strategy",
         "Internal QA note: Example Risk's cyber offer is CAD 1 million below target. Ask for a revised limit before staff confirmation or selection.",
         "operator",
       ],
       [
-        "client_contacts",
+        "Client contacts",
         "Adyan Tanver, adyan@cove.dev. Operator-only contact details for this exercise.",
         "operator",
       ],
+    ] as const;
+    for (const [filename, audience] of [
+      ["public.md", "broker"],
+      ["private.md", "operator"],
     ] as const) {
-      await upsertPacketSectionByOperator(ctx, {
+      const current = await readPacketDocument(
+        ctx,
+        (await ctx.db.get(requestId))!,
+        filename,
+      );
+      const parsed = parseMarkdownDocument(current.markdown);
+      const additions = packetSections
+        .filter(([, , sectionAudience]) => sectionAudience === audience)
+        .map(([heading, body]) => `## ${heading}\n\n${body}`)
+        .join("\n\n");
+      await updatePacketDocumentByOperator(ctx, {
         operatorUserId: args.operatorUserId,
         requestId,
-        key,
-        body,
-        audience,
+        filename,
+        expectedRevision: current.revision,
+        markdown: stringifyMarkdownDocument(
+          parsed.frontmatter,
+          [parsed.body, additions].filter(Boolean).join("\n\n"),
+        ),
       });
     }
     const { outreachId } = await createProcurementOutreachByOperator(ctx, {

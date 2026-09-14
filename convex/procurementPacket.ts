@@ -2,13 +2,11 @@ import { saveMarkdownDocument } from "./markdownDocuments";
 import {
   parseMarkdownDocument,
   stringifyMarkdownDocument,
-  replaceMarkdownHeading,
   parseDocumentVisibility,
 } from "./lib/markdownDocument";
 import {
   readPacketDocument,
   readPacketProjection,
-  migratePacketDocuments,
   packetFileVisibility,
 } from "./lib/packetDocuments";
 import dayjs from "dayjs";
@@ -37,7 +35,6 @@ import { readOrgWiki } from "./orgWiki";
 import {
   assemblePacketMarkdown,
   composeRequestMarkdown,
-  defaultPacketSection,
   type PacketAudience,
 } from "./lib/procurementPacket";
 
@@ -104,17 +101,13 @@ export async function updatePacketDocumentByOperator(
     { ...parsed.frontmatter, visibility },
     parsed.body,
   );
-  // Materialize and retire the legacy source in this same transaction before
-  // applying an intentional edit, so the later backfill cannot resurrect it.
-  await migratePacketDocuments(ctx, request._id);
-  const canonical = await readPacketDocument(ctx, request, args.filename);
   const document = await saveMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
     kind: "packet",
     filename: args.filename,
     markdown,
-    expectedRevision: canonical.revision,
+    expectedRevision: args.expectedRevision,
   });
   const changed = previous.markdown !== markdown;
   if (changed && (visibility === "shared" || previous.visibility === "shared"))
@@ -138,49 +131,6 @@ export async function updatePacketDocumentByOperator(
     },
   });
   return { id: document._id, revision: document.revision, auditEventId };
-}
-
-// Compatibility adapter for local fixture builders. The stored owner is the
-// Markdown document; new APIs edit it as a whole with a revision check.
-export async function upsertPacketSectionByOperator(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    requestId: Id<"procurementRequests">;
-    key: string;
-    body: string;
-    heading?: string;
-    audience?: PacketAudience;
-    source?: Doc<"procurementPacketSections">["source"];
-    sourceRefs?: string[];
-  },
-) {
-  await directOperator(ctx, args.operatorUserId);
-  const request = await requestForOperator(ctx, args.requestId);
-  const canonical = defaultPacketSection(args.key);
-  const visibility = args.audience ?? canonical.defaultAudience;
-  if (canonical.sensitive && visibility !== "operator")
-    throw new Error("Sensitive packet content requires operator visibility");
-  const filename = visibility === "operator" ? "private.md" : "public.md";
-  const previous = await readPacketDocument(ctx, request, filename);
-  const parsed = parseMarkdownDocument(previous.markdown);
-  return await updatePacketDocumentByOperator(ctx, {
-    operatorUserId: args.operatorUserId,
-    requestId: args.requestId,
-    filename,
-    expectedRevision: previous.revision,
-    markdown: stringifyMarkdownDocument(
-      {
-        ...parsed.frontmatter,
-        visibility: visibility === "operator" ? "private" : "shared",
-      },
-      replaceMarkdownHeading(
-        parsed.body,
-        args.heading ?? canonical.heading,
-        args.body.trim(),
-      ),
-    ),
-  });
 }
 
 export async function listPacketDocuments(
