@@ -243,6 +243,34 @@ export const seed = action({
       );
     }
     const workflow = await seedWorkflowFixtures(ctx, fixture);
+    await ctx.runMutation(
+      internal.migrations.runOperatorEmailIdentityBackfill,
+      {},
+    );
+    // Local setup waits for its bounded fixture backfill; production uses the
+    // explicitly invoked migration and completion commands.
+    const setupDeadline = dayjs().add(60, "second").valueOf();
+    for (;;) {
+      const status = await ctx.runQuery(
+        internal.migrations.operatorEmailIdentityBackfillStatus,
+        {},
+      );
+      if (
+        status.statuses.length === 3 &&
+        status.statuses.every((migration) => migration.isDone)
+      )
+        break;
+      if (dayjs().valueOf() >= setupDeadline) {
+        throw new Error(
+          "Local operator identity backfill is still running. Rerun seed after checking its migration status.",
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    await ctx.runMutation(
+      internal.migrations.finishOperatorEmailIdentityBackfill,
+      {},
+    );
     return { ...fixture, ...workflow };
   },
 });

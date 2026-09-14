@@ -82,7 +82,10 @@ function buildPageContextBlock(
 function operatorChannel(
   channel: "chat" | "email" | "imessage" | "slack" | "mcp" | undefined,
 ) {
-  return channel === "slack" || channel === "imessage" || channel === "mcp"
+  return channel === "slack" ||
+    channel === "imessage" ||
+    channel === "email" ||
+    channel === "mcp"
     ? channel
     : ("chat" as const);
 }

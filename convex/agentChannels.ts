@@ -74,6 +74,8 @@ function normalizeAgentHandle(value: string | undefined) {
 }
 
 function validateAgentHandle(handle: string | undefined) {
+  if (handle === "operator")
+    throw new Error("This address is reserved for the operator agent");
   if (!handle) return;
   if (handle.length < 3 || handle.length > 30) {
     throw new Error("Agent email address must be 3-30 characters");

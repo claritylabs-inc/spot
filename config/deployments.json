@@ -38,7 +38,7 @@
     },
     "email": {
       "deliveryMode": "live",
-      "agentDomain": "spot.insure",
+      "agentDomain": "agent.spot.insure",
       "notificationDomain": "notifications.spot.insure",
       "authDomain": "auth.spot.insure"
     },

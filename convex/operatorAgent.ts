@@ -117,6 +117,7 @@ const operatorChannelValidator = v.union(
   v.literal("chat"),
   v.literal("slack"),
   v.literal("imessage"),
+  v.literal("email"),
   v.literal("mcp"),
 );
 
@@ -155,7 +156,7 @@ const MAX_OPERATOR_MESSAGE_CHARS = 20_000;
 const MAX_OPERATOR_CONVERSATION_KEY_CHARS = 500;
 const MAX_OPERATOR_DEDUPE_KEY_CHARS = 500;
 
-type OperatorChannel = "chat" | "slack" | "imessage" | "mcp";
+type OperatorChannel = "chat" | "slack" | "imessage" | "email" | "mcp";
 
 type OperatorConfirmationDisplayState =
   | "pending"
@@ -1247,7 +1248,7 @@ async function invalidatePendingOperatorConfirmations(
   );
 }
 
-async function enqueueOperatorMessage(
+export async function enqueueOperatorMessage(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
@@ -2805,7 +2806,7 @@ async function executeToolDomain(
 }
 
 function operatorCertificateSource(channel: OperatorChannel) {
-  if (channel === "slack" || channel === "imessage" || channel === "mcp") {
+  if (channel === "slack" || channel === "imessage" || channel === "email" || channel === "mcp") {
     return channel;
   }
   return "agent" as const;
@@ -4291,17 +4292,17 @@ export const getPendingConfirmationInternal = internalQuery({
 
 const channelThreadArgs = {
   operatorUserId: v.id("users"),
-  channel: v.union(v.literal("slack"), v.literal("imessage"), v.literal("mcp")),
+  channel: v.union(v.literal("slack"), v.literal("imessage"), v.literal("email"), v.literal("mcp")),
   conversationKey: v.string(),
   title: v.optional(v.string()),
   shared: v.optional(v.boolean()),
 };
 
-async function createOrGetChannelThread(
+export async function createOrGetChannelThread(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
-    channel: "slack" | "imessage" | "mcp";
+    channel: "slack" | "imessage" | "email" | "mcp";
     conversationKey: string;
     title?: string;
     shared?: boolean;

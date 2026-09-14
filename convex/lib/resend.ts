@@ -1,16 +1,14 @@
 import { extractEmailAddress } from "./emailAddress";
+import {
+  canonicalAgentDomain,
+  DEFAULT_AGENT_DOMAIN,
+  LEGACY_AGENT_DOMAINS,
+} from "./agentEmailDomains";
 
 const RESEND_API = "https://api.resend.com/emails";
-const DEFAULT_AGENT_DOMAIN = "spot.insure";
 const DEFAULT_NOTIFICATION_EMAIL_DOMAIN = "notifications.spot.insure";
 const DEFAULT_AUTH_EMAIL_DOMAIN = "auth.spot.insure";
 const DEFAULT_AUTH_EMAIL_FROM_NAME = "Spot";
-const DEFAULT_LEGACY_AGENT_DOMAINS = [
-  "glass.insure",
-  "glass.claritylabs.inc",
-  "spot.claritylabs.inc",
-  "dev.claritylabs.inc",
-];
 
 function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase().replace(/^@/, "");
@@ -22,18 +20,13 @@ function uniqueDomains(domains: string[]): string[] {
 
 export function getAgentDomain(): string {
   const configured = process.env.AGENT_EMAIL_DOMAIN ?? process.env.AGENT_DOMAIN;
-  if (!configured) return DEFAULT_AGENT_DOMAIN;
-  const normalized = normalizeDomain(configured);
-  if (DEFAULT_LEGACY_AGENT_DOMAINS.includes(normalized)) {
-    return DEFAULT_AGENT_DOMAIN;
-  }
-  return normalized;
+  return canonicalAgentDomain(configured);
 }
 
 export function getLegacyAgentDomains(): string[] {
   const configured = process.env.LEGACY_AGENT_DOMAINS;
-  if (!configured) return DEFAULT_LEGACY_AGENT_DOMAINS;
-  return configured.split(",").map(normalizeDomain).filter(Boolean);
+  if (!configured) return LEGACY_AGENT_DOMAINS;
+  return uniqueDomains([...LEGACY_AGENT_DOMAINS, ...configured.split(",")]);
 }
 
 export function getAgentDomains(): string[] {
@@ -61,8 +54,7 @@ export function getAuthEmailDomain(): string {
 export function isSpotOutboundAddress(address: string): boolean {
   const domain = normalizeDomain(address.split("@").pop() ?? "");
   return uniqueDomains([
-    getAgentDomain(),
-    ...getLegacyAgentDomains(),
+    ...getAgentDomains(),
     getNotificationEmailDomain(),
     getAuthEmailDomain(),
   ]).includes(domain);
@@ -353,7 +345,7 @@ function preparePayloadForDelivery(
 
 export async function sendResendEmail(
   payload: ResendPayload,
-  opts: { retries?: number } = {},
+  opts: { retries?: number; idempotencyKey?: string } = {},
 ): Promise<ResendResult> {
   const prepared = preparePayloadForDelivery(payload);
   if (prepared.captured) return { ok: true, id: "captured" };
@@ -372,7 +364,9 @@ export async function sendResendEmail(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {}),
       },
+      signal: AbortSignal.timeout(30_000),
       body: JSON.stringify(prepared.payload),
     });
     const body = await res.text();
