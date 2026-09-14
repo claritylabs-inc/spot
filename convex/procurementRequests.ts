@@ -1,3 +1,8 @@
+import {
+  completionOutcomeValidator,
+  normalizeCompletionOutcome,
+  type CompletionOutcome,
+} from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { v, type Infer } from "convex/values";
 
@@ -360,6 +365,7 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
   return {
     ...request,
     narrative: requestNarrative(request),
+    completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
     resultingPolicy: policyLabel(resultingPolicy),
@@ -679,6 +685,7 @@ type CreateProcurementRequestArgs = {
   status?: WritableRequestStatus;
   replacingPolicyId?: Id<"policies">;
   resultingPolicyId?: Id<"policies">;
+  completionOutcome?: CompletionOutcome;
   clientVisible?: boolean;
 };
 
@@ -700,12 +707,16 @@ export async function validateProcurementRequestCreateByOperator(
   requiredText(args.title, "Title", 200);
   requiredText(args.narrative, "Client request");
   optionalDate(args.targetEffectiveDate);
+  if (args.completionOutcome)
+    normalizeCompletionOutcome(args.completionOutcome);
   return client;
 }
 
 export async function createProcurementRequestByOperator(
   ctx: MutationCtx,
-  args: CreateProcurementRequestArgs & { source: "operator" | "agent" },
+  args: CreateProcurementRequestArgs & {
+    source: "operator" | "agent" | "workspace_scan";
+  },
 ) {
   const client = await validateProcurementRequestCreateByOperator(ctx, args);
   const now = dayjs().valueOf();
@@ -716,7 +727,13 @@ export async function createProcurementRequestByOperator(
     title: requiredText(args.title, "Title", 200),
     narrative,
     targetEffectiveDate: optionalDate(args.targetEffectiveDate),
-    status: args.resultingPolicyId ? "completed" : (args.status ?? "draft"),
+    status:
+      args.resultingPolicyId || args.completionOutcome
+        ? "completed"
+        : (args.status ?? "draft"),
+    completionOutcome: args.completionOutcome
+      ? normalizeCompletionOutcome(args.completionOutcome)
+      : undefined,
     clientVisible: args.clientVisible ?? false,
     requirementRevision: 0,
     specificationRevision: 0,
@@ -735,11 +752,12 @@ export async function createProcurementRequestByOperator(
     userId: args.operatorUserId,
     source: args.source === "agent" ? "operator_agent" : "manual",
   });
-  await ctx.scheduler.runAfter(
-    0,
-    internal.procurementPacket.ensureRequestLinkInternal,
-    { requestId, createdByUserId: args.operatorUserId },
-  );
+  if (args.source !== "workspace_scan")
+    await ctx.scheduler.runAfter(
+      0,
+      internal.procurementPacket.ensureRequestLinkInternal,
+      { requestId, createdByUserId: args.operatorUserId },
+    );
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -779,6 +797,7 @@ export const create = mutation({
     status: v.optional(requestStatusValidator),
     replacingPolicyId: v.optional(v.id("policies")),
     resultingPolicyId: v.optional(v.id("policies")),
+    completionOutcome: v.optional(completionOutcomeValidator),
     clientVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -802,8 +821,9 @@ export async function updateProcurementRequestByOperator(
     status?: WritableRequestStatus;
     replacingPolicyId?: Id<"policies"> | null;
     resultingPolicyId?: Id<"policies"> | null;
+    completionOutcome?: CompletionOutcome | null;
     clientVisible?: boolean;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -840,6 +860,15 @@ export async function updateProcurementRequestByOperator(
     patch.resultingPolicyId = args.resultingPolicyId ?? undefined;
     if (args.resultingPolicyId) patch.status = "completed";
   }
+  if (args.completionOutcome !== undefined) {
+    patch.completionOutcome =
+      args.completionOutcome === null
+        ? undefined
+        : normalizeCompletionOutcome(args.completionOutcome);
+    if (args.completionOutcome) patch.status = "completed";
+  }
+  if (patch.status && patch.status !== "completed")
+    patch.completionOutcome = undefined;
   if (args.clientVisible !== undefined)
     patch.clientVisible = args.clientVisible;
   const changedFields = Object.keys(patch).filter(
@@ -871,6 +900,9 @@ export const update = mutation({
     status: v.optional(requestStatusValidator),
     replacingPolicyId: v.optional(v.union(v.id("policies"), v.null())),
     resultingPolicyId: v.optional(v.union(v.id("policies"), v.null())),
+    completionOutcome: v.optional(
+      v.union(completionOutcomeValidator, v.null()),
+    ),
     clientVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {

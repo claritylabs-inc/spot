@@ -1,4 +1,6 @@
 import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
+import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
+import { completionOutcomeValidator } from "./lib/procurementCompletionOutcome";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
@@ -458,6 +460,7 @@ const policyDeliveryRuleFiltersValidator = v.object({
 
 export default defineSchema({
   ...googleWorkspaceScanTables,
+  ...scanReconciliationTables,
   ...authTables,
 
   // Override default users table with custom profile fields
@@ -2957,6 +2960,7 @@ export default defineSchema({
     packetRevision: v.optional(v.number()),
     replacingPolicyId: v.optional(v.id("policies")),
     resultingPolicyId: v.optional(v.id("policies")),
+    completionOutcome: v.optional(completionOutcomeValidator),
     inboxToken: v.string(),
     createdByUserId: v.id("users"),
     updatedByUserId: v.id("users"),
