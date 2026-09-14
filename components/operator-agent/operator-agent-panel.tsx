@@ -65,6 +65,7 @@ import {
 } from "./operator-page-context";
 import { useOptionalOperatorAgent } from "./operator-agent-provider";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
+import { OperatorToolActivity } from "./operator-tool-activity";
 
 const OPERATOR_ATTACHMENT_MAX_FILES = 10;
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
@@ -392,6 +393,23 @@ function OperatorConversation({
   const hasPendingConfirmation = detail.confirmations.some(
     (confirmation) => confirmation.state === "pending",
   );
+  const directToolResponses = useMemo(() => {
+    const requests = new Set(
+      detail.messages
+        .filter((message) => message.isDirectToolRequest)
+        .map((message) => message.id),
+    );
+    return new Map(
+      detail.messages
+        .filter(
+          (message) =>
+            message.role === "assistant" &&
+            message.replyToMessageId &&
+            requests.has(message.replyToMessageId),
+        )
+        .map((message) => [message.replyToMessageId, message] as const),
+    );
+  }, [detail.messages]);
 
   useEffect(() => {
     if (detail.messages.length === 0) return;
@@ -424,17 +442,54 @@ function OperatorConversation({
               onSelect={onSelectIntent}
             />
           ) : (
-            detail.messages.map((message) => (
-              <Fragment key={message.id}>
-                <OperatorMessageRow
-                  threadId={activeThreadId ?? ""}
-                  message={message}
-                  showThinking={
-                    message.status === "processing" && !hasPendingConfirmation
-                  }
-                />
-                {(confirmationsByMessage.get(message.id) ?? []).map(
-                  (confirmation) => (
+            detail.messages.map((message) => {
+              if (
+                message.replyToMessageId &&
+                directToolResponses.get(message.replyToMessageId)?.id ===
+                  message.id
+              )
+                return null;
+              const response = message.isDirectToolRequest
+                ? directToolResponses.get(message.id)
+                : undefined;
+              const confirmations = [
+                ...(confirmationsByMessage.get(message.id) ?? []),
+                ...(response
+                  ? (confirmationsByMessage.get(response.id) ?? [])
+                  : []),
+              ];
+              return (
+                <Fragment key={message.id}>
+                  {message.isDirectToolRequest ? (
+                    <>
+                      <OperatorToolActivity
+                        request={message}
+                        response={response}
+                        awaitingApproval={confirmations.some(
+                          (confirmation) => confirmation.state === "pending",
+                        )}
+                      />
+                      {[message, ...(response ? [response] : [])].map((item) =>
+                        item.attachments?.length ? (
+                          <OperatorMessageAttachments
+                            key={item.id}
+                            threadId={activeThreadId ?? ""}
+                            attachments={item.attachments}
+                          />
+                        ) : null,
+                      )}
+                    </>
+                  ) : (
+                    <OperatorMessageRow
+                      threadId={activeThreadId ?? ""}
+                      message={message}
+                      showThinking={
+                        message.status === "processing" &&
+                        !hasPendingConfirmation
+                      }
+                    />
+                  )}
+                  {confirmations.map((confirmation) => (
                     <div key={confirmation.id} className="w-full">
                       <ConfirmationArtifact
                         confirmation={confirmation}
@@ -444,10 +499,10 @@ function OperatorConversation({
                         }
                       />
                     </div>
-                  ),
-                )}
-              </Fragment>
-            ))
+                  ))}
+                </Fragment>
+              );
+            })
           )}
           {detail.messages.length > 0 ? <div className="h-40" /> : null}
         </div>
