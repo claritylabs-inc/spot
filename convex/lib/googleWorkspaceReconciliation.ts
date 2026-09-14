@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+import { extractEmailAddress } from "./emailAddress";
 import { z } from "zod";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -35,6 +37,7 @@ export const scanOperationSchema = z.discriminatedUnion("kind", [
     kind: z.literal("company_facts"),
     section: z.enum(ORG_WIKI_SECTION_KEYS),
     body: z.string().min(1).max(12000),
+    replaces: z.array(z.string().min(1).max(280)).max(30),
   }),
   z.object({
     ...evidence,
@@ -76,6 +79,9 @@ export const scanOperationSchema = z.discriminatedUnion("kind", [
     kind: z.literal("market_activity"),
     request,
     brokerIdentity: identity,
+    observedStatus: z
+      .enum(["request_sent", "can_handle", "cannot_handle", "quote_received"])
+      .nullable(),
     log: z.string().min(1).max(6000),
   }),
   z.object({
@@ -99,7 +105,33 @@ export const scanExtractionSchema = z.object({
     .max(12),
 });
 export type ScanExtraction = z.infer<typeof scanExtractionSchema>;
-export class ScanAttention extends Error {}
+export class ScanAttention extends ConvexError<{
+  code: "SCAN_ATTENTION";
+  message: string;
+}> {
+  constructor(message: string) {
+    super({ code: "SCAN_ATTENTION", message });
+  }
+}
+export function scanAttentionMessage(error: unknown): string | null {
+  if (!(error instanceof ConvexError)) return null;
+  let data: unknown = error.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  return data &&
+    typeof data === "object" &&
+    "code" in data &&
+    data.code === "SCAN_ATTENTION" &&
+    "message" in data &&
+    typeof data.message === "string"
+    ? data.message
+    : null;
+}
 export function normalizedIdentity(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -107,10 +139,20 @@ export function sourceEffectiveAt(
   operation: ScanOperation,
   source: GoogleWorkspaceScanSourceEvidence,
   body: string,
+  context?: { body: string; participants: string[] },
+  validatedPdfIdentity = false,
 ) {
   if (!source.bodyComplete || !body.includes(operation.excerpt))
     throw new ScanAttention(
       "Evidence excerpt is unavailable or source is incomplete",
+    );
+  if (
+    /(?:ignore (?:all|previous|prior) instructions|system prompt|execute (?:this )?tool|call (?:the )?tool|grant (?:me )?access|send (?:an? )?invitation)/i.test(
+      operation.excerpt,
+    )
+  )
+    throw new ScanAttention(
+      "Source contains attempted execution instructions rather than authorized business evidence",
     );
   const date = dayjs(operation.effectiveDate, "YYYY-MM-DD", true);
   if (
@@ -121,12 +163,20 @@ export function sourceEffectiveAt(
   )
     throw new ScanAttention("Evidence chronology is ambiguous");
   if (
-    !body.toLowerCase().includes(operation.identity.name.toLowerCase()) ||
-    ![source.from, ...source.to, ...source.cc].some((value) =>
-      value
-        ?.toLowerCase()
-        .includes(operation.identity.contactEmail.toLowerCase()),
-    )
+    !(operation.kind === "import_policy" && validatedPdfIdentity) &&
+    (!`${body} ${context?.body ?? ""}`
+      .toLowerCase()
+      .includes(operation.identity.name.toLowerCase()) ||
+      ![
+        source.from,
+        ...source.to,
+        ...source.cc,
+        ...(context?.participants ?? []),
+      ].some(
+        (value) =>
+          extractEmailAddress(value ?? undefined) ===
+          operation.identity.contactEmail.toLowerCase(),
+      ))
   )
     throw new ScanAttention(
       "Organization identity lacks a named participant anchor",
@@ -161,6 +211,48 @@ export function sourceEffectiveAt(
   if (date.isAfter(sent, "day"))
     throw new ScanAttention("Evidence is dated after its original message");
   if (
+    operation.kind === "market_activity" &&
+    ![
+      source.from,
+      ...source.to,
+      ...source.cc,
+      ...(context?.participants ?? []),
+    ].some(
+      (value) =>
+        extractEmailAddress(value ?? undefined) ===
+        operation.brokerIdentity.contactEmail.toLowerCase(),
+    )
+  )
+    throw new ScanAttention(
+      "Broker identity lacks an exact participant anchor",
+    );
+  if (operation.kind === "market_activity") {
+    const status = operation.observedStatus;
+    if (
+      (status === "can_handle" &&
+        /cannot|declin|unable/i.test(operation.excerpt)) ||
+      (status === "cannot_handle" &&
+        !/cannot|declin|unable|do not write|don't write/i.test(
+          operation.excerpt,
+        )) ||
+      (status === "quote_received" &&
+        !/quote|quotation/i.test(operation.excerpt))
+    )
+      throw new ScanAttention(
+        "Observed market status contradicts or lacks source evidence",
+      );
+  }
+  if (
+    operation.kind === "external_placement" &&
+    operation.outcome.provider &&
+    !operation.excerpt
+      .toLowerCase()
+      .includes(operation.outcome.provider.toLowerCase())
+  )
+    throw new ScanAttention(
+      "Reported provider is not present in the purchase evidence",
+    );
+  if (
     operation.kind === "create_organization" &&
     operation.identity.address &&
     Object.values(operation.identity.address).some(
@@ -172,7 +264,7 @@ export function sourceEffectiveAt(
     );
   if (
     "request" in operation &&
-    !operation.excerpt
+    !`${operation.excerpt} ${context?.body ?? ""}`
       .toLowerCase()
       .includes(operation.request.coverage.toLowerCase())
   )
@@ -187,7 +279,7 @@ export function sourceEffectiveAt(
       !/\b(no longer need|do not need|don't need|cancel (?:this|the|my) request)\b/i.test(
         operation.excerpt,
       ) ||
-      /\b(might|may|considering|plan to|planning to|if we|would buy|will buy)\b/i.test(
+      /\b(might|may|considering|plan to|planning to|if we|would buy|will buy|not purchased|never purchased|not bought|have not|haven't|did not|didn't|has not|hasn't)\b/i.test(
         operation.excerpt,
       ))
   )

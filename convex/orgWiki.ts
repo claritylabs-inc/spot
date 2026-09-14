@@ -424,6 +424,7 @@ export async function writeWorkspaceScanCompanyFacts(
     orgId: Id<"organizations">;
     key: OrgWikiSectionKey;
     body: string;
+    replaces:string[];
   },
 ) {
   await requireDirectOperatorWikiWrite(ctx, args.operatorUserId);
@@ -436,10 +437,14 @@ export async function writeWorkspaceScanCompanyFacts(
     throw new Error(
       "Company facts must contain audience-safe company information",
     );
+  const current=await sectionForKey(ctx,args.orgId,args.key);
+  const existing=wikiBulletLines(current?.body??"");
+  if(args.replaces.some(line=>!existing.includes(line)))throw new Error("A contradicted company fact changed during analysis");
+  const merged=[...existing.filter(line=>!args.replaces.includes(line)),...lines];
   return writeSection(ctx, {
     orgId: args.orgId,
     key: args.key,
-    body: renderWikiBullets(lines),
+    body: renderWikiBullets(merged),
     source: "email",
     manual: false,
   });
