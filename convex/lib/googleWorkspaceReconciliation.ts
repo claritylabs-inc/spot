@@ -170,11 +170,16 @@ export function sourceEffectiveAt(
       })),
     ];
     for (const { code, label } of removals) {
-      const clauses = operation.excerpt.split(/[.;\n]/);
+      const clauses = operation.excerpt.split(
+        /[.;,\n]|\b(?:but|yet|however|whereas|although|while|and)\b/i,
+      );
       if (
         !clauses.some(
           (clause) =>
-            /(?:no longer|stopped|withdraw|ceas|do not|don't|cannot|can't)/i.test(
+            !/(?:not|never|cannot|can't|haven't|hasn't|didn't)\s+(?:stopp?\w*|ceas\w*|withdraw\w*|no longer)/i.test(
+              clause,
+            ) &&
+            /(?:(?:no longer|do not|don't|does not|doesn't|cannot|can't)\s+(?:currently\s+)?(?:writ\w*|offer\w*|cover\w*|support\w*)|(?:stopped|ceased)\s+(?:writing|offering|covering|supporting)|withdraw(?:n|ing)?\s+(?:from|coverage|support|capacity)|withdrew\s+from)/i.test(
               clause,
             ) &&
             [code, label]
