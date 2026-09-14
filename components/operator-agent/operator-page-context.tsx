@@ -108,3 +108,39 @@ export function operatorPageContextFromPathname(
     summary: summaryByArea[area] ?? "Operator portal",
   };
 }
+
+export function operatorThreadContextHref(thread: {
+  id: string;
+  initialContext?: PageContext;
+}) {
+  const context = thread.initialContext;
+  if (!context) return null;
+  let href = context.href;
+  if (!href) {
+    const clientSections: Record<string, string> = {
+      operator_client: "",
+      operator_clients: "",
+      operator_client_wiki: "/wiki",
+      operator_client_files: "/files",
+      operator_client_procurement: "/procurement",
+      operator_client_policies: "/policies",
+      operator_client_compliance: "/compliance",
+      operator_client_certificates: "/certificates",
+    };
+    const section = clientSections[context.pageType];
+    if (section !== undefined && context.entityId) {
+      href = `/operator/clients/${encodeURIComponent(context.entityId)}${section}`;
+    } else if (!context.entityId && context.pageType.startsWith("operator_")) {
+      href = `/operator/${context.pageType.slice("operator_".length).replaceAll("_", "-")}`;
+    }
+  }
+  if (!href || !href.startsWith("/operator/") || /[\\\s]/.test(href)) {
+    return null;
+  }
+  const url = new URL(href, "https://spot.invalid");
+  if (
+    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|demo-leads|profile|routing|telemetry|settings)\/?$/.test(url.pathname)
+  ) return null;
+  url.searchParams.set("agentThread", thread.id);
+  return `${url.pathname}${url.search}${url.hash}`;
+}

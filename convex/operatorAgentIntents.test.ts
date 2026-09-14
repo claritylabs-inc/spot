@@ -75,6 +75,7 @@ describe("operator task intents", () => {
       pageType: "policy",
       entityId: "policy-id",
       summary: "Current policy",
+      href: "/operator/clients/client-id/policies/policy-id?tab=documents",
     };
     const emptyThreadId = await f.operator.mutation(
       api.operatorAgent.createThread,
