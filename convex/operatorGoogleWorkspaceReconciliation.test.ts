@@ -2003,3 +2003,27 @@ test("response-loss cleanup never deletes an original retained by committed stag
     await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.fileId))),
   ).toBe(true);
 });
+
+test("a historical identity alias does not replace current contact association", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    for (const identityKey of ["client:cove:client@cove.test"])
+      await ctx.db.insert("operatorWorkspaceScanIdentities", {
+        identityKey,
+        orgId: f.orgId,
+        createdAt: 1,
+      });
+    await ctx.db.patch(f.orgId, {
+      primaryContactEmail: "new-contact@cove.test",
+    });
+  });
+  await expect(
+    f.t.query(
+      internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+      f.args,
+    ),
+  ).rejects.toThrow();
+  expect((await f.t.run((ctx) => ctx.db.get(f.requestId)))?.status).toBe(
+    "marketing",
+  );
+});
