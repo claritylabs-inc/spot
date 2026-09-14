@@ -42,13 +42,6 @@ test("retired notifications stay readable while new unsupported notifications ar
         type,
       }),
     ).rejects.toThrow();
-    await expect(
-      t.mutation(internal.notifications.create, {
-        ...payload,
-        // @ts-expect-error Runtime callers must not bypass the active-type contract.
-        type,
-      }),
-    ).rejects.toThrow();
   }
   await t.mutation(internal.lib.notify.notifyInternal, {
     ...payload,

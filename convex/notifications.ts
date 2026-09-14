@@ -1,10 +1,8 @@
 // convex/notifications.ts
-import dayjs from "dayjs";
 import { v } from "convex/values";
 import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 import { getCurrentOrgAccess as getOrgAccess, requireCurrentOrgAccess as requireOrgAccess } from "./lib/access";
 import type { Id } from "./_generated/dataModel";
-import { activeNotificationTypeValidator } from "./lib/notificationTypes";
 import {
   throwUserFacingError,
   userFacingErrorCodes,
@@ -140,28 +138,6 @@ export const markAllRead = mutation({
 
 // ── Internal mutations / queries ────────────────────────────────────────────
 
-export const create = internalMutation({
-  args: {
-    orgId: v.id("organizations"),
-    type: activeNotificationTypeValidator,
-    title: v.string(),
-    body: v.string(),
-    severity: v.union(v.literal("info"), v.literal("warning"), v.literal("critical")),
-    actionType: v.optional(v.string()),
-    actionPayload: v.optional(v.any()),
-    sourceRef: v.optional(v.any()),
-    userId: v.optional(v.id("users")),
-    expiresAt: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("notifications", {
-      ...args,
-      status: "unread",
-      createdAt: dayjs().valueOf(),
-    });
-  },
-});
-
 export const getInternal = internalQuery({
   args: { id: v.id("notifications") },
   handler: async (ctx, args) => ctx.db.get(args.id),
@@ -218,10 +194,4 @@ export const patchImessageStatus = internalMutation({
     const { id, ...patch } = args;
     await ctx.db.patch(id, patch);
   },
-});
-
-export const sweepStale = internalMutation({
-  args: {},
-  // Keep already-scheduled sweeps harmless; unread notifications require a decision.
-  handler: async () => {},
 });

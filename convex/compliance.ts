@@ -1,3 +1,8 @@
+import {
+  notificationActionTypeValidator,
+  notificationActionPayloadValidator,
+  notificationSourceRefValidator,
+} from "./lib/notificationTypes";
 import { readRequirementNotes, saveRequirementNotes } from "./certificateNotes";
 import { v } from "convex/values";
 import dayjs from "dayjs";
@@ -2075,9 +2080,9 @@ export const notifyVendorComplianceEventInternal = internalMutation({
       v.literal("warning"),
       v.literal("critical"),
     ),
-    actionType: v.string(),
-    actionPayload: v.any(),
-    sourceRef: v.optional(v.any()),
+    actionType: notificationActionTypeValidator,
+    actionPayload: notificationActionPayloadValidator,
+    sourceRef: v.optional(notificationSourceRefValidator),
     nowMs: v.optional(v.number()),
   },
   handler: async (ctx, args) =>

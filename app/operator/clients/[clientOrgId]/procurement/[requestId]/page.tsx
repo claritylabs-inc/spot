@@ -23,6 +23,7 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+import { useGuardedRightPanel } from "@/lib/use-guarded-right-panel";
 import { OperatorClientSidebar } from "../../operator-client-sidebar";
 
 export default function OperatorProcurementRequestPage() {
@@ -38,24 +39,25 @@ export default function OperatorProcurementRequestPage() {
   });
   const client = clients?.find((row) => row._id === clientOrgId) ?? null;
   const [workspaceActions, setWorkspaceActions] = useState<ReactNode>(null);
-  const [rightPanel, setRightPanel] = useState<ReactNode>(null);
+  const { rightPanel, setRightPanel } = useGuardedRightPanel();
   const activeImpersonation = current?.activeImpersonation ?? null;
   const basePath = `/operator/clients/${clientOrgId}/procurement`;
   const title = request?.request.title ?? "Procurement request";
   const requestedView = searchParams.get("view");
   const normalizedView =
     requestedView === "requirements"
-      ? "packet"
+      ? "notes"
       : requestedView === "market"
         ? "proposals"
         : requestedView;
   const view =
-    normalizedView === "packet" ||
+    normalizedView === "notes" ||
+    normalizedView === "shared" ||
     normalizedView === "proposals" ||
     normalizedView === "files" ||
     normalizedView === "email"
       ? normalizedView
-      : "overview";
+      : "notes";
 
   return (
     <AppShell
@@ -144,7 +146,12 @@ export default function OperatorProcurementRequestPage() {
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
           />
-          {!activeImpersonation && view === "overview" ? <WorkspaceScanActivity entityId={requestId} onRightPanel={setRightPanel} /> : null}
+          {!activeImpersonation && view === "notes" ? (
+            <WorkspaceScanActivity
+              entityId={requestId}
+              onRightPanel={setRightPanel}
+            />
+          ) : null}
         </main>
       )}
     </AppShell>

@@ -727,7 +727,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_procurement_packet: defineOperatorTool({
     version: 2,
     description:
-      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, broker outreach history, and follow-ups in these files.",
+      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, broker outreach history, and follow-ups in these files. Use descriptive Markdown headings with a logical hierarchy; avoid adjacent headings that repeat the same topic. Use GFM tables for comparable coverage terms, locations, quotes, or status items, lists for independent facts or next steps, and short paragraphs for context. Choose structure to fit the content, preserve sourced facts and manual prose, and do not impose fixed sections.",
     inputSchema: z.object({
       procurementRequestId,
       filename: z.enum(["private.md", "public.md"]),

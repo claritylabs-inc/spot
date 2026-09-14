@@ -12,9 +12,8 @@ retrieval, gateway, or Moonshot keys and never call those providers directly.
 All generation, tool-loop steps, structured output, embeddings, voice,
 extraction callbacks, and credentialed retrieval use cl-router; explicit
 operator routes are router pins, and router failures fail closed without a
-consumer transport fallback. Runtime settings and worker claims never include
-`providerKeys`; the optional legacy schema field exists only until the explicit
-audit/cleanup migration has completed. Availability comes from the
+consumer transport fallback. Runtime settings, schema, and worker claims do not
+contain `providerKeys`. Availability comes from the
 authenticated router capabilities action rather than process environment keys.
 Emitted rich binary assets preserve the 12 MiB per-asset, 16 MiB aggregate,
 eight-asset, and 4 MiB serialized-JSON limits after parsing/selection; general
@@ -56,11 +55,17 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Standard Markdown documents
 
+`components/ui/markdown-editor.tsx` owns the full-height Markdown source editor with YAML syntax support, formatting controls and prose preview. Packet editors open Notes and Shared independently and keep import/download actions in the drawer footer. `useGuardedRightPanel` owns request sidebar replacements; the packet editor registers its save guard so changing files or opening another sidebar cannot discard a failed draft. Replacement waits for a successful save or explicit discard.
+
+Request overviews stay above one row of Notes (private.md), Shared (public.md), and the request’s workflow tabs. Document editors open the selected file directly. `ProseMarkdown` and the typography registry own distinct heading levels and wrapping table cells; use descriptive headings, comparison tables, and lists where they clarify authored content without forcing fixed sections.
+
 `convex/markdownDocuments.ts` and `convex/lib/markdownDocument.ts` own standard `.md` content with safely parsed YAML front matter, filenames, indexed domain ownership and revision checks. Use this owner for company wiki, procurement’s exactly two files (`private.md` and `public.md`), and mutable notes in other domains. Keep all request intake, market observations, follow-ups, and file-handling prose in the two request files; do not add sidecar intake/log/file-note documents or fixed sections. Public means shared through authorized request access or an issued link, not anonymous internet publication. Filename and YAML visibility must agree: private.md/private, public.md/shared. Keep routine query/decision/authorization fields structured; do not make a second section-row store. Whole-document writes enforce existing approval boundaries. YAML `visibility: private | shared` controls readership within the owning resource; it cannot grant cross-organization access or editing authority. Keep immutable issuance snapshots and source evidence separate.
 
 `convex/lib/clientProfile.ts` owns explicit DBA normalization and client classification validation; `orgProfileFacts.ts` owns extracted legal-entity provenance and effective overrides. `companyResearch.ts` plus `actions/companyResearch.ts` persist mandatory router-backed public research even without a supplied URL, protect concurrent edits, and expose incomplete outcomes. Reuse these paths for new import surfaces.
 
 ## Catalog
+
+`convex/lib/notificationTypes.ts` owns typed notification action/source payloads and their browser/email navigation. `notifyInternal` is the notification writer. `convex/lib/proposalReview.ts` owns the current stored findings validator. Pending email cards, previews, and sends use the typed draft through `emailDraftService.ts` and `emailDelivery.ts`; draft replacement clears removed recipients/attachments and invalidates exact approvals. `convex/lib/slackAttachments.ts` owns inbound/stored attachment validators and normalization; Slack download registration enforces actual stored-byte budgets across retries and preserves the first committed file reference.
 
 `convex/lib/policyDocumentGate.ts` owns the shared intake rejection error and browser recognition of rejected documents. Reuse it for rejection notices; policy detail loading requires an unarchived idle/running extraction, and rejected uploads render document status instead of policy fields.
 

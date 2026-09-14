@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { v, type Infer } from "convex/values";
 import type { ProposalEvidenceLegend } from "./proposalMarkdown";
 
 export const proposalReviewConclusionSchema = z.enum([
@@ -13,13 +14,26 @@ const findingConclusionSchema = z.enum([
   "insufficient_evidence",
 ]);
 
-type ReviewEvidence = {
-  proposalDocumentId: string;
-  sourceNodeIds: string[];
-  sourceSpanIds: string[];
-  pageStart: number | null;
-  pageEnd: number | null;
-};
+export const proposalReviewFindingValidator = v.object({
+  sectionKey: v.string(),
+  conclusion: v.union(
+    v.literal("meets"),
+    v.literal("has_gap"),
+    v.literal("insufficient_evidence"),
+  ),
+  summary: v.string(),
+  evidence: v.array(
+    v.object({
+      proposalDocumentId: v.string(),
+      sourceNodeIds: v.array(v.string()),
+      sourceSpanIds: v.array(v.string()),
+      pageStart: v.union(v.number(), v.null()),
+      pageEnd: v.union(v.number(), v.null()),
+    }),
+  ),
+});
+
+export type StoredProposalFinding = Infer<typeof proposalReviewFindingValidator>;
 
 export const proposalReviewSchema = z.object({
   conclusion: proposalReviewConclusionSchema,
@@ -36,13 +50,6 @@ export const proposalReviewSchema = z.object({
 });
 
 export type ProposalReviewOutput = z.infer<typeof proposalReviewSchema>;
-
-type StoredProposalFinding = {
-  sectionKey: string;
-  conclusion: z.infer<typeof findingConclusionSchema>;
-  summary: string;
-  evidence: ReviewEvidence[];
-};
 
 export function normalizeProposalReview(
   output: ProposalReviewOutput,

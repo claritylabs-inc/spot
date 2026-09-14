@@ -619,6 +619,127 @@ async function signedInteraction(
 }
 
 describe("Slack Events API webhook", () => {
+  test("keeps every distinct attachment while normalizing legacy deliveries and provider replays", async () => {
+    const t = convexTest(schema, modules);
+    await seedConnection(t);
+    const attachments = Array.from({ length: 12 }, (_, index) => ({
+      providerFileId: `F-${index}`,
+      filename: `policy-${index}.pdf`,
+      contentType: "application/pdf",
+      size: 100,
+    }));
+    const input = {
+      eventKey: "attachment-event",
+      providerEventId: "Ev-attachments",
+      spectrumMessageId: "unused-worker-id",
+      teamId: "T-CUSTOMER",
+      channelId: "C-PRIMARY",
+      threadTs: "1800000000.100",
+      messageTs: "1800000000.100",
+      senderUserId: "U-CUSTOMER",
+      content: "<@U-SPOT> review these files",
+      attachments: attachments.slice(1),
+      attachment: attachments[0],
+      eventType: "message" as const,
+      receivedAt: dayjs().valueOf(),
+    };
+    const result = await t.mutation(internal.slack.claimInbound, input);
+    expect(result.status).toBe("queued");
+    await expect(
+      t.mutation(internal.slack.claimInbound, {
+        ...input,
+        eventKey: "attachment-event-replay",
+        attachments,
+      }),
+    ).resolves.toMatchObject({ duplicate: true });
+    const events = await t.run((ctx) =>
+      ctx.db.query("slackInboundEvents").collect(),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].attachment).toBeUndefined();
+    expect(events[0]).not.toHaveProperty("spectrumMessageId");
+    expect(events[0].attachments).toHaveLength(12);
+    expect(events[0].attachments).toEqual(expect.arrayContaining(attachments));
+  });
+
+  test("preserves downloaded legacy files when recording another file and rejects scrubbed attachments", async () => {
+    const t = convexTest(schema, modules);
+    const fixture = await t.run(async (ctx) => {
+      const existingFileId = await ctx.storage.store(new Blob(["first"]));
+      const nextFileId = await ctx.storage.store(new Blob(["second"]));
+      const first = {
+        providerFileId: "F-1",
+        filename: "first.pdf",
+        contentType: "application/pdf",
+      };
+      const second = {
+        providerFileId: "F-2",
+        filename: "second.pdf",
+        contentType: "application/pdf",
+      };
+      const eventId = await ctx.db.insert("slackInboundEvents", {
+        eventKey: "stored-event",
+        teamId: "T-CUSTOMER",
+        channelId: "C-PRIMARY",
+        threadTs: "1800000000.100",
+        messageTs: "1800000000.100",
+        senderUserId: "U-CUSTOMER",
+        content: "files",
+        eventType: "message",
+        isPrimaryChannel: true,
+        status: "processing",
+        attemptCount: 1,
+        receivedAt: 0,
+        scheduledFor: 0,
+        updatedAt: 0,
+        attachment: { ...first, fileId: existingFileId },
+        attachments: [first, second],
+      });
+      return { eventId, existingFileId, nextFileId };
+    });
+    await t.mutation(internal.slack.attachInboundFile, {
+      eventId: fixture.eventId,
+      providerFileId: "F-2",
+      fileId: fixture.nextFileId,
+    });
+    const event = await t.run((ctx) => ctx.db.get(fixture.eventId));
+    expect(event?.attachment).toBeUndefined();
+    expect(event?.attachments?.map((file) => file.fileId)).toEqual([
+      fixture.existingFileId,
+      fixture.nextFileId,
+    ]);
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.eventId, {
+        attachment: {
+          providerFileId: "F-2",
+          filename: "second.pdf",
+          contentType: "application/pdf",
+          fileId: fixture.existingFileId,
+        },
+      }),
+    );
+    await expect(
+      t.mutation(internal.slack.attachInboundFile, {
+        eventId: fixture.eventId,
+        providerFileId: "F-2",
+        fileId: fixture.nextFileId,
+      }),
+    ).rejects.toThrow("conflicting stored file references");
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.eventId, { attachment: undefined }),
+    );
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.eventId, { attachments: undefined }),
+    );
+    await expect(
+      t.mutation(internal.slack.attachInboundFile, {
+        eventId: fixture.eventId,
+        providerFileId: "F-2",
+        fileId: fixture.nextFileId,
+      }),
+    ).rejects.toThrow("Slack attachment is no longer available");
+  });
+
   test("answers signed URL verification while event processing is disabled", async () => {
     const t = convexTest(schema, modules);
     process.env.SLACK_ENABLED = "false";

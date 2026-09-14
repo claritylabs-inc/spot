@@ -4,7 +4,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { markdownToHtml, stripMarkdown } from "./aiUtils";
-import { parseEmailPayloadRecord } from "./emailPayloadFields";
+import { parseEmailPayloadRecord, readStoredEmailFields } from "./emailPayloadFields";
 import { extractEmailAddress } from "./emailAddress";
 import {
   getAgentDomain,
@@ -74,19 +74,6 @@ export function buildEmailPayload(params: {
   return payload;
 }
 
-function stringField(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function stringArrayField(value: unknown): string[] | undefined {
-  if (typeof value === "string" && value.trim()) return [value];
-  if (!Array.isArray(value)) return undefined;
-  const values = value.filter(
-    (item): item is string => typeof item === "string" && item.trim() !== "",
-  );
-  return values.length > 0 ? values : undefined;
-}
-
 export function buildPendingEmailResendPayload(
   pending: Doc<"pendingEmails">,
   options: {
@@ -99,7 +86,8 @@ export function buildPendingEmailResendPayload(
     legacy.headers && typeof legacy.headers === "object"
       ? (legacy.headers as Record<string, unknown>)
       : {};
-  const from = pending.fromHeader ?? stringField(legacy.from);
+  const fields = readStoredEmailFields(pending);
+  const from = fields.fromHeader;
   if (!from) {
     throw new Error("Draft is missing sender metadata.");
   }
@@ -108,13 +96,13 @@ export function buildPendingEmailResendPayload(
   for (const [key, value] of Object.entries(legacyHeaders)) {
     if (typeof value === "string" && value.trim()) headers[key] = value;
   }
-  if (pending.inReplyTo) headers["In-Reply-To"] = pending.inReplyTo;
-  if (pending.references ?? pending.inReplyTo) {
-    headers.References = pending.references ?? pending.inReplyTo!;
+  if (fields.inReplyTo) headers["In-Reply-To"] = fields.inReplyTo;
+  if (fields.references ?? fields.inReplyTo) {
+    headers.References = fields.references ?? fields.inReplyTo!;
   }
   headers["Message-ID"] = options.outboundMessageId;
 
-  const replyTo = pending.replyTo ?? stringField(legacy.reply_to);
+  const replyTo = fields.replyTo;
   const retiredDomains = getLegacyAgentDomains();
   const senderAddresses = [
     from,
@@ -137,26 +125,13 @@ export function buildPendingEmailResendPayload(
     from,
     to: pending.recipientEmail,
     subject: pending.subject,
-    text:
-      pending.renderedText ??
-      stringField(legacy.text) ??
-      stripMarkdown(pending.emailBody),
-    html: pending.renderedHtml ?? stringField(legacy.html),
+    text: fields.renderedText ?? stripMarkdown(pending.emailBody),
+    html: fields.renderedHtml,
     headers,
   };
 
-  if (pending.ccAddresses !== undefined) {
-    if (pending.ccAddresses.length > 0) payload.cc = pending.ccAddresses;
-  } else {
-    const legacyCc = stringArrayField(legacy.cc);
-    if (legacyCc) payload.cc = legacyCc;
-  }
-  if (pending.bccAddresses !== undefined) {
-    if (pending.bccAddresses.length > 0) payload.bcc = pending.bccAddresses;
-  } else {
-    const legacyBcc = stringArrayField(legacy.bcc);
-    if (legacyBcc) payload.bcc = legacyBcc;
-  }
+  if (fields.ccAddresses?.length) payload.cc = fields.ccAddresses;
+  if (fields.bccAddresses?.length) payload.bcc = fields.bccAddresses;
   if (replyTo && replyTo !== options.threadEmail) {
     payload.reply_to = replyTo;
   }

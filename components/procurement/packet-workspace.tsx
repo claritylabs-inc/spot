@@ -15,12 +15,12 @@ import { ProseMarkdown } from "@/components/prose-markdown";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";
+import { useRightPanelCloseGuard } from "@/lib/use-guarded-right-panel";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export function PacketLinkDrawer({
@@ -93,8 +93,10 @@ const PACKET_FILES = ["private.md", "public.md"] as const;
 
 export function PacketWorkspace({
   requestId,
+  filename,
 }: {
   requestId: Id<"procurementRequests">;
+  filename: (typeof PACKET_FILES)[number];
 }) {
   const packet = useQuery(api.procurementPacket.get, { requestId });
   if (!packet)
@@ -103,30 +105,15 @@ export function PacketWorkspace({
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </OperationalPanel>
     );
+  const document = packet.documents.find(
+    (document) => document.filename === filename,
+  );
   return (
-    <Tabs defaultValue="private.md">
-      <TabsList variant="pill" aria-label="Packet files">
-        {PACKET_FILES.map((filename) => (
-          <TabsTrigger key={filename} value={filename}>
-            {filename}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {PACKET_FILES.map((filename) => {
-        const document = packet.documents.find(
-          (document) => document.filename === filename,
-        );
-        return (
-          <TabsContent key={filename} value={filename} className="pt-3">
-            <ProseMarkdown gfm>
-              {document
-                ? markdownBody(document.markdown) || "No content yet."
-                : "No content yet."}
-            </ProseMarkdown>
-          </TabsContent>
-        );
-      })}
-    </Tabs>
+    <ProseMarkdown gfm>
+      {document
+        ? markdownBody(document.markdown) || "No content yet."
+        : "No content yet."}
+    </ProseMarkdown>
   );
 }
 
@@ -143,10 +130,12 @@ type EditablePacketDocument = {
 function LoadedPacketEditor({
   requestId,
   documents,
+  filename,
   onClose,
 }: {
   requestId: Id<"procurementRequests">;
   documents: EditablePacketDocument[];
+  filename: (typeof PACKET_FILES)[number];
   onClose: () => void;
 }) {
   const updateDocument = useMutation(api.procurementPacket.updateDocument);
@@ -189,6 +178,7 @@ function LoadedPacketEditor({
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the packet"),
   });
+  useRightPanelCloseGuard(autoSave.saveNow);
   return (
     <SettingsDrawer
       open
@@ -198,7 +188,28 @@ function LoadedPacketEditor({
             if (saved) onClose();
           });
       }}
-      title="Edit packet"
+      title={filename === "public.md" ? "Edit shared" : "Edit notes"}
+      contentClassName="min-h-0 flex-1"
+      footer={
+        <>
+          <PillButton
+            type="button"
+            variant="secondary"
+            onClick={() => fileInputs.current[filename]?.click()}
+          >
+            <Upload className="size-3.5" />
+            Import
+          </PillButton>
+          <PillButton
+            variant="secondary"
+            href={`data:text/markdown;charset=utf-8,${encodeURIComponent(drafts[filename])}`}
+            download={filename}
+          >
+            <Download className="size-3.5" />
+            Download
+          </PillButton>
+        </>
+      }
       actions={
         <div className="flex items-center gap-2">
           <AutoSaveStatus status={autoSave.status} />
@@ -223,96 +234,65 @@ function LoadedPacketEditor({
         </div>
       }
     >
-      <Tabs defaultValue="private.md">
-        <TabsList variant="pill" aria-label="Edit packet files">
-          {PACKET_FILES.map((filename) => (
-            <TabsTrigger key={filename} value={filename}>
-              {filename}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {PACKET_FILES.map((filename) => (
-          <TabsContent key={filename} value={filename} className="pt-3">
-            <div className="mb-3 flex justify-end gap-2">
-              <input
-                ref={(input) => {
-                  fileInputs.current[filename] = input;
-                }}
-                type="file"
-                accept=".md,text/markdown"
-                aria-label={`Import ${filename}`}
-                className="sr-only"
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  if (
-                    !file.name.toLowerCase().endsWith(".md") ||
-                    file.size > MAX_MARKDOWN_BYTES
-                  ) {
-                    toast.error("Choose a .md file under 512 KiB");
-                    event.target.value = "";
-                    return;
-                  }
-                  try {
-                    const markdown = await file.text();
-                    parseMarkdownDocument(markdown);
-                    setDrafts((current) => ({
-                      ...current,
-                      [filename]: markdown,
-                    }));
-                  } catch (error) {
-                    toast.error(
-                      getUserFacingErrorMessage(
-                        error,
-                        "Could not read this Markdown file",
-                      ),
-                    );
-                  }
-                  event.target.value = "";
-                }}
-              />
-              <PillButton
-                type="button"
-                size="compact"
-                variant="secondary"
-                onClick={() => fileInputs.current[filename]?.click()}
-              >
-                <Upload className="size-3.5" />
-                Import
-              </PillButton>
-              <PillButton
-                size="compact"
-                variant="secondary"
-                href={`data:text/markdown;charset=utf-8,${encodeURIComponent(drafts[filename])}`}
-                download={filename}
-              >
-                <Download className="size-3.5" />
-                Download
-              </PillButton>
-            </div>
-            <Textarea
-              aria-label={filename}
-              value={drafts[filename]}
-              onChange={(event) =>
-                setDrafts((current) => ({
-                  ...current,
-                  [filename]: event.target.value,
-                }))
-              }
-              className="min-h-96"
-            />
-          </TabsContent>
-        ))}
-      </Tabs>
+      <input
+        ref={(input) => {
+          fileInputs.current[filename] = input;
+        }}
+        type="file"
+        accept=".md,text/markdown"
+        aria-label={`Import ${filename}`}
+        className="sr-only"
+        onChange={async (event) => {
+          const input = event.currentTarget;
+          const file = input.files?.[0];
+          if (!file) return;
+          if (
+            !file.name.toLowerCase().endsWith(".md") ||
+            file.size > MAX_MARKDOWN_BYTES
+          ) {
+            toast.error("Choose a .md file under 512 KiB");
+            input.value = "";
+            return;
+          }
+          try {
+            const markdown = await file.text();
+            parseMarkdownDocument(markdown);
+            setDrafts((current) => ({
+              ...current,
+              [filename]: markdown,
+            }));
+          } catch (error) {
+            toast.error(
+              getUserFacingErrorMessage(
+                error,
+                "Could not read this Markdown file",
+              ),
+            );
+          }
+          input.value = "";
+        }}
+      />
+      <MarkdownEditor
+        label={filename}
+        value={drafts[filename]}
+        onChange={(markdown) =>
+          setDrafts((current) => ({
+            ...current,
+            [filename]: markdown,
+          }))
+        }
+      />
     </SettingsDrawer>
   );
 }
 
 export function PacketEditor({
   requestId,
+  filename,
   onClose,
 }: {
   requestId: Id<"procurementRequests">;
+  filename: (typeof PACKET_FILES)[number];
   onClose: () => void;
 }) {
   const packet = useQuery(api.procurementPacket.get, { requestId });
@@ -321,7 +301,7 @@ export function PacketEditor({
       <SettingsDrawer
         open
         onOpenChange={(open) => !open && onClose()}
-        title="Edit packet"
+        title={filename === "public.md" ? "Edit shared" : "Edit notes"}
       >
         <div className="flex h-40 items-center justify-center">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -330,8 +310,9 @@ export function PacketEditor({
     );
   return (
     <LoadedPacketEditor
-      key={requestId}
+      key={`${requestId}:${filename}`}
       requestId={requestId}
+      filename={filename}
       documents={packet.documents}
       onClose={onClose}
     />

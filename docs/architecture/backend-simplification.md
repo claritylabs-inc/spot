@@ -1,6 +1,23 @@
 # Backend simplification and client intake plan
 
-Status: implementation and release authorized. The primary production and shared-dev migrations completed with zero residuals. The user subsequently accepted legacy data loss and asked to prioritize shipping; no additional historical-data recovery is required. Final code validation and deployment results are recorded on the narrowing pull request and the [main release workflow](https://github.com/claritylabs-inc/spot/actions/workflows/deploy-convex.yml).
+Status: the primary simplification shipped in [PR 350](https://github.com/claritylabs-inc/spot/pull/350), with [production release 34907480974](https://github.com/claritylabs-inc/spot/actions/runs/34907480974) successful and the exact `c6e0215a` frontend serving `app.spot.insure`. Shared-dev has the same tracked code and passed its health readback. The user authorized continued investigation and fixes for the remaining findings below. Historical-data recovery remains cancelled under the accepted legacy data loss.
+
+## Remaining simplification pass
+
+The follow-up uses the same rule: retain routine structured data, remove unused state, and put mutable narrative in the existing Markdown owner. These are implementation tasks, not reasons to revisit completed migrations.
+
+| Owner | Remaining change | Completion evidence |
+| --- | --- | --- |
+| Pending email drafts | Stop storing serialized provider JSON beside typed delivery fields; make the browser card, preview, and send use the same effective draft. | Existing pending approvals retain the same effective content; recipient clears, attachments, and thread headers survive backfill; focused delivery/approval tests pass. |
+| Slack inbound events | Store one attachment array, preserving distinct files when old transports supply both shapes. Remove unused event metadata after checking all writers. | Transport tests, bounded backfill, and zero residual legacy fields on production/shared-dev. |
+| Proposal reviews and notifications | Replace loose findings/action/source validators with the actual current shapes; remove unused notification expiry. | Existing persisted shapes pass a bounded audit; malformed new writes are rejected; consumer casts are removed. |
+| Retired settings and links | Remove unused organization automation settings and obsolete references to the deleted policy-change table. | No runtime consumers; bounded cleanup preserves active records and issued evidence; schema narrowing succeeds. |
+| Company research | Live router-backed creation without a website completed with an official site, classification, and cited wiki facts. Identity changes retract old evidence; verified refreshes replace superseded facts and suggestions; transient failures preserve prior evidence. | Isolated local acceptance preserved manual prose; 24 adjacent tests passed, including regressions that failed on the previous release. |
+| Browser workflows | Native operator/client OAuth consent, token rotation/revocation, compliance source Notes persistence, and company-wiki import passed in headed local Chrome. Failed packet saves now block sidebar replacement until save or explicit discard. | [Workflow ledger](../testing/workflow-qa.md) records the actors, assertions, and cleanup. The packet replacement regression failed without its guard and passed with it; the revision-conflict path also passed in the browser. |
+
+Release the compatibility changes first, audit and migrate only the named fields through the existing migrations component, then remove obsolete fields and temporary migration code in a second release. The main release workflow remains responsible for Convex, worker compatibility, and frontend promotion. Do not upload database exports, credentials, or private file backups to the public repository.
+
+Shared-dev accepted the typed schemas and compatibility release. Its cleanup converted one pending draft and cleared two unused thread references; all nine table audits then reported zero changes and zero blockers. The draft conversion preserves its effective delivery payload and confirmation fingerprint. The first integrated test pass completed 654 tests in 147 files; final combined checks and production release results belong to the follow-up PR.
 
 ## Accepted scope update
 
@@ -79,7 +96,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 ### C. Narrow verified obsolete schema
 
 - Remove only fields/tables proven migrated on the target; remove obsolete imports, indexes, migration writers, DTO branches and compatibility tests in the same batch.
-- The conditional candidate removes the verified compatibility fields, tables, imports, migration writers, and tests. It deliberately retains `policyUpdateRuns` and seven inventory-only procurement tables until approved-target counts and content review are recorded.
+- The completed narrowing removed `policyUpdateRuns` and the seven inventory-only procurement tables after production and shared-dev counts were verified zero.
 - Shared-dev/local fixture compatibility must be handled explicitly. Never switch this worktree to the shared integration database for routine tests.
 - Release C, verify the same production gates, then run bounded read checks and migration verifiers against the deployed result.
 
@@ -106,7 +123,7 @@ Keep tenant/operator conversation separation, exact approval and audit records, 
 The following records are the preserved pre-implementation audit baseline.
 Symbols, commands, schemas, and line numbers below refer to the audited checkout;
 some no longer exist in the narrowed candidate and none are current operational
-instructions. Use the current contracts and pending evidence table above for
+instructions. Use the current contracts and execution evidence above for
 release decisions.
 
 

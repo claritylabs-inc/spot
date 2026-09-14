@@ -1,5 +1,7 @@
 "use client";
 
+import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
+
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 
 import {
@@ -368,7 +370,7 @@ type ProposalView = {
       | "has_gaps"
       | "insufficient_evidence";
     stale: boolean;
-    findings: ProposalReviewFinding[];
+    findings: StoredProposalFinding[];
   }>;
   extraction: {
     latest: {
@@ -379,16 +381,6 @@ type ProposalView = {
       lastError: string | null;
     } | null;
   };
-};
-
-type ProposalReviewFinding = {
-  sectionKey: string;
-  conclusion: "meets" | "has_gap" | "insufficient_evidence";
-  summary: string;
-  evidence: Array<{
-    proposalDocumentId: string;
-    pageStart: number | null;
-  }>;
 };
 
 const FINDING_TONE = {
@@ -1585,7 +1577,7 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "overview" | "packet" | "proposals" | "files" | "email";
+  view: "notes" | "shared" | "proposals" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -1659,12 +1651,13 @@ export function ProcurementRequestWorkspace({
     closePdf();
     onRightPanel(
       <PacketEditor
-        key={requestId}
+        key={`${requestId}:${view}`}
         requestId={requestId}
+        filename={view === "shared" ? "public.md" : "private.md"}
         onClose={closeRightPanel}
       />,
     );
-  }, [closePdf, closeRightPanel, onRightPanel, requestId]);
+  }, [closePdf, closeRightPanel, onRightPanel, requestId, view]);
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach) => {
@@ -1817,16 +1810,7 @@ export function ProcurementRequestWorkspace({
     }
 
     const actions =
-      view === "overview" ? (
-        <PillButton
-          type="button"
-          variant="secondary"
-          onClick={openRequestEditor}
-        >
-          <Pencil className="size-3.5" />
-          Edit request
-        </PillButton>
-      ) : view === "packet" ? (
+      view === "notes" || view === "shared" ? (
         <>
           <PillButton
             type="button"
@@ -1843,7 +1827,7 @@ export function ProcurementRequestWorkspace({
           </PillButton>
           <PillButton type="button" onClick={openPacketEditor}>
             <Pencil className="size-3.5" />
-            Edit packet
+            {view === "shared" ? "Edit shared" : "Edit notes"}
           </PillButton>
         </>
       ) : view === "proposals" ? (
@@ -1883,7 +1867,19 @@ export function ProcurementRequestWorkspace({
         </>
       ) : null;
 
-    onActions?.(actions);
+    onActions?.(
+      <>
+        <PillButton
+          type="button"
+          variant="secondary"
+          onClick={openRequestEditor}
+        >
+          <Pencil className="size-3.5" />
+          Edit request
+        </PillButton>
+        {actions}
+      </>,
+    );
     return () => onActions?.(null);
   }, [
     onActions,
@@ -1944,12 +1940,6 @@ export function ProcurementRequestWorkspace({
     (proposal) =>
       proposal.status !== "archived" && proposal.status !== "withdrawn",
   );
-  const proposalOutreachIds = new Set(
-    activeProposals.map((proposal) => String(proposal.outreachId)),
-  );
-  const outreachesWithoutProposal = details.outreaches.filter(
-    (outreach) => !proposalOutreachIds.has(String(outreach._id)),
-  );
   const blockers = [
     ...(details.outreaches.length === 0
       ? ["No broker outreach has been added"]
@@ -1982,22 +1972,46 @@ export function ProcurementRequestWorkspace({
 
   return (
     <div className="space-y-5">
+      <div className="space-y-4">
+        <OperationalLabelValueList>
+          <OperationalLabelValueRow
+            label="Current stage"
+            value={<RequestStatusTag status={details.request.status} />}
+          />
+          <RequestCompletionOutcome
+            outcome={details.request.completionOutcome}
+          />
+          <OperationalLabelValueRow
+            label="Proposals"
+            value={`${details.request.brokerCount} broker${details.request.brokerCount === 1 ? "" : "s"} · ${activeProposals.length} proposal${activeProposals.length === 1 ? "" : "s"}`}
+          />
+          <OperationalLabelValueRow
+            label="Target effective date"
+            value={formatDisplayDate(
+              details.request.targetEffectiveDate,
+              "Not set",
+            )}
+          />
+          <OperationalLabelValueRow label="Next" value={nextActions[0]} />
+        </OperationalLabelValueList>
+      </div>
+
       <div className="overflow-x-auto">
         <Tabs
           value={view}
           onValueChange={(nextView) =>
             router.push(
-              nextView === "overview"
+              nextView === "notes"
                 ? requestPath
                 : `${requestPath}?view=${nextView}`,
             )
           }
         >
           <TabsList variant="pill" aria-label="Procurement request view">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="packet">Packet</TabsTrigger>
+            <TabsTrigger value="notes">Notes</TabsTrigger>
+            <TabsTrigger value="shared">Shared</TabsTrigger>
             <TabsTrigger value="proposals">
-              Proposals
+              Brokers
               <span className="text-muted-foreground/60">
                 {details.outreaches.length}
               </span>
@@ -2018,94 +2032,79 @@ export function ProcurementRequestWorkspace({
         </Tabs>
       </div>
 
-      {view === "overview" ? (
-        <div className="space-y-4">
-          <OperationalLabelValueList>
-            <OperationalLabelValueRow
-              label="Current stage"
-              value={<RequestStatusTag status={details.request.status} />}
-            />
-            <RequestCompletionOutcome
-              outcome={details.request.completionOutcome}
-            />
-            <OperationalLabelValueRow
-              label="Proposals"
-              value={`${details.request.brokerCount} brokers · ${activeProposals.length} proposals`}
-            />
-            <OperationalLabelValueRow
-              label="Target effective date"
-              value={formatDisplayDate(
-                details.request.targetEffectiveDate,
-                "Not set",
-              )}
-            />
-            <OperationalLabelValueRow label="Next" value={nextActions[0]} />
-          </OperationalLabelValueList>
-        </div>
-      ) : null}
-
-      {view === "packet" ? (
-        <PacketWorkspace key={requestId} requestId={requestId} />
+      {view === "notes" || view === "shared" ? (
+        <PacketWorkspace
+          key={requestId}
+          requestId={requestId}
+          filename={view === "shared" ? "public.md" : "private.md"}
+        />
       ) : null}
 
       {view === "proposals" ? (
-        <div className="space-y-4">
-          {activeProposals.length ? (
-            <OperationalPanel as="section">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Broker</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Premium</TableHead>
-                    <TableHead>Review</TableHead>
-                    <TableHead>Documents</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activeProposals.map((proposal) => {
-                    const offer = (proposal.extractedOffer ?? {}) as {
-                      premium?: string;
-                      premiumAmount?: number;
-                      proposedEffectiveDate?: string;
-                      proposedExpirationDate?: string;
-                      coverages?: Array<{ name?: string; limit?: string }>;
-                    };
-                    const review = proposal.reviews[0];
-                    const conclusion = review?.stale
-                      ? undefined
-                      : (review?.staffConclusion ?? review?.modelConclusion);
-                    const latestExtraction = proposal.extraction.latest;
-                    const proposalOutreach = outreachById.get(
-                      proposal.outreachId,
-                    );
-                    return (
-                      <TableRow
-                        key={proposal._id}
-                        tabIndex={proposalOutreach ? 0 : undefined}
-                        onClick={() =>
-                          proposalOutreach &&
-                          openOutreachEditor(proposalOutreach)
+        details.outreaches.length === 0 ? (
+          <EmptyStateCard
+            title="No brokers contacted yet"
+            description="Add a broker from the network directory and track each response independently."
+          />
+        ) : (
+          <OperationalPanel as="section">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Broker</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Premium</TableHead>
+                  <TableHead>Review</TableHead>
+                  <TableHead>Documents</TableHead>
+                  <TableHead>Updated</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {details.outreaches.map((outreach) => {
+                  const proposal = activeProposals.find(
+                    (row) => row.outreachId === outreach._id,
+                  );
+                  const contact = [outreach.contactName, outreach.contactEmail]
+                    .filter(Boolean)
+                    .join(" · ");
+                  const offer = (proposal?.extractedOffer ?? {}) as {
+                    premium?: string;
+                    premiumAmount?: number;
+                  };
+                  const review = proposal?.reviews[0];
+                  const conclusion = review?.stale
+                    ? undefined
+                    : (review?.staffConclusion ?? review?.modelConclusion);
+                  const latestExtraction = proposal?.extraction.latest;
+                  return (
+                    <TableRow
+                      key={outreach._id}
+                      tabIndex={0}
+                      onClick={() => openOutreachEditor(outreach)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openOutreachEditor(outreach);
                         }
-                        onKeyDown={(event) => {
-                          if (
-                            proposalOutreach &&
-                            (event.key === "Enter" || event.key === " ")
-                          ) {
-                            event.preventDefault();
-                            openOutreachEditor(proposalOutreach);
-                          }
-                        }}
-                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                      >
-                        <TableCell className="max-w-64 whitespace-normal">
-                          <span
-                            className={`text-foreground ${typeStyle("body.medium")}`}
+                      }}
+                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    >
+                      <TableCell className="min-w-52 max-w-96 whitespace-normal">
+                        <p
+                          className={`text-foreground ${typeStyle("body.medium")}`}
+                        >
+                          {outreach.brokerName}
+                        </p>
+                        {contact ? (
+                          <p
+                            className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
                           >
-                            {proposal.brokerName ?? "Broker"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
+                            {contact}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        {proposal ? (
                           <StatusTag
                             tone={
                               proposal.status === "selected"
@@ -2118,115 +2117,67 @@ export function ProcurementRequestWorkspace({
                             {proposal.status.charAt(0).toUpperCase() +
                               proposal.status.slice(1).replaceAll("_", " ")}
                           </StatusTag>
-                          {latestExtraction?.stuck ? (
-                            <p
-                              className={`mt-1 text-warning ${typeStyle("caption.default")}`}
-                            >
-                              Extraction lease expired
-                            </p>
-                          ) : latestExtraction?.status === "failed" ? (
-                            <p
-                              className={`mt-1 max-w-48 truncate text-destructive ${typeStyle("caption.default")}`}
-                              title={latestExtraction.lastError ?? undefined}
-                            >
-                              {latestExtraction.lastError ||
-                                "Extraction failed"}
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {offer.premium ?? offer.premiumAmount ?? "—"}
-                        </TableCell>
-                        <TableCell>
-                          {review?.stale ? (
-                            <StatusTag tone="warning">Stale</StatusTag>
-                          ) : conclusion ? (
-                            <StatusTag
-                              tone={
-                                conclusion === "meets_requirements"
-                                  ? "success"
-                                  : "warning"
-                              }
-                            >
-                              {REVIEW_CONCLUSION_LABELS[conclusion]}
-                            </StatusTag>
-                          ) : (
-                            <span className="text-muted-foreground">
-                              Not reviewed
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
+                        ) : (
+                          <OutreachStatusTag status={outreach.status} />
+                        )}
+                        {latestExtraction?.stuck ? (
+                          <p
+                            className={`mt-1 text-warning ${typeStyle("caption.default")}`}
+                          >
+                            Extraction lease expired
+                          </p>
+                        ) : latestExtraction?.status === "failed" ? (
+                          <p
+                            className={`mt-1 max-w-48 truncate text-destructive ${typeStyle("caption.default")}`}
+                            title={latestExtraction.lastError ?? undefined}
+                          >
+                            {latestExtraction.lastError || "Extraction failed"}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {offer.premium ?? offer.premiumAmount ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        {review?.stale ? (
+                          <StatusTag tone="warning">Stale</StatusTag>
+                        ) : conclusion ? (
+                          <StatusTag
+                            tone={
+                              conclusion === "meets_requirements"
+                                ? "success"
+                                : "warning"
+                            }
+                          >
+                            {REVIEW_CONCLUSION_LABELS[conclusion]}
+                          </StatusTag>
+                        ) : (
                           <span className="text-muted-foreground">
-                            {proposal.documents.length}
+                            {proposal ? "Not reviewed" : "—"}
                           </span>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </OperationalPanel>
-          ) : null}
-        </div>
-      ) : null}
-
-      {view === "proposals" ? (
-        details.outreaches.length === 0 ? (
-          <EmptyStateCard
-            title="No brokers contacted yet"
-            description="Add a broker from the network directory and track each response independently."
-          />
-        ) : outreachesWithoutProposal.length ? (
-          <OperationalPanel as="section">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Broker</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {outreachesWithoutProposal.map((outreach) => (
-                  <TableRow
-                    key={outreach._id}
-                    tabIndex={0}
-                    onClick={() => openOutreachEditor(outreach)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openOutreachEditor(outreach);
-                      }
-                    }}
-                    className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  >
-                    <TableCell className="min-w-52 whitespace-normal">
-                      <p
-                        className={`text-foreground ${typeStyle("body.medium")}`}
-                      >
-                        {outreach.brokerName}
-                      </p>
-                      <p
-                        className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                      >
-                        {[outreach.contactName, outreach.contactEmail]
-                          .filter(Boolean)
-                          .join(" · ") || "No contact saved"}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <OutreachStatusTag status={outreach.status} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDisplayDate(outreach.updatedAt, "—")}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-muted-foreground">
+                          {proposal?.documents.length ?? "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDisplayDate(
+                          Math.max(
+                            outreach.updatedAt,
+                            proposal?.updatedAt ?? 0,
+                          ),
+                          "—",
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </OperationalPanel>
-        ) : null
+        )
       ) : null}
 
       {view === "files" ? (

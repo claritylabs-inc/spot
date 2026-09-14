@@ -1,6 +1,8 @@
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
-import { storedNotificationTypeValidator } from "./lib/notificationTypes";
+import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
+import { storedNotificationTypeValidator, notificationActionTypeValidator, notificationActionPayloadValidator, notificationSourceRefValidator } from "./lib/notificationTypes";
+import { proposalReviewFindingValidator } from "./lib/proposalReview";
 import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
 import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
 import { completionOutcomeValidator } from "./lib/procurementCompletionOutcome";
@@ -2794,7 +2796,7 @@ export default defineSchema({
         v.literal("insufficient_evidence"),
       ),
     ),
-    findings: v.array(v.any()),
+    findings: v.array(proposalReviewFindingValidator),
     confirmedByUserId: v.optional(v.id("users")),
     confirmedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -3353,9 +3355,9 @@ export default defineSchema({
       v.literal("actioned"),
       v.literal("dismissed"),
     ),
-    actionType: v.optional(v.string()),
-    actionPayload: v.optional(v.any()),
-    sourceRef: v.optional(v.any()), // what generated this: policyId, emailId, etc.
+    actionType: v.optional(notificationActionTypeValidator),
+    actionPayload: v.optional(notificationActionPayloadValidator),
+    sourceRef: v.optional(notificationSourceRefValidator),
     createdAt: v.number(),
     expiresAt: v.optional(v.number()), // auto-dismiss after this date
     // Cross-org context
@@ -3990,26 +3992,8 @@ export default defineSchema({
     senderEmail: v.optional(v.string()),
     senderIsBot: v.optional(v.boolean()),
     content: v.string(),
-    attachment: v.optional(
-      v.object({
-        providerFileId: v.string(),
-        filename: v.string(),
-        contentType: v.string(),
-        size: v.optional(v.number()),
-        fileId: v.optional(v.id("_storage")),
-      }),
-    ),
-    attachments: v.optional(
-      v.array(
-        v.object({
-          providerFileId: v.string(),
-          filename: v.string(),
-          contentType: v.string(),
-          size: v.optional(v.number()),
-          fileId: v.optional(v.id("_storage")),
-        }),
-      ),
-    ),
+    attachment: v.optional(slackStoredAttachmentValidator),
+    attachments: v.optional(v.array(slackStoredAttachmentValidator)),
     eventType: v.union(
       v.literal("message"),
       v.literal("edit"),
@@ -4674,7 +4658,7 @@ export default defineSchema({
       v.literal("sent"),
       v.literal("cancelled"),
     ),
-    emailPayload: v.string(), // JSON-serialized Resend payload
+    emailPayload: v.optional(v.string()), // Removed after canonical draft backfill.
     fromHeader: v.optional(v.string()),
     replyTo: v.optional(v.string()),
     inReplyTo: v.optional(v.string()),

@@ -112,3 +112,48 @@ test("wiki close flushes the latest draft, retains it after a failed save and li
     container.remove();
   }
 });
+
+test("imports a Markdown file into the company wiki draft", async () => {
+  wiki.filename = "company-wiki.md";
+  wiki.markdown = "Original facts";
+  wiki.body = "Original facts";
+  wiki.revision = 1;
+  save.mockResolvedValue({ revision: 2 });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const store = createSyncStore({
+    scope: { appId: "wiki-import-test" },
+    persistence: "memory",
+  });
+  try {
+    await act(async () =>
+      root.render(
+        <SyncProvider store={store}>
+          <Workspace />
+        </SyncProvider>,
+      ),
+    );
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>("button")!.click(),
+    );
+    const fileInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Import company-wiki.md"]',
+    )!;
+    const markdown = "---\nindustry: Software\n---\n# Imported facts";
+    Object.defineProperty(fileInput, "files", {
+      configurable: true,
+      value: [new File([markdown], "company-wiki.md", { type: "text/markdown" })],
+    });
+    await act(async () => {
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(
+      markdown,
+    );
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

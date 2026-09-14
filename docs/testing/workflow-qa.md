@@ -549,3 +549,28 @@ manual compliance drawer omitted the retired “Internal notes” wording. The l
 fixture had no requirement-source row, so the renamed source Notes field was not
 browser-reachable; OAuth coverage was limited to invalid-client rejection, with
 no external connection or grant attempted.
+
+### OAuth and requirement-source closure (2026-09-14)
+
+The remaining local gaps passed in headed Chrome against the worktree-native
+backend. Disposable localhost-only clients dynamically registered through
+Spot’s OAuth endpoint for both the seeded operator and client administrator.
+Each identity completed normal OTP sign-in and consent, PKCE code exchange, an
+authenticated MCP tool listing, refresh-token rotation, rejection of the old
+access and refresh tokens, and final revocation. The client revoked through the
+Connected apps UI; the operator used the native form-encoded revocation
+endpoint. The active access and refresh tokens then failed closed. Raw codes,
+tokens, verifiers, cookies, and OTPs were not retained in evidence.
+
+A synthetic client-owned requirement source opened by keyboard and showed the
+Notes field without a visibility control or the retired “Internal notes” label.
+The note persisted across immediate close/reopen, its original value persisted
+after restoration and reload, and the source was archived locally afterward.
+No extraction, external provider, account grant, or live send occurred.
+
+The adjacent Markdown audit found one concrete inconsistency: the company-wiki
+drawer exposed a native file picker and accepted file text before parsing it.
+It now uses the shared compact Import action, validates the Markdown document,
+and clears rejected selections so the same file can be retried. Browser import,
+autosave/reopen, reload, and fixture restoration passed at narrow dark width.
+Ignored evidence is under `.context/qa/oauth-compliance-evidence/`.

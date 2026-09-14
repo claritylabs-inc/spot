@@ -1,5 +1,6 @@
 "use node";
 
+import { notificationActionHref } from "../lib/notificationTypes";
 import dayjs from "dayjs";
 import { canonicalAgentAddress } from "../lib/agentEmailDomains";
 import { v } from "convex/values";
@@ -84,12 +85,10 @@ export const send = internalAction({
     // Notification emails are Spot-branded. Broker white-labeling was retired
     // when broker organizations became supplier profiles.
     const siteUrl = getPortalUrlForOrg(recipientOrg);
-    // Build CTA URL from actionPayload or fallback to inbox
-    const ctaUrl = buildCtaUrl(
+    const ctaUrl = `${siteUrl}${notificationActionHref(
       notification.actionType,
       notification.actionPayload,
-      siteUrl,
-    );
+    ) ?? "/notifications"}`;
     const replyThread =
       notification.actionType === "view_thread" ? contextThread : null;
     const replyTo = trustedThreadReplyAddress(replyThread?.threadEmail);
@@ -154,23 +153,4 @@ function trustedThreadReplyAddress(
   return getAgentDomains().includes(domain)
     ? canonicalAgentAddress(address)
     : undefined;
-}
-
-function buildCtaUrl(
-  actionType: string | undefined,
-  actionPayload: unknown,
-  siteUrl: string,
-): string {
-  if (!actionType || !actionPayload) return `${siteUrl}/notifications`;
-  const p = actionPayload as Record<string, unknown>;
-  switch (actionType) {
-    case "view_policy":
-      return `${siteUrl}/policies/${p.policyId}${p.tab ? `?tab=${encodeURIComponent(String(p.tab))}` : ""}`;
-    case "view_thread":
-      return `${siteUrl}/agent/thread/${p.threadId}`;
-    case "view_vendor_compliance":
-      return `${siteUrl}/connect/vendors`;
-    default:
-      return `${siteUrl}/notifications`;
-  }
 }

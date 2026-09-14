@@ -74,7 +74,7 @@ export const typographyRoles = {
     "font-brand text-xl font-normal leading-none tracking-tight normal-case not-italic normal-nums",
 
   "prose.default":
-    "font-sans text-base font-normal leading-relaxed tracking-normal normal-case not-italic normal-nums [&_strong]:font-semibold [&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_h4]:text-base [&_h4]:font-semibold [&_h5]:text-base [&_h5]:font-semibold [&_h6]:text-base [&_h6]:font-semibold [&_code]:font-mono [&_code]:text-label [&_table]:text-label [&_th]:text-label [&_th]:font-semibold",
+    "font-sans text-base font-normal leading-relaxed tracking-normal normal-case not-italic normal-nums [&_strong]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_h4]:text-base [&_h4]:font-semibold [&_h5]:text-base [&_h5]:font-semibold [&_h6]:text-base [&_h6]:font-semibold [&_code]:font-mono [&_code]:text-label [&_table]:text-label [&_th]:text-label [&_th]:font-semibold",
   "prose.compact":
     "font-sans text-base font-normal leading-relaxed tracking-normal normal-case not-italic normal-nums [&_strong]:font-semibold [&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_h4]:text-base [&_h4]:font-semibold [&_h5]:text-base [&_h5]:font-semibold [&_h6]:text-base [&_h6]:font-semibold [&_em]:text-base",
 

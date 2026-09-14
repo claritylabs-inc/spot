@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Download, Loader2, Pencil } from "lucide-react";
+import { Download, Loader2, Pencil, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
@@ -20,7 +20,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { MAX_MARKDOWN_BYTES } from "@/convex/lib/markdownDocument";
+import {
+  MAX_MARKDOWN_BYTES,
+  parseMarkdownDocument,
+} from "@/convex/lib/markdownDocument";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
@@ -40,6 +43,7 @@ function WikiDrawer({
   onClose: () => void;
 }) {
   const [markdown, setMarkdown] = useState(initialMarkdown);
+  const fileInput = useRef<HTMLInputElement>(null);
   const revision = useRef(initialRevision);
   const autoSave = useLocalFirstAutoSave({
     mutationName: "orgWiki.save",
@@ -78,12 +82,14 @@ function WikiDrawer({
           });
       }}
     >
-      <div className="space-y-4">
-        <label className="block space-y-2">
-          <span>Import Markdown</span>
+      <div className="space-y-3">
+        <div className="flex justify-end">
           <input
+            ref={fileInput}
             type="file"
             accept=".md,text/markdown"
+            aria-label="Import company-wiki.md"
+            className="sr-only"
             onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
@@ -92,17 +98,34 @@ function WikiDrawer({
                 file.size > MAX_MARKDOWN_BYTES
               ) {
                 toast.error("Choose a .md file under 512 KiB");
+                event.target.value = "";
                 return;
               }
               try {
-                setMarkdown(await file.text());
-              } catch {
-                toast.error("Could not read this file");
+                const nextMarkdown = await file.text();
+                parseMarkdownDocument(nextMarkdown);
+                setMarkdown(nextMarkdown);
+              } catch (error) {
+                toast.error(
+                  getUserFacingErrorMessage(
+                    error,
+                    "Could not read this Markdown file",
+                  ),
+                );
               }
               event.target.value = "";
             }}
           />
-        </label>
+          <PillButton
+            type="button"
+            size="compact"
+            variant="secondary"
+            onClick={() => fileInput.current?.click()}
+          >
+            <Upload className="size-3.5" />
+            Import
+          </PillButton>
+        </div>
         <Textarea
           aria-label="Company wiki Markdown"
           value={markdown}

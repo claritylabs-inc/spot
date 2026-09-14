@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { readStoredEmailFields } from "@/convex/lib/emailPayloadFields";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   StatusTag,
@@ -20,47 +21,6 @@ import {
 import type { ThreadMessage } from "../types";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
-
-type EmailPayloadPreview = {
-  from?: string;
-  to?: string[];
-  cc?: string[];
-  bcc?: string[];
-  text?: string;
-  html?: string;
-};
-
-function normalizeEmailPayloadAddresses(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter(
-      (item): item is string =>
-        typeof item === "string" && item.trim().length > 0,
-    );
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    return [value];
-  }
-  return [];
-}
-
-function parseEmailPayloadPreview(
-  payload: string | undefined,
-): EmailPayloadPreview | null {
-  if (!payload) return null;
-  try {
-    const parsed = JSON.parse(payload) as Record<string, unknown>;
-    return {
-      from: typeof parsed.from === "string" ? parsed.from : undefined,
-      to: normalizeEmailPayloadAddresses(parsed.to),
-      cc: normalizeEmailPayloadAddresses(parsed.cc),
-      bcc: normalizeEmailPayloadAddresses(parsed.bcc),
-      text: typeof parsed.text === "string" ? parsed.text : undefined,
-      html: typeof parsed.html === "string" ? parsed.html : undefined,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function formatEmailAddressList(
   addresses: string[] | undefined,
@@ -549,25 +509,25 @@ export function EmailThreadSidebar({
   const isSent = pendingEmail?.status === "sent" || !!message.responseMessageId;
   const isCancelled =
     pendingEmail?.status === "cancelled" || message.status === "cancelled";
-  const payloadPreview = parseEmailPayloadPreview(pendingEmail?.emailPayload);
+  const draftFields = pendingEmail ? readStoredEmailFields(pendingEmail) : null;
   const fromLine =
-    payloadPreview?.from ??
+    draftFields?.fromHeader ??
     (message.fromEmail
       ? message.fromName
         ? `${message.fromName} <${message.fromEmail}>`
         : message.fromEmail
       : null);
-  const toLine =
-    formatEmailAddressList(payloadPreview?.to) ??
-    formatEmailAddressList(message.toAddresses);
-  const ccLine =
-    formatEmailAddressList(payloadPreview?.cc) ??
-    formatEmailAddressList(message.ccAddresses);
-  const bccLine =
-    formatEmailAddressList(payloadPreview?.bcc) ??
-    formatEmailAddressList(message.bccAddresses);
-  const previewBody = payloadPreview?.text ?? message.content;
-  const previewHtml = payloadPreview?.html;
+  const toLine = pendingEmail
+    ? pendingEmail.recipientEmail
+    : formatEmailAddressList(message.toAddresses);
+  const ccLine = formatEmailAddressList(
+    pendingEmail ? draftFields?.ccAddresses : message.ccAddresses,
+  );
+  const bccLine = formatEmailAddressList(
+    pendingEmail ? draftFields?.bccAddresses : message.bccAddresses,
+  );
+  const previewBody = draftFields?.renderedText ?? pendingEmail?.emailBody ?? message.content;
+  const previewHtml = draftFields?.renderedHtml;
   const sentAt = formatDisplayDateTime(message._creationTime);
 
   async function handleSend() {
@@ -623,7 +583,7 @@ export function EmailThreadSidebar({
       <div className="flex h-12 items-center justify-between gap-3 border-b border-input px-4">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className={`truncate text-foreground ${typeStyle("heading.micro")}`}>
-            {message.subject ||
+            {pendingEmail?.subject || message.subject ||
               (message.role === "agent" ? "Sent email" : "Received email")}
           </h2>
           <StatusTag
@@ -669,7 +629,7 @@ export function EmailThreadSidebar({
         <EmailHeaderRow label="Bcc" value={bccLine} />
         <EmailHeaderRow label="Time" value={sentAt} />
         <EmailHeaderAttachments
-          attachments={message.attachments}
+          attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
           threadId={message.threadId}
         />
       </dl>

@@ -31,6 +31,15 @@ import {
   slackThreadContextSnapshotValidator,
 } from "./lib/slackThreadContext";
 
+import {
+  slackAttachments,
+  slackInboundAttachmentValidator,
+} from "./lib/slackAttachments";
+import {
+  MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
+  MAX_AGENT_ATTACHMENT_BYTES,
+} from "./lib/agentAttachmentLimits";
+
 const internalApi = internal as any;
 const DEBOUNCE_MS = 1_500;
 const MAX_BATCH_SIZE = 50;
@@ -119,13 +128,6 @@ export const verifySlackActorSpotIdentityBackfill = internalQuery({
       remainingSampleId: remaining?._id,
     };
   },
-});
-
-const attachmentValidator = v.object({
-  providerFileId: v.string(),
-  filename: v.string(),
-  contentType: v.string(),
-  size: v.optional(v.number()),
 });
 
 type SlackClassification = Doc<"slackActors">["classification"];
@@ -323,7 +325,6 @@ async function claimOperatorInbound(
   args: {
     eventKey: string;
     providerEventId?: string;
-    spectrumMessageId?: string;
     teamId: string;
     channelId: string;
     threadTs: string;
@@ -334,12 +335,6 @@ async function claimOperatorInbound(
     senderDisplayName?: string;
     senderEmail?: string;
     content: string;
-    attachment?: {
-      providerFileId: string;
-      filename: string;
-      contentType: string;
-      size?: number;
-    };
     attachments?: Array<{
       providerFileId: string;
       filename: string;
@@ -595,8 +590,8 @@ export const claimInbound = internalMutation({
     senderDisplayName: v.optional(v.string()),
     senderEmail: v.optional(v.string()),
     content: v.string(),
-    attachment: v.optional(attachmentValidator),
-    attachments: v.optional(v.array(attachmentValidator)),
+    attachment: v.optional(slackInboundAttachmentValidator),
+    attachments: v.optional(v.array(slackInboundAttachmentValidator)),
     eventType: v.union(
       v.literal("message"),
       v.literal("edit"),
@@ -606,7 +601,16 @@ export const claimInbound = internalMutation({
     isPrivateChannel: v.optional(v.boolean()),
     receivedAt: v.number(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, input) => {
+    const {
+      attachment,
+      spectrumMessageId: _spectrumMessageId,
+      ...fields
+    } = input;
+    const args = {
+      ...fields,
+      attachments: slackAttachments({ ...fields, attachment }),
+    };
     const duplicate = await ctx.db
       .query("slackInboundEvents")
       .withIndex("event", (q) => q.eq("eventKey", args.eventKey))
@@ -801,24 +805,43 @@ export const attachInboundFile = internalMutation({
   },
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
-    if (!event) return;
-    if (event.attachments?.length) {
-      await ctx.db.patch(event._id, {
-        attachments: event.attachments.map((attachment) =>
-          attachment.providerFileId === args.providerFileId
-            ? { ...attachment, fileId: args.fileId }
-            : attachment,
-        ),
-        updatedAt: dayjs().valueOf(),
-      });
-      return;
+    if (!event) throw new Error("Slack event is no longer available");
+    const attachments = slackAttachments(event);
+    const target = attachments.find(
+      (file) => file.providerFileId === args.providerFileId,
+    );
+    if (!target) {
+      throw new Error("Slack attachment is no longer available");
     }
-    if (event.attachment?.providerFileId === args.providerFileId) {
-      await ctx.db.patch(event._id, {
-        attachment: { ...event.attachment, fileId: args.fileId },
-        updatedAt: dayjs().valueOf(),
-      });
+    if (target.fileId) return { attached: target.fileId === args.fileId };
+    let storedBytes = 0;
+    let fileSize = 0;
+    for (const attachment of attachments) {
+      const fileId = attachment === target ? args.fileId : attachment.fileId;
+      if (!fileId) continue;
+      const metadata = await ctx.db.system.get(fileId);
+      if (!metadata) throw new Error("Slack attachment is no longer available");
+      if (metadata.size > MAX_AGENT_ATTACHMENT_BYTES) {
+        throw new Error("Slack attachment exceeds the 25 MB ingestion limit");
+      }
+      storedBytes += metadata.size;
+      if (attachment === target) fileSize = metadata.size;
     }
+    if (storedBytes > MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES) {
+      throw new Error(
+        "Slack attachments exceed the 50 MB aggregate ingestion limit",
+      );
+    }
+    await ctx.db.patch(event._id, {
+      attachment: undefined,
+      attachments: attachments.map((attachment) =>
+        attachment.providerFileId === args.providerFileId
+          ? { ...attachment, fileId: args.fileId, size: fileSize }
+          : attachment,
+      ),
+      updatedAt: dayjs().valueOf(),
+    });
+    return { attached: true };
   },
 });
 
@@ -1104,8 +1127,7 @@ export const prepareBatch = internalMutation({
         }
       }
 
-      const inboundAttachments =
-        event.attachments ?? (event.attachment ? [event.attachment] : []);
+      const inboundAttachments = slackAttachments(event);
       const attachments = inboundAttachments.flatMap((attachment) =>
         attachment.fileId
           ? [

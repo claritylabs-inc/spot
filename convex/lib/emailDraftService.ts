@@ -2,44 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { invalidatePendingConfirmations } from "../threadActionConfirmations";
 import { normalizeEmailAddress } from "./emailAddress";
-import { parseEmailPayloadRecord } from "./emailPayloadFields";
-
-function normalizeRecipientList(value: unknown): string[] {
-  const values = Array.isArray(value) ? value : value ? [value] : [];
-  return values
-    .filter((item): item is string => typeof item === "string")
-    .map(normalizeEmailAddress)
-    .filter(Boolean);
-}
-
-export function updateEmailPayloadRecipient(
-  emailPayload: string,
-  recipientEmail: string,
-): string {
-  const normalizedRecipient = normalizeEmailAddress(recipientEmail);
-  const payload = parseEmailPayloadRecord(emailPayload);
-  const cc = normalizeRecipientList(payload.cc).filter(
-    (email) => email !== normalizedRecipient,
-  );
-  const bcc = normalizeRecipientList(payload.bcc).filter(
-    (email) => email !== normalizedRecipient && !cc.includes(email),
-  );
-
-  payload.to = normalizedRecipient;
-  if (cc.length > 0) {
-    payload.cc = cc;
-  } else {
-    delete payload.cc;
-  }
-  if (bcc.length > 0) {
-    payload.bcc = bcc;
-  } else {
-    delete payload.bcc;
-  }
-
-  return JSON.stringify(payload);
-}
-
+import { readStoredEmailFields } from "./emailPayloadFields";
 export async function invalidateDraftConfirmations(
   ctx: MutationCtx,
   pending: Doc<"pendingEmails">,
@@ -148,10 +111,11 @@ export async function updateDraftRecipient(
   if (!pending || pending.status !== "draft") return null;
 
   const recipientEmail = normalizeEmailAddress(recipientEmailInput);
-  const ccAddresses = (pending.ccAddresses ?? [])
+  const fields = readStoredEmailFields(pending);
+  const ccAddresses = (fields.ccAddresses ?? [])
     .map(normalizeEmailAddress)
     .filter((email) => email && email !== recipientEmail);
-  const bccAddresses = (pending.bccAddresses ?? [])
+  const bccAddresses = (fields.bccAddresses ?? [])
     .map(normalizeEmailAddress)
     .filter(
       (email) =>
@@ -160,12 +124,8 @@ export async function updateDraftRecipient(
 
   await ctx.db.patch(id, {
     recipientEmail,
-    ccAddresses: ccAddresses.length > 0 ? ccAddresses : undefined,
-    bccAddresses: bccAddresses.length > 0 ? bccAddresses : undefined,
-    emailPayload: updateEmailPayloadRecipient(
-      pending.emailPayload,
-      recipientEmail,
-    ),
+    ccAddresses,
+    bccAddresses,
     sendBlockedReason: undefined,
     coiBatchAuthorization: undefined,
   });
@@ -174,8 +134,8 @@ export async function updateDraftRecipient(
   if (pending.threadMessageId) {
     await ctx.db.patch(pending.threadMessageId, {
       toAddresses: [recipientEmail],
-      ccAddresses: ccAddresses.length > 0 ? ccAddresses : undefined,
-      bccAddresses: bccAddresses.length > 0 ? bccAddresses : undefined,
+      ccAddresses,
+      bccAddresses,
       error: undefined,
     });
   }

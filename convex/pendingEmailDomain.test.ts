@@ -5,6 +5,9 @@ import { afterEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import schema from "./schema";
 import { buildPreviewDocument } from "./actions/renderEmailPreview";
+import { buildPendingEmailResendPayload } from "./lib/emailDelivery";
+import { pendingEmailCanonicalPatch } from "./lib/emailPayloadFields";
+import { pendingEmailDraftFingerprint } from "./lib/actionConfirmationFingerprint";
 
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
@@ -55,23 +58,19 @@ test("sends a regenerated draft from the current agent domain while preserving h
   vi.stubEnv("AUTH_RESEND_KEY", "test");
   const fetchMock = vi.fn(async () => Response.json({ id: "sent-1" }));
   vi.stubGlobal("fetch", fetchMock);
-  const id = await t.run(async (ctx) => {
-    const orgId = await ctx.db.insert("organizations", {
-      name: "Cove",
-      type: "client",
-    });
-    return ctx.db.insert("pendingEmails", {
-      orgId,
-      status: "draft",
-      recipientEmail: "terry@spot.insure",
-      subject: "Renewal evidence",
-      emailBody: "Please review this evidence.",
-      emailPayload: JSON.stringify({
-        from: "Spot <cove@agent.spot.insure>",
-        reply_to: "cove+renewal@agent.spot.insure",
-      }),
-      scheduledSendTime: 0,
-    });
+  const orgId = await t.run((ctx) => ctx.db.insert("organizations", {
+    name: "Cove",
+    type: "client",
+  }));
+  const id = await t.mutation(internal.pendingEmails.create, {
+    orgId,
+    status: "draft",
+    recipientEmail: "terry@spot.insure",
+    subject: "Renewal evidence",
+    emailBody: "Please review this evidence.",
+    fromHeader: "Spot <cove@agent.spot.insure>",
+    replyTo: "cove+renewal@agent.spot.insure",
+    scheduledSendTime: 0,
   });
 
   await t.action(internal.actions.sendPendingEmail.sendDraftInternal, {
@@ -166,3 +165,94 @@ test.each(["canonical", "legacy"] as const)(
     }
   },
 );
+
+test("replacing a draft clears removed recipients, attachments, and reply headers", async () => {
+  const t = convexTest(schema, modules);
+  const id = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", { name: "Cove", type: "client" });
+    const fileId = await ctx.storage.store(new Blob(["attachment"]));
+    return ctx.db.insert("pendingEmails", {
+      orgId,
+      status: "draft",
+      recipientEmail: "recipient@example.com",
+      ccAddresses: ["old-copy@example.com"],
+      bccAddresses: ["old-blind@example.com"],
+      subject: "Old subject",
+      emailBody: "Old body",
+      fromHeader: "Spot <cove@agent.spot.insure>",
+      replyTo: "cove+old@agent.spot.insure",
+      inReplyTo: "old-parent",
+      references: "old-parent",
+      renderedText: "Old rendering",
+      renderedHtml: "<p>Old rendering</p>",
+      emailPayload: JSON.stringify({ cc: ["old-copy@example.com"], bcc: ["old-blind@example.com"] }),
+      attachments: [{ fileId, filename: "old.txt", contentType: "text/plain", size: 10 }],
+      scheduledSendTime: 0,
+    });
+  });
+  await t.mutation(internal.pendingEmails.updateDraftInternal, {
+    id,
+    recipientEmail: "recipient@example.com",
+    fromHeader: "Spot <cove@agent.spot.insure>",
+    subject: "New subject",
+    emailBody: "New body",
+  });
+  const draft = await t.run((ctx) => ctx.db.get(id));
+  if (!draft) throw new Error("Draft missing");
+  expect(draft.attachments).toBeUndefined();
+  expect(draft.emailPayload).toBeUndefined();
+  expect(buildPendingEmailResendPayload(draft, { outboundMessageId: "new-message" })).toEqual({
+    from: "Spot <cove@agent.spot.insure>",
+    to: "recipient@example.com",
+    subject: "New subject",
+    text: "New body",
+    html: undefined,
+    headers: { "Message-ID": "new-message" },
+  });
+});
+
+test.each([
+  {},
+  { "In-Reply-To": "legacy-parent" },
+  { "In-Reply-To": "legacy-parent", References: "legacy-root legacy-parent" },
+])("canonical migration preserves the approved envelope, attachments, and fingerprint: %j", async (headers) => {
+  const t = convexTest(schema, modules);
+  const id = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", { name: "Cove", type: "client" });
+    const fileId = await ctx.storage.store(new Blob(["attachment"]));
+    return ctx.db.insert("pendingEmails", {
+      orgId,
+      status: "draft",
+      recipientEmail: "recipient@example.com",
+      ccAddresses: [],
+      bccAddresses: ["blind@example.com"],
+      subject: "Approved subject",
+      emailBody: "Approved body",
+      emailPayload: JSON.stringify({
+        from: "Spot <cove@agent.spot.insure>",
+        reply_to: "cove+thread@agent.spot.insure",
+        to: "stale@example.com",
+        cc: ["stale-copy@example.com"],
+        bcc: ["blind@example.com"],
+        text: "Approved body\nApproved signature",
+        html: "<p>Approved body</p><p>Approved signature</p>",
+        headers,
+      }),
+      attachments: [{ fileId, filename: "approved.txt", contentType: "text/plain", size: 10 }],
+      scheduledSendTime: 0,
+    });
+  });
+  const before = await t.run((ctx) => ctx.db.get(id));
+  if (!before) throw new Error("Draft missing");
+  const patch = pendingEmailCanonicalPatch(before);
+  if (!patch) throw new Error("Migration missing");
+  await t.run((ctx) => ctx.db.patch(id, patch));
+  const after = await t.run((ctx) => ctx.db.get(id));
+  if (!after) throw new Error("Draft missing");
+  const options = { outboundMessageId: "approved-message" };
+  expect(buildPendingEmailResendPayload(after, options)).toEqual(buildPendingEmailResendPayload(before, options));
+  expect(buildPreviewDocument(after)).toEqual(buildPreviewDocument(before));
+  expect(await pendingEmailDraftFingerprint(after)).toBe(await pendingEmailDraftFingerprint(before));
+  expect(after.attachments).toEqual(before.attachments);
+  expect(pendingEmailCanonicalPatch(after)).toBeNull();
+});
