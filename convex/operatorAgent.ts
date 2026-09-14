@@ -341,8 +341,10 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function boundedDisplayText(value: string, maximum = 160) {
-  const normalized = value.trim().replace(/\s+/g, " ");
+function boundedDisplayText(value: string, maximum = 160, preserveLines = false) {
+  const normalized = value
+    .trim()
+    .replace(preserveLines ? /[^\S\n]+/g : /\s+/g, " ");
   return normalized.length <= maximum
     ? normalized
     : `${normalized.slice(0, maximum - 1).trimEnd()}…`;
@@ -454,7 +456,7 @@ async function operatorDisplaySummary(
     if (!displayName) continue;
     displaySummary = displaySummary.split(value).join(displayName);
   }
-  return boundedDisplayText(displaySummary, 2_500);
+  return boundedDisplayText(displaySummary, 2_500, true);
 }
 
 async function operatorConfirmationSummary(
@@ -502,17 +504,21 @@ async function operatorConfirmationSummary(
         key === "officeAddress" && value && typeof value === "object"
           ? { ...details.profile?.officeAddress, ...value }
           : value;
-      return `${operatorUpdateFieldLabel(key)}: ${operatorUpdateValue(key, current[key])} → ${operatorUpdateValue(key, next)}`;
+      const label = operatorUpdateFieldLabel(key).toLowerCase();
+      const previous = operatorUpdateValue(key, current[key]);
+      if (next === null || next === "" || (Array.isArray(next) && !next.length)) {
+        return `Clear ${label} (currently ${previous}).`;
+      }
+      const valueText = operatorUpdateValue(key, next);
+      if (previous === "Not set" || previous === "None") {
+        return `Set ${label} to ${valueText}.`;
+      }
+      return `Change ${label} from ${previous} to ${valueText}.`;
     });
   return boundedDisplayText(
-    [
-      `Update broker network profile ${details.broker.name}`,
-      ...changes,
-      input.evidence ? `Evidence: ${input.evidence}` : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    [`Update ${details.broker.name}`, ...changes].join("\n"),
     2_500,
+    true,
   );
 }
 

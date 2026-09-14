@@ -129,15 +129,21 @@ test("pauses a batch at its first approval, preserves research, and resumes with
     internal.operatorAgent.getPendingConfirmationInternal,
     { operatorUserId: ids.operatorUserId, threadId },
   );
-  expect(confirmation?.summary).toContain("NY → NY, CA");
-  expect(confirmation?.summary).toContain("https://miller.example → Not set");
-  expect(confirmation?.summary).toContain(evidence);
+  expect(confirmation?.summary).toContain("from NY to NY, CA");
+  expect(confirmation?.summary).toContain(
+    "Clear website (currently https://miller.example)",
+  );
   expect(confirmation?.summary).not.toContain(ids.brokerOrgId);
   expect(await t.run((ctx) => ctx.db.get(ids.brokerOrgId))).toHaveProperty(
     "website",
     "https://miller.example",
   );
   if (!confirmation) throw new Error("Missing approval");
+  const savedConfirmation = await t.run((ctx) => ctx.db.get(confirmation._id));
+  expect(JSON.parse(savedConfirmation!.payload.input)).toHaveProperty(
+    "evidence",
+    evidence,
+  );
 
   await t.mutation(internal.operatorAgent.failRunInternal, {
     runId: queued.runId,

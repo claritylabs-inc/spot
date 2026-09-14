@@ -232,10 +232,13 @@ function summarizeUpdate(
 ) {
   const changes = Object.entries(input)
     .filter(([key, value]) => key !== targetField && value !== undefined)
-    .map(
-      ([key, value]) =>
-        `${operatorUpdateFieldLabel(key)}: ${value === null ? "Clear" : operatorUpdateValue(key, value)}${Array.isArray(value) ? " (replace saved list)" : ""}`,
-    );
+    .map(([key, value]) => {
+      const label = operatorUpdateFieldLabel(key).toLowerCase();
+      if (value === null || (Array.isArray(value) && !value.length)) {
+        return `Clear ${label}.`;
+      }
+      return `${Array.isArray(value) ? "Replace" : "Set"} ${label} ${Array.isArray(value) ? "with" : "to"} ${operatorUpdateValue(key, value)}.`;
+    });
   return `${title}\n${changes.join("\n")}`;
 }
 
@@ -1488,7 +1491,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       .object({
         brokerOrgId: organizationId,
         evidence: omittable(z.string().min(1).max(800)).describe(
-          "Explain why these changes are supported, citing public source URLs or mailbox, sender, and message date. Shown with the exact field changes for approval; not saved as a profile field.",
+          "Explain why these changes are supported, citing public source URLs or mailbox, sender, and message date. Retained with the action input; not shown in the approval summary or saved as a profile field.",
         ),
         networkStatus: omittable(brokerNetworkStatus),
         officeAddress: omittable(brokerOfficeAddress),
