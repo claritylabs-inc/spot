@@ -125,7 +125,13 @@ function ConfirmationArtifact({
   const presentation = (() => {
     switch (confirmation.state) {
       case "approved":
-        return { label: "Approved", tone: "success" as const };
+        return {
+          label:
+            confirmation.approvalMode === "automatic"
+              ? "Auto-approved"
+              : "Approved",
+          tone: "success" as const,
+        };
       case "cancelled":
         return { label: "Cancelled", tone: "neutral" as const };
       case "expired":

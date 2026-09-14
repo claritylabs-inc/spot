@@ -12,6 +12,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { getOperatorAgentSettings } from "./operator";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
@@ -3068,14 +3069,19 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     throw new Error("Operator agent run was cancelled");
   }
   if (spec.confirmation === "exact") {
+    const confirmation = args.confirmationId
+      ? await ctx.db.get(args.confirmationId)
+      : null;
+    const automatic = confirmation?.approvalMode === "automatic";
     if (
-      !args.confirmationId ||
-      run.status !== "waiting_confirmation" ||
-      run.checkpoint?.pendingConfirmationId !== args.confirmationId
+      automatic
+        ? run.status !== "running" ||
+          (await getOperatorAgentSettings(ctx))?.approveAll !== true
+        : run.status !== "waiting_confirmation" ||
+          run.checkpoint?.pendingConfirmationId !== args.confirmationId
     ) {
       throw new Error("Exact operator confirmation is required");
     }
-    const confirmation = await ctx.db.get(args.confirmationId);
     if (
       !confirmation ||
       confirmation.status !== "completed" ||
@@ -3275,6 +3281,7 @@ export const getThread = query({
             summary: confirmation.payload.summary,
             toolName: confirmation.payload.toolName,
             effect: confirmation.payload.effect,
+            approvalMode: confirmation.approvalMode,
             state: operatorConfirmationDisplayState(confirmation),
             actionable,
             expiresAt: confirmation.expiresAt,
@@ -3920,7 +3927,7 @@ export const confirmActionInternal = internalMutation({
   handler: confirmOperatorAction,
 });
 
-export const validateConfirmedActionToolExecutionInternal = internalQuery({
+export const validateConfirmedActionToolExecutionInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
     confirmationId: v.id("operatorAgentConfirmations"),
@@ -3939,7 +3946,7 @@ export const validateConfirmedActionToolExecutionInternal = internalQuery({
     ) {
       throw new Error("Confirmed operator action not found");
     }
-    await requireOperatorForUser(ctx, run.operatorUserId);
+    const operator = await requireOperatorForUser(ctx, run.operatorUserId);
     const thread = await requireOperatorThread(
       ctx,
       run.threadId,
@@ -3956,6 +3963,13 @@ export const validateConfirmedActionToolExecutionInternal = internalQuery({
     if (spec.execution !== "action" || spec.confirmation !== "exact") {
       throw new Error("Confirmed operator tool is not action-backed");
     }
+    assertOperatorRole(operator.profile.role, spec.requiredRole);
+    if (
+      confirmation.approvalMode === "automatic" &&
+      (await getOperatorAgentSettings(ctx))?.approveAll !== true
+    ) {
+      throw new Error("Approve all is no longer enabled");
+    }
     const input = parseOperatorAgentToolInput(
       payload.toolName,
       JSON.parse(payload.input),
@@ -3971,6 +3985,12 @@ export const validateConfirmedActionToolExecutionInternal = internalQuery({
     ) {
       throw new Error("Confirmed operator tool input changed");
     }
+    await preflightOperatorToolConfirmation(ctx, {
+      operatorUserId: run.operatorUserId,
+      threadId: run.threadId,
+      toolName: payload.toolName as OperatorAgentToolName,
+      input,
+    });
     const ledger = await ctx.db
       .query("agentActionAuditEvents")
       .withIndex("idempotency", (index) =>
@@ -4117,6 +4137,10 @@ export const finishConfirmedActionToolInternal = internalMutation({
       }
     }
 
+    if (confirmation.approvalMode === "automatic") {
+      return { status: run.status, result: outcome };
+    }
+
     const toolCall = {
       name: payload.toolName,
       input: boundedJson(JSON.parse(payload.input), 500),
@@ -4212,34 +4236,42 @@ export const finishConfirmedActionToolInternal = internalMutation({
   },
 });
 
+async function executeConfirmedActionTool(
+  ctx: ActionCtx,
+  args: {
+    runId: Id<"operatorAgentRuns">;
+    confirmationId: Id<"operatorAgentConfirmations">;
+  },
+): Promise<{ status: string; result: DirectToolOutcome; content?: string }> {
+  try {
+    const execution = await ctx.runMutation(
+      internal.operatorAgent.validateConfirmedActionToolExecutionInternal,
+      args,
+    );
+    const output = await executeToolActionDomain(ctx, execution);
+    return await ctx.runMutation(
+      internal.operatorAgent.finishConfirmedActionToolInternal,
+      {
+        ...args,
+        result: output.result,
+        attachments: output.attachments,
+      },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return await ctx.runMutation(
+      internal.operatorAgent.finishConfirmedActionToolInternal,
+      { ...args, error: message },
+    );
+  }
+}
+
 export const executeConfirmedActionToolInternal = internalAction({
   args: {
     runId: v.id("operatorAgentRuns"),
     confirmationId: v.id("operatorAgentConfirmations"),
   },
-  handler: async (ctx, args): Promise<unknown> => {
-    try {
-      const execution = await ctx.runQuery(
-        internal.operatorAgent.validateConfirmedActionToolExecutionInternal,
-        args,
-      );
-      const output = await executeToolActionDomain(ctx, execution);
-      return await ctx.runMutation(
-        internal.operatorAgent.finishConfirmedActionToolInternal,
-        {
-          ...args,
-          result: output.result,
-          attachments: output.attachments,
-        },
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return await ctx.runMutation(
-        internal.operatorAgent.finishConfirmedActionToolInternal,
-        { ...args, error: message },
-      );
-    }
-  },
+  handler: executeConfirmedActionTool,
 });
 
 export const getPendingConfirmationInternal = internalQuery({
@@ -4929,20 +4961,17 @@ export const invokeRegisteredToolInternal = internalAction({
     try {
       outcome =
         spec.confirmation === "exact"
-          ? await ctx.runMutation(
-              internal.operatorAgent.requestToolConfirmationInternal,
-              {
-                operatorUserId: args.operatorUserId,
-                runId: invocation.runId,
-                threadId: invocation.threadId,
-                threadMessageId: invocation.agentMessageId,
-                toolName: args.toolName,
-                input,
-                inputHash,
-                idempotencyKey: args.idempotencyKey,
-                channel: args.channel,
-              },
-            )
+          ? await requestOrExecuteTool(ctx, {
+              operatorUserId: args.operatorUserId,
+              runId: invocation.runId,
+              threadId: invocation.threadId,
+              threadMessageId: invocation.agentMessageId,
+              toolName: args.toolName,
+              input,
+              inputHash,
+              idempotencyKey: args.idempotencyKey,
+              channel: args.channel,
+            })
           : spec.execution === "action"
             ? await ctx.runAction(
                 internal.operatorAgent.executeUnconfirmedActionToolInternal,
@@ -5112,19 +5141,42 @@ export const markRunStartedInternal = internalMutation({
   },
 });
 
+const operatorToolConfirmationArgs = {
+  checkpointSummary: v.optional(v.string()),
+  operatorUserId: v.id("users"),
+  runId: v.id("operatorAgentRuns"),
+  threadId: v.id("operatorAgentThreads"),
+  threadMessageId: v.id("operatorAgentMessages"),
+  toolName: v.string(),
+  input: v.any(),
+  inputHash: v.string(),
+  idempotencyKey: v.string(),
+  channel: operatorChannelValidator,
+};
+
+async function requestOrExecuteTool(
+  ctx: ActionCtx,
+  args: Omit<ExecuteToolArgs, "confirmationId"> & { checkpointSummary?: string },
+): Promise<DirectToolOutcome> {
+  const outcome = await ctx.runMutation(
+    internal.operatorAgent.requestToolConfirmationInternal,
+    args,
+  );
+  if (outcome.status !== "automatically_approved") return outcome;
+  const finished = await executeConfirmedActionTool(ctx, {
+    runId: args.runId,
+    confirmationId: outcome.confirmationId,
+  });
+  return finished.result;
+}
+
+export const requestOrExecuteToolInternal = internalAction({
+  args: operatorToolConfirmationArgs,
+  handler: requestOrExecuteTool,
+});
+
 export const requestToolConfirmationInternal = internalMutation({
-  args: {
-    checkpointSummary: v.optional(v.string()),
-    operatorUserId: v.id("users"),
-    runId: v.id("operatorAgentRuns"),
-    threadId: v.id("operatorAgentThreads"),
-    threadMessageId: v.id("operatorAgentMessages"),
-    toolName: v.string(),
-    input: v.any(),
-    inputHash: v.string(),
-    idempotencyKey: v.string(),
-    channel: operatorChannelValidator,
-  },
+  args: operatorToolConfirmationArgs,
   handler: async (ctx, args) => {
     const operator = await requireOperatorForUser(ctx, args.operatorUserId);
     const run = await ctx.db.get(args.runId);
@@ -5243,6 +5295,8 @@ export const requestToolConfirmationInternal = internalMutation({
       input,
       { operatorUserId: args.operatorUserId, threadId: args.threadId },
     );
+    const automatic =
+      (await getOperatorAgentSettings(ctx))?.approveAll === true;
     const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
       threadId: args.threadId,
       operatorUserId: args.operatorUserId,
@@ -5274,7 +5328,9 @@ export const requestToolConfirmationInternal = internalMutation({
         targetId: target.id,
         summary,
       },
-      status: "pending",
+      status: automatic ? "completed" : "pending",
+      approvalMode: automatic ? "automatic" : undefined,
+      completedAt: automatic ? now : undefined,
       createdAt: now,
       updatedAt: now,
     });
@@ -5297,10 +5353,16 @@ export const requestToolConfirmationInternal = internalMutation({
       channel: args.channel,
       input: boundedJson(input),
       output: boundedJson({ confirmationId, summary }),
-      status: "awaiting_confirmation",
+      status: automatic ? "pending" : "awaiting_confirmation",
       createdAt: now,
       updatedAt: now,
     });
+    if (automatic) {
+      if (spec.execution === "action") {
+        return { status: "automatically_approved" as const, confirmationId };
+      }
+      return await executeOperatorTool(ctx, { ...args, confirmationId });
+    }
     await ctx.db.patch(args.threadMessageId, {
       content: `Confirmation required: ${summary}.${
         args.channel === "imessage" ? " Reply approve or reject." : ""

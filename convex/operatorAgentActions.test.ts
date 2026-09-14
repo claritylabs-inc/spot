@@ -3,7 +3,7 @@ import { convexTest } from "convex-test";
 import dayjs from "dayjs";
 import { afterEach, expect, test, vi } from "vitest";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
@@ -509,4 +509,255 @@ test("operator rich reads execute and replay through the audited action boundary
       status: "succeeded",
     }),
   ]);
+});
+
+test("Approve all is shared across operators and channels, while default approvals and access checks remain enforced", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    const operators = await Promise.all(
+      ["terry", "adyan"].map(async (name) => {
+        const userId = await ctx.db.insert("users", {
+          email: `${name}@claritylabs.inc`,
+          accountKind: "operator",
+        });
+        const profileId = await ctx.db.insert("operatorProfiles", {
+          userId,
+          email: `${name}@claritylabs.inc`,
+          role: "operator",
+          status: "active",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        return { userId, profileId };
+      }),
+    );
+    const customerId = await ctx.db.insert("users", {
+      accountKind: "customer",
+    });
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Cove",
+      type: "client",
+    });
+    return { operators, customerId, orgId };
+  });
+  const [terry, adyan] = ids.operators;
+  const viewer = t.withIdentity({ subject: `${terry.userId}|session` });
+  expect(await viewer.query(api.operator.getAgentSettings, {})).toEqual({
+    approveAll: false,
+  });
+  const invoke = (
+    key: string,
+    channel: "chat" | "slack" | "imessage" | "email" | "mcp" = "chat",
+  ) =>
+    t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
+      operatorUserId: adyan.userId,
+      channel,
+      conversationKey: key,
+      toolName: "set_organization_status",
+      input: { orgId: ids.orgId, status: "live" },
+      idempotencyKey: key,
+    });
+  expect((await invoke("default")).outcome.status).toBe(
+    "confirmation_required",
+  );
+  expect(
+    (await t.run((ctx) => ctx.db.get(ids.orgId)))?.operatorStatus,
+  ).toBeUndefined();
+  await expect(
+    t
+      .withIdentity({ subject: `${ids.customerId}|session` })
+      .mutation(api.operator.setApproveAll, { approveAll: true }),
+  ).rejects.toThrow();
+  await expect(t.query(api.operator.getAgentSettings, {})).rejects.toThrow();
+  await viewer.mutation(api.operator.setApproveAll, { approveAll: true });
+  expect(
+    await t
+      .withIdentity({ subject: `${adyan.userId}|session` })
+      .query(api.operator.getAgentSettings, {}),
+  ).toEqual({ approveAll: true });
+  for (const channel of [
+    "chat",
+    "slack",
+    "imessage",
+    "email",
+    "mcp",
+  ] as const) {
+    const invocation = await invoke(`automatic-${channel}`, channel);
+    expect(invocation.outcome.status).toBe("succeeded");
+    const state = await t.run(async (ctx) => ({
+      run: await ctx.db.get(invocation.runId),
+      confirmations: await ctx.db
+        .query("operatorAgentConfirmations")
+        .withIndex("thread", (q) => q.eq("threadId", invocation.threadId))
+        .collect(),
+    }));
+    expect(state.run?.status).toBe("completed");
+    expect(state.confirmations).toMatchObject([
+      { status: "completed", approvalMode: "automatic" },
+    ]);
+    expect(
+      (await invoke(`automatic-${channel}`, channel)).outcome,
+    ).toMatchObject({ status: "succeeded", idempotent: true });
+  }
+  expect((await t.run((ctx) => ctx.db.get(ids.orgId)))?.operatorStatus).toBe(
+    "live",
+  );
+  expect(
+    (
+      await t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
+        operatorUserId: adyan.userId,
+        channel: "mcp",
+        toolName: "clear_all_agent_memory",
+        input: {},
+        idempotencyKey: "owner-only",
+      })
+    ).outcome,
+  ).toMatchObject({
+    status: "failed",
+    error: "This operator action requires an owner",
+  });
+  const impersonationId = await t.run((ctx) =>
+    ctx.db.insert("operatorImpersonationSessions", {
+      operatorUserId: adyan.userId,
+      targetOrgId: ids.orgId,
+      targetRole: "admin",
+      status: "active",
+      createdAt: 1,
+    }),
+  );
+  await expect(
+    t
+      .withIdentity({ subject: `${adyan.userId}|session` })
+      .mutation(api.operator.setApproveAll, { approveAll: false }),
+  ).rejects.toThrow();
+  expect((await invoke("impersonating")).outcome).toMatchObject({
+    status: "failed",
+    failure: { writeState: "not_started" },
+  });
+  await t.run((ctx) => ctx.db.delete(impersonationId));
+  await viewer.mutation(api.operator.setApproveAll, { approveAll: false });
+  expect((await invoke("disabled-setting")).outcome.status).toBe(
+    "confirmation_required",
+  );
+  await t.run((ctx) => ctx.db.patch(adyan.profileId, { status: "disabled" }));
+  await expect(invoke("revoked-operator")).rejects.toThrow();
+});
+
+test("automatic external actions execute once, preserve failures, and recheck approval mode before starting", async () => {
+  vi.stubEnv("SLACK_CLARITY_TEAM_ID", "T-OPERATORS");
+  const send = vi
+    .fn()
+    .mockResolvedValue({ status: "sent", providerMessageId: "message-1" });
+  const t = convexTest(schema, {
+    ...modules,
+    "./actions/sendOperatorSlack.ts": async () => ({
+      sendInternal: internalAction({
+        args: {
+          operatorUserId: v.id("users"),
+          recipientEmail: v.string(),
+          content: v.string(),
+          idempotencyKey: v.string(),
+        },
+        handler: async (_ctx, args) => send(args),
+      }),
+    }),
+  });
+  const userId = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      email: "terry@claritylabs.inc",
+      accountKind: "operator",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "terry@claritylabs.inc",
+      role: "operator",
+      status: "active",
+      slackTeamId: "T-OPERATORS",
+      slackUserId: "U-TERRY",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return userId;
+  });
+  const viewer = t.withIdentity({ subject: `${userId}|session` });
+  await viewer.mutation(api.operator.setApproveAll, { approveAll: true });
+  const args = {
+    operatorUserId: userId,
+    channel: "mcp" as const,
+    toolName: "send_operator_slack_message",
+    input: {
+      recipientEmail: "terry@claritylabs.inc",
+      message: "Review is ready",
+    },
+    idempotencyKey: "automatic-send",
+  };
+  const first = await t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    args,
+  );
+  expect(first.outcome).toMatchObject({
+    status: "succeeded",
+    result: { status: "sent" },
+  });
+  expect(
+    (await t.action(internal.operatorAgent.invokeRegisteredToolInternal, args))
+      .outcome,
+  ).toMatchObject({ status: "succeeded", idempotent: true });
+  expect(send).toHaveBeenCalledOnce();
+  send.mockRejectedValueOnce(new Error("Unknown delivery outcome"));
+  const failedArgs = { ...args, idempotencyKey: "failed-send" };
+  expect(
+    (
+      await t.action(
+        internal.operatorAgent.invokeRegisteredToolInternal,
+        failedArgs,
+      )
+    ).outcome,
+  ).toMatchObject({
+    status: "failed",
+    failure: { writeState: "unknown", recoverable: false },
+  });
+  await t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    failedArgs,
+  );
+  expect(send).toHaveBeenCalledTimes(2);
+
+  const invocation = await t.mutation(
+    internal.operatorAgent.prepareDirectToolInvocationInternal,
+    {
+      ...args,
+      summary: "Send review",
+      idempotencyKey: "disabled-before-send",
+    },
+  );
+  const inputHash = await actionConfirmationFingerprint({
+    toolName: args.toolName,
+    toolVersion: 1,
+    input: args.input,
+  });
+  const prepared = await t.mutation(
+    internal.operatorAgent.requestToolConfirmationInternal,
+    {
+      ...args,
+      runId: invocation.runId,
+      threadId: invocation.threadId,
+      threadMessageId: invocation.agentMessageId,
+      inputHash,
+      idempotencyKey: "disabled-before-send",
+    },
+  );
+  if (prepared.status !== "automatically_approved")
+    throw new Error("Expected automatic approval");
+  await viewer.mutation(api.operator.setApproveAll, { approveAll: false });
+  await expect(
+    t.mutation(
+      internal.operatorAgent.validateConfirmedActionToolExecutionInternal,
+      {
+        runId: invocation.runId,
+        confirmationId: prepared.confirmationId,
+      },
+    ),
+  ).rejects.toThrow("Approve all is no longer enabled");
+  expect(send).toHaveBeenCalledTimes(2);
 });

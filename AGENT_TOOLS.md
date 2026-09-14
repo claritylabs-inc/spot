@@ -2,6 +2,24 @@
 
 This reference lists the tools that Spot exposes to its operator agent, tenant-facing conversational agent, internal agent subagents, and OAuth MCP clients. It describes the current executable catalogs; it does not include deterministic controls, ordinary Convex functions, REST routes, or browser actions that are not model-callable or MCP-callable tools.
 
+## Operator approval policy
+
+Operator Settings (`/operator/settings`) owns one global **Approve all** switch,
+shared by every operator and off by default. `operatorAgentSettings` stores the
+setting; only active operators outside impersonation may change it, through the
+portal API (never an agent tool or MCP tool). With it enabled, all new exact-gated
+operator tool calls—including external sends, access/global changes, and
+destructive actions—receive automatic fingerprint-bound approval and execute
+without pausing the tool loop. The shared `requestOrExecuteToolInternal` path
+serves web, email, Slack, iMessage, and operator MCP. Role, OAuth write scope,
+impersonation, preflight/source validation, cancellation, idempotency, and audit
+checks remain enforced. Automatic approval is recorded on the existing
+confirmation ledger and shown as Auto-approved; action execution rechecks the
+current global switch. Existing pending confirmations still require a decision;
+disabling the switch restores manual approval for new calls. Tenant approvals
+are unchanged. References below to exact confirmation describe the default
+manual mode; the global switch can satisfy that gate automatically.
+
 ## Source owners and maintenance
 
 - Operator-agent tools are defined only in `convex/lib/operatorAgentToolRegistry.ts`. `convex/lib/operatorMcpToolCatalog.ts` projects that registry into operator MCP and adds operator-run lifecycle tools.

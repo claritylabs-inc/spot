@@ -56,6 +56,22 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Catalog
 
+Operator Settings (`/operator/settings`) owns one global **Approve all** switch,
+shared by every operator and off by default. `operatorAgentSettings` stores the
+setting; only active operators outside impersonation may change it, through the
+portal API (never an agent tool or MCP tool). With it enabled, all new exact-gated
+operator tool calls—including external sends, access/global changes, and
+destructive actions—receive automatic fingerprint-bound approval and execute
+without pausing the tool loop. The shared `requestOrExecuteToolInternal` path
+serves web, email, Slack, iMessage, and operator MCP. Role, OAuth write scope,
+impersonation, preflight/source validation, cancellation, idempotency, and audit
+checks remain enforced. Automatic approval is recorded on the existing
+confirmation ledger and shown as Auto-approved; action execution rechecks the
+current global switch. Existing pending confirmations still require a decision;
+disabling the switch restores manual approval for new calls. Tenant approvals
+are unchanged. References below to exact confirmation describe the default
+manual mode; the global switch can satisfy that gate automatically.
+
 - `convex/lib/agentAttachmentLimits.ts` owns shared attachment byte budgets without a file-count cap. Operator web, email, Slack, iMessage, and MCP registration and cleanup do not truncate file lists by count. Per-file, aggregate-byte, raw-email, channel-transport, and emitted router-asset limits remain enforced.
 
 - `convex/lib/agentEmailDomains.ts` owns the `agent.spot.insure` default and legacy agent address canonicalization across frontend/backend thread displays, replies, and indexed thread lookup. Old approved sender/reply snapshots require regenerated drafts before sending.
