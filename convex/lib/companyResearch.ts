@@ -52,3 +52,32 @@ export function publicResearchUrl(value: string) {
     return null;
   }
 }
+
+function publicResearchSiteHostname(value: string) {
+  const normalized = publicResearchUrl(value);
+  if (!normalized) return null;
+  return new URL(normalized).hostname.replace(/^www\./, "");
+}
+
+export function samePublicResearchSite(left: string, right: string) {
+  const leftHostname = publicResearchSiteHostname(left);
+  return Boolean(
+    leftHostname && leftHostname === publicResearchSiteHostname(right),
+  );
+}
+
+export function samePublicResearchUrl(left: string, right: string) {
+  const leftUrl = publicResearchUrl(left);
+  const rightUrl = publicResearchUrl(right);
+  if (!leftUrl || !rightUrl) return false;
+  const normalizedLeft = new URL(leftUrl);
+  const normalizedRight = new URL(rightUrl);
+  normalizedLeft.hostname = publicResearchSiteHostname(left)!;
+  normalizedRight.hostname = publicResearchSiteHostname(right)!;
+  return normalizedLeft.toString() === normalizedRight.toString();
+}
+
+export function publicResearchAllowedDomains(value: string) {
+  const hostname = publicResearchSiteHostname(value);
+  return hostname ? [hostname, `www.${hostname}`] : [];
+}

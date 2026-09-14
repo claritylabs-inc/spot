@@ -1570,17 +1570,12 @@ export default defineSchema({
 
   insuranceRequirements: defineTable({
     orgId: v.id("organizations"),
-    // Legacy deployed rows from the pre-redesign requirement model do not
-    // have kind/scope yet. Keep these optional until all environments have run
-    // the compliance requirement shape backfill.
-    kind: v.optional(
-      v.union(
-        v.literal("coverage"),
-        v.literal("insurer"),
-        v.literal("condition"),
-      ),
+    kind: v.union(
+      v.literal("coverage"),
+      v.literal("insurer"),
+      v.literal("condition"),
     ),
-    scope: v.optional(v.union(v.literal("own_org"), v.literal("vendors"))),
+    scope: v.union(v.literal("own_org"), v.literal("vendors")),
     title: v.string(),
     requirementText: v.string(),
     lineOfBusiness: v.optional(v.string()),
@@ -1638,57 +1633,6 @@ export default defineSchema({
     updatedByUserId: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.number(),
-    // Deprecated legacy requirement fields. Do not write these in new code.
-    category: v.optional(v.string()),
-    name: v.optional(v.string()),
-    coverageCode: v.optional(v.string()),
-    limit: v.optional(v.string()),
-    limitAmount: v.optional(v.number()),
-    limitType: v.optional(v.string()),
-    limitValueType: v.optional(v.string()),
-    deductible: v.optional(v.string()),
-    deductibleAmount: v.optional(v.number()),
-    deductibleType: v.optional(v.string()),
-    deductibleValueType: v.optional(v.string()),
-    originalContent: v.optional(v.string()),
-    appliesTo: v.optional(
-      v.union(v.literal("vendors"), v.literal("own_org"), v.literal("both")),
-    ),
-    evaluationTarget: v.optional(
-      v.union(
-        v.literal("own_policy"),
-        v.literal("connected_vendor_policy"),
-        v.literal("subcontractor_policy"),
-        v.literal("manual_control"),
-        v.literal("not_policy_checkable"),
-      ),
-    ),
-    evaluationReason: v.optional(v.string()),
-    semanticReviewStatus: v.optional(
-      v.union(
-        v.literal("system_classified"),
-        v.literal("needs_review"),
-        v.literal("user_confirmed"),
-      ),
-    ),
-    manualComplianceReview: v.optional(
-      v.object({
-        status: v.union(
-          v.literal("met"),
-          v.literal("missing"),
-          v.literal("expiring_soon"),
-          v.literal("expired"),
-          v.literal("needs_review"),
-        ),
-        matchedPolicyIds: v.array(v.id("policies")),
-        expiresAt: v.optional(v.string()),
-        daysUntilExpiration: v.optional(v.number()),
-        notes: v.optional(v.string()),
-        checkedAt: v.number(),
-        checkedByUserId: v.id("users"),
-      }),
-    ),
-    minimumRequired: v.optional(v.boolean()),
   })
     .index("organization", ["orgId"])
     .index("organization_status", ["orgId", "status"])
@@ -3102,8 +3046,6 @@ export default defineSchema({
     policyNumber: v.optional(v.string()),
     sourcePolicyFileIds: v.optional(v.array(v.id("policyFiles"))),
     sourceFileIds: v.optional(v.array(v.id("_storage"))),
-    // Legacy link to the retired policy-change table; runtime leaves it unset.
-    caseId: v.optional(v.id("policyChangeCases")),
     extractionRunId: v.optional(v.id("policyExtractionRuns")),
     snapshot: v.optional(v.any()),
     fieldDiffs: v.optional(v.array(v.any())),
@@ -3690,8 +3632,6 @@ export default defineSchema({
     orgId: v.id("organizations"),
     title: v.string(),
     threadEmail: v.optional(v.string()),
-    // Legacy delivery lookup key; current routing does not read or write it.
-    deliveryContactKey: v.optional(v.string()),
     createdBy: v.id("users"),
     clientMutationId: v.optional(v.string()),
     lastMessageAt: v.number(),

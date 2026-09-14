@@ -3,7 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
-import { COMPANY_RESEARCH_VERSION, companyResearchFactValidator, companyResearchFingerprint, publicResearchUrl } from "./lib/companyResearch";
+import { COMPANY_RESEARCH_VERSION, companyResearchFactValidator, companyResearchFingerprint, publicResearchUrl, samePublicResearchSite, samePublicResearchUrl } from "./lib/companyResearch";
 import { validateClientClassification } from "./lib/clientProfile";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
 
@@ -104,13 +104,15 @@ export const complete = internalMutation({
       return false;
     }
     const currentSourceUrls = [...new Set(args.sourceUrls.map(publicResearchUrl).filter((url): url is string => Boolean(url)))].slice(0, 10);
-    const allowed = new Set(currentSourceUrls);
-    const currentFacts = args.facts.filter((fact) => allowed.has(fact.sourceRef) && fact.content.length <= 1_200).slice(0, 40);
+    const currentFacts = args.facts.flatMap((fact) => {
+      const sourceRef = currentSourceUrls.find((url) => samePublicResearchUrl(url, fact.sourceRef));
+      return sourceRef && fact.content.length <= 1_200 ? [{ ...fact, sourceRef }] : [];
+    }).slice(0, 40);
     const facts = [...new Map([...currentFacts, ...research.facts].map((fact) => [JSON.stringify([fact.key, fact.content, fact.sourceRef]), fact])).values()].slice(0, 40);
     const sourceUrls = [...new Set([...currentSourceUrls, ...facts.map((fact) => fact.sourceRef)])];
     const patch: Partial<Doc<"organizations">> = {};
     const website = args.website && publicResearchUrl(args.website);
-    if (!org.website && website && currentSourceUrls.some((url) => new URL(url).hostname === new URL(website).hostname)) patch.website = website;
+    if (!org.website && website && currentSourceUrls.some((url) => samePublicResearchSite(url, website))) patch.website = website;
     if (currentSourceUrls.length) {
       const industry = org.industry || args.industry;
       const vertical = !args.industry || args.industry === industry ? args.industryVertical : undefined;

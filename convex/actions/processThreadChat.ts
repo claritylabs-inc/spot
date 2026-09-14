@@ -411,7 +411,7 @@ export const run = internalAction({
                 ? `Requirements:\n${selectedRequirements
                     .map(
                       (requirement) =>
-                        `- ${requirement.title} (scope:${requirement.scope ?? "vendors"}, kind:${requirement.kind ?? "coverage"}${requirement.lineOfBusiness ? `, line:${requirement.lineOfBusiness} ${lobLabel(requirement.lineOfBusiness)}` : ""}, ID:${requirement._id}): ${String(requirement.requirementText ?? "").slice(0, 500)}`,
+                        `- ${requirement.title} (scope:${requirement.scope}, kind:${requirement.kind}${requirement.lineOfBusiness ? `, line:${requirement.lineOfBusiness} ${lobLabel(requirement.lineOfBusiness)}` : ""}, ID:${requirement._id}): ${String(requirement.requirementText ?? "").slice(0, 500)}`,
                     )
                     .join("\n")}`
                 : "",

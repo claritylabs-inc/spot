@@ -24,6 +24,7 @@ test("editing a labeled imported limit preserves its numeric value and failed cl
           requirement={{
             _id: "requirement" as Id<"insuranceRequirements">,
             orgId: "org" as Id<"organizations">,
+            kind: "coverage",
             scope: "own_org",
             title: "Cyber requirement",
             lineOfBusiness: "CYBER",

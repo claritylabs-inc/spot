@@ -12,7 +12,7 @@ Clients use their evidenced operating/DBA name, with the legal named entity and 
 
 `convex/companyResearch.ts` and `convex/actions/companyResearch.ts` own mandatory public research on client creation and identity updates, including imports without a website. All retrieval uses cl-router. Research uses public identity terms only, verifies the official site, fills missing validated website/industry/vertical values, and contributes cited company facts. Persisted fingerprints, leases, bounded retries and status prevent stale writes and false completion. `get_organization` exposes the full effective profile and research outcome; exact-gated `research_client` retries or refreshes terminal research. A queued/failed/partial result must not be described as a completed enrichment.
 
-`docs/architecture/backend-simplification.md` preserves the historical audit and records the conditional narrowing release gate. Production export, audit, migration, zero-residual verification, deployment, and rollback evidence are still pending and belong in that record. Do not deploy the narrowed schema until the approved target supplies that evidence; preserve ambiguous identities and unique historical evidence for reconciliation.
+`docs/architecture/backend-simplification.md` records the historical audit and completed production/shared-dev migration gates. The user accepted legacy data loss and cancelled additional historical-fact recovery. One-time migration/recovery APIs and workflows are removed in the narrowed code; ongoing migrations retain their documented owners. Preserve source evidence, current wiki text, and immutable issued snapshots. This repository is public: never publish raw database exports or private file backups as GitHub artifacts. The main release workflow owns final deployment and exact-commit readiness.
 
 ## Current operator approval setting
 
@@ -41,10 +41,10 @@ Requests use an allowlisted DTO; broker members have profile/team-only access;
 and policy mutations plus procurement staff writes are operator-only. Client
 organizations are standalone and do not inherit broker branding, agent
 channels, policies, or access. Automated policy delivery is retired and its
-obsolete schema has been removed from the conditional narrowing candidate.
+obsolete schema has been removed.
 The tenant MCP catalog contains no broker portfolio or procurement proposal
 tools. When an older paragraph conflicts with this boundary, follow the active
-Convex/UI contracts and the pending release gate documented above.
+Convex/UI contracts and the release evidence documented above.
 
 ## Current router-owned AI credential boundary
 

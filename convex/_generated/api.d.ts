@@ -10,11 +10,9 @@
 
 import type * as acordTaxonomyBackfillBatches from "../acordTaxonomyBackfillBatches.js";
 import type * as actions_agentResponseFeedback from "../actions/agentResponseFeedback.js";
-import type * as actions_archiveNonCoverageRequirements from "../actions/archiveNonCoverageRequirements.js";
 import type * as actions_backfillAcordTaxonomy from "../actions/backfillAcordTaxonomy.js";
 import type * as actions_backfillCarrierIdentity from "../actions/backfillCarrierIdentity.js";
 import type * as actions_backfillChunks from "../actions/backfillChunks.js";
-import type * as actions_backfillComplianceRequirementShape from "../actions/backfillComplianceRequirementShape.js";
 import type * as actions_backfillLinesOfBusiness from "../actions/backfillLinesOfBusiness.js";
 import type * as actions_cleanupLegacyLineOfBusinessFields from "../actions/cleanupLegacyLineOfBusinessFields.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
@@ -176,7 +174,6 @@ import type * as lib_companyInformationExtraction from "../lib/companyInformatio
 import type * as lib_companyResearch from "../lib/companyResearch.js";
 import type * as lib_complianceAgent from "../lib/complianceAgent.js";
 import type * as lib_complianceCheck from "../lib/complianceCheck.js";
-import type * as lib_complianceRequirementMigration from "../lib/complianceRequirementMigration.js";
 import type * as lib_complianceTypes from "../lib/complianceTypes.js";
 import type * as lib_confidence from "../lib/confidence.js";
 import type * as lib_coverageBreakdown from "../lib/coverageBreakdown.js";
@@ -404,11 +401,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   acordTaxonomyBackfillBatches: typeof acordTaxonomyBackfillBatches;
   "actions/agentResponseFeedback": typeof actions_agentResponseFeedback;
-  "actions/archiveNonCoverageRequirements": typeof actions_archiveNonCoverageRequirements;
   "actions/backfillAcordTaxonomy": typeof actions_backfillAcordTaxonomy;
   "actions/backfillCarrierIdentity": typeof actions_backfillCarrierIdentity;
   "actions/backfillChunks": typeof actions_backfillChunks;
-  "actions/backfillComplianceRequirementShape": typeof actions_backfillComplianceRequirementShape;
   "actions/backfillLinesOfBusiness": typeof actions_backfillLinesOfBusiness;
   "actions/cleanupLegacyLineOfBusinessFields": typeof actions_cleanupLegacyLineOfBusinessFields;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
@@ -570,7 +565,6 @@ declare const fullApi: ApiFromModules<{
   "lib/companyResearch": typeof lib_companyResearch;
   "lib/complianceAgent": typeof lib_complianceAgent;
   "lib/complianceCheck": typeof lib_complianceCheck;
-  "lib/complianceRequirementMigration": typeof lib_complianceRequirementMigration;
   "lib/complianceTypes": typeof lib_complianceTypes;
   "lib/confidence": typeof lib_confidence;
   "lib/coverageBreakdown": typeof lib_coverageBreakdown;

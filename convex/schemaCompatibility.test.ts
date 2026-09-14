@@ -58,8 +58,6 @@ describe("deployed schema compatibility", () => {
       "member",
       "ignore",
     ]);
-    expectOptionalKind("threads", ["deliveryContactKey"], "string");
-
     const legacyRoute = fieldValidator(
       "globalModelSettings",
       "routes",
@@ -83,12 +81,11 @@ describe("deployed schema compatibility", () => {
     ]);
   });
 
-  test("accepts exact historical policy-change IDs without declaring retired tables", () => {
+  test("accepts remaining historical policy-change IDs without declaring retired tables", () => {
     for (const [tableName, fieldName] of [
       ["appCardAccessLinks", "policyChangeCaseId"],
       ["certificateRequestHolds", "policyChangeCaseId"],
       ["pendingEmails", "policyChangeCaseId"],
-      ["policyVersions", "caseId"],
       ["threadMessages", "policyChangeCaseId"],
     ]) {
       const validator = fieldValidator(tableName, fieldName);
@@ -108,6 +105,42 @@ describe("deployed schema compatibility", () => {
     ]) {
       expect(Object.keys(schema.tables)).not.toContain(tableName);
     }
+  });
+
+  test("requires the canonical insurance requirement shape", () => {
+    expect(fieldValidator("insuranceRequirements", "kind").isOptional).toBe(
+      "required",
+    );
+    expect(fieldValidator("insuranceRequirements", "scope").isOptional).toBe(
+      "required",
+    );
+
+    const fields = fieldValidator("insuranceRequirements").fields ?? {};
+    for (const fieldName of [
+      "category",
+      "name",
+      "coverageCode",
+      "limit",
+      "limitAmount",
+      "limitType",
+      "limitValueType",
+      "deductible",
+      "deductibleAmount",
+      "deductibleType",
+      "deductibleValueType",
+      "originalContent",
+      "appliesTo",
+      "evaluationTarget",
+      "evaluationReason",
+      "semanticReviewStatus",
+      "manualComplianceReview",
+      "minimumRequired",
+    ]) {
+      expect(fields, fieldName).not.toHaveProperty(fieldName);
+    }
+    expect(fieldValidator("policyVersions").fields).not.toHaveProperty(
+      "caseId",
+    );
   });
 
   test("keeps historical literals valid only on their owning active fields", () => {
