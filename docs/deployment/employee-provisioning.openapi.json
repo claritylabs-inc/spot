@@ -1,0 +1,496 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Spot central employee provisioning",
+    "version": "1.0.0",
+    "description": "Additive operator-only access. Member means configured access ready for normal email OTP, not completed sign-in or verified email. Reviewed-plan approval, mailbox verification and ambiguous network recovery belong to the central CLI engine."
+  },
+  "servers": [
+    {
+      "url": "https://{deployment}.convex.site",
+      "variables": {
+        "deployment": {
+          "default": "synthetic-123",
+          "description": "Exact target deployment; never a discovered or arbitrary origin."
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "employeeProvisioner": []
+    }
+  ],
+  "paths": {
+    "/api/provisioning/v1/operators/observe": {
+      "post": {
+        "operationId": "observeEmployeeOperator",
+        "description": "Read-only exact identity observation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObserveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exact employee result; blocked is never absence. Compare response identity, target, environment and member role with the reviewed plan.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Target mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 4096 UTF-8 bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable or unconfirmed; observe before retrying",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/provisioning/v1/operators/provision": {
+      "post": {
+        "operationId": "provisionEmployeeOperator",
+        "description": "Atomic additive creation/adoption with durable request ID and approval digest binding; no OTP, session or verification claim.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exact employee result; blocked is never absence. Compare response identity, target, environment and member role with the reviewed plan.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Target mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 4096 UTF-8 bytes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Unavailable or unconfirmed; observe before retrying",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "employeeProvisioner": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Dedicated EMPLOYEE_PROVISIONING_SECRET, confined to the Railway onboarding service and target Convex deployment."
+      }
+    },
+    "schemas": {
+      "ObserveRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "personId",
+          "email",
+          "role",
+          "deployment",
+          "appUrl"
+        ],
+        "properties": {
+          "personId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "description": "Trimmed and lowercased before exact matching; valid ASCII email, local part at most 64 characters without leading/trailing/consecutive dots."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "owner"
+            ],
+            "description": "Only operator supported. Owner returns blocked/unsupported_role."
+          },
+          "deployment": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+          },
+          "appUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Exact HTTPS frontend origin, no path, trailing slash, credentials or fragment."
+          }
+        }
+      },
+      "ProvisionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "personId",
+          "email",
+          "role",
+          "deployment",
+          "appUrl",
+          "requestId",
+          "approvalDigest"
+        ],
+        "properties": {
+          "personId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "description": "Trimmed and lowercased before exact matching; valid ASCII email, local part at most 64 characters without leading/trailing/consecutive dots."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "owner"
+            ],
+            "description": "Only operator supported. Owner returns blocked/unsupported_role."
+          },
+          "deployment": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+          },
+          "appUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Exact HTTPS frontend origin, no path, trailing slash, credentials or fragment."
+          },
+          "requestId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "approvalDigest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "Result": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "status",
+          "personId",
+          "email",
+          "deployment",
+          "environment",
+          "appUrl",
+          "message",
+          "details"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "status": {
+            "enum": [
+              "member",
+              "absent",
+              "blocked"
+            ]
+          },
+          "personId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "description": "Trimmed and lowercased before exact matching; valid ASCII email, local part at most 64 characters without leading/trailing/consecutive dots."
+          },
+          "deployment": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+          },
+          "environment": {
+            "enum": [
+              "production",
+              "dev",
+              "local"
+            ]
+          },
+          "appUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Exact HTTPS frontend origin, no path, trailing slash, credentials or fragment."
+          },
+          "role": {
+            "const": "operator"
+          },
+          "remoteId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Convex users ID, only for member."
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "enum": [
+                  "active_operator",
+                  "missing_identity",
+                  "unsupported_role",
+                  "email_domain_not_allowed",
+                  "directory_limit",
+                  "duplicate_identity",
+                  "orphaned_identity",
+                  "invalid_identity",
+                  "customer_membership",
+                  "account_kind_conflict",
+                  "ambiguous_profile",
+                  "profile_identity_conflict",
+                  "inactive_profile",
+                  "auth_identity_conflict",
+                  "missing_auth_identity",
+                  "person_identity_conflict",
+                  "previous_identity_missing",
+                  "request_identity_conflict",
+                  "role_conflict"
+                ]
+              }
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "status": {
+                "const": "member"
+              },
+              "details": {
+                "properties": {
+                  "reason": {
+                    "const": "active_operator"
+                  }
+                }
+              }
+            },
+            "required": [
+              "role",
+              "remoteId"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "absent"
+              },
+              "details": {
+                "properties": {
+                  "reason": {
+                    "const": "missing_identity"
+                  }
+                }
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "role"
+                  ]
+                },
+                {
+                  "required": [
+                    "remoteId"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "blocked"
+              },
+              "details": {
+                "properties": {
+                  "reason": {
+                    "enum": [
+                      "unsupported_role",
+                      "email_domain_not_allowed",
+                      "directory_limit",
+                      "duplicate_identity",
+                      "orphaned_identity",
+                      "invalid_identity",
+                      "customer_membership",
+                      "account_kind_conflict",
+                      "ambiguous_profile",
+                      "profile_identity_conflict",
+                      "inactive_profile",
+                      "auth_identity_conflict",
+                      "missing_auth_identity",
+                      "person_identity_conflict",
+                      "previous_identity_missing",
+                      "request_identity_conflict",
+                      "role_conflict"
+                    ]
+                  }
+                }
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "role"
+                  ]
+                },
+                {
+                  "required": [
+                    "remoteId"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -100,8 +100,8 @@ export async function requireOperatorOwner(ctx: Ctx) {
 export async function writeOperatorAudit(
   ctx: MutationCtx,
   args: {
-    operatorUserId: Id<"users">;
     type:
+      | "employee_provisioned"
       | "operator_bootstrap"
       | "broker_created"
       | "broker_status_changed"
@@ -119,7 +119,10 @@ export async function writeOperatorAudit(
     targetUserId?: Id<"users">;
     summary: string;
     metadata?: unknown;
-  },
+  } & (
+    | { operatorUserId: Id<"users">; serviceActor?: never }
+    | { operatorUserId?: never; serviceActor: "central_employee_provisioning"; type: "employee_provisioned" }
+  ),
 ) {
   const metadata =
     args.metadata && typeof args.metadata === "object"
@@ -132,6 +135,7 @@ export async function writeOperatorAudit(
       : undefined;
   return await ctx.db.insert("operatorAuditEvents", {
     operatorUserId: args.operatorUserId,
+    serviceActor: args.serviceActor,
     type: args.type,
     targetOrgId: args.targetOrgId,
     targetUserId: args.targetUserId,
