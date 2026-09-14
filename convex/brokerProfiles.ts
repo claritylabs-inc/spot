@@ -393,7 +393,7 @@ export async function createStandaloneBrokerByOperator(
     officeAddress?: Doc<"brokerProfiles">["officeAddress"];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   const operator = await requireDirectOperatorWrite(ctx, args.operatorUserId);

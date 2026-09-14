@@ -1,3 +1,4 @@
+import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 
 import { ORG_WIKI_SECTION_KEYS } from "./orgWiki";
@@ -161,6 +162,7 @@ const isoCalendarDate = z.iso
   .date()
   .describe("Calendar date in YYYY-MM-DD format");
 const procurementOutreachStatus = z.enum([
+  "observed",
   "request_sent",
   "can_handle",
   "cannot_handle",
@@ -1156,7 +1158,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_procurement_request: defineOperatorTool({
     // Invalidates pending confirmations created against the retired fields.
-    version: 4,
+    version: 5,
     description:
       "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
     inputSchema: z.object({
@@ -1165,6 +1167,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       narrative: z.string().min(1).max(20_000),
       targetEffectiveDate: omittable(isoCalendarDate),
       status: omittable(procurementRequestStatus),
+      completionOutcome: omittable(completionOutcomeSchema),
       clientVisible: omittable(z.boolean()),
       replacingPolicyId: omittable(policyId).describe(
         "Exact existing policy ID returned by a policy read tool. Omit it or send null for a new purchase or when no policy is being replaced; never use an organization ID.",
@@ -1191,7 +1194,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     },
   }),
   update_procurement_request: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
       "Update supplied fields on one exact procurement request. Null clears an effective date or policy link; omitted fields stay unchanged.",
     inputSchema: z
@@ -1203,6 +1206,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
           "Omit to preserve the saved date. Pass null only to deliberately clear it.",
         ),
         status: omittable(procurementRequestStatus),
+        completionOutcome: clearable(completionOutcomeSchema),
         clientVisible: omittable(z.boolean()),
         replacingPolicyId: clearable(policyId),
         resultingPolicyId: clearable(policyId),
@@ -1534,7 +1538,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_broker_outreach: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
       "Add an external broker-network organization to an exact procurement request with a selected contact, workflow status, and optional Markdown log. Spot-owned acquisition organizations and contact domains are ineligible.",
     inputSchema: z.object({
@@ -1558,7 +1562,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add broker ${input.brokerOrgId} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_broker_outreach: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
       "Update supplied external broker outreach identity, exact workflow status, or its single Markdown log. Spot-owned acquisition organizations and contact domains are ineligible. File quote documents as private proposals.",
     inputSchema: z

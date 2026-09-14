@@ -1,3 +1,4 @@
+import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
@@ -2294,6 +2295,9 @@ async function executeToolDomain(
       narrative: typeof input.narrative === "string" ? input.narrative : "",
       targetEffectiveDate: normalizedOptionalText(input.targetEffectiveDate),
       status: writableProcurementRequestStatus(input.status),
+      completionOutcome: input.completionOutcome
+        ? normalizeCompletionOutcome(input.completionOutcome)
+        : undefined,
       clientVisible:
         typeof input.clientVisible === "boolean"
           ? input.clientVisible
@@ -2320,6 +2324,12 @@ async function executeToolDomain(
           ? null
           : normalizedOptionalText(input.targetEffectiveDate),
       status: writableProcurementRequestStatus(input.status),
+      completionOutcome:
+        input.completionOutcome === null
+          ? null
+          : input.completionOutcome
+            ? normalizeCompletionOutcome(input.completionOutcome)
+            : undefined,
       clientVisible:
         typeof input.clientVisible === "boolean"
           ? input.clientVisible

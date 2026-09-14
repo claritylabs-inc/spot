@@ -80,8 +80,8 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | `import_policy_files` | Import selected conversation or client-file PDFs into an exact client policy library, combined or separate, with extraction scheduling and content deduplication. | `operator.policies.write` | reversible write | operator | exact | action |
 | `add_client_file`                          | File an operator-thread attachment privately in a client's file library.                                                | `operator.client_files.write`   | reversible write | operator | none         | mutation  |
 | `update_client_file`                       | Rename a client file or change its visibility or policy association.                                                    | `operator.client_files.write`   | reversible write | operator | exact        | mutation  |
-| `create_procurement_request`               | Create a request and seed its narrative packet, forwarding address, and shared packet link.                             | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
-| `update_procurement_request`               | Update a request's intake narrative, workflow fields, or policy links.                                                  | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `create_procurement_request`               | Create a request and seed its narrative packet, forwarding address, and shared packet link; optionally record a reported external placement. | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `update_procurement_request`               | Update a request's intake narrative, workflow fields, policy links, or reported external placement outcome.             | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `file_procurement_proposal`                | Atomically file canonical artifacts or conversation attachments and queue extraction.                                   | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `file_procurement_email_quote`             | Atomically file an imported email's canonical attachments, all or a chosen subset.                                      | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `archive_procurement_proposal`             | Archive a proposal or delete a truly empty draft.                                                                       | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
@@ -110,11 +110,49 @@ Operator conversation discovery and reads follow the portal's ownership/shared-v
 
 `import_policy_files` works across operator web, email, Slack, iMessage, and write-scoped operator MCP. Select up to ten PDFs (25 MB each, 50 MB total) already registered to the current operator conversation, including originals retrieved by `get_company_email_attachment`, or active files owned by the exact target client. The approval lists the client, filenames, and grouping and stores a source fingerprint; approval and atomic commit reject changed sources. Imports revalidate the active operator, impersonation, client/source ownership, and live approval, preserve source files, deduplicate by content within the client, reuse the portal's operator upload owner, and atomically create policy-file records and schedule the existing extraction/document gate. Quotes remain procurement proposals. The direct portal PDF upload remains available. No tenant policy-write capability is added.
 
+`create_procurement_request` version 5 and `update_procurement_request` version 4
+accept `completionOutcome: { kind: "placed_elsewhere", provider?, purchaseDate? }`.
+The purchase date uses `YYYY-MM-DD`; provider and date are source-reported, not
+verified policy facts. This outcome sets the request to `completed` without
+creating a policy or changing the client or other requests. Update accepts `null`
+to clear the outcome, and reopening the request clears it. The allowlisted
+client request DTO includes this outcome without private source evidence.
+Interactive operator and MCP writes retain exact confirmation.
+
 Operator `web_search` is available across web, email, Slack, iMessage, and read-scoped operator MCP. Its action boundary revalidates the operator and uses the shared `webRetrieval.ts` service with global retrieval settings and the explicit operator model when the setting is `model_default`. It has open-world metadata, requires only public search terms, and returns untrusted source evidence plus provider attempts; missing credentials or provider failures are reported in retrieval results. The audit preserves the complete bounded result so retries retain source links. It does not alter records or add a tenant MCP tool.
 
 Update confirmations describe supplied field changes in plain language, including explicit clears and replacement lists. Omitted update fields remain unchanged; null is accepted only on fields whose schema explicitly describes a deliberate clear. Broker profile approvals show saved and proposed values with readable coverage names. Optional `evidence` (source URLs or mailbox/sender/date) remains bound to the exact input but is omitted from the approval summary and is not a broker-profile field. The operator runner stops at its first pending confirmation, blocks later calls in that batch, checkpoints research for resumption, and ignores stale segment completion/failure callbacks after approval resumes the task. Invalid schema and confirmation-preflight results return a structured `failure` with phase, code, recovery guidance, and authoritative `writeState: not_started`, so the model may correct the call in the same task.
 
 Company email uses the global connection configured in Channels → Google Workspace. Every active operator can read every configured mailbox; there are no per-mailbox operator permissions. The action boundary revalidates the operator and connection before delegated Gmail reads. These tools require no confirmation, are available to read-scoped operator MCP clients, and are marked open-world because they query Google. They are absent from tenant/client agents and tenant MCP. Search is live and mailbox-scoped with resumable coverage, not a semantic index or guaranteed global recency order. Registered callers receive short continuation references resolved from the existing action audit only for the same operator, thread, and tool. Reuse the reference unchanged with the same query, filters, and page size; raw signed cursors remain backend-side and retain revision/request validation. Results preserve mailbox/message/thread provenance and report failures or truncation. Attachment metadata uses short message-local `part:` references; retrieval refetches the stated parent and rejects absent or ambiguous parts before using the raw provider ID internally. Attachment retrieval reads Google, extracts bounded content, and uses the existing protected operator-thread attachment owner; it does not create client files, change Gmail, or send mail. The service-account key and access tokens remain backend-only. See [Google Workspace setup](docs/deployment/google-workspace.md).
+
+Scheduled Workspace reconciliation has no model-callable or MCP tools. Its
+operator-only portal APIs configure the disabled-by-default schedule, start a
+run, page status/mailboxes/activity and exact match candidates, and resolve,
+dismiss, retry or conditionally correct findings. An active operator explicitly
+authorizes standing writes; the internal executor accepts a strict allowlist,
+rechecks sponsor/settings/source lease/evidence and current targets atomically,
+and attributes each change to automation and that operator. It uses global
+`analysis` through cl-router, treating mail/PDF content as untrusted evidence.
+No fabricated interactive confirmation, operator thread or user account is used.
+
+Scheduled creation grants no users, invitations, memberships, inherited access or
+shared packet links. New requests use sanitized client-visible content; raw
+mail, market activity and findings remain operator-private. Scheduled bound-PDF
+imports share storage/content validation, policy creation and normal extraction
+with interactive imports, using a separate source-bound authorization entrypoint.
+The extraction invocation retains its scan origin so review results remain in
+the portal without client email, Slack or iMessage. A duplicate scan reference
+cannot suppress an interactive upload's notifications; full manual re-extraction
+starts a new invocation with normal behavior. The scan cannot send mail, select
+proposals, confirm reviews, bind coverage, delete or blacklist records, or change
+access/sharing. Interactive tool and MCP exact-confirmation requirements are
+unchanged.
+
+`create_procurement_broker_outreach` and `update_procurement_broker_outreach`,
+both version 4, include the neutral `observed` status for sourced activity that makes no capability
+claim. A declined or quoted message must not imply `can_handle`. Scans update
+the exact existing request/broker log through its owning helper; the status and
+log remain operator-private.
 
 ### Operator MCP projection
 

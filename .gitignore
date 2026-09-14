@@ -57,6 +57,7 @@
 /docs/testing/*
 !/docs/testing/README.md
 !/docs/testing/workflow-qa.md
+!/docs/testing/workspace-scan.md
 !/docs/testing/requirements-fixtures/
 !/docs/testing/requirements-fixtures/**
 
