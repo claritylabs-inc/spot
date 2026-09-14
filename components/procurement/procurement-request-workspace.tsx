@@ -1,5 +1,7 @@
 "use client";
 
+import { RequestCompletionOutcome } from "./request-completion-outcome";
+
 import {
   useCallback,
   useEffect,
@@ -2080,6 +2082,7 @@ export function ProcurementRequestWorkspace({
               label="Current stage"
               value={<RequestStatusTag status={details.request.status} />}
             />
+            <RequestCompletionOutcome outcome={details.request.completionOutcome} />
             <OperationalLabelValueRow
               label="Proposals"
               value={`${details.request.brokerCount} brokers · ${activeProposals.length} proposals`}

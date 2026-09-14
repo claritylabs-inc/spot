@@ -15,6 +15,7 @@ import {
   setFeatureFlagPatch,
   type FeatureFlagId,
 } from "@/convex/lib/featureFlags";
+import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
@@ -132,6 +133,7 @@ function ClientWorkspace({
   ) => void;
 }) {
   const clientOrgId = client._id;
+  const current = useCachedOperatorCurrent();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { patchClientSettings, patchClientStatus } =
@@ -365,6 +367,8 @@ function ClientWorkspace({
                 />
               </OperationalPanelBody>
             </OperationalPanel>
+
+            {current && !current.activeImpersonation ? <WorkspaceScanActivity entityId={clientOrgId} onRightPanel={setRightPanel} /> : null}
 
             <OperationalPanel>
               <OperationalPanelHeader
