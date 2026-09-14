@@ -30,6 +30,7 @@ const config = {
   enabled: false,
   intervalMinutes: 60 as const,
   authorizationRevision: 2,
+  settingsUpdatedAt: 7,
   authorizingOperatorId: "disabled-operator" as Id<"users">,
   pausedReason: "Authorizing operator disabled",
 };
@@ -79,6 +80,7 @@ test("opening settings never authorizes writes; enabling reassigns a paused spon
     expect(view.onSave).toHaveBeenCalledExactlyOnceWith({
       enabled: true,
       expectedAuthorizationRevision: 2,
+      expectedSettingsUpdatedAt: 7,
       intervalMinutes: 60,
       authorizingOperatorId: currentOperatorId,
     });
@@ -144,6 +146,7 @@ test("an existing schedule save carries its captured revision and stays open whe
       enabled: true,
       intervalMinutes: 30,
       expectedAuthorizationRevision: 2,
+      expectedSettingsUpdatedAt: 7,
     });
     expect(view.onClose).not.toHaveBeenCalled();
     expect(view.host.querySelector('[role="alert"]')).not.toBeNull();

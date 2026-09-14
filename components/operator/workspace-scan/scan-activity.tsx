@@ -1,5 +1,6 @@
 "use client";
 
+import { ScanMatchFields } from "./scan-match-fields";
 import { scanChangeValue, scanFieldLabel } from "./scan-change-values";
 import { ScanQueryBoundary } from "./scan-query-boundary";
 import { useRef, useState, type ReactNode } from "react";
@@ -25,8 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDisplayDateTime } from "@/lib/date-format";
@@ -220,7 +219,7 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
   const [selectedOrgId, setSelectedOrgId] = useState<Id<"organizations">>();
   const activity = useQuery(
     api.operatorGoogleWorkspaceScanActivity.getActivity,
-    { activityId, selectedOrgId },
+    { activityId },
   );
   const resolve = useMutation(
     api.operatorGoogleWorkspaceScanActivity.resolveActivity,
@@ -428,58 +427,18 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
               Created records use their normal lifecycle controls.
             </p>
           ) : null}
-          {activity.availableActions.includes("resolve") &&
-          activity.candidates ? (
-            <div className="space-y-3">
-              {activity.candidates.organizations.length ? (
-                <SearchableSelect
-                  ariaLabel="Match organization"
-                  placeholder="Choose the exact organization"
-                  value={selectedOrgId ?? ""}
-                  disabled={busy !== null}
-                  options={activity.candidates.organizations.map(
-                    (candidate) => ({
-                      value: candidate.id,
-                      label: candidate.label,
-                      icon: <OrgBrandIcon name={candidate.label} size="xs" />,
-                    }),
-                  )}
-                  onChange={(id) => {
-                    setSelectedOrgId(
-                      activity.candidates?.organizations.find(
-                        (candidate) => candidate.id === id,
-                      )?.id,
-                    );
-                    setSelectedRequestId(undefined);
-                  }}
-                />
-              ) : null}
-              {activity.candidates.requests.length ? (
-                <SearchableSelect
-                  ariaLabel="Match request"
-                  placeholder="Choose the exact request"
-                  value={selectedRequestId ?? ""}
-                  disabled={busy !== null}
-                  options={activity.candidates.requests.map((candidate) => ({
-                    value: candidate.id,
-                    label: candidate.label,
-                  }))}
-                  onChange={(id) => {
-                    setSelectedRequestId(
-                      activity.candidates?.requests.find(
-                        (candidate) => candidate.id === id,
-                      )?.id,
-                    );
-                  }}
-                />
-              ) : null}
-              <p
-                className={`text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                Choosing a match queues another assessment. Without a match, a
-                note resolves this finding without changing records.
-              </p>
-            </div>
+          {activity.availableActions.includes("resolve") ? (
+            <ScanMatchFields
+              activityId={activityId}
+              selectedOrgId={selectedOrgId}
+              selectedRequestId={selectedRequestId}
+              disabled={busy !== null}
+              onOrganizationChange={(id) => {
+                setSelectedOrgId(id);
+                setSelectedRequestId(undefined);
+              }}
+              onRequestChange={setSelectedRequestId}
+            />
           ) : null}
           {activity.availableActions.length ? (
             <label className="space-y-2">

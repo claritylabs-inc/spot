@@ -7,6 +7,7 @@ import { WorkspaceScanActivityDrawer } from "../components/operator/workspace-sc
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
+  paginated: vi.fn(),
   resolve: vi.fn(),
   dismiss: vi.fn(),
   retry: vi.fn(),
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("convex/react", () => ({
   useQuery: mocks.query,
-  usePaginatedQuery: vi.fn(),
+  usePaginatedQuery: mocks.paginated,
   useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
     const name = getFunctionName(ref).split(":")[1];
     return {
@@ -90,6 +91,17 @@ const activity = {
   },
 };
 async function mount() {
+  if (!mocks.paginated.getMockImplementation())
+    mocks.paginated.mockImplementation((_ref, args) => ({
+      results:
+        args === "skip"
+          ? []
+          : args.kind === "organization"
+            ? activity.candidates.organizations
+            : activity.candidates.requests,
+      status: "Exhausted",
+      loadMore: vi.fn(),
+    }));
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -121,6 +133,25 @@ function button(host: HTMLElement, text: string) {
 }
 
 test("resolving sends only the exact operator-selected request and never defaults to a candidate", async () => {
+  let loaded = false;
+  const loadMore = vi.fn(() => {
+    loaded = true;
+  });
+  mocks.paginated.mockImplementation((_ref, args) => ({
+    results:
+      args === "skip"
+        ? []
+        : args.kind === "request"
+          ? activity.candidates.requests
+          : loaded
+            ? activity.candidates.organizations
+            : [{ id: "org-other", label: "Another company" }],
+    status:
+      args !== "skip" && args.kind === "organization" && !loaded
+        ? "CanLoadMore"
+        : "Exhausted",
+    loadMore,
+  }));
   mocks.query.mockReturnValue(activity);
   mocks.resolve.mockResolvedValue({
     status: "retrying",
@@ -129,6 +160,10 @@ test("resolving sends only the exact operator-selected request and never default
   const view = await mount();
   try {
     expect(button(view.host, "Resolve match").disabled).toBe(true);
+    expect(mocks.resolve).not.toHaveBeenCalled();
+    await act(async () => button(view.host, "Load more organizations").click());
+    expect(loadMore).toHaveBeenCalledExactlyOnceWith(50);
+    await view.rerender();
     expect(mocks.resolve).not.toHaveBeenCalled();
     await act(async () => {
       const org = view.host.querySelector(
