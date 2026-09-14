@@ -13,7 +13,7 @@ Implemented widening changes also cover request intake, outreach logs, procureme
 - Audited the full backend and implemented canonical client identity, mandatory source-cited research, standard Markdown files, simple front-matter visibility, and bounded legacy cleanup.
 - Local widening deployment succeeded. The migration exported a database/file-storage backup, converted the seeded wiki and packet records, and reached zero residuals across every verification page.
 - A full second local migration reached the same zero residuals with no changed, updated, or deleted records.
-- The combined suite passed 650 tests before the final single-file intake privacy regression was added. Focused browser checks covered wiki edit/autosave, Markdown import/download, and mobile layouts. Final commit validation and production results follow when completed.
+- The final combined suite passed 651 tests. Lint, the production build, worker builds, and router-contract checks passed. Focused browser checks covered wiki edit/autosave, Markdown import/download, and mobile layouts. The final migration also passed against the restored original fixture after single-file intake consolidation. Production results follow when completed.
 - Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending.
 
 ## Outcome
