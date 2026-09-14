@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { v, type Infer } from "convex/values";
+import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -103,14 +103,13 @@ const emailCategoryValidator = v.union(
 
 type Ctx = QueryCtx | MutationCtx;
 type RequestStatus = Doc<"procurementRequests">["status"];
-type WritableRequestStatus = Infer<typeof requestStatusValidator>;
 type OutreachStatus = Doc<"procurementBrokerOutreaches">["status"];
 type FilePurpose = Doc<"procurementFileItems">["purpose"];
 type FileStatus = Doc<"procurementFileItems">["status"];
 
 export function writableProcurementRequestStatus(
   value: unknown,
-): WritableRequestStatus | undefined {
+): RequestStatus | undefined {
   switch (value) {
     case "draft":
     case "submitted":
@@ -676,7 +675,7 @@ type CreateProcurementRequestArgs = {
   title: string;
   narrative: string;
   targetEffectiveDate?: string;
-  status?: WritableRequestStatus;
+  status?: RequestStatus;
   replacingPolicyId?: Id<"policies">;
   resultingPolicyId?: Id<"policies">;
   clientVisible?: boolean;
@@ -799,7 +798,7 @@ export async function updateProcurementRequestByOperator(
     title?: string;
     narrative?: string;
     targetEffectiveDate?: string | null;
-    status?: WritableRequestStatus;
+    status?: RequestStatus;
     replacingPolicyId?: Id<"policies"> | null;
     resultingPolicyId?: Id<"policies"> | null;
     clientVisible?: boolean;

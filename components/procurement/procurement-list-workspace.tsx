@@ -17,7 +17,6 @@ import {
   RequestStatusTag,
   procurementRequestStatusLabel,
   type ProcurementRequestStatus,
-  type StoredProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
@@ -63,7 +62,7 @@ type ProcurementRequestRow = {
   _id: Id<"procurementRequests">;
   title: string;
   narrative: string;
-  status: StoredProcurementRequestStatus;
+  status: ProcurementRequestStatus;
   targetEffectiveDate?: string;
   forwardingAddress: string;
   replacingPolicy: { label: string } | null;
