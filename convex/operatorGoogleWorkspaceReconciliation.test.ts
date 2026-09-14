@@ -1982,3 +1982,74 @@ test("a historical identity alias does not replace current contact association",
     "marketing",
   );
 });
+
+test("withdrawal of one state cannot authorize removal of an explicitly retained state", async () => {
+  const f = await fixture();
+  await f.t.run((ctx) => ctx.db.patch(f.orgId, { type: "broker" }));
+  await f.t.run((ctx) =>
+    ctx.db.insert("brokerProfiles", {
+      brokerOrgId: f.orgId,
+      networkStatus: "prospect",
+      writingStates: ["NY", "CA"],
+      lineOfBusinessCodes: ["CGL"],
+      createdAt: 1,
+      updatedAt: 1,
+      createdByUserId: f.userId,
+      updatedByUserId: f.userId,
+    }),
+  );
+  const text = "Cove no longer writes New York, but still writes California.";
+  const op: ScanOperation = {
+    kind: "broker_capabilities",
+    identity: { ...identity, kind: "broker" },
+    writingStates: [],
+    lineOfBusinessCodes: [],
+    removeWritingStates: ["CA"],
+    removeLineOfBusinessCodes: [],
+    effectiveDate: "2026-09-13",
+    excerpt: text,
+    explanation: "Broker update",
+  };
+  const evidence = {
+    ...f.evidence,
+    bodyFingerprint: await googleWorkspaceScanBodyFingerprint(text),
+  };
+  evidence.contentFingerprint = await googleWorkspaceScanContentFingerprint(
+    evidence,
+    text,
+  );
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.sourceId, { evidence });
+    const part = await ctx.db
+      .query("operatorGoogleWorkspaceScanSourceParts")
+      .first();
+    await ctx.db.patch(part!._id, { text });
+  });
+  const args = { ...f.args, operationJson: JSON.stringify(op) };
+  await expect(
+    f.t.query(
+      internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+      args,
+    ),
+  ).rejects.toThrow("explicit sourced withdrawal");
+  await expect(
+    f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal, {
+      ...args,
+      snapshot: "{}",
+    }),
+  ).rejects.toThrow("explicit sourced withdrawal");
+  expect(
+    (await f.t.run((ctx) => ctx.db.query("brokerProfiles").first()))
+      ?.writingStates,
+  ).toEqual(["NY", "CA"]);
+  await replaceEvidence(
+    f,
+    text,
+    { ...op, removeWritingStates: ["NY"] },
+    "withdraw-correct",
+  );
+  expect(
+    (await f.t.run((ctx) => ctx.db.query("brokerProfiles").first()))
+      ?.writingStates,
+  ).toEqual(["CA"]);
+});
