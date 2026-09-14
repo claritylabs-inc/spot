@@ -133,3 +133,56 @@ test("blocks actual broker-owned or unowned policy reassignment", async () => {
     expect(await ctx.db.query("operatorAuditEvents").collect()).toHaveLength(0);
   });
 });
+
+test("recovers dated company facts without replacing manual content, permissions or metadata; replay is unchanged", async () => {
+  const t = convexTest(schema, modules);
+  const { saveMarkdownDocument } = await import("./markdownDocuments");
+  const { parseMarkdownDocument } = await import("./lib/markdownDocument");
+  const orgId = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Client",
+      type: "client",
+    });
+    await saveMarkdownDocument(ctx, {
+      orgId,
+      kind: "company_wiki",
+      filename: "company-wiki.md",
+      expectedRevision: 0,
+      markdown:
+        "---\nvisibility: private\n_spot:\n  manual: true\n---\n# Current company\n\nCurrent property address.\n",
+    });
+    return orgId;
+  });
+  const recovery = makeFunctionReference<"mutation">(
+    "backendSchemaLegacy:restoreArchivedCompanyFacts",
+  );
+  const facts = [
+    {
+      id: "archived-fact",
+      content: "Old company contact: info@example.com",
+      createdAt: 1,
+    },
+  ];
+  const read = () => t.run((ctx) => ctx.db.query("markdownDocuments").first());
+  const before = await read();
+  expect(await t.mutation(recovery, { orgId, facts })).toEqual({ added: 1 });
+  expect(await read()).toEqual(before);
+  expect(await t.mutation(recovery, { orgId, facts, dryRun: false })).toEqual({
+    added: 1,
+  });
+  const after = await read();
+  const parsed = parseMarkdownDocument(after!.markdown);
+  expect(parsed.frontmatter).toMatchObject({
+    visibility: "private",
+    _spot: { manual: true },
+    legacyCompanyFacts: ["archived-fact"],
+  });
+  expect(parsed.body).toContain("Current property address.");
+  expect(parsed.body).toContain(
+    "Extracted 1970-01-01: Old company contact: info@example.com",
+  );
+  expect(await t.mutation(recovery, { orgId, facts, dryRun: false })).toEqual({
+    added: 0,
+  });
+  expect(await read()).toEqual(after);
+});
