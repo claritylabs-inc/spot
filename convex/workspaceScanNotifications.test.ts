@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
+import dayjs from "dayjs";
 import schema from "./schema";
 import { internal } from "./_generated/api";
 const modules = import.meta.glob("./**/*.ts");
@@ -98,7 +99,7 @@ test("scheduled policy extraction stays in portal while interactive extraction r
       policyId: interactive,
       createdAt: 1,
     });
-    return { scanned, interactive, importId };
+    return { scanned, interactive, importId, orgId, fileId };
   });
   expect(
     await t.mutation(internal.lib.notify.notifyPolicyExtractionReviewInternal, {
@@ -112,6 +113,47 @@ test("scheduled policy extraction stays in portal while interactive extraction r
     expect(await ctx.db.system.query("_scheduled_functions").collect()).toEqual(
       [],
     );
+  });
+  await t.mutation(internal.policies.pipelineStartExternalWorkerJob, {
+    jobId: ids.scanned,
+    state: {
+      sourceKind: "upload",
+      fileId: ids.fileId,
+      orgId: ids.orgId,
+      userId: "fixture-operator",
+      workspaceScanImportId: ids.importId,
+    },
+  });
+  const leaseExpiresAt = dayjs().add(5, "minute").valueOf();
+  const claim = await t.mutation(
+    internal.policies.pipelineClaimExternalWorkerJob,
+    {
+      leaseId: "synthetic-worker",
+      leaseExpiresAt,
+      batchSize: 1,
+    },
+  );
+  expect(claim?.checkpoint.state).toMatchObject({
+    workspaceScanImportId: ids.importId,
+  });
+  expect(
+    await t.mutation(internal.policies.pipelineSaveStateForLease, {
+      jobId: ids.scanned,
+      leaseId: "synthetic-worker",
+      leaseExpiresAt,
+      nextPhase: "post-process",
+      state: claim!.checkpoint.state,
+    }),
+  ).toBe(true);
+  const run = await t.run((ctx) =>
+    ctx.db
+      .query("policyExtractionRuns")
+      .withIndex("policy", (q) => q.eq("policyId", ids.scanned))
+      .first(),
+  );
+  expect(run?.pipelineCheckpoint).toMatchObject({
+    nextPhase: "post-process",
+    state: { workspaceScanImportId: ids.importId },
   });
   expect(
     await t.mutation(internal.lib.notify.notifyPolicyExtractionReviewInternal, {
