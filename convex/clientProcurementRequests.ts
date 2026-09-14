@@ -49,17 +49,10 @@ function optionalEffectiveDate(value: string | undefined) {
 function clientStatus(status: Doc<"procurementRequests">["status"]) {
   if (status === "draft" || status === "submitted") return "submitted" as const;
   if (status === "gathering_information") return "information_needed" as const;
-  if (
-    [
-      "marketing",
-      "proposal_review",
-      "quote_review",
-      "client_decision",
-    ].includes(status)
-  )
+  if (status === "marketing" || status === "proposal_review")
     return "in_progress" as const;
-  if (["binding", "accepted"].includes(status)) return "finalizing" as const;
-  if (["completed", "closed"].includes(status)) return "completed" as const;
+  if (status === "binding") return "finalizing" as const;
+  if (status === "completed") return "completed" as const;
   return "cancelled" as const;
 }
 
