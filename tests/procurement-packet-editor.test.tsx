@@ -16,6 +16,23 @@ vi.mock("convex/react", () => ({
   useQuery: mocks.query,
   useMutation: () => mocks.save,
 }));
+vi.mock("@/components/ui/markdown-editor", () => ({
+  MarkdownEditor: ({
+    value,
+    onChange,
+    label,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    label: string;
+  }) => (
+    <textarea
+      aria-label={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  ),
+}));
 vi.mock("sonner", () => ({ toast: { error: mocks.error, success: vi.fn() } }));
 vi.mock("@/components/settings/settings-drawer", () => ({
   SettingsDrawer: ({
@@ -65,7 +82,11 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
     act(async () => {
       root.render(
         <SyncProvider store={store}>
-          <PacketEditor requestId={requestId} onClose={onClose} />
+          <PacketEditor
+            filename="private.md"
+            requestId={requestId}
+            onClose={onClose}
+          />
         </SyncProvider>,
       );
     });
@@ -165,7 +186,11 @@ test("successive packet autosaves use the acknowledged revision without closing 
     await act(async () =>
       root.render(
         <SyncProvider store={store}>
-          <PacketEditor requestId={requestId} onClose={onClose} />
+          <PacketEditor
+            filename="private.md"
+            requestId={requestId}
+            onClose={onClose}
+          />
         </SyncProvider>,
       ),
     );
@@ -233,7 +258,11 @@ test("imports a Markdown file into the selected packet document", async () => {
     await act(async () =>
       root.render(
         <SyncProvider store={store}>
-          <PacketEditor requestId={requestId} onClose={vi.fn()} />
+          <PacketEditor
+            filename="private.md"
+            requestId={requestId}
+            onClose={vi.fn()}
+          />
         </SyncProvider>,
       ),
     );
