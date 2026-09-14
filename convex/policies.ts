@@ -429,17 +429,17 @@ export function normalizeEditableFields(
 }
 
 async function getPolicyExtractionRun(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   policyId: DataModelId<"policies">,
 ) {
   return await ctx.db
     .query("policyExtractionRuns")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
+    .withIndex("policy", (q) => q.eq("policyId", policyId))
     .first();
 }
 
-async function readPolicyPipelineState(
-  ctx: any,
+export async function readPolicyPipelineState(
+  ctx: QueryCtx | MutationCtx,
   policyId: DataModelId<"policies">,
 ) {
   const run = await getPolicyExtractionRun(ctx, policyId);
