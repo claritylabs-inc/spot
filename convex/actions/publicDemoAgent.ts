@@ -31,6 +31,7 @@ import {
   type PublicDemoLeadStage,
 } from "../lib/publicDemoAgent";
 import { collectToolAudit } from "../lib/agentToolAudit";
+import { getAgentDomain } from "../lib/resend";
 
 type PublicDemoConversation = Doc<"publicDemoConversations">;
 type PublicDemoLog = Doc<"publicDemoChatLogs">;
@@ -176,7 +177,9 @@ function formatPublicDemoEmail(args: {
   body: string;
   agentAddress?: string;
 }): { text: string; html: string } {
-  const signature = buildEmailSignature(args.agentAddress ?? "agent@spot.insure");
+  const signature = buildEmailSignature(
+    args.agentAddress ?? `agent@${getAgentDomain()}`,
+  );
   const text = stripMarkdown(args.body) + signature.text;
   const html = buildAgentEmailHtmlBody(args.body, signature);
   return { text, html };

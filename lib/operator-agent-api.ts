@@ -5,7 +5,7 @@ import type { PageContext } from "@/hooks/use-page-context";
 
 type BackendThread = {
   _id: string;
-  channel: "chat" | "slack" | "imessage" | "mcp";
+  channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   title: string;
   initialContext?: PageContext;
   createdAt: number;
@@ -16,7 +16,7 @@ type BackendThread = {
 type BackendMessage = {
   _id: string;
   role: "user" | "agent" | "system";
-  channel: "chat" | "slack" | "imessage" | "mcp";
+  channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   content: string;
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
@@ -121,7 +121,7 @@ type ConfirmActionResult =
 
 export type OperatorAgentThread = {
   id: string;
-  channel: "chat" | "slack" | "imessage" | "mcp";
+  channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   title: string;
   initialContext?: PageContext;
   createdAt: number;
@@ -143,7 +143,7 @@ export type OperatorAgentConfirmation = {
 export type OperatorAgentMessage = {
   id: string;
   role: "user" | "assistant";
-  channel: "chat" | "slack" | "imessage" | "mcp";
+  channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   content: string;
   status?: "processing" | "error" | "cancelled";
   createdAt: number;

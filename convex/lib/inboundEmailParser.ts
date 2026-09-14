@@ -92,6 +92,7 @@ function normalizeMailboxList(
 export function htmlToPlainText(
   html: string,
   maxInputLength = MAX_INBOUND_HTML_PARSE_CHARS,
+  preserveLinks = false,
 ): string {
   return convert(html, {
     wordwrap: false,
@@ -101,7 +102,7 @@ export function htmlToPlainText(
     selectors: [
       { selector: "script", format: "skip" },
       { selector: "style", format: "skip" },
-      { selector: "a", options: { ignoreHref: true } },
+      { selector: "a", options: { ignoreHref: !preserveLinks } },
     ],
   });
 }

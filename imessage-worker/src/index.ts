@@ -172,7 +172,10 @@ const SEND_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const TYPING_REFRESH_MS = 4_000;
 const CONTACT_CARD_NAME = "Spot";
 const CONTACT_CARD_EMAIL =
-  process.env.SPOT_AGENT_EMAIL ?? "agent@spot.insure";
+  (process.env.SPOT_AGENT_EMAIL ?? "agent@agent.spot.insure").replace(
+    /@spot\.insure$/i,
+    "@agent.spot.insure",
+  );
 const CONTACT_CARD_PHONE = resolveContactCardPhone();
 const CONTACT_CARD_URL = "https://spot.insure";
 const CONTACT_CARD_NOTE =

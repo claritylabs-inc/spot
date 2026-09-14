@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/operational-panel";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { api } from "@/convex/_generated/api";
+import { OPERATOR_EMAIL_ADDRESS } from "@/convex/lib/operatorEmailAddress";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -59,6 +60,7 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
   const [name, setName] = useState(current.user.name ?? "");
   const [phone, setPhone] = useState(current.user.phone ?? "");
   const email = current.user.email ?? current.profile.email;
+  const loginEmails = current.user.loginEmails ?? [email];
   const accessLevel = current.profile.role === "owner" ? "Owner" : "Operator";
 
   const saveProfile = useCallback(
@@ -131,16 +133,26 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
                     agent.
                   </p>
                 </div>
-                <div>
-                  <Label htmlFor="operator-profile-email" className="mb-1.5">
-                    Email
-                  </Label>
-                  <Input
-                    id="operator-profile-email"
-                    type="email"
-                    value={email}
-                    disabled
-                  />
+                <div className="min-w-0">
+                  <p
+                    id="operator-profile-login-emails"
+                    className={`mb-1.5 ${typeStyle("label.field")}`}
+                  >
+                    Login emails
+                  </p>
+                  <ul
+                    aria-labelledby="operator-profile-login-emails"
+                    className={`space-y-1 break-all ${typeStyle("body.default")}`}
+                  >
+                    {loginEmails.map((loginEmail) => (
+                      <li key={loginEmail}>{loginEmail}</li>
+                    ))}
+                  </ul>
+                  <p
+                    className={`mt-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    Sign in with any of these addresses.
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="operator-profile-access" className="mb-1.5">
@@ -151,6 +163,21 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
                     value={accessLevel}
                     disabled
                   />
+                </div>
+                <div className="min-w-0 sm:col-span-2">
+                  <p className={`mb-1.5 ${typeStyle("label.field")}`}>
+                    Operator email
+                  </p>
+                  <p className={`break-all ${typeStyle("body.default")}`}>
+                    {OPERATOR_EMAIL_ADDRESS}
+                  </p>
+                  <p
+                    className={`mt-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    Send or forward emails from a login address above. Spot
+                    replies by email and saves the conversation in your private
+                    operator threads.
+                  </p>
                 </div>
               </OperationalPanelBody>
             </OperationalPanel>

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import migrationsTest from "@convex-dev/migrations/test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
@@ -32,8 +33,19 @@ afterEach(() => {
 
 test("rerunning setup preserves edited work and reuses records and stored files", async () => {
   const t = convexTest(schema, modules);
+  migrationsTest.register(t);
+  // Drain migration workers before seed creates unrelated scheduled fixtures.
+  // Leave the login gate unset so seed must verify and enable it itself.
+  await t.mutation(internal.migrations.runOperatorEmailIdentityBackfill, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(
+    await t.query(internal.migrations.operatorEmailIdentityBackfillStatus, {}),
+  ).toMatchObject({ ready: false });
   const ids = await t.action(api.seed.seed, {});
   await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(
+    await t.query(internal.migrations.operatorEmailIdentityBackfillStatus, {}),
+  ).toMatchObject({ ready: true });
   const before = await t.run(async (ctx) => {
     await ctx.db.patch(ids.requestId!, {
       title: "Renamed during QA",

@@ -105,6 +105,7 @@ export type OperatorGoogleWorkspaceToolChannel =
   | "chat"
   | "slack"
   | "imessage"
+  | "email"
   | "mcp";
 
 export type OperatorGoogleWorkspaceListMailboxesInput = {

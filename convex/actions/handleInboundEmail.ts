@@ -1,6 +1,8 @@
 "use node";
 
 import dayjs from "dayjs";
+import { isOperatorEmailRecipient } from "../lib/operatorEmailAddress";
+import { DEFAULT_AGENT_DOMAIN } from "../lib/agentEmailDomains";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
@@ -500,6 +502,31 @@ export const processInbound = internalAction({
 
     const webhook: WebhookPayload = JSON.parse(args.payload);
     const data = webhook.data ?? webhook;
+
+    const routingRecipients = [
+      ...parseAddressList(data.to),
+      ...parseAddressList(data.cc),
+      ...parseAddressList(data.bcc),
+    ];
+    if (
+      routingRecipients.some((address) =>
+        address.toLowerCase().endsWith(`@${DEFAULT_AGENT_DOMAIN}`),
+      )
+    ) {
+      if (!webhookSecret)
+        throw new Error("Agent email requires a verified webhook");
+      if (webhook.type !== "email.received" || !data.email_id) return;
+      // Resend delivers account-wide events to both production and shared dev.
+      if (process.env.SPOT_ENV !== "production") return;
+    }
+    const operatorRecipients = routingRecipients.filter(isOperatorEmailRecipient);
+    if (operatorRecipients.length > 0) {
+      await ctx.runAction(
+        internal.actions.handleInboundOperatorEmail.processInbound,
+        { emailId: data.email_id },
+      );
+      return;
+    }
 
     // Dedup
     const resendEmailId = data.email_id;

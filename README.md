@@ -233,7 +233,7 @@ Common variables used across major workflows:
 - `EMAIL_ALLOWED_RECIPIENT_DOMAINS` / `EMAIL_ALLOWED_RECIPIENTS` — allowlist for restricted delivery
 - `EMAIL_REDIRECT_TO` — internal redirect address for restricted delivery; local capture does not use a redirect address
 - `EMAIL_SUBJECT_PREFIX` — optional prefix for restricted delivery subjects
-- `AGENT_DOMAIN` — verified Resend sending domain for agent mail. Defaults to `spot.insure`. Legacy inbound addresses at `spot.claritylabs.inc` and `dev.claritylabs.inc` remain recognized.
+- `AGENT_DOMAIN` — verified Resend sending domain for agent mail. Defaults to `agent.spot.insure`. Legacy inbound addresses at `spot.insure`, `spot.claritylabs.inc`, and `dev.claritylabs.inc` remain recognized.
 - `NOTIFICATION_EMAIL_DOMAIN` — verified Resend sending domain for system notifications. Defaults to `notifications.spot.insure`.
 - `AUTH_EMAIL_DOMAIN` — verified Resend sending domain for OTP, auth, and invite mail. Defaults to `auth.spot.insure`.
 - `CLIENT_PORTAL_URL` / `APP_SITE_URL` — client portal URL. Defaults to `https://app.spot.insure`.
