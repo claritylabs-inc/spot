@@ -7,6 +7,96 @@ import {
 import { buildOperatorMcpToolCatalog } from "./operatorMcpToolCatalog";
 
 describe("operator MCP tool catalog", () => {
+  test("publishes exact broker taxonomies and rejects invented values before confirmation", () => {
+    const catalog = operatorAgentToolJsonCatalog();
+    const brokerTool = catalog.find(
+      ({ name }) => name === "update_broker_network_profile",
+    );
+    expect(brokerTool).toBeDefined();
+    const schema = brokerTool?.inputSchema as {
+      properties?: Record<
+        string,
+        { description?: string; anyOf?: Array<Record<string, unknown>> }
+      >;
+    };
+    const lineArray = schema.properties?.lineOfBusinessCodes?.anyOf?.find(
+      (branch) => branch.type === "array",
+    ) as { items?: { enum?: string[]; description?: string } } | undefined;
+    expect(lineArray?.items?.enum).toContain("AUTOB");
+    expect(lineArray?.items?.enum).not.toContain("CAUT");
+    expect(lineArray?.items?.description).toContain("Business Automobile");
+    expect(schema.properties?.website?.description).toContain(
+      "Omit to preserve",
+    );
+
+    expect(() =>
+      parseOperatorAgentToolInput("update_broker_network_profile", {
+        brokerOrgId: "broker-1",
+        lineOfBusinessCodes: ["CGL", "PROP", "CAUT"],
+      }),
+    ).toThrow();
+    expect(
+      parseOperatorAgentToolInput("update_broker_network_profile", {
+        brokerOrgId: "broker-1",
+        writingStates: ["CA", "NY"],
+        lineOfBusinessCodes: ["CGL", "PROP", "AUTOB"],
+      }),
+    ).toStrictEqual({
+      brokerOrgId: "broker-1",
+      writingStates: ["CA", "NY"],
+      lineOfBusinessCodes: ["CGL", "PROP", "AUTOB"],
+    });
+    for (const invalid of [
+      { writingStates: ["California"] },
+      { website: "blisins.com" },
+    ]) {
+      expect(() =>
+        parseOperatorAgentToolInput("update_broker_network_profile", {
+          brokerOrgId: "broker-1",
+          ...invalid,
+        }),
+      ).toThrow();
+    }
+  });
+
+  test("grounds representative dates, emails, and websites in executable schemas", () => {
+    expect(
+      parseOperatorAgentToolInput("create_procurement_request", {
+        orgId: "client-1",
+        title: "Renewal",
+        narrative: "Renew the current program.",
+        targetEffectiveDate: "2027-01-15",
+      }),
+    ).toMatchObject({ targetEffectiveDate: "2027-01-15" });
+    expect(() =>
+      parseOperatorAgentToolInput("create_procurement_request", {
+        orgId: "client-1",
+        title: "Renewal",
+        narrative: "Renew the current program.",
+        targetEffectiveDate: "01/15/2027",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseOperatorAgentToolInput("create_procurement_broker_outreach", {
+        procurementRequestId: "request-1",
+        brokerOrgId: "broker-1",
+        contactEmail: "broker at example.com",
+      }),
+    ).toThrow("Enter a valid email address");
+    expect(() =>
+      parseOperatorAgentToolInput("create_client_organization", {
+        name: "Example Client",
+        website: "example.com",
+      }),
+    ).toThrow();
+    expect(
+      parseOperatorAgentToolInput("update_organization_profile", {
+        orgId: "client-1",
+        website: null,
+      }),
+    ).toStrictEqual({ orgId: "client-1", website: null });
+  });
+
   test("rejects null-only omitted updates but accepts explicit clears", () => {
     const cases = [
       {

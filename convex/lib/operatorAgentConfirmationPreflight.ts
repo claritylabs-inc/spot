@@ -8,6 +8,10 @@ import {
   writableProcurementRequestStatus,
 } from "../procurementRequests";
 import { assertFeatureFlagAllowedForOrg } from "./featureFlags";
+import {
+  normalizeBrokerLineOfBusinessCodes,
+  normalizeBrokerWritingStates,
+} from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
 import { isCompanyWikiFact, normalizeWikiContent } from "./orgWikiPolicy";
 import { isOrgWikiSectionKey, wikiBulletLines } from "./orgWiki";
@@ -215,6 +219,27 @@ function validateOptionalUrl(value: unknown) {
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("URL must use http or https");
+  }
+}
+
+function validateBrokerProfileFields(input: Record<string, unknown>) {
+  if (Array.isArray(input.writingStates)) {
+    normalizeBrokerWritingStates(
+      input.writingStates.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+  }
+  if (Array.isArray(input.lineOfBusinessCodes)) {
+    normalizeBrokerLineOfBusinessCodes(
+      input.lineOfBusinessCodes.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+  }
+  if (input.website !== null) validateOptionalUrl(input.website);
+  if (input.name !== undefined && !normalizedText(input.name)) {
+    throw new Error("Broker name cannot be blank");
   }
 }
 
@@ -647,7 +672,7 @@ async function preflightBrokerProfileCreate(
 ) {
   const name = normalizedText(input.name);
   if (!name) throw new Error("Broker name is required");
-  validateOptionalUrl(input.website);
+  validateBrokerProfileFields(input);
   // The agent reaches this tool from unstructured submission records, where the
   // same broker often appears under a name it has already been registered with.
   // Registering a duplicate splits that broker's outreach and proposal history.
@@ -948,6 +973,7 @@ export async function preflightOperatorToolConfirmation(
       return;
     case "update_broker_network_profile":
       await requireBrokerOrganization(ctx, args.input.brokerOrgId);
+      validateBrokerProfileFields(args.input);
       return;
     case "create_procurement_file_item":
       await preflightProcurementFileCreate(ctx, args.input);
@@ -983,6 +1009,17 @@ export async function preflightOperatorToolConfirmation(
       await preflightClientOrganizationCreate(ctx, args.input);
       return;
     case "update_organization_profile":
+      await requireDocument(
+        ctx,
+        "organizations",
+        args.input.orgId,
+        "Organization",
+      );
+      if (args.input.website !== null) validateOptionalUrl(args.input.website);
+      if (args.input.name !== undefined && !normalizedText(args.input.name)) {
+        throw new Error("Organization name cannot be blank");
+      }
+      return;
     case "set_organization_status":
       await requireDocument(
         ctx,

@@ -250,29 +250,105 @@ test("revalidates client-file ownership and availability at approval and refuses
   await f.t.run((ctx) =>
     ctx.db.patch(file.clientFileId, { archivedAt: dayjs().valueOf() }),
   );
-  await expect(
-    f.t.mutation(internal.operatorAgent.confirmActionInternal, {
+  expect(
+    await f.t.mutation(internal.operatorAgent.confirmActionInternal, {
       operatorUserId: f.operatorUserId,
       threadId: f.threadId,
       confirmationId: proposed.outcome.confirmationId,
       decision: "approve",
       channel: "chat",
     }),
-  ).rejects.toThrow(/active file/);
+  ).toMatchObject({
+    status: "failed",
+    result: {
+      error: expect.stringMatching(/active file/),
+      failure: { recoverable: true, writeState: "not_started" },
+    },
+  });
   expect(
     await f.t.run((ctx) => ctx.db.query("policies").collect()),
   ).toHaveLength(0);
   expect(f.extraction).not.toHaveBeenCalled();
+  await f.t.run((ctx) =>
+    ctx.db.patch(file.clientFileId, {
+      archivedAt: undefined,
+      fileId: file.fileId,
+    }),
+  );
+  const reproposed = await f.t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    {
+      ...base,
+      input: {
+        orgId: f.orgId,
+        clientFileIds: [file.clientFileId],
+        mode: "combined",
+      },
+      idempotencyKey: "saved-file-restored",
+    },
+  );
+  if (
+    reproposed.outcome.status !== "confirmation_required" ||
+    !reproposed.outcome.confirmationId
+  )
+    throw new Error("Missing restored-source approval");
   await f.t.run(async (ctx) => {
-    const replacement = await ctx.storage.store(new Blob([new Uint8Array([...f.bytes, 99])], { type: "application/pdf" }));
-    await ctx.db.patch(file.clientFileId, { archivedAt: undefined, fileId: replacement });
+    const replacement = await ctx.storage.store(
+      new Blob([new Uint8Array([...f.bytes, 99])], {
+        type: "application/pdf",
+      }),
+    );
+    await ctx.db.patch(file.clientFileId, { fileId: replacement });
   });
-  const approval = { operatorUserId: f.operatorUserId, threadId: f.threadId, confirmationId: proposed.outcome.confirmationId, decision: "approve" as const, channel: "chat" as const };
-  await expect(f.t.mutation(internal.operatorAgent.confirmActionInternal, approval)).rejects.toThrow(/sources changed/);
-  await f.t.run((ctx) => ctx.db.patch(file.clientFileId, { fileId: file.fileId }));
-  await f.t.mutation(internal.operatorAgent.confirmActionInternal, approval);
+  expect(
+    await f.t.mutation(internal.operatorAgent.confirmActionInternal, {
+      operatorUserId: f.operatorUserId,
+      threadId: f.threadId,
+      confirmationId: reproposed.outcome.confirmationId,
+      decision: "approve",
+      channel: "chat",
+    }),
+  ).toMatchObject({
+    status: "failed",
+    result: {
+      error: expect.stringMatching(/sources changed/),
+      failure: { recoverable: true, writeState: "not_started" },
+    },
+  });
+  await f.t.run((ctx) =>
+    ctx.db.patch(file.clientFileId, { fileId: file.fileId }),
+  );
+  const finalProposal = await f.t.action(
+    internal.operatorAgent.invokeRegisteredToolInternal,
+    {
+      ...base,
+      input: {
+        orgId: f.orgId,
+        clientFileIds: [file.clientFileId],
+        mode: "combined",
+      },
+      idempotencyKey: "saved-file-final",
+    },
+  );
+  if (
+    finalProposal.outcome.status !== "confirmation_required" ||
+    !finalProposal.outcome.confirmationId
+  )
+    throw new Error("Missing final source approval");
+  expect(finalProposal.outcome.confirmationId).not.toBe(
+    reproposed.outcome.confirmationId,
+  );
+  await f.t.mutation(internal.operatorAgent.confirmActionInternal, {
+    operatorUserId: f.operatorUserId,
+    threadId: f.threadId,
+    confirmationId: finalProposal.outcome.confirmationId,
+    decision: "approve",
+    channel: "chat",
+  });
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(await f.t.run((ctx) => ctx.db.query("policies").collect())).toHaveLength(1);
+  expect(
+    await f.t.run((ctx) => ctx.db.query("policies").collect()),
+  ).toHaveLength(1);
   expect(f.extraction).toHaveBeenCalledTimes(1);
 });
 

@@ -2,7 +2,8 @@ import { z } from "zod";
 
 import { ORG_WIKI_SECTION_KEYS } from "./orgWiki";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
-import { lobLabel } from "./linesOfBusiness";
+import { USPS_STATE_CODES } from "./brokerProfileValidation";
+import { AcordLobCodeSchema, lobLabel } from "./linesOfBusiness";
 import {
   GENERATE_COI_DESCRIPTION,
   generateCoiInputSchema,
@@ -138,6 +139,22 @@ const brokerOfficeAddress = z.object({
   postalCode: omittable(z.string().max(40)),
   country: omittable(z.string().max(100)),
 });
+const brokerWritingState = z
+  .enum(USPS_STATE_CODES)
+  .describe("Exact two-letter USPS state code");
+const brokerLineOfBusinessCode = AcordLobCodeSchema.describe(
+  "Exact ACORD LOBCd. Common commercial values: CGL = General Liability, PROP = Commercial Property, AUTOB = Business Automobile. Never invent an abbreviation.",
+);
+const optionalHttpUrl = z
+  .url()
+  .max(2_000)
+  .refine(
+    (value) => value.startsWith("https://") || value.startsWith("http://"),
+    "URL must use http or https",
+  );
+const isoCalendarDate = z.iso
+  .date()
+  .describe("Calendar date in YYYY-MM-DD format");
 const procurementOutreachStatus = z.enum([
   "request_sent",
   "can_handle",
@@ -1130,14 +1147,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_procurement_request: defineOperatorTool({
     // Invalidates pending confirmations created against the retired fields.
-    version: 3,
+    version: 4,
     description:
       "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
     inputSchema: z.object({
       orgId: organizationId,
       title: z.string().min(1).max(200),
       narrative: z.string().min(1).max(20_000),
-      targetEffectiveDate: omittable(z.string().max(10)),
+      targetEffectiveDate: omittable(isoCalendarDate),
       status: omittable(procurementRequestStatus),
       clientVisible: omittable(z.boolean()),
       replacingPolicyId: omittable(policyId).describe(
@@ -1165,7 +1182,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     },
   }),
   update_procurement_request: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
       "Update supplied fields on one exact procurement request. Null clears an effective date or policy link; omitted fields stay unchanged.",
     inputSchema: z
@@ -1173,7 +1190,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         procurementRequestId,
         title: omittable(z.string().min(1).max(200)),
         narrative: omittable(z.string().min(1).max(20_000)),
-        targetEffectiveDate: clearable(z.string().max(10)),
+        targetEffectiveDate: clearable(isoCalendarDate).describe(
+          "Omit to preserve the saved date. Pass null only to deliberately clear it.",
+        ),
         status: omittable(procurementRequestStatus),
         clientVisible: omittable(z.boolean()),
         replacingPolicyId: clearable(policyId),
@@ -1430,20 +1449,24 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Select procurement proposal ${input.procurementProposalId}`,
   }),
   create_broker_network_profile: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
       "Register a new supplier-network broker organization and its network profile with no portal users and no invites. Search the broker network first and update the existing profile instead when the broker is already registered. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values.",
     inputSchema: z.object({
       name: z.string().min(1).max(200),
-      website: omittable(z.string().max(2_000)),
+      website: omittable(optionalHttpUrl).describe(
+        "Verified broker website. Omit when unknown; null is treated as omitted on create.",
+      ),
       networkStatus: omittable(brokerNetworkStatus).describe(
         "Defaults to prospect for a broker that has not yet placed business",
       ),
       officeAddress: omittable(brokerOfficeAddress),
-      writingStates: omittable(z.array(z.string().min(2).max(2)).max(60)),
-      lineOfBusinessCodes: omittable(
-        z.array(z.string().min(1).max(40)).max(100),
+      writingStates: omittable(z.array(brokerWritingState).max(60)).describe(
+        "Complete supported-state list using exact USPS codes",
       ),
+      lineOfBusinessCodes: omittable(
+        z.array(brokerLineOfBusinessCode).max(100),
+      ).describe("Complete supported-line list using exact ACORD LOBCd values"),
     }),
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -1454,7 +1477,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create broker network profile ${JSON.stringify(input.name)} with no portal users`,
   }),
   update_broker_network_profile: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
       "Update supplied fields on one exact supplier-network broker profile. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged.",
     inputSchema: z
@@ -1465,12 +1488,18 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         ),
         networkStatus: omittable(brokerNetworkStatus),
         officeAddress: omittable(brokerOfficeAddress),
-        writingStates: omittable(z.array(z.string().min(2).max(2)).max(60)),
+        writingStates: omittable(z.array(brokerWritingState).max(60)).describe(
+          "Replacement list of exact USPS state codes. Omit to preserve the saved list.",
+        ),
         lineOfBusinessCodes: omittable(
-          z.array(z.string().min(1).max(40)).max(100),
+          z.array(brokerLineOfBusinessCode).max(100),
+        ).describe(
+          "Replacement list of exact ACORD LOBCd values. Omit to preserve the saved list.",
         ),
         name: omittable(z.string().min(1).max(200)),
-        website: clearable(z.string().max(2_000)),
+        website: clearable(optionalHttpUrl).describe(
+          "Omit to preserve the saved website. Pass null only when the operator's evidence explicitly calls for clearing it.",
+        ),
       })
       .refine(
         (input) =>
@@ -1495,14 +1524,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_broker_outreach: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
       "Add a real broker-network organization to an exact procurement request with a selected contact, workflow status, and optional Markdown log.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgId: organizationId,
       contactName: omittable(z.string().max(200)),
-      contactEmail: omittable(z.string().max(320)),
+      contactEmail: omittable(emailAddress),
       contactPhone: omittable(z.string().max(100)),
       status: omittable(procurementOutreachStatus),
       log: omittable(z.string().max(20_000)),
@@ -1519,7 +1548,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add broker ${input.brokerOrgId} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_broker_outreach: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
       "Update supplied broker outreach identity, exact workflow status, or its single Markdown log. File quote documents as private proposals.",
     inputSchema: z
@@ -1527,7 +1556,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         procurementOutreachId,
         brokerOrgId: omittable(organizationId),
         contactName: clearable(z.string().max(200)),
-        contactEmail: clearable(z.string().max(320)),
+        contactEmail: clearable(emailAddress).describe(
+          "Omit to preserve the saved contact email. Pass null only to deliberately clear it.",
+        ),
         contactPhone: clearable(z.string().max(100)),
         status: omittable(procurementOutreachStatus),
         log: clearable(z.string().max(20_000)),
@@ -1556,18 +1587,24 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_file_item: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional so requested documents can be tracked before they are available.",
+      "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional for a hidden requested document, but is required before the item can be client-visible or released to a broker.",
     inputSchema: z.object({
       procurementRequestId,
       procurementOutreachId: omittable(procurementOutreachId),
-      clientFileId: omittable(clientFileId),
+      clientFileId: omittable(clientFileId).describe(
+        "Exact saved client file. Required when clientVisible is true or brokerRelease is listed or attached.",
+      ),
       purpose: procurementFilePurpose,
       label: z.string().min(1).max(300),
       status: omittable(procurementFileStatus),
-      brokerRelease: omittable(procurementFileBrokerRelease),
-      clientVisible: omittable(z.boolean()),
+      brokerRelease: omittable(procurementFileBrokerRelease).describe(
+        "listed or attached requires clientFileId; hidden may track a file that has not arrived",
+      ),
+      clientVisible: omittable(z.boolean()).describe(
+        "true requires clientFileId",
+      ),
       notes: omittable(z.string().max(20_000)),
     }),
     capability: "operator.procurement.write",
@@ -1582,19 +1619,25 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add ${input.purpose} ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_file_item: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Update a procurement file requirement or link. Null removes the linked outreach, shared client file, or notes without deleting the underlying client file.",
+      "Update a procurement file requirement or link. Null removes the linked outreach, shared client file, or notes without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file.",
     inputSchema: z
       .object({
         procurementFileItemId,
         procurementOutreachId: clearable(procurementOutreachId),
-        clientFileId: clearable(clientFileId),
+        clientFileId: clearable(clientFileId).describe(
+          "Omit to preserve the link. Null removes it only when the item will remain hidden from clients and brokers.",
+        ),
         purpose: omittable(procurementFilePurpose),
         label: omittable(z.string().min(1).max(300)),
         status: omittable(procurementFileStatus),
-        brokerRelease: omittable(procurementFileBrokerRelease),
-        clientVisible: omittable(z.boolean()),
+        brokerRelease: omittable(procurementFileBrokerRelease).describe(
+          "listed or attached requires an effective clientFileId",
+        ),
+        clientVisible: omittable(z.boolean()).describe(
+          "true requires an effective clientFileId",
+        ),
         notes: clearable(z.string().max(20_000)),
       })
       .refine(
@@ -1652,12 +1695,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_client_organization: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
       "Create one standalone client organization without provisioning users. Use the returned exact organization ID to create its procurement request. Exact-name duplicates are rejected.",
     inputSchema: z.object({
       name: z.string().min(1).max(200),
-      website: omittable(z.string().max(500)),
+      website: omittable(optionalHttpUrl.max(500)).describe(
+        "Verified client website. Omit when unknown; null is treated as omitted on create.",
+      ),
     }),
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -1669,14 +1714,16 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create standalone client ${JSON.stringify(input.name)}`,
   }),
   update_organization_profile: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
       "Update selected editable profile fields for one exact organization. Only supplied fields change.",
     inputSchema: z
       .object({
         orgId: organizationId,
         name: omittable(z.string().min(1).max(200)),
-        website: clearable(z.string().max(500)),
+        website: clearable(optionalHttpUrl.max(500)).describe(
+          "Omit to preserve the saved website. Pass null only when the operator explicitly requested or evidence supports clearing it.",
+        ),
         industry: clearable(z.string().max(200)),
         industryVertical: clearable(z.string().max(200)),
       })
