@@ -910,7 +910,7 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
 
 test("broker decline and later quote update one private market record without fabricating capability",async()=>{
  const f=await fixture();
- await f.t.run(ctx=>ctx.db.insert("organizations",{name:"Montgomery",type:"broker",primaryContactEmail:"broker@montgomery.test"}));
+ const brokerId=await f.t.run(ctx=>ctx.db.insert("organizations",{name:"Montgomery",type:"broker",primaryContactEmail:"broker@montgomery.test"}));
  f.evidence.to.push("broker@montgomery.test");
  const brokerIdentity={kind:"broker" as const,name:"Montgomery",contactEmail:"broker@montgomery.test",address:null};
  const text="Montgomery cannot handle Cove Auto coverage.";
@@ -921,6 +921,9 @@ test("broker decline and later quote update one private market record without fa
  await replaceEvidence(f,reply,{...base,effectiveDate:"2026-09-14",excerpt:reply,explanation:"Quote received",log:"Montgomery subsequently provided a quote.",observedStatus:"quote_received"},"quote");
  const rows=await f.t.run(ctx=>ctx.db.query("procurementBrokerOutreaches").collect());
  expect(rows).toHaveLength(1);expect(rows[0].status).toBe("quote_received");expect(rows[0].notes).toContain("declined");expect(rows[0].notes).toContain("provided a quote");expect(rows[0].packetSnapshot).toBeUndefined();
+ const brokerActivity=await f.t.withIdentity({subject:`${f.userId}|session`}).query(api.operatorGoogleWorkspaceScanActivity.listActivity,{entityId:brokerId,status:"updated",paginationOpts:{numItems:20,cursor:null}});
+ expect(brokerActivity.page).toHaveLength(2);
+ expect(brokerActivity.page.every(item=>item.records.some(link=>link.href.includes(f.requestId)))).toBe(true);
 });
 test("same contact and address under a legal-name variant requires attention instead of a duplicate client",async()=>{
  const f=await fixture();const address={street1:"100 Main St",city:"Boston",state:"MA",zip:"02110"};

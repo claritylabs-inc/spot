@@ -391,6 +391,12 @@ export const applyInternal = internalMutation({
       operationJson: args.operationJson,
       entityId: String(orgId ?? result.id),
       recordId: String(result.id),
+      brokerId:
+        operation.identity.kind === "broker"
+          ? (target.org?._id ?? ctx.db.normalizeId("organizations", result.id) ?? undefined)
+          : result.table === "procurementBrokerOutreaches" && "brokerOrgId" in record
+            ? record.brokerOrgId
+            : undefined,
       requestId:
         result.table === "procurementRequests"
           ? (ctx.db.normalizeId("procurementRequests", result.id) ?? undefined)
