@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import dayjs from "dayjs";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { useSyncStore } from "@claritylabs/cl-sync";
 
@@ -16,6 +15,7 @@ import {
 } from "@/convex/lib/entityTypes";
 import { resolveEffectiveOrganizationProfile } from "@/convex/lib/orgProfileFacts";
 import { patchCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
+import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { typeStyle } from "@/lib/typography";
 
@@ -117,7 +117,7 @@ export function OrganizationInsuranceProfile({
   org: OrganizationInsuranceProfileRecord;
   disabled?: boolean;
   onSaveProfile?: (
-    profile: OrganizationProfile | null,
+    profile: Partial<OrganizationProfile> | null,
   ) => Promise<OrganizationProfile | null>;
   onAutoSaveChange?: (
     status: "saved" | "saving" | "unsaved" | "error",
@@ -125,15 +125,13 @@ export function OrganizationInsuranceProfile({
   ) => void;
   onResetActionChange?: (resetToExtracted: (() => Promise<void>) | null) => void;
 }) {
-  const extracted = useMemo(
-    () => resolveEffectiveOrganizationProfile({ ...org, profileOverrides: undefined }),
-    [org],
+  const draft = useLiveRecordDraft(
+    org._id,
+    resolveEffectiveOrganizationProfile(org),
   );
-  const [profile, setProfile] = useState<OrganizationProfile>(
-    () => resolveEffectiveOrganizationProfile(org),
-  );
-  const [resetKey, setResetKey] = useState(0);
-  const [hasOverride, setHasOverride] = useState(Boolean(org.profileOverrides));
+  const profile = draft.value;
+  const setProfile = draft.setValue;
+  const hasOverride = Boolean(org.profileOverrides);
   const [touchedIdentifiers, setTouchedIdentifiers] = useState({
     fein: false,
     businessNumber: false,
@@ -143,7 +141,7 @@ export function OrganizationInsuranceProfile({
   const feinError = feinValidationError(profile.fein);
   const businessNumberError = businessNumberValidationError(profile.businessNumber);
   const saveProfile = useCallback(
-    (nextProfile: OrganizationProfile | null) =>
+    (nextProfile: Partial<OrganizationProfile> | null) =>
       onSaveProfile
         ? onSaveProfile(nextProfile)
         : updateOrganizationProfile({ profile: nextProfile }),
@@ -152,26 +150,16 @@ export function OrganizationInsuranceProfile({
 
   const autoSave = useLocalFirstAutoSave({
     mutationName: `settings.organization.insuranceProfile.${org._id}`,
-    args: { profile },
-    valueKey: JSON.stringify(profile),
-    resetKey: `${org._id}:${resetKey}`,
+    args: { profile: draft.patch, revision: draft.revision },
+    valueKey: String(draft.revision),
+    resetKey: org._id,
     enabled: !disabled,
     canSave: !disabled && !feinError && !businessNumberError,
     autoSave: false,
-    flush: (args) => saveProfile(args.profile),
-    applyLocal: onSaveProfile
-      ? undefined
-      : (syncStore, args) => {
-          patchCachedViewerOrg(syncStore, {
-            profileOverrides: args.profile,
-            profileOverridesUpdatedAt: dayjs().valueOf(),
-          });
-        },
-    onFlushed: (saved) => {
-      if (saved) {
-        setProfile(saved as OrganizationProfile);
-        setHasOverride(true);
-      }
+    flush: async (args) => {
+      const saved = await saveProfile(args.profile);
+      draft.acknowledge(args.revision);
+      return saved;
     },
     errorMessage: "The organization insurance profile could not be saved.",
   });
@@ -189,10 +177,8 @@ export function OrganizationInsuranceProfile({
   }, [autoSave.status, onAutoSaveChange, saveProfileNow]);
 
   const resetToExtracted = useCallback(async () => {
-    await saveProfileNow();
-    const restored = await saveProfile(null);
-    const next = (restored ?? extracted) as OrganizationProfile;
-    setProfile(next);
+    if (!(await saveProfileNow())) return;
+    await saveProfile(null);
     if (!onSaveProfile) {
       patchCachedViewerOrg(store, {
         profileOverrides: undefined,
@@ -200,9 +186,7 @@ export function OrganizationInsuranceProfile({
         profileOverridesUpdatedByUserId: undefined,
       });
     }
-    setHasOverride(false);
-    setResetKey((current) => current + 1);
-  }, [extracted, onSaveProfile, saveProfile, saveProfileNow, store]);
+  }, [onSaveProfile, saveProfile, saveProfileNow, store]);
 
   useEffect(() => {
     onResetActionChange?.(hasOverride ? resetToExtracted : null);

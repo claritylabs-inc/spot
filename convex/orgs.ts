@@ -547,11 +547,11 @@ const irsEntityTypeValueValidator = v.union(
 );
 
 const editableOrganizationProfileValidator = v.object({
-  mailingAddress: editableOrganizationAddressValidator,
-  entityType: v.union(irsEntityTypeValueValidator, v.literal("")),
-  fein: v.string(),
-  businessNumber: v.string(),
-  operationsDescription: v.string(),
+  mailingAddress: v.optional(editableOrganizationAddressValidator),
+  entityType: v.optional(v.union(irsEntityTypeValueValidator, v.literal(""))),
+  fein: v.optional(v.string()),
+  businessNumber: v.optional(v.string()),
+  operationsDescription: v.optional(v.string()),
 });
 
 function normalizedProfileString(value: string) {
@@ -632,17 +632,33 @@ export const updateOrganizationProfile = mutation({
       throw new Error("Select a standard IRS entity type");
     }
 
-    const fein = normalizedFein(profileInput.fein);
-    const businessNumber = normalizedBusinessNumber(
-      profileInput.businessNumber,
-    );
-    const operationsDescription = profileInput.operationsDescription.trim();
     const storedProfile = {
-      mailingAddress: normalizedProfileAddress(profileInput.mailingAddress),
-      entityType: profileInput.entityType,
-      fein,
-      businessNumber,
-      operationsDescription,
+      ...org.profileOverrides,
+      ...(profileInput.mailingAddress !== undefined
+        ? {
+            mailingAddress: normalizedProfileAddress(
+              profileInput.mailingAddress,
+            ),
+          }
+        : {}),
+      ...(profileInput.entityType !== undefined
+        ? { entityType: profileInput.entityType }
+        : {}),
+      ...(profileInput.fein !== undefined
+        ? { fein: normalizedFein(profileInput.fein) }
+        : {}),
+      ...(profileInput.businessNumber !== undefined
+        ? {
+            businessNumber: normalizedBusinessNumber(
+              profileInput.businessNumber,
+            ),
+          }
+        : {}),
+      ...(profileInput.operationsDescription !== undefined
+        ? {
+            operationsDescription: profileInput.operationsDescription.trim(),
+          }
+        : {}),
     };
     await ctx.db.patch(orgId, {
       profileOverrides: storedProfile,
@@ -652,10 +668,10 @@ export const updateOrganizationProfile = mutation({
     await writeTeamSupportAudit(ctx, access, {
       summary: `Updated the organization profile for ${org.name}`,
     });
-    return {
-      ...storedProfile,
-      entityType: profileInput.entityType,
-    };
+    return resolveEffectiveOrganizationProfile({
+      ...org,
+      profileOverrides: storedProfile,
+    });
   },
 });
 

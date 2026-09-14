@@ -76,10 +76,10 @@ function SearchableSelectControl({
           </span>
         ) : null}
         <span
-          className={`block min-w-0 flex-1 truncate ${selected ? "text-foreground" : "text-muted-foreground/40"}`}
-          title={selected?.label}
+          className={`block min-w-0 flex-1 truncate ${value ? "text-foreground" : "text-muted-foreground/40"}`}
+          title={selected?.label || value || undefined}
         >
-          {selected?.label || placeholder}
+          {selected?.label || value || placeholder}
         </span>
         <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
       </Combobox.Trigger>

@@ -18,6 +18,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -35,20 +36,6 @@ import {
 } from "@/components/settings/organization-insurance-profile";
 import { typeStyle } from "@/lib/typography";
 
-type OrgSettingsArgs = {
-  name?: string;
-  website?: string;
-  context?: string;
-  industry?: string;
-  industryVertical?: string;
-  relatedLegalEntities?: RelatedLegalEntity[];
-};
-
-type RelatedLegalEntity = {
-  legalName: string;
-  source?: "extraction";
-};
-
 export function OrganizationSection() {
   const orgData = useCachedViewerOrg();
   const updateOrg = useMutation(api.orgs.updateOrg);
@@ -58,14 +45,21 @@ export function OrganizationSection() {
 
   const org = orgData?.org;
 
-  const [name, setName] = useState("");
-  const [website, setWebsite] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [industryVertical, setIndustryVertical] = useState("");
-  const [relatedLegalEntities, setRelatedLegalEntities] = useState<
-    RelatedLegalEntity[]
-  >([]);
-  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const draft = useLiveRecordDraft(org?._id ?? "loading", {
+    name: org?.name ?? "",
+    website: org?.website ?? "",
+    industry: org?.industry ?? "",
+    industryVertical: org?.industryVertical ?? "",
+    relatedLegalEntities: org?.relatedLegalEntities ?? [],
+  });
+  const { name, website, industry, industryVertical, relatedLegalEntities } =
+    draft.value;
+  const setName = draft.field("name");
+  const setWebsite = draft.field("website");
+  const setIndustry = draft.field("industry");
+  const setIndustryVertical = draft.field("industryVertical");
+  const setRelatedLegalEntities = draft.field("relatedLegalEntities");
+  const settingsHydrated = Boolean(org);
   const [profileAutoSaveStatus, setProfileAutoSaveStatus] =
     useState<AutoSaveStatusValue>("saved");
   const [profileCanReset, setProfileCanReset] = useState(false);
@@ -85,48 +79,38 @@ export function OrganizationSection() {
     [],
   );
   const [extracting, setExtracting] = useState(false);
-  const hydratedRef = useRef(false);
 
   const { setActions } = useSettingsActions();
 
-  useEffect(() => {
-    if (org && !hydratedRef.current) {
-      setName(org.name ?? "");
-      setWebsite(org.website ?? "");
-      setIndustry(org.industry ?? "");
-      setIndustryVertical(org.industryVertical ?? "");
-      setRelatedLegalEntities(org.relatedLegalEntities ?? []);
-      hydratedRef.current = true;
-      setSettingsHydrated(true);
-    }
-  }, [org]);
-
-  const orgSettingsArgs: OrgSettingsArgs = {
-    name: name.trim(),
-    website: website || undefined,
-    industry: industry || undefined,
-    industryVertical: industryVertical || undefined,
-    relatedLegalEntities: relatedLegalEntities
-      .map((entity) => ({
-        legalName: entity.legalName.trim(),
-      }))
-      .filter((entity) => entity.legalName),
+  const orgSettingsArgs = {
+    ...draft.patch,
+    ...(draft.patch.name !== undefined ? { name: name.trim() } : {}),
+    ...(draft.patch.relatedLegalEntities !== undefined
+      ? {
+          relatedLegalEntities: relatedLegalEntities
+            .map((entity) => ({
+              ...entity,
+              legalName: entity.legalName.trim(),
+            }))
+            .filter((entity) => entity.legalName),
+        }
+      : {}),
   };
-  const saveOrgSettings = useCallback(
-    async (args: OrgSettingsArgs) => {
-      await updateOrg(args);
-    },
-    [updateOrg],
-  );
-
   const orgAutoSave = useLocalFirstAutoSave({
     mutationName: "settings.organization.updateOrg",
-    args: orgSettingsArgs,
+    args: { patch: orgSettingsArgs, revision: draft.revision },
+    valueKey: String(draft.revision),
+    resetKey: org?._id ?? "loading",
     enabled: settingsHydrated,
-    canSave: Boolean(name.trim()),
+    canSave:
+      Boolean(name.trim()) &&
+      relatedLegalEntities.every((entity) => entity.legalName.trim()),
     autoSave: false,
-    applyLocal: (store, args) => patchCachedViewerOrg(store, args),
-    flush: saveOrgSettings,
+    applyLocal: (store, args) => patchCachedViewerOrg(store, args.patch),
+    flush: async ({ patch, revision }) => {
+      await updateOrg(patch);
+      draft.acknowledge(revision);
+    },
     errorMessage: "Organization settings could not be saved.",
   });
   const saveOrgSettingsNow = orgAutoSave.saveNow;
@@ -224,7 +208,7 @@ export function OrganizationSection() {
 
   function updateRelatedLegalEntity(
     index: number,
-    patch: Partial<RelatedLegalEntity>,
+    patch: Partial<(typeof relatedLegalEntities)[number]>,
   ) {
     setRelatedLegalEntities((current) =>
       current.map((entity, entityIndex) =>

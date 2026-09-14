@@ -1291,7 +1291,7 @@ export const setClientFeatureFlag = mutation({
 export const updateClientSettings = mutation({
   args: {
     clientOrgId: v.id("organizations"),
-    name: v.string(),
+    name: v.optional(v.string()),
     website: v.optional(v.string()),
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
@@ -1302,15 +1302,22 @@ export const updateClientSettings = mutation({
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.type !== "client")
       throw new Error("Client not found");
-    const identity = clientIdentity(args.name, args.relatedLegalEntities ?? client.relatedLegalEntities);
-    const name = identity.name;
+    const identity =
+      args.name !== undefined || args.relatedLegalEntities !== undefined
+        ? clientIdentity(
+            args.name ?? client.name,
+            args.relatedLegalEntities ?? client.relatedLegalEntities,
+          )
+        : null;
+    const name = identity?.name ?? client.name;
     if (!name) throw new Error("Organization name is required");
 
     const patch = {
-      name,
-      ...(args.website !== undefined ? { website: args.website.trim() || undefined } : {}),
+      ...identity,
+      ...(args.website !== undefined
+        ? { website: args.website.trim() || undefined }
+        : {}),
       ...clientClassificationPatch(client, args),
-      relatedLegalEntities: identity.relatedLegalEntities,
     };
 
     await ctx.db.patch(args.clientOrgId, patch);
