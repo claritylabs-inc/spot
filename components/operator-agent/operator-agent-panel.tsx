@@ -67,7 +67,6 @@ import { useOptionalOperatorAgent } from "./operator-agent-provider";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import { OperatorToolActivity } from "./operator-tool-activity";
 
-const OPERATOR_ATTACHMENT_MAX_FILES = 10;
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_MAX_AGGREGATE_BYTES = 50 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_ACCEPT =
@@ -946,7 +945,6 @@ export function OperatorAgentPanel({
             placeholder="Ask the operator agent…"
             attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
             multipleAttachments
-            maxFiles={OPERATOR_ATTACHMENT_MAX_FILES}
             maxFileSize={OPERATOR_ATTACHMENT_MAX_BYTES}
             onAttachmentError={(message) => toast.error(message)}
             status={running ? "submitted" : undefined}

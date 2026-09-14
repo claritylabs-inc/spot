@@ -16,7 +16,6 @@ import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerpri
 import {
   MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
   MAX_AGENT_ATTACHMENT_BYTES,
-  MAX_AGENT_ATTACHMENT_FILES,
   normalizeAgentAttachmentContentType,
   normalizeAgentAttachmentFilename,
 } from "./lib/agentAttachmentLimits";
@@ -675,11 +674,6 @@ async function validateOperatorAttachments(
   options: { requireUploadIntent?: boolean } = {},
 ): Promise<OperatorAttachment[] | undefined> {
   if (!attachments?.length) return undefined;
-  if (attachments.length > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new Error(
-      `Operator messages support at most ${MAX_AGENT_ATTACHMENT_FILES} files`,
-    );
-  }
 
   const seen = new Set<string>();
   const normalized: OperatorAttachment[] = [];
@@ -752,10 +746,7 @@ async function attachGeneratedOperatorArtifacts(
 ) {
   if (!args.attachments?.length) return undefined;
   const normalized: OperatorAttachment[] = [];
-  for (const attachment of args.attachments.slice(
-    0,
-    MAX_AGENT_ATTACHMENT_FILES,
-  )) {
+  for (const attachment of args.attachments) {
     const metadata = await ctx.db.system.get("_storage", attachment.fileId);
     if (!metadata) continue;
     const value = {
@@ -3431,7 +3422,7 @@ export const discardUploads = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     let discarded = 0;
-    for (const upload of args.uploads.slice(0, 10)) {
+    for (const upload of args.uploads) {
       const intent = await ctx.db.get(upload.uploadIntentId);
       if (!intent || intent.operatorUserId !== operator.userId) {
         continue;
@@ -3485,7 +3476,7 @@ export const deleteUnreferencedAttachmentsInternal = internalMutation({
   args: { fileIds: v.array(v.id("_storage")) },
   handler: async (ctx, args) => {
     let deleted = 0;
-    for (const fileId of args.fileIds.slice(0, MAX_AGENT_ATTACHMENT_FILES)) {
+    for (const fileId of args.fileIds) {
       const reference = await ctx.db
         .query("operatorAgentAttachments")
         .withIndex("file", (index) => index.eq("fileId", fileId))

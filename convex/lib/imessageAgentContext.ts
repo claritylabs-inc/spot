@@ -5,8 +5,6 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { buildPrivateAgentHistoryMetadata } from "./agentMessageHistory";
 import {
-  AgentAttachmentLimitError,
-  MAX_AGENT_ATTACHMENT_FILES,
   accountRouterAttachment,
   assertAgentAttachmentLimits,
 } from "./agentAttachmentLimits";
@@ -79,11 +77,6 @@ export async function prepareInboundImessageTurn(
     attachments?: RawImessageAttachment[];
   },
 ): Promise<PreparedInboundImessageTurn> {
-  if ((args.attachments?.length ?? 0) > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new AgentAttachmentLimitError(
-      `iMessage messages may include at most ${MAX_AGENT_ATTACHMENT_FILES} attachments`,
-    );
-  }
   const voiceMemos = (args.attachments ?? []).filter(isImessageAudioAttachment);
   const nonAudioAttachments = (args.attachments ?? []).filter(
     (attachment) => !isImessageAudioAttachment(attachment),

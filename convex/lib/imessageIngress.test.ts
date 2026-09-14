@@ -10,18 +10,6 @@ describe("iMessage ingress helpers", () => {
   test("rejects invalid batches before storing any iMessage attachment", async () => {
     const store = vi.fn(async () => "stored-file" as Id<"_storage">);
     const deleteFile = vi.fn(async () => undefined);
-    const tooMany = Array.from({ length: 11 }, (_, index) => ({
-      name: `file-${index}.txt`,
-      mimeType: "text/plain",
-      data: Buffer.from(String(index)).toString("base64"),
-    }));
-
-    await expect(
-      storeImessageAttachments(
-        { storage: { store, delete: deleteFile } },
-        tooMany,
-      ),
-    ).rejects.toThrow("at most 10 attachments");
     await expect(
       storeImessageAttachments({ storage: { store, delete: deleteFile } }, [
         {

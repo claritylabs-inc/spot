@@ -18,7 +18,6 @@ import {
 import {
   MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
   MAX_AGENT_ATTACHMENT_BYTES,
-  MAX_AGENT_ATTACHMENT_FILES,
   normalizeAgentAttachmentFilename,
 } from "../lib/agentAttachmentLimits";
 import {
@@ -545,11 +544,6 @@ async function fetchAttachment(
 ) {
   const attachments =
     event.attachments ?? (event.attachment ? [event.attachment] : []);
-  if (attachments.length > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new Error(
-      `Slack messages may include at most ${MAX_AGENT_ATTACHMENT_FILES} attachments`,
-    );
-  }
   for (const attachment of attachments) {
     normalizeAgentAttachmentFilename(attachment.filename);
   }

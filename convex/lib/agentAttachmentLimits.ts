@@ -1,4 +1,3 @@
-export const MAX_AGENT_ATTACHMENT_FILES = 10;
 export const MAX_AGENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES = 50 * 1024 * 1024;
 export const MAX_AGENT_ATTACHMENT_TEXT_CHARS = 80_000;
@@ -50,12 +49,6 @@ export function accountRouterAttachment(
 export function assertAgentAttachmentLimits(
   attachments: Array<{ filename: string; size: number }>,
 ): void {
-  if (attachments.length > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new AgentAttachmentLimitError(
-      `Model input supports at most ${MAX_AGENT_ATTACHMENT_FILES} attachments`,
-    );
-  }
-
   let aggregateBytes = 0;
   for (const attachment of attachments) {
     if (
