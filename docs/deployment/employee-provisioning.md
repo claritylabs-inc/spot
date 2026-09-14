@@ -30,6 +30,15 @@ This principal cannot create owners, manage broker/customer organizations, or
 access the operator MCP catalog. Never reuse `OPERATOR_PROVISIONING_SECRET`, a
 Convex deploy key, an employee session, or the router/worker credentials.
 
+On the Railway onboarding service, also set `SPOT_PROVISIONING_API_URL` to the
+single approved canonical `https://<deployment>.convex.site` origin. This is
+host-controlled, non-secret destination configuration, independent of the
+employee manifest. Both central adapter operations compare the requested origin
+with this pin before reading `EMPLOYEE_PROVISIONING_SECRET` or making a request.
+A missing, invalid or mismatched pin blocks; there is no manifest fallback.
+Model and MCP inputs must not override the host environment. This setting belongs
+to the central CLI host, not the Spot Convex deployment or HTTP request body.
+
 The central target contains `enabled`, `role`, `deployment`, `environment`,
 `appUrl`, and `apiUrl`. `apiUrl` is exactly
 `https://<deployment>.convex.site`; the default production origin remains

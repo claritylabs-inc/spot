@@ -11,7 +11,7 @@
       "variables": {
         "deployment": {
           "default": "synthetic-123",
-          "description": "Exact target deployment; never a discovered or arbitrary origin."
+          "description": "Exact target deployment. The central CLI host pins the approved origin independently using SPOT_PROVISIONING_API_URL; manifest or MCP input cannot override it."
         }
       }
     }
