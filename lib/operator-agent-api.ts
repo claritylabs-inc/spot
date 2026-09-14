@@ -21,6 +21,9 @@ type BackendMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  replyToMessageId?: string;
+  dedupeKey?: string;
+  toolCalls?: OperatorAgentToolCall[];
   attachments?: BackendAttachment[];
 };
 
@@ -145,7 +148,16 @@ export type OperatorAgentMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  replyToMessageId?: string;
+  isDirectToolRequest?: boolean;
+  toolCalls?: OperatorAgentToolCall[];
   attachments?: BackendAttachment[];
+};
+
+export type OperatorAgentToolCall = {
+  name: string;
+  input?: string;
+  output?: string;
 };
 
 export type OperatorAgentThreadDetail = {
@@ -282,6 +294,11 @@ export function normalizeOperatorAgentThread(
       status: message.status,
       createdAt: message.createdAt,
       userName: message.userName,
+      replyToMessageId: message.replyToMessageId,
+      isDirectToolRequest:
+        message.role === "user" &&
+        Boolean(message.dedupeKey?.startsWith("operator-tool:")),
+      toolCalls: message.toolCalls,
       attachments: message.attachments,
     })),
     activeRun: value.activeRun !== null,
