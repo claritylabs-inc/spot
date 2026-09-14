@@ -1,3 +1,4 @@
+import { saveMarkdownDocument } from "./markdownDocuments";
 import { requestNarrative } from "./lib/procurementNarrative";
 import { readOutreachLog } from "./lib/outreachLog";
 import {
@@ -705,13 +706,21 @@ test("creates standalone clients and client-visible requests without grants or s
       .withIndex("organization", (q) => q.eq("clientOrgId", client._id))
       .collect();
     expect(requests).toHaveLength(1);
-    expect(await requestNarrative(ctx, requests[0])).toBe("Cyber insurance requested");
+    expect(await requestNarrative(ctx, requests[0])).toBe(
+      "Cyber insurance requested",
+    );
     expect(requests[0]).toMatchObject({
       clientVisible: true,
     });
-    expect(await ctx.db.query("procurementPacketLinks").collect()).toHaveLength(0);
-    const scheduled = await ctx.db.system.query("_scheduled_functions").collect();
-    expect(scheduled).toEqual([expect.objectContaining({ name: "actions/companyResearch:run" })]);
+    expect(await ctx.db.query("procurementPacketLinks").collect()).toHaveLength(
+      0,
+    );
+    const scheduled = await ctx.db.system
+      .query("_scheduled_functions")
+      .collect();
+    expect(scheduled).toEqual([
+      expect.objectContaining({ name: "actions/companyResearch:run" }),
+    ]);
   });
   expect(first.status).toBe("updated");
   expect(second.status).toBe("updated");
@@ -1722,10 +1731,12 @@ test("overlapping fact proposals require attention before any batch changes appl
     expect((await ctx.db.get(f.sourceId))?.status).toBe("needs_attention");
     expect((await ctx.db.get(f.requestId))?.status).toBe("marketing");
     expect(await ctx.db.query("orgWikiSections").collect()).toEqual([]);
-    expect(await ctx.db.query("operatorWorkspaceScanChanges").collect()).toEqual(
-      [],
-    );
-    const findings = await ctx.db.query("operatorWorkspaceScanFindings").collect();
+    expect(
+      await ctx.db.query("operatorWorkspaceScanChanges").collect(),
+    ).toEqual([]);
+    const findings = await ctx.db
+      .query("operatorWorkspaceScanFindings")
+      .collect();
     expect(findings).toHaveLength(1);
     expect(findings[0].status).toBe("needs_attention");
     expect(findings[0].explanation).toContain("overlapping changes");
@@ -2198,4 +2209,39 @@ test("withdrawal of one state cannot authorize removal of an explicitly retained
     (await f.t.run((ctx) => ctx.db.query("brokerProfiles").first()))
       ?.writingStates,
   ).toEqual(["CA"]);
+});
+test("matches coverage held only in canonical intake for a generically named request", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.requestId, {
+      title: "Annual renewal",
+      narrative: undefined,
+    });
+    await saveMarkdownDocument(ctx, {
+      orgId: f.orgId,
+      requestId: f.requestId,
+      kind: "packet",
+      filename: "request-intake.md",
+      expectedRevision: 0,
+      markdown: "---\nvisibility: private\n---\nAuto coverage requested",
+    });
+  });
+  const args = {
+    ...f.args,
+    operationJson: JSON.stringify({
+      ...operation,
+      request: { title: "Annual renewal", coverage: "Auto" },
+    }),
+  };
+  const prepared = await f.t.query(
+    internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+    args,
+  );
+  await f.t.mutation(
+    internal.operatorGoogleWorkspaceReconciliation.applyInternal,
+    { ...args, snapshot: prepared.snapshot },
+  );
+  expect((await f.t.run((ctx) => ctx.db.get(f.requestId)))?.status).toBe(
+    "completed",
+  );
 });
