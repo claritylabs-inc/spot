@@ -123,8 +123,15 @@ export const listActivity = query({
     const orgId = args.entityId
       ? ctx.db.normalizeId("organizations", args.entityId)
       : null;
+    const organization = orgId ? await ctx.db.get(orgId) : null;
     let rows;
-    if (requestId) {
+    if (organization?.type === "broker") {
+      rows = args.status
+        ? base.withIndex("broker_status", q =>
+            q.eq("brokerId", organization._id).eq("status", args.status!),
+          )
+        : base.withIndex("broker", q => q.eq("brokerId", organization._id));
+    } else if (requestId) {
       rows = args.status
         ? base.withIndex("request_status", (q) =>
             q.eq("requestId", requestId).eq("status", args.status!),
