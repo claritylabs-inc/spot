@@ -11,6 +11,7 @@ export type GoogleWorkspaceScanConfig = {
   enabled: boolean;
   intervalMinutes: GoogleWorkspaceScanInterval;
   authorizationRevision: number;
+  settingsUpdatedAt: number;
   authorizingOperatorId: Id<"users"> | null;
   pausedReason: string | null;
   authorizingOperatorLabel?: string | null;
@@ -42,6 +43,7 @@ export type GoogleWorkspaceScanStatus = {
 };
 export type GoogleWorkspaceScanSettingsInput = {
   expectedAuthorizationRevision?: number;
+  expectedSettingsUpdatedAt?: number;
   enabled: boolean;
   intervalMinutes: GoogleWorkspaceScanInterval;
   /** Omission preserves the current sponsor; first enable uses the caller. */

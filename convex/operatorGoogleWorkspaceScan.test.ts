@@ -907,3 +907,185 @@ describe("Workspace settings access-context races", () => {
     },
   );
 });
+
+it("rejects a second operator's stale cadence save without invalidating live task authorization", async () => {
+  const { operator, t } = await fixture();
+  await operator.mutation(settings, { enabled: true, intervalMinutes: 60 });
+  const secondUserId = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      accountKind: "operator",
+      email: "second@example.com",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "second@example.com",
+      role: "operator",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return userId;
+  });
+  const second = t.withIdentity({ subject: `${secondUserId}|session` });
+  const loaded = await second.query(status, {});
+  await operator.mutation(settings, {
+    enabled: true,
+    intervalMinutes: 30,
+    expectedAuthorizationRevision: loaded.config.authorizationRevision,
+    expectedSettingsUpdatedAt: loaded.config.settingsUpdatedAt,
+  });
+  await expect(
+    second.mutation(settings, {
+      enabled: true,
+      intervalMinutes: 15,
+      expectedAuthorizationRevision: loaded.config.authorizationRevision,
+      expectedSettingsUpdatedAt: loaded.config.settingsUpdatedAt,
+    }),
+  ).rejects.toThrow("settings changed");
+  const saved = await operator.query(status, {});
+  expect(saved.config.intervalMinutes).toBe(30);
+  expect(saved.config.authorizationRevision).toBe(
+    loaded.config.authorizationRevision,
+  );
+  expect(saved.config.settingsUpdatedAt).toBeGreaterThan(
+    loaded.config.settingsUpdatedAt,
+  );
+});
+
+it("does not replace an active collector lease when body paging has extended its deadline", async () => {
+  const { t, sourceIds } = await workFixture(2);
+  const sourceId = sourceIds[0];
+  await t.run((ctx) => ctx.db.patch(sourceId, { status: "collecting" }));
+  const claim = await t.mutation(
+    internal.operatorGoogleWorkspaceScan.claimCollectionInternal,
+    { sourceId },
+  );
+  await t.run((ctx) =>
+    ctx.db.patch(sourceId, {
+      nextAttemptAt: 0,
+      leaseUntil: dayjs().add(10, "minute").valueOf(),
+    }),
+  );
+  await t.mutation(dispatch, {});
+  expect(await t.run((ctx) => ctx.db.get(sourceId))).toMatchObject({
+    leaseToken: claim!.leaseToken,
+    status: "collecting",
+  });
+});
+
+it("does not let expired mailbox rows hide the four live mailbox leases", async () => {
+  const { t, runId, config } = await workFixture(0);
+  const candidate = await t.run(async (ctx) => {
+    for (let i = 0; i < 8; i++)
+      await ctx.db.insert("operatorGoogleWorkspaceScanMailboxes", {
+        mailbox: `lease${i}@example.com`,
+        runId,
+        authorizationRevision: config.authorizationRevision,
+        phase: "baseline",
+        status: "running",
+        windowStartAt: config.windowStartAt!,
+        collectedMessages: 0,
+        leaseToken: `lease${i}`,
+        leaseUntil: i < 4 ? 1 : dayjs().add(1, "minute").valueOf(),
+        nextAttemptAt: 0,
+        attempts: 0,
+      });
+    return ctx.db.insert("operatorGoogleWorkspaceScanMailboxes", {
+      mailbox: "candidate@example.com",
+      runId,
+      authorizationRevision: config.authorizationRevision,
+      phase: "baseline",
+      status: "pending",
+      windowStartAt: config.windowStartAt!,
+      collectedMessages: 0,
+      nextAttemptAt: 0,
+      attempts: 0,
+    });
+  });
+  expect(
+    await t.mutation(
+      internal.operatorGoogleWorkspaceScan.claimMailboxInternal,
+      { mailboxId: candidate },
+    ),
+  ).toBeNull();
+});
+
+it.each(["changed", "removed"] as const)(
+  "preserves original evidence when a retried source is %s",
+  async (mode) => {
+    const { t, mailboxId } = await collectionFixture();
+    providerMock.getHistoryCheckpoint.mockResolvedValue("100");
+    await t.action(
+      internal.actions.operatorGoogleWorkspaceScan.collectMailbox,
+      { mailboxId },
+    );
+    providerMock.listMessages.mockResolvedValue({
+      messages: [{ id: "original", threadId: "thread-original" }],
+      nextPageToken: null,
+    });
+    await t.action(
+      internal.actions.operatorGoogleWorkspaceScan.collectMailbox,
+      { mailboxId },
+    );
+    const payload = (body: string) => ({
+      id: "original",
+      threadId: "thread-original",
+      internalDate: "1000",
+      snippet: null,
+      labelIds: ["INBOX"],
+      payload: {
+        partId: "0",
+        mimeType: "text/plain",
+        filename: "",
+        headers: [],
+        body: { attachmentId: null, size: body.length, data: btoa(body) },
+        parts: [],
+      },
+    });
+    providerMock.getMessageFull.mockResolvedValue(payload("original evidence"));
+    const source = (await t.run((ctx) =>
+      ctx.db.query("operatorGoogleWorkspaceScanSources").first(),
+    ))!;
+    await t.action(internal.actions.operatorGoogleWorkspaceScan.collectSource, {
+      sourceId: source._id,
+    });
+    const original = await t.run((ctx) => ctx.db.get(source._id));
+    const claim = await t.mutation(
+      internal.operatorGoogleWorkspaceScan.claimSourceInternal,
+      { sourceId: source._id },
+    );
+    await t.mutation(
+      internal.operatorGoogleWorkspaceScan.finishSourceInternal,
+      {
+        sourceId: source._id,
+        leaseToken: claim!.leaseToken,
+        status: "failed",
+        error: "Synthetic reconciliation failure",
+      },
+    );
+    await t.run((ctx) =>
+      retryGoogleWorkspaceScanSource(ctx, { sourceId: source._id }),
+    );
+    if (mode === "changed")
+      providerMock.getMessageFull.mockResolvedValue(
+        payload("replacement text"),
+      );
+    else
+      providerMock.getMessageFull.mockRejectedValue(
+        new GoogleWorkspaceProviderError("Message removed", 404),
+      );
+    await t.action(internal.actions.operatorGoogleWorkspaceScan.collectSource, {
+      sourceId: source._id,
+    });
+    const after = await t.run((ctx) => ctx.db.get(source._id));
+    expect(after?.evidence).toEqual(original?.evidence);
+    expect(after?.status).toBe(mode === "changed" ? "collecting" : "excluded");
+    const parts = await t.run((ctx) =>
+      ctx.db
+        .query("operatorGoogleWorkspaceScanSourceParts")
+        .withIndex("source_ordinal", (q) => q.eq("sourceId", source._id))
+        .collect(),
+    );
+    expect(parts.map((part) => part.text).join("")).toBe("original evidence");
+  },
+);
