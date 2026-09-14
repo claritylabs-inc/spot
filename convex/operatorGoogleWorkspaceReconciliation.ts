@@ -1,3 +1,4 @@
+import { requestNarrative } from "./lib/procurementNarrative";
 import { readOrgWiki } from "./orgWiki";
 import { indexPolicyUploadFingerprintPage } from "./lib/policyImportDedup";
 import { scanInsuredAddressValidator } from "./lib/scanReconciliationSchema";
@@ -837,20 +838,24 @@ export const getKnownContextInternal = internalQuery({
         wiki: org.type === "client" ? await readOrgWiki(ctx, org._id) : null,
         requests:
           org.type === "client"
-            ? (
-                await ctx.db
-                  .query("procurementRequests")
-                  .withIndex("organization", (q) =>
-                    q.eq("clientOrgId", org._id),
-                  )
-                  .order("desc")
-                  .take(50)
-              ).map((r) => ({
-                title: r.title,
-                narrative: r.narrative,
-                status: r.status,
-                targetEffectiveDate: r.targetEffectiveDate,
-              }))
+            ? await Promise.all(
+                (
+                  await ctx.db
+                    .query("procurementRequests")
+                    .withIndex("organization", (q) =>
+                      q.eq("clientOrgId", org._id),
+                    )
+                    .order("desc")
+                    .take(50)
+                ).map(async (r) => ({
+                  title: r.title,
+                  narrative: await requestNarrative(ctx, r, {
+                    includePrivate: true,
+                  }),
+                  status: r.status,
+                  targetEffectiveDate: r.targetEffectiveDate,
+                })),
+              )
             : [],
       })),
     );
