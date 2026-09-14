@@ -27,8 +27,7 @@ export default function OperatorLoginPage() {
   const router = useRouter();
   const { signIn, signOut } = useAuthActions();
   const { isAuthenticated } = useConvexAuth();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bootstrap = useMutation((api as any).operator.bootstrapViewer);
+  const bootstrap = useMutation(api.operator.bootstrapViewer);
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -56,7 +55,9 @@ export default function OperatorLoginPage() {
     setLoading(true);
     setError("");
     try {
-      await signIn("resend-otp", { email });
+      const normalizedEmail = email.trim().toLowerCase();
+      await signIn("resend-otp", { email: normalizedEmail });
+      setEmail(normalizedEmail);
       setStep("code");
     } catch (err) {
       setError(friendlyError(getUserFacingErrorMessage(err, "")));

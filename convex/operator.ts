@@ -352,7 +352,7 @@ export const bootstrapViewer = mutation({
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
     const user = await ctx.db.get(userId);
     const email = normalizeOperatorEmail(user?.email);
-    if (!user || !email || !isBootstrapOperatorEmail(email)) {
+    if (!user || !email) {
       throwUserFacingError(
         userFacingErrorCodes.operatorRequired,
         "This account is not authorized for Spot operator access.",
@@ -370,33 +370,33 @@ export const bootstrapViewer = mutation({
       );
     }
 
-    const now = dayjs().valueOf();
-    const role = roleForBootstrapEmail(email);
-    const existing = await ctx.db
+    const profiles = await ctx.db
       .query("operatorProfiles")
       .withIndex("user", (q) => q.eq("userId", userId))
-      .first();
-    await ctx.db.patch(userId, {
-      accountKind: "operator",
-      onboardingComplete: true,
-    });
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        email,
-        role,
-        status: "active",
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("operatorProfiles", {
-        userId,
-        email,
-        role,
-        status: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
+      .take(2);
+    if (profiles.length) {
+      const profile = profiles[0];
+      if (
+        profiles.length !== 1 || user.accountKind !== "operator" ||
+        user.isAnonymous || user.serviceAccountKind ||
+        profile.status !== "active" || normalizeOperatorEmail(profile.email) !== email
+      ) {
+        throwUserFacingError(userFacingErrorCodes.operatorRequired);
+      }
+      // Login acknowledges existing access; allowlists cannot change its role
+      // or restore a disabled profile.
+      return { ok: true, role: profile.role };
     }
+    if (user.accountKind === "operator" || user.accountKind === "customer" ||
+        user.isAnonymous || user.serviceAccountKind || !isBootstrapOperatorEmail(email)) {
+      throwUserFacingError(userFacingErrorCodes.operatorRequired);
+    }
+    const now = dayjs().valueOf();
+    const role = roleForBootstrapEmail(email);
+    await ctx.db.patch(userId, { accountKind: "operator", onboardingComplete: true });
+    await ctx.db.insert("operatorProfiles", {
+      userId, email, role, status: "active", createdAt: now, updatedAt: now,
+    });
     await writeOperatorAudit(ctx, {
       operatorUserId: userId,
       type: "operator_bootstrap",

@@ -813,10 +813,28 @@ export default defineSchema({
     .index("operator_status", ["operatorUserId", "status"])
     .index("target", ["targetOrgId"]),
 
+  employeeProvisioningRequests: defineTable({
+    requestId: v.string(),
+    approvalDigest: v.string(),
+    personId: v.string(),
+    email: v.string(),
+    role: v.literal("operator"),
+    deployment: v.string(),
+    appUrl: v.string(),
+    userId: v.id("users"),
+    auditId: v.id("operatorAuditEvents"),
+    createdAt: v.number(),
+  })
+    .index("request", ["requestId"])
+    .index("person", ["personId"])
+    .index("email", ["email"]),
+
   operatorAuditEvents: defineTable({
-    operatorUserId: v.id("users"),
+    operatorUserId: v.optional(v.id("users")),
+    serviceActor: v.optional(v.literal("central_employee_provisioning")),
     type: v.union(
       v.literal("operator_bootstrap"),
+      v.literal("employee_provisioned"),
       v.literal("broker_created"),
       v.literal("broker_status_changed"),
       v.literal("broker_launch_email_sent"),

@@ -47,6 +47,8 @@
 !/docs/deployment/environments.md
 !/docs/deployment/slack.md
 !/docs/deployment/operator-mcp.md
+!/docs/deployment/employee-provisioning.md
+!/docs/deployment/employee-provisioning.openapi.json
 !/docs/procurement/
 /docs/procurement/*
 !/docs/procurement/data-inventory.md

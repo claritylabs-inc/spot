@@ -2,7 +2,11 @@ import { z } from "zod";
 
 import { ORG_WIKI_SECTION_KEYS } from "./orgWiki";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
-import { USPS_STATE_CODES } from "./brokerProfileValidation";
+import {
+  normalizeBrokerLineOfBusinessCodes,
+  normalizeBrokerWritingStates,
+  USPS_STATE_CODES,
+} from "./brokerProfileValidation";
 import { AcordLobCodeSchema, lobLabel } from "./linesOfBusiness";
 import {
   GENERATE_COI_DESCRIPTION,
@@ -1856,6 +1860,30 @@ export function parseOperatorAgentToolInput(
   name: string,
   input: unknown,
 ): Record<string, unknown> {
+  if (
+    (name === "create_broker_network_profile" ||
+      name === "update_broker_network_profile") &&
+    input &&
+    typeof input === "object"
+  ) {
+    const brokerInput = input as Record<string, unknown>;
+    if (
+      Array.isArray(brokerInput.writingStates) &&
+      brokerInput.writingStates.every(
+        (value): value is string => typeof value === "string",
+      )
+    ) {
+      normalizeBrokerWritingStates(brokerInput.writingStates);
+    }
+    if (
+      Array.isArray(brokerInput.lineOfBusinessCodes) &&
+      brokerInput.lineOfBusinessCodes.every(
+        (value): value is string => typeof value === "string",
+      )
+    ) {
+      normalizeBrokerLineOfBusinessCodes(brokerInput.lineOfBusinessCodes);
+    }
+  }
   const parsed = getOperatorAgentToolSpec(name).inputSchema.parse(
     input,
   ) as Record<string, unknown>;

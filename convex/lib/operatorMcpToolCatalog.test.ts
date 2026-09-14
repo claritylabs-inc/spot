@@ -34,7 +34,7 @@ describe("operator MCP tool catalog", () => {
         brokerOrgId: "broker-1",
         lineOfBusinessCodes: ["CGL", "PROP", "CAUT"],
       }),
-    ).toThrow();
+    ).toThrow("Invalid ACORD LOBCd CAUT");
     expect(
       parseOperatorAgentToolInput("update_broker_network_profile", {
         brokerOrgId: "broker-1",

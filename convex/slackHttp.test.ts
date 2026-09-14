@@ -5,6 +5,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { internal } from "./_generated/api";
 import { signSlackRequest } from "./lib/slackSecurity";
+import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
+import { getOperatorAgentToolSpec } from "./lib/operatorAgentToolRegistry";
+
+const { generate } = vi.hoisted(() => ({ generate: vi.fn() }));
+vi.mock("./lib/models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/models")>()),
+  generateAgentTextForOperatorTask: generate,
+}));
 
 const modules = import.meta.glob("./**/*.ts");
 const SIGNING_SECRET = "slack-http-test-secret";
@@ -18,15 +26,123 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.useRealTimers();
+  generate.mockReset();
   delete process.env.SLACK_ENABLED;
   delete process.env.SLACK_SIGNING_SECRET;
 });
+
+async function seedOperatorConfirmation(
+  t: ReturnType<typeof convexTest>,
+  status: "pending" | "expired" | "stale" = "pending",
+) {
+  return await t.run(async (ctx) => {
+    const now = dayjs().valueOf();
+    const operatorUserId = await ctx.db.insert("users", {
+      accountKind: "operator",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId: operatorUserId,
+      email: "operator@example.com",
+      role: "operator",
+      status: "active",
+      slackTeamId: "T-SPOT",
+      slackUserId: "U-OPERATOR",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const threadId = await ctx.db.insert("operatorAgentThreads", {
+      ownerUserId: operatorUserId,
+      visibility: "shared",
+      channel: "slack",
+      conversationKey: "T-SPOT:C-OPERATOR:1800000000.100",
+      title: "Create client",
+      lastMessageAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const messageId = await ctx.db.insert("operatorAgentMessages", {
+      threadId,
+      ownerUserId: operatorUserId,
+      channel: "slack",
+      role: "agent",
+      content: "Create client",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const runId = await ctx.db.insert("operatorAgentRuns", {
+      threadId,
+      operatorUserId,
+      userMessageId: messageId,
+      agentMessageId: messageId,
+      objective: "Create client",
+      executionKind: "direct_tool",
+      status: status === "pending" ? "waiting_confirmation" : "completed",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
+      threadId,
+      operatorUserId,
+      promptMessageId: messageId,
+      status,
+      expiresAt: dayjs().subtract(30, "day").valueOf(),
+      createdAt: now,
+      updatedAt: now,
+      payload: {
+        kind: "operator_tool_action",
+        runId,
+        toolName: "create_client_organization",
+        toolVersion: 1,
+        input: '{"name":"Test client"}',
+        inputHash: "test-hash",
+        idempotencyKey: "test-create-client",
+        capability: "operator.organizations.write",
+        effect: "reversible_write",
+        requiredRole: "operator",
+        summary: "Create test client",
+      },
+    });
+    await ctx.db.insert("agentActionAuditEvents", {
+      operatorThreadId: threadId,
+      operatorMessageId: messageId,
+      runId,
+      operatorConfirmationId: confirmationId,
+      actorKind: "operator",
+      operatorUserId,
+      authorizationKind: "operator",
+      action: "create_client_organization",
+      toolVersion: 1,
+      capability: "operator.organizations.write",
+      effect: "reversible_write",
+      idempotencyKey: "test-create-client",
+      inputHash: "test-hash",
+      targetKind: "platform",
+      targetId: "clients",
+      channel: "slack",
+      input: '{"name":"Test client"}',
+      status: "awaiting_confirmation",
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (status === "pending") {
+      await ctx.db.patch(runId, {
+        checkpoint: {
+          iteration: 1,
+          executionCount: 1,
+          pendingConfirmationId: confirmationId,
+        },
+      });
+    }
+    return { confirmationId, runId, operatorUserId, threadId, messageId };
+  });
+}
 
 test.each([
   { decision: "approve", status: "expired" },
   { decision: "reject", status: "expired" },
   { decision: "reject", status: "pending" },
   { decision: "approve", status: "pending" },
+  { decision: "approve", status: "stale" },
 ] as const)(
   "operator $decision click on a $status confirmation updates Slack without executing the write",
   async ({ decision, status }) => {
@@ -40,83 +156,7 @@ test.each([
     );
     vi.stubGlobal("fetch", workerFetch);
     const t = convexTest(schema, modules);
-    const ids = await t.run(async (ctx) => {
-      const now = dayjs().valueOf();
-      const operatorUserId = await ctx.db.insert("users", {
-        accountKind: "operator",
-      });
-      await ctx.db.insert("operatorProfiles", {
-        userId: operatorUserId,
-        email: "operator@example.com",
-        role: "operator",
-        status: "active",
-        slackTeamId: "T-SPOT",
-        slackUserId: "U-OPERATOR",
-        createdAt: now,
-        updatedAt: now,
-      });
-      const threadId = await ctx.db.insert("operatorAgentThreads", {
-        ownerUserId: operatorUserId,
-        visibility: "shared",
-        channel: "slack",
-        conversationKey: "T-SPOT:C-OPERATOR:1800000000.100",
-        title: "Create client",
-        lastMessageAt: now,
-        createdAt: now,
-        updatedAt: now,
-      });
-      const messageId = await ctx.db.insert("operatorAgentMessages", {
-        threadId,
-        ownerUserId: operatorUserId,
-        channel: "slack",
-        role: "agent",
-        content: "Create client",
-        createdAt: now,
-        updatedAt: now,
-      });
-      const runId = await ctx.db.insert("operatorAgentRuns", {
-        threadId,
-        operatorUserId,
-        userMessageId: messageId,
-        agentMessageId: messageId,
-        objective: "Create client",
-        status: status === "pending" ? "waiting_confirmation" : "completed",
-        createdAt: now,
-        updatedAt: now,
-      });
-      const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
-        threadId,
-        operatorUserId,
-        promptMessageId: messageId,
-        status,
-        expiresAt: dayjs().subtract(30, "day").valueOf(),
-        createdAt: now,
-        updatedAt: now,
-        payload: {
-          kind: "operator_tool_action",
-          runId,
-          toolName: "create_client_organization",
-          toolVersion: 1,
-          input: '{"name":"Test client"}',
-          inputHash: "test-hash",
-          idempotencyKey: "test-create-client",
-          capability: "operator.organizations.write",
-          effect: "reversible_write",
-          requiredRole: "operator",
-          summary: "Create test client",
-        },
-      });
-      if (status === "pending") {
-        await ctx.db.patch(runId, {
-          checkpoint: {
-            iteration: 1,
-            executionCount: 1,
-            pendingConfirmationId: confirmationId,
-          },
-        });
-      }
-      return { confirmationId, runId };
-    });
+    const ids = await seedOperatorConfirmation(t, status);
     const payload = {
       type: "block_actions",
       team: { id: "T-SPOT" },
@@ -143,9 +183,7 @@ test.each([
 
     expect((await signedInteraction(t, payload)).status).toBe(200);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect(workerFetch).toHaveBeenCalledTimes(
-      status === "pending" && decision === "reject" ? 2 : 1,
-    );
+    expect(workerFetch).toHaveBeenCalledTimes(status === "pending" ? 2 : 1);
     const [url, options] = workerFetch.mock.calls[0];
     expect(url).toBe("https://slack-worker.example.com/message/update");
     const update = JSON.parse(String(options?.body));
@@ -160,9 +198,23 @@ test.each([
       status === "pending"
         ? decision === "reject"
           ? "Cancelled"
-          : "Could not confirm"
-        : "expired",
+          : "Action failed"
+        : status === "expired"
+          ? "expired"
+          : "no longer active",
     );
+    expect(update.mrkdwnText).toBe(update.blocks[0].text.text);
+    if (status === "stale") {
+      expect(update.mrkdwnText).not.toMatch(
+        /expired|validation|fresh confirmation|Action failed/,
+      );
+    }
+    if (status === "pending" && decision === "approve") {
+      expect(update.mrkdwnText).toContain(
+        "Operator tool changed before confirmed execution",
+      );
+      expect(update.mrkdwnText).not.toMatch(/expired|fresh confirmation/);
+    }
     if (status === "expired")
       expect(JSON.stringify(update.blocks)).toContain("fresh confirmation");
     await t.run(async (ctx) => {
@@ -170,18 +222,285 @@ test.each([
         status === "pending"
           ? decision === "reject"
             ? "stale"
-            : "pending"
-          : "expired",
+            : "completed"
+          : status,
       );
       expect((await ctx.db.get(ids.runId))?.status).toBe(
-        status === "pending" && decision === "approve"
-          ? "waiting_confirmation"
-          : "completed",
+        status === "pending" && decision === "approve" ? "failed" : "completed",
       );
       expect(await ctx.db.query("organizations").collect()).toEqual([]);
     });
   },
 );
+
+test("a legacy invalid write preserves its exact failure while the goal resumes for fresh confirmation", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("OPERATOR_SLACK_ENABLED", "true");
+  vi.stubEnv("SLACK_CLARITY_TEAM_ID", "T-SPOT");
+  vi.stubEnv("SLACK_WORKER_URL", "https://slack-worker.example.com");
+  vi.stubEnv("SLACK_WORKER_SECRET", "worker-test-secret");
+  const workerFetch = vi.fn<typeof fetch>(
+    async () => new Response(JSON.stringify({ ok: true })),
+  );
+  vi.stubGlobal("fetch", workerFetch);
+  const t = convexTest(schema, modules);
+  const ids = await seedOperatorConfirmation(t);
+  const legacy = await t.run(async (ctx) => {
+    const now = dayjs().valueOf();
+    const brokerOrgId = await ctx.db.insert("organizations", {
+      name: "Test broker",
+      type: "broker",
+    });
+    await ctx.db.insert("brokerProfiles", {
+      brokerOrgId,
+      networkStatus: "prospect",
+      writingStates: ["CA"],
+      lineOfBusinessCodes: ["CGL"],
+      createdByUserId: ids.operatorUserId,
+      updatedByUserId: ids.operatorUserId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const toolName = "update_broker_network_profile";
+    const input = {
+      brokerOrgId,
+      lineOfBusinessCodes: ["CAUT"],
+    };
+    const toolVersion = 1;
+    const inputHash = await actionConfirmationFingerprint({
+      toolName,
+      toolVersion,
+      input,
+    });
+    const idempotencyKey = "legacy-invalid-broker-profile";
+    const confirmation = (await ctx.db.get(ids.confirmationId))!;
+    await ctx.db.patch(ids.confirmationId, {
+      payload: {
+        ...confirmation.payload,
+        toolName,
+        toolVersion,
+        input: JSON.stringify(input),
+        inputHash,
+        idempotencyKey,
+        capability: "operator.organizations.write",
+        effect: "reversible_write",
+        requiredRole: "operator",
+        summary: "Update Test broker lines of business",
+      },
+    });
+    await ctx.db.patch(ids.runId, {
+      executionKind: "goal",
+      objective: "Correct and update the Test broker profile",
+    });
+    const audit = await ctx.db
+      .query("agentActionAuditEvents")
+      .withIndex("run_created", (q) => q.eq("runId", ids.runId))
+      .unique();
+    if (!audit) throw new Error("Missing linked confirmation audit");
+    await ctx.db.patch(audit._id, {
+      action: toolName,
+      toolVersion,
+      capability: "operator.organizations.write",
+      effect: "reversible_write",
+      idempotencyKey,
+      inputHash,
+      targetKind: "organization",
+      targetId: brokerOrgId,
+      input: JSON.stringify(input),
+      output: JSON.stringify({
+        confirmationId: ids.confirmationId,
+        summary: "Update Test broker lines of business",
+      }),
+      status: "awaiting_confirmation",
+      error: undefined,
+      updatedAt: now,
+    });
+    return { brokerOrgId, inputHash, auditId: audit._id };
+  });
+  const correctedInput = {
+    brokerOrgId: legacy.brokerOrgId,
+    lineOfBusinessCodes: ["CGL", "PROP", "AUTOB"],
+  };
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    expect(options.system).toContain("Invalid ACORD LOBCd CAUT");
+    const result =
+      await options.tools.update_broker_network_profile.execute(correctedInput);
+    expect(result.status).toBe("confirmation_required");
+    return {
+      text: "Waiting for the corrected broker-profile confirmation.",
+      steps: [
+        {
+          toolCalls: [
+            {
+              toolName: "update_broker_network_profile",
+              input: correctedInput,
+            },
+          ],
+          toolResults: [
+            {
+              toolName: "update_broker_network_profile",
+              output: result,
+            },
+          ],
+        },
+      ],
+    };
+  });
+  generate.mockImplementationOnce(async () => ({
+    text: "The corrected broker profile update completed once.",
+    steps: [],
+  }));
+  const payload = {
+    type: "block_actions",
+    team: { id: "T-SPOT" },
+    user: { id: "U-OPERATOR", team_id: "T-SPOT" },
+    channel: { id: "C-OPERATOR" },
+    message: { ts: "1800000000.200", thread_ts: "1800000000.100" },
+    actions: [
+      {
+        action_id: "spot_operator_confirmation_approve",
+        value: ids.confirmationId,
+      },
+    ],
+  };
+  let exactFailure: string | undefined;
+  for (let click = 0; click < 2; click++) {
+    workerFetch.mockClear();
+    expect((await signedInteraction(t, payload)).status).toBe(200);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const updates = workerFetch.mock.calls.filter(([url]) =>
+      String(url).endsWith("/message/update"),
+    );
+    expect(updates).toHaveLength(1);
+    const update = JSON.parse(String(updates[0][1]?.body));
+    const cardText = update.blocks[0].text.text;
+    expect(cardText).toContain("Invalid ACORD LOBCd CAUT");
+    expect(update.mrkdwnText).toBe(cardText);
+    expect(cardText).not.toMatch(/expired|no longer active/);
+    expect(
+      update.blocks.some((block: { type: string }) => block.type === "actions"),
+    ).toBe(false);
+    if (click === 0) {
+      await t.run(async (ctx) => {
+        expect((await ctx.db.get(ids.runId))?.status).toBe(
+          "waiting_confirmation",
+        );
+        const audit = await ctx.db.get(legacy.auditId);
+        expect(audit).toMatchObject({
+          status: "failed",
+          operatorConfirmationId: ids.confirmationId,
+          runId: ids.runId,
+        });
+        exactFailure = audit?.error;
+      });
+    } else {
+      expect(cardText).toContain(exactFailure);
+    }
+  }
+  const correctedConfirmation = await t.run(async (ctx) => {
+    const confirmations = await ctx.db
+      .query("operatorAgentConfirmations")
+      .withIndex("thread", (q) => q.eq("threadId", ids.threadId))
+      .collect();
+    const corrected = confirmations.find(
+      (confirmation) => confirmation.status === "pending",
+    );
+    expect(await ctx.db.get(ids.confirmationId)).toMatchObject({
+      status: "completed",
+    });
+    expect(corrected?._id).not.toBe(ids.confirmationId);
+    expect(corrected?.payload.toolVersion).toBe(
+      getOperatorAgentToolSpec("update_broker_network_profile").version,
+    );
+    expect(corrected?.payload.inputHash).not.toBe(legacy.inputHash);
+    const profile = await ctx.db
+      .query("brokerProfiles")
+      .withIndex("broker", (q) => q.eq("brokerOrgId", legacy.brokerOrgId))
+      .unique();
+    expect(profile?.lineOfBusinessCodes).toEqual(["CGL"]);
+    return corrected;
+  });
+  if (!correctedConfirmation) throw new Error("Missing fresh confirmation");
+
+  expect(
+    await t.mutation(internal.operatorAgent.confirmActionInternal, {
+      operatorUserId: ids.operatorUserId,
+      threadId: ids.threadId,
+      confirmationId: correctedConfirmation._id,
+      decision: "approve",
+      channel: "slack",
+    }),
+  ).toMatchObject({ status: "queued", result: { status: "succeeded" } });
+  expect(
+    await t.mutation(internal.operatorAgent.confirmActionInternal, {
+      operatorUserId: ids.operatorUserId,
+      threadId: ids.threadId,
+      confirmationId: correctedConfirmation._id,
+      decision: "approve",
+      channel: "slack",
+    }),
+  ).toMatchObject({ status: "needs_refresh" });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  await t.run(async (ctx) => {
+    const profile = await ctx.db
+      .query("brokerProfiles")
+      .withIndex("broker", (q) => q.eq("brokerOrgId", legacy.brokerOrgId))
+      .unique();
+    expect(profile?.lineOfBusinessCodes).toEqual(["AUTOB", "CGL", "PROP"]);
+    const audits = await ctx.db
+      .query("agentActionAuditEvents")
+      .withIndex("run_created", (q) => q.eq("runId", ids.runId))
+      .collect();
+    expect(audits).toHaveLength(2);
+    expect(audits.map(({ status }) => status)).toEqual(["failed", "succeeded"]);
+    expect(audits[0]?.error).toBe(exactFailure);
+    expect(audits[1]?.operatorConfirmationId).toBe(correctedConfirmation._id);
+    expect((await ctx.db.get(ids.runId))?.status).toBe("completed");
+  });
+  expect(
+    await t.query(internal.operatorSlack.getConfirmationResolution, {
+      operatorUserId: ids.operatorUserId,
+      threadId: ids.threadId,
+      confirmationId: ids.confirmationId,
+    }),
+  ).toEqual({ decision: "failed", error: exactFailure });
+});
+
+test("confirmation outcomes distinguish recorded decisions from unknown state and later task failures", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await seedOperatorConfirmation(t);
+  const read = () =>
+    t.query(internal.operatorSlack.getConfirmationResolution, {
+      operatorUserId: ids.operatorUserId,
+      threadId: ids.threadId,
+      confirmationId: ids.confirmationId,
+    });
+  expect(await read()).toBeNull(); // Legacy expiresAt never expires a live approval.
+  await t.run((ctx) => ctx.db.patch(ids.confirmationId, { status: "stale" }));
+  expect(await read()).toEqual({ decision: "inactive" });
+  await t.run((ctx) =>
+    ctx.db.patch(ids.confirmationId, { invalidationReason: "superseded" }),
+  );
+  expect(await read()).toEqual({ decision: "superseded" });
+  await t.run((ctx) =>
+    ctx.db.patch(ids.confirmationId, {
+      invalidationReason: "rejected_by_operator",
+    }),
+  );
+  expect(await read()).toEqual({ decision: "reject" });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(ids.confirmationId, {
+      status: "completed",
+      invalidationReason: undefined,
+    });
+    await ctx.db.patch(ids.runId, {
+      status: "failed",
+      lastError: "A later step failed",
+    });
+  });
+  expect(await read()).toEqual({ decision: "approve" });
+});
 
 async function seedConnection(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {
@@ -640,11 +959,23 @@ describe("Slack Events API webhook", () => {
       rating: "negative",
       comment: "The coverage limit was wrong.",
     });
-    await t.run(ctx => ctx.db.patch(created.presentation!._id, { actionTokenRevokedAt: dayjs().valueOf() }));
-    await expect(t.mutation(internal.slackPresentation.claimInteraction, {
-      interactionKey: "revoked-control-click", actionToken: created.actionToken,
-      teamId: "T-CUSTOMER", actorTeamId: "T-CUSTOMER", slackUserId: "U-CUSTOMER",
-      channelId: "C-PRIMARY", messageTs: "1800.1", actionId: "spot_response_feedback", value: "negative",
-    })).rejects.toThrow("no longer available");
+    await t.run((ctx) =>
+      ctx.db.patch(created.presentation!._id, {
+        actionTokenRevokedAt: dayjs().valueOf(),
+      }),
+    );
+    await expect(
+      t.mutation(internal.slackPresentation.claimInteraction, {
+        interactionKey: "revoked-control-click",
+        actionToken: created.actionToken,
+        teamId: "T-CUSTOMER",
+        actorTeamId: "T-CUSTOMER",
+        slackUserId: "U-CUSTOMER",
+        channelId: "C-PRIMARY",
+        messageTs: "1800.1",
+        actionId: "spot_response_feedback",
+        value: "negative",
+      }),
+    ).rejects.toThrow("no longer available");
   });
 });
