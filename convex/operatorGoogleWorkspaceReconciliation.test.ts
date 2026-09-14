@@ -396,13 +396,37 @@ test("reviewing a candidate organization loads only its request options without 
     return { orgId, requestId, brokerId };
   });
   const operator = f.t.withIdentity({ subject: `${f.userId}|session` });
-  const args = { activityId: findingId, kind: "request" as const, paginationOpts: { numItems: 50, cursor: null } };
-  expect((await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, args)).page).toEqual([]);
-  const selected = await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, selectedOrgId: other.orgId });
-  expect(selected.page.map(request => request.id)).toEqual([other.requestId]);
-  const orgs = await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, kind: "organization" });
-  expect(orgs.page.find(org => org.id === other.orgId)?.label).toContain("other@cove.test");
-  await expect(operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, selectedOrgId: other.brokerId })).rejects.toThrow("correct type");
+  const args = {
+    activityId: findingId,
+    kind: "request" as const,
+    paginationOpts: { numItems: 50, cursor: null },
+  };
+  expect(
+    (
+      await operator.query(
+        api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+        args,
+      )
+    ).page,
+  ).toEqual([]);
+  const selected = await operator.query(
+    api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+    { ...args, selectedOrgId: other.orgId },
+  );
+  expect(selected.page.map((request) => request.id)).toEqual([other.requestId]);
+  const orgs = await operator.query(
+    api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+    { ...args, kind: "organization" },
+  );
+  expect(orgs.page.find((org) => org.id === other.orgId)?.label).toContain(
+    "other@cove.test",
+  );
+  await expect(
+    operator.query(
+      api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+      { ...args, selectedOrgId: other.brokerId },
+    ),
+  ).rejects.toThrow("correct type");
   expect(
     (await f.t.run((ctx) => ctx.db.get(findingId)))?.selectedOrgId,
   ).toBeUndefined();
@@ -1063,9 +1087,19 @@ test("broker decline and later quote update one private market record without fa
   expect(rows[0].notes).toContain("declined");
   expect(rows[0].notes).toContain("provided a quote");
   expect(rows[0].packetSnapshot).toBeUndefined();
-  const brokerActivity=await f.t.withIdentity({subject:`${f.userId}|session`}).query(api.operatorGoogleWorkspaceScanActivity.listActivity,{entityId:rows[0].brokerOrgId,status:"updated",paginationOpts:{numItems:20,cursor:null}});
+  const brokerActivity = await f.t
+    .withIdentity({ subject: `${f.userId}|session` })
+    .query(api.operatorGoogleWorkspaceScanActivity.listActivity, {
+      entityId: rows[0].brokerOrgId,
+      status: "updated",
+      paginationOpts: { numItems: 20, cursor: null },
+    });
   expect(brokerActivity.page).toHaveLength(2);
-  expect(brokerActivity.page.every(item=>item.records.some(link=>link.href.includes(f.requestId)))).toBe(true);
+  expect(
+    brokerActivity.page.every((item) =>
+      item.records.some((link) => link.href.includes(f.requestId)),
+    ),
+  ).toBe(true);
 });
 test("same contact and address under a legal-name variant requires attention instead of a duplicate client", async () => {
   const f = await fixture();
@@ -1923,4 +1957,28 @@ test("response-loss cleanup never deletes an original retained by committed stag
   expect(
     await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.fileId))),
   ).toBe(true);
+});
+
+test("a historical identity alias does not replace current contact association", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    for (const identityKey of ["client:cove:client@cove.test"])
+      await ctx.db.insert("operatorWorkspaceScanIdentities", {
+        identityKey,
+        orgId: f.orgId,
+        createdAt: 1,
+      });
+    await ctx.db.patch(f.orgId, {
+      primaryContactEmail: "new-contact@cove.test",
+    });
+  });
+  await expect(
+    f.t.query(
+      internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+      f.args,
+    ),
+  ).rejects.toThrow();
+  expect((await f.t.run((ctx) => ctx.db.get(f.requestId)))?.status).toBe(
+    "marketing",
+  );
 });
