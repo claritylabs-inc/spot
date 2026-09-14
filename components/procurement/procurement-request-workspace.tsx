@@ -1,5 +1,7 @@
 "use client";
 
+import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
+
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 
 import {
@@ -368,7 +370,7 @@ type ProposalView = {
       | "has_gaps"
       | "insufficient_evidence";
     stale: boolean;
-    findings: ProposalReviewFinding[];
+    findings: StoredProposalFinding[];
   }>;
   extraction: {
     latest: {
@@ -379,16 +381,6 @@ type ProposalView = {
       lastError: string | null;
     } | null;
   };
-};
-
-type ProposalReviewFinding = {
-  sectionKey: string;
-  conclusion: "meets" | "has_gap" | "insufficient_evidence";
-  summary: string;
-  evidence: Array<{
-    proposalDocumentId: string;
-    pageStart: number | null;
-  }>;
 };
 
 const FINDING_TONE = {
@@ -1585,7 +1577,7 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "overview" | "packet" | "proposals" | "files" | "email";
+  view: "notes" | "shared" | "proposals" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -1659,12 +1651,13 @@ export function ProcurementRequestWorkspace({
     closePdf();
     onRightPanel(
       <PacketEditor
-        key={requestId}
+        key={`${requestId}:${view}`}
         requestId={requestId}
+        filename={view === "shared" ? "public.md" : "private.md"}
         onClose={closeRightPanel}
       />,
     );
-  }, [closePdf, closeRightPanel, onRightPanel, requestId]);
+  }, [closePdf, closeRightPanel, onRightPanel, requestId, view]);
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach) => {
@@ -1817,16 +1810,7 @@ export function ProcurementRequestWorkspace({
     }
 
     const actions =
-      view === "overview" ? (
-        <PillButton
-          type="button"
-          variant="secondary"
-          onClick={openRequestEditor}
-        >
-          <Pencil className="size-3.5" />
-          Edit request
-        </PillButton>
-      ) : view === "packet" ? (
+      view === "notes" || view === "shared" ? (
         <>
           <PillButton
             type="button"
@@ -1843,7 +1827,7 @@ export function ProcurementRequestWorkspace({
           </PillButton>
           <PillButton type="button" onClick={openPacketEditor}>
             <Pencil className="size-3.5" />
-            Edit packet
+            {view === "shared" ? "Edit shared" : "Edit notes"}
           </PillButton>
         </>
       ) : view === "proposals" ? (
@@ -1883,7 +1867,19 @@ export function ProcurementRequestWorkspace({
         </>
       ) : null;
 
-    onActions?.(actions);
+    onActions?.(
+      <>
+        <PillButton
+          type="button"
+          variant="secondary"
+          onClick={openRequestEditor}
+        >
+          <Pencil className="size-3.5" />
+          Edit request
+        </PillButton>
+        {actions}
+      </>,
+    );
     return () => onActions?.(null);
   }, [
     onActions,
@@ -1976,20 +1972,44 @@ export function ProcurementRequestWorkspace({
 
   return (
     <div className="space-y-5">
+      <div className="space-y-4">
+        <OperationalLabelValueList>
+          <OperationalLabelValueRow
+            label="Current stage"
+            value={<RequestStatusTag status={details.request.status} />}
+          />
+          <RequestCompletionOutcome
+            outcome={details.request.completionOutcome}
+          />
+          <OperationalLabelValueRow
+            label="Proposals"
+            value={`${details.request.brokerCount} broker${details.request.brokerCount === 1 ? "" : "s"} · ${activeProposals.length} proposal${activeProposals.length === 1 ? "" : "s"}`}
+          />
+          <OperationalLabelValueRow
+            label="Target effective date"
+            value={formatDisplayDate(
+              details.request.targetEffectiveDate,
+              "Not set",
+            )}
+          />
+          <OperationalLabelValueRow label="Next" value={nextActions[0]} />
+        </OperationalLabelValueList>
+      </div>
+
       <div className="overflow-x-auto">
         <Tabs
           value={view}
           onValueChange={(nextView) =>
             router.push(
-              nextView === "overview"
+              nextView === "notes"
                 ? requestPath
                 : `${requestPath}?view=${nextView}`,
             )
           }
         >
           <TabsList variant="pill" aria-label="Procurement request view">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="packet">Packet</TabsTrigger>
+            <TabsTrigger value="notes">Notes</TabsTrigger>
+            <TabsTrigger value="shared">Shared</TabsTrigger>
             <TabsTrigger value="proposals">
               Brokers
               <span className="text-muted-foreground/60">
@@ -2012,34 +2032,12 @@ export function ProcurementRequestWorkspace({
         </Tabs>
       </div>
 
-      {view === "overview" ? (
-        <div className="space-y-4">
-          <OperationalLabelValueList>
-            <OperationalLabelValueRow
-              label="Current stage"
-              value={<RequestStatusTag status={details.request.status} />}
-            />
-            <RequestCompletionOutcome
-              outcome={details.request.completionOutcome}
-            />
-            <OperationalLabelValueRow
-              label="Proposals"
-              value={`${details.request.brokerCount} brokers · ${activeProposals.length} proposals`}
-            />
-            <OperationalLabelValueRow
-              label="Target effective date"
-              value={formatDisplayDate(
-                details.request.targetEffectiveDate,
-                "Not set",
-              )}
-            />
-            <OperationalLabelValueRow label="Next" value={nextActions[0]} />
-          </OperationalLabelValueList>
-        </div>
-      ) : null}
-
-      {view === "packet" ? (
-        <PacketWorkspace key={requestId} requestId={requestId} />
+      {view === "notes" || view === "shared" ? (
+        <PacketWorkspace
+          key={requestId}
+          requestId={requestId}
+          filename={view === "shared" ? "public.md" : "private.md"}
+        />
       ) : null}
 
       {view === "proposals" ? (
