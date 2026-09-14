@@ -24,17 +24,17 @@ const BASE_STYLES =
   "[&_ul]:my-3 [&_ul]:pl-5 [&_ul]:list-disc " +
   "[&_ol]:my-3 [&_ol]:pl-5 [&_ol]:list-decimal " +
   "[&_li]:my-0.5 " +
-  "[&_h1]:mt-3 [&_h1]:mb-1 " +
-  "[&_h2]:mt-3 [&_h2]:mb-1 " +
-  "[&_h3]:mt-2.5 [&_h3]:mb-0.5 " +
-  "[&_h4]:mt-2 [&_h4]:mb-0.5 " +
+  "[&_h1]:mt-8 [&_h1]:mb-4 [&_h1:first-child]:mt-0 " +
+  "[&_h2]:mt-6 [&_h2]:mb-3 [&_h2:first-child]:mt-0 " +
+  "[&_h3]:mt-4 [&_h3]:mb-2 [&_h3:first-child]:mt-0 " +
+  "[&_h4]:mt-4 [&_h4]:mb-2 [&_h4:first-child]:mt-0 " +
   "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border-emphasized [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground " +
   "[&_hr]:my-3 [&_hr]:border-input " +
   "[&_code]:bg-foreground/[0.04] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded " +
   "[&_pre]:my-3 [&_pre]:overflow-x-auto " +
-  "[&_table]:w-full [&_table]:border-collapse " +
-  "[&_th]:text-left [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:border-b [&_th]:border-border-emphasized [&_th]:bg-foreground/[0.03] [&_th]:whitespace-nowrap [&_th]:text-muted-foreground/60 " +
-  "[&_td]:px-2.5 [&_td]:py-1.5 [&_td]:border-b [&_td]:border-border [&_td]:whitespace-nowrap [&_tr:last-child_td]:border-b-0 " +
+  "[&_table]:w-full [&_table]:border-collapse [&_table]:wrap-normal " +
+  "[&_th]:text-left [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:border-b [&_th]:border-border-emphasized [&_th]:bg-foreground/[0.03] [&_th]:text-muted-foreground " +
+  "[&_td]:px-2.5 [&_td]:py-1.5 [&_td]:border-b [&_td]:border-border [&_td]:align-top [&_tr:last-child_td]:border-b-0 " +
   "[&_thead]:align-bottom";
 
 /** Compact variant for quoted/reply text */
@@ -134,8 +134,12 @@ const FULL_CONFIDENCE_COMPONENTS = makeConfidenceComponents(true);
 /** Default table wrapper — horizontal scroll + rounded border */
 const defaultGfmComponents: Components = {
   table: ({ children }) => (
-    <div className="table-scrollbar my-3 overflow-x-auto rounded-md border border-border">
-      <table className={`w-full border-collapse ${typeStyle("caption.default")}`}>{children}</table>
+    <div className="table-scrollbar my-3 max-w-full overflow-x-auto rounded-md border border-border">
+      <table
+        className={`w-full border-collapse ${typeStyle("caption.default")}`}
+      >
+        {children}
+      </table>
     </div>
   ),
 };

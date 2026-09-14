@@ -111,7 +111,10 @@ directly at a callsite.
 - Preserve semantic elements, accessible names, and a logical heading outline.
   Visual roles do not replace HTML semantics.
 - Use `prose.default` or `prose.compact` for user- or agent-authored rich text.
-  Do not force casing onto authored content.
+  Do not force casing onto authored content. Default prose distinguishes h1, h2, and h3
+  at 24, 20, and 18 px, with deeper headings at body size; compact quoted
+  text retains body-sized headings. `ProseMarkdown` owns section spacing and
+  wrapping table cells, with horizontal scrolling for wide comparisons.
 - Mapbox, editable mirrored text, and scaled text marks use the named adapters
   exported by the owner because their renderers cannot consume ordinary role
   classes. Do not recreate those inline objects.

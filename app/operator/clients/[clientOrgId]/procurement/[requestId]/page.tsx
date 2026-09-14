@@ -45,17 +45,18 @@ export default function OperatorProcurementRequestPage() {
   const requestedView = searchParams.get("view");
   const normalizedView =
     requestedView === "requirements"
-      ? "packet"
+      ? "notes"
       : requestedView === "market"
         ? "proposals"
         : requestedView;
   const view =
-    normalizedView === "packet" ||
+    normalizedView === "notes" ||
+    normalizedView === "shared" ||
     normalizedView === "proposals" ||
     normalizedView === "files" ||
     normalizedView === "email"
       ? normalizedView
-      : "overview";
+      : "notes";
 
   return (
     <AppShell
@@ -144,7 +145,12 @@ export default function OperatorProcurementRequestPage() {
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
           />
-          {!activeImpersonation && view === "overview" ? <WorkspaceScanActivity entityId={requestId} onRightPanel={setRightPanel} /> : null}
+          {!activeImpersonation && view === "notes" ? (
+            <WorkspaceScanActivity
+              entityId={requestId}
+              onRightPanel={setRightPanel}
+            />
+          ) : null}
         </main>
       )}
     </AppShell>
