@@ -4,6 +4,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 
 const retiredTable = v.union(
   v.literal("procurementPacketUpdateRuns"),
+  v.literal("brokerActivity"),
   v.literal("orgMemory"),
   v.literal("procurementMemory"),
   v.literal("brokerClientAssignments"),

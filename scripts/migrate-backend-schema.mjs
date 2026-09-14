@@ -100,6 +100,7 @@ const compatibilityTables = [
 ];
 const retiredTables = [
   "procurementPacketUpdateRuns",
+  "brokerActivity",
   "orgMemory",
   "procurementMemory",
   "brokerClientAssignments",
@@ -306,6 +307,16 @@ try {
       legacyReferences += ownership.legacyReferences;
     }
     requireZero({ blockers, legacyReferences }, "blockers", "legacyReferences");
+    const finalRetained = {
+      policyUpdateRuns: pages("backendSchemaLegacy:inventoryPolicyHistoryPage")
+        .count,
+    };
+    for (const table of retainedTables)
+      finalRetained[table] = pages(
+        "procurementSchemaCleanup:inventoryLegacyPage",
+        { table },
+      ).count;
+    report.finalRetainedLegacyRows = finalRetained;
     report.completedAt = dayjs().toISOString();
     report.readyForNarrowing = true;
     report.narrowingScope =

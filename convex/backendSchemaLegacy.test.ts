@@ -66,6 +66,24 @@ test("retires unused broker links without rewriting client ownership or upload p
       await t.mutation(clear, { table, cursor: null, dryRun: false }),
     ).toMatchObject({ changed: 0 });
   }
+  await t.run((ctx) =>
+    ctx.db.insert("brokerActivity", {
+      brokerOrgId: ids.broker,
+      clientOrgId: ids.client,
+      type: "policy_extraction_completed",
+      actorSide: "system",
+      summary: "Policy extraction completed",
+      payload: { policyId: ids.policy },
+      createdAt: 1,
+    }),
+  );
+  const purge = makeFunctionReference<"mutation">(
+    "backendSchemaLegacy:purgeBatch",
+  );
+  expect(await t.mutation(purge, { table: "brokerActivity" })).toMatchObject({
+    deleted: 1,
+    complete: true,
+  });
   await t.run(async (ctx) => {
     expect(await ctx.db.get(ids.policy)).toMatchObject({
       orgId: ids.client,
