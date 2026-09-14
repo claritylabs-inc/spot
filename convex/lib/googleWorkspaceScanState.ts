@@ -120,6 +120,7 @@ export async function retryGoogleWorkspaceScanSource(
       run.failedSources -
         (sameRun &&
         terminal &&
+        source.status !== "excluded" &&
         (source.status === "failed" || !source.evidence?.bodyComplete)
           ? 1
           : 0),
