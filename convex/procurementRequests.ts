@@ -1,4 +1,7 @@
-import { readProcurementFileNotes, saveProcurementFileNotes } from "./lib/procurementFileNotes";
+import {
+  readProcurementFileNotes,
+  saveProcurementFileNotes,
+} from "./lib/procurementFileNotes";
 import { readOutreachLog, saveOutreachLog } from "./lib/outreachLog";
 import {
   completionOutcomeValidator,
@@ -44,7 +47,7 @@ import {
 import {
   requestNarrative,
   saveRequestNarrative,
-  seedNarrativePacketSection,
+  seedRequestIntake,
 } from "./lib/procurementNarrative";
 import { getAgentDomain } from "./lib/resend";
 import {
@@ -265,7 +268,10 @@ function requestForwardingAddress(request: Doc<"procurementRequests">) {
   return procurementForwardingAddress(request.inboxToken, getAgentDomain());
 }
 
-async function outreachDto(ctx: Ctx, outreach: Doc<"procurementBrokerOutreaches">) {
+async function outreachDto(
+  ctx: Ctx,
+  outreach: Doc<"procurementBrokerOutreaches">,
+) {
   const {
     notes,
     applicationUrl,
@@ -314,7 +320,7 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
     ]);
   return {
     ...request,
-    narrative: await requestNarrative(ctx, request),
+    narrative: await requestNarrative(ctx, request, { includePrivate: true }),
     completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
@@ -504,7 +510,9 @@ export async function getProcurementRequestDetails(
   const activeEmailThreads = emailThreads.filter(activeEmailThread);
   return {
     request: summary,
-    outreaches: await Promise.all(outreaches.map((outreach) => outreachDto(ctx, outreach))),
+    outreaches: await Promise.all(
+      outreaches.map((outreach) => outreachDto(ctx, outreach)),
+    ),
     files,
     emailThreads: activeEmailThreads,
     proposals,
@@ -548,7 +556,15 @@ export async function listProcurementRequestSummaries(
         .take(MAX_REQUESTS);
   const search = args.query?.trim().toLowerCase();
   const summaries = await Promise.all(rows.map((row) => requestRow(ctx, row)));
-  return summaries.filter((row) => !search || [row.title, row.narrative].some((value) => value.toLowerCase().includes(search))).slice(0, limit);
+  return summaries
+    .filter(
+      (row) =>
+        !search ||
+        [row.title, row.narrative].some((value) =>
+          value.toLowerCase().includes(search),
+        ),
+    )
+    .slice(0, limit);
 }
 
 export const list = query({
@@ -651,7 +667,9 @@ export async function createProcurementRequestByOperator(
   const requestId = await ctx.db.insert("procurementRequests", {
     clientOrgId: args.clientOrgId,
     title: requiredText(args.title, "Title", 200),
-    normalizedTitle: requiredText(args.title, "Title", 200).toLowerCase().replace(/\s+/g," "),
+    normalizedTitle: requiredText(args.title, "Title", 200)
+      .toLowerCase()
+      .replace(/\s+/g, " "),
     targetEffectiveDate: optionalDate(args.targetEffectiveDate),
     status:
       args.resultingPolicyId || args.completionOutcome
@@ -669,7 +687,7 @@ export async function createProcurementRequestByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  await seedNarrativePacketSection(ctx, {
+  await seedRequestIntake(ctx, {
     requestId,
     clientOrgId: args.clientOrgId,
     narrative,
@@ -758,10 +776,15 @@ export async function updateProcurementRequestByOperator(
   };
   if (args.title !== undefined) {
     patch.title = requiredText(args.title, "Title", 200);
-    patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g," ");
+    patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g, " ");
   }
   if (args.narrative !== undefined) {
-    await saveRequestNarrative(ctx, request, requiredText(args.narrative, "Client request"));
+    await saveRequestNarrative(
+      ctx,
+      request,
+      requiredText(args.narrative, "Client request"),
+      { includePrivate: true },
+    );
     patch.narrative = undefined;
   }
   if (args.targetEffectiveDate !== undefined) {
@@ -875,7 +898,9 @@ export async function createProcurementOutreachByOperator(
     assertExternalBrokerIdentity({ email: contact?.email });
   }
   const now = dayjs().valueOf();
-  const sent = args.source !== "workspace_scan" && (args.status ?? "request_sent") === "request_sent";
+  const sent =
+    args.source !== "workspace_scan" &&
+    (args.status ?? "request_sent") === "request_sent";
   const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
     requestId: request._id,
     clientOrgId: request.clientOrgId,
@@ -894,7 +919,11 @@ export async function createProcurementOutreachByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  await saveOutreachLog(ctx, (await ctx.db.get(outreachId))!, outreachLog(args.log) ?? "");
+  await saveOutreachLog(
+    ctx,
+    (await ctx.db.get(outreachId))!,
+    outreachLog(args.log) ?? "",
+  );
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1120,7 +1149,12 @@ export async function createProcurementFileItemByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  if (args.notes?.trim()) await saveProcurementFileNotes(ctx, (await ctx.db.get(fileItemId))!, optionalText(args.notes) ?? "");
+  if (args.notes?.trim())
+    await saveProcurementFileNotes(
+      ctx,
+      (await ctx.db.get(fileItemId))!,
+      optionalText(args.notes) ?? "",
+    );
   if (args.clientFileId) {
     await scheduleClientFileCompanyInformation(ctx, args.clientFileId);
   }

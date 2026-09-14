@@ -56,10 +56,11 @@ export const auditPage = internalQuery({
           !(await getMarkdownDocument(ctx, {
             orgId: row.clientOrgId,
             requestId: row._id,
-            kind: "request_intake",
+            kind: "packet",
+            filename: "request-intake.md",
           }))
         )
-          absent.push("request_intake");
+          absent.push("request-intake.md");
         if (absent.length || row.narrative !== undefined)
           missing.push({
             id: row._id,
@@ -141,17 +142,19 @@ export const migratePage = internalMutation({
         .query("procurementRequests")
         .paginate({ cursor: args.cursor, numItems: 1 });
       for (const row of page.page) {
-        await migratePacketDocuments(ctx, row._id);
+        await migratePacketDocuments(ctx, row._id, true);
         const existing = await getMarkdownDocument(ctx, {
           orgId: row.clientOrgId,
           requestId: row._id,
-          kind: "request_intake",
+          kind: "packet",
+          filename: "request-intake.md",
         });
         if (!existing)
           await saveRequestNarrative(
             ctx,
             row,
-            await requestNarrative(ctx, row),
+            await requestNarrative(ctx, row, { includePrivate: true }),
+            { includePrivate: true },
           );
         if (
           existing &&

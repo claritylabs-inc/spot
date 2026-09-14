@@ -51,6 +51,17 @@ test("Markdown migration preserves intake, private notes, source mappings, and i
         source: "manual",
         ...stamps,
       });
+      await ctx.db.insert("procurementPacketSections", {
+        requestId: request,
+        clientOrgId: org,
+        key: "intake_narrative",
+        heading: "Client narrative",
+        body: "Original intake\n\n| Limit |\n| --- |\n| 1m |",
+        order: 0,
+        audience: "client",
+        source: "manual",
+        ...stamps,
+      });
       const privateSection = await ctx.db.insert("procurementPacketSections", {
         requestId: request,
         clientOrgId: org,
@@ -112,9 +123,12 @@ test("Markdown migration preserves intake, private notes, source mappings, and i
       "procurementFileItems",
       "procurementPacketSections",
     ]) {
-      let cursor = null;
+      let cursor: string | null = null;
       for (;;) {
-        const result = await t.mutation(migrate, { table, cursor });
+        const result: { isDone: boolean; cursor: string } = await t.mutation(
+          migrate,
+          { table, cursor },
+        );
         if (result.isDone) break;
         cursor = result.cursor;
       }
@@ -126,6 +140,7 @@ test("Markdown migration preserves intake, private notes, source mappings, and i
       const request = (await ctx.db.get(ids.request))!;
       const shared = await readPacketProjection(ctx, request, "client");
       expect(shared.markdown).toContain("Shared risk description");
+      expect(shared.markdown.match(/Original intake/g)).toHaveLength(1);
       expect(shared.markdown).not.toContain("Private negotiation target");
       const operator = await readPacketProjection(ctx, request, "operator");
       expect(operator.markdown).toContain("Private negotiation target");
@@ -140,7 +155,8 @@ test("Markdown migration preserves intake, private notes, source mappings, and i
       const intake = await getMarkdownDocument(ctx, {
         orgId: ids.org,
         requestId: ids.request,
-        kind: "request_intake",
+        kind: "packet",
+        filename: "request-intake.md",
       });
       expect(parseMarkdownDocument(intake!.markdown).body).toContain("| 1m |");
       const log = await getMarkdownDocument(ctx, {

@@ -24,8 +24,33 @@ async function legacyPacketFiles(
     .withIndex("request", (q) => q.eq("requestId", request._id))
     .collect();
   const files = [];
+  const intakeSections = rows.filter(
+    (row) =>
+      row.key === "intake_narrative" &&
+      row.audience !== "operator" &&
+      row.body.trim() === request.narrative?.trim(),
+  );
+  if (request.narrative !== undefined) {
+    files.push({
+      filename: "request-intake.md",
+      markdown: stringifyMarkdownDocument(
+        {
+          title: request.title,
+          visibility: "shared",
+          legacySources: JSON.parse(
+            JSON.stringify(
+              intakeSections.map(({ body: _body, ...row }) => row),
+            ),
+          ),
+        },
+        request.narrative ?? "",
+      ),
+      updatedAt: request.updatedAt,
+    });
+  }
   for (const spec of legacyFiles) {
     const sections = rows
+      .filter((row) => !intakeSections.some((intake) => intake._id === row._id))
       .filter((row) =>
         spec.visibility === "private"
           ? row.audience === "operator"
@@ -186,6 +211,8 @@ export async function migratePacketDocuments(
       .withIndex("request", (q) => q.eq("requestId", requestId))
       .collect();
     for (const row of rows) await retireLegacyPacketSection(ctx, row);
+    if (request.narrative !== undefined)
+      await ctx.db.patch(request._id, { narrative: undefined });
   }
   return changed;
 }

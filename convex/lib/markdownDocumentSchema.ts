@@ -4,7 +4,6 @@ import { v } from "convex/values";
 export const markdownDocumentKind = v.union(
   v.literal("packet"),
   v.literal("company_wiki"),
-  v.literal("request_intake"),
   v.literal("outreach_log"),
   v.literal("requirement_notes"),
   v.literal("holder_notes"),

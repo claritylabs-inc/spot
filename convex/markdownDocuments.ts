@@ -25,7 +25,7 @@ export async function getMarkdownDocument(
   ctx: QueryCtx | MutationCtx,
   scope: DocumentScope,
 ) {
-  const requestOwned = ["packet", "request_intake"].includes(scope.kind);
+  const requestOwned = scope.kind === "packet";
   const owners = [
     scope.requestId,
     scope.outreachId,

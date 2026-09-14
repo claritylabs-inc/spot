@@ -18,7 +18,7 @@ import {
 import { createProcurementInboxToken } from "./lib/procurement";
 import {
   requestNarrative,
-  seedNarrativePacketSection,
+  seedRequestIntake,
 } from "./lib/procurementNarrative";
 import { assemblePacketMarkdown } from "./lib/procurementPacket";
 
@@ -88,7 +88,9 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
       .withIndex("request", (q) => q.eq("requestId", request._id))
       .collect(),
     request.resultingPolicyId ? ctx.db.get(request.resultingPolicyId) : null,
-    readPacketProjection(ctx, request, "client").then((projection) => projection.sections),
+    readPacketProjection(ctx, request, "client").then(
+      (projection) => projection.sections,
+    ),
   ]);
   const files = await Promise.all(
     fileItems
@@ -181,7 +183,7 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    await seedNarrativePacketSection(ctx, {
+    await seedRequestIntake(ctx, {
       requestId,
       clientOrgId: access.orgId,
       narrative,

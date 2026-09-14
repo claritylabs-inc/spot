@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncStore } from "@claritylabs/cl-sync";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { useMutation, useAction } from "convex/react";
@@ -437,6 +439,7 @@ export function OrganizationSection() {
 const logoLabelClass = `text-muted-foreground block mb-1.5 ${typeStyle("caption.medium")}`;
 
 function OrganizationLogoCard({ website }: { website: string }) {
+  const store = useSyncStore();
   const currentOrg = useCurrentOrg();
   const org = currentOrg?.org as
     | {

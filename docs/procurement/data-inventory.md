@@ -13,7 +13,7 @@ change a file's owning organization or request.
 | Document kind | Owner | Current use |
 | --- | --- | --- |
 | `packet` | Request + filename | Arbitrary submission and working Markdown files. |
-| `request_intake` | Request | Original intake, projected as `narrative` in existing DTOs. |
+| `packet` (`request-intake.md`) | Request | Intake stored once as a normal packet file; shared by default, with operator-private visibility respected by every DTO. |
 | `outreach_log` | Market outreach | Market log, default private. |
 | `procurement_file_notes` | Request file item | File handling notes, default private. |
 

@@ -1,66 +1,90 @@
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { readPacketDocument } from "./packetDocuments";
+import { migratePacketDocuments } from "./packetDocuments";
 import {
   getMarkdownDocument,
   saveMarkdownDocument,
 } from "../markdownDocuments";
 import {
+  parseDocumentVisibility,
   parseMarkdownDocument,
   stringifyMarkdownDocument,
-  readMarkdownHeading,
-  replaceMarkdownHeading,
 } from "./markdownDocument";
-
-export const NARRATIVE_SECTION_KEY = "intake_narrative";
 
 export async function requestNarrative(
   ctx: QueryCtx | MutationCtx,
   request: Doc<"procurementRequests">,
+  options: { includePrivate?: boolean } = {},
 ) {
   const document = await getMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
-    kind: "request_intake",
+    kind: "packet",
+    filename: "request-intake.md",
   });
-  return document
-    ? parseMarkdownDocument(document.markdown).body
-    : (request.narrative ?? "");
+  if (!document) return request.narrative ?? "";
+  if (
+    !options.includePrivate &&
+    parseDocumentVisibility(document.markdown) === "private"
+  )
+    return "";
+  return parseMarkdownDocument(document.markdown).body;
 }
 
 export async function saveRequestNarrative(
   ctx: MutationCtx,
   request: Doc<"procurementRequests">,
   narrative: string,
+  options: { includePrivate?: boolean } = {},
 ) {
+  await migratePacketDocuments(ctx, request._id, true);
   const existing = await getMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
-    kind: "request_intake",
+    kind: "packet",
+    filename: "request-intake.md",
   });
+  if (
+    existing &&
+    !options.includePrivate &&
+    parseDocumentVisibility(existing.markdown) === "private"
+  )
+    throw new Error("Private request intake can only be edited by an operator");
   const incoming = parseMarkdownDocument(narrative);
-  return saveMarkdownDocument(ctx, {
+  const metadata = {
+    title: request.title,
+    visibility: "shared",
+    ...(existing ? parseMarkdownDocument(existing.markdown).frontmatter : {}),
+    ...incoming.frontmatter,
+  };
+  if (!options.includePrivate && metadata.visibility !== "shared")
+    throw new Error("Client request intake must be shared");
+  const markdown = stringifyMarkdownDocument(metadata, incoming.body);
+  const visibility = parseDocumentVisibility(markdown);
+  const document = await saveMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
-    kind: "request_intake",
+    kind: "packet",
     filename: "request-intake.md",
-    markdown: stringifyMarkdownDocument(
-      {
-        title: request.title,
-        visibility: "private",
-        ...(existing
-          ? parseMarkdownDocument(existing.markdown).frontmatter
-          : {}),
-        ...incoming.frontmatter,
-      },
-      incoming.body,
-    ),
+    markdown,
     expectedRevision: existing?.revision ?? 0,
   });
+  if (
+    existing?.markdown !== markdown &&
+    (visibility === "shared" ||
+      (existing && parseDocumentVisibility(existing.markdown) === "shared"))
+  )
+    await ctx.db.patch(request._id, {
+      packetRevision: (request.packetRevision ?? 0) + 1,
+      updatedAt: dayjs().valueOf(),
+    });
+  if (request.narrative !== undefined)
+    await ctx.db.patch(request._id, { narrative: undefined });
+  return document;
 }
 
-export async function seedNarrativePacketSection(
+export async function seedRequestIntake(
   ctx: MutationCtx,
   args: {
     requestId: Id<"procurementRequests">;
@@ -70,32 +94,10 @@ export async function seedNarrativePacketSection(
     source: Doc<"procurementPacketSections">["source"];
   },
 ) {
-  const body = args.narrative.trim();
-  if (!body) return;
+  if (!args.narrative.trim()) return;
   const request = await ctx.db.get(args.requestId);
   if (!request) throw new Error("Procurement request not found");
-  await saveRequestNarrative(ctx, request, body);
-  const document = await readPacketDocument(
-    ctx,
-    request,
-    "submission-packet.md",
-  );
-  const parsed = parseMarkdownDocument(document.markdown);
-  if (readMarkdownHeading(parsed.body, "Client narrative")) return;
-  await saveMarkdownDocument(ctx, {
-    orgId: args.clientOrgId,
-    requestId: args.requestId,
-    kind: "packet",
-    filename: document.filename,
-    markdown: stringifyMarkdownDocument(
-      { ...parsed.frontmatter, visibility: "shared" },
-      replaceMarkdownHeading(parsed.body, "Client narrative", body),
-    ),
-    expectedRevision: document.revision,
-  });
-  await ctx.db.patch(args.requestId, {
-    packetRevision: (request.packetRevision ?? 0) + 1,
-    updatedAt: dayjs().valueOf(),
-    updatedByUserId: args.userId,
+  await saveRequestNarrative(ctx, request, args.narrative.trim(), {
+    includePrivate: args.source !== "client",
   });
 }

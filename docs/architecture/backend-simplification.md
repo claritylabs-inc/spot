@@ -4,9 +4,17 @@ Status: implementation authorized; audited against 4f83f618 on 2026-09-14. Relea
 
 ## Accepted scope update
 
-The operator refined the rule during implementation: retain fields required by routine reads or executable logic; delete unused fields; move all other mutable narrative into Markdown. This applies across the entire platform. Standard `.md` documents with YAML front matter replace section-row storage, including company wikis and shared/private procurement packets. This supersedes the section-based recommendations in the historical audit below.
+The operator refined the rule during implementation: retain fields required by routine reads or executable logic; delete unused fields; move all other mutable narrative into Markdown. This applies across the entire platform. Standard `.md` documents with YAML front matter replace section-row storage, including company wikis and named procurement packet files. This supersedes the section-based recommendations in the historical audit below.
 
-Implemented widening changes also cover request intake, outreach logs, procurement file notes, requirement/holder notes and certificate review/delivery notes. Standard YAML is parsed safely with the `yaml` package; no custom file format or fixed section schema is required for authored content. The canonical text lives in Convex for transactional querying, with ordinary `.md` import/export. Indexed owner/kind/revision fields bind the document to its resource and protect concurrent edits. A single `visibility: private | shared` front-matter value controls readership within that resource; it cannot grant cross-organization access or editing authority. Packet files may have ordinary names and do not require separate audience-specific models. Notes use the same permission rule. Existing issued snapshots remain immutable.
+Implemented widening changes also cover request intake, outreach logs, procurement file notes, requirement/holder notes and certificate review/delivery notes. Standard YAML is parsed safely with the `yaml` package; no custom file format or fixed section schema is required for authored content. The canonical text lives in Convex for transactional querying, with ordinary `.md` import/export. Indexed owner/kind/revision fields bind the document to its resource and protect concurrent edits. A single `visibility: private | shared` front-matter value controls readership within that resource; it cannot grant cross-organization access or editing authority. Packet files may have ordinary names and do not require separate audience-specific models. Notes use the same permission rule. Existing issued snapshots remain immutable. Request intake is a single named packet file, not a separate private record copied into shared content.
+
+## Execution record
+
+- Audited the full backend and implemented canonical client identity, mandatory source-cited research, standard Markdown files, simple front-matter visibility, and bounded legacy cleanup.
+- Local widening deployment succeeded. The migration exported a database/file-storage backup, converted the seeded wiki and packet records, and reached zero residuals across every verification page.
+- A full second local migration reached the same zero residuals with no changed, updated, or deleted records.
+- The combined suite passed 650 tests before the final single-file intake privacy regression was added. Focused browser checks covered wiki edit/autosave, Markdown import/download, and mobile layouts. Final commit validation and production results follow when completed.
+- Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending.
 
 ## Outcome
 

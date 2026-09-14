@@ -154,9 +154,9 @@ describe("procurement domain boundaries", () => {
     });
     const edits = {
       requestId,
-      filename: "submission-packet.md",
+      filename: "request-intake.md",
       expectedRevision: initial.documents.find(
-        (document) => document.filename === "submission-packet.md",
+        (document) => document.filename === "request-intake.md",
       )!.revision,
       markdown: stringifyMarkdownDocument(
         { title: "Packet" },
@@ -184,6 +184,61 @@ describe("procurement domain boundaries", () => {
     expect(
       await f.operator.query(api.procurementPacket.get, { requestId }),
     ).toEqual(saved);
+  });
+
+  test("private intake YAML remains operator-only across request and packet projections", async () => {
+    const f = await fixture();
+    const { requestId } = await f.operator.mutation(
+      api.procurementRequests.create,
+      {
+        clientOrgId: f.clientOrgId,
+        title: "Private intake",
+        narrative: stringifyMarkdownDocument(
+          { visibility: "private", note: "Private metadata" },
+          "Private negotiation facts",
+        ),
+      },
+    );
+    await f.operator.mutation(api.procurementRequests.update, {
+      requestId,
+      clientVisible: true,
+    });
+    const client = await f.client.query(api.clientProcurementRequests.get, {
+      requestId,
+    });
+    expect(client.narrative).toBe("");
+    expect(JSON.stringify(client)).not.toContain("Private negotiation facts");
+    expect(JSON.stringify(client)).not.toContain("Private metadata");
+    const broker = await f.operator.query(api.procurementPacket.preview, {
+      requestId,
+    });
+    expect(JSON.stringify(broker)).not.toContain("Private negotiation facts");
+    expect(JSON.stringify(broker)).not.toContain("Private metadata");
+    const issued = await f.operator.mutation(api.procurementPacket.mintLink, {
+      requestId,
+    });
+    const publicView = await f.t.query(api.procurementPacket.getByToken, {
+      token: issued.token,
+    });
+    expect(publicView).not.toBeNull();
+    expect(JSON.stringify(publicView)).not.toContain(
+      "Private negotiation facts",
+    );
+    expect(JSON.stringify(publicView)).not.toContain("Private metadata");
+    const operator = await f.operator.query(api.procurementPacket.get, {
+      requestId,
+    });
+    expect(operator.documents).toHaveLength(1);
+    expect(operator.documents[0].filename).toBe("request-intake.md");
+    expect(operator.markdown).toContain("Private negotiation facts");
+    await expect(
+      f.client.mutation(api.procurementPacket.updateDocument, {
+        requestId,
+        filename: "request-intake.md",
+        expectedRevision: operator.documents[0].revision,
+        markdown: "Client cannot replace private intake",
+      }),
+    ).rejects.toThrow();
   });
 
   test.each(["submission-packet.md", "new-research.md"])(
