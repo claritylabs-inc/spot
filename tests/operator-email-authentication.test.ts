@@ -79,7 +79,6 @@ describe("operator email authentication", () => {
     "In-Reply-To: <victim-thread@spot.insure>",
     "References: <victim-thread@spot.insure>",
     "Cc: operator+victim@agent.spot.insure",
-    "Content-Transfer-Encoding: base64",
   ])("rejects an unsigned interpretation or routing header: %s", async (injected) => {
     const signed = await sign(message());
     await expect(authenticateOperatorEmail(Buffer.concat([
@@ -91,6 +90,64 @@ describe("operator email authentication", () => {
     const signed = await sign(message());
     await expect(authenticateOperatorEmail(Buffer.concat([
       Buffer.from("From: Adyan <adyan@spot.insure>\r\n"), signed,
+    ]))).rejects.toThrow("ambiguous");
+  });
+
+  it("accepts Gmail's unsigned outer MIME wrapper without letting changed type, boundary or encoding alter signed parts", async () => {
+    const boundary = "000000000000ebae1e0636f182b2";
+    const raw = message([], [
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      "Review the attached renewal.",
+      `--${boundary}`,
+      'Content-Type: application/pdf; name="renewal.pdf"',
+      'Content-Disposition: attachment; filename="renewal.pdf"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      Buffer.from("%PDF-signed-attachment").toString("base64"),
+      `--${boundary}--`,
+    ].join("\r\n")).replace("Content-Type: text/plain; charset=utf-8\r\n", "");
+    const signed = await sign(raw);
+    for (const outerHeaders of [
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      'Content-Type: multipart/alternative; boundary="attacker"',
+      "Content-Type: text/html; charset=utf-7\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=attacker.html",
+    ]) {
+      const parsed = await authenticateOperatorEmail(Buffer.concat([
+        Buffer.from(`${outerHeaders}\r\n`), signed,
+      ]));
+      expect(parsed.text?.trim()).toBe("Review the attached renewal.");
+      expect(parsed.attachments).toHaveLength(1);
+      expect(parsed.attachments[0].filename).toBe("renewal.pdf");
+      expect(parsed.attachments[0].content.toString()).toBe("%PDF-signed-attachment");
+    }
+  });
+
+  it("preserves single-part Gmail body bytes when outer type or transfer encoding is unsigned", async () => {
+    const body = "Summarize Cove's renewal =E2=80=94 keep these source bytes.";
+    const signed = await sign(message([], body).replace(
+      "Content-Type: text/plain; charset=utf-8\r\n", "",
+    ));
+    for (const outerHeaders of [
+      "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable",
+      "Content-Type: text/html; charset=utf-7\r\nContent-Transfer-Encoding: base64",
+    ]) {
+      const parsed = await authenticateOperatorEmail(Buffer.concat([
+        Buffer.from(`${outerHeaders}\r\n`), signed,
+      ]));
+      expect(parsed.text?.trim()).toBe(body);
+      expect(parsed.html).toBe(false);
+      expect(parsed.attachments).toHaveLength(0);
+    }
+  });
+
+  it("still decodes authenticated outer MIME headers and rejects duplicate interpretation headers", async () => {
+    const raw = message(["Content-Transfer-Encoding: base64"], Buffer.from("Review this renewal.").toString("base64"));
+    const signed = await sign(raw);
+    expect((await authenticateOperatorEmail(signed)).text?.trim()).toBe("Review this renewal.");
+    await expect(authenticateOperatorEmail(Buffer.concat([
+      Buffer.from("Content-Type: text/html\r\n"), signed,
     ]))).rejects.toThrow("ambiguous");
   });
 

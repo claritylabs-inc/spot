@@ -41,10 +41,18 @@ no age-based expiration.
 Only the production webhook lane admits operator mail; the shared dev webhook
 acknowledges these events without executing another task. The Node adapter retrieves the original MIME from the authenticated Resend
 receiving API, verifies full-body DKIM with exact alignment to the sender's
-operator domain, and requires signing of routing, message identity, threading,
-and MIME interpretation headers. It never trusts an `Authentication-Results`
-header supplied inside a message. Missing, ambiguous, unsigned, altered, or
-unavailable original messages cannot execute an operator task.
+operator domain, and requires signing of routing, message identity, and
+threading headers. It never trusts an `Authentication-Results` header supplied
+inside a message. Missing, ambiguous, unauthenticated, altered, or unavailable
+original messages cannot execute an operator task.
+
+Gmail can omit outer MIME interpretation headers from its signature. Signed
+MIME headers retain normal decoding; unsigned outer MIME headers are ignored.
+The adapter reconstructs multipart structure from delimiters in the authenticated
+body, where inner attachment metadata is signed. Otherwise it uses UTF-8 plain
+text, preserving unsigned transfer-encoded text in its original representation
+instead of guessing how to decode it. Changing an unsigned boundary, charset,
+encoding, or disposition cannot change the content passed to the agent.
 
 Google Workspace must DKIM-sign mail for each of the three sender domains.
 The route must preserve MIME and signed headers. Mailing-list rewrites or an

@@ -73,7 +73,9 @@ Primary emails and roles are never rewritten.
 `operator@agent.spot.insure` is a private operator-agent email ingress. The Resend
 adapter requires verified webhook delivery and independently aligned full-body
 DKIM over the original MIME and routing headers, then resolves an existing
-active operator. It stores attachments and atomically queues the shared operator
+active operator. Unsigned outer MIME headers cannot control parsing; multipart
+structure is derived from the signed body, and unsigned single-part encoding
+remains literal. It stores attachments and atomically queues the shared operator
 runner; signed-message/provider replay cannot create another task. Replies go
 only to the authenticated sender, with owned-thread Reply-To addressing. Exact
 write approvals stay in the portal; pending email delivery follows the persisted
