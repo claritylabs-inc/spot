@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { WorkspaceScanControls } from "@/components/operator/workspace-scan/scan-controls";
+import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Check,
@@ -216,8 +218,10 @@ function VerificationDiagnostics({
 
 export function OperatorGoogleWorkspaceContent({
   onConfigure,
+  onRightPanel,
 }: {
   onConfigure: () => void;
+  onRightPanel: (node: ReactNode) => void;
 }) {
   const status = useQuery(api.operatorGoogleWorkspace.getStatus, {});
   const verifyConnection = useAction(
@@ -286,7 +290,9 @@ export function OperatorGoogleWorkspaceContent({
   }
 
   return (
-    <section className="space-y-3" aria-label="Google Workspace channel">
+    <section className="space-y-4" aria-label="Google Workspace channel">
+      <WorkspaceScanControls ready={readyToVerify && config?.mailboxMode === "directory"} onRightPanel={onRightPanel} />
+      <WorkspaceScanActivity onRightPanel={onRightPanel} />
       <OperationalPanel>
         <OperationalPanelHeader
           title="Company mailbox access"

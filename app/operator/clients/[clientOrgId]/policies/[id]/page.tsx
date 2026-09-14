@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { PolicyDetailBody } from "@/app/policies/[id]/policy-detail-body";
+import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
@@ -124,6 +125,7 @@ export default function OperatorClientPolicyDetailPage() {
             readOnly={Boolean(activeImpersonation)}
             operatorMode
           />
+          {!activeImpersonation ? <WorkspaceScanActivity entityId={id} onRightPanel={setRightPanel} /> : null}
         </div>
       )}
     </AppShell>
