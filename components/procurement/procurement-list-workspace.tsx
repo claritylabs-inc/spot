@@ -1,5 +1,7 @@
 "use client";
 
+import { RequestCompletionOutcome } from "./request-completion-outcome";
+
 import {
   useCallback,
   useEffect,
@@ -67,6 +69,7 @@ type ProcurementRequestRow = {
   targetEffectiveDate?: string;
   forwardingAddress: string;
   replacingPolicy: { label: string } | null;
+  completionOutcome?: React.ComponentProps<typeof RequestCompletionOutcome>["outcome"];
   resultingPolicy: { label: string } | null;
   brokerCount: number;
   quoteCount: number;
@@ -110,6 +113,7 @@ function ProcurementRequestPreview({
     >
       <div className="space-y-5">
         <OperationalLabelValueList title="Current state">
+          <RequestCompletionOutcome outcome={request.completionOutcome} />
           <OperationalLabelValueRow
             label="Target effective date"
             value={formatDisplayDate(request.targetEffectiveDate, "Not set")}

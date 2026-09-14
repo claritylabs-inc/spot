@@ -1,5 +1,7 @@
 "use client";
 
+import { RequestCompletionOutcome } from "./request-completion-outcome";
+
 import {
   useCallback,
   useEffect,
@@ -403,6 +405,7 @@ export function ClientRequestDetail({
           label="Status"
           value={<RequestStatus status={request.status} />}
         />
+        <RequestCompletionOutcome outcome={request.completionOutcome} />
         <OperationalLabelValueRow
           label="Target effective date"
           value={
