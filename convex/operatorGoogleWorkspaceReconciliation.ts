@@ -1,3 +1,4 @@
+import { indexPolicyUploadFingerprintPage } from "./lib/policyImportDedup";
 import { scanInsuredAddressValidator } from "./lib/scanReconciliationSchema";
 import {
   googleWorkspaceScanBodyFingerprint,
@@ -19,8 +20,13 @@ import {
   sourceEffectiveAt,
   assertUnchangedSnapshot,
   ScanAttention,
+  normalizedIdentity,
 } from "./lib/googleWorkspaceReconciliation";
-import { resolveScanTarget, writeScanDomain } from "./lib/workspaceScanDomain";
+import {
+  resolveScanOrganization,
+  resolveScanTarget,
+  writeScanDomain,
+} from "./lib/workspaceScanDomain";
 import {
   writeOperatorAudit,
   requireOperatorForUser,
@@ -86,6 +92,24 @@ async function validatedPdfIdentity(
       q.eq("sourceId", sourceId).eq("attachmentId", operation.attachmentId),
     )
     .unique();
+  if (!pdf?.boundPolicy || !pdf.insuredName?.trim())
+    throw new ScanAttention("PDF insured identity has not been validated");
+  if (
+    pdf.insuredName.trim().toLowerCase() !==
+      operation.identity.name.trim().toLowerCase() ||
+    (pdf.insuredAddress &&
+      operation.identity.address &&
+      Object.entries(pdf.insuredAddress).some(
+        ([key, value]) =>
+          value.trim().toLowerCase() !==
+          operation.identity.address?.[key as keyof typeof pdf.insuredAddress]
+            ?.trim()
+            .toLowerCase(),
+      ))
+  )
+    throw new ScanAttention(
+      "PDF insured identity contradicts the proposed client; email identity cannot override the original policy",
+    );
   return Boolean(
     pdf?.boundPolicy &&
     pdf.insuredName?.trim().toLowerCase() ===
@@ -100,6 +124,30 @@ async function validatedPdfIdentity(
           .toLowerCase(),
     ),
   );
+}
+async function assertPdfTarget(
+  ctx: QueryCtx | MutationCtx,
+  importId: Id<"operatorWorkspaceScanImports">,
+  org: Doc<"organizations">,
+) {
+  const staged = await ctx.db.get(importId);
+  if (
+    !staged?.insuredName ||
+    normalizedIdentity(staged.insuredName) !== normalizedIdentity(org.name) ||
+    (staged.insuredAddress &&
+      org.mailingAddress &&
+      Object.entries(staged.insuredAddress).some(
+        ([key, value]) =>
+          normalizedIdentity(value) !==
+          normalizedIdentity(
+            org.mailingAddress?.[key as keyof typeof staged.insuredAddress] ??
+              "",
+          ),
+      ))
+  )
+    throw new ScanAttention(
+      "Original PDF insured does not match the current selected client",
+    );
 }
 export async function scanOperationKey(
   operationJson: string,
@@ -116,6 +164,8 @@ export async function scanOperationKey(
           ? { mailbox: source.mailbox, messageId: source.messageId }
           : null,
       kind: operation.kind,
+      brokerIdentity:
+        operation.kind === "market_activity" ? operation.brokerIdentity : null,
       identity: operation.identity,
       effectiveDate: operation.effectiveDate,
       target:
@@ -236,8 +286,29 @@ export const recordFindingInternal = internalMutation({
       if (previous.status === "updated" || previous.resolvedAt)
         return previous._id;
     }
+    const operation = args.operationJson
+      ? scanOperationSchema.parse(JSON.parse(args.operationJson))
+      : null;
+    let target: Awaited<ReturnType<typeof resolveScanTarget>> | null = null;
+    if (operation) {
+      const { selection } = await selectionFor(ctx, key, args.sourceId);
+      try {
+        target = await resolveScanTarget(ctx, operation, selection);
+      } catch {
+        /* Unresolved evidence has no affected-record link. */
+      }
+    }
+    const orgId = target?.org?._id;
+    const requestId = target?.request?._id;
     const values = {
       sourceId: source._id,
+      entityId: orgId ? String(orgId) : previous?.entityId,
+      requestId: requestId ?? previous?.requestId,
+      recordId: requestId
+        ? String(requestId)
+        : orgId
+          ? String(orgId)
+          : previous?.recordId,
       status: args.status,
       title: args.operationJson
         ? scanOperationSchema
@@ -249,7 +320,18 @@ export const recordFindingInternal = internalMutation({
       operationJson: args.operationJson,
       operationKey: key,
       createdAt: dayjs().valueOf(),
-      recordLinks: [],
+      recordLinks: orgId
+        ? [
+            {
+              label: requestId ? "Open request" : "Open organization",
+              href: requestId
+                ? `/operator/clients/${orgId}/procurement/${requestId}`
+                : operation?.identity.kind === "broker"
+                  ? `/operator/brokers?brokerId=${encodeURIComponent(String(orgId))}`
+                  : `/operator/clients/${orgId}`,
+            },
+          ]
+        : (previous?.recordLinks ?? []),
       authorizingOperatorId: operatorUserId,
     };
     if (previous) {
@@ -320,8 +402,8 @@ export const applyInternal = internalMutation({
         recent.length > 100 ||
         recent.some(
           (org) =>
-            org.name.trim().toLowerCase() ===
-            operation.identity.name.trim().toLowerCase(),
+            normalizedIdentity(org.name) ===
+            normalizedIdentity(operation.identity.name),
         )
       )
         throw new ScanAttention(
@@ -343,6 +425,7 @@ export const applyInternal = internalMutation({
         throw new ScanAttention(
           "Validated bound-policy attachment does not match the source and client",
         );
+      await assertPdfTarget(ctx, staged._id, target.org);
       const imported = await commitValidatedOperatorPolicyImport(ctx, {
         operatorUserId,
         orgId: target.org._id,
@@ -565,8 +648,8 @@ export const discoverTargetsInternal = internalMutation({
         ...page.page
           .filter(
             (r) =>
-              r.title.trim().toLowerCase() ===
-              operation.request.title.trim().toLowerCase(),
+              normalizedIdentity(r.title) ===
+              normalizedIdentity(operation.request.title),
           )
           .map((r) => r._id),
       ];
@@ -590,8 +673,8 @@ export const discoverTargetsInternal = internalMutation({
       ...page.page
         .filter(
           (org) =>
-            org.name.trim().toLowerCase() ===
-            operation.identity.name.trim().toLowerCase(),
+            normalizedIdentity(org.name) ===
+            normalizedIdentity(operation.identity.name),
         )
         .map((org) => org._id),
     ];
@@ -599,6 +682,30 @@ export const discoverTargetsInternal = internalMutation({
       throw new ScanAttention(
         "Several organizations share this name; choose one explicitly",
       );
+    if (page.isDone && "request" in operation) {
+      const { selection } = await selectionFor(
+        ctx,
+        operationKey,
+        args.sourceId,
+      );
+      const org = await resolveScanOrganization(
+        ctx,
+        operation.identity,
+        selection.selectedOrgId,
+        ids,
+      );
+      if (!org)
+        throw new ScanAttention(
+          "Exact client is required before request discovery",
+        );
+      await ctx.db.patch(inventory._id, {
+        organizationIds: ids,
+        orgId: org._id,
+        cursor: null,
+        complete: false,
+      });
+      return false;
+    }
     await ctx.db.patch(inventory._id, {
       organizationIds: ids,
       cursor: page.continueCursor,
@@ -731,6 +838,13 @@ export const getKnownContextInternal = internalQuery({
         type: org.type,
         address: org.mailingAddress,
         contactEmail: org.primaryContactEmail,
+        brokerProfile:
+          org.type === "broker"
+            ? await ctx.db
+                .query("brokerProfiles")
+                .withIndex("broker", (q) => q.eq("brokerOrgId", org._id))
+                .unique()
+            : null,
         wiki:
           org.type === "client"
             ? await ctx.db
@@ -780,6 +894,15 @@ export const cleanupNoopContextInternal = internalMutation({
       .withIndex("operation", (q) => q.eq("sourceId", args.sourceId))
       .take(24);
     for (const inventory of inventories) await ctx.db.delete(inventory._id);
+    const imports = await ctx.db
+      .query("operatorWorkspaceScanImports")
+      .withIndex("attachment", (q) => q.eq("sourceId", args.sourceId))
+      .take(9);
+    for (const staged of imports)
+      if (!staged.policyId) {
+        await ctx.storage.delete(staged.file.fileId);
+        await ctx.db.delete(staged._id);
+      }
   },
 });
 
@@ -817,16 +940,51 @@ export const bindImportInternal = internalMutation({
       context ?? undefined,
       await validatedPdfIdentity(ctx, source._id, operation),
     );
-    const target = await resolveScanTarget(ctx, operation);
+    const key = await scanOperationKey(args.operationJson, source);
+    const { selection } = await selectionFor(ctx, key, args.sourceId);
+    const target = await resolveScanTarget(ctx, operation, selection);
     if (target.org?._id !== args.clientOrgId || target.org.type !== "client")
       throw new ScanAttention(
         "Policy insured identity does not match this client",
       );
+    await assertPdfTarget(ctx, staged._id, target.org);
     if (staged.clientOrgId && staged.clientOrgId !== args.clientOrgId)
       throw new ScanAttention(
         "Original PDF was already bound to another client",
       );
     await ctx.db.patch(staged._id, { clientOrgId: args.clientOrgId });
     return staged._id;
+  },
+});
+
+export const discoverPolicyContentInternal = internalMutation({
+  args: { ...leaseArgs, importId: v.id("operatorWorkspaceScanImports") },
+  handler: async (ctx, args) => {
+    const { source } = await assertGoogleWorkspaceScanSourceLease(ctx, args);
+    await sourceBody(ctx, source);
+    const staged = await ctx.db.get(args.importId);
+    if (
+      !staged ||
+      staged.sourceId !== source._id ||
+      !staged.clientOrgId ||
+      !staged.boundPolicy
+    )
+      throw new ScanAttention("Validated client-bound original is required");
+    return indexPolicyUploadFingerprintPage(ctx, staged.clientOrgId);
+  },
+});
+
+export const cleanupUnretainedImportOriginalInternal = internalMutation({
+  args: {
+    sourceId: v.id("operatorGoogleWorkspaceScanSources"),
+    fileId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const retained = await ctx.db
+      .query("operatorWorkspaceScanImports")
+      .withIndex("attachment", (q) => q.eq("sourceId", args.sourceId))
+      .take(9);
+    if (!retained.some((row) => row.file.fileId === args.fileId))
+      await ctx.storage.delete(args.fileId);
   },
 });
