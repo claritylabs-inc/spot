@@ -265,7 +265,13 @@ async function proposalDto(
         .collect(),
       ctx.db.get(proposal.brokerOrgId),
       ctx.db.get(proposal.requestId),
-      ctx.db.get(proposal.requestId).then(async (request) => request ? (await readPacketProjection(ctx, request, "client")).sections : []),
+      ctx.db
+        .get(proposal.requestId)
+        .then(async (request) =>
+          request
+            ? (await readPacketProjection(ctx, request, "client")).sections
+            : [],
+        ),
       recentJobs(ctx, proposal._id),
     ]);
   const documentRows = await Promise.all(
@@ -288,7 +294,7 @@ async function proposalDto(
     ),
     reviews: reviews.map((review) => ({
       ...review,
-      stale: (review.packetRevision ?? -1) !== packetRevision,
+      stale: review.packetRevision !== packetRevision,
     })),
     extraction: { latest, jobs: jobRows },
     nextActions: proposalNextActions(proposal, latest, documents.length),
@@ -1333,7 +1339,8 @@ export const getReviewInputInternal = internalQuery({
       return null;
     const request = await ctx.db.get(proposal.requestId);
     if (!request) return null;
-    const sections = (await readPacketProjection(ctx, request, "client")).sections;
+    const sections = (await readPacketProjection(ctx, request, "client"))
+      .sections;
     const { markdown, legend } = buildProposalMarkdown(proposal.extractedOffer);
     return {
       proposalId: proposal._id,
@@ -1432,7 +1439,7 @@ export async function confirmProcurementProposalReviewByOperator(
     proposal.requestId !== request._id ||
     proposal.clientOrgId !== request.clientOrgId ||
     proposal.extractionFingerprint !== review.extractionFingerprint ||
-    (request.packetRevision ?? 0) !== (review.packetRevision ?? -1)
+    (request.packetRevision ?? 0) !== review.packetRevision
   )
     throw new Error("Review is stale");
   const now = dayjs().valueOf();
@@ -1505,7 +1512,7 @@ export async function selectProcurementProposalByOperator(
       review.requestId === request._id &&
       review.clientOrgId === request.clientOrgId &&
       review.extractionFingerprint === proposal.extractionFingerprint &&
-      (review.packetRevision ?? -1) === (request.packetRevision ?? 0),
+      review.packetRevision === (request.packetRevision ?? 0),
   );
   if (!current) throw new Error("A current staff-confirmed review is required");
   if (current.staffConclusion !== "meets_requirements") {
@@ -1513,7 +1520,8 @@ export async function selectProcurementProposalByOperator(
       "Only a proposal confirmed to meet every requirement can be selected",
     );
   }
-  const brokerSections = (await readPacketProjection(ctx, request, "client")).sections;
+  const brokerSections = (await readPacketProjection(ctx, request, "client"))
+    .sections;
   if (brokerSections.length === 0) {
     throw new Error(
       "Share at least one broker-visible packet section before selecting a proposal",

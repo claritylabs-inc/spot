@@ -13,11 +13,9 @@ type DocumentScope = {
   orgId: Id<"organizations">;
   kind: MarkdownDocumentKind;
   requestId?: Id<"procurementRequests">;
-  outreachId?: Id<"procurementBrokerOutreaches">;
   requirementSourceDocumentId?: Id<"requirementSourceDocuments">;
   certificateHolderId?: Id<"certificateHolders">;
   certificateWorkflowJobId?: Id<"certificateWorkflowJobs">;
-  fileItemId?: Id<"procurementFileItems">;
   filename?: string;
 };
 
@@ -28,26 +26,22 @@ export async function getMarkdownDocument(
   const requestOwned = scope.kind === "packet";
   const owners = [
     scope.requestId,
-    scope.outreachId,
     scope.requirementSourceDocumentId,
     scope.certificateHolderId,
     scope.certificateWorkflowJobId,
-    scope.fileItemId,
   ].filter(Boolean);
   const valid =
     scope.kind === "company_wiki"
       ? owners.length === 0
       : owners.length === 1 &&
         ((requestOwned && scope.requestId) ||
-          (scope.kind === "outreach_log" && scope.outreachId) ||
           (scope.kind === "requirement_notes" &&
             scope.requirementSourceDocumentId) ||
           (scope.kind === "holder_notes" && scope.certificateHolderId) ||
           (["certificate_review_notes", "certificate_delivery_notes"].includes(
             scope.kind,
           ) &&
-            scope.certificateWorkflowJobId) ||
-          (scope.kind === "procurement_file_notes" && scope.fileItemId));
+            scope.certificateWorkflowJobId));
   if (!valid) throw new Error("Invalid Markdown document scope");
   if (scope.kind === "packet" && !scope.filename)
     throw new Error("Packet Markdown files require a filename");
@@ -74,12 +68,6 @@ async function findDocument(ctx: QueryCtx | MutationCtx, scope: DocumentScope) {
         q.eq("requestId", scope.requestId).eq("kind", scope.kind),
       )
       .unique();
-  if (scope.outreachId)
-    return documents
-      .withIndex("outreach_kind", (q) =>
-        q.eq("outreachId", scope.outreachId).eq("kind", scope.kind),
-      )
-      .unique();
   if (scope.requirementSourceDocumentId)
     return documents
       .withIndex("requirement_kind", (q) =>
@@ -102,12 +90,6 @@ async function findDocument(ctx: QueryCtx | MutationCtx, scope: DocumentScope) {
         q
           .eq("certificateWorkflowJobId", scope.certificateWorkflowJobId)
           .eq("kind", scope.kind),
-      )
-      .unique();
-  if (scope.fileItemId)
-    return documents
-      .withIndex("file_kind", (q) =>
-        q.eq("fileItemId", scope.fileItemId).eq("kind", scope.kind),
       )
       .unique();
   return documents
@@ -137,11 +119,9 @@ export async function saveMarkdownDocument(
   const existing = await getMarkdownDocument(ctx, args);
   const owner = await ctx.db.get(
     args.requestId ??
-      args.outreachId ??
       args.requirementSourceDocumentId ??
       args.certificateHolderId ??
       args.certificateWorkflowJobId ??
-      args.fileItemId ??
       args.orgId,
   );
   if (!owner) throw new Error("Markdown document owner not found");
@@ -184,11 +164,9 @@ export async function saveMarkdownDocument(
     orgId: args.orgId,
     kind: args.kind,
     requestId: args.requestId,
-    outreachId: args.outreachId,
     requirementSourceDocumentId: args.requirementSourceDocumentId,
     certificateHolderId: args.certificateHolderId,
     certificateWorkflowJobId: args.certificateWorkflowJobId,
-    fileItemId: args.fileItemId,
     filename: args.filename,
     markdown,
     revision: (existing?.revision ?? 0) + 1,

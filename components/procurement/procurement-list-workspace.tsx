@@ -188,7 +188,7 @@ function NewProcurementRequestDrawer({
 
   async function create() {
     if (!title.trim() || !narrative.trim()) {
-      toast.error("Enter a title and content for public.md");
+      toast.error("Enter a title and shared request details");
       return;
     }
     setSaving(true);
@@ -255,7 +255,7 @@ function NewProcurementRequestDrawer({
           <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            public.md
+            Shared request details
           </span>
           <Textarea
             value={narrative}

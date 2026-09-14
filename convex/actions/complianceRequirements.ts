@@ -199,14 +199,6 @@ function normalizeImportedCertificateHolder(
   };
 }
 
-function scopeFromArgs(args: {
-  scope?: RequirementScope;
-  appliesTo?: RequirementScope | "both";
-}): RequirementScope {
-  if (args.scope) return args.scope;
-  return args.appliesTo === "own_org" ? "own_org" : "vendors";
-}
-
 function normalizeImportedRequirement(
   requirement: ImportedRequirement,
   defaultScope: RequirementScope,
@@ -396,7 +388,6 @@ async function runRequirementImport(
     sourceType?: "lease_agreement" | "client_contract" | "vendor_requirements" | "other";
     sourceName?: string;
     scope?: RequirementScope;
-    appliesTo?: RequirementScope | "both";
     holder?: RequirementSourceHolderInput;
     dealName?: string;
     dealType?: string;
@@ -411,7 +402,7 @@ async function runRequirementImport(
 }> {
   const runId = crypto.randomUUID();
   const sourceType = args.sourceType ?? inferRequirementSourceType(args.fileName);
-  const scope = scopeFromArgs(args);
+  const scope = args.scope ?? "vendors";
   const sourceDocumentName =
     args.sourceName?.trim() ||
     args.fileName ||
@@ -634,7 +625,6 @@ async function runRequirementImport(
       {
         orgId: args.orgId,
         userId: context.userId,
-        scope,
         sourceDocumentId,
         sourceDocumentName,
         sourceType,
@@ -679,9 +669,6 @@ export const importRequirements = action({
     sourceType: v.optional(sourceDocumentTypeValidator),
     sourceName: v.optional(v.string()),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
-    appliesTo: v.optional(
-      v.union(v.literal("vendors"), v.literal("own_org"), v.literal("both")),
-    ),
     holder: v.optional(v.object({
       displayName: v.string(),
       contactName: v.optional(v.string()),
@@ -733,9 +720,6 @@ export const importRequirementsInternal = internalAction({
     sourceType: v.optional(sourceDocumentTypeValidator),
     sourceName: v.optional(v.string()),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
-    appliesTo: v.optional(
-      v.union(v.literal("vendors"), v.literal("own_org"), v.literal("both")),
-    ),
     holder: v.optional(v.object({
       displayName: v.string(),
       contactName: v.optional(v.string()),

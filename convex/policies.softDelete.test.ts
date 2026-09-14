@@ -61,8 +61,6 @@ async function seedBrokerClientPolicy(options: {
       insuredName: "Client",
       uploadedBySide: options.uploadedBySide,
       uploadedByUserId: brokerUserId,
-      uploadedByBrokerOrgId:
-        options.uploadedBySide === "broker" ? brokerOrgId : undefined,
     });
     await ctx.db.insert("policyDeclarationFacts", {
       orgId: clientOrgId,

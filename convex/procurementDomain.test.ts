@@ -14,7 +14,6 @@ import {
   PROCUREMENT_CAPABILITY_EXCEPTIONS,
   PROCUREMENT_CAPABILITY_MANIFEST_VERSION,
 } from "./lib/procurementCapabilities";
-import { upsertPacketSectionByOperator } from "./procurementPacket";
 import schema from "./schema";
 import { stringifyMarkdownDocument } from "./lib/markdownDocument";
 
@@ -141,6 +140,25 @@ async function createRequest(
     clientOrgId: f.clientOrgId,
     title,
     narrative: `Client asked for ${title}`,
+  });
+}
+
+async function replacePublicPacket(
+  f: Awaited<ReturnType<typeof fixture>>,
+  requestId: Id<"procurementRequests">,
+  body: string,
+) {
+  const packet = await f.operator.query(api.procurementPacket.get, {
+    requestId,
+  });
+  const current = packet.documents.find(
+    (document) => document.filename === "public.md",
+  )!;
+  return await f.operator.mutation(api.procurementPacket.updateDocument, {
+    requestId,
+    filename: "public.md",
+    expectedRevision: current.revision,
+    markdown: stringifyMarkdownDocument({ visibility: "shared" }, body),
   });
 }
 
@@ -298,20 +316,16 @@ describe("procurement domain boundaries", () => {
       }),
     ]);
     expect(details).not.toHaveProperty("activity");
-    const legacy = await f.t.run(async (ctx) => ({
-      activities: await ctx.db.query("procurementRequestActivities").collect(),
-      documents: await ctx.db.query("procurementRequestDocuments").collect(),
+    const persisted = await f.t.run(async (ctx) => ({
       clientFile: await ctx.db.get(attached.clientFileId),
       fileItem: await ctx.db.get(attached.fileItemId),
     }));
-    expect(legacy.activities).toEqual([]);
-    expect(legacy.documents).toEqual([]);
-    expect(legacy.clientFile).toMatchObject({
+    expect(persisted.clientFile).toMatchObject({
       fileId: storageId,
       clientVisible: true,
       uploadedBySide: "client",
     });
-    expect(legacy.fileItem).toMatchObject({
+    expect(persisted.fileItem).toMatchObject({
       clientFileId: attached.clientFileId,
       clientVisible: true,
     });
@@ -717,14 +731,10 @@ describe("procurement domain boundaries", () => {
       outreachId: outreach.outreachId,
       sources: [{ kind: "client_file", clientFileId }],
     });
-    // The broker answered this packet section, so the review binds to it.
-    await f.t.run((ctx) =>
-      upsertPacketSectionByOperator(ctx, {
-        operatorUserId: f.operatorUserId,
-        requestId: request.requestId,
-        key: "coverage_requested",
-        body: "General liability, $1m each occurrence.",
-      }),
+    await replacePublicPacket(
+      f,
+      request.requestId,
+      "# Coverage requested\n\nGeneral liability, $1m each occurrence.",
     );
     await f.t.run(async (ctx) => {
       await ctx.db.patch(proposal.proposalId, {
@@ -753,13 +763,10 @@ describe("procurement domain boundaries", () => {
       conclusion: "has_gaps",
     });
     // Editing the packet the broker was sent must invalidate the review.
-    await f.t.run((ctx) =>
-      upsertPacketSectionByOperator(ctx, {
-        operatorUserId: f.operatorUserId,
-        requestId: request.requestId,
-        key: "coverage_requested",
-        body: "General liability, $2m each occurrence.",
-      }),
+    await replacePublicPacket(
+      f,
+      request.requestId,
+      "# Coverage requested\n\nGeneral liability, $2m each occurrence.",
     );
     await expect(
       f.operator.mutation(api.procurementProposals.select, {
@@ -1137,14 +1144,10 @@ describe("procurement domain boundaries", () => {
     await f.operator.mutation(api.procurementPacket.revokeLink, {
       linkId: replacementLink.id,
     });
-    await f.t.run((ctx) =>
-      upsertPacketSectionByOperator(ctx, {
-        operatorUserId: f.operatorUserId,
-        requestId: request.requestId,
-        key: "summary",
-        body: "Original broker submission.",
-        audience: "broker",
-      }),
+    await replacePublicPacket(
+      f,
+      request.requestId,
+      "# Summary\n\nOriginal broker submission.",
     );
     const clientFileId = await f.t.run(async (ctx) => {
       const now = dayjs().valueOf();
@@ -1263,14 +1266,10 @@ describe("procurement domain boundaries", () => {
       },
     );
 
-    await f.t.run((ctx) =>
-      upsertPacketSectionByOperator(ctx, {
-        operatorUserId: f.operatorUserId,
-        requestId: request.requestId,
-        key: "summary",
-        body: "Updated after issue.",
-        audience: "broker",
-      }),
+    await replacePublicPacket(
+      f,
+      request.requestId,
+      "# Summary\n\nUpdated after issue.",
     );
     await f.operator.mutation(api.procurementRequests.updateFileItem, {
       fileItemId: fileItem.fileItemId,

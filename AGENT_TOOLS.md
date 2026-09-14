@@ -79,10 +79,10 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | `attach_client_file`                       | Attach a client file to the operator response, including private files.                                                 | `operator.client_files.read`    | read             | operator | none         | action    |
 | `lookup_client_wiki`                       | Read client or supplier company .md content, front matter, revision, and proposals; private files remain operator-only.                                                     | `operator.wiki.read`            | read             | operator | none         | mutation  |
 | `update_client_wiki`               | Replace client or operator-private supplier company .md content with YAML front matter and an expected revision.                                                  | `operator.wiki.write`           | reversible write | operator | exact        | mutation  |
-| `lookup_procurement_packet`                | Read the request’s private.md and public.md, including Markdown, visibility, and revisions.                                              | `operator.procurement.read`     | read             | operator | none         | mutation  |
+| `lookup_procurement_packet`                | Read the request’s `private.md` and `public.md`, including Markdown, visibility, and revisions.                                              | `operator.procurement.read`     | read             | operator | none         | mutation  |
 | `preview_broker_packet`                    | Preview the shared broker-market packet and request-wide released artifacts.                                            | `operator.procurement.read`     | read             | operator | none         | mutation  |
 | `list_broker_packet_links`                 | List packet-link snapshot, expiry, delivery, revocation, staleness, and view state.                                     | `operator.procurement.read`     | read             | operator | none         | mutation  |
-| `update_procurement_packet`        | Replace private.md or public.md with full Markdown, matching visibility, and an expected revision.                                                | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `update_procurement_packet`        | Replace `private.md` or `public.md` with full Markdown, matching visibility, and an expected revision.                                                | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `list_procurement_requests`                | List procurement request workflow records for one client; read prose through the packet files.                                              | `operator.procurement.read`     | read             | operator | none         | mutation  |
 | `get_procurement_request`                  | Read one procurement request and its broker, file, policy, and email state.                                             | `operator.procurement.read`     | read             | operator | none         | mutation  |
 | `list_procurement_proposals`               | List operator-private proposal offers for one exact request.                                                            | `operator.procurement.read`     | read             | operator | none         | mutation  |
@@ -104,8 +104,8 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | `import_policy_files` | Import selected conversation or client-file PDFs into an exact client policy library, combined or separate, with extraction scheduling and content deduplication. | `operator.policies.write` | reversible write | operator | exact | action |
 | `add_client_file`                          | File an operator-thread attachment privately in a client's file library.                                                | `operator.client_files.write`   | reversible write | operator | none         | mutation  |
 | `update_client_file`                       | Rename a client file or change its visibility or policy association.                                                    | `operator.client_files.write`   | reversible write | operator | exact        | mutation  |
-| `create_procurement_request`               | Create a request, seed public.md from initial narrative, and prepare forwarding/sharing; optionally record a reported external placement. | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
-| `update_procurement_request`               | Update request workflow fields, policy links, or reported external placement; edit prose through update_procurement_packet.             | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `create_procurement_request`               | Create a request, seed `public.md` from initial narrative, and prepare forwarding/sharing; optionally record a reported external placement. | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `update_procurement_request`               | Update request workflow fields, policy links, or reported external placement; edit prose through `update_procurement_packet`.             | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `file_procurement_proposal`                | Atomically file canonical artifacts or conversation attachments and queue extraction.                                   | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `file_procurement_email_quote`             | Atomically file an imported email's canonical attachments, all or a chosen subset.                                      | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `archive_procurement_proposal`             | Archive a proposal or delete a truly empty draft.                                                                       | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
@@ -119,8 +119,8 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | `select_procurement_proposal`              | Select a proposal with a current packet-bound, staff-confirmed passing review.                                          | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `create_broker_network_profile`            | Register a supplier-network broker organization with no portal users or invites.                                        | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
 | `update_broker_network_profile`            | Update a broker's prospect, active, inactive, or blacklisted status, office, states, ACORD lines, and neutral identity. | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
-| `create_procurement_broker_outreach`       | Add a real broker-network organization with contact and status; broker notes belong in private.md.                                      | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
-| `update_procurement_broker_outreach`       | Update outreach identity or status; edit broker history in private.md, and retain quotes as proposals.                                  | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `create_procurement_broker_outreach`       | Add a real broker-network organization with contact and status; broker notes belong in `private.md`.                                      | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
+| `update_procurement_broker_outreach`       | Update outreach identity or status; edit broker history in `private.md`, and retain quotes as proposals.                                  | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `create_procurement_file_item`             | Track/link a canonical artifact with explicit client and broker release state.                                          | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `update_procurement_file_item`             | Update an artifact association, purpose, status, links, or audience release.                                            | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `update_procurement_email_thread`          | Correct an imported procurement email's category or request assignment.                                                 | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
@@ -135,9 +135,7 @@ Operator conversation discovery and reads follow the portal's ownership/shared-v
 
 `import_policy_files` works across operator web, email, Slack, iMessage, and write-scoped operator MCP. Select up to ten PDFs (25 MB each, 50 MB total) already registered to the current operator conversation, including originals retrieved by `get_company_email_attachment`, or active files owned by the exact target client. The approval lists the client, filenames, and grouping and stores a source fingerprint; approval and atomic commit reject changed sources. Imports revalidate the active operator, impersonation, client/source ownership, and live approval, preserve source files, deduplicate by content within the client, reuse the portal's operator upload owner, and atomically create policy-file records and schedule the existing extraction/document gate. Quotes remain procurement proposals. The direct portal PDF upload remains available. No tenant policy-write capability is added.
 
-`update_procurement_packet` version 2 accepts only `private.md` or `public.md`, full Markdown, and `expectedRevision`. The matching YAML visibility is `private` or `shared`; filenames and permissions cannot disagree. Read the current file before replacing it and preserve unrelated prose. Request/outreach/file-item update tools no longer accept narrative/log/notes fields. Their effects and exact-confirmation requirements remain unchanged. Authors may use ordinary headings and YAML; no fixed sections or nested metadata model is required.
-
-`create_procurement_request` and `update_procurement_request`
+`create_procurement_request` version 5 and `update_procurement_request` version 4
 accept `completionOutcome: { kind: "placed_elsewhere", provider?, purchaseDate? }`.
 The purchase date uses `YYYY-MM-DD`; provider and date are source-reported, not
 verified policy facts. This outcome sets the request to `completed` without
@@ -175,11 +173,11 @@ proposals, confirm reviews, bind coverage, delete or blacklist records, or chang
 access/sharing. Interactive tool and MCP exact-confirmation requirements are
 unchanged.
 
-`create_procurement_broker_outreach` and `update_procurement_broker_outreach`
-include the neutral `observed` status for sourced activity that makes no capability
+`create_procurement_broker_outreach` and `update_procurement_broker_outreach`,
+both version 4, include the neutral `observed` status for sourced activity that makes no capability
 claim. A declined or quoted message must not imply `can_handle`. Scans update
-the exact existing request’s `private.md` with ordinary broker observations;
-market status stays structured and operator-private.
+the exact existing request/broker log through its owning helper; the status and
+log remain operator-private.
 
 ### Operator MCP projection
 
@@ -324,8 +322,8 @@ The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP 
 
 ## Markdown frontends and MCP boundaries
 
-- Company knowledge is a standard `.md` document with YAML front matter. Direct members can read a shared wiki; direct admins can import, edit, download and save that shared wiki using revision checks. A private wiki is operator-only. Automated facts preserve arbitrary authored prose and surface conflicts as proposed changes.
+- Company knowledge is a standard `.md` document with YAML front matter. Direct members can read it; direct admins can import, edit, download and save it using revision checks. Automated facts preserve arbitrary authored prose and surface conflicts as proposed changes.
 - Operators manage company knowledge at `/operator/clients/:clientOrgId/wiki`. Impersonation remains read-only. Agent writes use the registry's exact approval gate and company-context policy.
-- Each procurement request has exactly `private.md` and `public.md`. Operators read both; authorized client request views and issued broker links expose `public.md` only. Public is an access-controlled sharing label, not anonymous internet publication. Intake, market observations, follow-ups, and file-handling notes are ordinary prose in these files; there are no separate logs/intake/file-note documents. Existing issued link snapshots remain immutable.
+- Shared procurement content comes from `public.md` and is identical for authorized client and broker-market readers. Internal intake, broker observations, follow-ups, and file-handling prose live in `private.md`; no separate intake, log, or file-note documents exist. Existing issued link snapshots remain immutable.
 - Tenant MCP exposes `read_company_wiki` and `write_company_wiki`; write requires the token's exact organization, current direct-admin membership, write scope, and expected document revision. Procurement remains absent from tenant MCP.
 - Operator MCP derives the whole-document wiki/packet tools and research tool from the same registry as web, email, Slack and iMessage. It retains role, approval, audit and no-impersonation checks.

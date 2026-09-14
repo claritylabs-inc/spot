@@ -435,7 +435,7 @@ export function ClientRequestDetail({
       </OperationalLabelValueList>
 
       <OperationalPanel>
-        <OperationalPanelHeader title="public.md" />
+        <OperationalPanelHeader title="Request details" />
         <OperationalPanelBody>
           <ProseMarkdown gfm>
             {request.packet.markdown || "No packet content shared yet."}

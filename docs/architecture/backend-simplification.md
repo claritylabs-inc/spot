@@ -1,6 +1,6 @@
 # Backend simplification and client intake plan
 
-Status: implementation authorized; audited against 4f83f618 on 2026-09-14. Release and migration results will be recorded here. The operator authorized implementation, migrations, merging, and deployment. This document is the reviewable implementation contract, not evidence that deployment has completed.
+Status: implementation and release authorized. The primary production and shared-dev migrations completed with zero residuals. The user subsequently accepted legacy data loss and asked to prioritize shipping; no additional historical-data recovery is required. Final code validation and deployment results are recorded on the narrowing pull request and the [main release workflow](https://github.com/claritylabs-inc/spot/actions/workflows/deploy-convex.yml).
 
 ## Accepted scope update
 
@@ -10,13 +10,25 @@ The operator refined the rule during implementation: retain fields required by r
 
 The canonical text lives in `markdownDocuments` for transactional persistence, with ordinary `.md` import/export and expected-revision checks. Indexed ownership, workflow state, approvals, source references, and values required for routine decisions remain structured. Company wikis and compliance/certificate notes use the same Markdown primitive under their own resource ownership. Existing issued packet/certificate snapshots and original source evidence remain immutable.
 
-## Execution record
+## Execution and release evidence
 
-- Audited the full backend and implemented canonical client identity, mandatory source-cited research, standard Markdown storage, and bounded legacy cleanup.
-- The preceding widening implementation passed local deployment, a database/file-storage backup and migration, all-page zero-residual verification, and an idempotent second migration.
-- That preceding implementation passed 651 tests, lint, production and worker builds, router-contract checks, and focused wiki browser checks. These results predate the latest two-file procurement decision and do not validate its final implementation.
-- The two-file API, UI, agent-tool, and migration changes are being implemented. Combined tests, local migration/idempotency checks, and browser verification must run again against the final change.
-- Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending. No production completion is claimed here.
+- [PR 346](https://github.com/claritylabs-inc/spot/pull/346) released the Markdown/client-intake implementation as `515265cd7c934410633705feb5177d51e640bd4e`. [Production release 34901426209](https://github.com/claritylabs-inc/spot/actions/runs/34901426209) passed Convex, worker, package, compatibility, and release-readiness checks.
+- An isolated cloud workspace seeded a genuine pre-change fixture, then migrated with widening commit `d7460184ec467f227db629604c212243ae7e37b8`. Four wiki sections, eight packet sections, and the request narrative became one wiki and the two request files. Every legacy packet body retained its audience; the issued packet snapshot was byte-identical. Repeating the migration produced **zero differences across all database table documents**, including revisions and timestamps.
+- [Production audit 34902173672](https://github.com/claritylabs-inc/spot/actions/runs/34902173672) and [migration 34902637845](https://github.com/claritylabs-inc/spot/actions/runs/34902637845) completed. The apply reported `readyForNarrowing: true`, no ownership blockers, no legacy Markdown kinds, and zero residual fields/rows for the narrowed domains. The database and file-storage export is retained in the task workspace.
+- [PR 347](https://github.com/claritylabs-inc/spot/pull/347) corrected the ownership audit: obsolete broker pointers can be cleared without rewriting the actual client owner or historical upload provenance. Shared-dev `acoustic-caiman-755` completed the same migration with `readyForNarrowing: true`; its 38 retired broker status notifications were removed, and all eight final inventory table counts were zero. The used `uploadedBySide` and `uploadedByUserId` fields remain.
+- Both target exports contained zero `insuranceRequirements` rows and no `policyVersions.caseId` values. The unused thread routing key was absent in production; the one shared-dev value was cleared with a zero-residual readback. Canonical requirement criteria remain structured while their obsolete aliases and row fallback machinery are removed.
+- [PR 348](https://github.com/claritylabs-inc/spot/pull/348) keeps client editors synchronized with live agent updates. [PR 349](https://github.com/claritylabs-inc/spot/pull/349) also released the final thread-key cleanup function; [release 34904849513](https://github.com/claritylabs-inc/spot/actions/runs/34904849513) passed all gates, and `app.spot.insure` was verified on its exact `463d8248` commit.
+- The backup comparison identified 22 historical company facts outside the current wiki. Their optional restoration was cancelled after the user explicitly accepted legacy data loss. No current wiki text was replaced. Recovery run `34905294458` was intentionally cancelled; it is not a narrowing gate. The final code removes that recovery function, script, and workflow along with the other one-time migrations.
+- The repository is public. Raw migration artifacts were removed from GitHub after local copies were verified. Private database exports must not be uploaded as unencrypted artifacts to this repository. Local copies remain under the task workspace's gitignored `.context` directory.
+- The integrated narrowing candidate passed 636 tests, both typechecks, lint, and a production build before the final frontend/requirement follow-ups. The final combined checks and actual browser coverage are recorded in the pull request and `docs/testing/workflow-qa.md`; earlier counts do not substitute for the final checks.
+
+The narrowing release removes the verified retired schema and compatibility
+writers, including all eight empty inventory-only tables. It also removes the
+one-off migration workflow, runner, and temporary recovery APIs. Ongoing
+operator-email identity, declaration-fact, carrier-identity, and live Slack
+compatibility migrations retain their existing owners. The normal main release
+workflow enforces Convex deployment, exact-commit worker readiness, compatibility
+checks, and the Vercel production-alias gate.
 
 ## Outcome
 
@@ -30,7 +42,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 - `relatedLegalEntities` holds legal names and evidenced relationship types, jurisdiction and identifiers. Preserve existing list entries and operator corrections. The UI must expose the relationship instead of presenting every entry as an unlabeled name.
 - Keep website, validated industry/vertical, mailing address, entity type, FEIN/business number, and a concise operations description structured. The operations summary has real certificate consumers in `policyPartyContext.ts`; it cannot simply disappear into markdown.
 - Detailed operations, products, locations, ownership narrative, dated revenue/headcount, preferences and stable company context belong in the company Markdown file. Preserve source references and human markdown. Policy terms, private market activity, delivery state and access controls remain in their owning tables.
-- Remove the unused relationship-context fields after preserving any existing values in appropriate wiki sections. Retain `context` temporarily where external DTOs/router smoke identity still consume it; replacing that compatibility projection is a separate verified transition.
+- The former organization context fields and legal-entity notes are removed from structured storage. Their retained narrative lives in the company Markdown file; runtime consumers use the current profile/wiki contracts.
 - Company-file profile facts must contribute to legal entities as well as policy-derived facts. Source retraction must not erase human edits or facts still supported elsewhere. Keep extracted evidence distinct from effective editable values.
 - Operator tools expose the full effective client profile and legal entities, with omission preserving current values and explicit clearing honored. Validate industry membership and vertical pairing at the server boundary, not only in selects.
 
@@ -49,7 +61,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 - Add client identity normalization, complete tool profile support, classification validation and durable research workflow.
 - Fix email preview to use the same canonical send envelope as actual delivery, including deliberate removal of CC/BCC. Preserve old rendered snapshots and legacy fallback while stored data remains mixed.
-- Consolidate request prose into private.md/public.md; route all request, outreach, file, scan, and agent prose writes through those two files. Stop separate intake/log/file-note writes and duplicate outreach contact/obsolete packet snapshots.
+- Consolidate request prose into `private.md` and `public.md`; route request, outreach, file, scan, and agent prose writes through those two files. Stop separate intake/log/file-note writes and duplicate outreach contact/obsolete packet snapshots.
 - Remove unused policy reconciliation state and compatibility source-chunk DB persistence; keep raw spans, nodes, vector document chunks and worker wire/manifest contracts.
 - Simplify certificate workflow settings to the actual per-client renewal toggle; widen obsolete required settings before stopping writes.
 - Stop obsolete conversation-vector storage/API references; preserve actual thread history and wiki.
@@ -60,14 +72,14 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 - Deploy A through the normal main release workflow. Record exact commit, Convex target, Railway readiness and Vercel result.
 - Export/retain a database backup before destructive cleanup; report counts, conflicts and legacy-only payloads without printing confidential content.
-- Run new fixed-scope migration pages and existing applicable wiki/provider-key/COI/Slack/procurement gates. Require complete cursors, zero residual fields/rows and no unresolved blockers before narrowing.
-- Merge legacy packet/intake/log/file-note content into the correct request file without changing its audience or issued snapshots. Preserve unique historical prose and source references; require verified conversion before deleting obsolete rows. Inventory unused history stores, archive material records losslessly where needed, then remove the dead stores. Keep uncertain client identities unresolved.
+- Run the approved widening commit’s fixed-scope migration pages and applicable compatibility gates. Require complete cursors, zero residual fields/rows and no unresolved blockers before narrowing; do not expect removed migration APIs to exist in the narrowed tree.
+- Merge legacy packet/intake/log/file-note content into the correct request file without changing its audience or issued snapshots. Preserve unique historical prose, private evidence, source references, policy update history, old certificate links, and uncertain client identities. A missing active writer is not permission to lose evidence.
 - Re-run pages to prove idempotency. Verify source removal/retry, manual edit preservation, exact approvals and legacy transport compatibility on bounded fixtures.
 
 ### C. Narrow verified obsolete schema
 
 - Remove only fields/tables proven migrated on the target; remove obsolete imports, indexes, migration writers, DTO branches and compatibility tests in the same batch.
-- Candidate removals: retired conversationTurns and sourceChunks; obsolete reconciliation/per-file extraction fields; no-op certificate settings; duplicate outreach snapshots and old revision counters; schema-only organization relationship contexts; established retired memory/delivery/ownership stores after their own gates.
+- The conditional candidate removes the verified compatibility fields, tables, imports, migration writers, and tests. It deliberately retains `policyUpdateRuns` and seven inventory-only procurement tables until approved-target counts and content review are recorded.
 - Shared-dev/local fixture compatibility must be handled explicitly. Never switch this worktree to the shared integration database for routine tests.
 - Release C, verify the same production gates, then run bounded read checks and migration verifiers against the deployed result.
 
@@ -91,7 +103,11 @@ Keep tenant/operator conversation separation, exact approval and audit records, 
 
 ## Domain evidence
 
-The following records are the pre-implementation audit; line numbers refer to the audited checkout. Current behavior and execution results above take precedence as changes land.
+The following records are the preserved pre-implementation audit baseline.
+Symbols, commands, schemas, and line numbers below refer to the audited checkout;
+some no longer exist in the narrowed candidate and none are current operational
+instructions. Use the current contracts and pending evidence table above for
+release decisions.
 
 
 # Policy, evidence, compliance, and certificate schema audit
@@ -172,7 +188,10 @@ Read-only repository audit. No target database row counts or migration execution
 5. Keep structured information that authorizes, filters, or binds evidence. Supplier networkStatus/writingStates/LOB codes drive directory filters (`convex/brokerProfiles.ts:160`), so they belong in fields. Company/supplier descriptions and placement narrative belong in wiki/packet prose. Proposal source evidence and findings must remain structured and private.
 6. Tighten typed output, rather than stuffing operational objects into markdown: proposal reviews have a precise normalized finding shape (`convex/lib/proposalReview.ts:39`) yet store and accept `v.array(v.any())` (`schema.ts:3350`, `convex/procurementProposals.ts:1376`). Use one shared Convex validator for accepted finding/evidence fields after audit/backfill of old review shapes. Proposal extractedOffer itself is intentionally extractor-version tolerant (`convex/lib/proposalMarkdown.ts:80`); do not blindly narrow it to one current provider format.
 
-## Existing migration gates and gaps
+## Historical migration gates and gaps
+
+This list records what existed at audit time. The referenced one-off functions
+are removed from the narrowed candidate and must not be invoked from it.
 
 - `procurementMigration:auditLegacyNarrowing` (`convex/procurementMigration.ts:4`) checks broker-owned clients, broker-uploaded policies and unlinked outreaches. It uses whole-table collect; replace with bounded cursor audit before operating against large production data. It does not report orphaned legacy request documents/activities, contact duplicates, revision residue, invitations or brokerActivity.
 - `migrations:runProcurementDomainBackfill` (`migrations.ts:460`) links brokers but also creates empty draft proposals for legacy quote summaries (`:320`). That conflicts with current atomic filing guarantee (no empty shells) and can revive obsolete extractedOffer fields. Audit legacy rows and use a targeted successor migration; do not rerun blindly for a cleanup.
@@ -180,7 +199,7 @@ Read-only repository audit. No target database row counts or migration execution
 - `migrations:runCompanyWikiLegacyPurge` (`:495`) backfills missing fact sections, unsets connectedEmailAutomationItems.memoryIds and companyInformationExtractions.procurementFacts, then deletes orgMemory/procurementMemory. This is an existing gate, not a novel finding.
 - `migrations:runProposalReviewPacketBackfill` only removes unconfirmable pre-packet reviews; extend cleanup + stop writers before revision-field narrowing.
 - `migrations:runLegacyCoiAttachmentAuthorizationCleanup` (`:444`) + `pendingEmails:verifyLegacyCoiAttachmentAuthorizationCleanup` gates removal of allowMultipleCoiAttachments. Preserve exact coiBatchAuthorization fingerprint binding.
-- At audit time, no dedicated migration preserved legacy procurementRequestDocuments, material procurementRequestActivities, or drafts/specifications in the request’s Markdown files. Must inventory and explicitly map; never automatically confirm extracted obligations or widen visibility.
+- At audit time, no dedicated migration preserved legacy `procurementRequestDocuments`, material `procurementRequestActivities`, or drafts/specifications in the request’s Markdown files. Inventory and explicitly map them; never automatically confirm extracted obligations or widen visibility.
 
 ## Table coverage: keep/change rationale
 
@@ -198,13 +217,13 @@ Read-only repository audit. No target database row counts or migration execution
 | procurementSmsEvents (3042) | Keep provider receipt/delivery ledger separate from customer channels. Provider event/message IDs serve different dedupe identities. |
 | procurementRequirementDrafts (3074) | Retire legacy callable intake path only after preserving drafts/evidence without confirming them. |
 | procurementRequestRequirements (3096) | Retire compatibility links after packet migration/review binding. Do not delete canonical insuranceRequirements shared with compliance. |
-| procurementSpecifications (3107) | Move request-only fact prose to private.md/public.md according to existing audience; currently still callable writer, so stop/redirect writer first. |
+| procurementSpecifications (3107) | Move request-only fact prose to `private.md` or `public.md` according to its existing audience; currently still callable writer, so stop/redirect writer first. |
 | procurementRequestActivities (3124) | Existing orphan store; migrate material messages/status evidence to canonical audit/correspondence, preserve client visibility, then drop. |
 | procurementRequestDocuments (3142) | Existing orphan store; canonical clientFiles + associations. Preserve blobs/visibility before removal. |
-| procurementPacketSections (3161) | Keep ordered markdown, audience ladder, proposed edits and source references. Proposals/manual ownership are workflow state, not redundant copies. |
+| procurementPacketSections (3161) | Historical section store superseded by the two-file contract. Preserve content, audience, proposed edits, and source references during conversion; the conditional candidate removes this table. |
 | procurementPacketLinks (3196) | Keep token hash, revocation, recipient and immutable snapshots. Existing optional legacy outreach/snapshot fields need explicit rotation; never snapshot old links to today's content and call it historical truth. |
 | procurementPacketViews (3252) | Keep bounded audit evidence; viewCount/lastViewedAt are useful aggregate cache. Avoid extra generic activity abstraction. |
-| procurementPacketUpdateRuns (3260) | Keep lease/fingerprint/retry ownership. Terminal diagnostic retention can be bounded, not approval lifetimes. |
+| procurementPacketUpdateRuns (3260) | Historical migration ledger. The conditional candidate removes it after verified conversion; it is not one of the eight inventory-only tables retained for production counts. |
 | procurementProposals (3275) | Keep private decision entity and atomic filing contract. Do not move selected status, premium offer evidence or extraction fingerprint into wiki. |
 | procurementProposalDocuments (3307) | Keep association/extraction evidence manifest. Existing planned cleanup: backfill clientFileId, then remove duplicate fileId/contentType/size only after reader compare and preserving extraction identity/hash. |
 | procurementProposalReviews (3325) | Keep model vs staff conclusion and exact extraction+packet binding. Tighten findings validator; complete counter cleanup before narrowing. |
@@ -310,3 +329,10 @@ Every deletion uses audit -> widen/canonical writer -> bounded resumable migrati
 
 Recommended first implementation batch is canonical email preview/delivery resolution, followed by notification validator consolidation. The migration-only retired conversation store and established legacy gates can run as a separate deployment lane once actual target audit is available. Avoid a simultaneous all-channel table rewrite.
 
+### Ownership migration follow-up
+
+The first widening release is PR #346 (`515265cd`); production release run `34901426209` passed. Production audit `34902173672` found zero ownership blockers and zero rows in all eight inventory-only retired tables.
+
+Shared development has a client that retains its retired broker association and a policy already owned by that client with historical broker-upload metadata. Those pointers are removable without changing ownership. The widening migration records their prior values in the operator audit ledger and clears only the unused references after backup. It retains the historical uploader side and user because the policy UI displays that provenance. Broker-owned or unresolved policies still require evidence-based reconciliation; the migration never assigns a replacement owner.
+
+The shared-development `brokerActivity` inventory contains 38 retired status notifications: 37 extraction completions and one upload. They carry source policy references rather than unique policy facts. The backed-up retired-store purge removes these unused duplicates, and the final inventory counts are recorded after migration. Production has zero rows in this table.

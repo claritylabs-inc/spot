@@ -80,7 +80,6 @@ export const create = internalMutation({
     renderedText: v.optional(v.string()),
     renderedHtml: v.optional(v.string()),
     attachments: v.optional(v.array(pendingEmailAttachmentValidator)),
-    allowMultipleCoiAttachments: v.optional(v.boolean()),
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
     explicitSendAuthorization: v.optional(
       v.object({
@@ -144,7 +143,6 @@ export const updateDraftInternal = internalMutation({
     renderedText: v.optional(v.string()),
     renderedHtml: v.optional(v.string()),
     attachments: v.optional(v.array(pendingEmailAttachmentValidator)),
-    allowMultipleCoiAttachments: v.optional(v.boolean()),
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
     chatMessageId: v.optional(v.id("threadMessages")),
     sendBlockedReason: v.optional(v.string()),
@@ -363,21 +361,5 @@ export const restoreAsDraftInternal = internalMutation({
   handler: async (ctx, args) => {
     const restored = await restoreCancelledEmailAsDraft(ctx, args.id);
     return restored ? { id: args.id } : null;
-  },
-});
-
-export const verifyLegacyCoiAttachmentAuthorizationCleanup = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const remaining = await ctx.db
-      .query("pendingEmails")
-      .filter((query) =>
-        query.neq(query.field("allowMultipleCoiAttachments"), undefined),
-      )
-      .first();
-    return {
-      complete: remaining === null,
-      remainingSampleId: remaining?._id,
-    };
   },
 });
