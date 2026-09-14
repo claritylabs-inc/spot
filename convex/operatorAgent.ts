@@ -1,7 +1,8 @@
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
+import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
@@ -1255,6 +1256,8 @@ export async function enqueueOperatorMessage(
     threadId: Id<"operatorAgentThreads">;
     channel: OperatorChannel;
     content: string;
+    emailContent?: Infer<typeof operatorEmailContentValidator>;
+    preservePendingEmailConfirmation?: boolean;
     dedupeKey?: string;
     attachments?: OperatorAttachment[];
     pageContext?: {
@@ -1343,12 +1346,24 @@ export async function enqueueOperatorMessage(
     );
   }
 
-  await cancelActiveRunsForThread(ctx, args.threadId, "superseded");
-  await invalidatePendingOperatorConfirmations(
-    ctx,
-    args.threadId,
-    "superseded",
-  );
+  const continuedRun =
+    args.channel === "email" && args.preservePendingEmailConfirmation
+      ? await ctx.db
+          .query("operatorAgentRuns")
+          .withIndex("thread_status", (index) =>
+            index.eq("threadId", args.threadId).eq("status", "waiting_confirmation"),
+          )
+          .order("desc")
+          .first()
+      : null;
+  if (!continuedRun) {
+    await cancelActiveRunsForThread(ctx, args.threadId, "superseded");
+    await invalidatePendingOperatorConfirmations(
+      ctx,
+      args.threadId,
+      "superseded",
+    );
+  }
 
   const now = dayjs().valueOf();
   const operator = await ctx.db.get(args.operatorUserId);
@@ -1366,6 +1381,7 @@ export async function enqueueOperatorMessage(
     userName: operator?.name ?? operator?.email ?? "Operator",
     content,
     attachments,
+    emailContent: args.emailContent,
     toolArtifacts: toolArtifacts.length > 0 ? toolArtifacts : undefined,
     createdAt: now,
     updatedAt: now,
@@ -1381,6 +1397,21 @@ export async function enqueueOperatorMessage(
       }),
     ),
   );
+  if (continuedRun) {
+    await ctx.db.insert("operatorAgentMessages", {
+      threadId: args.threadId,
+      ownerUserId: args.operatorUserId,
+      channel: "email",
+      role: "agent",
+      replyToMessageId: userMessageId,
+      content:
+        "The existing action is still waiting for your decision. Approve or cancel it using its controls in this conversation.",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(args.threadId, { lastMessageAt: now, updatedAt: now });
+    return { messageId: userMessageId, runId: continuedRun._id, duplicate: false };
+  }
   const agentMessageId = await ctx.db.insert("operatorAgentMessages", {
     threadId: args.threadId,
     ownerUserId: args.operatorUserId,

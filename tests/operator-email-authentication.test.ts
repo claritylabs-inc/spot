@@ -42,6 +42,11 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("operator email authentication", () => {
+  it("rejects Spot's own signed outbound email if it returns to the operator inbox", async () => {
+    const raw = message().replace("From: Terry <terry@spot.insure>", "From: Spot Operator <operator@agent.spot.insure>");
+    await expect(authenticateOperatorEmail(await sign(raw, "agent.spot.insure")))
+      .rejects.toThrow("one sender from an operator domain");
+  });
   it.each(["spot.insure", "claritylabs.inc", "toolsforenlightenment.org"])(
     "accepts independently verified email from %s with a signed reply route",
     async (domain) => {

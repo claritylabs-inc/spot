@@ -5,6 +5,8 @@ import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import schema from "./schema";
+import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
+import { getOperatorAgentToolSpec } from "./lib/operatorAgentToolRegistry";
 
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
@@ -45,6 +47,83 @@ const message = {
   content: "Please review this email",
   attachments: [],
 };
+
+test("an email confirmation reply preserves the exact pending action and replay cannot start another task", async () => {
+  const { t, userId } = await fixture();
+  const first = await t.mutation(internal.operatorEmail.accept, message);
+  const context = await t.query(internal.operatorEmail.getDeliveryContext, {
+    receiptId: first.receiptId,
+  });
+  const run = context!.run;
+  await t.mutation(internal.operatorAgent.markRunStartedInternal, {
+    runId: run._id,
+  });
+  const toolName = "create_client_organization";
+  const input = { name: "Example Homes" };
+  const confirmation = await t.mutation(
+    internal.operatorAgent.requestToolConfirmationInternal,
+    {
+      operatorUserId: userId,
+      runId: run._id,
+      threadId: run.threadId,
+      threadMessageId: run.agentMessageId,
+      toolName,
+      input,
+      inputHash: await actionConfirmationFingerprint({
+        toolName,
+        toolVersion: getOperatorAgentToolSpec(toolName).version,
+        input,
+      }),
+      idempotencyKey: "email-client",
+      channel: "email",
+    },
+  );
+  expect(confirmation.status).toBe("confirmation_required");
+  const reply = {
+    ...message,
+    providerId: "reply-1",
+    messageId: "<reply-1@example.com>",
+    threadToken: run.threadId,
+    content: "Subject: Re: Review this\n\nYes approve it\n\nTerry Wang",
+    emailContent: {
+      subject: "Re: Review this",
+      currentText: "Yes approve it\n\nTerry Wang",
+      quotedText: "> Create Example Homes",
+      parserVersion: "test",
+      parseInputTruncated: false,
+    },
+  };
+  const accepted = await t.mutation(internal.operatorEmail.accept, reply);
+  expect(
+    (await t.mutation(internal.operatorEmail.accept, reply)).duplicate,
+  ).toBe(true);
+  const after = await t.query(internal.operatorEmail.getDeliveryContext, {
+    receiptId: accepted.receiptId,
+  });
+  expect(after!.run._id).toBe(run._id);
+  expect(after!.run.status).toBe("waiting_confirmation");
+  expect(after!.confirmation?.status).toBe("pending");
+  await t.run(async (ctx) => {
+    expect(await ctx.db.query("operatorAgentRuns").collect()).toHaveLength(1);
+    expect(await ctx.db.query("organizations").collect()).toHaveLength(0);
+  });
+  // A real revision still replaces the old request, even if history says approve.
+  await t.mutation(internal.operatorEmail.accept, {
+    ...reply,
+    providerId: "revision-1",
+    messageId: "<revision@example.com>",
+    content: "Use a different company name.",
+    emailContent: {
+      ...reply.emailContent,
+      currentText: "Use a different company name.",
+      quotedText: "> Yes approve it",
+    },
+  });
+  const replaced = await t.query(internal.operatorEmail.getDeliveryContext, {
+    receiptId: first.receiptId,
+  });
+  expect(replaced!.run.status).toBe("cancelled");
+});
 
 test("atomically creates a private operator thread and suppresses provider and signed-message replays across aliases", async () => {
   const { t, userId } = await fixture();

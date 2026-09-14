@@ -31,9 +31,25 @@ are available through the authenticated operator-thread link in the response.
 
 Write requests retain the registry's exact-confirmation policy. Email responses
 link to the operator thread to approve or cancel there; replying with “approve”
-is not an approval mechanism. After a portal decision, the email delivery poll
+is not an approval mechanism. A short confirmation reply such as “Yes approve
+it” preserves the waiting run and exact approval and directs the operator to
+the existing controls; it does not replace the task. A reply containing revised
+instructions starts a replacement task as before. After a portal decision, the email delivery poll
 continues to the next confirmation or terminal response. Human approvals have
 no age-based expiration.
+
+The portal separates the current message from quoted history and forwarded
+source emails, rendering the latter in cards with readable headers and body
+formatting. A forward nested inside a quoted reply remains history and is not
+sent to the runner as a new instruction. Existing plain-text messages receive
+card formatting where their stored text contains recognizable reply/forward
+boundaries; quotes stripped before structured storage cannot be recovered.
+
+Spot's sending address cannot authenticate as a human operator. Workspace
+scanning also excludes mail from the Spot Operator inbox identity before
+collecting body or attachment evidence, preventing generated status summaries
+from feeding back into reconciliation. Approval and completion notices are
+separate expected deliveries, not evidence of another incoming task.
 
 ## Authentication and storage
 

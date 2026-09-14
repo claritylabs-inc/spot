@@ -134,14 +134,21 @@ export function parseInboundEmail(input: {
   }
 
   const currentSource =
-    forwardResult.forwarded && forwardResult.message !== null
-      ? forwardResult.message
+    forwardResult.forwarded && forwardResult.email.body != null
+      ? (forwardResult.message ?? "")
       : parseInput;
-  const parsedReply = new EmailReplyParser().read(currentSource);
+  let parsedReply = new EmailReplyParser().read(currentSource);
+  // A forward inside an older quoted reply is history, not a new forward.
+  const forwardIsQuoted = Boolean(
+    forwardResult.forwarded &&
+      forwardResult.message !== null &&
+      parsedReply.getQuotedText().trim(),
+  );
+  if (forwardIsQuoted) parsedReply = new EmailReplyParser().read(parseInput);
   const currentText = parsedReply.getVisibleText().trim();
   const quotedText = parsedReply.getQuotedText().trim() || undefined;
 
-  const forwarded = forwardResult.forwarded
+  const forwarded = forwardResult.forwarded && !forwardIsQuoted
     ? {
         email: {
           from: normalizeMailbox(forwardResult.email.from),
