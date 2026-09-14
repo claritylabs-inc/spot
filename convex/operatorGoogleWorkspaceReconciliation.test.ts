@@ -982,45 +982,47 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
   expect(
     await f.t.run((ctx) => ctx.db.query("policies").collect()),
   ).toHaveLength(1);
-  const g = await fixture();
-  const otherEvidence = { ...g.evidence, attachments: [attachment] };
-  otherEvidence.contentFingerprint =
-    await googleWorkspaceScanContentFingerprint(otherEvidence, body);
-  await g.t.run((ctx) =>
-    ctx.db.patch(g.sourceId, {
-      status: "ready",
-      evidence: otherEvidence,
-      leaseToken: undefined,
-      leaseUntil: undefined,
-    }),
-  );
-  mocks.generate
-    .mockResolvedValueOnce({
-      object: {
-        documentKind: "quote",
-        insuredName: "Cove",
-        insuredAddress: null,
-        singleCompletePolicy: false,
-        explanation: "Quote only",
-      },
-    })
-    .mockResolvedValueOnce({
-      object: { operations: [importOperation], attention: [] },
-    });
-  await g.t.action(
-    internal.actions.operatorGoogleWorkspaceReconciliation.reconcileSource,
-    { sourceId: g.sourceId },
-  );
-  expect(
-    await g.t.run((ctx) => ctx.db.query("policies").collect()),
-  ).toHaveLength(0);
-  expect(
-    (
-      await g.t.run((ctx) =>
-        ctx.db.query("operatorWorkspaceScanFindings").first(),
-      )
-    )?.status,
-  ).toBe("needs_attention");
+  for (const documentKind of ["quote", "ambiguous", "bound_policy"] as const) {
+    const g = await fixture();
+    const otherEvidence = { ...g.evidence, attachments: [attachment] };
+    otherEvidence.contentFingerprint =
+      await googleWorkspaceScanContentFingerprint(otherEvidence, body);
+    await g.t.run((ctx) =>
+      ctx.db.patch(g.sourceId, {
+        status: "ready",
+        evidence: otherEvidence,
+        leaseToken: undefined,
+        leaseUntil: undefined,
+      }),
+    );
+    mocks.generate
+      .mockResolvedValueOnce({
+        object: {
+          documentKind,
+          insuredName: "Cove",
+          insuredAddress: null,
+          singleCompletePolicy: false,
+          explanation: "Quote or unclear policy grouping",
+        },
+      })
+      .mockResolvedValueOnce({
+        object: { operations: [importOperation], attention: [] },
+      });
+    await g.t.action(
+      internal.actions.operatorGoogleWorkspaceReconciliation.reconcileSource,
+      { sourceId: g.sourceId },
+    );
+    expect(
+      await g.t.run((ctx) => ctx.db.query("policies").collect()),
+    ).toHaveLength(0);
+    expect(
+      (
+        await g.t.run((ctx) =>
+          ctx.db.query("operatorWorkspaceScanFindings").first(),
+        )
+      )?.status,
+    ).toBe("needs_attention");
+  }
   const h = await fixture();
   const address = {
     street1: "100 Main St",
