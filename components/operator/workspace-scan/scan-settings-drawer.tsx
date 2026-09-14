@@ -61,6 +61,7 @@ export function ScanSettingsDrawer({
       await onSave({
         enabled: enable,
         expectedAuthorizationRevision: config.authorizationRevision,
+        expectedSettingsUpdatedAt: config.settingsUpdatedAt,
         intervalMinutes: interval,
         ...(enable && !config.enabled
           ? { authorizingOperatorId: currentOperatorId }

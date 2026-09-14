@@ -71,6 +71,7 @@ function ScanControls({ ready, onRightPanel }: ScanControlsProps) {
         await save({
           enabled: false,
           expectedAuthorizationRevision: status.config.authorizationRevision,
+          expectedSettingsUpdatedAt: status.config.settingsUpdatedAt,
           intervalMinutes: status.config.intervalMinutes,
         });
         toast.success("Automatic updates paused");
@@ -103,7 +104,7 @@ function ScanControls({ ready, onRightPanel }: ScanControlsProps) {
   const configure = () =>
     onRightPanel(
       <ScanSettingsDrawer
-        key={status.config.authorizationRevision}
+        key={`${status.config.authorizationRevision}:${status.config.settingsUpdatedAt}`}
         config={status.config}
         currentOperatorId={current.user._id}
         ready={ready}
