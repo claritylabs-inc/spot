@@ -68,7 +68,10 @@ import {
 import { OPERATOR_AGENT_TOOL_REGISTRY } from "./lib/operatorAgentToolRegistry";
 import { decodeOperatorMcpAttachments } from "./lib/operatorMcpAttachments";
 import { buildOperatorMcpToolCatalog } from "./lib/operatorMcpToolCatalog";
+import { observeHttp, provisionHttp } from "./employeeProvisioning";
 const http = httpRouter();
+http.route({ path: "/api/provisioning/v1/operators/observe", method: "POST", handler: observeHttp });
+http.route({ path: "/api/provisioning/v1/operators/provision", method: "POST", handler: provisionHttp });
 const internalApi = internal as any;
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
