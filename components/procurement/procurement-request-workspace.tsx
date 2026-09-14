@@ -121,6 +121,7 @@ type ClientFileOption = {
 };
 
 type RequestSummary = {
+  completionOutcome?: React.ComponentProps<typeof RequestCompletionOutcome>["outcome"];
   _id: Id<"procurementRequests">;
   clientOrgId: Id<"organizations">;
   title: string;
