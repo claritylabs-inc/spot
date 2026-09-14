@@ -1,5 +1,6 @@
 "use client";
 
+import { scanChangeValue, scanFieldLabel } from "./scan-change-values";
 import { ScanQueryBoundary } from "./scan-query-boundary";
 import { useRef, useState, type ReactNode } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -66,6 +67,9 @@ function ActivityList({ entityId, onRightPanel }: ActivityListProps) {
     { status: filter, entityId },
     { initialNumItems: 20 },
   );
+
+  if (entityId && !filter && status === "Exhausted" && results.length === 0)
+    return null;
 
   function openActivity(id: string) {
     onRightPanel(
@@ -213,9 +217,10 @@ export function WorkspaceScanActivityDrawer(props: ActivityDrawerProps) {
 }
 
 function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
+  const [selectedOrgId, setSelectedOrgId] = useState<Id<"organizations">>();
   const activity = useQuery(
     api.operatorGoogleWorkspaceScanActivity.getActivity,
-    { activityId },
+    { activityId, selectedOrgId },
   );
   const resolve = useMutation(
     api.operatorGoogleWorkspaceScanActivity.resolveActivity,
@@ -230,7 +235,6 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
     api.operatorGoogleWorkspaceScanActivity.correctActivity,
   );
   const [note, setNote] = useState("");
-  const [selectedOrgId, setSelectedOrgId] = useState<Id<"organizations">>();
   const [selectedRequestId, setSelectedRequestId] =
     useState<Id<"procurementRequests">>();
   const [busy, setBusy] = useState<ActivityAction | null>(null);
@@ -343,14 +347,14 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
           {activity.changes.map((change, index) => (
             <OperationalLabelValueList
               key={`${change.field}-${index}`}
-              title={change.field}
+              title={scanFieldLabel(change.field)}
             >
               <OperationalLabelValueRow
                 label="Before"
                 layout="stacked"
                 value={
                   <span className="whitespace-pre-wrap">
-                    {change.before ?? "Not set"}
+                    {scanChangeValue(change.before, change.field)}
                   </span>
                 }
               />
@@ -359,7 +363,7 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
                 layout="stacked"
                 value={
                   <span className="whitespace-pre-wrap">
-                    {change.after ?? "Not set"}
+                    {scanChangeValue(change.after, change.field)}
                   </span>
                 }
               />
@@ -466,7 +470,6 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
                         (candidate) => candidate.id === id,
                       )?.id,
                     );
-                    setSelectedOrgId(undefined);
                   }}
                 />
               ) : null}

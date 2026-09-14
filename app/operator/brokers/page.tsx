@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2, Plus, Search } from "lucide-react";
@@ -55,9 +56,15 @@ export default function OperatorBrokersPage() {
   const [status, setStatus] = useState<NetworkStatus | typeof ALL>(ALL);
   const [writingState, setWritingState] = useState("");
   const [line, setLine] = useState("");
-  const [selectedId, setSelectedId] = useState<Id<"organizations"> | null>(
-    null,
-  );
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedId = searchParams.get("brokerId") as Id<"organizations"> | null;
+  function setSelectedId(id: Id<"organizations"> | null) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (id) next.set("brokerId", id);
+    else next.delete("brokerId");
+    router.replace(`/operator/brokers${next.size ? `?${next.toString()}` : ""}`, { scroll: false });
+  }
   const [creating, setCreating] = useState(false);
   const rows = useQuery(api.brokerProfiles.list, {
     search: search.trim() || undefined,

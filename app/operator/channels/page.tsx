@@ -93,11 +93,13 @@ function OperatorChannelTabs({
   imessageContent,
   googleWorkspaceContent,
   mcpContent,
+  onTabChange,
 }: {
   children: ReactNode;
   imessageContent?: ReactNode;
   googleWorkspaceContent?: ReactNode;
   mcpContent?: ReactNode;
+  onTabChange?: () => void;
 }) {
   const placeholder = (
     <ChannelCard className="flex h-40 items-center justify-center text-muted-foreground">
@@ -108,7 +110,7 @@ function OperatorChannelTabs({
   const [activeTab, selectTab] = useTabParam(CHANNEL_TABS);
 
   return (
-    <Tabs value={activeTab} onValueChange={selectTab} className="gap-4">
+    <Tabs value={activeTab} onValueChange={(value) => { selectTab(value); onTabChange?.(); }} className="gap-4">
       <div className="-mx-1 overflow-x-auto px-1 scrollbar-hide">
         <TabsList variant="pill" aria-label="Channel">
           <TabsTrigger value="slack">Slack</TabsTrigger>
@@ -693,6 +695,11 @@ function OperatorChannelsContent({
     >
       <main className="w-full">
         <OperatorChannelTabs
+          onTabChange={() => {
+            setScanPanel(null);
+            setGoogleSettingsDrawerOpen(false);
+            setIdentityDrawerOpen(false);
+          }}
           imessageContent={<OperatorImessageContent />}
           googleWorkspaceContent={
             <OperatorGoogleWorkspaceContent

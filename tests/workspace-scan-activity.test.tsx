@@ -82,7 +82,7 @@ const activity = {
   sources: [],
   availableActions: ["resolve", "dismiss"],
   candidates: {
-    organizations: [],
+    organizations: [{ id: "org-cove", label: "Cove · contact@example.test" }],
     requests: [
       { id: "request-auto", label: "Auto renewal" },
       { id: "request-cyber", label: "Cyber renewal" },
@@ -131,6 +131,13 @@ test("resolving sends only the exact operator-selected request and never default
     expect(button(view.host, "Resolve match").disabled).toBe(true);
     expect(mocks.resolve).not.toHaveBeenCalled();
     await act(async () => {
+      const org = view.host.querySelector(
+        'select[aria-label="Match organization"]',
+      ) as HTMLSelectElement;
+      org.value = "org-cove";
+      org.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
       const select = view.host.querySelector(
         'select[aria-label="Match request"]',
       ) as HTMLSelectElement;
@@ -141,7 +148,7 @@ test("resolving sends only the exact operator-selected request and never default
     expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith({
       activityId: "finding-one",
       selectedRequestId: "request-auto",
-      selectedOrgId: undefined,
+      selectedOrgId: "org-cove",
       note: undefined,
     });
     expect(mocks.correct).not.toHaveBeenCalled();

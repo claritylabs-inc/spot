@@ -60,13 +60,16 @@ export function ScanSettingsDrawer({
     try {
       await onSave({
         enabled: enable,
+        expectedAuthorizationRevision: config.authorizationRevision,
         intervalMinutes: interval,
         ...(enable && !config.enabled
           ? { authorizingOperatorId: currentOperatorId }
           : {}),
       });
       toast.success(
-        enable ? "Automatic updates enabled" : "Scan schedule saved",
+        enable && !config.enabled
+          ? "Automatic updates enabled"
+          : "Scan schedule saved",
       );
       onClose();
     } catch (cause) {
@@ -113,6 +116,10 @@ export function ScanSettingsDrawer({
         access.
       </p>
       <OperationalLabelValueList>
+        <OperationalLabelValueRow
+          label="Authorized by"
+          value={config.authorizingOperatorLabel ?? "No authorization yet"}
+        />
         <OperationalLabelValueRow
           label="Mailboxes"
           value="All eligible Workspace mailboxes"

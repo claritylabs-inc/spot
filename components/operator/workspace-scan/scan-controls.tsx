@@ -70,6 +70,7 @@ function ScanControls({ ready, onRightPanel }: ScanControlsProps) {
       if (action === "pause") {
         await save({
           enabled: false,
+          expectedAuthorizationRevision: status.config.authorizationRevision,
           intervalMinutes: status.config.intervalMinutes,
         });
         toast.success("Automatic updates paused");
@@ -124,6 +125,12 @@ function ScanControls({ ready, onRightPanel }: ScanControlsProps) {
         />
         <dl>
           <OperationalLabelValueRow
+            label="Authorized by"
+            value={
+              status.config.authorizingOperatorLabel ?? "No authorization yet"
+            }
+          />
+          <OperationalLabelValueRow
             label="Schedule"
             value={SCAN_INTERVAL_LABELS[status.config.intervalMinutes]}
           />
@@ -166,7 +173,7 @@ function ScanControls({ ready, onRightPanel }: ScanControlsProps) {
             {error}
           </p>
         ) : null}
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">
+        <div className="flex flex-col-reverse items-stretch gap-2 border-t border-border px-4 py-3 sm:flex-row sm:justify-end">
           <PillButton variant="secondary" disabled={busy} onClick={configure}>
             {enabled ? "Edit schedule" : "Enable automatic updates"}
           </PillButton>
