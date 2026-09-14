@@ -3,9 +3,19 @@ import type { Id } from "../_generated/dataModel";
 import type { OperatorGoogleWorkspaceThreadAttachment } from "./googleWorkspace";
 
 export const GOOGLE_WORKSPACE_SCAN_INTERVALS = [15, 30, 60, 360, 1440] as const;
-export type GoogleWorkspaceScanInterval = (typeof GOOGLE_WORKSPACE_SCAN_INTERVALS)[number];
-export type GoogleWorkspaceScanPhase = "discovery" | "collection" | "reconciliation" | "completed" | "partial" | "paused";
-export type GoogleWorkspaceScanActivityFilter = "updated" | "needs_attention" | "failed";
+export type GoogleWorkspaceScanInterval =
+  (typeof GOOGLE_WORKSPACE_SCAN_INTERVALS)[number];
+export type GoogleWorkspaceScanPhase =
+  | "discovery"
+  | "collection"
+  | "reconciliation"
+  | "completed"
+  | "partial"
+  | "paused";
+export type GoogleWorkspaceScanActivityFilter =
+  | "updated"
+  | "needs_attention"
+  | "failed";
 
 export type GoogleWorkspaceScanConfig = {
   enabled: boolean;
@@ -44,7 +54,10 @@ export type GoogleWorkspaceScanSettingsInput = {
   /** Omission preserves the current sponsor; first enable uses the caller. */
   authorizingOperatorId?: Id<"users">;
 };
-export type GoogleWorkspaceScanStartResult = { runId: string; alreadyRunning: boolean };
+export type GoogleWorkspaceScanStartResult = {
+  runId: string;
+  alreadyRunning: boolean;
+};
 export type GoogleWorkspaceScanMailbox = {
   id: string;
   mailbox: string;
@@ -98,7 +111,10 @@ export type GoogleWorkspaceScanActivity = {
     subject: string | null;
     sentAt: string | null;
     excerpt: string;
+    href: string;
   }>;
+  importState?: "queued" | "extracting" | "complete" | "error";
+  candidates?: { organizations: Array<{id: Id<"organizations">; label: string}>; requests: Array<{id: Id<"procurementRequests">; label: string}> };
   availableActions: Array<"resolve" | "dismiss" | "retry" | "correct">;
 };
 export type GoogleWorkspaceScanActivityResolution = {
@@ -117,3 +133,8 @@ export const GOOGLE_WORKSPACE_SCAN_LIMITS = {
   leaseMs: 5 * 60_000,
   maxBackoffMs: 6 * 60 * 60_000,
 } as const;
+
+export type GoogleWorkspaceScanActivityActionResult = {
+  status: "resolved" | "dismissed" | "retrying" | "corrected" | "conflict";
+  message: string;
+};

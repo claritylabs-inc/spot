@@ -121,6 +121,7 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
     _id: request._id,
     title: request.title,
     narrative: requestNarrative(request),
+    completionOutcome: request.completionOutcome,
     packet: {
       markdown: assemblePacketMarkdown(packetSections, { audience: "client" }),
     },

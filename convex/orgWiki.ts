@@ -415,3 +415,32 @@ export async function upsertOrgWikiSectionByOperator(
   });
   return await readOrgWiki(ctx, args.orgId);
 }
+
+/** Called only inside the scan source's atomic authorization boundary. */
+export async function writeWorkspaceScanCompanyFacts(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    orgId: Id<"organizations">;
+    key: OrgWikiSectionKey;
+    body: string;
+  },
+) {
+  await requireDirectOperatorWikiWrite(ctx, args.operatorUserId);
+  await requireClientWikiOrganization(ctx, args.orgId);
+  const lines = wikiBulletLines(args.body);
+  if (
+    !lines.length ||
+    lines.some((line) => !isCompanyWikiFact({ content: line }))
+  )
+    throw new Error(
+      "Company facts must contain audience-safe company information",
+    );
+  return writeSection(ctx, {
+    orgId: args.orgId,
+    key: args.key,
+    body: renderWikiBullets(lines),
+    source: "email",
+    manual: false,
+  });
+}
