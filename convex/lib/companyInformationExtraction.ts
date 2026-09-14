@@ -68,15 +68,6 @@ export const companyInformationOrganizationFactValidator = v.object({
   confidence: v.number(),
 });
 
-/** The stored shape also has to accept rows written before the company wiki
- * gained sections. `migrations:backfillCompanyInformationFactSections` routes
- * those to `profile`; require the field again in the narrowing release. */
-export const companyInformationStoredOrganizationFactValidator = v.object({
-  section: v.optional(wikiSectionValidator),
-  content: v.string(),
-  confidence: v.number(),
-});
-
 const EvidenceSchema = z.object({
   confidence: z.number().min(0).max(1),
   evidence: z.string().min(1).max(500),

@@ -260,23 +260,8 @@ function requestForwardingAddress(request: Doc<"procurementRequests">) {
   return procurementForwardingAddress(request.inboxToken, getAgentDomain());
 }
 
-async function outreachDto(
-  ctx: Ctx,
-  outreach: Doc<"procurementBrokerOutreaches">,
-) {
-  const {
-    notes,
-    applicationUrl,
-    applicationQuestions,
-    quoteSummary,
-    quoteAmount,
-    quoteCurrency,
-    quoteUrl,
-    contactSnapshot: _contactSnapshot,
-    packetSnapshot: _packetSnapshot,
-    ...fields
-  } = outreach;
-  return fields;
+function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
+  return outreach;
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
@@ -306,9 +291,8 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
         .withIndex("request", (index) => index.eq("requestId", request._id))
         .collect(),
     ]);
-  const { narrative: _narrative, ...requestFields } = request;
   return {
-    ...requestFields,
+    ...request,
     completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
@@ -454,9 +438,8 @@ export async function getProcurementRequestDetails(
       const file = item.clientFileId
         ? await ctx.db.get(item.clientFileId)
         : null;
-      const { notes: _notes, ...itemFields } = item;
       return {
-        ...itemFields,
+        ...item,
         clientFile: file
           ? {
               _id: file._id,
@@ -499,7 +482,7 @@ export async function getProcurementRequestDetails(
   return {
     request: summary,
     outreaches: await Promise.all(
-      outreaches.map((outreach) => outreachDto(ctx, outreach)),
+      outreaches.map((outreach) => outreachDto(outreach)),
     ),
     files,
     emailThreads: activeEmailThreads,
@@ -715,7 +698,7 @@ export async function createProcurementRequestByOperator(
         forwardingAddress,
       },
       {
-        tool: "update_procurement_packet_section",
+        tool: "update_procurement_packet",
         why: "Complete and verify the broker-visible packet before sharing it",
         input: { procurementRequestId: requestId },
       },

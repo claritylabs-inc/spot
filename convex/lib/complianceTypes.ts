@@ -175,8 +175,8 @@ export function normalizeRequirementLineOfBusiness(
 }
 
 type SemanticCoverageRequirement = {
-  kind?: string;
-  scope?: string;
+  kind: string;
+  scope: string;
   lineOfBusiness?: string;
   limits?: Array<{ kind: string; amount: number; label?: string }>;
   maxDeductible?: { amount: number; label?: string };
@@ -237,8 +237,8 @@ export function coverageRequirementSemanticKey(
     .sort();
 
   return JSON.stringify({
-    kind: normalizeSemanticTerm(requirement.kind ?? "coverage"),
-    scope: normalizeSemanticTerm(requirement.scope ?? "vendors"),
+    kind: normalizeSemanticTerm(requirement.kind),
+    scope: normalizeSemanticTerm(requirement.scope),
     lineOfBusiness:
       normalizeRequirementLineOfBusiness(requirement.lineOfBusiness) ??
       normalizeSemanticTerm(requirement.lineOfBusiness),

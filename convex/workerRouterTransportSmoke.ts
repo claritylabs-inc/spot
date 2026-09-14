@@ -58,7 +58,7 @@ async function assertOwnedFixture(
   if (
     !organization ||
     organization.name !== fixtureName(fixture.requestId) ||
-    (organization.smokeMarker ?? organization.context) !== fixtureContext(fixture.requestId) ||
+    organization.smokeMarker !== fixtureContext(fixture.requestId) ||
     organization.type !== undefined ||
     organization.primaryInsuranceContactId !== undefined ||
     organization.primaryContactEmail !== undefined ||

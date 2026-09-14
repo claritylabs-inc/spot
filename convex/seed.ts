@@ -42,7 +42,6 @@ type LegacyDemoCleanupResult = {
   dryRun: boolean;
   organizations: number;
   memberships: number;
-  assignments: number;
   users: number;
 };
 
@@ -393,13 +392,6 @@ export const removeLegacyDemoFixture = internalMutation({
     const memberships = (await ctx.db.query("orgMemberships").collect()).filter(
       (membership) => organizationIds.has(String(membership.orgId)),
     );
-    const assignments = (
-      await ctx.db.query("brokerClientAssignments").collect()
-    ).filter(
-      (assignment) =>
-        (assignment.orgId && organizationIds.has(String(assignment.orgId))) ||
-        organizationIds.has(String(assignment.clientOrgId)),
-    );
     const candidateUserIds = new Set(
       memberships.map(({ userId }) => String(userId)),
     );
@@ -415,12 +407,10 @@ export const removeLegacyDemoFixture = internalMutation({
       dryRun: args.dryRun,
       organizations: organizations.length,
       memberships: memberships.length,
-      assignments: assignments.length,
       users: users.length,
     };
     if (args.dryRun) return result;
 
-    for (const assignment of assignments) await ctx.db.delete(assignment._id);
     for (const membership of memberships) await ctx.db.delete(membership._id);
     for (const organization of organizations)
       await ctx.db.delete(organization._id);
@@ -585,16 +575,6 @@ export const insertLocalFixture = internalMutation({
     }
     await ensureMembership(ctx, clientOrgId, clientUserId);
 
-    const existingAssignment = await ctx.db
-      .query("brokerClientAssignments")
-      .withIndex("organization_client", (query) =>
-        query.eq("orgId", brokerOrgId).eq("clientOrgId", clientOrgId),
-      )
-      .first();
-    if (existingAssignment) {
-      await ctx.db.delete(existingAssignment._id);
-    }
-
     const policies = await ctx.db
       .query("policies")
       .withIndex("organization", (query) => query.eq("orgId", clientOrgId))
@@ -607,7 +587,6 @@ export const insertLocalFixture = internalMutation({
       userId: clientUserId,
       uploadedBySide: "operator" as const,
       uploadedByUserId: operatorUserId,
-      uploadedByBrokerOrgId: undefined,
       pipelineStatus: "complete" as const,
       extractionDataStage: "final" as const,
       extractionDataStageUpdatedAt: now,

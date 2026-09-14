@@ -657,7 +657,7 @@ export function MailboxSettingsDrawer({
               </p>
               <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
                 Spot will stop searching and monitoring it. Imported documents and
-                saved company context remain in Spot.
+                saved company wiki facts remain in Spot.
               </p>
             </div>
           </div>

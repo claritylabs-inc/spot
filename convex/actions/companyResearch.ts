@@ -5,7 +5,12 @@ import { v } from "convex/values";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import { internalAction } from "../_generated/server";
-import { publicResearchUrl } from "../lib/companyResearch";
+import {
+  publicResearchAllowedDomains,
+  publicResearchUrl,
+  samePublicResearchSite,
+  samePublicResearchUrl,
+} from "../lib/companyResearch";
 import { INDUSTRIES } from "../lib/industries";
 import { generateObjectForOrg } from "../lib/models";
 import { ORG_WIKI_SECTIONS } from "../lib/orgWiki";
@@ -51,18 +56,18 @@ export const run = internalAction({
       const match = discovery.output;
       const website = match.officialWebsite && publicResearchUrl(match.officialWebsite);
       const sourceUrl = match.sourceUrl && publicResearchUrl(match.sourceUrl);
-      const cited = sourceUrl && searchSources.some((source) => source.url === sourceUrl);
-      if (!match.identityConfirmed || !website || !cited || !searchSources.some((source) => new URL(source.url).hostname === new URL(website).hostname)) {
+      const cited = sourceUrl && searchSources.some((source) => samePublicResearchUrl(source.url, sourceUrl));
+      if (!match.identityConfirmed || !website || !cited || !searchSources.some((source) => samePublicResearchSite(source.url, website))) {
         await ctx.runMutation(completeRef, { ...base, facts: [], sourceUrls: [], reason: match.reason || "Official company identity could not be confirmed" });
         return;
       }
       const official = await runWebRetrieval(ctx, claim.orgId, {
-        url: website, allowedDomains: [new URL(website).hostname], maxResults: 5,
+        url: website, allowedDomains: publicResearchAllowedDomains(website), maxResults: 5,
         goal: "Read the official company website for explicit products, operations, locations, history, and industry evidence. Cite the pages supporting each fact.",
       });
       const officialUrls = [...new Set(official.sources.flatMap((source) => {
         const url = publicResearchUrl(source.url);
-        return url && new URL(url).hostname === new URL(website).hostname ? [url] : [];
+        return url && samePublicResearchSite(url, website) ? [url] : [];
       }))];
       if (!official.text || !officialUrls.length) throw new Error("Official website retrieval returned no cited evidence");
       const profile = await generateObjectForOrg(ctx, claim.orgId, "triage", {
@@ -79,7 +84,7 @@ export const run = internalAction({
       const industryVertical = industry?.verticals.find((entry) => entry.value === output.industryVertical)?.value;
       await ctx.runMutation(completeRef, {
         ...base, website, industry: industry?.value, industryVertical,
-        facts: output.facts.filter((fact) => officialUrls.includes(fact.sourceRef)),
+        facts: output.facts.filter((fact) => officialUrls.some((url) => samePublicResearchUrl(url, fact.sourceRef))),
         sourceUrls: officialUrls,
       });
     } catch {

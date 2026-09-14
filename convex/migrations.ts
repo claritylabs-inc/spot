@@ -1,7 +1,6 @@
 import { Migrations } from "@convex-dev/migrations";
 import { internalMutation, internalQuery } from "./_generated/server";
 import dayjs from "dayjs";
-import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { effectiveExtractionDataStage } from "./backfillDeclarationFacts";
@@ -192,26 +191,6 @@ export const rebuildCarrierIdentitiesFromStoredSources = migrations.define({
   },
 });
 
-export const unsetLegacyCoiAttachmentAuthorization = migrations.define({
-  table: "pendingEmails",
-  batchSize: 100,
-  migrateOne: async (ctx, pendingEmail) => {
-    if (pendingEmail.allowMultipleCoiAttachments === undefined) return;
-    await ctx.db.patch(pendingEmail._id, {
-      allowMultipleCoiAttachments: undefined,
-    });
-  },
-});
-
-export const unsetLegacyBrokerModelProviderKeys = migrations.define({
-  table: "brokerModelSettings",
-  batchSize: 100,
-  migrateOne: async (ctx, settings) => {
-    if (settings.providerKeys === undefined) return;
-    await ctx.db.patch(settings._id, { providerKeys: undefined });
-  },
-});
-
 export const backfillSlackInboundEventMentionsSpot = migrations.define({
   table: "slackInboundEvents",
   batchSize: 100,
@@ -247,154 +226,6 @@ export const backfillSlackActorSpotIdentity = migrations.define({
   },
 });
 
-function normalizedBrokerName(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-export const migrateProcurementOutreaches = migrations.define({
-  table: "procurementBrokerOutreaches",
-  batchSize: 10,
-  migrateOne: async (ctx, outreach) => {
-    let brokerOrgId = outreach.brokerOrgId;
-    if (!brokerOrgId) {
-      assertExternalBrokerIdentity({ name: outreach.brokerName, email: outreach.contactEmail });
-      const brokers = await ctx.db
-        .query("organizations")
-        .withIndex("type", (q) => q.eq("type", "broker"))
-        .collect();
-      const matches = brokers.filter(
-        (broker) =>
-          normalizedBrokerName(broker.name) ===
-          normalizedBrokerName(outreach.brokerName),
-      );
-      if (matches.length > 1)
-        throw new Error(`Ambiguous legacy broker name: ${outreach.brokerName}`);
-      if (matches.length === 1) brokerOrgId = matches[0]._id;
-      else {
-        brokerOrgId = await ctx.db.insert("organizations", {
-          name: outreach.brokerName,
-          type: "broker",
-          operatorStatus: "live",
-          onboardingComplete: true,
-        });
-        await ctx.db.insert("brokerProfiles", {
-          brokerOrgId,
-          networkStatus: "prospect",
-          writingStates: [],
-          lineOfBusinessCodes: [],
-          createdByUserId: outreach.createdByUserId,
-          updatedByUserId: outreach.updatedByUserId,
-          createdAt: outreach.createdAt,
-          updatedAt: outreach.updatedAt,
-        });
-      }
-    }
-    const patch: Record<string, unknown> = { brokerOrgId };
-    await ctx.db.patch(outreach._id, patch);
-    // Legacy quote evidence remains on the outreach until it can be filed from a real document.
-
-  },
-});
-
-export const purgePolicyDeliverySettings = migrations.define({
-  table: "policyDeliverySettings",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-export const purgePolicyDeliveryRules = migrations.define({
-  table: "policyDeliveryRules",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-export const purgePolicyDeliveryJobs = migrations.define({
-  table: "policyDeliveryJobs",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-export const purgePolicyDeliveryAttempts = migrations.define({
-  table: "policyDeliveryAttempts",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-// Broker/client ownership assignments are retired. Keep the table available
-// until the narrowing release, but remove any legacy rows in the gated purge.
-export const purgeBrokerClientAssignments = migrations.define({
-  table: "brokerClientAssignments",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-export const purgeBrokerBranding = migrations.define({
-  table: "organizations",
-  batchSize: 50,
-  migrateOne: async (ctx, org) => {
-    if (org.type !== "broker") return;
-    await ctx.db.patch(org._id, {
-      whiteLabelingEnabled: undefined,
-      brandingColor: undefined,
-      brandingMode: undefined,
-      brandingTextOnAccent: undefined,
-      agentDisplayName: undefined,
-    });
-  },
-});
-
-// The curated per-org store is now `orgWikiSections`. These retire the row
-// stores it replaced, plus the two legacy fields that referenced them, so the
-// narrowing release can drop the tables and fields outright.
-export const purgeOrgMemory = migrations.define({
-  table: "orgMemory",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-export const purgeProcurementMemory = migrations.define({
-  table: "procurementMemory",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    await ctx.db.delete(row._id);
-  },
-});
-export const unsetConnectedEmailAutomationMemoryIds = migrations.define({
-  table: "connectedEmailAutomationItems",
-  batchSize: 100,
-  migrateOne: async (ctx, row) => {
-    if (!row.memoryIds) return;
-    await ctx.db.patch(row._id, { memoryIds: undefined });
-  },
-});
-// Procurement learnings no longer have their own store, and organization facts
-// stored before the wiki gained sections belong in the general profile section.
-export const backfillCompanyInformationFactSections = migrations.define({
-  table: "companyInformationExtractions",
-  batchSize: 50,
-  migrateOne: async (ctx, row) => {
-    const needsSections = row.organizationFacts?.some((fact) => !fact.section);
-    if (!needsSections && !row.procurementFacts) return;
-    await ctx.db.patch(row._id, {
-      organizationFacts: row.organizationFacts?.map((fact) => ({
-        ...fact,
-        section: fact.section ?? ("profile" as const),
-      })),
-      procurementFacts: undefined,
-    });
-  },
-});
-
 export const runDeclarationFactsBackfill = migrations.runner([
   internal.migrations.backfillDeclarationFacts,
   internal.migrations.syncDeclarationFactProfiles,
@@ -404,60 +235,10 @@ export const runCarrierIdentityBackfill = migrations.runner([
   internal.migrations.rebuildCarrierIdentitiesFromStoredSources,
 ]);
 
-export const runLegacyCoiAttachmentAuthorizationCleanup = migrations.runner([
-  internal.migrations.unsetLegacyCoiAttachmentAuthorization,
-]);
-
-export const runLegacyBrokerModelProviderKeyCleanup = migrations.runner([
-  internal.migrations.unsetLegacyBrokerModelProviderKeys,
-]);
-
 export const runSlackInboundEventMentionsSpotBackfill = migrations.runner([
   internal.migrations.backfillSlackInboundEventMentionsSpot,
 ]);
 
 export const runSlackActorSpotIdentityBackfill = migrations.runner([
   internal.migrations.backfillSlackActorSpotIdentity,
-]);
-
-export const runProcurementDomainBackfill = migrations.runner([
-  internal.migrations.migrateProcurementOutreaches,
-]);
-
-// Pre-packet reviews cannot be confirmed because they scored the retired
-// requirement/specification rows.
-export const clearLegacyProposalReviews = migrations.define({
-  table: "procurementProposalReviews",
-  batchSize: 50,
-  migrateOne: async (ctx, review) => {
-    if (review.packetRevision !== undefined) return;
-    await ctx.db.delete(review._id);
-  },
-});
-
-// Run before the release that drops `requirementRevision` and
-// `specificationRevision` from procurementProposalReviews and
-// procurementRequests, and makes `packetRevision` required on reviews.
-export const runProposalReviewPacketBackfill = migrations.runner([
-  internal.migrations.clearLegacyProposalReviews,
-]);
-
-// Run only after procurementMigration.auditLegacyNarrowing reports safe=true.
-export const runProcurementLegacyPurge = migrations.runner([
-  internal.migrations.purgeBrokerClientAssignments,
-  internal.migrations.purgePolicyDeliveryAttempts,
-  internal.migrations.purgePolicyDeliveryJobs,
-  internal.migrations.purgePolicyDeliveryRules,
-  internal.migrations.purgePolicyDeliverySettings,
-  internal.migrations.purgeBrokerBranding,
-]);
-
-// Run before the release that drops `orgMemory`, `procurementMemory`,
-// `connectedEmailAutomationItems.memoryIds`, and
-// `companyInformationExtractions.procurementFacts` from the schema.
-export const runCompanyWikiLegacyPurge = migrations.runner([
-  internal.migrations.backfillCompanyInformationFactSections,
-  internal.migrations.unsetConnectedEmailAutomationMemoryIds,
-  internal.migrations.purgeProcurementMemory,
-  internal.migrations.purgeOrgMemory,
 ]);

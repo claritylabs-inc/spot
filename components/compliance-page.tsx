@@ -169,7 +169,7 @@ const PROVISION_OPTIONS: RequirementProvision[] = [
 type Requirement = {
   _id: Id<"insuranceRequirements">;
   orgId: Id<"organizations">;
-  kind?: RequirementKind;
+  kind: RequirementKind;
   scope: RequirementScope;
   title: string;
   requirementText: string;
@@ -1599,7 +1599,7 @@ function SourceDrawer({
           <div className="space-y-3">
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={dealName} onChange={(event) => setDealName(event.target.value)} disabled={!canManage} placeholder="Office lease, Series B financing, client engagement" /></label>
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={dealType} onChange={(event) => setDealType(event.target.value)} disabled={!canManage} placeholder="Lease, investment, contract" /></label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Internal notes<Textarea value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} disabled={!canManage} rows={4} /></label>
+            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Notes<Textarea value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} disabled={!canManage} rows={4} /></label>
             {hasHolderDetails && !holderName.trim() ? (
               <p className={`text-destructive ${typeStyle("caption.default")}`}>
                 Certificate holder name is required.
@@ -2323,7 +2323,7 @@ function ComplianceWorkspace({
       await upsertRequirement({
         orgId,
         requirementId: requirement._id,
-        kind: requirement.kind ?? "coverage",
+        kind: requirement.kind,
         scope: requirement.scope,
         title: values.title,
         requirementText: values.requirementText,
@@ -2449,7 +2449,7 @@ function ComplianceWorkspace({
               </div>
               <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={sourceDealName} onChange={(event) => setSourceDealName(event.target.value)} placeholder="Office lease, financing, or client engagement" /></label>
               <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={sourceDealType} onChange={(event) => setSourceDealType(event.target.value)} placeholder="Lease, investment, contract" /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Internal notes<Textarea value={sourceInternalNotes} onChange={(event) => setSourceInternalNotes(event.target.value)} rows={3} /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Notes<Textarea value={sourceInternalNotes} onChange={(event) => setSourceInternalNotes(event.target.value)} rows={3} /></label>
             </div>
           </FormSection>
         ) : null}

@@ -27,8 +27,8 @@ Updating `public.md` advances the request’s packet revision. Existing packet
 links retain immutable issued text/artifact snapshots until revoked or
 replaced; editing a file does not rewrite historical issuance. Released
 artifacts still require their current release state and file lifecycle checks.
-Source PDFs and other uploaded artifacts remain files in their own right;
-the two-file rule governs editable procurement prose.
+Source PDFs and other uploaded artifacts remain files in their own right; the
+two-file rule governs editable procurement prose.
 
 ## Stored artifacts
 
@@ -41,8 +41,8 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | Active table | Responsibility |
 | --- | --- |
 | `procurementRequests` | Request identity, workflow, effective date, packet revision, policy links, inbox routing and audit stamps. |
-| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s private.md. |
-| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing clientFileId means an outstanding request. |
+| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s `private.md`. |
+| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing `clientFileId` means an outstanding request. |
 | `procurementPacketLinks` | Token hash, recipient, revocation/expiry and immutable issued text/artifact snapshots. |
 | `procurementPacketViews` | Token-validated access audit without raw magic-link tokens. |
 | `procurementProposals` | Operator-private offer, selection/archive state and extraction identity. |
@@ -55,44 +55,37 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | `brokerProfiles` | Supplier network status, office, writing states and LOB filters; never client/proposal access. |
 | `operatorAuditEvents` | Append-only actor/action/request audit. |
 
-## Migration and narrowing gates
+## Conditional narrowing status
 
-Run `procurementMarkdownMigration:auditPage` and then, after reviewing the
-approved deployment, `procurementMarkdownMigration:migratePage` with
-`{"table":"<table>","cursor":null}`. Pass every returned cursor unchanged until
-`isDone: true`; accumulate the complete audit. Migrate requests first, then
-outreaches, file items and legacy packet sections. Later passes verify cleanup
-and convert the owning request when needed.
+The narrowing candidate removes the migrated procurement narrative fields,
+section storage, separate intake/log/file-note document ownership, obsolete
+snapshot/revision fields, and the one-off migration APIs that operated on them.
+This is a code-state description, not evidence that production migration or
+deployment has completed. The approved production export, full audit pages,
+migration results, zero-residual verification, exact deployed commit, and
+rollback artifact are pending in
+[the execution record](../architecture/backend-simplification.md).
 
-The request conversion materializes `private.md` and `public.md` together,
-preserving the audience of each source. Existing private packet files, outreach
-logs, and file notes go into private content; existing shared packet/intake
-content goes into public content. Preserve unique text, source references,
-manual edits, and unresolved proposals without treating a proposal as accepted.
-Only after verified preservation may the transaction remove old canonical
-sidecar documents, legacy section rows, and inline narrative fields. No issued
-link snapshot changes. The migration must not create a required section or
-nested metadata model for future editing.
+The narrowed tree intentionally has no broad schema-migration runner. Its
+remaining exported migrations are ongoing operator-email identity,
+declaration-fact, carrier-identity, and Slack compatibility work documented in
+[AGENTS.md](../../AGENTS.md).
 
-After every Markdown phase reports total `remaining: 0`, the following can
-narrow: `procurementRequests.narrative`,
-`procurementBrokerOutreaches.notes/applicationUrl/applicationQuestions/quoteSummary/quoteAmount/quoteCurrency/quoteUrl`,
-`procurementFileItems.notes`, the `procurementPacketSections` table. Remove compatibility readers
-and migration-only source types in the same narrowing release.
+Eight inventory-only tables remain until production counts and content review
+are available:
 
-Separately, `procurementSchemaCleanup:auditPage` and `migratePage` handle
-outreach `contactSnapshot`/`packetSnapshot` and request/review
-`requirementRevision`/`specificationRevision`. The current cleanup deletes
-unconfirmable pre-packet reviews before clearing legacy counters. Require a
-complete audit with zero `changed` and `unboundReviews` before removing those
-fields and making review `packetRevision` required. The two-file revision is
-currently being implemented; final local validation and production migration
-results belong in [the execution record](../architecture/backend-simplification.md).
+- `policyUpdateRuns`
+- `clientInvitations`
+- `brokerActivity`
+- `procurementRequirementDrafts`
+- `procurementRequestRequirements`
+- `procurementSpecifications`
+- `procurementRequestActivities`
+- `procurementRequestDocuments`
 
-`procurementSchemaCleanup:inventoryLegacyPage` inventories the retired
-requirement drafts/links/specifications, request activities/documents,
-clientInvitations and brokerActivity without deleting business evidence. These
-stores require empty-table proof or reviewed source mapping before narrowing.
-Canonical insuranceRequirements remain active in compliance. The unused `procurementPacketUpdateRuns` store requires a production count:
-remove it if empty, or preserve material history losslessly before removing it.
-Its retired writer is no longer active.
+Do not purge or narrow these tables from repository-only evidence. If a table
+is empty on the approved target, record the all-page count before removal. If
+it contains material history, preserve that evidence losslessly under an
+authorized current owner before proposing a later narrowing change.
+`insuranceRequirements` remains the canonical active compliance store and is
+not part of this inventory-only set.

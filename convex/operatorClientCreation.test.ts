@@ -51,7 +51,6 @@ test("standalone client creation queues public research without creating access 
     expect(await ctx.db.query("users").collect()).toHaveLength(1);
     expect(await ctx.db.query("orgMemberships").collect()).toHaveLength(0);
     expect(await ctx.db.query("orgInvitations").collect()).toHaveLength(0);
-    expect(await ctx.db.query("clientInvitations").collect()).toHaveLength(0);
     expect(
       await ctx.db.system.query("_scheduled_functions").collect(),
     ).toMatchObject([

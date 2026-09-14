@@ -16,7 +16,6 @@ import {
 } from "./lib/operatorIdentity";
 import {
   ORG_WIKI_SECTIONS,
-  assembleOrgWikiMarkdown,
   requireOrgWikiSection,
   renderWikiBullets,
   wikiBulletLines,
@@ -71,38 +70,7 @@ async function loadWiki(
     orgId,
     kind: "company_wiki",
   });
-  if (document)
-    return { document, legacy: [], ...readWikiDocument(document.markdown) };
-  const legacy = await ctx.db
-    .query("orgWikiSections")
-    .withIndex("organization", (q) => q.eq("orgId", orgId))
-    .collect();
-  const metadata: WikiMetadata = {
-    contributions: {},
-    proposals: {},
-    protectedHeadings: [],
-  };
-  for (const section of legacy) {
-    if (section.manuallyEditedAt)
-      metadata.protectedHeadings!.push(section.heading);
-    if (section.extractedLines?.length)
-      metadata.contributions![section.heading] = {
-        lines: section.extractedLines,
-        sources: section.sourceRefs ?? [],
-      };
-    if (section.proposedBody)
-      metadata.proposals![section.heading] = {
-        body: section.proposedBody,
-        rationale: section.proposedRationale ?? "Suggested update",
-      };
-  }
-  return {
-    document: null,
-    legacy,
-    ...readWikiDocument(
-      renderWikiDocument(assembleOrgWikiMarkdown(legacy), metadata),
-    ),
-  };
+  return { document, ...readWikiDocument(document?.markdown ?? "") };
 }
 
 type WikiState = Awaited<ReturnType<typeof loadWiki>>;
@@ -121,7 +89,6 @@ async function persistWiki(
     markdown: renderWikiDocument(body, metadata, state.frontmatter),
     expectedRevision: state.document?.revision ?? 0,
   });
-  for (const section of state.legacy) await ctx.db.delete(section._id);
   return document;
 }
 
@@ -585,7 +552,6 @@ async function saveWikiFile(
     markdown,
     expectedRevision: args.expectedRevision,
   });
-  for (const section of state.legacy) await ctx.db.delete(section._id);
   return document;
 }
 
@@ -699,29 +665,4 @@ export const resolveProposalForOperator = mutation({
     await requireOperatorWikiOrganization(ctx, args.orgId);
     return resolveWikiFileProposal(ctx, args);
   },
-});
-
-export const migrateLegacyBatch = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const first = await ctx.db.query("orgWikiSections").first();
-    if (!first) return { migrated: 0, complete: true };
-    const existing = await getMarkdownDocument(ctx, {
-      orgId: first.orgId,
-      kind: "company_wiki",
-    });
-    if (existing)
-      throw new Error(
-        "Legacy wiki rows coexist with a canonical file; review before migration",
-      );
-    const state = await loadWiki(ctx, first.orgId);
-    await persistWiki(ctx, first.orgId, state, state.body, state.metadata);
-    return { migrated: state.legacy.length, complete: false };
-  },
-});
-export const verifyLegacyMigration = internalQuery({
-  args: {},
-  handler: async (ctx) => ({
-    complete: (await ctx.db.query("orgWikiSections").first()) === null,
-  }),
 });

@@ -67,7 +67,7 @@ export const cleanupFixture = internalMutation({
     if (
       !organization ||
       organization.name !== fixtureName(smokeRun.marker) ||
-      (organization.smokeMarker ?? organization.context) !== fixtureContext(smokeRun.marker) ||
+      organization.smokeMarker !== fixtureContext(smokeRun.marker) ||
       organization.type !== "client"
     ) {
       throw new Error("Operational router smoke fixture ownership mismatch");

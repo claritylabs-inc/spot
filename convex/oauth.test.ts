@@ -14,7 +14,8 @@ const createAuthorizationCodeFn = api.oauth.createAuthorizationCode;
 const exchangeAuthCodeFn = internal.oauth.exchangeAuthCode;
 const refreshAccessTokenFn = internal.oauth.refreshAccessToken;
 const registerClientFn = internal.oauth.registerClient;
-const validateAccessTokenWithScopesFn = internal.oauth.validateAccessTokenWithScopes;
+const validateAccessTokenWithScopesFn =
+  internal.oauth.validateAccessTokenWithScopes;
 const REDIRECT_URI = "https://app.example/callback";
 
 async function sha256Hex(input: string) {
@@ -111,72 +112,6 @@ async function validateRawAccessToken(t: OAuthTestHandle, accessToken: string) {
 }
 
 describe("oauth scopes", () => {
-  test.each(["oauthAuthCodes", "oauthTokens"] as const)(
-    "migrates %s without widening grants or changing principal and replay state",
-    async (table) => {
-      const { t, userId, orgId, clientId, codeChallenge } = await seedOAuthClientAndUser();
-      const cases: Array<{
-        scope?: string;
-        scopes?: Array<"read" | "write">;
-        expected: Array<"read" | "write">;
-      }> = [
-        { expected: ["read"] },
-        { scope: "write read", expected: ["write", "read"] },
-        { scopes: ["read"], scope: "write", expected: ["read"] },
-        { scopes: [], scope: "write", expected: ["write"] },
-        { scope: "unsupported", expected: ["read"] },
-        { scopes: ["write"], expected: ["write"] },
-      ];
-      const records = await t.run(async (ctx) => {
-        const records = [];
-        for (const [index, { expected, ...stored }] of cases.entries()) {
-          const shared = {
-            userId,
-            orgId,
-            clientId,
-            principalKind: "organization" as const,
-            resource: "https://spot.example/mcp",
-            expiresAt: 1234,
-            ...stored,
-          };
-          const id = table === "oauthAuthCodes"
-            ? await ctx.db.insert("oauthAuthCodes", {
-                ...shared,
-                codeHash: `code-${index}`,
-                codeChallenge,
-                redirectUri: REDIRECT_URI,
-                usedAt: 100,
-              })
-            : await ctx.db.insert("oauthTokens", {
-                ...shared,
-                tokenHash: `token-${index}`,
-                refreshTokenHash: `refresh-${index}`,
-                refreshExpiresAt: 5678,
-                revokedAt: 100,
-                createdAt: 1,
-              });
-          records.push({ id, expected, before: await ctx.db.get(id) });
-        }
-        return records;
-      });
-      expect(await t.query(internal.oauthScopeMigration.audit, { table }))
-        .toMatchObject({ checked: 6, pending: 5, conflictingRepresentations: 1, isDone: true });
-      expect(await t.mutation(internal.oauthScopeMigration.migrateBatch, { table }))
-        .toMatchObject({ checked: 6, updated: 5, isDone: true });
-      expect(await t.query(internal.oauthScopeMigration.verify, { table }))
-        .toMatchObject({ checked: 6, remaining: 0, isDone: true });
-      for (const record of records) {
-        if (!record.before) throw new Error("OAuth fixture record missing");
-        const after = await t.run((ctx) => ctx.db.get(record.id));
-        const expected = { ...record.before, scopes: record.expected };
-        delete expected.scope;
-        expect(after).toEqual(expected);
-      }
-      expect(await t.mutation(internal.oauthScopeMigration.migrateBatch, { table }))
-        .toMatchObject({ updated: 0, isDone: true });
-    },
-  );
-
   test("defaults missing requested scope to read-only through exchange", async () => {
     const { t, userId, clientId, codeChallenge, verifier } =
       await seedOAuthClientAndUser();
@@ -254,7 +189,6 @@ describe("oauth scopes", () => {
     );
     expect(codes).toHaveLength(0);
   });
-
 });
 
 describe("OAuth token revocation", () => {
@@ -270,7 +204,9 @@ describe("OAuth token revocation", () => {
         redirectUri: REDIRECT_URI,
         codeVerifier: verifier,
       });
-      expect(await validateRawAccessToken(t, tokens.access_token)).not.toBeNull();
+      expect(
+        await validateRawAccessToken(t, tokens.access_token),
+      ).not.toBeNull();
 
       const response = await t.fetch("/oauth/revoke", {
         method: "POST",
@@ -293,7 +229,6 @@ describe("OAuth token revocation", () => {
           clientId,
         }),
       ).rejects.toThrow("invalid_grant");
-
     },
   );
 
@@ -301,7 +236,7 @@ describe("OAuth token revocation", () => {
     const t = convexTest(schema, modules);
     const route = http.lookup("/oauth/token", "POST");
     if (!route) throw new Error("Missing OAuth token route");
-    const action = route[0] as typeof route[0] & {
+    const action = route[0] as (typeof route)[0] & {
       _handler: (ctx: ActionCtx, request: Request) => Promise<Response>;
     };
     // Supply the SDK-decoded error: convex-test retains serialized error data
@@ -310,7 +245,9 @@ describe("OAuth token revocation", () => {
       const response = await action._handler(
         {
           ...ctx,
-          runMutation: vi.fn().mockRejectedValue(new ConvexError("invalid_grant")),
+          runMutation: vi
+            .fn()
+            .mockRejectedValue(new ConvexError("invalid_grant")),
         },
         new Request("https://spot.example/oauth/token", {
           method: "POST",
@@ -353,7 +290,9 @@ describe("OAuth token revocation", () => {
     expect((await unknown()).status).toBe(200);
     expect((await unknown()).status).toBe(200);
     expect(await validateRawAccessToken(t, tokens.access_token)).not.toBeNull();
-    expect((await t.fetch("/oauth/revoke", { method: "POST" })).status).toBe(400);
+    expect((await t.fetch("/oauth/revoke", { method: "POST" })).status).toBe(
+      400,
+    );
   });
 });
 

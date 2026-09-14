@@ -407,7 +407,9 @@ export default function OAuthAuthorizePage() {
                       <span className="text-foreground/30 mt-0.5">
                         &#x2022;
                       </span>
-                      Read and update the company wiki
+                      {(scope ?? "").split(/\s+/).includes("write")
+                        ? "Read and update your company wiki"
+                        : "Read your company wiki"}
                     </li>
                   </>
                 )}

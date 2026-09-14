@@ -1,5 +1,5 @@
 import { requestPacketText } from "./procurementNarrative";
-import { appendPrivatePacketNote, readPacketDocument } from "./packetDocuments";
+import { appendPrivatePacketNote } from "./packetDocuments";
 import { getMarkdownDocument } from "../markdownDocuments";
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -33,6 +33,7 @@ export type ScanSelection = {
 };
 export type ScanTarget = {
   privateDocument: Doc<"markdownDocuments"> | null;
+  requestText: string;
   org: Doc<"organizations"> | null;
   request: Doc<"procurementRequests"> | null;
   record:
@@ -195,6 +196,7 @@ export async function resolveScanTarget(
       request: null,
       record: null,
       privateDocument: null,
+      requestText: "",
     };
   let request: Doc<"procurementRequests"> | null = null;
   if ("request" in operation) {
@@ -305,14 +307,14 @@ export async function resolveScanTarget(
       kind: "packet",
       filename: "private.md",
     });
-    if (privateDocument)
-      privateDocument = {
-        ...privateDocument,
-        markdown: (await readPacketDocument(ctx, request, "private.md"))
-          .markdown,
-      };
   }
-  return { org, request, record, privateDocument };
+  return {
+    org,
+    request,
+    record,
+    privateDocument,
+    requestText: request ? await requestPacketText(ctx, request) : "",
+  };
 }
 
 export async function assertScanChronology(

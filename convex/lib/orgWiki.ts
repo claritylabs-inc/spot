@@ -18,9 +18,10 @@ export const ORG_WIKI_SECTION_KEYS = ORG_WIKI_SECTIONS.map(([key]) => key) as [
   ...OrgWikiSectionKey[],
 ];
 
-export const ORG_WIKI_SECTION_MAP = new Map<string, { key: OrgWikiSectionKey; heading: string; order: number }>(
-  ORG_WIKI_SECTIONS.map(([key, heading], order) => [key, { key, heading, order }]),
-);
+const ORG_WIKI_SECTION_MAP = new Map<
+  string,
+  { key: OrgWikiSectionKey; heading: string }
+>(ORG_WIKI_SECTIONS.map(([key, heading]) => [key, { key, heading }]));
 
 export function requireOrgWikiSection(key: string) {
   const canonical = ORG_WIKI_SECTION_MAP.get(key);
@@ -28,18 +29,10 @@ export function requireOrgWikiSection(key: string) {
   return canonical;
 }
 
-export function isOrgWikiSectionKey(value: unknown): value is OrgWikiSectionKey {
+export function isOrgWikiSectionKey(
+  value: unknown,
+): value is OrgWikiSectionKey {
   return typeof value === "string" && ORG_WIKI_SECTION_MAP.has(value);
-}
-
-export function assembleOrgWikiMarkdown<T extends { heading: string; body: string; order: number }>(
-  sections: T[],
-) {
-  return [...sections]
-    .sort((a, b) => a.order - b.order)
-    .filter((section) => section.body.trim())
-    .map((section) => `## ${section.heading}\n\n${section.body.trim()}`)
-    .join("\n\n");
 }
 
 /** Render automatically contributed facts without changing surrounding prose. */

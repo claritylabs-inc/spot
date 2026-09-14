@@ -10,13 +10,7 @@ export interface AuthenticatedRequest {
   requestId: string;
 }
 
-export function parseScopesFromToken(
-  scopes: string[] | null | undefined,
-  legacyScope?: string | null,
-): Scope[] {
-  if (!scopes || scopes.length === 0) {
-    return parseLegacyScopeString(legacyScope);
-  }
+export function parseScopesFromToken(scopes: readonly string[]): Scope[] {
   const parsed = scopes.filter((s): s is Scope => isScope(s));
   return parsed.length > 0 ? parsed : ["read"];
 }
@@ -27,7 +21,9 @@ export function assertScope(scopes: Scope[], required: Scope): void {
   }
 }
 
-export function normalizeRequestedScopes(scope: string | null | undefined): Scope[] {
+export function normalizeRequestedScopes(
+  scope: string | null | undefined,
+): Scope[] {
   const requested = splitScopeString(scope);
   if (requested.length === 0) return ["read"];
 
@@ -43,13 +39,6 @@ export function normalizeRequestedScopes(scope: string | null | undefined): Scop
 
 export function stringifyScopes(scopes: Scope[]): string {
   return scopes.join(" ");
-}
-
-function parseLegacyScopeString(scope: string | null | undefined): Scope[] {
-  const parsed = splitScopeString(scope).filter((value): value is Scope =>
-    isScope(value),
-  );
-  return parsed.length > 0 ? parsed : ["read"];
 }
 
 function splitScopeString(scope: string | null | undefined): string[] {

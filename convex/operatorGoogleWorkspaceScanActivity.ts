@@ -392,6 +392,12 @@ export const correctActivity = mutation({
       };
     const targets = [];
     for (const change of changes) {
+      if (change.table === "orgWikiSections")
+        return {
+          status: "conflict",
+          message:
+            "This historical wiki update was migrated. Edit the current company Markdown file instead.",
+        };
       const id = ctx.db.normalizeId(change.table, change.entityId);
       const record = id ? await ctx.db.get(id) : null;
       if (!id || !record || JSON.stringify(record) !== change.afterJson)
@@ -412,8 +418,6 @@ export const correctActivity = mutation({
         patch.updatedAt = dayjs().valueOf();
       if (current && "updatedByUserId" in current)
         patch.updatedByUserId = operator.userId;
-      if (change.table === "orgWikiSections")
-        patch.manuallyEditedAt = dayjs().valueOf();
       if (
         change.table === "markdownDocuments" &&
         current &&

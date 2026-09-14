@@ -1122,9 +1122,6 @@ export const importRequirementAttachmentsInternal = internalAction({
         v.literal("other"),
       ),
     ),
-    appliesTo: v.optional(
-      v.union(v.literal("vendors"), v.literal("own_org"), v.literal("both")),
-    ),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
     holder: v.optional(v.object({
       displayName: v.string(),
@@ -1203,7 +1200,6 @@ export const importRequirementAttachmentsInternal = internalAction({
           sourceType: args.sourceType,
           sourceName: args.sourceName,
           scope: args.scope,
-          appliesTo: args.appliesTo,
           holder: sources.holder,
         },
       );
@@ -1228,7 +1224,6 @@ export const importRequirementAttachmentsInternal = internalAction({
           sourceType: args.sourceType,
           sourceName: args.sourceName,
           scope: args.scope,
-          appliesTo: args.appliesTo,
           holder: sources.holder,
         },
       );
@@ -1264,9 +1259,6 @@ export const importRequirementAttachments = action({
         v.literal("other"),
       ),
     ),
-    appliesTo: v.optional(
-      v.union(v.literal("vendors"), v.literal("own_org"), v.literal("both")),
-    ),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
     holder: v.optional(v.object({
       displayName: v.string(),
@@ -1289,7 +1281,6 @@ export const importRequirementAttachments = action({
         sourceName: args.sourceName,
         sourceType: args.sourceType,
         scope: args.scope,
-        appliesTo: args.appliesTo,
         holder: args.holder,
       },
     );

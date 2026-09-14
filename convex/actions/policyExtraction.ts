@@ -2268,7 +2268,6 @@ export function makePhases(
           internal.policies.getInternal,
           { id: policyId as any },
         )) as {
-          uploadedByBrokerOrgId?: string;
           orgId?: string;
           uploadedBySide?: string;
           extractionReview?: unknown;
