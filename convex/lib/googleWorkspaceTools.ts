@@ -1275,15 +1275,25 @@ export async function readGoogleWorkspaceScanMessage(provider: GoogleWorkspacePr
 }
 
 /** Resolve the connector's mailbox-bound opaque MIME-part reference to original bytes. */
-export async function readGoogleWorkspaceScanAttachment(provider: GoogleWorkspaceProvider, args: {mailbox: string; messageId: string; threadId: string; attachmentId: string}) {
+export async function readGoogleWorkspaceScanAttachment(
+  provider: GoogleWorkspaceProvider,
+  args: { mailbox: string; messageId: string; threadId: string; attachmentId: string },
+) {
   const message = await provider.getMessageFull(args);
-  if (message.threadId !== args.threadId || message.labelIds?.some(label => ["DRAFT", "SPAM", "TRASH"].includes(label))) throw new Error("The source message is no longer eligible.");
-  const located = allParts(message).find(part => `part:${part.stablePartId}` === args.attachmentId);
-  if (!located || !isAttachmentPart(located.part)) throw new Error("The source attachment is no longer available.");
-  if (located.part.body.size > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes) throw new Error("The source attachment exceeds the import limit.");
-  const data = located.part.body.data ?? (located.part.body.attachmentId ? (await provider.getAttachment({...args, attachmentId: located.part.body.attachmentId})).data : null);
+  if (
+    message.id !== args.messageId || message.threadId !== args.threadId ||
+    message.labelIds?.some(label => ["DRAFT", "SPAM", "TRASH"].includes(label))
+  ) throw new Error("The source message is no longer eligible.");
+  const located = args.attachmentId.startsWith("part:") ? locatedAttachment(message, args.attachmentId) : undefined;
+  if (!located) throw new Error("The source attachment is no longer available.");
+  const metadata = attachmentMetadata(located);
+  if (metadata.size > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes) throw new Error("The source attachment exceeds the import limit.");
+  const data = located.part.body.attachmentId
+    ? (await provider.getAttachment({...args, attachmentId: located.part.body.attachmentId})).data
+    : located.part.body.data;
   if (data === null) throw new Error("The source attachment has no content.");
+  if (data.length > Math.ceil(GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes / 3) * 4 + 4) throw new Error("The source attachment exceeds the import limit.");
   const bytes = decodePartData(data);
   if (bytes.byteLength > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes) throw new Error("The source attachment exceeds the import limit.");
-  return {bytes, ...attachmentMetadata(located)};
+  return {bytes, ...metadata, filename:normalizeAgentAttachmentFilename(metadata.filename),contentType:normalizeAgentAttachmentContentType(metadata.contentType),size:bytes.byteLength};
 }
