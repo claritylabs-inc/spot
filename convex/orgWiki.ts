@@ -354,16 +354,18 @@ export async function reconcileExtractedCompanyFacts(
     );
     const current = readMarkdownHeading(body, heading);
     if (metadata.manual || metadata.protectedHeadings?.includes(heading)) {
-      const base = metadata.proposals?.[heading]?.body ?? current;
-      const additions = lines.filter((line) => !base.includes(line));
-      if (additions.length)
+      const additions = lines.filter((line) => !current.includes(line));
+      if (additions.length) {
         metadata.proposals = {
           ...metadata.proposals,
           [heading]: {
-            body: `${base}${base ? "\n\n" : ""}${renderWikiBullets(additions)}`,
+            body: `${current}${current ? "\n\n" : ""}${renderWikiBullets(additions)}`,
             rationale: `Suggested facts from ${new Set(facts.map((fact) => fact.sourceRef)).size} sources`,
           },
         };
+      } else if (metadata.proposals?.[heading]) {
+        delete metadata.proposals[heading];
+      }
       continue;
     }
     const owned = new Set(metadata.contributions?.[heading]?.lines ?? []);

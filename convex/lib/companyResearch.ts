@@ -29,12 +29,21 @@ type PublicCompanyIdentity = {
   relatedLegalEntities?: Array<{ legalName: string }>;
 };
 
-export function companyResearchFingerprint(org: PublicCompanyIdentity) {
-  return JSON.stringify([
-    COMPANY_RESEARCH_VERSION,
+function companyResearchIdentityParts(org: PublicCompanyIdentity) {
+  return [
     org.name.trim(),
     [...new Set((org.relatedLegalEntities ?? []).map((entity) => entity.legalName.trim()))].sort(),
     org.website?.trim() ?? "",
+  ] as const;
+}
+
+export function companyResearchFingerprint(org: PublicCompanyIdentity) {
+  const [name, legalNames, website] = companyResearchIdentityParts(org);
+  return JSON.stringify([
+    COMPANY_RESEARCH_VERSION,
+    name,
+    legalNames,
+    website,
     org.industry ?? "",
     org.industryVertical ?? "",
   ]);
@@ -80,4 +89,40 @@ export function samePublicResearchUrl(left: string, right: string) {
 export function publicResearchAllowedDomains(value: string) {
   const hostname = publicResearchSiteHostname(value);
   return hostname ? [hostname, `www.${hostname}`] : [];
+}
+
+export function companyResearchFingerprintMatchesIdentity(
+  fingerprint: string,
+  org: PublicCompanyIdentity,
+) {
+  try {
+    const parsed: unknown = JSON.parse(fingerprint);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length < 4 ||
+      parsed[0] !== COMPANY_RESEARCH_VERSION ||
+      typeof parsed[1] !== "string" ||
+      !Array.isArray(parsed[2]) ||
+      !parsed[2].every((name) => typeof name === "string") ||
+      typeof parsed[3] !== "string"
+    ) {
+      return false;
+    }
+    const [name, legalNames, website] = companyResearchIdentityParts(org);
+    if (
+      parsed[1] !== name ||
+      JSON.stringify(parsed[2]) !== JSON.stringify(legalNames)
+    ) {
+      return false;
+    }
+    const previousWebsite = parsed[3];
+    return (
+      previousWebsite === website ||
+      (Boolean(previousWebsite) &&
+        Boolean(website) &&
+        samePublicResearchSite(previousWebsite, website))
+    );
+  } catch {
+    return false;
+  }
 }
