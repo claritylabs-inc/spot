@@ -15,6 +15,7 @@ import {
 } from "./lib/companyInformationExtraction";
 import {
   emailContentValidator,
+  operatorEmailContentValidator,
   pendingEmailAttachmentKindValidator,
   pendingEmailAttachmentValidator,
   threadMessageKindValidator,
@@ -5009,6 +5010,7 @@ export default defineSchema({
     replyToMessageId: v.optional(v.id("operatorAgentMessages")),
     dedupeKey: v.optional(v.string()),
     content: v.string(),
+    emailContent: v.optional(operatorEmailContentValidator),
     attachments: v.optional(
       v.array(
         v.object({

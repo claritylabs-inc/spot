@@ -24,9 +24,30 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test.each(["", "Focus on the next 30 days."])(
+const forwarded = [
+  "> Begin forwarded message:",
+  ">",
+  "> From: Dan <dan@example.com>",
+  "> Subject: Insurance documents",
+  "> Date: September 14, 2026 at 12:38 PM EDT",
+  "> To: terry@claritylabs.inc",
+  ">",
+  "> Keep these documents private.",
+].join("\n");
+const quoted = `On Mon, Sep 14, 2026, Spot <operator@agent.spot.insure> wrote:\n> Approval required.\n>\n${forwarded}`;
+
+test.each([
+  ["", ""],
+  ["Focus on the next 30 days.", "Focus on the next 30 days."],
+  [
+    `Yes approve it\n\nTerry Wang\nterry@claritylabs.inc\n\n${quoted}`,
+    "Yes approve it",
+  ],
+  [`Add this context.\n\n${forwarded}`, "Add this context."],
+  [forwarded, ""],
+])(
   "queues the authenticated subject as part of the operator request with body %j",
-  async (body) => {
+  async (body, currentText) => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     vi.stubEnv("AUTH_RESEND_KEY", "test");
     vi.spyOn(Resolver.prototype, "resolveTxt").mockResolvedValue([
@@ -98,7 +119,23 @@ test.each(["", "Focus on the next 30 days."])(
       const run = await ctx.db.get(receipt!.runId);
       const message = await ctx.db.get(run!.userMessageId);
       expect(message!.content).toContain(subject);
-      if (body) expect(message!.content).toContain(body);
+      expect(message!.emailContent?.currentText).toContain(currentText);
+      if (body.includes("Yes approve it")) {
+        expect(message!.content).not.toContain("Keep these documents private.");
+        expect(message!.emailContent?.quotedText).toContain(
+          "Keep these documents private.",
+        );
+        expect(message!.emailContent?.forwarded).toBeUndefined();
+      }
+      if (body.startsWith("Add this context.") || body === forwarded) {
+        expect(message!.emailContent?.quotedText).toBeUndefined();
+        expect(message!.content).toContain("FORWARDED EMAIL CONTEXT");
+        expect(message!.emailContent?.forwarded?.email).toMatchObject({
+          from: { address: "dan@example.com", name: "Dan" },
+          subject: "Insurance documents",
+          body: "Keep these documents private.",
+        });
+      }
       expect(message!.content).not.toContain("Untrusted provider metadata");
       expect(run!.objective).toBe(message!.content);
       expect(run!.status).toBe("queued");

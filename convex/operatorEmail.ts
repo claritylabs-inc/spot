@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import { OPERATOR_EMAIL_DOMAIN } from "./lib/operatorEmailAddress";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -24,6 +25,7 @@ export const accept = internalMutation({
     sender: v.string(),
     subject: v.string(),
     content: v.string(),
+    emailContent: v.optional(operatorEmailContentValidator),
     threadToken: v.optional(v.string()),
     attachments: v.array(
       v.object({
@@ -73,11 +75,21 @@ export const accept = internalMutation({
       });
       threadId = thread.threadId;
     }
+    const isConfirmationReply = Boolean(
+      args.threadToken &&
+      args.emailContent &&
+      !args.emailContent.forwarded &&
+      /^(?:(?:yes|no)[,\s]+)?(?:approve|approved|reject|rejected|cancel)(?:\s+(?:it|this|that))?[.!]?$/i.test(
+        args.emailContent.currentText.trim().split(/\n\s*\n/)[0],
+      ),
+    );
     const queued = await enqueueOperatorMessage(ctx, {
       operatorUserId: operator.userId,
       threadId,
       channel: "email",
       content: args.content,
+      emailContent: args.emailContent,
+      preservePendingEmailConfirmation: isConfirmationReply,
       dedupeKey: `operator-email:${args.providerId}`,
       attachments: args.attachments,
     });

@@ -66,6 +66,7 @@ import {
 } from "./operator-page-context";
 import { useOptionalOperatorAgent } from "./operator-agent-provider";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
+import { OperatorEmailMessage } from "./operator-email-message";
 import {
   operatorConversationEntries,
   OperatorToolActivityGroup,
@@ -367,7 +368,9 @@ function OperatorMessageRow({
           isError={message.status === "error"}
         >
           {content ? (
-            message.channel === "slack" ? (
+            message.channel === "email" ? (
+              <OperatorEmailMessage message={message} />
+            ) : message.channel === "slack" ? (
               <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
                 {content}
               </ProseMarkdown>

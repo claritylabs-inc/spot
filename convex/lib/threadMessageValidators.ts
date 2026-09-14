@@ -31,6 +31,12 @@ export const emailContentValidator = v.object({
   ),
 });
 
+export const operatorEmailContentValidator = v.object({
+  ...emailContentValidator.fields,
+  subject: v.string(),
+  currentText: v.string(),
+});
+
 export const pendingEmailAttachmentKindValidator = v.union(
   v.literal("coi"),
   v.literal("original_policy"),

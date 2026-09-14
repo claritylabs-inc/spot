@@ -97,7 +97,13 @@ remains literal. It stores attachments and atomically queues the shared operator
 runner; signed-message/provider replay cannot create another task. Replies go
 only to the authenticated sender, with owned-thread Reply-To addressing. Exact
 write approvals stay in the portal; pending email delivery follows the persisted
-run without expiring human approval. `convex/operatorEmail.ts` and
+run without expiring human approval. Short confirmation replies preserve the
+waiting run and its exact approval instead of superseding it. Quoted history,
+including nested forwards, is separate from current-sender instructions;
+operator email messages retain bounded structured content for quoted-reply and
+forwarded-email cards in the portal. Workspace scanning excludes messages from
+the Spot Operator inbox identity so its status summaries cannot become new
+reconciliation evidence. `convex/operatorEmail.ts` and
 `convex/actions/handleInboundOperatorEmail.ts` own receipts, private-thread
 binding, delivery snapshots, and bounded idempotent transport recovery. See
 `docs/deployment/operator-email.md` for dedicated-subdomain Resend receiving and

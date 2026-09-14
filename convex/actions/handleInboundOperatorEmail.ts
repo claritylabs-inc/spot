@@ -13,7 +13,12 @@ import {
   assertAgentAttachmentLimits,
   normalizeAgentAttachmentFilename,
 } from "../lib/agentAttachmentLimits";
-import { htmlToPlainText, parseInboundEmail } from "../lib/inboundEmailParser";
+import {
+  formatInboundEmailForAgent,
+  htmlToPlainText,
+  parseInboundEmail,
+  storedInboundEmailContent,
+} from "../lib/inboundEmailParser";
 import { getAuthSiteUrl } from "../lib/domains";
 import { sendResendEmail } from "../lib/resend";
 import {
@@ -80,18 +85,12 @@ export const processInbound = internalAction({
         : "";
     const parsed = parseInboundEmail({
       subject: mail.subject,
-      text: sourceText,
+      text: sourceText.slice(0, 18_000),
     });
-    // Keep the full source when forwarding or when the reply parser hit its cap.
-    const text =
-      parsed.forwarded || parsed.parseInputTruncated
-        ? sourceText
-        : parsed.currentText;
+    const text = formatInboundEmailForAgent(parsed);
     const subject = (mail.subject?.trim() || "Email to Spot").slice(0, 200);
-    const body =
-      text.length > 18_000
-        ? `${text.slice(0, 18_000)}\n\n[Full email attached as forwarded-email.txt]`
-        : text.trim();
+    const truncated = sourceText.length > 18_000;
+    const body = `${text.slice(0, 18_000).trim()}${truncated ? "\n\n[Full email attached as forwarded-email.txt]" : ""}`;
     const files = mail.attachments.map((attachment) => ({
       filename: normalizeAgentAttachmentFilename(
         attachment.filename || "attachment",
@@ -100,8 +99,8 @@ export const processInbound = internalAction({
       size: attachment.content.length,
       bytes: attachment.content,
     }));
-    if (text.length > 18_000) {
-      const bytes = Buffer.from(text);
+    if (truncated) {
+      const bytes = Buffer.from(sourceText);
       files.push({
         filename: "forwarded-email.txt",
         contentType: "text/plain",
@@ -134,6 +133,12 @@ export const processInbound = internalAction({
         sender,
         subject,
         content: `Subject: ${subject}${body ? `\n\n${body}` : ""}`,
+        emailContent: {
+          ...storedInboundEmailContent(parsed),
+          subject,
+          currentText: parsed.currentText,
+          parseInputTruncated: truncated,
+        },
         threadToken: tokens[0],
         attachments,
       });

@@ -22,6 +22,8 @@ import {
   type GoogleWorkspaceScanSourceEvidence,
 } from "../lib/googleWorkspaceScan";
 import { readGoogleWorkspaceScanMessage } from "../lib/googleWorkspaceTools";
+import { extractEmailAddress } from "../lib/emailAddress";
+import { isOperatorEmailRecipient } from "../lib/operatorEmailAddress";
 
 async function providerFor(credentialRevision: string) {
   const envelope = await googleWorkspaceCredentialEnvelope();
@@ -227,6 +229,10 @@ export const collectSource = internalAction({
       if (
         message.labelIds?.some((label) =>
           ["DRAFT", "SPAM", "TRASH"].includes(label),
+        ) ||
+        message.payload?.headers.some((header) =>
+          header.name.toLowerCase() === "from" &&
+          isOperatorEmailRecipient(extractEmailAddress(header.value) ?? ""),
         )
       ) {
         await ctx.runMutation(

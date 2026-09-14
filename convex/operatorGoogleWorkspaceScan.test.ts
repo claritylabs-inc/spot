@@ -757,7 +757,7 @@ describe("Gmail baseline and history collection", () => {
       collectedMessages: 2,
     });
   });
-  it("preserves full multi-page body and provenance while excluding drafts, spam and trash", async () => {
+  it("preserves full source evidence while excluding drafts, spam, trash and Spot Operator's own summaries", async () => {
     const { t, mailboxId } = await collectionFixture();
     providerMock.getHistoryCheckpoint.mockResolvedValue("100");
     await t.action(
@@ -770,6 +770,7 @@ describe("Gmail baseline and history collection", () => {
         { id: "draft", threadId: "draft" },
         { id: "spam", threadId: "spam" },
         { id: "trash", threadId: "trash" },
+        { id: "operator", threadId: "operator" },
       ],
       nextPageToken: null,
     });
@@ -784,13 +785,13 @@ describe("Gmail baseline and history collection", () => {
         threadId: messageId,
         internalDate: "1000",
         snippet: null,
-        labelIds: messageId === "full" ? ["SENT"] : [messageId.toUpperCase()],
+        labelIds: messageId === "full" ? ["SENT"] : messageId === "operator" ? ["INBOX"] : [messageId.toUpperCase()],
         payload: {
           partId: "0",
           mimeType: "text/plain",
           filename: "",
           headers: [
-            { name: "From", value: "client@example.com" },
+            { name: "From", value: messageId === "operator" ? "Spot Operator <OPERATOR@agent.spot.insure>" : "client@example.com" },
             { name: "Message-ID", value: "<original@example.com>" },
           ],
           body: {
