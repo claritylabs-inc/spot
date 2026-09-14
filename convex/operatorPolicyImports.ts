@@ -164,81 +164,117 @@ export const commitInternal = internalMutation({
       run.cancellationRequestedAt
     )
       throw new Error("Policy import confirmation is no longer active");
-    const combined = args.mode === "combined" && files.length > 1;
+    return commitValidatedOperatorPolicyImport(ctx, { ...args, files });
+  },
+});
+
+/** Authorization is entrypoint-specific; shared storage validation and writes stay atomic. */
+export async function commitValidatedOperatorPolicyImport(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    orgId: Id<"organizations">;
+    files: OperatorPolicySource[];
+    mode: "combined" | "separate";
+    mergedFileId?: Id<"_storage">;
+    mergedFileName?: string;
+  },
+) {
+  const files = args.files;
+  await requireOperatorForUser(ctx, args.operatorUserId);
+  await assertNoOperatorImpersonation(ctx, args.operatorUserId);
+  const client = await ctx.db.get(args.orgId);
+  if (!client || client.type !== "client") throw new Error("Client not found");
+  if (!files.length || files.length > 10)
+    throw new Error("Select between one and ten PDF files");
+  let totalSize = 0;
+  for (const file of files) {
+    const metadata = await ctx.db.system.get("_storage", file.fileId);
     if (
-      combined &&
-      (!args.mergedFileId ||
-        !(await ctx.db.system.get("_storage", args.mergedFileId)))
+      !metadata ||
+      !file.fileName.toLowerCase().endsWith(".pdf") ||
+      normalizeClientFileSha256(metadata.sha256) !== file.fileSha256 ||
+      metadata.size !== file.size
     )
-      throw new Error("Merged PDF is unavailable");
-    const groups =
-      args.mode === "combined" ? [files] : files.map((file) => [file]);
-    const results: Array<{
-      policyId: Id<"policies">;
-      fileName: string;
-      status: "queued" | "duplicate";
-    }> = [];
-    for (const group of groups) {
-      const fileId = combined ? args.mergedFileId! : group[0].fileId;
-      const fileName = combined
-        ? (args.mergedFileName ?? "combined-policy.pdf")
-        : group[0].fileName;
-      const hashes = group.map((file) => file.fileSha256);
-      let duplicate: Id<"policies"> | undefined;
-      for await (const policy of ctx.db
-        .query("policies")
-        .withIndex("organization", (q) => q.eq("orgId", args.orgId))) {
-        if (
-          !policy.deletedAt &&
-          hashes.every((hash) => policy.uploadFileSha256s?.includes(hash))
-        ) {
-          duplicate = policy._id;
-          break;
-        }
-      }
-      if (duplicate) {
-        results.push({ policyId: duplicate, fileName, status: "duplicate" });
-        continue;
-      }
-      const policyId = await createOperatorUploadByUser(
-        ctx,
-        args.operatorUserId,
-        {
-          clientOrgId: args.orgId,
-          fileId,
-          fileName,
-          uploadFileSha256s: hashes,
-          documentType: "policy",
-        },
+      throw new Error("Policy source changed");
+    totalSize += metadata.size;
+    if (metadata.size > 25 * 1024 * 1024 || totalSize > 50 * 1024 * 1024)
+      throw new Error(
+        "Policy imports support 25 MB per PDF and 50 MB in total",
       );
-      const policyFileId = await ctx.db.insert("policyFiles", {
+  }
+  const combined = args.mode === "combined" && files.length > 1;
+  if (
+    combined &&
+    (!args.mergedFileId ||
+      !(await ctx.db.system.get("_storage", args.mergedFileId)))
+  )
+    throw new Error("Merged PDF is unavailable");
+  const groups =
+    args.mode === "combined" ? [files] : files.map((file) => [file]);
+  const results: Array<{
+    policyId: Id<"policies">;
+    fileName: string;
+    status: "queued" | "duplicate";
+  }> = [];
+  for (const group of groups) {
+    const fileId = combined ? args.mergedFileId! : group[0].fileId;
+    const fileName = combined
+      ? (args.mergedFileName ?? "combined-policy.pdf")
+      : group[0].fileName;
+    const hashes = group.map((file) => file.fileSha256);
+    let duplicate: Id<"policies"> | undefined;
+    for await (const policy of ctx.db
+      .query("policies")
+      .withIndex("organization", (q) => q.eq("orgId", args.orgId))) {
+      if (
+        !policy.deletedAt &&
+        hashes.every((hash) => policy.uploadFileSha256s?.includes(hash))
+      ) {
+        duplicate = policy._id;
+        break;
+      }
+    }
+    if (duplicate) {
+      results.push({ policyId: duplicate, fileName, status: "duplicate" });
+      continue;
+    }
+    const policyId = await createOperatorUploadByUser(
+      ctx,
+      args.operatorUserId,
+      {
+        clientOrgId: args.orgId,
+        fileId,
+        fileName,
+        uploadFileSha256s: hashes,
+        documentType: "policy",
+      },
+    );
+    const policyFileId = await ctx.db.insert("policyFiles", {
+      policyId,
+      fileId,
+      fileName,
+      fileType: "unknown",
+      orgId: args.orgId,
+      createdAt: dayjs().valueOf(),
+    });
+    await ctx.db.patch(policyId, {
+      files: [{ fileId, fileName, fileType: "unknown", status: "extracting" }],
+      reconciliationStatus: "pending",
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.policyExtraction.startPolicyExtractionFromUpload,
+      {
         policyId,
         fileId,
         fileName,
-        fileType: "unknown",
+        policyFileId,
         orgId: args.orgId,
-        createdAt: dayjs().valueOf(),
-      });
-      await ctx.db.patch(policyId, {
-        files: [
-          { fileId, fileName, fileType: "unknown", status: "extracting" },
-        ],
-        reconciliationStatus: "pending",
-      });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.actions.policyExtraction.startPolicyExtractionFromUpload,
-        {
-          policyId,
-          fileId,
-          fileName,
-          policyFileId,
-          orgId: args.orgId,
-          userId: args.operatorUserId,
-        },
-      );
-      results.push({ policyId, fileName, status: "queued" });
-    }
-    return results;
-  },
-});
+        userId: args.operatorUserId,
+      },
+    );
+    results.push({ policyId, fileName, status: "queued" });
+  }
+  return results;
+}
