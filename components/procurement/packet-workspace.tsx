@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Copy, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { parseMarkdownDocument } from "@/convex/lib/markdownDocument";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { ProseMarkdown } from "@/components/prose-markdown";
@@ -90,185 +91,105 @@ export function PacketLinkDrawer({
 
 export function PacketWorkspace({
   requestId,
-  readOnly,
 }: {
   requestId: Id<"procurementRequests">;
   readOnly: boolean;
 }) {
-  const packet = useQuery(api.procurementPacket.get, {
-    requestId,
-    audience: "client",
-  });
-  const operatorPacket = useQuery(api.procurementPacket.get, { requestId });
-  const accept = useMutation(api.procurementPacket.acceptProposal);
-  const reject = useMutation(api.procurementPacket.rejectProposal);
-  const [workingSectionId, setWorkingSectionId] = useState<string | null>(null);
-
-  if (!packet || !operatorPacket) {
+  const packet = useQuery(api.procurementPacket.get, { requestId });
+  if (!packet)
     return (
       <OperationalPanel className="flex h-40 items-center justify-center">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </OperationalPanel>
     );
-  }
-
-  const suggestions = operatorPacket.sections.filter(
-    (section) => section.proposedBody || section.audienceProposed,
-  );
-
-  async function resolve(
-    action: typeof accept,
-    sectionId: Id<"procurementPacketSections">,
-    success: string,
-    failure: string,
-  ) {
-    setWorkingSectionId(sectionId);
-    try {
-      await action({ sectionId });
-      toast.success(success);
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, failure));
-    } finally {
-      setWorkingSectionId(null);
-    }
-  }
-
   return (
     <div className="space-y-4">
-      <OperationalPanel as="section" aria-label="Submission packet document">
-        <OperationalPanelBody className="space-y-4">
-          <p
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
+      {packet.documents.length ? (
+        packet.documents.map((document) => (
+          <OperationalPanel
+            key={document.filename}
+            as="section"
+            aria-label={document.filename}
           >
-            Revision {packet.packetRevision} · Shared with the client and broker
-            market
-          </p>
-          {packet.markdown ? (
-            <ProseMarkdown>{packet.markdown}</ProseMarkdown>
-          ) : (
-            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-              The packet is empty. Ask Spot to draft or update it from the
-              request material.
-            </p>
-          )}
-        </OperationalPanelBody>
-      </OperationalPanel>
-
-      {suggestions.length ? (
-        <OperationalPanel as="section" aria-label="Suggested packet updates">
-          <div className="divide-y divide-border">
-            {suggestions.map((section) => (
-              <div key={section._id} className="space-y-3 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className={typeStyle("heading.micro")}>
-                    {section.heading}
-                  </h2>
-                  <StatusTag tone="info">Suggested update</StatusTag>
-                </div>
-                <ProseMarkdown>
-                  {section.proposedBody || section.body}
-                </ProseMarkdown>
-                {section.proposedRationale ? (
-                  <p
-                    className={`text-muted-foreground ${typeStyle("body.default")}`}
-                  >
-                    {section.proposedRationale}
-                  </p>
-                ) : null}
-                {!readOnly ? (
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <PillButton
-                      size="compact"
-                      disabled={workingSectionId !== null}
-                      onClick={() =>
-                        void resolve(
-                          accept,
-                          section._id,
-                          "Packet updated",
-                          "Could not accept the packet update",
-                        )
-                      }
-                    >
-                      {workingSectionId === section._id ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : null}
-                      Accept
-                    </PillButton>
-                    <PillButton
-                      size="compact"
-                      variant="secondary"
-                      disabled={workingSectionId !== null}
-                      onClick={() =>
-                        void resolve(
-                          reject,
-                          section._id,
-                          "Suggestion dismissed",
-                          "Could not dismiss the packet update",
-                        )
-                      }
-                    >
-                      Dismiss
-                    </PillButton>
-                  </div>
-                ) : null}
+            <OperationalPanelBody className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className={typeStyle("label.field")}>
+                  {document.filename}
+                </span>
+                <StatusTag tone="neutral">
+                  {document.visibility === "shared" ? "Shared" : "Private"}
+                </StatusTag>
               </div>
-            ))}
-          </div>
-        </OperationalPanel>
-      ) : null}
+              <ProseMarkdown>
+                {markdownBody(document.markdown) || "No content yet."}
+              </ProseMarkdown>
+            </OperationalPanelBody>
+          </OperationalPanel>
+        ))
+      ) : (
+        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+          No Markdown files yet.
+        </p>
+      )}
     </div>
   );
 }
 
-type EditablePacketSection = {
-  _id: Id<"procurementPacketSections">;
-  key: string;
-  heading: string;
-  body: string;
+function markdownBody(markdown: string) {
+  return parseMarkdownDocument(markdown).body;
+}
+
+type EditablePacketDocument = {
+  filename: string;
+  markdown: string;
+  revision: number;
 };
 
 function LoadedPacketEditor({
   requestId,
-  sections: initialSections,
-  packetRevision,
+  documents,
   onClose,
 }: {
   requestId: Id<"procurementRequests">;
-  sections: EditablePacketSection[];
-  packetRevision: number;
+  documents: EditablePacketDocument[];
   onClose: () => void;
 }) {
-  const updateSections = useMutation(api.procurementPacket.updateSections);
+  const updateDocument = useMutation(api.procurementPacket.updateDocument);
   const fieldId = useId();
-  const [sections] = useState(initialSections);
-  const expectedPacketRevision = useRef(packetRevision);
-  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(sections.map((section) => [section.key, section.body])),
+  const [filename, setFilename] = useState("");
+  const [files, setFiles] = useState(
+    documents.map((document) => document.filename),
   );
-  const savedDrafts = useRef(drafts);
+  const [drafts, setDrafts] = useState(() =>
+    Object.fromEntries(
+      documents.map((document) => [document.filename, document.markdown]),
+    ),
+  );
+  const revisions = useRef(
+    Object.fromEntries(
+      documents.map((document) => [document.filename, document.revision]),
+    ),
+  );
+  const saved = useRef(drafts);
   const autoSave = useLocalFirstAutoSave({
-    mutationName: "procurementPacket.updateSections",
+    mutationName: "procurementPacket.updateDocument",
     args: drafts,
     flush: async (next) => {
-      const changed = sections.filter(
-        (section) => next[section.key] !== savedDrafts.current[section.key],
-      );
-      if (!changed.length) return;
-      const result = await updateSections({
-        requestId,
-        expectedPacketRevision: expectedPacketRevision.current,
-        sections: changed.map((section) => ({
-          key: section.key,
-          body: next[section.key] ?? "",
-        })),
-      });
-      expectedPacketRevision.current = result.packetRevision;
-      savedDrafts.current = next;
+      for (const [filename, markdown] of Object.entries(next)) {
+        if (markdown === saved.current[filename]) continue;
+        const result = await updateDocument({
+          requestId,
+          filename,
+          markdown,
+          expectedRevision: revisions.current[filename] ?? 0,
+        });
+        revisions.current[filename] = result.revision;
+        saved.current = { ...saved.current, [filename]: markdown };
+      }
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the packet"),
   });
-
   return (
     <SettingsDrawer
       open
@@ -282,28 +203,63 @@ function LoadedPacketEditor({
     >
       <AutoSaveStatus status={autoSave.status} />
       <div className="space-y-5">
-        {sections.map((section) => (
-          <div key={section._id} className="space-y-1.5">
+        {files.map((filename) => (
+          <div key={filename} className="space-y-1.5">
             <label
-              htmlFor={`${fieldId}-${section.key}`}
+              htmlFor={`${fieldId}-${filename}`}
               className={`text-muted-foreground ${typeStyle("label.field")}`}
             >
-              {section.heading}
+              {filename}
             </label>
             <Textarea
-              id={`${fieldId}-${section.key}`}
-              value={drafts[section.key] ?? ""}
+              id={`${fieldId}-${filename}`}
+              value={drafts[filename]}
               onChange={(event) =>
                 setDrafts((current) => ({
                   ...current,
-                  [section.key]: event.target.value,
+                  [filename]: event.target.value,
                 }))
               }
-              className="min-h-40"
-              placeholder="Write this packet section in Markdown"
+              className="min-h-72"
             />
           </div>
         ))}
+        <div className="flex items-end gap-2">
+          <label className="flex-1 space-y-1.5">
+            <span
+              className={`text-muted-foreground ${typeStyle("label.field")}`}
+            >
+              New Markdown file
+            </span>
+            <Input
+              value={filename}
+              onChange={(event) => setFilename(event.target.value)}
+              placeholder="notes.md"
+            />
+          </label>
+          <PillButton
+            variant="secondary"
+            onClick={() => {
+              const name = filename.trim();
+              if (!/^[^/\\\u0000-\u001f]+\.md$/i.test(name)) {
+                toast.error("Enter a plain .md filename");
+                return;
+              }
+              if (files.includes(name)) {
+                toast.error("A file with that name already exists");
+                return;
+              }
+              setFiles((current) => [...current, name]);
+              setDrafts((current) => ({
+                ...current,
+                [name]: "---\nvisibility: private\n---\n",
+              }));
+              setFilename("");
+            }}
+          >
+            Add file
+          </PillButton>
+        </div>
       </div>
     </SettingsDrawer>
   );
@@ -316,12 +272,8 @@ export function PacketEditor({
   requestId: Id<"procurementRequests">;
   onClose: () => void;
 }) {
-  const packet = useQuery(api.procurementPacket.get, {
-    requestId,
-    audience: "client",
-  });
-
-  if (!packet) {
+  const packet = useQuery(api.procurementPacket.get, { requestId });
+  if (!packet)
     return (
       <SettingsDrawer
         open
@@ -333,14 +285,11 @@ export function PacketEditor({
         </div>
       </SettingsDrawer>
     );
-  }
-
   return (
     <LoadedPacketEditor
       key={requestId}
       requestId={requestId}
-      sections={packet.sections}
-      packetRevision={packet.packetRevision}
+      documents={packet.documents}
       onClose={onClose}
     />
   );

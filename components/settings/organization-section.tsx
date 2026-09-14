@@ -22,7 +22,6 @@ import {
   patchCachedViewerOrg,
   useCachedViewerOrg,
 } from "@/lib/sync/spot-cached-queries";
-import { useSyncStore } from "@claritylabs/cl-sync";
 import {
   AutoSaveStatus,
   combineAutoSaveStatuses,
@@ -45,11 +44,11 @@ type OrgSettingsArgs = {
 
 type RelatedLegalEntity = {
   legalName: string;
+  source?: "extraction";
 };
 
 export function OrganizationSection() {
   const orgData = useCachedViewerOrg();
-  const store = useSyncStore();
   const updateOrg = useMutation(api.orgs.updateOrg);
   const extractCompanyInfo = useAction(
     api.actions.extractCompanyInfo.extractCompanyInfo,
@@ -178,10 +177,10 @@ export function OrganizationSection() {
         <PillButton
           variant="secondary"
           size="compact"
-          label={extracting ? "Extracting…" : "Extract from website"}
+          label={extracting ? "Queuing…" : "Research company"}
           expandLabel
           onClick={handleExtract}
-          disabled={extracting || !website}
+          disabled={extracting || org?.type === "broker"}
         >
           {extracting ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -196,6 +195,7 @@ export function OrganizationSection() {
   }, [
     organizationSaveStatus,
     extracting,
+    org?.type,
     handleUseExtracted,
     profileAutoSaveStatus,
     profileCanReset,
@@ -204,32 +204,17 @@ export function OrganizationSection() {
   ]);
 
   async function handleExtract() {
-    if (!website) return;
     setExtracting(true);
     try {
-      let url = website;
-      if (!url.startsWith("http")) url = "https://" + url;
-      // Persist the current website immediately so the server-side extract
-      // and the re-fetched org reflect what the user actually typed.
-      await updateOrg({ website: url });
-      setWebsite(url);
-      // Synchronous await is intentional — website scrape typically < 5s.
-      // Not a long-running pipeline; cl-pipelines not required here.
-      const result = await extractCompanyInfo({ url });
-      const extractedFields: OrgSettingsArgs = {
-        context: result.companyContext || undefined,
-        industry: result.industry || undefined,
-        industryVertical: result.industryVertical || undefined,
-      };
-      await updateOrg(extractedFields);
-      patchCachedViewerOrg(store, extractedFields);
-      if (result.industry) {
-        setIndustry(result.industry);
-        setIndustryVertical(result.industryVertical ?? "");
+      if (website.trim()) {
+        const url = /^https?:\/\//i.test(website) ? website : `https://${website}`;
+        await updateOrg({ website: url });
+        setWebsite(url);
       }
-      toast.success("Company info extracted");
+      const result = await extractCompanyInfo({});
+      toast.success(result.status === "running" ? "Company research already running" : "Company research queued");
     } catch {
-      toast.error("Failed to extract company info");
+      toast.error("Could not queue company research");
     } finally {
       setExtracting(false);
     }
@@ -241,7 +226,7 @@ export function OrganizationSection() {
   ) {
     setRelatedLegalEntities((current) =>
       current.map((entity, entityIndex) =>
-        entityIndex === index ? { ...entity, ...patch } : entity,
+        entityIndex === index ? { ...entity, ...patch, source: undefined } : entity,
       ),
     );
   }
@@ -453,7 +438,6 @@ const logoLabelClass = `text-muted-foreground block mb-1.5 ${typeStyle("caption.
 
 function OrganizationLogoCard({ website }: { website: string }) {
   const currentOrg = useCurrentOrg();
-  const store = useSyncStore();
   const org = currentOrg?.org as
     | {
         iconStorageId?: string;

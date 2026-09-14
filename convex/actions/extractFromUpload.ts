@@ -146,7 +146,6 @@ export const extractFromUpload = action({
           status: "extracting",
         },
       ],
-      reconciliationStatus: "pending" as const,
       primaryFileId,
       primaryFileName: primaryFileName || "upload.pdf",
       uploadFileSha256s,
@@ -276,7 +275,6 @@ export const extractFromUploadInternal = internalAction({
           status: "extracting",
         },
       ],
-      reconciliationStatus: "pending" as const,
     });
 
     await ctx.runMutation(internal.policyAuditLog.append, {

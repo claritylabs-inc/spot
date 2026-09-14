@@ -9,15 +9,11 @@ import { SettingsActionsContext } from "@/components/settings/settings-actions-c
 const { save, wiki } = vi.hoisted(() => ({
   save: vi.fn(),
   wiki: {
-    sections: [
-      {
-        key: "operations",
-        heading: "Operations",
-        body: "Original facts",
-        source: "operator",
-        updatedAt: 1,
-      },
-    ],
+    filename: "company-wiki.md",
+    markdown: "Original facts",
+    body: "Original facts",
+    revision: 1,
+    proposals: [],
   },
 }));
 vi.mock("convex/react", () => ({
@@ -50,20 +46,22 @@ vi.mock("@/components/settings/settings-drawer", () => ({
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
-const setActions = () => {};
-
 function Workspace() {
+  const [actions, setActions] = useState<ReactNode>(null);
   const [panel, setRightPanel] = useState<ReactNode>(null);
   return (
     <SettingsActionsContext.Provider value={{ setActions, setRightPanel }}>
       <CompanyWikiSection />
+      {actions}
       {panel}
     </SettingsActionsContext.Provider>
   );
 }
 
 test("wiki close flushes the latest draft, retains it after a failed save and live update, and retries", async () => {
-  save.mockRejectedValueOnce(new Error("Offline")).mockResolvedValue(undefined);
+  save
+    .mockRejectedValueOnce(new Error("Offline"))
+    .mockResolvedValue({ revision: 2 });
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -80,9 +78,7 @@ test("wiki close flushes the latest draft, retains it after a failed save and li
   try {
     await act(async () => render());
     await act(async () =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Edit Operations"]')!
-        .click(),
+      container.querySelector<HTMLButtonElement>("button")!.click(),
     );
     const textarea = container.querySelector("textarea")!;
     await act(async () => {
@@ -98,10 +94,12 @@ test("wiki close flushes the latest draft, retains it after a failed save and li
     expect(container.querySelector("textarea")?.value).toBe("Changed facts");
     expect(save).toHaveBeenLastCalledWith({
       orgId: "org",
-      key: "operations",
-      body: "Changed facts",
+      markdown: "Changed facts",
+      expectedRevision: 1,
     });
-    wiki.sections[0].body = "Facts from live extraction";
+    wiki.body = "Facts from live extraction";
+    wiki.markdown = "Facts from live extraction";
+    wiki.revision = 2;
     await act(async () => render());
     expect(container.querySelector("textarea")?.value).toBe("Changed facts");
     await act(async () =>

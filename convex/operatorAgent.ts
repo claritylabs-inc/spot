@@ -1,10 +1,19 @@
+import {
+  clientIdentity,
+  insuranceProfilePatchSchema,
+  relatedLegalEntitySchema,
+  clientClassificationPatch,
+  mergeInsuranceProfilePatch,
+} from "./lib/clientProfile";
+import { resolveEffectiveOrganizationProfile } from "./lib/orgProfileFacts";
+import { scheduleCompanyResearch } from "./companyResearch";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
@@ -85,18 +94,16 @@ import {
   createStandaloneBrokerByOperator,
   updateBrokerProfileByOperator,
 } from "./brokerProfiles";
-import { readOrgWiki, upsertOrgWikiSectionByOperator } from "./orgWiki";
+import { readOrgWiki, upsertOrgWikiDocumentByOperator } from "./orgWiki";
 import {
   listPacketLinksForOperator,
-  listPacketSections,
+  listPacketDocuments,
   mintPacketLinkForOperator,
   previewBrokerPacket,
   revokePacketLinkByOperator,
   rotatePacketLinkByOperator,
-  upsertPacketSectionByOperator,
+  updatePacketDocumentByOperator,
 } from "./procurementPacket";
-import type { PacketAudience } from "./lib/procurementPacket";
-import { isOrgWikiSectionKey } from "./lib/orgWiki";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
 import {
@@ -346,7 +353,11 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function boundedDisplayText(value: string, maximum = 160, preserveLines = false) {
+function boundedDisplayText(
+  value: string,
+  maximum = 160,
+  preserveLines = false,
+) {
   const normalized = value
     .trim()
     .replace(preserveLines ? /[^\S\n]+/g : /\s+/g, " ");
@@ -511,7 +522,11 @@ async function operatorConfirmationSummary(
           : value;
       const label = operatorUpdateFieldLabel(key).toLowerCase();
       const previous = operatorUpdateValue(key, current[key]);
-      if (next === null || next === "" || (Array.isArray(next) && !next.length)) {
+      if (
+        next === null ||
+        next === "" ||
+        (Array.isArray(next) && !next.length)
+      ) {
         return `Clear ${label} (currently ${previous}).`;
       }
       const valueText = operatorUpdateValue(key, next);
@@ -817,12 +832,6 @@ function assertOperatorRole(
   }
 }
 
-function packetSectionKey(value: unknown) {
-  const key = typeof value === "string" ? value.trim() : "";
-  if (!key) throw new Error("Packet section key is required");
-  return key;
-}
-
 function normalizedOptionalText(value: unknown) {
   if (value === null) return undefined;
   if (typeof value !== "string") return undefined;
@@ -1051,20 +1060,6 @@ function procurementEmailCategory(value: unknown) {
       return value;
     default:
       return undefined;
-  }
-}
-
-function packetAudience(value: unknown): PacketAudience | undefined {
-  switch (value) {
-    case "operator":
-    case "client":
-    case "broker":
-      return value;
-    case undefined:
-    case null:
-      return undefined;
-    default:
-      throw new Error("Invalid packet audience");
   }
 }
 
@@ -1352,7 +1347,9 @@ export async function enqueueOperatorMessage(
       ? await ctx.db
           .query("operatorAgentRuns")
           .withIndex("thread_status", (index) =>
-            index.eq("threadId", args.threadId).eq("status", "waiting_confirmation"),
+            index
+              .eq("threadId", args.threadId)
+              .eq("status", "waiting_confirmation"),
           )
           .order("desc")
           .first()
@@ -1411,7 +1408,11 @@ export async function enqueueOperatorMessage(
       updatedAt: now,
     });
     await ctx.db.patch(args.threadId, { lastMessageAt: now, updatedAt: now });
-    return { messageId: userMessageId, runId: continuedRun._id, duplicate: false };
+    return {
+      messageId: userMessageId,
+      runId: continuedRun._id,
+      duplicate: false,
+    };
   }
   const agentMessageId = await ctx.db.insert("operatorAgentMessages", {
     threadId: args.threadId,
@@ -1622,6 +1623,12 @@ async function executeToolDomain(
       website: organization.website,
       industry: organization.industry,
       industryVertical: organization.industryVertical,
+      relatedLegalEntities: organization.relatedLegalEntities ?? [],
+      insuranceProfile: resolveEffectiveOrganizationProfile(organization),
+      companyResearch: organization.companyResearch ?? null,
+      ...(organization.type === "broker"
+        ? { companyWiki: await readOrgWiki(ctx, orgId) }
+        : {}),
       brokerOrgId: organization.brokerOrgId,
       featureFlags: organization.featureFlags,
       onboardingComplete: organization.onboardingComplete,
@@ -1745,7 +1752,6 @@ async function executeToolDomain(
       pipelineStatus: extractionRun?.pipelineStatus ?? policy.pipelineStatus,
       pipelineError: extractionRun?.pipelineError ?? policy.pipelineError,
       sourceTreeStatus: policy.sourceTreeStatus,
-      reconciliationStatus: policy.reconciliationStatus,
       archived: Boolean(policy.deletedAt),
       fileName: policy.fileName,
     };
@@ -1789,29 +1795,29 @@ async function executeToolDomain(
   if (toolName === "lookup_client_wiki") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization || organization.type !== "client") {
-      throw new Error("Client organization not found");
+    if (
+      !organization ||
+      (organization.type !== "client" && organization.type !== "broker")
+    ) {
+      throw new Error("Client or supplier organization not found");
     }
     return await readOrgWiki(ctx, orgId);
   }
 
-  if (toolName === "update_client_wiki_section") {
-    if (!isOrgWikiSectionKey(input.key)) {
-      throw new Error("Unknown company wiki section");
-    }
-    return await upsertOrgWikiSectionByOperator(ctx, {
+  if (toolName === "update_client_wiki") {
+    return await upsertOrgWikiDocumentByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       orgId: normalizeOrganizationId(ctx, input.orgId),
-      key: input.key,
-      body: typeof input.body === "string" ? input.body : "",
+      markdown: String(input.markdown),
+      expectedRevision: Number(input.expectedRevision),
       source: args.channel === "mcp" ? "mcp" : "operator",
     });
   }
 
   if (toolName === "lookup_procurement_packet") {
-    return await listPacketSections(ctx, {
+    return await listPacketDocuments(ctx, {
       requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
-      audience: packetAudience(input.audience),
+      audience: "operator",
     });
   }
 
@@ -1831,14 +1837,13 @@ async function executeToolDomain(
     };
   }
 
-  if (toolName === "update_procurement_packet_section") {
-    return await upsertPacketSectionByOperator(ctx, {
+  if (toolName === "update_procurement_packet") {
+    return await updatePacketDocumentByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
-      key: packetSectionKey(input.key),
-      body: typeof input.body === "string" ? input.body : "",
-      audience: packetAudience(input.audience),
-      source: "operator_agent",
+      filename: String(input.filename),
+      markdown: String(input.markdown),
+      expectedRevision: Number(input.expectedRevision),
     });
   }
 
@@ -2742,25 +2747,62 @@ async function executeToolDomain(
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
     if (!organization) throw new Error("Organization not found");
-    const patch: {
-      name?: string;
-      website?: string;
-      industry?: string;
-      industryVertical?: string;
-    } = {};
-    if (input.name != null) {
-      const name = normalizedOptionalText(input.name);
-      if (!name) throw new Error("Organization name is required");
-      patch.name = name;
+    const patch: Partial<Doc<"organizations">> = {};
+    if (input.name != null || input.relatedLegalEntities !== undefined) {
+      if (
+        organization.type === "broker" &&
+        input.relatedLegalEntities !== undefined
+      )
+        throw new Error("Legal entities are client profile fields");
+      const identity = clientIdentity(
+        input.name == null ? organization.name : String(input.name),
+        input.relatedLegalEntities === undefined
+          ? organization.relatedLegalEntities
+          : relatedLegalEntitySchema.array().parse(input.relatedLegalEntities),
+      );
+      if (!identity.name) throw new Error("Organization name is required");
+      patch.name =
+        organization.type === "broker"
+          ? String(input.name ?? organization.name).trim()
+          : identity.name;
+      if (organization.type !== "broker")
+        patch.relatedLegalEntities = identity.relatedLegalEntities;
     }
     if ("website" in input)
       patch.website = normalizedOptionalText(input.website);
-    if ("industry" in input)
-      patch.industry = normalizedOptionalText(input.industry);
-    if ("industryVertical" in input) {
-      patch.industryVertical = normalizedOptionalText(input.industryVertical);
+    Object.assign(
+      patch,
+      clientClassificationPatch(organization, {
+        industry:
+          input.industry === undefined
+            ? undefined
+            : (normalizedOptionalText(input.industry) ?? null),
+        industryVertical:
+          input.industryVertical === undefined
+            ? undefined
+            : (normalizedOptionalText(input.industryVertical) ?? null),
+      }),
+    );
+    if (input.insuranceProfile !== undefined) {
+      if ((organization.type ?? "client") !== "client")
+        throw new Error("Insurance profile is available for clients only");
+      patch.profileOverrides = mergeInsuranceProfilePatch(
+        organization.profileOverrides,
+        resolveEffectiveOrganizationProfile(organization).mailingAddress,
+        insuranceProfilePatchSchema.parse(input.insuranceProfile),
+      );
+      patch.profileOverridesUpdatedAt = dayjs().valueOf();
+      patch.profileOverridesUpdatedByUserId = args.operatorUserId;
     }
     await ctx.db.patch(orgId, patch);
+    if (
+      input.name != null ||
+      input.website !== undefined ||
+      input.relatedLegalEntities !== undefined ||
+      input.industry !== undefined ||
+      input.industryVertical !== undefined
+    )
+      await scheduleCompanyResearch(ctx, orgId);
     await writeOperatorAudit(ctx, {
       operatorUserId: args.operatorUserId,
       type: "setup_write",
@@ -2768,7 +2810,24 @@ async function executeToolDomain(
       summary: `Updated organization profile for ${patch.name ?? organization.name}`,
       metadata: { domain: "operator_agent", fields: Object.keys(patch) },
     });
-    return { status: "updated", orgId, fields: Object.keys(patch) };
+    return {
+      status: "updated",
+      orgId,
+      fields: Object.keys(patch),
+      companyResearch: (await ctx.db.get(orgId))?.companyResearch ?? null,
+    };
+  }
+
+  if (toolName === "research_client") {
+    const orgId = normalizeOrganizationId(ctx, input.orgId);
+    const org = await ctx.db.get(orgId);
+    if (!org || org.type !== "client") throw new Error("Client not found");
+    const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });
+    return {
+      queued,
+      status: (await ctx.db.get(orgId))!.companyResearch!.status,
+      orgId,
+    };
   }
 
   if (toolName === "set_organization_status") {
@@ -2832,28 +2891,21 @@ async function executeToolDomain(
       0,
       internal.memoryMaintenance.clearTableBatch,
       {
-        table: "orgWikiSections",
-      },
-    );
-    await ctx.scheduler.runAfter(
-      0,
-      internal.memoryMaintenance.clearTableBatch,
-      {
-        table: "conversationTurns",
+        table: "markdownDocuments",
       },
     );
     await writeOperatorAudit(ctx, {
       operatorUserId: args.operatorUserId,
       type: "memory_cleared",
-      summary: "Scheduled company wiki and raw conversation memory purge",
+      summary: "Scheduled company wiki purge",
       metadata: {
         domain: "operator_agent",
-        tables: ["orgWikiSections", "conversationTurns"],
+        tables: ["markdownDocuments.company_wiki"],
       },
     });
     return {
       status: "scheduled",
-      tables: ["orgWikiSections", "conversationTurns"],
+      tables: ["markdownDocuments.company_wiki"],
     };
   }
 
@@ -2861,7 +2913,12 @@ async function executeToolDomain(
 }
 
 function operatorCertificateSource(channel: OperatorChannel) {
-  if (channel === "slack" || channel === "imessage" || channel === "email" || channel === "mcp") {
+  if (
+    channel === "slack" ||
+    channel === "imessage" ||
+    channel === "email" ||
+    channel === "mcp"
+  ) {
     return channel;
   }
   return "agent" as const;
@@ -4386,7 +4443,12 @@ export const getPendingConfirmationInternal = internalQuery({
 
 const channelThreadArgs = {
   operatorUserId: v.id("users"),
-  channel: v.union(v.literal("slack"), v.literal("imessage"), v.literal("email"), v.literal("mcp")),
+  channel: v.union(
+    v.literal("slack"),
+    v.literal("imessage"),
+    v.literal("email"),
+    v.literal("mcp"),
+  ),
   conversationKey: v.string(),
   title: v.optional(v.string()),
   shared: v.optional(v.boolean()),
@@ -5227,7 +5289,9 @@ const operatorToolConfirmationArgs = {
 
 async function requestOrExecuteTool(
   ctx: ActionCtx,
-  args: Omit<ExecuteToolArgs, "confirmationId"> & { checkpointSummary?: string },
+  args: Omit<ExecuteToolArgs, "confirmationId"> & {
+    checkpointSummary?: string;
+  },
 ): Promise<DirectToolOutcome> {
   const outcome = await ctx.runMutation(
     internal.operatorAgent.requestToolConfirmationInternal,

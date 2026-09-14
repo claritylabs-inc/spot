@@ -1,3 +1,5 @@
+import { requestNarrative } from "./lib/procurementNarrative";
+import { readOutreachLog } from "./lib/outreachLog";
 import {
   googleWorkspaceScanBodyFingerprint,
   googleWorkspaceScanContentFingerprint,
@@ -7,6 +9,7 @@ import { convexTest } from "convex-test";
 import dayjs from "dayjs";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import schema from "./schema";
+import { readOrgWiki } from "./orgWiki";
 import { api, internal } from "./_generated/api";
 import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import {
@@ -702,13 +705,13 @@ test("creates standalone clients and client-visible requests without grants or s
       .withIndex("organization", (q) => q.eq("clientOrgId", client._id))
       .collect();
     expect(requests).toHaveLength(1);
+    expect(await requestNarrative(ctx, requests[0])).toBe("Cyber insurance requested");
     expect(requests[0]).toMatchObject({
       clientVisible: true,
-      narrative: "Cyber insurance requested",
     });
-    expect(
-      await ctx.db.system.query("_scheduled_functions").collect(),
-    ).toHaveLength(0);
+    expect(await ctx.db.query("procurementPacketLinks").collect()).toHaveLength(0);
+    const scheduled = await ctx.db.system.query("_scheduled_functions").collect();
+    expect(scheduled).toEqual([expect.objectContaining({ name: "actions/companyResearch:run" })]);
   });
   expect(first.status).toBe("updated");
   expect(second.status).toBe("updated");
@@ -789,7 +792,7 @@ test("wiki facts retain unrelated manual bullets and correction restores removed
     },
     "wiki",
   );
-  const wiki = await f.t.run((ctx) => ctx.db.query("orgWikiSections").first());
+  const wiki = await f.t.run((ctx) => readOrgWiki(ctx, f.orgId));
   expect(wiki?.body).toContain("Cove builds software.");
   expect(wiki?.body).toContain("10 employees");
   expect(wiki?.body).not.toContain("5 employees");
@@ -1131,8 +1134,9 @@ test("broker decline and later quote update one private market record without fa
   );
   expect(rows).toHaveLength(1);
   expect(rows[0].status).toBe("quote_received");
-  expect(rows[0].notes).toContain("declined");
-  expect(rows[0].notes).toContain("provided a quote");
+  const log = await f.t.run((ctx) => readOutreachLog(ctx, rows[0]));
+  expect(log).toContain("declined");
+  expect(log).toContain("provided a quote");
   expect(rows[0].packetSnapshot).toBeUndefined();
   const brokerActivity = await f.t
     .withIdentity({ subject: `${f.userId}|session` })

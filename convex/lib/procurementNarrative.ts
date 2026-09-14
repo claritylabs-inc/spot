@@ -1,12 +1,63 @@
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
-import { PACKET_SECTIONS, defaultPacketSection } from "./procurementPacket";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { readPacketDocument } from "./packetDocuments";
+import {
+  getMarkdownDocument,
+  saveMarkdownDocument,
+} from "../markdownDocuments";
+import {
+  parseMarkdownDocument,
+  stringifyMarkdownDocument,
+  readMarkdownHeading,
+  replaceMarkdownHeading,
+} from "./markdownDocument";
 
 export const NARRATIVE_SECTION_KEY = "intake_narrative";
 
-export function requestNarrative(request: Doc<"procurementRequests">) {
-  return request.narrative;
+export async function requestNarrative(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"procurementRequests">,
+) {
+  const document = await getMarkdownDocument(ctx, {
+    orgId: request.clientOrgId,
+    requestId: request._id,
+    kind: "request_intake",
+  });
+  return document
+    ? parseMarkdownDocument(document.markdown).body
+    : (request.narrative ?? "");
+}
+
+export async function saveRequestNarrative(
+  ctx: MutationCtx,
+  request: Doc<"procurementRequests">,
+  narrative: string,
+) {
+  const existing = await getMarkdownDocument(ctx, {
+    orgId: request.clientOrgId,
+    requestId: request._id,
+    kind: "request_intake",
+  });
+  const incoming = parseMarkdownDocument(narrative);
+  return saveMarkdownDocument(ctx, {
+    orgId: request.clientOrgId,
+    requestId: request._id,
+    kind: "request_intake",
+    filename: "request-intake.md",
+    markdown: stringifyMarkdownDocument(
+      {
+        title: request.title,
+        visibility: "private",
+        ...(existing
+          ? parseMarkdownDocument(existing.markdown).frontmatter
+          : {}),
+        ...incoming.frontmatter,
+      },
+      incoming.body,
+    ),
+    expectedRevision: existing?.revision ?? 0,
+  });
 }
 
 export async function seedNarrativePacketSection(
@@ -21,35 +72,30 @@ export async function seedNarrativePacketSection(
 ) {
   const body = args.narrative.trim();
   if (!body) return;
-  const existing = await ctx.db
-    .query("procurementPacketSections")
-    .withIndex("request_key", (q) =>
-      q.eq("requestId", args.requestId).eq("key", NARRATIVE_SECTION_KEY),
-    )
-    .first();
-  if (existing) return;
   const request = await ctx.db.get(args.requestId);
   if (!request) throw new Error("Procurement request not found");
-  const canonical = defaultPacketSection(NARRATIVE_SECTION_KEY);
-  const now = dayjs().valueOf();
-  await ctx.db.insert("procurementPacketSections", {
+  await saveRequestNarrative(ctx, request, body);
+  const document = await readPacketDocument(
+    ctx,
+    request,
+    "submission-packet.md",
+  );
+  const parsed = parseMarkdownDocument(document.markdown);
+  if (readMarkdownHeading(parsed.body, "Client narrative")) return;
+  await saveMarkdownDocument(ctx, {
+    orgId: args.clientOrgId,
     requestId: args.requestId,
-    clientOrgId: args.clientOrgId,
-    key: NARRATIVE_SECTION_KEY,
-    heading: canonical.heading,
-    body,
-    order: PACKET_SECTIONS.findIndex(([key]) => key === NARRATIVE_SECTION_KEY),
-    audience: canonical.defaultAudience,
-    source: args.source,
-    createdByUserId: args.userId,
-    updatedByUserId: args.userId,
-    createdAt: now,
-    updatedAt: now,
+    kind: "packet",
+    filename: document.filename,
+    markdown: stringifyMarkdownDocument(
+      { ...parsed.frontmatter, visibility: "shared" },
+      replaceMarkdownHeading(parsed.body, "Client narrative", body),
+    ),
+    expectedRevision: document.revision,
   });
-  if (canonical.defaultAudience !== "operator")
-    await ctx.db.patch(args.requestId, {
-      packetRevision: (request.packetRevision ?? 0) + 1,
-      updatedAt: now,
-      updatedByUserId: args.userId,
-    });
+  await ctx.db.patch(args.requestId, {
+    packetRevision: (request.packetRevision ?? 0) + 1,
+    updatedAt: dayjs().valueOf(),
+    updatedByUserId: args.userId,
+  });
 }

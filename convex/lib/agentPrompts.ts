@@ -83,10 +83,10 @@ export async function buildDocumentContext(
   }
 
   // Prefer source-tree retrieval whenever the org has source nodes.
-  const [hasDocumentChunks, hasSourceChunks, hasSourceNodes] =
+  const [hasDocumentChunks, hasSourceSpans, hasSourceNodes] =
     await Promise.all([
       ctx.runQuery(internal.documentChunks.hasChunksForOrg, { orgId }),
-      ctx.runQuery((internal as any).sourceSpans.hasChunksForOrg, {
+      ctx.runQuery((internal as any).sourceSpans.hasSpansForOrg, {
         orgId,
       }) as Promise<boolean>,
       ctx.runQuery((internal as any).sourceNodes.hasNodesForOrg, {
@@ -94,7 +94,7 @@ export async function buildDocumentContext(
       }) as Promise<boolean>,
     ]);
 
-  if (!hasSourceNodes && (hasSourceChunks || hasDocumentChunks)) {
+  if (!hasSourceNodes && (hasSourceSpans || hasDocumentChunks)) {
     for (const policy of policies.slice(0, 6)) {
       if (
         !policy.fileId ||
@@ -289,7 +289,6 @@ async function buildVectorContext(
     }),
   );
   const sourceContextByPolicy = new Map(sourceContextEntries);
-  const sourceChunkDocs: Array<Record<string, any>> = [];
 
   // Group by policy
   const relevantPolicyIdSet = new Set<Id<"policies">>();
@@ -354,54 +353,7 @@ async function buildVectorContext(
     );
   }
 
-  // Add retrieved raw source chunks only as compatibility evidence for policies
-  // not yet rebuilt into source nodes.
-  const sourceChunksByPolicy = new Map<string, typeof sourceChunkDocs>();
-  for (const chunk of sourceChunkDocs) {
-    if (!chunk.policyId) continue;
-    const key = chunk.policyId as string;
-    if (!sourceChunksByPolicy.has(key)) sourceChunksByPolicy.set(key, []);
-    sourceChunksByPolicy.get(key)!.push(chunk);
-  }
-
-  const sourceSections: string[] = [];
-  for (const [policyId, policyChunks] of sourceChunksByPolicy) {
-    const policy = policyMap.get(policyId as Id<"policies">);
-    if (!policy) continue;
-
-    relevantPolicyIdSet.add(policyId as Id<"policies">);
-
-    const carrier = policy.carrier || policy.security;
-
-    let section = `\n--- POLICY SOURCE EVIDENCE: ${carrier} #${policy.policyNumber} (ID:${policyId}) ---`;
-    const structure = formatDocumentStructureForPrompt(
-      policy as Record<string, unknown>,
-      {
-        maxNodes: 10,
-        maxChars: 3500,
-        includeSourceSpanIds: true,
-      },
-    );
-    if (structure) section += `\n\n${structure}`;
-    for (const chunk of policyChunks) {
-      const truncated =
-        chunk.text.length > 2500
-          ? chunk.text.slice(0, 2500) + "\n... [truncated]"
-          : chunk.text;
-      section += `\n\n[sourceChunk:${chunk.chunkId} sourceSpanIds:${chunk.sourceSpanIds.join(",")} score:${chunk._score.toFixed(3)}]\n${truncated}`;
-    }
-    sourceSections.push(section);
-  }
-
-  if (sourceSections.length > 0) {
-    parts.push(
-      `SOURCE-SPAN COMPATIBILITY EVIDENCE (use when source-tree evidence is absent):\n${sourceSections.join("\n")}`,
-    );
-  }
-
-  // Add retrieved structured fact chunks grouped by policy. Generated section
-  // prose and long policy wording are intentionally excluded; sourceChunks
-  // above are the canonical evidence for exact contractual text.
+  // Structured fact chunks complement source-tree evidence for policy retrieval.
   const chunksByPolicy = new Map<string, typeof chunkDocs>();
   for (const chunk of chunkDocs.slice(0, 15)) {
     const key = chunk.policyId as string;

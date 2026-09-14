@@ -1,3 +1,6 @@
+import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
+import { companyResearchValidator } from "./lib/companyResearch";
+import { storedNotificationTypeValidator } from "./lib/notificationTypes";
 import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
 import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
 import { completionOutcomeValidator } from "./lib/procurementCompletionOutcome";
@@ -307,10 +310,11 @@ const policyDetailOverridesValidator = v.object({
 
 const organizationProfileOverridesValidator = v.object({
   namedInsured: v.optional(v.string()),
-  mailingAddress: orgMailingAddressValidator,
+  mailingAddress: v.optional(orgMailingAddressValidator),
   dba: v.optional(v.string()),
   entityType: v.optional(
     v.union(
+      v.literal(""),
       v.literal("sole_proprietorship"),
       v.literal("partnership"),
       v.literal("corporation"),
@@ -325,7 +329,7 @@ const organizationProfileOverridesValidator = v.object({
   taxId: v.optional(v.string()),
   fein: v.optional(v.string()),
   businessNumber: v.optional(v.string()),
-  operationsDescription: v.string(),
+  operationsDescription: v.optional(v.string()),
   additionalNamedInsureds: v.optional(v.array(v.string())),
 });
 
@@ -463,6 +467,7 @@ export default defineSchema({
   ...googleWorkspaceScanTables,
   ...scanReconciliationTables,
   ...authTables,
+  ...markdownDocumentTables,
 
   // Override default users table with custom profile fields
   users: defineTable({
@@ -514,7 +519,9 @@ export default defineSchema({
   organizations: defineTable({
     name: v.string(),
     website: v.optional(v.string()),
+    companyResearch: v.optional(companyResearchValidator),
     context: v.optional(v.string()),
+    smokeMarker: v.optional(v.string()),
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
     mailingAddress: v.optional(orgMailingAddressValidator),
@@ -547,6 +554,7 @@ export default defineSchema({
       v.array(
         v.object({
           legalName: v.string(),
+          source: v.optional(v.literal("extraction")),
           relationship: v.optional(
             v.union(
               v.literal("current"),
@@ -2949,7 +2957,7 @@ export default defineSchema({
     clientOrgId: v.id("organizations"),
     title: v.string(),
     normalizedTitle: v.optional(v.string()),
-    narrative: v.string(),
+    narrative: v.optional(v.string()),
     targetEffectiveDate: v.optional(v.string()),
     status: v.union(
       v.literal("draft"),
@@ -3001,7 +3009,7 @@ export default defineSchema({
     // Legacy structured workflow/quote fields. Runtime reads fold them into the
     // Markdown log, and the next log write clears them for later narrowing.
     applicationUrl: v.optional(v.string()),
-    applicationQuestions: v.array(v.string()),
+    applicationQuestions: v.optional(v.array(v.string())),
     notes: v.optional(v.string()),
     quoteSummary: v.optional(v.string()),
     quoteAmount: v.optional(v.number()),
@@ -3754,9 +3762,9 @@ export default defineSchema({
   certificateWorkflowSettings: defineTable({
     brokerOrgId: v.optional(v.id("organizations")),
     clientOrgId: v.optional(v.id("organizations")),
-    populateHoldersFromEndorsements: v.boolean(),
+    populateHoldersFromEndorsements: v.optional(v.boolean()),
     renewalReissueEnabled: v.boolean(),
-    renewalReissueMode: v.literal("review_queue"),
+    renewalReissueMode: v.optional(v.literal("review_queue")),
     renewalReviewLeadDays: v.optional(v.number()),
     policyChangeRequestsForHeldCertificatesEnabled: v.optional(v.boolean()),
     channels: v.optional(v.array(policyDeliveryChannelValidator)),
@@ -3909,37 +3917,7 @@ export default defineSchema({
   notifications: defineTable({
     orgId: v.id("organizations"),
     userId: v.optional(v.id("users")), // null = org-wide
-    type: v.union(
-      // Retired values retained so historical notifications remain readable.
-      v.literal("merge_suggestion"),
-      v.literal("policy_declaration_discrepancy"),
-      v.literal("coverage_gap"),
-      v.literal("renewal_reminder"),
-      v.literal("policy_lapsed"),
-      v.literal("coverage_limit_concern"),
-      v.literal("missing_coverage"),
-      v.literal("carrier_rating_change"),
-      v.literal("broker_action"),
-      v.literal("extraction_complete"),
-      v.literal("extraction_error"),
-      v.literal("incomplete_extraction"),
-      v.literal("stale_data"),
-      v.literal("premium_anomaly"),
-      // Broker/client lifecycle
-      v.literal("client_invitation_accepted"),
-      v.literal("client_onboarding_completed"),
-      v.literal("client_document_uploaded"),
-      v.literal("policy_delivered_by_broker"),
-      v.literal("vendor_compliance_met"),
-      v.literal("vendor_compliance_gap"),
-      v.literal("vendor_policy_expiring"),
-      v.literal("vendor_policy_expired"),
-      v.literal("policy_change_needs_info"),
-      v.literal("policy_change_completed"),
-      v.literal("mailbox_attention"),
-      v.literal("own_compliance_gap"),
-      v.literal("own_compliance_resolved"),
-    ),
+    type: storedNotificationTypeValidator,
     title: v.string(),
     body: v.string(),
     severity: v.union(

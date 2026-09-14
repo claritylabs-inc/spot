@@ -1,3 +1,5 @@
+import { readPacketProjection } from "./lib/packetDocuments";
+import { readOrgWiki } from "./orgWiki";
 import dayjs from "dayjs";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { v } from "convex/values";
@@ -6,7 +8,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import type { ActionCtx, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { LOCAL_FIXTURE } from "./lib/localSeedData";
-import { upsertOrgWikiSectionByOperator } from "./orgWiki";
+import { upsertOrgWikiDocumentByOperator } from "./orgWiki";
 import { upsertPacketSectionByOperator } from "./procurementPacket";
 import {
   createProcurementRequestByOperator,
@@ -350,33 +352,19 @@ export const insert = internalMutation({
     }
     await seedPolicyEvidence(ctx, args, now);
 
-    const wiki = await ctx.db
-      .query("orgWikiSections")
-      .withIndex("organization", (q) => q.eq("orgId", args.clientOrgId))
-      .collect();
-    for (const [key, body] of [
-      ["profile", `- ${LOCAL_FIXTURE.client.context}`],
-      [
-        "operations",
-        "- Hosted underwriting and workflow software for property managers, mortgage professionals, and real estate brokers.",
-      ],
-      [
-        "scale",
-        "- Synthetic QA assumptions: 25 employees and CAD 4 million annual revenue, serving Canada and the United States. These are not verified company facts.",
-      ],
-      [
-        "preferences",
-        "- Use email for document follow-ups and Slack for quick service questions.",
-      ],
-    ] as const) {
-      if (!wiki.some((section) => section.key === key)) {
-        await upsertOrgWikiSectionByOperator(ctx, {
-          operatorUserId: args.operatorUserId,
-          orgId: args.clientOrgId,
-          key,
-          body,
-        });
-      }
+    const wiki = await readOrgWiki(ctx, args.clientOrgId);
+    if (!wiki.body.trim()) {
+      await upsertOrgWikiDocumentByOperator(ctx, {
+        operatorUserId: args.operatorUserId,
+        orgId: args.clientOrgId,
+        expectedRevision: wiki.revision,
+        markdown: [
+          `## Company profile\n\n${LOCAL_FIXTURE.client.context}`,
+          "## Operations\n\nHosted underwriting and workflow software for property managers, mortgage professionals, and real estate brokers.",
+          "## Scale\n\nSynthetic QA assumptions: 25 employees and CAD 4 million annual revenue, serving Canada and the United States. These are not verified company facts.",
+          "## Preferences\n\nUse email for document follow-ups and Slack for quick service questions.",
+        ].join("\n\n"),
+      });
     }
 
     for (const [status, name] of [
@@ -639,10 +627,7 @@ export const insert = internalMutation({
       },
     });
     const request = await ctx.db.get(requestId);
-    const sections = await ctx.db
-      .query("procurementPacketSections")
-      .withIndex("request", (q) => q.eq("requestId", requestId))
-      .collect();
+    const sections = request ? (await readPacketProjection(ctx, request, "client")).sections : [];
     await ctx.db.insert("procurementProposalReviews", {
       proposalId,
       requestId,
@@ -655,14 +640,14 @@ export const insert = internalMutation({
         .map((section) => ({
           sectionKey: section.key,
           conclusion:
-            section.key === "coverage_requested"
+            section.key === "submission-packet.md"
               ? "has_gap"
               : "insufficient_evidence",
           summary:
-            section.key === "coverage_requested"
+            section.key === "submission-packet.md"
               ? "Synthetic review: cyber limit is CAD 2 million against CAD 3 million requested. Obtain revised terms."
               : "Synthetic review: staff must verify this section against the returned terms.",
-          evidence: section.key === "coverage_requested" ? evidence : [],
+          evidence: section.key === "submission-packet.md" ? evidence : [],
         })),
       createdAt: now,
       updatedAt: now,

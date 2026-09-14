@@ -58,7 +58,7 @@ async function assertOwnedFixture(
   if (
     !organization ||
     organization.name !== fixtureName(fixture.requestId) ||
-    organization.context !== fixtureContext(fixture.requestId) ||
+    (organization.smokeMarker ?? organization.context) !== fixtureContext(fixture.requestId) ||
     organization.type !== undefined ||
     organization.primaryInsuranceContactId !== undefined ||
     organization.primaryContactEmail !== undefined ||
@@ -138,7 +138,7 @@ export const createFixture = internalMutation({
     const expiresAt = createdAt + WORKER_ROUTER_TRANSPORT_SMOKE_TTL_MS;
     const orgId = await ctx.db.insert("organizations", {
       name: fixtureName(args.requestId),
-      context: fixtureContext(args.requestId),
+      smokeMarker: fixtureContext(args.requestId),
     });
     const policyId = await ctx.db.insert("policies", {
       orgId,

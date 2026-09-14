@@ -12,7 +12,7 @@ For contributor-facing implementation detail, see [AGENTS.md](AGENTS.md).
 
 - Ingests insurance-related documents from email and uploads
 - Extracts structured bound-policy, renewal, and supporting business data
-- Builds a continuously-updated company wiki (`orgWikiSections`) per organization
+- Builds a continuously-updated company Markdown wiki (`markdownDocuments`) per organization
 - Supports agent workflows for Q&A, policy-change requests, COI generation, and follow-up analysis
 - Exposes capabilities through UI, REST API (`/api/v1/*`), and OAuth-authenticated MCP (`/mcp`)
 - Lets client/customer orgs request read-only access to vendor org policies after vendor approval
@@ -259,8 +259,7 @@ Not every flow requires every variable; requirements depend on which features yo
 Agent responses are grounded in:
 
 - `documentChunks` (bound-policy/supporting docs)
-- `orgWikiSections` (the company wiki, read whole)
-- `conversationTurns` (cross-thread memory)
+- `markdownDocuments` (the shared company wiki, read whole)
 
 ### 3) Connected vendor/client accounts
 

@@ -1,3 +1,4 @@
+import { manualWikiDocument } from "./lib/orgWikiDocument";
 import dayjs from "dayjs";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
@@ -413,6 +414,10 @@ export const correctActivity = mutation({
         patch.updatedByUserId = operator.userId;
       if (change.table === "orgWikiSections")
         patch.manuallyEditedAt = dayjs().valueOf();
+      if (change.table === "markdownDocuments" && current && "markdown" in current) {
+        patch.markdown = manualWikiDocument(typeof patch.markdown === "string" ? patch.markdown : current.markdown);
+        patch.revision = current.revision + 1;
+      }
       await ctx.db.patch(id, patch);
       await ctx.db.patch(change._id, { correctedAt: dayjs().valueOf() });
     }

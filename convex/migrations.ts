@@ -294,46 +294,9 @@ export const migrateProcurementOutreaches = migrations.define({
       }
     }
     const patch: Record<string, unknown> = { brokerOrgId };
-    if (!outreach.contactSnapshot)
-      patch.contactSnapshot = {
-        name: outreach.contactName,
-        email: outreach.contactEmail,
-        phone: outreach.contactPhone,
-      };
     await ctx.db.patch(outreach._id, patch);
-    const quoteFiles = await ctx.db
-      .query("procurementFileItems")
-      .withIndex("outreach", (q) => q.eq("outreachId", outreach._id))
-      .collect();
-    const hasLegacyQuote = Boolean(
-      outreach.quoteSummary ||
-      outreach.quoteAmount !== undefined ||
-      outreach.quoteUrl ||
-      quoteFiles.some((file) => file.purpose === "quote"),
-    );
-    if (!hasLegacyQuote) return;
-    const existing = await ctx.db
-      .query("procurementProposals")
-      .withIndex("outreach", (q) => q.eq("outreachId", outreach._id))
-      .first();
-    if (existing) return;
-    await ctx.db.insert("procurementProposals", {
-      requestId: outreach.requestId,
-      clientOrgId: outreach.clientOrgId,
-      brokerOrgId,
-      outreachId: outreach._id,
-      status: "draft",
-      extractedOffer: {
-        legacyQuoteSummary: outreach.quoteSummary,
-        premiumAmount: outreach.quoteAmount,
-        currency: outreach.quoteCurrency,
-        quoteUrl: outreach.quoteUrl,
-      },
-      createdByUserId: outreach.createdByUserId,
-      updatedByUserId: outreach.updatedByUserId,
-      createdAt: outreach.createdAt,
-      updatedAt: outreach.updatedAt,
-    });
+    // Legacy quote evidence remains on the outreach until it can be filed from a real document.
+
   },
 });
 

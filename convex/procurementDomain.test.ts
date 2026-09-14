@@ -16,6 +16,8 @@ import {
 } from "./lib/procurementCapabilities";
 import { upsertPacketSectionByOperator } from "./procurementPacket";
 import schema from "./schema";
+import { stringifyMarkdownDocument } from "./lib/markdownDocument";
+import { readOutreachLog } from "./lib/outreachLog";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -152,49 +154,109 @@ describe("procurement domain boundaries", () => {
     });
     const edits = {
       requestId,
-      expectedPacketRevision: initial.packetRevision,
-      sections: [
-        { key: "intake_narrative", body: "Updated narrative" },
-        { key: "summary", body: "Updated summary" },
-      ],
+      filename: "submission-packet.md",
+      expectedRevision: initial.documents.find(
+        (document) => document.filename === "submission-packet.md",
+      )!.revision,
+      markdown: stringifyMarkdownDocument(
+        { title: "Packet" },
+        "Updated narrative\n\n## Summary\n\nUpdated summary",
+      ),
     };
     await expect(
-      f.client.mutation(api.procurementPacket.updateSections, edits),
+      f.client.mutation(api.procurementPacket.updateDocument, edits),
     ).rejects.toThrow();
     await expect(
-      f.broker.mutation(api.procurementPacket.updateSections, edits),
+      f.broker.mutation(api.procurementPacket.updateDocument, edits),
     ).rejects.toThrow();
-    await f.operator.mutation(api.procurementPacket.updateSections, edits);
+    await f.operator.mutation(api.procurementPacket.updateDocument, edits);
     const saved = await f.operator.query(api.procurementPacket.get, {
       requestId,
     });
-    expect(saved.sections).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "intake_narrative",
-          body: "Updated narrative",
-          source: "manual",
-        }),
-        expect.objectContaining({
-          key: "summary",
-          body: "Updated summary",
-          source: "manual",
-        }),
-      ]),
-    );
+    expect(saved.markdown).toContain("Updated narrative");
+    expect(saved.markdown).toContain("Updated summary");
     await expect(
-      f.operator.mutation(api.procurementPacket.updateSections, {
+      f.operator.mutation(api.procurementPacket.updateDocument, {
         ...edits,
-        sections: edits.sections.map((section) => ({
-          ...section,
-          body: "Stale draft",
-        })),
+        markdown: "Stale draft",
       }),
     ).rejects.toThrow("packet changed");
     expect(
       await f.operator.query(api.procurementPacket.get, { requestId }),
     ).toEqual(saved);
   });
+
+  test.each(["submission-packet.md", "new-research.md"])(
+    "editing %s before backfill atomically preserves and retires legacy packet rows",
+    async (filename) => {
+      const f = await fixture();
+      const { requestId } = await createRequest(f, "Legacy packet editing");
+      await f.t.run(async (ctx) => {
+        for (const document of await ctx.db
+          .query("markdownDocuments")
+          .withIndex("request_kind", (q) =>
+            q.eq("requestId", requestId).eq("kind", "packet"),
+          )
+          .collect())
+          await ctx.db.delete(document._id);
+        for (const audience of ["broker", "operator"] as const)
+          await ctx.db.insert("procurementPacketSections", {
+            requestId,
+            clientOrgId: f.clientOrgId,
+            key: audience,
+            heading: audience,
+            body: `${audience} original`,
+            order: 0,
+            audience,
+            source: "manual",
+            createdAt: 1,
+            updatedAt: 1,
+            createdByUserId: f.operatorUserId,
+            updatedByUserId: f.operatorUserId,
+          });
+      });
+      const edit = {
+        requestId,
+        filename,
+        expectedRevision: 0,
+        markdown: stringifyMarkdownDocument(
+          { visibility: "shared" },
+          "Intentional edit",
+        ),
+      };
+      await f.operator.mutation(api.procurementPacket.updateDocument, edit);
+      expect(
+        await f.t.run((ctx) =>
+          ctx.db.query("procurementPacketSections").collect(),
+        ),
+      ).toHaveLength(0);
+      await f.t.mutation(internal.procurementMarkdownMigration.migratePage, {
+        table: "procurementRequests",
+        cursor: null,
+      });
+      const packet = await f.operator.query(api.procurementPacket.get, {
+        requestId,
+      });
+      expect(
+        packet.documents.find((document) => document.filename === filename)
+          ?.markdown,
+      ).toContain("Intentional edit");
+      expect(
+        packet.documents.find(
+          (document) => document.filename === "operator-packet.md",
+        )?.markdown,
+      ).toContain("operator original");
+      if (filename !== "submission-packet.md")
+        expect(
+          packet.documents.find(
+            (document) => document.filename === "submission-packet.md",
+          )?.markdown,
+        ).toContain("broker original");
+      await expect(
+        f.operator.mutation(api.procurementPacket.updateDocument, edit),
+      ).rejects.toThrow("packet changed");
+    },
+  );
 
   test("rejects oversized outreach logs without losing existing content", async () => {
     const f = await fixture();
@@ -258,13 +320,20 @@ describe("procurement domain boundaries", () => {
         log: "Initial contact sent.",
       },
     );
-    await f.t.run((ctx) =>
-      ctx.db.patch(outreach.outreachId, {
+    await f.t.run(async (ctx) => {
+      const document = await ctx.db
+        .query("markdownDocuments")
+        .withIndex("outreach_kind", (q) =>
+          q.eq("outreachId", outreach.outreachId).eq("kind", "outreach_log"),
+        )
+        .unique();
+      if (document) await ctx.db.delete(document._id);
+      return ctx.db.patch(outreach.outreachId, {
         applicationUrl: "https://example.com/application",
         applicationQuestions: ["Who are the drivers?"],
         quoteSummary: "Legacy quote summary",
-      }),
-    );
+      });
+    });
 
     const before = await f.operator.query(api.procurementRequests.get, {
       requestId: request.requestId,
@@ -280,10 +349,10 @@ describe("procurement domain boundaries", () => {
       log: "- Followed up with underwriting.",
     });
     const stored = await f.t.run((ctx) => ctx.db.get(outreach.outreachId));
-    expect(stored).toMatchObject({
-      applicationQuestions: [],
-      notes: "- Followed up with underwriting.",
-    });
+    expect(stored).not.toHaveProperty("applicationQuestions");
+    expect(await f.t.run((ctx) => readOutreachLog(ctx, stored!))).toBe(
+      "- Followed up with underwriting.",
+    );
     expect(stored).not.toHaveProperty("applicationUrl");
     expect(stored).not.toHaveProperty("quoteSummary");
   });
@@ -2161,9 +2230,7 @@ describe("operator procurement tools", () => {
 
   test("keeps every browser procurement capability agent-backed or explicitly excepted", () => {
     expect(PROCUREMENT_CAPABILITY_MANIFEST_VERSION).toBe(1);
-    expect(PROCUREMENT_CAPABILITY_EXCEPTIONS).toEqual([
-      expect.objectContaining({ id: "packet.resolve_generated_change" }),
-    ]);
+    expect(PROCUREMENT_CAPABILITY_EXCEPTIONS).toEqual([]);
     for (const capability of PROCUREMENT_CAPABILITIES) {
       if (!("agentTools" in capability)) continue;
       expect(capability.agentTools.length, capability.id).toBeGreaterThan(0);
@@ -2201,7 +2268,7 @@ describe("operator procurement tools", () => {
       "create_procurement_file_item",
       "update_procurement_file_item",
       "update_procurement_email_thread",
-      "update_procurement_packet_section",
+      "update_procurement_packet",
       "file_procurement_proposal",
       "file_procurement_email_quote",
       "archive_procurement_proposal",

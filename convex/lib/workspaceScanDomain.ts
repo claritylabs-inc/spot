@@ -1,3 +1,5 @@
+import { readOutreachLog } from "./outreachLog";
+import { getMarkdownDocument } from "../markdownDocuments";
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -35,7 +37,7 @@ export type ScanTarget = {
     | Doc<"organizations">
     | Doc<"procurementRequests">
     | Doc<"brokerProfiles">
-    | Doc<"orgWikiSections">
+    | Doc<"markdownDocuments">
     | Doc<"procurementBrokerOutreaches">
     | null;
 };
@@ -255,12 +257,7 @@ export async function resolveScanTarget(
   }
   let record: ScanTarget["record"] = request ?? org;
   if (operation.kind === "company_facts")
-    record = await ctx.db
-      .query("orgWikiSections")
-      .withIndex("organization_key", (q) =>
-        q.eq("orgId", org._id).eq("key", operation.section),
-      )
-      .unique();
+    record = await getMarkdownDocument(ctx, { orgId: org._id, kind: "company_wiki" });
   if (operation.kind === "broker_capabilities")
     record = await ctx.db
       .query("brokerProfiles")
@@ -419,7 +416,7 @@ export async function writeScanDomain(
       replaces: op.replaces,
     });
     if (!id) throw new ScanAttention("No company facts supplied");
-    return { table: "orgWikiSections" as const, id, created: !target.record };
+    return { table: "markdownDocuments" as const, id, created: !target.record };
   }
   if (op.kind === "broker_capabilities") {
     if (org.type !== "broker")
@@ -475,13 +472,13 @@ export async function writeScanDomain(
         "Exact broker identity is required for market activity",
       );
     const previous =
-      target.record && "requestId" in target.record ? target.record : null;
+      target.record && "brokerName" in target.record ? target.record : null;
     if (previous) {
       await assertScanChronology(ctx, previous, effectiveAt);
       await updateProcurementOutreachByOperator(ctx, {
         operatorUserId,
         outreachId: previous._id,
-        log: [previous.notes, op.log].filter(Boolean).join("\n\n"),
+        log: [await readOutreachLog(ctx, previous), op.log].filter(Boolean).join("\n\n"),
         status: op.observedStatus ?? undefined,
         source: "workspace_scan",
       });

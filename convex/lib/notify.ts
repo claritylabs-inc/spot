@@ -11,6 +11,7 @@ import {
   type NotificationSeverity,
   type NotificationType,
   slackNotificationCategory,
+  activeNotificationTypeValidator,
 } from "./notificationTypes";
 import { resolveChannelPreference } from "../notificationPreferences";
 import { resolveSlackAutomaticChannelId } from "./slackChannelRouting";
@@ -117,7 +118,7 @@ async function resolveImessagePreference(
 export const notifyInternal = internalMutation({
   args: {
     orgId: v.id("organizations"),
-    type: v.string(),
+    type: activeNotificationTypeValidator,
     title: v.string(),
     body: v.string(),
     severity: v.optional(
@@ -132,7 +133,7 @@ export const notifyInternal = internalMutation({
     nowMs: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Id<"notifications">> => {
-    const type = args.type as NotificationType;
+    const type = args.type;
     const nowMs = args.nowMs ?? dayjs().valueOf();
     const severity = args.severity ?? NOTIFICATION_SEVERITY[type] ?? "info";
 

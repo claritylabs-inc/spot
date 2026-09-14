@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { readWorkflowNotes, saveWorkflowNotes, validateDeliveryNotes } from "./certificateNotes";
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -232,6 +233,7 @@ export const listForOrg = query({
           if (!policy || policy.deletedAt) return null;
           return {
             ...row,
+            ...await readWorkflowNotes(ctx, row, access.accessType === "operator"),
             holder: await ctx.db.get(row.holderId),
             policy,
             certificateVersion: row.certificateVersionId
@@ -275,6 +277,7 @@ export const listForOrgInternal = internalQuery({
           if (!policy || policy.deletedAt) return null;
           return {
             ...row,
+            ...await readWorkflowNotes(ctx, row),
             holder: await ctx.db.get(row.holderId),
             policy,
             certificateVersion: row.certificateVersionId
@@ -288,12 +291,13 @@ export const listForOrgInternal = internalQuery({
 });
 
 export const prepareSendJob = mutation({
-  args: { jobId: v.id("certificateWorkflowJobs") },
+  args: { jobId: v.id("certificateWorkflowJobs"), sendNotes: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job) throw new Error("Certificate workflow job not found");
-    const access = await getOrgAccess(ctx, job.orgId);
+    const access = await getOrgAccess(ctx, job.orgId, { allowOperator: true });
     assertCertificateWorkspace(access);
+    if (args.sendNotes !== undefined) await validateDeliveryNotes(ctx, job, args.sendNotes, access.userId);
     if (job.status !== "review_required")
       throw new Error("Job must be ready for review before sending.");
     if (!job.recipientEmail)
@@ -319,6 +323,7 @@ export const markSentInternal = internalMutation({
     jobId: v.id("certificateWorkflowJobs"),
     generatedCertificateVersionId: v.optional(v.id("certificateVersions")),
     sentByUserId: v.optional(v.id("users")),
+    sendNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
@@ -343,6 +348,7 @@ export const markSentInternal = internalMutation({
       sentAt: now,
       updatedAt: now,
     });
+    if (args.sendNotes !== undefined) await saveWorkflowNotes(ctx, job, { sendNotes: args.sendNotes }, { actorUserId: args.sentByUserId });
     return { status: "sent" };
   },
 });
@@ -364,6 +370,7 @@ export const markFailedInternal = internalMutation({
 export const getInternal = internalQuery({
   args: { jobId: v.id("certificateWorkflowJobs") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.jobId);
+    const job = await ctx.db.get(args.jobId);
+    return job ? { ...job, ...await readWorkflowNotes(ctx, job) } : null;
   },
 });

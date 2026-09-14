@@ -145,14 +145,14 @@ export function buildPendingEmailResendPayload(
     headers,
   };
 
-  if (pending.ccAddresses && pending.ccAddresses.length > 0) {
-    payload.cc = pending.ccAddresses;
+  if (pending.ccAddresses !== undefined) {
+    if (pending.ccAddresses.length > 0) payload.cc = pending.ccAddresses;
   } else {
     const legacyCc = stringArrayField(legacy.cc);
     if (legacyCc) payload.cc = legacyCc;
   }
-  if (pending.bccAddresses && pending.bccAddresses.length > 0) {
-    payload.bcc = pending.bccAddresses;
+  if (pending.bccAddresses !== undefined) {
+    if (pending.bccAddresses.length > 0) payload.bcc = pending.bccAddresses;
   } else {
     const legacyBcc = stringArrayField(legacy.bcc);
     if (legacyBcc) payload.bcc = legacyBcc;

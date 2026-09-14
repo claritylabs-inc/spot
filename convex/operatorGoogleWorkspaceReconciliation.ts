@@ -1,3 +1,4 @@
+import { readOrgWiki } from "./orgWiki";
 import { indexPolicyUploadFingerprintPage } from "./lib/policyImportDedup";
 import { scanInsuredAddressValidator } from "./lib/scanReconciliationSchema";
 import {
@@ -833,13 +834,7 @@ export const getKnownContextInternal = internalQuery({
                 .withIndex("broker", (q) => q.eq("brokerOrgId", org._id))
                 .unique()
             : null,
-        wiki:
-          org.type === "client"
-            ? await ctx.db
-                .query("orgWikiSections")
-                .withIndex("organization", (q) => q.eq("orgId", org._id))
-                .take(7)
-            : [],
+        wiki: org.type === "client" ? await readOrgWiki(ctx, org._id) : null,
         requests:
           org.type === "client"
             ? (

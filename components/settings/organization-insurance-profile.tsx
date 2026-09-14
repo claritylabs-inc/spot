@@ -12,9 +12,9 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   IRS_ENTITY_TYPES,
-  normalizeIrsEntityType,
   type IrsEntityType,
 } from "@/convex/lib/entityTypes";
+import { resolveEffectiveOrganizationProfile } from "@/convex/lib/orgProfileFacts";
 import { patchCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { typeStyle } from "@/lib/typography";
@@ -44,31 +44,6 @@ export type OrganizationInsuranceProfileRecord = {
   profileFacts?: Record<string, unknown>;
   mailingAddress?: Address;
 };
-
-function factValue(fact: unknown) {
-  if (!fact || typeof fact !== "object" || Array.isArray(fact)) return "";
-  const value = (fact as { value?: unknown }).value;
-  return typeof value === "string" ? value : "";
-}
-
-function factAddress(fact: unknown): Address | undefined {
-  if (!fact || typeof fact !== "object" || Array.isArray(fact)) return undefined;
-  const value = (fact as { value?: unknown }).value;
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Address
-    : undefined;
-}
-
-function extractedProfile(org: OrganizationInsuranceProfileRecord): OrganizationProfile {
-  const facts = org.profileFacts ?? {};
-  return {
-    mailingAddress: factAddress(facts.mailingAddress) ?? org.mailingAddress ?? {},
-    entityType: normalizeIrsEntityType(factValue(facts.entityType)),
-    fein: factValue(facts.fein) || factValue(facts.taxId),
-    businessNumber: factValue(facts.businessNumber),
-    operationsDescription: factValue(facts.operationsDescription),
-  };
-}
 
 const entityTypeOptions = IRS_ENTITY_TYPES.map((option) => ({ ...option }));
 
@@ -150,16 +125,12 @@ export function OrganizationInsuranceProfile({
   ) => void;
   onResetActionChange?: (resetToExtracted: (() => Promise<void>) | null) => void;
 }) {
-  const extracted = useMemo(() => extractedProfile(org), [org]);
+  const extracted = useMemo(
+    () => resolveEffectiveOrganizationProfile({ ...org, profileOverrides: undefined }),
+    [org],
+  );
   const [profile, setProfile] = useState<OrganizationProfile>(
-    () => ({
-      ...extracted,
-      ...org.profileOverrides,
-      entityType:
-        normalizeIrsEntityType(org.profileOverrides?.entityType ?? extracted.entityType),
-      mailingAddress:
-        org.profileOverrides?.mailingAddress ?? extracted.mailingAddress,
-    }),
+    () => resolveEffectiveOrganizationProfile(org),
   );
   const [resetKey, setResetKey] = useState(0);
   const [hasOverride, setHasOverride] = useState(Boolean(org.profileOverrides));

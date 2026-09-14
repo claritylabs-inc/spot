@@ -1,0 +1,49 @@
+name: Migrate backend schema
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the reviewed, fixed-scope schema migrations
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-schema-migration-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund --loglevel=error
+      - name: Audit or migrate production
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          APPLY_SCHEMA_MIGRATIONS: ${{ inputs.apply }}
+          SCHEMA_MIGRATION_OUTPUT_DIR: ${{ runner.temp }}/schema-migration
+        run: |
+          if [[ "$APPLY_SCHEMA_MIGRATIONS" == "true" ]]; then
+            node scripts/migrate-backend-schema.mjs --prod --apply
+          else
+            node scripts/migrate-backend-schema.mjs --prod
+          fi
+      - name: Preserve migration report and rollback database
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-schema-migration-${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-migration/
+          if-no-files-found: ignore
+          retention-days: 7

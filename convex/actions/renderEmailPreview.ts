@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
+import { buildPendingEmailResendPayload } from "../lib/emailDelivery";
 
 type RenderFormat = "png" | "pdf";
 type RenderResult =
@@ -34,24 +35,6 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
-function parseEmailPayload(payload: string): { html?: string; text?: string; subject?: string; to?: unknown } {
-  try {
-    const parsed = JSON.parse(payload);
-    if (parsed && typeof parsed === "object") {
-      const record = parsed as Record<string, unknown>;
-      return {
-        html: typeof record.html === "string" ? record.html : undefined,
-        text: typeof record.text === "string" ? record.text : undefined,
-        subject: typeof record.subject === "string" ? record.subject : undefined,
-        to: record.to,
-      };
-    }
-  } catch {
-    // Fall through to text rendering.
-  }
-  return { text: payload };
-}
-
 function recipientLabel(value: unknown, fallback: string) {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string").join(", ") || fallback;
@@ -59,8 +42,10 @@ function recipientLabel(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
-function buildPreviewDocument(draft: Doc<"pendingEmails">) {
-  const payload = parseEmailPayload(draft.emailPayload);
+export function buildPreviewDocument(draft: Doc<"pendingEmails">) {
+  const payload = buildPendingEmailResendPayload(draft, {
+    outboundMessageId: "email-preview",
+  });
   const bodyHtml = payload.html
     ? payload.html
     : `<pre class="plain">${escapeHtml(payload.text ?? draft.emailBody)}</pre>`;
@@ -146,8 +131,8 @@ function buildPreviewDocument(draft: Doc<"pendingEmails">) {
     <section class="chrome">
       <header class="meta">
         <div class="meta-row"><div class="meta-key">To</div><div class="meta-value">${escapeHtml(to)}</div></div>
-        ${draft.ccAddresses?.length ? `<div class="meta-row"><div class="meta-key">Cc</div><div class="meta-value">${escapeHtml(draft.ccAddresses.join(", "))}</div></div>` : ""}
-        ${draft.bccAddresses?.length ? `<div class="meta-row"><div class="meta-key">Bcc</div><div class="meta-value">${escapeHtml(draft.bccAddresses.join(", "))}</div></div>` : ""}
+        ${payload.cc?.length ? `<div class="meta-row"><div class="meta-key">Cc</div><div class="meta-value">${escapeHtml(recipientLabel(payload.cc, ""))}</div></div>` : ""}
+        ${payload.bcc?.length ? `<div class="meta-row"><div class="meta-key">Bcc</div><div class="meta-value">${escapeHtml(recipientLabel(payload.bcc, ""))}</div></div>` : ""}
         <div class="meta-row"><div class="meta-key">Subject</div><div class="meta-value">${escapeHtml(subject)}</div></div>
       </header>
       <article class="email-body">${bodyHtml}</article>

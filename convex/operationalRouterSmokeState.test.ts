@@ -28,7 +28,7 @@ describe("operational router smoke fixture ownership", () => {
     expect(created.organization).toMatchObject({
       type: "client",
       name: expect.stringContaining(marker),
-      context: expect.stringContaining(marker),
+      smokeMarker: expect.stringContaining(marker),
     });
     expect(created.smokeRun).toMatchObject({ marker, orgId: fixture.orgId });
     expect(created.memberships).toEqual([]);

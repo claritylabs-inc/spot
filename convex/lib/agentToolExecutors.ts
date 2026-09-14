@@ -659,7 +659,7 @@ export function buildAgentToolExecutors(
             return {
               orgId,
               orgName: orgLabelForScope(options.scope, orgId),
-              markdown: wiki.markdown,
+              markdown: wiki?.markdown ?? "",
             };
           }),
         );

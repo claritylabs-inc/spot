@@ -55,7 +55,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
     label: "Update this client",
     pageTypes: ["operator_client"],
     objective:
-      "Help me update the client in this thread's origin context. Read the current record first, ask only for missing values, and prepare the smallest exact set of profile, lifecycle, or feature changes. Require the normal confirmation before any write.",
+      "Help me update the client in this thread's origin context. Read the full current profile and company wiki. Research missing public facts with web_search, use the operating/DBA name and preserve legal entities, then prepare supported profile and wiki changes. Ask only for unresolved material facts that public research cannot establish. Require the normal confirmation before any write.",
   },
   {
     id: "start_procurement",

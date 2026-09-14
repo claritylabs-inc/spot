@@ -44,14 +44,12 @@ afterEach(() => {
 
 test("preserves unsaved packet edits across live updates and a rejected save", async () => {
   const requestId = "request" as Id<"procurementRequests">;
-  const section = {
-    _id: "section",
-    key: "summary",
-    heading: "Summary",
-    body: "Original",
-    updatedAt: 1,
+  const packetDocument = {
+    filename: "submission-packet.md",
+    markdown: "Original",
+    revision: 1,
   };
-  mocks.query.mockReturnValue({ packetRevision: 1, sections: [section] });
+  mocks.query.mockReturnValue({ documents: [packetDocument] });
   mocks.save.mockRejectedValue(
     new Error("The packet changed while you were editing"),
   );
@@ -82,8 +80,9 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     mocks.query.mockReturnValue({
-      packetRevision: 2,
-      sections: [{ ...section, body: "Another operator's edit", updatedAt: 2 }],
+      documents: [
+        { ...packetDocument, markdown: "Another operator's edit", revision: 2 },
+      ],
     });
     await render();
     expect(container.querySelector("textarea")?.value).toBe("My unsaved draft");
@@ -92,8 +91,9 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
     });
     expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
       requestId,
-      expectedPacketRevision: 1,
-      sections: [{ key: "summary", body: "My unsaved draft" }],
+      filename: "submission-packet.md",
+      expectedRevision: 1,
+      markdown: "My unsaved draft",
     });
     expect(container.querySelector("textarea")?.value).toBe("My unsaved draft");
     expect(onClose).not.toHaveBeenCalled();
@@ -107,20 +107,17 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
 test("successive packet autosaves use the acknowledged revision without closing the editor", async () => {
   const requestId = "request" as Id<"procurementRequests">;
   mocks.query.mockReturnValue({
-    packetRevision: 4,
-    sections: [
+    documents: [
       {
-        _id: "summary",
-        key: "summary",
-        heading: "Summary",
-        body: "Original",
-        updatedAt: 1,
+        filename: "submission-packet.md",
+        markdown: "Original",
+        revision: 4,
       },
     ],
   });
   mocks.save
-    .mockResolvedValueOnce({ packetRevision: 5 })
-    .mockResolvedValueOnce({ packetRevision: 6 });
+    .mockResolvedValueOnce({ revision: 5 })
+    .mockResolvedValueOnce({ revision: 6 });
   const onClose = vi.fn();
   const container = document.createElement("div");
   document.body.append(container);
@@ -153,13 +150,15 @@ test("successive packet autosaves use the acknowledged revision without closing 
     expect(mocks.save.mock.calls.map(([args]) => args)).toEqual([
       {
         requestId,
-        expectedPacketRevision: 4,
-        sections: [{ key: "summary", body: "First edit" }],
+        filename: "submission-packet.md",
+        expectedRevision: 4,
+        markdown: "First edit",
       },
       {
         requestId,
-        expectedPacketRevision: 5,
-        sections: [{ key: "summary", body: "Second edit" }],
+        filename: "submission-packet.md",
+        expectedRevision: 5,
+        markdown: "Second edit",
       },
     ]);
     expect(onClose).not.toHaveBeenCalled();

@@ -64,10 +64,10 @@ test("rerunning setup preserves edited work and reuses records and stored files"
       website: "https://montgomeryrisk.com",
     });
     await ctx.db.patch(ids.brokerUserId, { email: "terry@montgomeryrisk.com" });
-    const wiki = await ctx.db.query("orgWikiSections").first();
-    await ctx.db.patch(wiki!._id, { body: "User-edited wiki" });
-    const section = await ctx.db.query("procurementPacketSections").first();
-    await ctx.db.patch(section!._id, { body: "User-edited packet" });
+    const wiki = await ctx.db.query("markdownDocuments").filter((q) => q.eq(q.field("kind"), "company_wiki")).first();
+    await ctx.db.patch(wiki!._id, { markdown: "User-edited wiki" });
+    const section = await ctx.db.query("markdownDocuments").filter((q) => q.eq(q.field("filename"), "submission-packet.md")).first();
+    await ctx.db.patch(section!._id, { markdown: "User-edited packet" });
     const archived = (await ctx.db.query("clientFiles").collect()).find(
       (file) => file.archivedAt,
     )!;
@@ -116,8 +116,8 @@ test("rerunning setup preserves edited work and reuses records and stored files"
     expect((await ctx.db.get(ids.requestId!))?.title).toBe("Renamed during QA");
     expect((await ctx.db.get(ids.requestId!))?.status).toBe("binding");
     expect((await ctx.db.get(ids.policyId))?.premiumAmount).toBe(99_000);
-    expect((await ctx.db.get(before.wikiId))?.body).toBe("User-edited wiki");
-    expect((await ctx.db.get(before.sectionId))?.body).toBe(
+    expect((await ctx.db.get(before.wikiId))?.markdown).toBe("User-edited wiki");
+    expect((await ctx.db.get(before.sectionId))?.markdown).toBe(
       "User-edited packet",
     );
     expect((await ctx.db.get(before.archivedId))?.archivedAt).toBeUndefined();

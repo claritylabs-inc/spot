@@ -12,7 +12,6 @@ import { getActiveOperatorProfile } from "./lib/operatorIdentity";
 import {
   normalizeRequestedScopes,
   parseScopesFromToken,
-  stringifyScopes,
 } from "./lib/apiAuth";
 
 // ── Helpers ──
@@ -187,7 +186,6 @@ export const exchangeAuthCode = internalMutation({
       ...(codeRecord.orgId ? { orgId: codeRecord.orgId } : {}),
       principalKind: codeRecord.principalKind ?? "organization",
       ...(codeRecord.resource ? { resource: codeRecord.resource } : {}),
-      scope: stringifyScopes(scopes),
       scopes,
       expiresAt: now + 60 * 60 * 1000,
       refreshExpiresAt: now + 30 * 24 * 60 * 60 * 1000,
@@ -292,7 +290,6 @@ export const refreshAccessToken = internalMutation({
       ...(token.orgId ? { orgId: token.orgId } : {}),
       principalKind: token.principalKind ?? "organization",
       ...(token.resource ? { resource: token.resource } : {}),
-      scope: stringifyScopes(scopes),
       scopes,
       expiresAt: now + 60 * 60 * 1000,
       refreshExpiresAt: now + 30 * 24 * 60 * 60 * 1000,
@@ -401,7 +398,6 @@ export const createAuthorizationCode = mutation({
       ...(resource ? { resource } : {}),
       redirectUri: args.redirectUri,
       codeChallenge: args.codeChallenge,
-      scope: stringifyScopes(scopes),
       scopes,
       expiresAt: dayjs().add(10, "minute").valueOf(),
     });

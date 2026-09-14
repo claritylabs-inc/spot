@@ -1,3 +1,4 @@
+import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
@@ -183,18 +184,19 @@ async function reconcileCompanyInformation(
     .order("desc")
     .take(MAX_ACTIVE_EXTRACTIONS_PER_ORG);
   const applied = rows.filter((row) => row.appliedFingerprint);
+  const org = await ctx.db.get(orgId);
 
   await reconcileExtractedCompanyFacts(ctx, {
     orgId,
     source: "extraction",
-    facts: applied.flatMap((row) =>
+    facts: [...(org?.companyResearch?.facts ?? []).map((fact) => ({ ...fact, content: `${fact.content} [Source](${fact.sourceRef})` })), ...applied.flatMap((row) =>
       (row.organizationFacts ?? []).map((fact) => ({
         // Rows stored before the wiki gained sections held one flat fact list.
         key: fact.section ?? "profile",
         sourceRef: row.sourceRef,
         content: fact.content,
       })),
-    ),
+    )],
   });
   await syncOrgProfileFromDeclarationFacts(ctx, orgId);
 }
@@ -355,6 +357,7 @@ async function completeSource(
     updatedAt: now,
   });
   await reconcileCompanyInformation(ctx, row.orgId);
+  await scheduleCompanyResearch(ctx, row.orgId);
   return { status: "completed" as const };
 }
 

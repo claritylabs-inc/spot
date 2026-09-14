@@ -1,6 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
+import { parseMarkdownDocument, stringifyMarkdownDocument } from "../lib/markdownDocument";
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -55,10 +56,14 @@ export const send = action({
     fileId: Id<"_storage">;
     certificateVersionId?: string;
   }> => {
+    if (args.sendNotes !== undefined) {
+      stringifyMarkdownDocument({ title: "Certificate delivery notes" }, args.sendNotes.trim());
+    }
     const prepared = (await ctx.runMutation(
       api.certificateWorkflowJobs.prepareSendJob,
       {
         jobId: args.jobId,
+        sendNotes: args.sendNotes,
       },
     )) as PreparedSendJob;
     try {
@@ -101,7 +106,7 @@ export const send = action({
       const subject = `Certificate of Insurance - ${prepared.holder.displayName}`;
       const body = [
         `Attached is the updated certificate of insurance for ${prepared.holder.displayName}.`,
-        args.sendNotes,
+        args.sendNotes === undefined ? undefined : parseMarkdownDocument(args.sendNotes).body,
       ]
         .filter(Boolean)
         .join("\n\n");
@@ -134,6 +139,7 @@ export const send = action({
         jobId: args.jobId,
         generatedCertificateVersionId: generated.certificateVersionId,
         sentByUserId: prepared.userId,
+        sendNotes: args.sendNotes,
       });
       return {
         status: "sent",

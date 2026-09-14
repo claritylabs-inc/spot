@@ -1,6 +1,6 @@
+import { readRequirementNotes, saveRequirementNotes } from "./certificateNotes";
 import { v } from "convex/values";
 import dayjs from "dayjs";
-import { invalidateProcurementReviewsForRequirement } from "./lib/procurementRequirements";
 import {
   internalMutation,
   internalQuery,
@@ -536,10 +536,12 @@ async function enrichRequirementSource(
   ctx: QueryCtx,
   source: Doc<"requirementSourceDocuments">,
   requirements: Doc<"insuranceRequirements">[],
+  includePrivate = false,
 ) {
   const holders = await requirementSourceHolders(ctx, source);
   return {
     ...source,
+    internalNotes: await readRequirementNotes(ctx, source, includePrivate),
     holder: holders[0] ?? null,
     holders,
     requirementCount: requirements.filter(
@@ -617,6 +619,7 @@ export const listCertificateRequirementSources = query({
         }
         return {
           ...source,
+          internalNotes: await readRequirementNotes(ctx, source, access.accessType === "operator"),
           holder,
           holders,
           requirementCount: sourceRequirements.length,
@@ -646,7 +649,7 @@ export const listRequirementSources = query({
       if (!membership) throw new Error("Organization required");
       orgId = membership.orgId;
     }
-    await requireOrgMember(ctx, orgId);
+    const access = await requireOrgMember(ctx, orgId);
     const [sources, requirements] = await Promise.all([
       ctx.db
         .query("requirementSourceDocuments")
@@ -658,7 +661,7 @@ export const listRequirementSources = query({
       sources
         .filter((source) => !source.archivedAt)
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map((source) => enrichRequirementSource(ctx, source, requirements)),
+        .map((source) => enrichRequirementSource(ctx, source, requirements, access.accessType === "operator")),
     );
   },
 });
@@ -722,12 +725,6 @@ export const upsertRequirement = mutation({
         throw new Error("Requirement not found");
       }
       await ctx.db.patch(requirementId, patch);
-      await invalidateProcurementReviewsForRequirement(
-        ctx,
-        requirementId,
-        access.userId,
-        now,
-      );
     } else {
       requirementId = await ctx.db.insert("insuranceRequirements", {
         orgId: args.orgId,
@@ -800,27 +797,24 @@ export const updateRequirementSource = mutation({
         address: args.holder.address,
         source: "manual",
         sourceRef: String(args.sourceDocumentId),
-        notes: args.internalNotes,
         createdByUserId: access.userId,
         updatedByUserId: access.userId,
       });
-      sourcePatch.certificateHolderId = certificateHolderId;
+      const previousPrimary = source.certificateHolderId ?? source.certificateHolderIds?.[0];
       sourcePatch.certificateHolderIds = [
         certificateHolderId,
         ...(source.certificateHolderIds ?? []).filter(
-          (holderId) =>
-            String(holderId) !== String(source.certificateHolderId) &&
-            String(holderId) !== String(certificateHolderId),
+          (holderId) => holderId !== previousPrimary && holderId !== certificateHolderId,
         ),
       ];
+      sourcePatch.certificateHolderId = undefined;
     }
     if (args.dealName !== undefined)
       sourcePatch.dealName = cleanOptionalString(args.dealName);
     if (args.dealType !== undefined)
       sourcePatch.dealType = cleanOptionalString(args.dealType);
-    if (args.internalNotes !== undefined)
-      sourcePatch.internalNotes = cleanOptionalString(args.internalNotes);
     await ctx.db.patch(args.sourceDocumentId, sourcePatch);
+    if (args.internalNotes !== undefined) await saveRequirementNotes(ctx, { ...source, ...sourcePatch }, args.internalNotes, { actorUserId: access.userId });
     const requirements = await ctx.db
       .query("insuranceRequirements")
       .withIndex("organization_status", (q) =>
@@ -837,12 +831,6 @@ export const updateRequirementSource = mutation({
       if (args.sourceType !== undefined)
         requirementPatch.sourceType = args.sourceType;
       await ctx.db.patch(requirement._id, requirementPatch);
-      await invalidateProcurementReviewsForRequirement(
-        ctx,
-        requirement._id,
-        access.userId,
-        now,
-      );
     }
     await writeComplianceOperatorAudit(
       ctx,
@@ -900,12 +888,6 @@ export const archiveRequirementSources = mutation({
         updatedByUserId: access.userId,
         updatedAt: now,
       });
-      await invalidateProcurementReviewsForRequirement(
-        ctx,
-        requirement._id,
-        access.userId,
-        now,
-      );
       archivedRequirementCount += 1;
     }
     await writeComplianceOperatorAudit(
@@ -942,12 +924,6 @@ export const archiveRequirement = mutation({
       updatedByUserId: access.userId,
       updatedAt: dayjs().valueOf(),
     });
-    await invalidateProcurementReviewsForRequirement(
-      ctx,
-      args.requirementId,
-      access.userId,
-      dayjs().valueOf(),
-    );
     await writeComplianceOperatorAudit(
       ctx,
       access,
@@ -1549,7 +1525,6 @@ export const createRequirementSourceDocumentInternal = internalMutation({
         address: holder.address,
         source: index === 0 && args.holder ? "agent" : "extraction",
         sourceRef: args.title,
-        notes: args.internalNotes,
         createdByUserId: args.userId,
         updatedByUserId: args.userId,
       });
@@ -1561,16 +1536,13 @@ export const createRequirementSourceDocumentInternal = internalMutation({
         certificateHolderIds.push(holderId);
       }
     }
-    const certificateHolderId = certificateHolderIds[0];
-    return await ctx.db.insert("requirementSourceDocuments", {
+    const sourceDocumentId = await ctx.db.insert("requirementSourceDocuments", {
       orgId: args.orgId,
       extractionRunId: args.extractionRunId,
-      certificateHolderId,
       certificateHolderIds:
         certificateHolderIds.length > 0 ? certificateHolderIds : undefined,
       dealName: cleanOptionalString(args.dealName),
       dealType: cleanOptionalString(args.dealType),
-      internalNotes: cleanOptionalString(args.internalNotes),
       fileId: args.fileId,
       fileName: args.fileName,
       contentType: args.contentType,
@@ -1584,6 +1556,11 @@ export const createRequirementSourceDocumentInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+    if (args.internalNotes !== undefined) {
+      const source = await ctx.db.get(sourceDocumentId);
+      if (source) await saveRequirementNotes(ctx, source, args.internalNotes, { actorUserId: args.userId });
+    }
+    return sourceDocumentId;
   },
 });
 

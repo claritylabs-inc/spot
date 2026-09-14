@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 export type PacketAudience = "operator" | "client" | "broker";
 
 export const PACKET_SECTIONS = [
@@ -95,19 +93,3 @@ export function composeRequestMarkdown(args: {
   if (!packet) return `# Client background\n\n${wiki}`;
   return `# Client background\n\n${wiki}\n\n# Submission packet\n\n${packet}`;
 }
-
-export const packetUpdateSchema = z.object({
-  sections: z
-    .array(
-      z.object({
-        key: z.string().min(1),
-        body: z.string().min(1),
-        audienceProposed: z.enum(["client", "broker"]).nullable().optional(),
-        rationale: z.string().max(2000).nullable().optional(),
-        sourceRefs: z.array(z.string().min(1)).max(20),
-      }),
-    )
-    .max(20),
-});
-
-export const PACKET_UPDATE_SYSTEM_PROMPT = `You update a commercial insurance procurement packet. Use only explicit source text; preserve money, dates, limits, and class codes verbatim. Route facts to canonical ACORD sections, rewrite whole sections, and return nothing when the source adds nothing. Never propose widening sensitive sections naming an insured, buyer, seller, incumbent agency, prior carrier, economics, or client contact. Every section must include source references.`;

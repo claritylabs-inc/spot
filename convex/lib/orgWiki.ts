@@ -1,8 +1,7 @@
 import { normalizeWikiContent } from "./orgWikiPolicy";
 
-/** The company wiki is one markdown document per organization, assembled from
- * a fixed section catalog. Models read the whole document rather than
- * retrieving ranked fragments, so section order is the reading order. */
+/** Suggested headings for automatic fact placement in the company's Markdown
+ * file. Human-authored documents may contain any headings or Markdown. */
 export const ORG_WIKI_SECTIONS = [
   ["profile", "Company profile"],
   ["operations", "Operations"],
@@ -43,8 +42,7 @@ export function assembleOrgWikiMarkdown<T extends { heading: string; body: strin
     .join("\n\n");
 }
 
-/** Wiki bodies are bullet lists so appends stay mergeable and a rerun over
- * unchanged sources produces a byte-identical body. */
+/** Render automatically contributed facts without changing surrounding prose. */
 export function renderWikiBullets(lines: string[]) {
   return [...new Set(lines.map((line) => normalizeWikiContent(line)))]
     .filter(Boolean)
