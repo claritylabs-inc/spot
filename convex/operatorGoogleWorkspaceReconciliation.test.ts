@@ -396,28 +396,13 @@ test("reviewing a candidate organization loads only its request options without 
     return { orgId, requestId, brokerId };
   });
   const operator = f.t.withIdentity({ subject: `${f.userId}|session` });
-  const before = await operator.query(
-    api.operatorGoogleWorkspaceScanActivity.getActivity,
-    { activityId: findingId },
-  );
-  expect(before.candidates?.requests).toEqual([]);
-  const selected = await operator.query(
-    api.operatorGoogleWorkspaceScanActivity.getActivity,
-    { activityId: findingId, selectedOrgId: other.orgId },
-  );
-  expect(selected.candidates?.requests.map((request) => request.id)).toEqual([
-    other.requestId,
-  ]);
-  expect(
-    selected.candidates?.organizations.find((org) => org.id === other.orgId)
-      ?.label,
-  ).toContain("other@cove.test");
-  await expect(
-    operator.query(api.operatorGoogleWorkspaceScanActivity.getActivity, {
-      activityId: findingId,
-      selectedOrgId: other.brokerId,
-    }),
-  ).rejects.toThrow("correct type");
+  const args = { activityId: findingId, kind: "request" as const, paginationOpts: { numItems: 50, cursor: null } };
+  expect((await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, args)).page).toEqual([]);
+  const selected = await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, selectedOrgId: other.orgId });
+  expect(selected.page.map(request => request.id)).toEqual([other.requestId]);
+  const orgs = await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, kind: "organization" });
+  expect(orgs.page.find(org => org.id === other.orgId)?.label).toContain("other@cove.test");
+  await expect(operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, selectedOrgId: other.brokerId })).rejects.toThrow("correct type");
   expect(
     (await f.t.run((ctx) => ctx.db.get(findingId)))?.selectedOrgId,
   ).toBeUndefined();

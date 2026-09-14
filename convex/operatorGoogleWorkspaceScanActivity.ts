@@ -29,8 +29,6 @@ async function requireFinding(ctx: Ctx, activityId: string) {
 async function activityDto(
   ctx: Ctx,
   finding: Doc<"operatorWorkspaceScanFindings">,
-  detail = false,
-  selectedOrgId?: Id<"organizations">,
 ): Promise<GoogleWorkspaceScanActivity> {
   const source = await ctx.db.get(finding.sourceId);
   const sourceLinks = await ctx.db
@@ -108,47 +106,6 @@ async function activityDto(
     availableActions,
     importState,
   };
-  if (detail && finding.operationJson && finding.status !== "updated") {
-    const operation = scanOperationSchema.parse(
-      JSON.parse(finding.operationJson),
-    );
-    const orgs = await ctx.db
-      .query("organizations")
-      .withIndex("type", (q) => q.eq("type", operation.identity.kind))
-      .take(100);
-    const selected = selectedOrgId ? await ctx.db.get(selectedOrgId) : null;
-    if (
-      selectedOrgId &&
-      (!selected || selected.type !== operation.identity.kind)
-    ) {
-      throw new Error("Select an existing organization of the correct type");
-    }
-    const orgId = selected?._id ?? finding.selectedOrgId;
-    const requests = orgId
-      ? await ctx.db
-          .query("procurementRequests")
-          .withIndex("organization", (q) => q.eq("clientOrgId", orgId))
-          .take(100)
-      : [];
-    dto.candidates = {
-      organizations: orgs.map((org) => ({
-        id: org._id,
-        label: [org.name, org.primaryContactEmail, org.mailingAddress?.street1]
-          .filter(Boolean)
-          .join(" · "),
-      })),
-      requests: requests.map((request) => ({
-        id: request._id,
-        label: [
-          request.title,
-          request.targetEffectiveDate,
-          request.status.replaceAll("_", " "),
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      })),
-    };
-  }
   return dto;
 }
 export const listActivity = query({
@@ -201,18 +158,10 @@ export const listActivity = query({
   },
 });
 export const getActivity = query({
-  args: {
-    activityId: v.string(),
-    selectedOrgId: v.optional(v.id("organizations")),
-  },
+  args: { activityId: v.string() },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    return activityDto(
-      ctx,
-      await requireFinding(ctx, args.activityId),
-      true,
-      args.selectedOrgId,
-    );
+    return activityDto(ctx, await requireFinding(ctx, args.activityId));
   },
 });
 export const listActivityCandidates = query({
