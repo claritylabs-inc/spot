@@ -8,9 +8,14 @@ on:
         type: boolean
         default: false
         required: true
+      restore_company_facts:
+        description: Restore the 22 audited historical company facts from run 34902637845
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: backend-schema-migration-production
@@ -28,6 +33,9 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund --loglevel=error
+      - name: Require a backed-up write run for historical fact recovery
+        if: inputs.restore_company_facts && !inputs.apply
+        run: exit 1
       - name: Audit or migrate production
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
@@ -39,6 +47,20 @@ jobs:
           else
             node scripts/migrate-backend-schema.mjs --prod
           fi
+      - uses: actions/download-artifact@v4
+        if: inputs.restore_company_facts
+        with:
+          name: backend-schema-migration-34902637845
+          run-id: 34902637845
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior-schema-migration
+      - name: Restore and verify historical company facts
+        if: inputs.restore_company_facts
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          SCHEMA_MIGRATION_OUTPUT_DIR: ${{ runner.temp }}/schema-migration
+          ARCHIVED_COMPANY_FACTS: ${{ runner.temp }}/prior-schema-migration/database-20260914-221049.zip
+        run: node scripts/restore-archived-company-facts.mjs "$ARCHIVED_COMPANY_FACTS"
       - name: Preserve migration report and rollback database
         if: always()
         uses: actions/upload-artifact@v4

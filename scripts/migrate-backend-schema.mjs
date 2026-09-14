@@ -97,6 +97,7 @@ const compatibilityTables = [
   "connectedEmailAutomationItems",
   "pendingEmails",
   "globalModelSettings",
+  "threads",
 ];
 const retiredTables = [
   "procurementPacketUpdateRuns",

@@ -1,5 +1,10 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
+import { getMarkdownDocument, saveMarkdownDocument } from "./markdownDocuments";
+import {
+  parseMarkdownDocument,
+  stringifyMarkdownDocument,
+} from "./lib/markdownDocument";
 import { internalMutation, internalQuery } from "./_generated/server";
 
 const retiredTable = v.union(
@@ -150,6 +155,7 @@ export const clearCompatibilityPage = internalMutation({
       v.literal("connectedEmailAutomationItems"),
       v.literal("pendingEmails"),
       v.literal("globalModelSettings"),
+      v.literal("threads"),
     ),
     cursor: v.union(v.string(), v.null()),
     dryRun: v.optional(v.boolean()),
@@ -163,6 +169,7 @@ export const clearCompatibilityPage = internalMutation({
     let changed = 0;
     for (const row of page.page) {
       const patch: Record<string, unknown> = {};
+      if ("deliveryContactKey" in row) patch.deliveryContactKey = undefined;
       for (const field of [
         "providerKeys",
         "procurementFacts",
@@ -226,5 +233,70 @@ export const inventoryPolicyHistoryPage = internalQuery({
       isDone: page.isDone,
       cursor: page.continueCursor,
     };
+  },
+});
+
+/** Deploy-key-only recovery from the audited pre-migration export. Removed
+ * with the rest of this one-time migration module after readback succeeds. */
+export const restoreArchivedCompanyFacts = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    facts: v.array(
+      v.object({ id: v.string(), content: v.string(), createdAt: v.number() }),
+    ),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    if (
+      args.facts.length > 25 ||
+      args.facts.some(
+        (fact) =>
+          !fact.id ||
+          !fact.content.trim() ||
+          fact.content.length > 2000 ||
+          !dayjs(fact.createdAt).isValid(),
+      )
+    )
+      throw new Error("Expected a bounded batch of archived company facts");
+    const org = await ctx.db.get(args.orgId);
+    if (org?.type !== "client") throw new Error("Expected an existing client");
+    const document = await getMarkdownDocument(ctx, {
+      orgId: args.orgId,
+      kind: "company_wiki",
+    });
+    if (!document)
+      throw new Error("Migrate the company wiki before restoring facts");
+    const { frontmatter, body } = parseMarkdownDocument(document.markdown);
+    const previous = frontmatter.legacyCompanyFacts ?? [];
+    if (
+      !Array.isArray(previous) ||
+      previous.some((id) => typeof id !== "string")
+    )
+      throw new Error("Invalid legacy company fact metadata");
+    const seen = new Set(previous);
+    const additions = args.facts.filter((fact) => {
+      if (seen.has(fact.id)) return false;
+      seen.add(fact.id);
+      return true;
+    });
+    if (args.dryRun !== false || !additions.length)
+      return { added: additions.length };
+    const historical = additions
+      .map(
+        (fact) =>
+          `- Extracted ${dayjs(fact.createdAt).format("YYYY-MM-DD")}: ${fact.content.trim()}`,
+      )
+      .join("\n");
+    await saveMarkdownDocument(ctx, {
+      orgId: args.orgId,
+      kind: "company_wiki",
+      filename: "company-wiki.md",
+      expectedRevision: document.revision,
+      markdown: stringifyMarkdownDocument(
+        { ...frontmatter, legacyCompanyFacts: [...seen] },
+        `${body.trimEnd()}\n\n## Historical company information\n\nPreserved from earlier company extractions; the original source references were not recorded. These details have not been reverified and may differ from the current profile.\n\n${historical}`,
+      ),
+    });
+    return { added: additions.length };
   },
 });
