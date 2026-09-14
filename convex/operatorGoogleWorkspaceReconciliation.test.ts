@@ -1708,103 +1708,130 @@ test("mixed action failures retain failed source and run counts", async () => {
   ).toEqual(["failed", "needs_attention"]);
 });
 
-test("late organization discovery pages requests and normalized creation catches concurrent variants", async () => {
-  const f = await fixture();
-  await f.t.run((ctx) =>
-    ctx.db.patch(f.orgId, { name: " COVE ", primaryContactEmail: undefined }),
-  );
-  const member = await f.t.run((ctx) =>
-    ctx.db.insert("users", { email: "client@cove.test" }),
-  );
-  await f.t.run((ctx) =>
-    ctx.db.insert("orgMemberships", {
-      orgId: f.orgId,
-      userId: member,
-      role: "member",
-    }),
-  );
-  const op: ScanOperation = {
-    kind: "create_request",
-    identity,
-    request: { title: " AUTO ", coverage: "Auto" },
-    narrative: "Auto insurance required",
-    targetEffectiveDate: null,
-    effectiveDate: "2026-09-13",
-    excerpt: body,
-    explanation: "Coverage request",
-  };
-  const args = { ...f.args, operationJson: JSON.stringify(op) };
-  while (
-    !(await f.t.mutation(
-      internal.operatorGoogleWorkspaceReconciliation.discoverTargetsInternal,
+test.each(["operator", "client"] as const)(
+  "late discovery catches concurrent %s request title variants",
+  async (creator) => {
+    const f = await fixture();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.orgId, { name: " COVE ", primaryContactEmail: undefined }),
+    );
+    const member = await f.t.run((ctx) =>
+      ctx.db.insert("users", { email: "client@cove.test" }),
+    );
+    await f.t.run((ctx) =>
+      ctx.db.insert("orgMemberships", {
+        orgId: f.orgId,
+        userId: member,
+        role: "member",
+      }),
+    );
+    const op: ScanOperation = {
+      kind: "create_request",
+      identity,
+      request: { title: " AUTO ", coverage: "Auto" },
+      narrative: "Auto insurance required",
+      targetEffectiveDate: null,
+      effectiveDate: "2026-09-13",
+      excerpt: body,
+      explanation: "Coverage request",
+    };
+    const args = { ...f.args, operationJson: JSON.stringify(op) };
+    while (
+      !(await f.t.mutation(
+        internal.operatorGoogleWorkspaceReconciliation.discoverTargetsInternal,
+        args,
+      ))
+    ) {}
+    const prepared = await f.t.query(
+      internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
       args,
-    ))
-  ) {}
-  const prepared = await f.t.query(
-    internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
-    args,
-  );
-  await f.t.mutation(
-    internal.operatorGoogleWorkspaceReconciliation.applyInternal,
-    { ...args, snapshot: prepared.snapshot },
-  );
-  expect(
-    await f.t.run((ctx) => ctx.db.query("procurementRequests").collect()),
-  ).toHaveLength(1);
-  const g = await fixture();
-  const cyberBody = "Cove requests Cyber coverage.";
-  const cyberEvidence = {
-    ...g.evidence,
-    bodyFingerprint: await googleWorkspaceScanBodyFingerprint(cyberBody),
-  };
-  cyberEvidence.contentFingerprint =
-    await googleWorkspaceScanContentFingerprint(cyberEvidence, cyberBody);
-  await g.t.run(async (ctx) => {
-    await ctx.db.patch(g.sourceId, { evidence: cyberEvidence });
-    const part = await ctx.db
-      .query("operatorGoogleWorkspaceScanSourceParts")
-      .first();
-    await ctx.db.patch(part!._id, { text: cyberBody });
-  });
-  const cyber = {
-    ...op,
-    request: { title: "Cyber Coverage", coverage: "Cyber" },
-    excerpt: cyberBody,
-    narrative: "Cyber insurance required",
-  };
-  const a = { ...g.args, operationJson: JSON.stringify(cyber) };
-  while (
-    !(await g.t.mutation(
-      internal.operatorGoogleWorkspaceReconciliation.discoverTargetsInternal,
-      a,
-    ))
-  ) {}
-  const snapshot = await g.t.query(
-    internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
-    a,
-  );
-  await g.t.run(async (ctx) => {
-    const { createProcurementRequestByOperator } =
-      await import("./procurementRequests");
-    await createProcurementRequestByOperator(ctx, {
-      operatorUserId: g.userId,
-      clientOrgId: g.orgId,
-      title: " CYBER   coverage ",
-      narrative: "Cyber policy",
-      source: "workspace_scan",
-      clientVisible: true,
+    );
+    await f.t.mutation(
+      internal.operatorGoogleWorkspaceReconciliation.applyInternal,
+      { ...args, snapshot: prepared.snapshot },
+    );
+    expect(
+      await f.t.run((ctx) => ctx.db.query("procurementRequests").collect()),
+    ).toHaveLength(1);
+    const g = await fixture();
+    const cyberBody = "Cove requests Cyber coverage.";
+    const cyberEvidence = {
+      ...g.evidence,
+      bodyFingerprint: await googleWorkspaceScanBodyFingerprint(cyberBody),
+    };
+    cyberEvidence.contentFingerprint =
+      await googleWorkspaceScanContentFingerprint(cyberEvidence, cyberBody);
+    await g.t.run(async (ctx) => {
+      await ctx.db.patch(g.sourceId, { evidence: cyberEvidence });
+      const part = await ctx.db
+        .query("operatorGoogleWorkspaceScanSourceParts")
+        .first();
+      await ctx.db.patch(part!._id, { text: cyberBody });
     });
-  });
-  await expect(
-    g.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal, {
-      ...a,
-      snapshot: snapshot.snapshot,
-    }),
-  ).rejects.toThrow("changed");
-  expect(
-    await g.t.run((ctx) => ctx.db.query("procurementRequests").collect()),
-  ).toHaveLength(2);
-});
+    const cyber = {
+      ...op,
+      request: { title: "Cyber Coverage", coverage: "Cyber" },
+      excerpt: cyberBody,
+      narrative: "Cyber insurance required",
+    };
+    const a = { ...g.args, operationJson: JSON.stringify(cyber) };
+    while (
+      !(await g.t.mutation(
+        internal.operatorGoogleWorkspaceReconciliation.discoverTargetsInternal,
+        a,
+      ))
+    ) {}
+    const snapshot = await g.t.query(
+      internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+      a,
+    );
+    if (creator === "client") {
+      const clientUserId = await g.t.run(async (ctx) => {
+        const userId = await ctx.db.insert("users", {
+          accountKind: "customer",
+          email: "client@cove.test",
+        });
+        await ctx.db.insert("orgMemberships", {
+          orgId: g.orgId,
+          userId,
+          role: "admin",
+        });
+        return userId;
+      });
+      await g.t
+        .withIdentity({ subject: `${clientUserId}|session` })
+        .mutation(api.clientProcurementRequests.create, {
+          title: " CYBER   coverage ",
+          narrative: "Cyber policy",
+        });
+    } else {
+      await g.t.run(async (ctx) => {
+        const { createProcurementRequestByOperator } =
+          await import("./procurementRequests");
+        await createProcurementRequestByOperator(ctx, {
+          operatorUserId: g.userId,
+          clientOrgId: g.orgId,
+          title: " CYBER   coverage ",
+          narrative: "Cyber policy",
+          source: "workspace_scan",
+          clientVisible: true,
+        });
+      });
+    }
+    await expect(
+      g.t.mutation(
+        internal.operatorGoogleWorkspaceReconciliation.applyInternal,
+        {
+          ...a,
+          snapshot: snapshot.snapshot,
+        },
+      ),
+    ).rejects.toThrow("changed");
+    expect(
+      await g.t.run((ctx) => ctx.db.query("procurementRequests").collect()),
+    ).toHaveLength(2);
+  },
+);
 
 test("old purchase beneath Gmail or Outlook reply headers cannot borrow wrapper chronology", async () => {
   const f = await fixture();
