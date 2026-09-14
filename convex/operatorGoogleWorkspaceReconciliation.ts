@@ -207,10 +207,12 @@ export const applyInternal = internalMutation({
       result.table === "procurementRequests"
         ? `/operator/clients/${orgId}/procurement/${result.id}`
         : result.table === "policies"
-          ? `/operator/policies/${result.id}`
-          : operation.identity.kind === "broker"
-            ? `/operator/brokers/${orgId}`
-            : `/operator/clients/${orgId}`;
+          ? `/operator/clients/${orgId}/policies/${result.id}`
+          : target.request
+            ? `/operator/clients/${orgId}/procurement/${target.request._id}`
+            : operation.identity.kind === "broker"
+              ? `/operator/brokers?brokerId=${encodeURIComponent(String(orgId))}`
+              : `/operator/clients/${orgId}`;
     const values = {
       sourceId: source._id,
       operationKey: key,
@@ -222,6 +224,11 @@ export const applyInternal = internalMutation({
       excerpt: operation.excerpt,
       operationJson: args.operationJson,
       entityId: String(orgId ?? result.id),
+      recordId: String(result.id),
+      requestId:
+        result.table === "procurementRequests"
+          ? (ctx.db.normalizeId("procurementRequests", result.id) ?? undefined)
+          : target.request?._id,
       recordLinks: [{ label: operation.identity.name, href }],
       createdAt: dayjs().valueOf(),
       authorizingOperatorId: operatorUserId,
