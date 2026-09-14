@@ -78,6 +78,7 @@ test("opening settings never authorizes writes; enabling reassigns a paused spon
     await act(async () => authorizationButton(view.host).click());
     expect(view.onSave).toHaveBeenCalledExactlyOnceWith({
       enabled: true,
+      expectedAuthorizationRevision: 2,
       intervalMinutes: 60,
       authorizingOperatorId: currentOperatorId,
     });
@@ -119,6 +120,36 @@ test("failed authorization remains open and rapid repeated clicks cannot issue d
     expect(view.onClose).not.toHaveBeenCalled();
     expect(view.host.querySelector('[role="alert"]')).not.toBeNull();
     expect(authorizationButton(view.host).disabled).toBe(false);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test("an existing schedule save carries its captured revision and stays open when superseded", async () => {
+  const onSave = vi
+    .fn()
+    .mockRejectedValue(
+      new Error("Scan authorization changed. Reopen settings."),
+    );
+  const view = await mount({
+    config: { ...config, enabled: true, intervalMinutes: 30 },
+    onSave,
+  });
+  try {
+    const save = [...view.host.querySelectorAll("button")].find(
+      (button) => button.textContent === "Save schedule",
+    )!;
+    await act(async () => save.click());
+    expect(onSave).toHaveBeenCalledExactlyOnceWith({
+      enabled: true,
+      intervalMinutes: 30,
+      expectedAuthorizationRevision: 2,
+    });
+    expect(view.onClose).not.toHaveBeenCalled();
+    expect(view.host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(
+      view.host.querySelector('[aria-label="Scan schedule"]')?.textContent,
+    ).toContain("Every 30 minutes");
   } finally {
     await view.cleanup();
   }

@@ -79,6 +79,7 @@ export function writableProcurementRequestStatus(
 }
 
 export const OUTREACH_STATUS_OPTIONS = [
+  { value: "observed", label: "Observed", tone: "neutral" },
   { value: "request_sent", label: "Request sent", tone: "info" },
   { value: "can_handle", label: "Can handle", tone: "success" },
   { value: "cannot_handle", label: "Can’t handle", tone: "danger" },
