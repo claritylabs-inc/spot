@@ -1,6 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
+import { slackAttachments } from "../lib/slackAttachments";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -71,9 +72,7 @@ function operatorSlackContent(event: Doc<"slackInboundEvents">) {
     : event.content;
   const trimmed = withoutMention.trim();
   if (trimmed) return trimmed;
-  const filenames = (
-    event.attachments ?? (event.attachment ? [event.attachment] : [])
-  ).map(({ filename }) => filename);
+  const filenames = slackAttachments(event).map(({ filename }) => filename);
   return filenames.length > 0
     ? `[Attached ${filenames.join(", ")}]`
     : "Please help with this.";
@@ -356,9 +355,7 @@ async function processOperatorBatch(
         eventId: refreshedEvent._id,
       })) as Doc<"slackInboundEvents"> | null;
       if (!refreshedEvent) continue;
-      const inboundAttachments =
-        refreshedEvent.attachments ??
-        (refreshedEvent.attachment ? [refreshedEvent.attachment] : []);
+      const inboundAttachments = slackAttachments(refreshedEvent);
       const titleGeneration =
         !refreshedEvent.isDirectMessage &&
         (channelThread.created ||
@@ -542,8 +539,7 @@ async function fetchAttachment(
   ctx: ActionCtx,
   event: Doc<"slackInboundEvents">,
 ) {
-  const attachments =
-    event.attachments ?? (event.attachment ? [event.attachment] : []);
+  const attachments = slackAttachments(event);
   for (const attachment of attachments) {
     normalizeAgentAttachmentFilename(attachment.filename);
   }
@@ -600,11 +596,12 @@ async function fetchAttachment(
       new Blob([bytes], { type: attachment.contentType }),
     );
     try {
-      await ctx.runMutation(internalApi.slack.attachInboundFile, {
+      const result = await ctx.runMutation(internal.slack.attachInboundFile, {
         eventId: event._id,
         providerFileId: attachment.providerFileId,
         fileId,
       });
+      if (!result.attached) await ctx.storage.delete(fileId);
     } catch (error) {
       await ctx.storage.delete(fileId);
       throw error;
@@ -865,12 +862,13 @@ export const processOperatorConfirmationInteraction = internalAction({
       channelId: args.channelId,
       threadTs: args.threadTs,
     };
-    const readResolution = (): Promise<OperatorSlackConfirmationResolution | null> =>
-      ctx.runQuery(internal.operatorSlack.getConfirmationResolution, {
-        operatorUserId: args.operatorUserId,
-        threadId: args.threadId,
-        confirmationId: args.confirmationId,
-      });
+    const readResolution =
+      (): Promise<OperatorSlackConfirmationResolution | null> =>
+        ctx.runQuery(internal.operatorSlack.getConfirmationResolution, {
+          operatorUserId: args.operatorUserId,
+          threadId: args.threadId,
+          confirmationId: args.confirmationId,
+        });
     const resolution = await readResolution();
     if (resolution) {
       await updateOperatorSlackConfirmation(ctx, {

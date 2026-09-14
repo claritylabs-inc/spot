@@ -10,8 +10,14 @@ import {
   buildCoalesceKey,
   type NotificationSeverity,
   type NotificationType,
+  type NotificationActionType,
+  type NotificationActionPayload,
+  type NotificationSourceRef,
   slackNotificationCategory,
   activeNotificationTypeValidator,
+  notificationActionTypeValidator,
+  notificationActionPayloadValidator,
+  notificationSourceRefValidator,
 } from "./notificationTypes";
 import { resolveChannelPreference } from "../notificationPreferences";
 import { resolveSlackAutomaticChannelId } from "./slackChannelRouting";
@@ -28,9 +34,9 @@ export interface NotifyArgs {
   severity?: NotificationSeverity;
   userId?: Id<"users">;
   relatedOrgId?: Id<"organizations">;
-  actionType?: string;
-  actionPayload?: unknown;
-  sourceRef?: unknown;
+  actionType?: NotificationActionType;
+  actionPayload?: NotificationActionPayload;
+  sourceRef?: NotificationSourceRef;
   coalesceKeyParts?: string[];
   /** Injectable for testing; defaults to dayjs().valueOf() */
   nowMs?: number;
@@ -126,9 +132,9 @@ export const notifyInternal = internalMutation({
     ),
     userId: v.optional(v.id("users")),
     relatedOrgId: v.optional(v.id("organizations")),
-    actionType: v.optional(v.string()),
-    actionPayload: v.optional(v.any()),
-    sourceRef: v.optional(v.any()),
+    actionType: v.optional(notificationActionTypeValidator),
+    actionPayload: v.optional(notificationActionPayloadValidator),
+    sourceRef: v.optional(notificationSourceRefValidator),
     coalesceKeyParts: v.optional(v.array(v.string())),
     nowMs: v.optional(v.number()),
   },
@@ -297,7 +303,7 @@ export const notifyInternal = internalMutation({
         await ctx.db.patch(notificationId, { slackStatus: "scheduled" });
         await ctx.scheduler.runAfter(
           0,
-          (internal as any).actions.sendNotificationSlack.send,
+          internal.actions.sendNotificationSlack.send,
           { notificationId },
         );
       } else {

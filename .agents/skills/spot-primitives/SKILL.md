@@ -62,6 +62,8 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Catalog
 
+`convex/lib/notificationTypes.ts` owns typed notification action/source payloads and their browser/email navigation. `notifyInternal` is the notification writer. `convex/lib/proposalReview.ts` owns the current stored findings validator. Pending email cards, previews, and sends use the typed draft through `emailDraftService.ts` and `emailDelivery.ts`; draft replacement clears removed recipients/attachments and invalidates exact approvals. `convex/lib/slackAttachments.ts` owns inbound/stored attachment validators and normalization; Slack download registration enforces actual stored-byte budgets across retries and preserves the first committed file reference.
+
 `convex/lib/policyDocumentGate.ts` owns the shared intake rejection error and browser recognition of rejected documents. Reuse it for rejection notices; policy detail loading requires an unarchived idle/running extraction, and rejected uploads render document status instead of policy fields.
 
 Operator Settings (`/operator/settings`) owns one global **Approve all** switch,

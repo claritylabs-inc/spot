@@ -3,6 +3,11 @@
 import { useRef, useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  notificationActionHref,
+  type NotificationActionPayload,
+  type NotificationActionType,
+} from "@/convex/lib/notificationTypes";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
@@ -23,9 +28,8 @@ interface Notification {
   body: string;
   status: "unread" | "read" | "actioned" | "dismissed";
   createdAt: number;
-  actionType?: string;
-  actionPayload?: unknown;
-  sourceRef?: unknown;
+  actionType?: NotificationActionType;
+  actionPayload?: NotificationActionPayload;
   relatedOrgId?: Id<"organizations">;
   relatedOrgName?: string;
   coalescedCount?: number;
@@ -104,26 +108,13 @@ export function NotificationsPanel({
       await markRead({ ids: [notification._id] });
     }
 
-    // Deep link navigation
-    if (notification.actionType && notification.actionPayload) {
-      const p = notification.actionPayload as Record<string, unknown>;
-      switch (notification.actionType) {
-        case "view_policy":
-          router.push(
-            `/policies/${p.policyId}${p.tab ? `?tab=${encodeURIComponent(String(p.tab))}` : ""}`,
-          );
-          break;
-        case "view_thread":
-          router.push(`/agent/thread/${p.threadId}`);
-          break;
-        case "view_vendor_compliance":
-          router.push("/connect/vendors");
-          break;
-        default:
-          break;
-      }
+    const href = notificationActionHref(
+      notification.actionType,
+      notification.actionPayload,
+    );
+    if (href) {
+      router.push(href);
       onClose();
-      return;
     }
   }
 

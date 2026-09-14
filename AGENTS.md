@@ -14,6 +14,12 @@ Clients use their evidenced operating/DBA name, with the legal named entity and 
 
 `docs/architecture/backend-simplification.md` records the historical audit and completed production/shared-dev migration gates. The user accepted legacy data loss and cancelled additional historical-fact recovery. One-time migration/recovery APIs and workflows are removed in the narrowed code; ongoing migrations retain their documented owners. Preserve source evidence, current wiki text, and immutable issued snapshots. This repository is public: never publish raw database exports or private file backups as GitHub artifacts. The main release workflow owns final deployment and exact-commit readiness.
 
+## Current draft and notification storage
+
+Pending email drafts write typed delivery fields; browser cards, previews, and sends use the same effective draft. Replacing a draft clears removed recipients, attachments, and reply/rendering metadata and invalidates its exact approval. Serialized `emailPayload` is read only until the bounded canonical-draft backfill completes. The migration preserves delivery content and confirmation fingerprints. `convex/lib/notificationTypes.ts` owns notification action/source validators and navigation; `convex/lib/proposalReview.ts` owns stored review findings. Notification creation uses `notifyInternal`; unread notifications have no age-based expiry. Slack intake normalizes legacy transport inputs to one stored attachment array, preserves provider replay identity, and enforces actual stored-byte budgets across download retries. `convex/lib/slackAttachments.ts` owns its validators and normalization.
+
+The release workflow temporarily runs `scripts/complete-schema-cleanup.mjs --env production` after deployment. It audits fixed tables through bounded pages, runs the named migrations, and requires zero remaining legacy fields before readiness. It also completes the existing Slack actor/mention conversions; old signed interaction identifiers remain accepted. Final narrowing removes the converted fields and temporary cleanup APIs after both production and shared-dev pass.
+
 ## Current operator approval setting
 
 Operator Settings (`/operator/settings`) owns one global **Approve all** switch,

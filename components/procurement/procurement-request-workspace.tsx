@@ -1,5 +1,7 @@
 "use client";
 
+import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
+
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 
 import {
@@ -368,7 +370,7 @@ type ProposalView = {
       | "has_gaps"
       | "insufficient_evidence";
     stale: boolean;
-    findings: ProposalReviewFinding[];
+    findings: StoredProposalFinding[];
   }>;
   extraction: {
     latest: {
@@ -379,16 +381,6 @@ type ProposalView = {
       lastError: string | null;
     } | null;
   };
-};
-
-type ProposalReviewFinding = {
-  sectionKey: string;
-  conclusion: "meets" | "has_gap" | "insufficient_evidence";
-  summary: string;
-  evidence: Array<{
-    proposalDocumentId: string;
-    pageStart: number | null;
-  }>;
 };
 
 const FINDING_TONE = {

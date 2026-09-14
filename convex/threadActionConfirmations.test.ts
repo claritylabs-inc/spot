@@ -152,6 +152,38 @@ describe("thread action confirmations", () => {
     ).toBe("stale");
   });
 
+  it("invalidates approval when replacing sender and rendered content even if the plain body is unchanged", async () => {
+    const data = await fixture();
+    const confirmationId = await data.t.mutation(internal.threadActionConfirmations.createInternal, {
+      orgId: data.orgId,
+      threadId: data.threadId,
+      actor: { kind: "user", userId: data.userId },
+      promptMessageId: data.promptMessageId,
+      payload: {
+        kind: "email_send",
+        pendingEmailIds: [data.draftId],
+        draftFingerprints: [data.fingerprint],
+      },
+    });
+    await data.t.mutation(internal.pendingEmails.updateDraftInternal, {
+      id: data.draftId,
+      recipientEmail: "recipient@example.com",
+      subject: "Policy",
+      emailBody: "Attached is the policy.",
+      fromHeader: "Spot <renewal@agent.spot.insure>",
+      renderedHtml: "<p>Updated signature</p>",
+    });
+    expect(await data.t.mutation(internal.threadActionConfirmations.consumeInternal, {
+      id: confirmationId,
+      actor: { kind: "user", userId: data.userId },
+      requireAdjacentPrompt: false,
+    })).toBe("needs_refresh");
+    expect(await data.t.run((ctx) => ctx.db.get(confirmationId))).toMatchObject({
+      status: "stale",
+      invalidationReason: "draft_content_changed",
+    });
+  });
+
   it("binds an email confirmation to the exact COI files and sender", async () => {
     const data = await fixture();
     const coi = await data.t.run(async (ctx) => {

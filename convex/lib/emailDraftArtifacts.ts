@@ -68,7 +68,6 @@ export async function upsertEmailDraftArtifact(
   if (existing) {
     await ctx.runMutation(internal.pendingEmails.updateDraftInternal, {
       id: existing._id,
-      emailPayload: JSON.stringify(emailPayload),
       recipientEmail: params.to,
       ccAddresses: params.cc.length > 0 ? params.cc : undefined,
       bccAddresses: params.bcc.length > 0 ? params.bcc : undefined,
@@ -91,11 +90,10 @@ export async function upsertEmailDraftArtifact(
         id: existing.threadMessageId,
         content: params.body,
         toAddresses: [params.to],
-        ccAddresses: params.cc.length > 0 ? params.cc : undefined,
-        bccAddresses: params.bcc.length > 0 ? params.bcc : undefined,
+        ccAddresses: params.cc,
+        bccAddresses: params.bcc,
         subject: params.subject,
-        attachments:
-          params.attachments.length > 0 ? params.attachments : undefined,
+        attachments: params.attachments,
         pendingEmailId: existing._id,
         status: "draft_email",
       });
@@ -112,7 +110,6 @@ export async function upsertEmailDraftArtifact(
   const pendingEmailId = await ctx.runMutation(internal.pendingEmails.create, {
     orgId: context.orgId,
     threadId: context.threadId,
-    emailPayload: JSON.stringify(emailPayload),
     scheduledSendTime: 0,
     chatMessageId: context.chatMessageId,
     recipientEmail: params.to,

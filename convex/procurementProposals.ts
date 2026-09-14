@@ -19,6 +19,7 @@ import {
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
 import { buildProposalMarkdown } from "./lib/proposalMarkdown";
+import { proposalReviewFindingValidator } from "./lib/proposalReview";
 import {
   findReusableClientFileByContent,
   normalizeClientFileSha256,
@@ -1367,7 +1368,7 @@ export const saveGeneratedReviewInternal = internalMutation({
     proposalId: v.id("procurementProposals"),
     extractionFingerprint: v.string(),
     packetRevision: v.number(),
-    findings: v.array(v.any()),
+    findings: v.array(proposalReviewFindingValidator),
     conclusion: conclusionValidator,
   },
   handler: async (ctx, args) => {

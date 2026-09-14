@@ -1,4 +1,4 @@
-import { Migrations } from "@convex-dev/migrations";
+import { Migrations, type MigrationFunctionReference, type MigrationStatus } from "@convex-dev/migrations";
 import { internalMutation, internalQuery } from "./_generated/server";
 import dayjs from "dayjs";
 import { components, internal } from "./_generated/api";
@@ -13,8 +13,84 @@ import {
   readCarrierIdentity,
 } from "./lib/carrierIdentity";
 import { reserveLegacyOperatorEmailIdentity } from "./lib/operatorIdentity";
+import {
+  canonicalPendingEmail,
+  canonicalSlackActor,
+  canonicalSlackAttachments,
+  retiredModelRoute,
+  retiredNotificationExpiry,
+  retiredOrganizationSettings,
+  retiredPolicyChangeReference,
+} from "./schemaCleanup";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
+
+export const cleanupOrganizationSettings = migrations.define({
+  table: "organizations",
+  batchSize: 50,
+  migrateOne: (_, row) => retiredOrganizationSettings(row) ?? undefined,
+});
+
+export const cleanupPendingEmailStorage = migrations.define({
+  table: "pendingEmails",
+  batchSize: 8,
+  migrateOne: async (_, row) => await canonicalPendingEmail(row) ?? undefined,
+});
+
+export const cleanupSlackAttachmentStorage = migrations.define({
+  table: "slackInboundEvents",
+  batchSize: 8,
+  migrateOne: (_, row) => canonicalSlackAttachments(row) ?? undefined,
+});
+
+export const cleanupNotificationExpiry = migrations.define({
+  table: "notifications",
+  batchSize: 50,
+  migrateOne: (_, row) => retiredNotificationExpiry(row) ?? undefined,
+});
+
+export const cleanupThreadPolicyChangeReferences = migrations.define({
+  table: "threadMessages",
+  batchSize: 8,
+  migrateOne: (_, row) => retiredPolicyChangeReference(row) ?? undefined,
+});
+
+export const cleanupHoldPolicyChangeReferences = migrations.define({
+  table: "certificateRequestHolds",
+  batchSize: 8,
+  migrateOne: (_, row) => retiredPolicyChangeReference(row) ?? undefined,
+});
+
+export const cleanupCardPolicyChangeReferences = migrations.define({
+  table: "appCardAccessLinks",
+  batchSize: 50,
+  migrateOne: (_, row) => retiredPolicyChangeReference(row) ?? undefined,
+});
+
+export const cleanupRetiredModelRoute = migrations.define({
+  table: "globalModelSettings",
+  batchSize: 25,
+  migrateOne: (_, row) => retiredModelRoute(row) ?? undefined,
+});
+
+const schemaCleanupMigrations: MigrationFunctionReference[] = [
+  internal.migrations.cleanupOrganizationSettings,
+  internal.migrations.cleanupPendingEmailStorage,
+  internal.migrations.cleanupSlackAttachmentStorage,
+  internal.migrations.cleanupNotificationExpiry,
+  internal.migrations.cleanupThreadPolicyChangeReferences,
+  internal.migrations.cleanupHoldPolicyChangeReferences,
+  internal.migrations.cleanupCardPolicyChangeReferences,
+  internal.migrations.cleanupRetiredModelRoute,
+  internal.migrations.backfillSlackActorSpotIdentity,
+];
+
+export const runSchemaCleanup = migrations.runner(schemaCleanupMigrations);
+
+export const schemaCleanupStatus = internalQuery({
+  args: {},
+  handler: (ctx): Promise<MigrationStatus[]> => migrations.getStatus(ctx, { migrations: schemaCleanupMigrations }),
+});
 
 export const backfillOperatorUserEmailIdentities = migrations.define({
   table: "users",
@@ -208,22 +284,7 @@ export const backfillSlackInboundEventMentionsSpot = migrations.define({
 export const backfillSlackActorSpotIdentity = migrations.define({
   table: "slackActors",
   batchSize: 100,
-  migrateOne: async (ctx, actor) => {
-    if (
-      actor.classification !== "glass_operator" &&
-      actor.glassUserId === undefined
-    ) {
-      return;
-    }
-    await ctx.db.patch(actor._id, {
-      classification:
-        actor.classification === "glass_operator"
-          ? "spot_operator"
-          : actor.classification,
-      spotUserId: actor.spotUserId ?? actor.glassUserId,
-      glassUserId: undefined,
-    });
-  },
+  migrateOne: (_, row) => canonicalSlackActor(row) ?? undefined,
 });
 
 export const runDeclarationFactsBackfill = migrations.runner([

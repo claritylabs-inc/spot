@@ -15,7 +15,6 @@ import {
   restoreCancelledEmailAsDraft,
   updateDraftRecipient,
 } from "./lib/emailDraftService";
-import { extractStoredEmailPayloadFields } from "./lib/emailPayloadFields";
 import { pendingEmailAttachmentValidator } from "./lib/threadMessageValidators";
 
 export const get = query({
@@ -64,7 +63,6 @@ export const create = internalMutation({
   args: {
     orgId: v.id("organizations"),
     threadId: v.optional(v.id("threads")),
-    emailPayload: v.string(),
     scheduledSendTime: v.number(),
     chatMessageId: v.optional(v.id("threadMessages")),
     threadMessageId: v.optional(v.id("threadMessages")),
@@ -91,28 +89,9 @@ export const create = internalMutation({
     status: v.optional(v.union(v.literal("draft"), v.literal("pending"))),
   },
   handler: async (ctx, args) => {
-    const {
-      status,
-      emailPayload,
-      fromHeader,
-      replyTo,
-      inReplyTo,
-      references,
-      renderedText,
-      renderedHtml,
-      ...fields
-    } = args;
-    const payloadFields = extractStoredEmailPayloadFields(emailPayload);
     return await ctx.db.insert("pendingEmails", {
-      ...fields,
-      emailPayload,
-      fromHeader: fromHeader ?? payloadFields.fromHeader,
-      replyTo: replyTo ?? payloadFields.replyTo,
-      inReplyTo: inReplyTo ?? payloadFields.inReplyTo,
-      references: references ?? payloadFields.references,
-      renderedText: renderedText ?? payloadFields.renderedText,
-      renderedHtml: renderedHtml ?? payloadFields.renderedHtml,
-      status: status ?? "pending",
+      ...args,
+      status: args.status ?? "pending",
     });
   },
 });
@@ -130,7 +109,6 @@ export const setThreadMessage = internalMutation({
 export const updateDraftInternal = internalMutation({
   args: {
     id: v.id("pendingEmails"),
-    emailPayload: v.string(),
     recipientEmail: v.string(),
     ccAddresses: v.optional(v.array(v.string())),
     bccAddresses: v.optional(v.array(v.string())),
@@ -148,18 +126,7 @@ export const updateDraftInternal = internalMutation({
     sendBlockedReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const {
-      id,
-      emailPayload,
-      fromHeader,
-      replyTo,
-      inReplyTo,
-      references,
-      renderedText,
-      renderedHtml,
-      ...patch
-    } = args;
-    const payloadFields = extractStoredEmailPayloadFields(emailPayload);
+    const { id, ...patch } = args;
     const existing = await ctx.db.get(id);
     if (!existing || existing.status !== "draft") {
       throw new Error("Only draft emails can be updated");
@@ -167,13 +134,17 @@ export const updateDraftInternal = internalMutation({
     await invalidateDraftConfirmations(ctx, existing, "draft_content_changed");
     await ctx.db.patch(id, {
       ...patch,
-      emailPayload,
-      fromHeader: fromHeader ?? payloadFields.fromHeader,
-      replyTo: replyTo ?? payloadFields.replyTo,
-      inReplyTo: inReplyTo ?? payloadFields.inReplyTo,
-      references: references ?? payloadFields.references,
-      renderedText: renderedText ?? payloadFields.renderedText,
-      renderedHtml: renderedHtml ?? payloadFields.renderedHtml,
+      emailPayload: undefined,
+      ccAddresses: args.ccAddresses,
+      bccAddresses: args.bccAddresses,
+      fromHeader: args.fromHeader,
+      replyTo: args.replyTo,
+      inReplyTo: args.inReplyTo,
+      references: args.references,
+      renderedText: args.renderedText,
+      renderedHtml: args.renderedHtml,
+      attachments: args.attachments,
+      referencedPolicyIds: args.referencedPolicyIds,
       status: "draft",
       scheduledSendTime: 0,
       sendBlockedReason: args.sendBlockedReason,

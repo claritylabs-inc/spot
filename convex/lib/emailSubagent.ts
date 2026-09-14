@@ -787,7 +787,6 @@ async function runEmailSubagent(
         (await ctx.runMutation(internal.pendingEmails.create, {
           orgId: context.orgId,
           threadId: context.threadId,
-          emailPayload: JSON.stringify(emailPayload),
           scheduledSendTime,
           chatMessageId: context.chatMessageId,
           recipientEmail: sendTo,

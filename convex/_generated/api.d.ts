@@ -299,6 +299,7 @@ import type * as lib_scanReconciliationSchema from "../lib/scanReconciliationSch
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
 import type * as lib_searchTokenizer from "../lib/searchTokenizer.js";
 import type * as lib_security from "../lib/security.js";
+import type * as lib_slackAttachments from "../lib/slackAttachments.js";
 import type * as lib_slackAvailability from "../lib/slackAvailability.js";
 import type * as lib_slackBlocks from "../lib/slackBlocks.js";
 import type * as lib_slackChannelRouting from "../lib/slackChannelRouting.js";
@@ -378,6 +379,7 @@ import type * as quoBrokerWebhook from "../quoBrokerWebhook.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as requirementExtractionRuns from "../requirementExtractionRuns.js";
 import type * as routerAssets from "../routerAssets.js";
+import type * as schemaCleanup from "../schemaCleanup.js";
 import type * as seed from "../seed.js";
 import type * as seedWorkflows from "../seedWorkflows.js";
 import type * as slack from "../slack.js";
@@ -690,6 +692,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
   "lib/searchTokenizer": typeof lib_searchTokenizer;
   "lib/security": typeof lib_security;
+  "lib/slackAttachments": typeof lib_slackAttachments;
   "lib/slackAvailability": typeof lib_slackAvailability;
   "lib/slackBlocks": typeof lib_slackBlocks;
   "lib/slackChannelRouting": typeof lib_slackChannelRouting;
@@ -769,6 +772,7 @@ declare const fullApi: ApiFromModules<{
   rateLimits: typeof rateLimits;
   requirementExtractionRuns: typeof requirementExtractionRuns;
   routerAssets: typeof routerAssets;
+  schemaCleanup: typeof schemaCleanup;
   seed: typeof seed;
   seedWorkflows: typeof seedWorkflows;
   slack: typeof slack;
