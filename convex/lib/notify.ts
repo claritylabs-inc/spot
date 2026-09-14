@@ -43,7 +43,7 @@ export const notifyPolicyExtractionReviewInternal = internalMutation({
   },
   handler: async (ctx, args): Promise<boolean> => {
     const policy = await ctx.db.get(args.policyId);
-    if (!policy || args.questionCount < 1) return false;
+    if (!policy?.orgId || args.questionCount < 1) return false;
     if (args.workspaceScanImportId) {
       const scanImport = await ctx.db.get(args.workspaceScanImportId);
       if (!scanImport || scanImport.policyId !== args.policyId)
