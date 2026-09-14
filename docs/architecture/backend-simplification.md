@@ -1,6 +1,6 @@
 # Backend simplification and client intake plan
 
-Status: implementation authorized; historical audit captured against `4f83f618` on 2026-09-14. The narrowed code candidate remains conditional. Production export, audit, migration, deployment, and rollback evidence are pending and will be recorded here by the release owner. This document is not evidence that deployment has completed.
+Status: implementation and release authorized. The primary production and shared-dev migrations completed with zero residuals. The user subsequently accepted legacy data loss and asked to prioritize shipping; no additional historical-data recovery is required. Final code validation and deployment results are recorded on the narrowing pull request and the [main release workflow](https://github.com/claritylabs-inc/spot/actions/workflows/deploy-convex.yml).
 
 ## Accepted scope update
 
@@ -10,36 +10,25 @@ The operator refined the rule during implementation: retain fields required by r
 
 The canonical text lives in `markdownDocuments` for transactional persistence, with ordinary `.md` import/export and expected-revision checks. Indexed ownership, workflow state, approvals, source references, and values required for routine decisions remain structured. Company wikis and compliance/certificate notes use the same Markdown primitive under their own resource ownership. Existing issued packet/certificate snapshots and original source evidence remain immutable.
 
-## Execution record
+## Execution and release evidence
 
-- The preceding widening implementation audited the backend and implemented canonical client identity, mandatory source-cited research, standard Markdown storage, and bounded legacy cleanup.
-- That widening implementation passed local deployment, a database/file-storage backup and migration, all-page zero-residual verification, and an idempotent second migration.
-- Widening commit `d7460184ec467f227db629604c212243ae7e37b8` passed 654 tests plus Convex typecheck, production build, and lint. These results predate reconciliation with the narrowed schema candidate and do not validate a production release.
-- The two-file procurement contract has been carried into the conditional narrowing documentation. Combined runtime validation and production migration evidence remain owned by the root orchestrator.
-- Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending. No production completion is claimed here.
+- [PR 346](https://github.com/claritylabs-inc/spot/pull/346) released the Markdown/client-intake implementation as `515265cd7c934410633705feb5177d51e640bd4e`. [Production release 34901426209](https://github.com/claritylabs-inc/spot/actions/runs/34901426209) passed Convex, worker, package, compatibility, and release-readiness checks.
+- An isolated cloud workspace seeded a genuine pre-change fixture, then migrated with widening commit `d7460184ec467f227db629604c212243ae7e37b8`. Four wiki sections, eight packet sections, and the request narrative became one wiki and the two request files. Every legacy packet body retained its audience; the issued packet snapshot was byte-identical. Repeating the migration produced **zero differences across all database table documents**, including revisions and timestamps.
+- [Production audit 34902173672](https://github.com/claritylabs-inc/spot/actions/runs/34902173672) and [migration 34902637845](https://github.com/claritylabs-inc/spot/actions/runs/34902637845) completed. The apply reported `readyForNarrowing: true`, no ownership blockers, no legacy Markdown kinds, and zero residual fields/rows for the narrowed domains. The database and file-storage export is retained in the task workspace.
+- [PR 347](https://github.com/claritylabs-inc/spot/pull/347) corrected the ownership audit: obsolete broker pointers can be cleared without rewriting the actual client owner or historical upload provenance. Shared-dev `acoustic-caiman-755` completed the same migration with `readyForNarrowing: true`; its 38 retired broker status notifications were removed, and all eight final inventory table counts were zero. The used `uploadedBySide` and `uploadedByUserId` fields remain.
+- Both target exports contained zero `insuranceRequirements` rows and no `policyVersions.caseId` values. The unused thread routing key was absent in production; the one shared-dev value was cleared with a zero-residual readback. Canonical requirement criteria remain structured while their obsolete aliases and row fallback machinery are removed.
+- [PR 348](https://github.com/claritylabs-inc/spot/pull/348) keeps client editors synchronized with live agent updates. [PR 349](https://github.com/claritylabs-inc/spot/pull/349) also released the final thread-key cleanup function; [release 34904849513](https://github.com/claritylabs-inc/spot/actions/runs/34904849513) passed all gates, and `app.spot.insure` was verified on its exact `463d8248` commit.
+- The backup comparison identified 22 historical company facts outside the current wiki. Their optional restoration was cancelled after the user explicitly accepted legacy data loss. No current wiki text was replaced. Recovery run `34905294458` was intentionally cancelled; it is not a narrowing gate. The final code removes that recovery function, script, and workflow along with the other one-time migrations.
+- The repository is public. Raw migration artifacts were removed from GitHub after local copies were verified. Private database exports must not be uploaded as unencrypted artifacts to this repository. Local copies remain under the task workspace's gitignored `.context` directory.
+- The integrated narrowing candidate passed 636 tests, both typechecks, lint, and a production build before the final frontend/requirement follow-ups. The final combined checks and actual browser coverage are recorded in the pull request and `docs/testing/workflow-qa.md`; earlier counts do not substitute for the final checks.
 
-## Conditional narrowing release evidence
-
-The narrowed schema and deleted compatibility APIs may ship only after every
-pending field below is replaced with exact, reviewed evidence. Local candidate
-validation cannot substitute for approved-target proof.
-
-| Gate | Status | Evidence |
-| --- | --- | --- |
-| Approved widening source commit | Pending | Root orchestrator to record exact SHA. |
-| Production database and file-storage rollback export | Pending | Root orchestrator to record artifact identity and retention location. |
-| Complete production audit pages and conflict review | Pending | Root orchestrator to record run IDs, page completion, counts, and reviewed exceptions. |
-| Production migration and idempotent rerun | Pending | Root orchestrator to record exact widening functions and zero-residual results. |
-| `policyUpdateRuns` plus seven inventory-only procurement table counts | Pending | Root orchestrator to record all-page counts and disposition; these tables remain in the candidate. |
-| Narrowed release commit and Convex deployment | Pending | Root orchestrator to record exact SHA, target, and deployment result. |
-| Railway, Vercel, compatibility, and post-deploy checks | Pending | Root orchestrator to record exact-commit results. |
-| Rollback decision and artifact verification | Pending | Root orchestrator to record reviewer and outcome. |
-
-The conditional narrowing tree intentionally removes the one-off broad schema
-migration workflow and runner. Production migration must execute from the
-approved widening release before the narrowed schema is deployed; the narrowed
-tree exposes only the ongoing operator-email identity, declaration-fact,
-carrier-identity, and Slack compatibility migrations listed in `AGENTS.md`.
+The narrowing release removes the verified retired schema and compatibility
+writers, including all eight empty inventory-only tables. It also removes the
+one-off migration workflow, runner, and temporary recovery APIs. Ongoing
+operator-email identity, declaration-fact, carrier-identity, and live Slack
+compatibility migrations retain their existing owners. The normal main release
+workflow enforces Convex deployment, exact-commit worker readiness, compatibility
+checks, and the Vercel production-alias gate.
 
 ## Outcome
 
@@ -53,7 +42,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 - `relatedLegalEntities` holds legal names and evidenced relationship types, jurisdiction and identifiers. Preserve existing list entries and operator corrections. The UI must expose the relationship instead of presenting every entry as an unlabeled name.
 - Keep website, validated industry/vertical, mailing address, entity type, FEIN/business number, and a concise operations description structured. The operations summary has real certificate consumers in `policyPartyContext.ts`; it cannot simply disappear into markdown.
 - Detailed operations, products, locations, ownership narrative, dated revenue/headcount, preferences and stable company context belong in the company Markdown file. Preserve source references and human markdown. Policy terms, private market activity, delivery state and access controls remain in their owning tables.
-- Remove the unused relationship-context fields after preserving any existing values in appropriate wiki sections. Retain `context` temporarily where external DTOs/router smoke identity still consume it; replacing that compatibility projection is a separate verified transition.
+- The former organization context fields and legal-entity notes are removed from structured storage. Their retained narrative lives in the company Markdown file; runtime consumers use the current profile/wiki contracts.
 - Company-file profile facts must contribute to legal entities as well as policy-derived facts. Source retraction must not erase human edits or facts still supported elsewhere. Keep extracted evidence distinct from effective editable values.
 - Operator tools expose the full effective client profile and legal entities, with omission preserving current values and explicit clearing honored. Validate industry membership and vertical pairing at the server boundary, not only in selects.
 
