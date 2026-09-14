@@ -249,6 +249,169 @@ test("stale research cannot overwrite a concurrent manual website or update the 
   });
 });
 
+test("an identity change retracts prior research evidence before the next run", async () => {
+  const { t, orgId } = await fixture();
+  const first = await t.mutation(claim, { orgId });
+  const oldFact = {
+    key: "operations" as const,
+    content: "Cove provides farm planning software.",
+    sourceRef: "https://cove.example/",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: first.leaseId,
+    fingerprint: first.fingerprint,
+    website: "https://cove.example/",
+    industry: "agriculture",
+    industryVertical: "crop_farming",
+    sourceUrls: [oldFact.sourceRef],
+    facts: [oldFact],
+  });
+
+  await t.run(async (ctx) => {
+    await ctx.db.patch(orgId, { name: "Harbor" });
+    await scheduleCompanyResearch(ctx, orgId);
+    const org = await ctx.db.get(orgId);
+    expect(org?.companyResearch).toMatchObject({
+      status: "pending",
+      facts: [],
+      sourceUrls: [],
+    });
+    expect((await readOrgWiki(ctx, orgId)).body).not.toContain(oldFact.content);
+  });
+
+  const second = await t.mutation(claim, { orgId });
+  await t.mutation(complete, {
+    orgId,
+    leaseId: second.leaseId,
+    fingerprint: second.fingerprint,
+    sourceUrls: [],
+    facts: [],
+    reason: "No verified public match",
+  });
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(orgId))?.companyResearch).toMatchObject({
+      status: "partial",
+      facts: [],
+      sourceUrls: [],
+    });
+    expect((await readOrgWiki(ctx, orgId)).body).not.toContain(oldFact.content);
+  });
+});
+
+test("a verified refresh replaces retracted facts and sources", async () => {
+  const { t, orgId } = await fixture();
+  const first = await t.mutation(claim, { orgId });
+  const oldFact = {
+    key: "operations" as const,
+    content: "Cove provides farm planning software.",
+    sourceRef: "https://cove.example/old",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: first.leaseId,
+    fingerprint: first.fingerprint,
+    website: "https://cove.example/",
+    industry: "agriculture",
+    industryVertical: "crop_farming",
+    sourceUrls: [oldFact.sourceRef],
+    facts: [oldFact],
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(orgId, { website: "https://www.cove.example/" });
+    await scheduleCompanyResearch(ctx, orgId);
+    expect((await ctx.db.get(orgId))?.companyResearch).toMatchObject({
+      status: "pending",
+      facts: [oldFact],
+      sourceUrls: [oldFact.sourceRef],
+    });
+  });
+  const second = await t.mutation(claim, { orgId });
+  const currentFact = {
+    key: "operations" as const,
+    content: "Cove provides crop forecasting software.",
+    sourceRef: "https://www.cove.example/current",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: second.leaseId,
+    fingerprint: second.fingerprint,
+    website: "https://www.cove.example/",
+    industry: "agriculture",
+    industryVertical: "crop_farming",
+    sourceUrls: [currentFact.sourceRef],
+    facts: [currentFact],
+  });
+
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(orgId))?.companyResearch).toMatchObject({
+      status: "completed",
+      facts: [currentFact],
+      sourceUrls: [currentFact.sourceRef],
+    });
+    const wiki = await readOrgWiki(ctx, orgId);
+    expect(wiki.body).toContain(currentFact.content);
+    expect(wiki.body).not.toContain(oldFact.content);
+    expect(wiki.body).not.toContain(oldFact.sourceRef);
+  });
+});
+
+test("a verified refresh retracts stale suggestions without changing manual prose", async () => {
+  const { t, orgId } = await fixture();
+  const manual = "The risk team reviews rollout sequencing.";
+  await t.run(async (ctx) => {
+    await saveMarkdownDocument(ctx, {
+      orgId,
+      kind: "company_wiki",
+      filename: "company-wiki.md",
+      markdown: manualWikiDocument(`## Operations\n\n${manual}`),
+      expectedRevision: 0,
+    });
+  });
+  const first = await t.mutation(claim, { orgId });
+  const oldFact = {
+    key: "operations" as const,
+    content: "Cove provides farm planning software.",
+    sourceRef: "https://cove.example/old",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: first.leaseId,
+    fingerprint: first.fingerprint,
+    website: "https://cove.example/",
+    industry: "agriculture",
+    industryVertical: "crop_farming",
+    sourceUrls: [oldFact.sourceRef],
+    facts: [oldFact],
+  });
+  await t.mutation(
+    makeFunctionReference<"mutation">("companyResearch:request"),
+    { orgId },
+  );
+  const second = await t.mutation(claim, { orgId });
+  const currentFact = {
+    key: "operations" as const,
+    content: "Cove provides crop forecasting software.",
+    sourceRef: "https://cove.example/current",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: second.leaseId,
+    fingerprint: second.fingerprint,
+    sourceUrls: [currentFact.sourceRef],
+    facts: [currentFact],
+  });
+
+  await t.run(async (ctx) => {
+    const wiki = await readOrgWiki(ctx, orgId);
+    expect(readMarkdownHeading(wiki.body, "Operations")).toBe(manual);
+    expect(wiki.proposals).toHaveLength(1);
+    expect(wiki.proposals[0].body).toContain(currentFact.content);
+    expect(wiki.proposals[0].body).not.toContain(oldFact.content);
+    expect(wiki.proposals[0].body).not.toContain(oldFact.sourceRef);
+  });
+});
+
 test("provider failures stop after three attempts and do not claim successful enrichment", async () => {
   const { t, orgId } = await fixture();
   for (let attempt = 0; attempt < 3; attempt += 1) {

@@ -3,7 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
-import { COMPANY_RESEARCH_VERSION, companyResearchFactValidator, companyResearchFingerprint, publicResearchUrl, samePublicResearchSite, samePublicResearchUrl } from "./lib/companyResearch";
+import { COMPANY_RESEARCH_VERSION, companyResearchFactValidator, companyResearchFingerprint, companyResearchFingerprintMatchesIdentity, publicResearchUrl, samePublicResearchSite, samePublicResearchUrl } from "./lib/companyResearch";
 import { validateClientClassification } from "./lib/clientProfile";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
 
@@ -16,17 +16,35 @@ function missingFields(org: Doc<"organizations">) {
   return [!org.website && "website", !org.industry && "industry", !org.industryVertical && "industryVertical"].filter((field): field is string => Boolean(field));
 }
 
+type CompanyResearchFact = NonNullable<Doc<"organizations">["companyResearch"]>["facts"][number];
+
+async function reconcileCompanyResearchFacts(
+  ctx: MutationCtx,
+  orgId: Id<"organizations">,
+  researchFacts: CompanyResearchFact[],
+) {
+  const extractions = await ctx.db.query("companyInformationExtractions").withIndex("organization", (q) => q.eq("orgId", orgId)).order("desc").take(500);
+  await reconcileExtractedCompanyFacts(ctx, { orgId, source: "extraction", facts: [
+    ...extractions.filter((row) => row.appliedFingerprint).flatMap((row) => (row.organizationFacts ?? []).map((fact) => ({ key: fact.section ?? "profile" as const, content: fact.content, sourceRef: row.sourceRef }))),
+    ...researchFacts.map((fact) => ({ ...fact, content: `${fact.content} [Source](${fact.sourceRef})` })),
+  ] });
+}
+
 export async function scheduleCompanyResearch(ctx: MutationCtx, orgId: Id<"organizations">, options: { force?: boolean } = {}) {
   const org = await ctx.db.get(orgId);
   if (!org || org.type !== "client") return false;
   const fingerprint = companyResearchFingerprint(org);
   if (org.companyResearch?.fingerprint === fingerprint && (!options.force || ["pending", "running"].includes(org.companyResearch.status))) return false;
+  const retainEvidence = !org.companyResearch || companyResearchFingerprintMatchesIdentity(org.companyResearch.fingerprint, org);
+  const sourceUrls = retainEvidence ? org.companyResearch?.sourceUrls ?? [] : [];
+  const facts = retainEvidence ? org.companyResearch?.facts ?? [] : [];
   await ctx.db.patch(orgId, {
     companyResearch: {
       version: COMPANY_RESEARCH_VERSION, fingerprint, status: "pending", attempts: 0,
-      unresolvedFields: missingFields(org), sourceUrls: org.companyResearch?.sourceUrls ?? [], facts: org.companyResearch?.facts ?? [], updatedAt: dayjs().valueOf(),
+      unresolvedFields: missingFields(org), sourceUrls, facts, updatedAt: dayjs().valueOf(),
     },
   });
+  if (!retainEvidence) await reconcileCompanyResearchFacts(ctx, orgId, []);
   await ctx.scheduler.runAfter(0, runRef, { orgId });
   return true;
 }
@@ -108,8 +126,9 @@ export const complete = internalMutation({
       const sourceRef = currentSourceUrls.find((url) => samePublicResearchUrl(url, fact.sourceRef));
       return sourceRef && fact.content.length <= 1_200 ? [{ ...fact, sourceRef }] : [];
     }).slice(0, 40);
-    const facts = [...new Map([...currentFacts, ...research.facts].map((fact) => [JSON.stringify([fact.key, fact.content, fact.sourceRef]), fact])).values()].slice(0, 40);
-    const sourceUrls = [...new Set([...currentSourceUrls, ...facts.map((fact) => fact.sourceRef)])];
+    const verifiedCurrentEvidence = currentSourceUrls.length > 0 && !args.reason;
+    const facts = verifiedCurrentEvidence ? currentFacts : research.facts;
+    const sourceUrls = verifiedCurrentEvidence ? currentSourceUrls : research.sourceUrls;
     const patch: Partial<Doc<"organizations">> = {};
     const website = args.website && publicResearchUrl(args.website);
     if (!org.website && website && currentSourceUrls.some((url) => samePublicResearchSite(url, website))) patch.website = website;
@@ -128,11 +147,7 @@ export const complete = internalMutation({
       fingerprint: companyResearchFingerprint(updated), status: unresolvedFields.length ? "partial" : "completed",
       sourceUrls, facts, unresolvedFields, error: args.reason, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: dayjs().valueOf(),
     } });
-    const extractions = await ctx.db.query("companyInformationExtractions").withIndex("organization", (q) => q.eq("orgId", org._id)).order("desc").take(500);
-    await reconcileExtractedCompanyFacts(ctx, { orgId: org._id, source: "extraction", facts: [
-      ...extractions.filter((row) => row.appliedFingerprint).flatMap((row) => (row.organizationFacts ?? []).map((fact) => ({ key: fact.section ?? "profile" as const, content: fact.content, sourceRef: row.sourceRef }))),
-      ...facts.map((fact) => ({ ...fact, content: `${fact.content} [Source](${fact.sourceRef})` })),
-    ] });
+    await reconcileCompanyResearchFacts(ctx, org._id, facts);
     return true;
   },
 });
