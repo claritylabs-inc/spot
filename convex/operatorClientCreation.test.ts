@@ -48,7 +48,9 @@ test("standalone client creation creates no users, access grants, invitations or
     expect(await ctx.db.query("orgMemberships").collect()).toHaveLength(0);
     expect(await ctx.db.query("orgInvitations").collect()).toHaveLength(0);
     expect(await ctx.db.query("clientInvitations").collect()).toHaveLength(0);
-    expect(await ctx.db.system.query("_scheduled_functions").collect()).toHaveLength(0);
+    expect(
+      await ctx.db.system.query("_scheduled_functions").collect(),
+    ).toHaveLength(0);
   });
 });
 
@@ -60,11 +62,14 @@ test("interactive creation retains explicit team membership and onboarding defau
       email: "admin@harbor.example",
     }),
   );
-  const { clientOrgId } = await t.mutation(internal.operator.createSoloClientInternal, {
-    operatorUserId,
-    client: { name: "Harbor Robotics" },
-    users: [{ userId, email: "admin@harbor.example", role: "admin" }],
-  });
+  const { clientOrgId } = await t.mutation(
+    internal.operator.createSoloClientInternal,
+    {
+      operatorUserId,
+      client: { name: "Harbor Robotics" },
+      users: [{ userId, email: "admin@harbor.example", role: "admin" }],
+    },
+  );
   await t.run(async (ctx) => {
     expect(await ctx.db.get(clientOrgId)).toMatchObject({
       operatorStatus: "onboarding",
