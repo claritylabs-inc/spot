@@ -339,3 +339,11 @@ Plan: normalize singular transport input to array at one ingress boundary, keep 
 Every deletion uses audit -> widen/canonical writer -> bounded resumable migration -> read-only verifier -> narrow -> focused runtime checks. Record actual target and migration counters; never assume source-level lack of writes proves rows absent. Run Node 24 and focused existing tests for touched boundaries, then required root/Convex type checks. Security-sensitive cases include exact draft approval after edits, stale confirmation invalidation, old Slack revocation preservation, OAuth conservative legacy scope conversion, replay/idempotency, tenant/operator isolation, and interrupt/resume during purge. No live messages or broad memory-clearing tools are needed for acceptance.
 
 Recommended first implementation batch is canonical email preview/delivery resolution, followed by notification validator consolidation. The migration-only retired conversation store and established legacy gates can run as a separate deployment lane once actual target audit is available. Avoid a simultaneous all-channel table rewrite.
+
+### Ownership migration follow-up
+
+The first widening release is PR #346 (`515265cd`); production release run `34901426209` passed. Production audit `34902173672` found zero ownership blockers and zero rows in all eight inventory-only retired tables.
+
+Shared development has a client that retains its retired broker association and a policy already owned by that client with historical broker-upload metadata. Those pointers are removable without changing ownership. The widening migration records their prior values in the operator audit ledger and clears only the unused references after backup. It retains the historical uploader side and user because the policy UI displays that provenance. Broker-owned or unresolved policies still require evidence-based reconciliation; the migration never assigns a replacement owner.
+
+The shared-development `brokerActivity` inventory contains 38 retired status notifications: 37 extraction completions and one upload. They carry source policy references rather than unique policy facts. The backed-up retired-store purge removes these unused duplicates, and the final inventory counts are recorded after migration. Production has zero rows in this table.
