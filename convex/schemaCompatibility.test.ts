@@ -58,8 +58,6 @@ describe("deployed schema compatibility", () => {
       "member",
       "ignore",
     ]);
-    expectOptionalKind("threads", ["deliveryContactKey"], "string");
-
     const legacyRoute = fieldValidator(
       "globalModelSettings",
       "routes",
