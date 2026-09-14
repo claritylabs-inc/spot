@@ -29,7 +29,10 @@ import { modelCapabilitiesForTask } from "../lib/modelCatalog";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { isFeatureEnabled } from "../lib/featureFlags";
-import { isSpecimenPolicyDocument } from "../lib/policyDocumentGate";
+import {
+  isSpecimenPolicyDocument,
+  NON_INSURANCE_DOCUMENT_ERROR,
+} from "../lib/policyDocumentGate";
 import {
   buildExtractionCompletionManifest,
   buildPromotionEvidenceLedger,
@@ -57,8 +60,6 @@ import {
 import { z } from "zod";
 
 const CANCELLED_BY_USER = "Cancelled by user";
-const NON_INSURANCE_DOCUMENT_ERROR =
-  "This document is not a bound insurance policy, binder, endorsement, renewal, or post-binding insurance document, so extraction was stopped.";
 const ADVANCE_LEASE_MS = 2 * 60 * 1000;
 const ADVANCE_LEASE_HEARTBEAT_MS = 30 * 1000;
 const ADVANCE_LEASE_WATCHDOG_GRACE_MS = 15 * 1000;
@@ -1422,7 +1423,7 @@ Decide whether an uploaded PDF should be processed by a bound-policy extractor. 
 
 Also allow a document explicitly labeled as a specimen policy, sample policy, or testing-only policy when it represents a policy artifact suitable for extraction testing. Return classification "specimen_policy_document" for those testing fixtures. A disclaimer such as "not an actual policy" or "not evidence of insurance" does not disqualify an otherwise valid specimen policy.
 
-Reject unbound quotes, proposals, submissions, applications, marketing material, invoices, novels, books, textbooks, resumes, generic contracts, unrelated legal documents, and any document that is merely about insurance but is not itself a bound policy artifact. If uncertain, return classification "unknown" and shouldExtract false only when the document is more likely not extractable than extractable.`,
+Reject unbound quotes, proposals, submissions, applications, marketing material, invoices, novels, books, textbooks, resumes, generic contracts, unrelated legal documents, and any document that is merely about insurance but is not itself a bound policy artifact. A law-office trust ledger, closing statement, or disbursement statement is not a policy, even when it lists a payment for title insurance or an insurance premium. A payment line is not evidence that the document contains bound policy terms. If uncertain, return classification "unknown" and shouldExtract false only when the document is more likely not extractable than extractable.`,
     prompt: `Classify this PDF before extraction.
 
 Return shouldExtract=true for bound or post-binding insurance policy artifacts and for specimen policy testing fixtures.

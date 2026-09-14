@@ -56,6 +56,8 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Catalog
 
+`convex/lib/policyDocumentGate.ts` owns the shared intake rejection error and browser recognition of rejected documents. Reuse it for rejection notices; policy detail loading requires an unarchived idle/running extraction, and rejected uploads render document status instead of policy fields.
+
 Operator Settings (`/operator/settings`) owns one global **Approve all** switch,
 shared by every operator and off by default. `operatorAgentSettings` stores the
 setting; only active operators outside impersonation may change it, through the
