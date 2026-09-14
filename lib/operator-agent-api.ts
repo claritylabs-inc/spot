@@ -156,6 +156,7 @@ export type OperatorAgentMessage = {
 
 export type OperatorAgentToolCall = {
   name: string;
+  effect?: BackendConfirmation["effect"];
   input?: string;
   output?: string;
 };
