@@ -1089,3 +1089,23 @@ it.each(["changed", "removed"] as const)(
     expect(parts.map((part) => part.text).join("")).toBe("original evidence");
   },
 );
+
+it("does not clear another failure when retrying a source that was excluded", async () => {
+  const { t, runId, sourceIds } = await workFixture(2);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(sourceIds[0], {
+      status: "excluded",
+      evidence: undefined,
+    });
+    await ctx.db.patch(sourceIds[1], { status: "failed" });
+    await ctx.db.patch(runId, { pendingSources: 0, failedSources: 1 });
+  });
+  await t.run((ctx) =>
+    retryGoogleWorkspaceScanSource(ctx, { sourceId: sourceIds[0] }),
+  );
+  expect(await t.run((ctx) => ctx.db.get(runId))).toMatchObject({
+    pendingSources: 1,
+    failedSources: 1,
+    reconciledSources: 0,
+  });
+});
