@@ -275,7 +275,6 @@ describe("personal iMessage privacy inventory", () => {
         orgId: orgA,
         threadId: directA,
         status: "draft",
-        emailPayload: "{}",
         scheduledSendTime: 0,
         recipientEmail: "recipient@example.com",
         subject: "Draft",

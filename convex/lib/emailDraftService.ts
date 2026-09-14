@@ -2,7 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { invalidatePendingConfirmations } from "../threadActionConfirmations";
 import { normalizeEmailAddress } from "./emailAddress";
-import { readStoredEmailFields } from "./emailPayloadFields";
+
 export async function invalidateDraftConfirmations(
   ctx: MutationCtx,
   pending: Doc<"pendingEmails">,
@@ -111,11 +111,10 @@ export async function updateDraftRecipient(
   if (!pending || pending.status !== "draft") return null;
 
   const recipientEmail = normalizeEmailAddress(recipientEmailInput);
-  const fields = readStoredEmailFields(pending);
-  const ccAddresses = (fields.ccAddresses ?? [])
+  const ccAddresses = (pending.ccAddresses ?? [])
     .map(normalizeEmailAddress)
     .filter((email) => email && email !== recipientEmail);
-  const bccAddresses = (fields.bccAddresses ?? [])
+  const bccAddresses = (pending.bccAddresses ?? [])
     .map(normalizeEmailAddress)
     .filter(
       (email) =>

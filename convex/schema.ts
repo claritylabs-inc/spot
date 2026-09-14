@@ -4658,7 +4658,6 @@ export default defineSchema({
       v.literal("sent"),
       v.literal("cancelled"),
     ),
-    emailPayload: v.optional(v.string()), // Removed after canonical draft backfill.
     fromHeader: v.optional(v.string()),
     replyTo: v.optional(v.string()),
     inReplyTo: v.optional(v.string()),

@@ -53,7 +53,6 @@ async function fixture() {
       orgId,
       threadId,
       status: "draft",
-      emailPayload: "{}",
       scheduledSendTime: 0,
       recipientEmail: "recipient@example.com",
       subject: "Certificate of insurance",
