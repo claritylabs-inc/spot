@@ -202,6 +202,7 @@ function fieldsWithPersistedCarrierIdentity(
 // ─── State Type ────────────────────────────────────────────────────────────────
 
 export type PolicyExtractionState = {
+  workspaceScanImportId?: Id<"operatorWorkspaceScanImports">;
   /** "upload" = direct file upload; "agent_email" = attachment forwarded to the email agent */
   sourceKind: "upload" | "agent_email";
   /** Convex storage ID of the PDF */
@@ -2336,7 +2337,11 @@ export function makePhases(
           if (reviewQuestions.length > 0) {
             const notified = await convexCtx.runMutation(
               internal.lib.notify.notifyPolicyExtractionReviewInternal,
-              { policyId: policyId as Id<"policies">, questionCount: reviewQuestions.length },
+              {
+                policyId: policyId as Id<"policies">,
+                questionCount: reviewQuestions.length,
+                workspaceScanImportId: state.workspaceScanImportId,
+              },
             );
             if (notified)
               await pCtx.log(
@@ -3748,6 +3753,7 @@ export const startPolicyExtractionFromUpload = internalAction({
     orgId: v.id("organizations"),
     userId: v.id("users"),
     policyFileId: v.optional(v.id("policyFiles")),
+    workspaceScanImportId: v.optional(v.id("operatorWorkspaceScanImports")),
     policyVersionKind: v.optional(
       v.union(
         v.literal("new_policy"),
@@ -3765,6 +3771,7 @@ export const startPolicyExtractionFromUpload = internalAction({
       orgId,
       userId,
       policyFileId,
+      workspaceScanImportId,
       policyVersionKind,
     },
   ) => {
@@ -3787,6 +3794,7 @@ export const startPolicyExtractionFromUpload = internalAction({
         orgId: String(orgId),
         userId: String(userId),
         policyFileId: policyFileId ? String(policyFileId) : undefined,
+        workspaceScanImportId,
         policyVersionKind,
         replacementPromotionStarted:
           policyVersionKind === "re_extraction" ||
@@ -3844,6 +3852,7 @@ export const startPolicyExtractionFromUpload = internalAction({
         orgId: String(orgId),
         userId: String(userId),
         policyFileId: policyFileId ? String(policyFileId) : undefined,
+        workspaceScanImportId,
         policyVersionKind,
         replacementPromotionStarted:
           policyVersionKind === "re_extraction" ||
@@ -3871,6 +3880,7 @@ export function policyExtractionRetrySource(params: {
   existingState?: PolicyExtractionState;
 }): Pick<
   PolicyExtractionState,
+  | "workspaceScanImportId"
   | "sourceKind"
   | "fileId"
   | "fileName"
@@ -3882,6 +3892,7 @@ export function policyExtractionRetrySource(params: {
 > {
   const retryState = params.mode === "full" ? undefined : params.existingState;
   return {
+    workspaceScanImportId: retryState?.workspaceScanImportId,
     sourceKind: retryState?.sourceKind ?? "upload",
     fileId: retryState?.fileId ?? params.policy.fileId,
     fileName: retryState?.fileName ?? params.policy.fileName,
