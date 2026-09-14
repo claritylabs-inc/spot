@@ -1,4 +1,6 @@
+import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
+import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -26,6 +28,7 @@ import {
 } from "./lib/featureFlags";
 import {
   getOperatorAgentToolSpec,
+  isOperatorAgentToolName,
   parseOperatorAgentToolInput,
   operatorUpdateFieldLabel,
   operatorUpdateValue,
@@ -342,8 +345,10 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function boundedDisplayText(value: string, maximum = 160) {
-  const normalized = value.trim().replace(/\s+/g, " ");
+function boundedDisplayText(value: string, maximum = 160, preserveLines = false) {
+  const normalized = value
+    .trim()
+    .replace(preserveLines ? /[^\S\n]+/g : /\s+/g, " ");
   return normalized.length <= maximum
     ? normalized
     : `${normalized.slice(0, maximum - 1).trimEnd()}…`;
@@ -455,7 +460,7 @@ async function operatorDisplaySummary(
     if (!displayName) continue;
     displaySummary = displaySummary.split(value).join(displayName);
   }
-  return boundedDisplayText(displaySummary, 2_500);
+  return boundedDisplayText(displaySummary, 2_500, true);
 }
 
 async function operatorConfirmationSummary(
@@ -503,17 +508,21 @@ async function operatorConfirmationSummary(
         key === "officeAddress" && value && typeof value === "object"
           ? { ...details.profile?.officeAddress, ...value }
           : value;
-      return `${operatorUpdateFieldLabel(key)}: ${operatorUpdateValue(key, current[key])} → ${operatorUpdateValue(key, next)}`;
+      const label = operatorUpdateFieldLabel(key).toLowerCase();
+      const previous = operatorUpdateValue(key, current[key]);
+      if (next === null || next === "" || (Array.isArray(next) && !next.length)) {
+        return `Clear ${label} (currently ${previous}).`;
+      }
+      const valueText = operatorUpdateValue(key, next);
+      if (previous === "Not set" || previous === "None") {
+        return `Set ${label} to ${valueText}.`;
+      }
+      return `Change ${label} from ${previous} to ${valueText}.`;
     });
   return boundedDisplayText(
-    [
-      `Update broker network profile ${details.broker.name}`,
-      ...changes,
-      input.evidence ? `Evidence: ${input.evidence}` : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    [`Update ${details.broker.name}`, ...changes].join("\n"),
     2_500,
+    true,
   );
 }
 
@@ -1528,6 +1537,11 @@ async function executeToolDomain(
             .take(500)
       : await ctx.db.query("organizations").take(1_000);
     return organizations
+      .filter(
+        (organization) =>
+          organization.type !== "broker" ||
+          !isSpotOwnedBrokerIdentity(organization),
+      )
       .map((organization) => ({
         organization,
         score: organizationSearchScore(organization, queryText),
@@ -1567,7 +1581,11 @@ async function executeToolDomain(
     return {
       orgId,
       name: organization.name,
-      type: organization.type ?? "client",
+      type:
+        organization.type === "broker" &&
+        isSpotOwnedBrokerIdentity(organization)
+          ? "spot"
+          : (organization.type ?? "client"),
       status: organization.operatorStatus ?? "live",
       slug: organization.slug,
       website: organization.website,
@@ -1599,7 +1617,12 @@ async function executeToolDomain(
     return {
       organizations: {
         total: organizations.length,
-        brokers: organizations.filter((org) => org.type === "broker").length,
+        brokers: organizations.filter(
+          (org) => org.type === "broker" && !isSpotOwnedBrokerIdentity(org),
+        ).length,
+        spot: organizations.filter(
+          (org) => org.type === "broker" && isSpotOwnedBrokerIdentity(org),
+        ).length,
         clients: organizations.filter((org) => org.type !== "broker").length,
       },
       policies: {
@@ -2274,6 +2297,9 @@ async function executeToolDomain(
       narrative: typeof input.narrative === "string" ? input.narrative : "",
       targetEffectiveDate: normalizedOptionalText(input.targetEffectiveDate),
       status: writableProcurementRequestStatus(input.status),
+      completionOutcome: input.completionOutcome
+        ? normalizeCompletionOutcome(input.completionOutcome)
+        : undefined,
       clientVisible:
         typeof input.clientVisible === "boolean"
           ? input.clientVisible
@@ -2300,6 +2326,12 @@ async function executeToolDomain(
           ? null
           : normalizedOptionalText(input.targetEffectiveDate),
       status: writableProcurementRequestStatus(input.status),
+      completionOutcome:
+        input.completionOutcome === null
+          ? null
+          : input.completionOutcome
+            ? normalizeCompletionOutcome(input.completionOutcome)
+            : undefined,
       clientVisible:
         typeof input.clientVisible === "boolean"
           ? input.clientVisible
@@ -3262,7 +3294,15 @@ export const getThread = query({
     const visibleMessageIds = new Set(messages.map((message) => message._id));
     return {
       thread,
-      messages,
+      messages: messages.map((message) => ({
+        ...message,
+        toolCalls: message.toolCalls?.map((call) => ({
+          ...call,
+          effect: isOperatorAgentToolName(call.name)
+            ? getOperatorAgentToolSpec(call.name).effect
+            : undefined,
+        })),
+      })),
       activeRun,
       recentRuns: runs,
       confirmations: confirmations

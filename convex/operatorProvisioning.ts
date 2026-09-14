@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 import { createAccount } from "@convex-dev/auth/server";
 import { action, internalMutation, internalQuery } from "./_generated/server";
@@ -199,6 +200,7 @@ export const provisionBroker = action({
     await requireOperatorAuth(ctx, args.operatorAuth, body);
 
     const email = normalizeEmail(args.admin.email);
+    assertExternalBrokerIdentity({ ...args.broker, email });
     if (isBootstrapOperatorEmail(email)) {
       throw new Error(
         "Operator emails cannot be used as broker admin accounts",
@@ -297,6 +299,7 @@ export const upsertProvisionedBroker = internalMutation({
   handler: async (ctx, args) => {
     const brokerName = args.broker.name.trim();
     if (!brokerName) throw new Error("Broker name is required");
+    assertExternalBrokerIdentity({ ...args.broker, email: args.adminEmail });
 
     const slug = args.broker.slug
       ? normalizeSlug(args.broker.slug)

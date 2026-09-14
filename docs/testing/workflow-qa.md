@@ -6,7 +6,7 @@ behavior before execution. Evidence lives in `.context/qa/platform/`.
 
 Use the native-local app at `http://localhost:8080`, visible desktop Chrome,
 local email-capture OTPs, and seeded operator (`terry@claritylabs.inc`), client
-(`adyan@cove.dev`), and broker (`terry@montgomeryrisk.com`) identities. Keep each
+(`adyan@cove.dev`), and broker (`terry@example-risk.example`) identities. Keep each
 role in an isolated context. Use synthetic fixtures for writes and restore
 original values afterward. Do not send live email, change shared router state,
 bind coverage, or alter production while testing.
@@ -46,6 +46,7 @@ and concise labels. Explicit creation and consequential actions remain explicit.
 | INTEGRATE | Client / Mailboxes and integrations | Open create/detail panels, validate missing/invalid input, inspect disconnect/recovery and OAuth denial; mark external authentication untested without a disposable account. |
 | CHANNEL | Operator / Channels | Inspect Slack/iMessage/MCP setup and linked identity, edit reversible local identity and restore; exercise mock Slack where configured; do not send to live channels. |
 | GWORKSPACE | Operator / Channels and agent | Sign in with captured local OTP, configure manual and Directory mailbox modes in the Google Workspace tab, verify validation, persistence, disabled/missing-credential failures, role boundaries, and the shared operator tool registry. Exercise a synthetic registered-tool model path and protected attachment behavior without Gmail writes; report live delegated-mailbox search/read/download as blocked unless an authorized service-account credential is present. |
+| GWSCAN | Operator / Channels and affected records | Follow [scheduled Workspace reconciliation acceptance](workspace-scan.md) for synthetic scheduled collection, activity review, conditional correction, safe record creation and client-visible outcome checks. Keep live scanning disabled. |
 | ROUTING | Operator / Routing | Inspect Routing/Models/Tools, refresh, filters and details; verify long data/mobile rendering. Shared router changes are read-only during local QA. |
 | TELEMETRY | Operator / Telemetry | Switch extraction/model views, inspect empty/populated failures and drill-down, verify recoverable errors and navigation. |
 | LEADS | Operator / Demo leads | Inspect empty state and synthetic public chat if locally available, open lead details and conversation, preserve prospect privacy. |
@@ -426,3 +427,112 @@ focused runtime/auth/replay/checkpoint regressions, application build and
 TypeScript, changed-source ESLint, diff checks, and native-local Convex codegen,
 typecheck, and deployment. Those full checks were not redundantly rerun in this
 workspace.
+
+
+## Scheduled Workspace integration acceptance
+
+The [scheduled reconciliation ledger](workspace-scan.md) records collection,
+authorization, domain/import and UI evidence for the integrated feature. Final
+headless checks used captured local OTPs in isolated operator/client profiles:
+disabled defaults, keyboard activity and provenance, reported external purchase,
+conditional correction and later-change conflict, and client-safe mobile outcome.
+Fixtures were cleaned or restored. Visible desktop and live provider-to-extraction
+browser execution were not run; synthetic action tests cover that backend flow.
+
+## Cloud live-review setup — September 14, 2026
+
+This run prepared a live review environment in the cloud workspace.
+It does not replace the platform-wide coverage ledger above. Screenshots,
+browser scripts, persistent profiles, redacted diagnostics, and restart
+instructions are in `.context/qa/live-review/`. Credentials and OTPs remain
+untracked. The interactive desktop viewer uses workspace port 6080; the app uses
+8080 with the preserved native-local Convex database on 8083/8084.
+
+| Case | Actions / observed result | Status |
+| --- | --- | --- |
+| Desktop | Connected through password-authenticated noVNC to headed Chrome on display `:99`; a coordinate mouse click through the desktop viewer changed the broker Team page to Profile. Evidence: `desktop-viewer.png`, `viewer-check.mjs`. | Passed |
+| Role sign-in | Requested fresh captured OTPs for the operator, Cove client, and Montgomery Risk broker in separate persistent Chrome profiles; all reached their expected portal and retained sessions after reload. Evidence: `operator-reload.png`, `client-reload.png`, `broker-reload.png`. | Passed exercised paths |
+| Seeded review | Opened the operator renewal request, packet, private proposal with gap status, and its PDFs sidebar. Client request showed its shared packet and two shared files. Evidence: `operator-packet.png`, `operator-proposal.png`, `9223-inspect.png`. | Passed read-only paths |
+| Client boundary | Client renewal detail contained shared packet/files and no proposal or market controls. Seeded policy card matched expected carrier and policy number. Backend authorization attacks and exhaustive policy editing checks were not part of this setup. | Passed visible boundary only |
+| Broker boundary | Profile and Team showed the seeded broker/admin with profile/team navigation. No procurement navigation was exposed. Evidence: `broker-reload.png`, `desktop-viewer.png`. | Passed visible boundary only |
+| Service readiness | Local Convex agent health reported `ok: true`; extraction, mock Slack, customer terminal iMessage, and operator terminal iMessage reported healthy local operation. Email remains capture-only. | Passed |
+| Native PDF conversion | Initial HTTP conversions failed because Amazon Linux glibc was too old for LiteParse. An isolated workspace-local glibc 2.41 loader repaired the worker launch; authenticated synthetic PDF conversion returned 200, expected text, two source spans, and one page image. Evidence: `parser-result.json`, `parser-smoke.mjs`. | Failed setup prerequisite, repaired and passed |
+| Operator agent | Required local operator route was initially unset. Selected OpenAI `gpt-5.6-terra` through the rendered Models tab, verified persistence, then submitted a read-only policy lookup through the portal. The response matched the seeded Cove policy and carrier. Shared router policy was unchanged. | Passed |
+
+The clearly named local QA agent thread and required local model selection are
+retained for review. Existing business fixtures and database were preserved.
+At the end of the run, all local services and three headed Chrome profiles were running. The
+workspace-local README includes restart commands and profile switching.
+
+No platform-wide editing, upload/extraction lifecycle, invalid-OTP recovery,
+protected deep-link attack, public snapshot revocation, full model/tool sweep,
+mobile/theme, or real external channel acceptance is claimed. No live outreach,
+production mutation, binding, or deployment was performed. The desktop
+viewer itself was checked using a separate headless browser; all product checks
+used the actual headed Chrome profiles, including desktop mouse control.
+
+Validation: authenticated service checks, rendered role/session checks, a real
+router-backed read-only agent response, synthetic native PDF conversion, and
+`git diff --check`. This setup phase changed only documentation; the subsequent
+UI fixes and their validation are recorded below. Memory remained above the workflow's
+4-GiB pause threshold.
+
+### Desktop mouse-and-keyboard continuation
+
+At the user's request, the continuation drove the actual cloud desktop through
+noVNC using coordinate clicks, scrolling, and keyboard input, inspecting desktop
+screenshots between steps. CDP was used only to bring an existing signed-in role
+window forward. `desktop-control.mjs` controls the desktop viewer, not the app DOM;
+`desktop-actions.jsonl` records the inputs and screenshot names.
+
+| Workflow | Observed outcome | Evidence in `.context/qa/live-review/` |
+| --- | --- | --- |
+| Proposal review and source | Opened Terms, inspected the unconfirmed cyber gap, followed Open evidence to page 1, and read the synthetic quote showing CAD 2 million offered versus CAD 3 million requested. | `desktop-02-terms.png` through `desktop-04-evidence.png` |
+| PDF download | Used Chrome's PDF download control and native Save dialog; Chrome reported Done and the saved synthetic PDF was present at 1,412 bytes. | `desktop-05-download.png`, `desktop-06-saved.png` |
+| Contact autosave | Changed the proposal contact from Terry Wang to Terry Wang QA, immediately closed/reopened, reloaded Chrome, reopened, and verified persistence; restored Terry Wang and verified reopen. | `desktop-08-contact.png` through `desktop-12-restored.png` |
+| Client review | Inspected the shared request, navigated to the final policy, opened Coverages, and displayed the source PDF beside matching limits. | `desktop-13-client.png` through `desktop-18-policy-source.png` |
+| Client access boundary | Typed the operator Clients URL in the client browser's address bar; the app returned to the client's Policies page. | `desktop-19-client-boundary.png` |
+| Broker team | Opened the own-member sidebar; self-role control was disabled. Opened Invite, submitted an invalid email, and observed native validation with no invitation created; closed the draft. | `desktop-20-broker-team.png` through `desktop-25-invite-closed.png` |
+
+Two visible UX defects were reproduced and have now been fixed:
+
+- **Broker invite role descriptions were stale.** Member copy claimed policies and
+  agent access, and Admin copy mentioned connections/settings. This contradicted
+  the current broker profile/team-only boundary. Reproduce: broker → Team →
+  Invite member → toggle Member/Admin. Evidence: `desktop-22-invite.png`,
+  `desktop-24-admin-copy.png`. This is an observed copy defect, not evidence of
+  an authorization bypass. The shared invitation drawer now receives the target
+  organization context and shows broker-specific Member/Admin descriptions.
+  Client and operator-managed client invitations retain the client descriptions.
+- **Broker navigation highlighted Profile and Team simultaneously.** Reproduce:
+  broker → Team, then open a member so the pointer is away from navigation.
+  Both entries retained the selected background. Evidence:
+  `desktop-21-member.png`. Sidebar matching now treats `/broker` as an exact
+  destination and checks path-segment boundaries for nested destinations.
+
+The temporary contact edit was restored. No invitation was sent, proposal
+conclusion confirmed, or coverage bound. The synthetic downloaded PDF and
+screenshots remain available for review. These are bounded desktop acceptance
+results; the untested platform-wide cases listed above still apply except where
+this continuation explicitly records additional coverage.
+
+Final desktop agent check passed: typed and submitted a read-only renewal
+comparison using the visible composer. The completed response correctly stated
+CAD 3 million requested, CAD 2 million offered, a CAD 1 million gap, and the
+outstanding signed application and current loss runs. Evidence:
+`desktop-27-agent-query.png`, `desktop-28-agent-result.png`.
+
+### UI fix verification
+
+Both reported UI defects passed visible cloud-desktop retests using mouse and
+keyboard controls. Broker Team highlights only Team; broker Profile highlights
+only Profile. Both broker invitation roles show profile/team permissions, while
+the client invitation retains its policy/agent description. Evidence:
+`.context/qa/live-review/fixes-01-broker-member.png`,
+`fixes-02-broker-admin.png`, `fixes-03-profile-active.png`, and
+`fixes-07-client-invite.png`.
+
+Changed-file ESLint, `npx tsc --noEmit`, and `git diff --check` passed. No unit
+tests were added for copy/navigation presentation, per the testing guide. No
+backend authorization or invitation delivery behavior changed. No invitations
+were sent during retesting.

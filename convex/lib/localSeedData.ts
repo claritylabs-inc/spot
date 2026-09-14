@@ -4,11 +4,11 @@ export const LOCAL_FIXTURE = {
     name: "Terry Wang",
   },
   broker: {
-    name: "Montgomery Risk",
-    slug: "montgomery-risk",
-    website: "https://montgomeryrisk.com",
+    name: "Example Risk",
+    slug: "example-risk",
+    website: "https://example-risk.example",
     admin: {
-      email: "terry@montgomeryrisk.com",
+      email: "terry@example-risk.example",
       name: "Terry Wang",
     },
   },
@@ -27,7 +27,7 @@ export const LOCAL_FIXTURE = {
   },
   policy: {
     carrier: "Northwoods Continental Insurance Company",
-    broker: "Montgomery Risk",
+    broker: "Example Risk",
     policyNumber: "NWC-TEC-3110-26-01",
     linesOfBusiness: ["EO", "CYBER"],
     policyYear: 2026,
@@ -45,7 +45,7 @@ export const LOCAL_FIXTURE = {
     operationsDescription:
       "Technology company providing underwriting, credit, and workflow software for housing and finance professionals.",
     producer: {
-      agencyName: "Montgomery Risk",
+      agencyName: "Example Risk",
       address: {
         street1: "161 Bay Street",
         street2: "Suite 2700",

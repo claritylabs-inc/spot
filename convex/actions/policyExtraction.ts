@@ -202,6 +202,7 @@ function fieldsWithPersistedCarrierIdentity(
 // ─── State Type ────────────────────────────────────────────────────────────────
 
 export type PolicyExtractionState = {
+  workspaceScanImportId?: Id<"operatorWorkspaceScanImports">;
   /** "upload" = direct file upload; "agent_email" = attachment forwarded to the email agent */
   sourceKind: "upload" | "agent_email";
   /** Convex storage ID of the PDF */
@@ -1459,34 +1460,6 @@ function shouldRejectDocument(decision: ExtractionGateDecision): boolean {
   return !decision.shouldExtract && decision.confidence >= 0.7;
 }
 
-async function notifyExtractionReviewRequired(
-  ctx: ActionCtx,
-  args: {
-    orgId: Id<"organizations">;
-    policyId: string;
-    policyNumber?: string;
-    carrier?: string;
-    questionCount: number;
-  },
-) {
-  const label =
-    args.policyNumber && args.policyNumber !== "Unknown"
-      ? `policy ${args.policyNumber}`
-      : args.carrier
-        ? `${args.carrier} policy`
-        : "a policy";
-  await ctx.runMutation((internal as any).lib.notify.notifyInternal, {
-    orgId: args.orgId,
-    type: "incomplete_extraction",
-    title: "Policy extraction needs review",
-    body: `Spot finished extracting ${label}, but ${args.questionCount} coverage ${args.questionCount === 1 ? "term needs" : "terms need"} review.`,
-    severity: "warning",
-    actionType: "view_policy",
-    actionPayload: { policyId: args.policyId, tab: "review" },
-    sourceRef: { policyId: args.policyId, kind: "extraction_review" },
-  });
-}
-
 async function advanceLeasedPhase(
   ctx: ActionCtx,
   jobId: string,
@@ -2333,7 +2306,6 @@ export function makePhases(
           policyNumber?: string;
           carrier?: string;
         } | null;
-        let carrierDisplayName = finalPolicy?.carrier;
         if (finalPolicy?.orgId) {
           try {
             const carrierIdentity = (await convexCtx.runAction(
@@ -2346,14 +2318,7 @@ export function makePhases(
                 : "Carrier branding unavailable",
               carrierIdentity.success ? "info" : "warn",
             );
-            if (carrierIdentity.success) {
-              const enrichedPolicy = await convexCtx.runQuery(
-                internal.policies.getInternal,
-                { id: policyId as Id<"policies"> },
-              );
-              carrierDisplayName =
-                enrichedPolicy?.carrier ?? carrierDisplayName;
-            }
+
           } catch (error) {
             console.warn("[policyExtraction] carrier branding failed", error);
             await pCtx.log("Carrier branding could not be stored", "warn");
@@ -2370,16 +2335,18 @@ export function makePhases(
             finalPolicy.extractionReview,
           );
           if (reviewQuestions.length > 0) {
-            await notifyExtractionReviewRequired(convexCtx, {
-              orgId: finalPolicy.orgId as Id<"organizations">,
-              policyId,
-              policyNumber: finalPolicy.policyNumber,
-              carrier: carrierDisplayName,
-              questionCount: reviewQuestions.length,
-            });
-            await pCtx.log(
-              `Created extraction review notification for ${reviewQuestions.length} coverage ${reviewQuestions.length === 1 ? "term" : "terms"}`,
+            const notified = await convexCtx.runMutation(
+              internal.lib.notify.notifyPolicyExtractionReviewInternal,
+              {
+                policyId: policyId as Id<"policies">,
+                questionCount: reviewQuestions.length,
+                workspaceScanImportId: state.workspaceScanImportId,
+              },
             );
+            if (notified)
+              await pCtx.log(
+                `Created extraction review notification for ${reviewQuestions.length} coverage ${reviewQuestions.length === 1 ? "term" : "terms"}`,
+              );
           }
         }
       } catch {
@@ -3786,6 +3753,7 @@ export const startPolicyExtractionFromUpload = internalAction({
     orgId: v.id("organizations"),
     userId: v.id("users"),
     policyFileId: v.optional(v.id("policyFiles")),
+    workspaceScanImportId: v.optional(v.id("operatorWorkspaceScanImports")),
     policyVersionKind: v.optional(
       v.union(
         v.literal("new_policy"),
@@ -3803,6 +3771,7 @@ export const startPolicyExtractionFromUpload = internalAction({
       orgId,
       userId,
       policyFileId,
+      workspaceScanImportId,
       policyVersionKind,
     },
   ) => {
@@ -3825,6 +3794,7 @@ export const startPolicyExtractionFromUpload = internalAction({
         orgId: String(orgId),
         userId: String(userId),
         policyFileId: policyFileId ? String(policyFileId) : undefined,
+        workspaceScanImportId,
         policyVersionKind,
         replacementPromotionStarted:
           policyVersionKind === "re_extraction" ||
@@ -3882,6 +3852,7 @@ export const startPolicyExtractionFromUpload = internalAction({
         orgId: String(orgId),
         userId: String(userId),
         policyFileId: policyFileId ? String(policyFileId) : undefined,
+        workspaceScanImportId,
         policyVersionKind,
         replacementPromotionStarted:
           policyVersionKind === "re_extraction" ||
@@ -3909,6 +3880,7 @@ export function policyExtractionRetrySource(params: {
   existingState?: PolicyExtractionState;
 }): Pick<
   PolicyExtractionState,
+  | "workspaceScanImportId"
   | "sourceKind"
   | "fileId"
   | "fileName"
@@ -3920,6 +3892,7 @@ export function policyExtractionRetrySource(params: {
 > {
   const retryState = params.mode === "full" ? undefined : params.existingState;
   return {
+    workspaceScanImportId: retryState?.workspaceScanImportId,
     sourceKind: retryState?.sourceKind ?? "upload",
     fileId: retryState?.fileId ?? params.policy.fileId,
     fileName: retryState?.fileName ?? params.policy.fileName,

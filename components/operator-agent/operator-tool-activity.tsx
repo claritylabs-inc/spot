@@ -1,11 +1,15 @@
 "use client";
 
-import { ChevronRight, SquareTerminal } from "lucide-react";
+import { ChevronRight, CircleAlert, SquareTerminal } from "lucide-react";
 
 import { Spinner } from "@/components/ui/spinner";
 import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
 import { formatDisplayDateTime } from "@/lib/date-format";
-import type { OperatorAgentMessage } from "@/lib/operator-agent-api";
+import type {
+  OperatorAgentConfirmation,
+  OperatorAgentMessage,
+  OperatorAgentThreadDetail,
+} from "@/lib/operator-agent-api";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
@@ -44,14 +48,128 @@ function activityStatus(
   return { label: "Finished", tone: "neutral" };
 }
 
+type ActivityEntry = {
+  request: OperatorAgentMessage;
+  response?: OperatorAgentMessage;
+  confirmations: OperatorAgentConfirmation[];
+};
+
+type ConversationEntry =
+  | { kind: "message"; activity: ActivityEntry }
+  | { kind: "tool_calls"; activities: ActivityEntry[] };
+
+export function operatorConversationEntries(
+  detail: Pick<OperatorAgentThreadDetail, "messages" | "confirmations">,
+): ConversationEntry[] {
+  const requests = new Set(
+    detail.messages
+      .filter((message) => message.isDirectToolRequest)
+      .map((message) => message.id),
+  );
+  const responses = new Map(
+    detail.messages
+      .filter(
+        (message) =>
+          message.role === "assistant" &&
+          message.replyToMessageId &&
+          requests.has(message.replyToMessageId),
+      )
+      .map((message) => [message.replyToMessageId, message] as const),
+  );
+  const confirmations = new Map<string, OperatorAgentConfirmation[]>();
+  for (const confirmation of detail.confirmations) {
+    const existing = confirmations.get(confirmation.promptMessageId) ?? [];
+    existing.push(confirmation);
+    confirmations.set(confirmation.promptMessageId, existing);
+  }
+
+  const entries: ConversationEntry[] = [];
+  for (const request of detail.messages) {
+    if (
+      request.replyToMessageId &&
+      responses.get(request.replyToMessageId)?.id === request.id
+    )
+      continue;
+    const response = request.isDirectToolRequest
+      ? responses.get(request.id)
+      : undefined;
+    const activity: ActivityEntry = {
+      request,
+      response,
+      confirmations: [
+        ...(confirmations.get(request.id) ?? []),
+        ...(response ? (confirmations.get(response.id) ?? []) : []),
+      ],
+    };
+    const calls = response?.toolCalls ?? [];
+    const status = activityStatus(response, false);
+    const isGroupableRead =
+      request.isDirectToolRequest &&
+      activity.confirmations.length === 0 &&
+      !request.attachments?.length &&
+      !response?.attachments?.length &&
+      calls.length > 0 &&
+      calls.every((call) => call.effect === "read") &&
+      (status.label === "Completed" || status.label === "Failed");
+    if (isGroupableRead) {
+      const previous = entries.at(-1);
+      if (previous?.kind === "tool_calls") previous.activities.push(activity);
+      else entries.push({ kind: "tool_calls", activities: [activity] });
+    } else {
+      entries.push({ kind: "message", activity });
+    }
+  }
+  return entries;
+}
+
+export function OperatorToolActivityGroup({
+  activities,
+}: {
+  activities: ActivityEntry[];
+}) {
+  const errorCount = activities.filter(
+    ({ response }) => activityStatus(response, false).label === "Failed",
+  ).length;
+  return (
+    <details className="group/calls min-w-0">
+      <summary
+        className={cn(
+          "flex w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden",
+          typeStyle("caption.default"),
+        )}
+      >
+        <ChevronRight className="size-4 shrink-0 group-open/calls:rotate-90" />
+        <span>
+          {activities.length} tool {activities.length === 1 ? "call" : "calls"}
+          {errorCount > 0
+            ? `, ${errorCount} ${errorCount === 1 ? "error" : "errors"}`
+            : ""}
+        </span>
+      </summary>
+      <div>
+        {activities.map(({ request, response }) => (
+          <OperatorToolActivity
+            key={request.id}
+            request={request}
+            response={response}
+            awaitingApproval={false}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function OperatorToolActivity({
   request,
   response,
   awaitingApproval,
+  detailsOnly = false,
 }: {
   request: OperatorAgentMessage;
   response?: OperatorAgentMessage;
   awaitingApproval: boolean;
+  detailsOnly?: boolean;
 }) {
   const status = activityStatus(response, awaitingApproval);
   const calls = response?.toolCalls ?? [];
@@ -61,9 +179,122 @@ export function OperatorToolActivity({
     result !== `Completed: ${request.content}.` &&
     !(awaitingApproval && result.startsWith("Confirmation required:"));
 
+  const toolDetails = (
+    <div>
+      <p
+        className={cn(
+          "pt-3 text-muted-foreground",
+          typeStyle("caption.default"),
+        )}
+      >
+        API · {formatDisplayDateTime(request.createdAt)}
+      </p>
+      <div className="space-y-4 py-3">
+        {calls.length === 0 ? (
+          <p
+            className={cn(
+              "text-muted-foreground",
+              typeStyle("caption.default"),
+            )}
+          >
+            No tool details recorded yet.
+          </p>
+        ) : (
+          calls.map((call, index) => (
+            <div key={`${call.name}-${index}`} className="min-w-0 space-y-3">
+              <p
+                className={cn(
+                  "wrap-anywhere text-muted-foreground",
+                  typeStyle("technical.codeCompact"),
+                )}
+              >
+                {call.name}
+              </p>
+              {(
+                [
+                  ["Input", call.input],
+                  ["Result preview", call.output],
+                ] as const
+              ).map(([label, value]) =>
+                value !== undefined ? (
+                  <div key={label}>
+                    <p
+                      className={cn(
+                        "mb-2 text-muted-foreground",
+                        typeStyle("caption.medium"),
+                      )}
+                    >
+                      {label}
+                    </p>
+                    <pre
+                      tabIndex={0}
+                      aria-label={label}
+                      className={cn(
+                        "max-h-64 overflow-auto whitespace-pre-wrap wrap-anywhere rounded-lg bg-muted p-3 text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+                        typeStyle("technical.codeCompact"),
+                      )}
+                    >
+                      {formatToolValue(value)}
+                    </pre>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  if (detailsOnly || status.tone === "danger" || status.tone === "warning") {
+    return (
+      <div className="min-w-0 space-y-2">
+        {!detailsOnly || showResult ? (
+          <div className="flex items-start gap-2">
+            {status.tone === "danger" ? (
+              <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+            ) : null}
+            <div className="min-w-0">
+              <p
+                className={cn(
+                  "whitespace-pre-wrap wrap-anywhere text-foreground",
+                  typeStyle("body.default"),
+                )}
+              >
+                {showResult ? result : request.content}
+              </p>
+              {awaitingApproval ? (
+                <p
+                  className={cn(
+                    "mt-1 text-muted-foreground",
+                    typeStyle("caption.default"),
+                  )}
+                >
+                  {status.label}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <details className="group/activity">
+          <summary
+            className={cn(
+              "flex w-fit cursor-pointer list-none items-center gap-1 rounded-md py-1 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden",
+              typeStyle("caption.default"),
+            )}
+          >
+            <ChevronRight className="size-3.5 shrink-0 group-open/activity:rotate-90" />
+            Details
+          </summary>
+          {toolDetails}
+        </details>
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-0 border-b border-border">
-      <details className="group">
+      <details className="group/activity">
         <summary className="flex cursor-pointer list-none items-start gap-3 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
           {status.label === "Running" ? (
             <Spinner className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -82,79 +313,15 @@ export function OperatorToolActivity({
               </span>
               <StatusTag tone={status.tone}>{status.label}</StatusTag>
             </div>
-            <div
-              className={cn(
-                "mt-1 text-muted-foreground",
-                typeStyle("caption.default"),
-              )}
-            >
-              API · {formatDisplayDateTime(request.createdAt)}
-            </div>
           </div>
-          <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground group-open:rotate-90" />
+          <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground group-open/activity:rotate-90" />
         </summary>
-        <div className="space-y-4 border-t border-border py-3">
-          {calls.length === 0 ? (
-            <p
-              className={cn(
-                "text-muted-foreground",
-                typeStyle("caption.default"),
-              )}
-            >
-              No tool details recorded yet.
-            </p>
-          ) : (
-            calls.map((call, index) => (
-              <div key={`${call.name}-${index}`} className="min-w-0 space-y-3">
-                <p
-                  className={cn(
-                    "wrap-anywhere text-muted-foreground",
-                    typeStyle("technical.codeCompact"),
-                  )}
-                >
-                  {call.name}
-                </p>
-                {(
-                  [
-                    ["Input", call.input],
-                    ["Result preview", call.output],
-                  ] as const
-                ).map(([label, value]) =>
-                  value !== undefined ? (
-                    <div key={label}>
-                      <p
-                        className={cn(
-                          "mb-2 text-muted-foreground",
-                          typeStyle("caption.medium"),
-                        )}
-                      >
-                        {label}
-                      </p>
-                      <pre
-                        tabIndex={0}
-                        aria-label={label}
-                        className={cn(
-                          "max-h-64 overflow-auto whitespace-pre-wrap wrap-anywhere rounded-lg bg-muted p-3 text-foreground focus-visible:outline-2 focus-visible:outline-ring",
-                          typeStyle("technical.codeCompact"),
-                        )}
-                      >
-                        {formatToolValue(value)}
-                      </pre>
-                    </div>
-                  ) : null,
-                )}
-              </div>
-            ))
-          )}
-        </div>
+        {toolDetails}
       </details>
       {showResult ? (
         <p
           className={cn(
-            "pb-3 whitespace-pre-wrap wrap-anywhere",
-            status.tone === "danger"
-              ? "text-destructive"
-              : "text-muted-foreground",
+            "pb-3 whitespace-pre-wrap wrap-anywhere text-muted-foreground",
             typeStyle("caption.default"),
           )}
         >

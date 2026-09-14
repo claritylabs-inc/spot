@@ -1,3 +1,4 @@
+import { syncPolicyUploadFingerprints } from "./lib/policyImportDedup";
 import { v } from "convex/values";
 import {
   mutation,
@@ -429,17 +430,17 @@ export function normalizeEditableFields(
 }
 
 async function getPolicyExtractionRun(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   policyId: DataModelId<"policies">,
 ) {
   return await ctx.db
     .query("policyExtractionRuns")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
+    .withIndex("policy", (q) => q.eq("policyId", policyId))
     .first();
 }
 
-async function readPolicyPipelineState(
-  ctx: any,
+export async function readPolicyPipelineState(
+  ctx: QueryCtx | MutationCtx,
   policyId: DataModelId<"policies">,
 ) {
   const run = await getPolicyExtractionRun(ctx, policyId);
@@ -1396,12 +1397,14 @@ export const insert = mutation({
       uploadedByUserId: operator.userId,
       linesOfBusiness: toLobCodes(rawFields.linesOfBusiness),
     };
-    return await ctx.db.insert("policies", {
+    const policyId = await ctx.db.insert("policies", {
       ...fields,
       uploadFileSha256s,
       extractionDataStage: "placeholder",
       extractionDataStageUpdatedAt: now,
     });
+    await syncPolicyUploadFingerprints(ctx, policyId);
+    return policyId;
   },
 });
 
@@ -1454,6 +1457,7 @@ export const insertAutomationUploadInternal = internalMutation({
       extractionDataStage: "placeholder",
       extractionDataStageUpdatedAt: now,
     });
+    await syncPolicyUploadFingerprints(ctx, policyId);
     return { created: true as const, policyId };
   },
 });
@@ -2278,6 +2282,7 @@ export async function createOperatorUploadByUser(
     uploadedByUserId: operator.userId,
   });
 
+  await syncPolicyUploadFingerprints(ctx, policyId);
   await writeOperatorAudit(ctx, {
     operatorUserId: operator.userId,
     type: "setup_write",
@@ -2915,6 +2920,7 @@ export const updateFiles = internalMutation({
     if (uploadFileSha256s !== undefined)
       patch.uploadFileSha256s = uploadFileSha256s;
     await ctx.db.patch(id, patch);
+    if (uploadFileSha256s !== undefined) await syncPolicyUploadFingerprints(ctx, id);
   },
 });
 

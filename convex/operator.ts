@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
 import {
@@ -36,6 +37,7 @@ import {
 } from "./lib/operatorIdentity";
 import { parseStandaloneEmailAddress } from "./lib/emailAddress";
 import { orgBrandFields } from "./lib/orgBranding";
+import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import {
   throwUserFacingError,
   userFacingErrorCodes,
@@ -1637,6 +1639,7 @@ export const upsertBrokerInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertCustomerUser(ctx, args.adminUserId);
+    assertExternalBrokerIdentity({ ...args.broker, email: args.adminEmail });
     const brokerName = args.broker.name.trim();
     if (!brokerName) throw new Error("Broker name is required");
     const slug = args.broker.slug
@@ -1717,6 +1720,30 @@ export const upsertBrokerInternal = internalMutation({
     return { brokerOrgId };
   },
 });
+
+export async function createStandaloneClientOrganizationByOperator(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    name: string;
+    website?: string;
+    operatorStatus?: "onboarding" | "live";
+  },
+) {
+  await requireOperatorForUser(ctx, args.operatorUserId);
+  await assertNoOperatorImpersonation(ctx, args.operatorUserId);
+  const name = args.name.trim();
+  if (!name) throw new Error("Client name is required");
+  return ctx.db.insert("organizations", {
+    name,
+    type: "client",
+    website: normalizeWebsiteUrl(args.website),
+    allowedEmails: [],
+    emailVerification: "strict",
+    onboardingComplete: true,
+    operatorStatus: args.operatorStatus ?? "onboarding",
+  });
+}
 
 export const createSoloClientInternal = internalMutation({
   args: {
@@ -1809,18 +1836,17 @@ export const createSoloClientInternal = internalMutation({
     }
     const primaryAdmin = users.find((user) => user.role === "admin");
 
-    const clientOrgId = await ctx.db.insert("organizations", {
+    const clientOrgId = await createStandaloneClientOrganizationByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
       name: clientName,
-      type: "client",
-      website: args.client.website?.trim() || undefined,
+      website: args.client.website,
+    });
+    await ctx.db.patch(clientOrgId, {
       allowedEmails: users.map((user) => user.email),
-      emailVerification: "strict",
       primaryInsuranceContactId: primaryAdmin?.userId,
       primaryContactName: primaryAdmin?.name?.trim() || undefined,
       primaryContactEmail: primaryAdmin?.email,
       primaryContactPhone: primaryAdmin?.phone,
-      onboardingComplete: true,
-      operatorStatus: "onboarding",
     });
     for (const user of users) {
       await ctx.db.insert("orgMemberships", {

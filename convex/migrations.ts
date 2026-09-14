@@ -1,6 +1,7 @@
 import { Migrations } from "@convex-dev/migrations";
 import { internalMutation, internalQuery } from "./_generated/server";
 import dayjs from "dayjs";
+import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { effectiveExtractionDataStage } from "./backfillDeclarationFacts";
@@ -260,6 +261,7 @@ export const migrateProcurementOutreaches = migrations.define({
   migrateOne: async (ctx, outreach) => {
     let brokerOrgId = outreach.brokerOrgId;
     if (!brokerOrgId) {
+      assertExternalBrokerIdentity({ name: outreach.brokerName, email: outreach.contactEmail });
       const brokers = await ctx.db
         .query("organizations")
         .withIndex("type", (q) => q.eq("type", "broker"))

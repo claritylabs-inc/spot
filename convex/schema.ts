@@ -1,3 +1,6 @@
+import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
+import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
+import { completionOutcomeValidator } from "./lib/procurementCompletionOutcome";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
@@ -456,6 +459,8 @@ const policyDeliveryRuleFiltersValidator = v.object({
 });
 
 export default defineSchema({
+  ...googleWorkspaceScanTables,
+  ...scanReconciliationTables,
   ...authTables,
 
   // Override default users table with custom profile fields
@@ -617,6 +622,9 @@ export default defineSchema({
     ),
     agentDisplayName: v.optional(v.string()),
   })
+    .index("scan_contact", ["primaryContactEmail"])
+    .index("scan_address", ["mailingAddress.street1", "mailingAddress.zip"])
+    .index("name", ["name"])
     .index("handle", ["agentHandle"])
     .index("type", ["type"])
     .index("broker", ["brokerOrgId"])
@@ -2035,6 +2043,12 @@ export default defineSchema({
     .index("broker", ["brokerOrgId"])
     .index("status", ["status"]),
 
+  policyUploadFingerprints: defineTable({
+    orgId: v.id("organizations"), policyId: v.id("policies"), sha256: v.string(),
+  }).index("organization_hash", ["orgId", "sha256"]).index("policy", ["policyId"]),
+  policyUploadFingerprintInventories: defineTable({
+    orgId: v.id("organizations"), cursor: v.union(v.string(), v.null()), complete: v.boolean(),
+  }).index("organization", ["orgId"]),
   policies: defineTable({
     ...pipelineFields(),
     userId: v.optional(v.id("users")),
@@ -2933,6 +2947,7 @@ export default defineSchema({
   procurementRequests: defineTable({
     clientOrgId: v.id("organizations"),
     title: v.string(),
+    normalizedTitle: v.optional(v.string()),
     narrative: v.string(),
     targetEffectiveDate: v.optional(v.string()),
     status: v.union(
@@ -2952,12 +2967,15 @@ export default defineSchema({
     packetRevision: v.optional(v.number()),
     replacingPolicyId: v.optional(v.id("policies")),
     resultingPolicyId: v.optional(v.id("policies")),
+    completionOutcome: v.optional(completionOutcomeValidator),
     inboxToken: v.string(),
     createdByUserId: v.id("users"),
     updatedByUserId: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("title", ["clientOrgId", "title"])
+    .index("normalized_title", ["clientOrgId", "normalizedTitle"])
     .index("organization", ["clientOrgId", "updatedAt"])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"]),
@@ -2971,6 +2989,7 @@ export default defineSchema({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     status: v.union(
+      v.literal("observed"),
       v.literal("request_sent"),
       v.literal("can_handle"),
       v.literal("cannot_handle"),
@@ -3012,6 +3031,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("request_broker", ["requestId", "brokerOrgId"])
     .index("request", ["requestId", "updatedAt"])
     .index("organization", ["clientOrgId", "updatedAt"])
     .index("broker", ["brokerOrgId", "updatedAt"]),

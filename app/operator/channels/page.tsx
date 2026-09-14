@@ -93,11 +93,13 @@ function OperatorChannelTabs({
   imessageContent,
   googleWorkspaceContent,
   mcpContent,
+  onTabChange,
 }: {
   children: ReactNode;
   imessageContent?: ReactNode;
   googleWorkspaceContent?: ReactNode;
   mcpContent?: ReactNode;
+  onTabChange?: () => void;
 }) {
   const placeholder = (
     <ChannelCard className="flex h-40 items-center justify-center text-muted-foreground">
@@ -108,7 +110,7 @@ function OperatorChannelTabs({
   const [activeTab, selectTab] = useTabParam(CHANNEL_TABS);
 
   return (
-    <Tabs value={activeTab} onValueChange={selectTab} className="gap-4">
+    <Tabs value={activeTab} onValueChange={(value) => { selectTab(value); onTabChange?.(); }} className="gap-4">
       <div className="-mx-1 overflow-x-auto px-1 scrollbar-hide">
         <TabsList variant="pill" aria-label="Channel">
           <TabsTrigger value="slack">Slack</TabsTrigger>
@@ -469,6 +471,7 @@ function OperatorChannelsContent({
   const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
   const [googleSettingsDrawerOpen, setGoogleSettingsDrawerOpen] =
     useState(false);
+  const [scanPanel, setScanPanel] = useState<ReactNode>(null);
   const [busy, setBusy] = useState<"host" | "identity" | null>(null);
   const hostInstallation = hostStatus?.installation;
   const workspaceTeamId = hostStatus?.hostTeamId;
@@ -667,14 +670,14 @@ function OperatorChannelsContent({
       </form>
     </SettingsDrawer>
   );
-  const rightPanel = googleSettingsDrawerOpen ? (
+  const rightPanel = scanPanel ?? (googleSettingsDrawerOpen ? (
     <OperatorGoogleWorkspaceSettingsDrawer
       open
       onOpenChange={setGoogleSettingsDrawerOpen}
     />
   ) : (
     identityDrawer
-  );
+  ));
 
   return (
     <AppShell
@@ -692,11 +695,22 @@ function OperatorChannelsContent({
     >
       <main className="w-full">
         <OperatorChannelTabs
+          onTabChange={() => {
+            setScanPanel(null);
+            setGoogleSettingsDrawerOpen(false);
+            setIdentityDrawerOpen(false);
+          }}
           imessageContent={<OperatorImessageContent />}
           googleWorkspaceContent={
             <OperatorGoogleWorkspaceContent
+              onRightPanel={(panel) => {
+                setIdentityDrawerOpen(false);
+                setGoogleSettingsDrawerOpen(false);
+                setScanPanel(panel);
+              }}
               onConfigure={() => {
                 setIdentityDrawerOpen(false);
+                setScanPanel(null);
                 setGoogleSettingsDrawerOpen(true);
               }}
             />

@@ -114,6 +114,7 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
     _id: request._id,
     title: request.title,
     narrative: requestNarrative(request),
+    completionOutcome: request.completionOutcome,
     packet: {
       markdown: assemblePacketMarkdown(packetSections, { audience: "client" }),
     },
@@ -164,14 +165,15 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireClientMembership(ctx);
-    const title = args.title.trim();
+    const title = args.title.trim().slice(0, 200);
     const narrative = args.narrative.trim();
     if (!title || !narrative)
       throw new Error("Title and narrative are required");
     const now = dayjs().valueOf();
     const requestId = await ctx.db.insert("procurementRequests", {
       clientOrgId: access.orgId,
-      title: title.slice(0, 200),
+      title,
+      normalizedTitle: title.toLowerCase().replace(/\s+/g, " "),
       narrative,
       targetEffectiveDate: optionalEffectiveDate(args.targetEffectiveDate),
       status: "submitted",

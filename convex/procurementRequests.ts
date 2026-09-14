@@ -1,4 +1,14 @@
+import {
+  completionOutcomeValidator,
+  normalizeCompletionOutcome,
+  type CompletionOutcome,
+} from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
+import {
+  assertExternalBrokerIdentity,
+  isSpotOwnedBrokerIdentity,
+  isSpotOwnedDomain,
+} from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -63,6 +73,7 @@ const requestStatusValidator = v.union(
 );
 
 const outreachStatusValidator = v.union(
+  v.literal("observed"),
   v.literal("request_sent"),
   v.literal("can_handle"),
   v.literal("cannot_handle"),
@@ -273,6 +284,7 @@ async function requireBrokerOrganization(
   if (!broker || broker.type !== "broker") {
     throw new Error("Broker organization not found");
   }
+  assertExternalBrokerIdentity(broker);
   return broker;
 }
 
@@ -359,6 +371,7 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
   return {
     ...request,
     narrative: requestNarrative(request),
+    completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
     resultingPolicy: policyLabel(resultingPolicy),
@@ -678,6 +691,7 @@ type CreateProcurementRequestArgs = {
   status?: RequestStatus;
   replacingPolicyId?: Id<"policies">;
   resultingPolicyId?: Id<"policies">;
+  completionOutcome?: CompletionOutcome;
   clientVisible?: boolean;
 };
 
@@ -699,12 +713,16 @@ export async function validateProcurementRequestCreateByOperator(
   requiredText(args.title, "Title", 200);
   requiredText(args.narrative, "Client request");
   optionalDate(args.targetEffectiveDate);
+  if (args.completionOutcome)
+    normalizeCompletionOutcome(args.completionOutcome);
   return client;
 }
 
 export async function createProcurementRequestByOperator(
   ctx: MutationCtx,
-  args: CreateProcurementRequestArgs & { source: "operator" | "agent" },
+  args: CreateProcurementRequestArgs & {
+    source: "operator" | "agent" | "workspace_scan";
+  },
 ) {
   const client = await validateProcurementRequestCreateByOperator(ctx, args);
   const now = dayjs().valueOf();
@@ -713,9 +731,16 @@ export async function createProcurementRequestByOperator(
   const requestId = await ctx.db.insert("procurementRequests", {
     clientOrgId: args.clientOrgId,
     title: requiredText(args.title, "Title", 200),
+    normalizedTitle: requiredText(args.title, "Title", 200).toLowerCase().replace(/\s+/g," "),
     narrative,
     targetEffectiveDate: optionalDate(args.targetEffectiveDate),
-    status: args.resultingPolicyId ? "completed" : (args.status ?? "draft"),
+    status:
+      args.resultingPolicyId || args.completionOutcome
+        ? "completed"
+        : (args.status ?? "draft"),
+    completionOutcome: args.completionOutcome
+      ? normalizeCompletionOutcome(args.completionOutcome)
+      : undefined,
     clientVisible: args.clientVisible ?? false,
     requirementRevision: 0,
     specificationRevision: 0,
@@ -734,11 +759,12 @@ export async function createProcurementRequestByOperator(
     userId: args.operatorUserId,
     source: args.source === "agent" ? "operator_agent" : "manual",
   });
-  await ctx.scheduler.runAfter(
-    0,
-    internal.procurementPacket.ensureRequestLinkInternal,
-    { requestId, createdByUserId: args.operatorUserId },
-  );
+  if (args.source !== "workspace_scan")
+    await ctx.scheduler.runAfter(
+      0,
+      internal.procurementPacket.ensureRequestLinkInternal,
+      { requestId, createdByUserId: args.operatorUserId },
+    );
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -778,6 +804,7 @@ export const create = mutation({
     status: v.optional(requestStatusValidator),
     replacingPolicyId: v.optional(v.id("policies")),
     resultingPolicyId: v.optional(v.id("policies")),
+    completionOutcome: v.optional(completionOutcomeValidator),
     clientVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -801,8 +828,9 @@ export async function updateProcurementRequestByOperator(
     status?: RequestStatus;
     replacingPolicyId?: Id<"policies"> | null;
     resultingPolicyId?: Id<"policies"> | null;
+    completionOutcome?: CompletionOutcome | null;
     clientVisible?: boolean;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -811,8 +839,10 @@ export async function updateProcurementRequestByOperator(
     updatedByUserId: args.operatorUserId,
     updatedAt: dayjs().valueOf(),
   };
-  if (args.title !== undefined)
+  if (args.title !== undefined) {
     patch.title = requiredText(args.title, "Title", 200);
+    patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g," ");
+  }
   if (args.narrative !== undefined) {
     patch.narrative = requiredText(args.narrative, "Client request");
   }
@@ -839,6 +869,15 @@ export async function updateProcurementRequestByOperator(
     patch.resultingPolicyId = args.resultingPolicyId ?? undefined;
     if (args.resultingPolicyId) patch.status = "completed";
   }
+  if (args.completionOutcome !== undefined) {
+    patch.completionOutcome =
+      args.completionOutcome === null
+        ? undefined
+        : normalizeCompletionOutcome(args.completionOutcome);
+    if (args.completionOutcome) patch.status = "completed";
+  }
+  if (patch.status && patch.status !== "completed")
+    patch.completionOutcome = undefined;
   if (args.clientVisible !== undefined)
     patch.clientVisible = args.clientVisible;
   const changedFields = Object.keys(patch).filter(
@@ -870,6 +909,9 @@ export const update = mutation({
     status: v.optional(requestStatusValidator),
     replacingPolicyId: v.optional(v.union(v.id("policies"), v.null())),
     resultingPolicyId: v.optional(v.union(v.id("policies"), v.null())),
+    completionOutcome: v.optional(
+      v.union(completionOutcomeValidator, v.null()),
+    ),
     clientVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -894,13 +936,14 @@ export async function createProcurementOutreachByOperator(
     contactPhone?: string;
     status?: OutreachStatus;
     log?: string;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await requireRequest(ctx, args.requestId);
   const broker = await requireBrokerOrganization(ctx, args.brokerOrgId);
   if (!broker) throw new Error("Broker organization is required");
+  assertExternalBrokerIdentity({ email: args.contactEmail });
   if (args.contactUserId) {
     const membership = await ctx.db
       .query("orgMemberships")
@@ -910,6 +953,8 @@ export async function createProcurementOutreachByOperator(
       .unique();
     if (!membership)
       throw new Error("Broker contact must belong to the selected broker");
+    const contact = await ctx.db.get(args.contactUserId);
+    assertExternalBrokerIdentity({ email: contact?.email });
   }
   const now = dayjs().valueOf();
   const contactSnapshot = {
@@ -917,7 +962,7 @@ export async function createProcurementOutreachByOperator(
     email: optionalEmail(args.contactEmail),
     phone: optionalText(args.contactPhone, 100),
   };
-  const sent = (args.status ?? "request_sent") === "request_sent";
+  const sent = args.source !== "workspace_scan" && (args.status ?? "request_sent") === "request_sent";
   const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
     requestId: request._id,
     clientOrgId: request.clientOrgId,
@@ -990,7 +1035,7 @@ export async function updateProcurementOutreachByOperator(
     contactPhone?: string | null;
     status?: OutreachStatus;
     log?: string | null;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -1020,6 +1065,13 @@ export async function updateProcurementOutreachByOperator(
     patch.brokerName = broker.name;
   }
   const nextBrokerOrgId = patch.brokerOrgId ?? outreach.brokerOrgId;
+  await requireBrokerOrganization(ctx, nextBrokerOrgId);
+  assertExternalBrokerIdentity({
+    email:
+      args.contactEmail === undefined
+        ? outreach.contactEmail
+        : args.contactEmail,
+  });
   if (args.contactUserId !== undefined) {
     if (args.contactUserId) {
       if (!nextBrokerOrgId) throw new Error("Select a broker before a contact");
@@ -1031,6 +1083,8 @@ export async function updateProcurementOutreachByOperator(
         .unique();
       if (!membership)
         throw new Error("Broker contact must belong to the selected broker");
+      const contact = await ctx.db.get(args.contactUserId);
+      assertExternalBrokerIdentity({ email: contact?.email });
     }
     patch.contactUserId = args.contactUserId ?? undefined;
   }
@@ -1122,7 +1176,7 @@ export async function createProcurementFileItemByOperator(
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     notes?: string;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -1229,7 +1283,7 @@ export async function updateProcurementFileItemByOperator(
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     notes?: string | null;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -1493,7 +1547,23 @@ export async function previewProcurementEmailReconciliation(
   const participantEmails = new Set(
     thread.participantEmails.map(normalizeProcurementEmail),
   );
-  const matchingOutreaches = outreaches.filter(
+  const eligibleOutreaches = (
+    await Promise.all(
+      outreaches.map(async (outreach) => {
+        const broker = outreach.brokerOrgId
+          ? await ctx.db.get(outreach.brokerOrgId)
+          : null;
+        return broker?.type === "broker" &&
+          !isSpotOwnedBrokerIdentity(broker) &&
+          !isSpotOwnedDomain(outreach.contactEmail)
+          ? outreach
+          : null;
+      }),
+    )
+  ).filter(
+    (outreach): outreach is NonNullable<typeof outreach> => outreach !== null,
+  );
+  const matchingOutreaches = eligibleOutreaches.filter(
     (outreach) =>
       outreach.contactEmail &&
       participantEmails.has(normalizeProcurementEmail(outreach.contactEmail)),
@@ -1501,10 +1571,12 @@ export async function previewProcurementEmailReconciliation(
   const suggestedOutreach =
     matchingOutreaches.length === 1 ? matchingOutreaches[0] : null;
   const selectedOutreach = selectedOutreachId
-    ? outreaches.find((outreach) => outreach._id === selectedOutreachId)
+    ? eligibleOutreaches.find((outreach) => outreach._id === selectedOutreachId)
     : suggestedOutreach;
   if (selectedOutreachId && !selectedOutreach) {
-    throw new Error("Selected outreach does not belong to this request");
+    throw new Error(
+      "Selected outreach must belong to this request and an external broker",
+    );
   }
   const selectedProposalIds = new Set(
     proposals
@@ -1543,9 +1615,9 @@ export async function previewProcurementEmailReconciliation(
     files,
     unfiledFiles,
     selectedOutreachId: selectedOutreach?._id ?? null,
-    // Every outreach on the thread's current request, so a client that moved
+    // Eligible outreaches on the thread's current request, so a client that moved
     // the thread can rebuild its picker instead of trusting a stale snapshot.
-    outreaches: outreaches.map((outreach) => ({
+    outreaches: eligibleOutreaches.map((outreach) => ({
       outreachId: outreach._id,
       brokerOrgId: outreach.brokerOrgId,
       brokerName: outreach.brokerName,
@@ -1613,7 +1685,7 @@ export async function updateProcurementEmailThreadByOperator(
     emailThreadId: Id<"procurementEmailThreads">;
     category?: ProcurementEmailCategory;
     requestId?: Id<"procurementRequests">;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);

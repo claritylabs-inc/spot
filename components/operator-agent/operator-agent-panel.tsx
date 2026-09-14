@@ -28,6 +28,7 @@ import {
 } from "@/components/spot-prompt-input";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
+import { OperationalPanel } from "@/components/ui/operational-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,7 +66,11 @@ import {
 } from "./operator-page-context";
 import { useOptionalOperatorAgent } from "./operator-agent-provider";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
-import { OperatorToolActivity } from "./operator-tool-activity";
+import {
+  operatorConversationEntries,
+  OperatorToolActivityGroup,
+  OperatorToolActivity,
+} from "./operator-tool-activity";
 
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_MAX_AGGREGATE_BYTES = 50 * 1024 * 1024;
@@ -122,6 +127,7 @@ function ConfirmationArtifact({
   busy: boolean;
   onDecision: (decision: "approve" | "reject") => void;
 }) {
+  const [title, ...details] = confirmation.title.split("\n");
   const presentation = (() => {
     switch (confirmation.state) {
       case "approved":
@@ -151,13 +157,33 @@ function ConfirmationArtifact({
   })();
 
   return (
-    <div className="border-l-2 border-border-emphasized pl-3">
-      <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
-      <p className={cn("mt-2 text-foreground", typeStyle("body.medium"))}>
-        {confirmation.title}
-      </p>
+    <OperationalPanel
+      as="div"
+      className="flex min-w-0 flex-wrap items-end gap-4 p-4"
+    >
+      <div className="min-w-0 flex-1 basis-80">
+        <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+        <p
+          className={cn(
+            "mt-2 break-words text-foreground",
+            typeStyle(details.length ? "body.medium" : "body.default"),
+          )}
+        >
+          {title}
+        </p>
+        {details.length ? (
+          <p
+            className={cn(
+              "mt-2 whitespace-pre-line break-words text-foreground",
+              typeStyle("body.default"),
+            )}
+          >
+            {details.join("\n")}
+          </p>
+        ) : null}
+      </div>
       {confirmation.state === "pending" && confirmation.actionable ? (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <PillButton
             size="compact"
             variant="secondary"
@@ -177,7 +203,7 @@ function ConfirmationArtifact({
           </PillButton>
         </div>
       ) : null}
-    </div>
+    </OperationalPanel>
   );
 }
 
@@ -386,35 +412,10 @@ function OperatorConversation({
     initial: "instant",
     resize: "instant",
   });
-  const confirmationsByMessage = useMemo(() => {
-    const grouped = new Map<string, OperatorAgentConfirmation[]>();
-    for (const confirmation of detail.confirmations) {
-      const existing = grouped.get(confirmation.promptMessageId) ?? [];
-      existing.push(confirmation);
-      grouped.set(confirmation.promptMessageId, existing);
-    }
-    return grouped;
-  }, [detail.confirmations]);
+  const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
   const hasPendingConfirmation = detail.confirmations.some(
     (confirmation) => confirmation.state === "pending",
   );
-  const directToolResponses = useMemo(() => {
-    const requests = new Set(
-      detail.messages
-        .filter((message) => message.isDirectToolRequest)
-        .map((message) => message.id),
-    );
-    return new Map(
-      detail.messages
-        .filter(
-          (message) =>
-            message.role === "assistant" &&
-            message.replyToMessageId &&
-            requests.has(message.replyToMessageId),
-        )
-        .map((message) => [message.replyToMessageId, message] as const),
-    );
-  }, [detail.messages]);
 
   useEffect(() => {
     if (detail.messages.length === 0) return;
@@ -447,33 +448,31 @@ function OperatorConversation({
               onSelect={onSelectIntent}
             />
           ) : (
-            detail.messages.map((message) => {
-              if (
-                message.replyToMessageId &&
-                directToolResponses.get(message.replyToMessageId)?.id ===
-                  message.id
-              )
-                return null;
-              const response = message.isDirectToolRequest
-                ? directToolResponses.get(message.id)
-                : undefined;
-              const confirmations = [
-                ...(confirmationsByMessage.get(message.id) ?? []),
-                ...(response
-                  ? (confirmationsByMessage.get(response.id) ?? [])
-                  : []),
-              ];
+            entries.map((entry) => {
+              if (entry.kind === "tool_calls") {
+                return (
+                  <OperatorToolActivityGroup
+                    key={entry.activities[0].request.id}
+                    activities={entry.activities}
+                  />
+                );
+              }
+              const {
+                request: message,
+                response,
+                confirmations,
+              } = entry.activity;
               return (
                 <Fragment key={message.id}>
                   {message.isDirectToolRequest ? (
                     <>
-                      <OperatorToolActivity
-                        request={message}
-                        response={response}
-                        awaitingApproval={confirmations.some(
-                          (confirmation) => confirmation.state === "pending",
-                        )}
-                      />
+                      {confirmations.length === 0 ? (
+                        <OperatorToolActivity
+                          request={message}
+                          response={response}
+                          awaitingApproval={false}
+                        />
+                      ) : null}
                       {[message, ...(response ? [response] : [])].map((item) =>
                         item.attachments?.length ? (
                           <OperatorMessageAttachments
@@ -503,6 +502,16 @@ function OperatorConversation({
                           onDecision(confirmation, decision)
                         }
                       />
+                      {message.isDirectToolRequest ? (
+                        <div className="mt-2">
+                          <OperatorToolActivity
+                            request={message}
+                            response={response}
+                            awaitingApproval={confirmation.state === "pending"}
+                            detailsOnly
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </Fragment>
