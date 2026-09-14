@@ -355,10 +355,10 @@ remain ordinary access-controlled Spot deep links.
 
 Automated policy delivery no longer has Slack settings, rules, queues, attempts,
 or extraction hooks. Ordinary Slack replies, notifications, certificates, file
-downloads, and proposal correspondence remain. The procurement legacy audit and
-purge are deployment-gated through `procurementMigration:auditLegacyNarrowing`
-and `migrations:runProcurementLegacyPurge`; do not restore a Slack policy-delivery
-toggle or sender while those retired tables await their narrowing release.
+downloads, and proposal correspondence remain. Its obsolete tables and fields
+are absent from the conditional narrowing candidate; production migration and
+zero-residual evidence are still pending in the backend simplification release
+record. Do not restore a Slack policy-delivery toggle or sender.
 
 ## Validation and rollback
 

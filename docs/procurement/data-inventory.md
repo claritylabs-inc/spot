@@ -2,32 +2,33 @@
 
 ## Markdown files
 
-Procurement prose lives in `markdownDocuments` as ordinary named `.md` files
-with YAML front matter. A packet can contain any number of named files; there
-is no section schema or fixed public/private document pair. Each file declares
-`visibility: private` or `visibility: shared`. Shared packet files have the same
-client and broker view. Operator authorization still controls writes, and a
-revision check prevents overwriting concurrent edits. Front matter cannot
-change a file's owning organization or request.
+Every procurement request has exactly two ordinary Markdown files in
+`markdownDocuments`, both owned by the request:
 
-| Document kind | Owner | Current use |
+| File | Readership | Content |
 | --- | --- | --- |
-| `packet` | Request + filename | Arbitrary submission and working Markdown files. |
-| `packet` (`request-intake.md`) | Request | Intake stored once as a normal packet file; shared by default, with operator-private visibility respected by every DTO. |
-| `outreach_log` | Market outreach | Market log, default private. |
-| `procurement_file_notes` | Request file item | File handling notes, default private. |
+| `private.md` | Operators only; YAML `visibility: private`. | Internal work, broker observations, follow-ups, and file-handling notes. |
+| `public.md` | The request’s authorized shared audience; YAML `visibility: shared`. | Shared submission material and initial request narrative by default. |
 
-Note/intake writers parse supplied front matter and preserve it alongside
-existing metadata; they do not embed a second YAML document inside the body.
-Machine/operator packet edits use the same exact-confirmed file-writing tool.
-The unused packet section updater and bespoke proposal-acceptance API are
-removed. Pending legacy proposal text remains in migration metadata for review.
+Explicitly private operator intake goes into `private.md`. There are no
+separate intake, outreach-log, or file-note documents, arbitrary extra packet
+files, required headings, or nested metadata protocol. Authors use ordinary
+Markdown and YAML. Request, outreach, and file-item updates carry workflow
+fields; later prose edits replace one of the two files with `expectedRevision`.
+The exact-confirmed operator tool is `update_procurement_packet`.
 
-Saving a change to a shared file, including making it private, advances the
-request's packet revision. Existing packet links retain their immutable issued
-content snapshots until explicitly revoked or replaced; editing a file does
-not rewrite a historical snapshot. Released artifact access still rechecks
-its current release state and file lifecycle.
+The public filename does not publish content to the anonymous internet.
+Reading requires authorized request access or a valid issued packet link.
+Operators may read both files; client and broker sharing exposes public content
+only. Filenames and visibility must agree. Front matter cannot change the
+owning organization/request or grant editing authority.
+
+Updating `public.md` advances the request’s packet revision. Existing packet
+links retain immutable issued text/artifact snapshots until revoked or
+replaced; editing a file does not rewrite historical issuance. Released
+artifacts still require their current release state and file lifecycle checks.
+Source PDFs and other uploaded artifacts remain files in their own right; the
+two-file rule governs editable procurement prose.
 
 ## Stored artifacts
 
@@ -40,8 +41,8 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | Active table | Responsibility |
 | --- | --- |
 | `procurementRequests` | Request identity, workflow, effective date, packet revision, policy links, inbox routing and audit stamps. |
-| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; narrative comes from its Markdown file. |
-| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing clientFileId means an outstanding request. |
+| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s `private.md`. |
+| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing `clientFileId` means an outstanding request. |
 | `procurementPacketLinks` | Token hash, recipient, revocation/expiry and immutable issued text/artifact snapshots. |
 | `procurementPacketViews` | Token-validated access audit without raw magic-link tokens. |
 | `procurementProposals` | Operator-private offer, selection/archive state and extraction identity. |
@@ -54,37 +55,37 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | `brokerProfiles` | Supplier network status, office, writing states and LOB filters; never client/proposal access. |
 | `operatorAuditEvents` | Append-only actor/action/request audit. |
 
-## Migration and narrowing gates
+## Conditional narrowing status
 
-Run `procurementMarkdownMigration:auditPage` and then, after reviewing the
-approved deployment, `procurementMarkdownMigration:migratePage` with
-`{"table":"<table>","cursor":null}`. Pass every returned cursor unchanged until
-`isDone: true`; accumulate the complete audit. Migrate requests first, then
-outreaches, file items and finally legacy packet sections.
+The narrowing candidate removes the migrated procurement narrative fields,
+section storage, separate intake/log/file-note document ownership, obsolete
+snapshot/revision fields, and the one-off migration APIs that operated on them.
+This is a code-state description, not evidence that production migration or
+deployment has completed. The approved production export, full audit pages,
+migration results, zero-residual verification, exact deployed commit, and
+rollback artifact are pending in
+[the execution record](../architecture/backend-simplification.md).
 
-The request phase creates intake files and converts legacy section rows to ordinary `packet` files
-with explicit visibility. It retains legacy row IDs, source references,
-manual-edit markers and pending changes in YAML. Section removal
-requires its source mapping in a correctly scoped packet file. No issued link
-snapshot is changed. Intake/log/note conflicts stop migration for reconciliation.
+The narrowed tree intentionally has no broad schema-migration runner. Its
+remaining exported migrations are ongoing operator-email identity,
+declaration-fact, carrier-identity, and Slack compatibility work documented in
+[AGENTS.md](../../AGENTS.md).
 
-After every Markdown phase reports total `remaining: 0`, the following can
-narrow: `procurementRequests.narrative`,
-`procurementBrokerOutreaches.notes/applicationUrl/applicationQuestions/quoteSummary/quoteAmount/quoteCurrency/quoteUrl`,
-`procurementFileItems.notes`, the `procurementPacketSections` table. Remove compatibility readers
-and migration-only source types in the same narrowing release.
+Eight inventory-only tables remain until production counts and content review
+are available:
 
-Separately, `procurementSchemaCleanup:auditPage` and `migratePage` handle
-outreach `contactSnapshot`/`packetSnapshot` and request/review
-`requirementRevision`/`specificationRevision`. The current cleanup deletes
-unconfirmable pre-packet reviews before clearing legacy counters. Require a
-complete audit with zero `changed` and `unboundReviews` before removing those
-fields and making review `packetRevision` required.
+- `policyUpdateRuns`
+- `clientInvitations`
+- `brokerActivity`
+- `procurementRequirementDrafts`
+- `procurementRequestRequirements`
+- `procurementSpecifications`
+- `procurementRequestActivities`
+- `procurementRequestDocuments`
 
-`procurementSchemaCleanup:inventoryLegacyPage` inventories the retired
-requirement drafts/links/specifications, request activities/documents,
-clientInvitations and brokerActivity without deleting business evidence. These
-stores require empty-table proof or reviewed source mapping before narrowing.
-Canonical insuranceRequirements remain active in compliance. Existing
-procurementPacketUpdateRuns are retained operational history pending an
-explicit retention decision; their retired writer is no longer active.
+Do not purge or narrow these tables from repository-only evidence. If a table
+is empty on the approved target, record the all-page count before removal. If
+it contains material history, preserve that evidence losslessly under an
+authorized current owner before proposing a later narrowing change.
+`insuranceRequirements` remains the canonical active compliance store and is
+not part of this inventory-only set.

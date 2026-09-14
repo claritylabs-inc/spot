@@ -86,10 +86,10 @@ clean checkout:
    Keep existing consumer provider keys until the new code has been deployed
    and exercised; the new runtime does not read them.
 3. From the exact approved Spot commit, deploy the widening Convex schema and
-   functions with `npx convex dev --once --env-file <shared-dev-env>`. The
-   optional legacy `brokerModelSettings.providerKeys` field must remain in this
-   release, and the new `routerAssets` table/HTTP handler must be present before
-   the worker is updated.
+   functions with `npx convex dev --once --env-file <shared-dev-env>`. This step
+   must use the approved widening commit; the conditional narrowed schema no
+   longer stores provider keys. The new `routerAssets` table/HTTP handler must
+   be present before the worker is updated.
 4. Deploy the same commit explicitly to Railway environment `dev`, service
    `spot-extraction-worker`. Set
    `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION` in Convex to the exact
@@ -439,14 +439,11 @@ wildcard asset origins on a cloud router.
    `https://actions.spot.insure`.
 5. Before merging a commit whose Railway image uses the new asset actions,
    explicitly deploy that exact commit's widening Convex schema/functions and
-   synchronize `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION`. The pre-migration
-   worker accepts the omitted optional `providerKeys` claim field and remains
-   compatible with this widening release while its process credentials remain;
-   this overlap is safe only after the value-free audit confirms there is no
-   broker/configured route that depended on a snapshot key. Then merge and let
-   the normal `main` workflow redeploy the same Convex commit and gate Railway
-   plus Vercel. This prevents Railway autodeploy from starting the new worker
-   against old Convex functions.
+   synchronize `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION`. Complete the
+   value-free audit before removing consumer credentials or advancing to the
+   narrowed schema. Then merge and let the normal `main` workflow redeploy the
+   same Convex commit and gate Railway plus Vercel. This prevents Railway
+   autodeploy from starting the new worker against old Convex functions.
 6. Confirm `GET /health` and the Spot deployment health audit.
 7. Validate generation, tool loops, structured output, embeddings,
    transcription, extraction assets, and retrieval in shared dev. Include a
