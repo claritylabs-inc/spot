@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { makeFunctionReference } from "convex/server";
 import { describe, expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
@@ -9,60 +8,34 @@ import { readHolderNotes, readRequirementNotes, readWorkflowNotes, saveHolderNot
 import { upsertCertificateHolder } from "./certificateHolders";
 
 const modules = import.meta.glob("./**/*.ts");
-const migratePage = makeFunctionReference<"mutation">("certificateNotesMigration:migratePage");
-const verifyPage = makeFunctionReference<"query">("certificateNotesMigration:verifyPage");
 
-describe("certificate notes migration", () => {
-  test("keeps requirement notes once, preserves distinct holder notes and primary ordering", async () => {
+describe("certificate note documents", () => {
+  test("keeps source notes separate from holder notes and preserves ordered holder associations", async () => {
     const t = convexTest(schema, modules);
-    const ids = await t.run(async (ctx) => {
+    await t.run(async (ctx) => {
       const orgId = await ctx.db.insert("organizations", { name: "Client", type: "client" });
-      const userId = await ctx.db.insert("users", { name: "Operator" });
-      const sourceNote = "## Delivery\n\nDeliver through the property manager.";
-      const copiedHolder = await ctx.db.insert("certificateHolders", {
-        orgId, displayName: "Manager", normalizedName: "manager", notes: sourceNote,
-        source: "extraction", sourceRef: "Lease", createdAt: 1, updatedAt: 1,
-      });
-      const distinctHolder = await ctx.db.insert("certificateHolders", {
-        orgId, displayName: "Owner", normalizedName: "owner", notes: "Keep the owner contact separate.",
-        source: "manual", createdAt: 1, updatedAt: 1,
-      });
+      const userId = await ctx.db.insert("users", { accountKind: "customer" });
+      const manager = await ctx.db.insert("certificateHolders", { orgId, displayName: "Manager", normalizedName: "manager", createdAt: 1, updatedAt: 1 });
+      const owner = await ctx.db.insert("certificateHolders", { orgId, displayName: "Owner", normalizedName: "owner", createdAt: 1, updatedAt: 1 });
       const sourceId = await ctx.db.insert("requirementSourceDocuments", {
-        orgId, title: "Lease", sourceType: "lease_agreement", status: "complete", internalNotes: sourceNote,
-        certificateHolderId: copiedHolder, certificateHolderIds: [distinctHolder, copiedHolder],
+        orgId, title: "Lease", sourceType: "lease_agreement", status: "complete", certificateHolderIds: [manager, owner],
         createdByUserId: userId, createdAt: 1, updatedAt: 1,
       });
-      return { orgId, sourceId, copiedHolder, distinctHolder, sourceNote };
+      const source = (await ctx.db.get(sourceId))!;
+      const ownerHolder = (await ctx.db.get(owner))!;
+      await saveRequirementNotes(ctx, source, "## Delivery\n\nDeliver through the property manager.", { actorUserId: userId });
+      await saveHolderNotes(ctx, ownerHolder, "Keep the owner contact separate.", { actorUserId: userId });
+      expect(await readRequirementNotes(ctx, source)).toBe("## Delivery\n\nDeliver through the property manager.");
+      expect(await readHolderNotes(ctx, ownerHolder)).toBe("Keep the owner contact separate.");
+      expect(await readHolderNotes(ctx, (await ctx.db.get(manager))!)).toBeUndefined();
+      expect((await ctx.db.get(sourceId))?.certificateHolderIds).toEqual([manager, owner]);
+      const documents = await ctx.db.query("markdownDocuments").collect();
+      expect(documents.map((document) => document.kind).sort()).toEqual(["holder_notes", "requirement_notes"]);
+      expect(documents.every((document) => document.filename.endsWith(".md") && parseMarkdownDocument(document.markdown).frontmatter.visibility === "shared")).toBe(true);
     });
-    expect(await t.mutation(migratePage, { target: "requirementSourceDocuments" })).toMatchObject({ dryRun: true, changed: 1 });
-    expect(await t.run((ctx) => ctx.db.query("markdownDocuments").collect())).toHaveLength(0);
-    await t.mutation(migratePage, { target: "requirementSourceDocuments", dryRun: false });
-    await t.mutation(migratePage, { target: "certificateHolders", dryRun: false });
-    const state = await t.run(async (ctx) => {
-      const source = (await ctx.db.get(ids.sourceId))!;
-      const copied = (await ctx.db.get(ids.copiedHolder))!;
-      const distinct = (await ctx.db.get(ids.distinctHolder))!;
-      return {
-        source, copied, distinct,
-        sourceNotes: await readRequirementNotes(ctx, source),
-        distinctNotes: await readHolderNotes(ctx, distinct),
-        documents: await ctx.db.query("markdownDocuments").collect(),
-      };
-    });
-    expect(state.source.certificateHolderIds).toEqual([ids.copiedHolder, ids.distinctHolder]);
-    expect(state.source).not.toHaveProperty("certificateHolderId");
-    expect(state.source).not.toHaveProperty("internalNotes");
-    expect(state.copied).not.toHaveProperty("notes");
-    expect(state.distinct).not.toHaveProperty("notes");
-    expect(state.sourceNotes).toBe(ids.sourceNote);
-    expect(state.distinctNotes).toBe("Keep the owner contact separate.");
-    expect(state.documents.map((document) => document.kind).sort()).toEqual(["holder_notes", "requirement_notes"]);
-    expect(state.documents.every((document) => document.filename.endsWith(".md") && parseMarkdownDocument(document.markdown).frontmatter.visibility === "shared")).toBe(true);
-    expect(await t.query(verifyPage, { target: "requirementSourceDocuments" })).toMatchObject({ remaining: 0, isDone: true });
-    expect(await t.mutation(migratePage, { target: "requirementSourceDocuments", dryRun: false })).toMatchObject({ changed: 0 });
   });
 
-  test("retains complete review and delivery Markdown and preserves newer canonical edits", async () => {
+  test("retains arbitrary Markdown headings independently in review and delivery notes", async () => {
     const t = convexTest(schema, modules);
     const { jobId, sendNotes } = await t.run(async (ctx) => {
       const orgId = await ctx.db.insert("organizations", { name: "Client", type: "client" });
@@ -79,19 +52,15 @@ describe("certificate notes migration", () => {
       const sendNotes = "## Delivery\n\nOriginal delivery note.\n\n## Other detail\n\nKeep this too.";
       const jobId = await ctx.db.insert("certificateWorkflowJobs", {
         orgId, policyId, holderId, certificateId, kind: "renewal_reissue", status: "sent", idempotencyKey: "fixture",
-        reviewNotes: "Prior review evidence", sendNotes, createdAt: 1, updatedAt: 1,
+        createdAt: 1, updatedAt: 1,
       });
       const job = (await ctx.db.get(jobId))!;
-      await saveWorkflowNotes(ctx, job, { reviewNotes: "Newer operator review" });
-      await ctx.db.patch(jobId, { reviewNotes: "Prior review evidence" });
+      await saveWorkflowNotes(ctx, job, { reviewNotes: "Newer operator review", sendNotes });
       return { jobId, sendNotes };
     });
-    await t.mutation(migratePage, { target: "certificateWorkflowJobs", dryRun: false });
     const notes = await t.run(async (ctx) => readWorkflowNotes(ctx, (await ctx.db.get(jobId))!, true));
     expect(notes.sendNotes).toBe(sendNotes);
-    expect(notes.reviewNotes).toBe("Newer operator review\n\n## Imported legacy notes\n\nPrior review evidence");
-    expect(await t.query(verifyPage, { target: "certificateWorkflowJobs" })).toMatchObject({ remaining: 0, isDone: true });
-    expect(await t.mutation(migratePage, { target: "certificateWorkflowJobs", dryRun: false })).toMatchObject({ changed: 0 });
+    expect(notes.reviewNotes).toBe("Newer operator review");
   });
 
   test("automatic holder refresh preserves human notes when no replacement was supplied", async () => {

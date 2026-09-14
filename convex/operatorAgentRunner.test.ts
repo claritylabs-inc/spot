@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { afterEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import schema from "./schema";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 
 const { generate } = vi.hoisted(() => ({ generate: vi.fn() }));
 vi.mock("./lib/models", async (importOriginal) => ({
@@ -224,7 +225,6 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
     const procurementRequestId = await ctx.db.insert("procurementRequests", {
       clientOrgId,
       title: "Controlled recovery",
-      narrative: "Test the operator runner's safe correction path.",
       status: "draft",
       clientVisible: false,
       packetRevision: 0,
@@ -234,6 +234,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
       createdAt: now,
       updatedAt: now,
     });
+    await seedRequestIntake(ctx, { requestId: procurementRequestId, clientOrgId: clientOrgId, userId: operatorUserId, narrative: "Test the operator runner's safe correction path.", source: "operator_agent" });
     return { operatorUserId, procurementRequestId };
   });
   const threadId = await t.mutation(

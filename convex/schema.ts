@@ -14,7 +14,7 @@ import { policyProductIdentityValidator } from "./lib/policyProductIdentity";
 import { certificateRequirementSnapshotValidator } from "./lib/certificateRequirementPlan";
 import {
   companyInformationProfileValidator,
-  companyInformationStoredOrganizationFactValidator,
+  companyInformationOrganizationFactValidator,
 } from "./lib/companyInformationExtraction";
 import {
   emailContentValidator,
@@ -520,7 +520,6 @@ export default defineSchema({
     name: v.string(),
     website: v.optional(v.string()),
     companyResearch: v.optional(companyResearchValidator),
-    context: v.optional(v.string()),
     smokeMarker: v.optional(v.string()),
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
@@ -543,13 +542,7 @@ export default defineSchema({
     profileFactsUpdatedAt: v.optional(v.number()),
     profileOverrides: v.optional(organizationProfileOverridesValidator),
     profileOverridesUpdatedAt: v.optional(v.number()),
-    profileOverridesUpdatedByUserId: v.optional(v.id("users")),
-    // Relationship context — helps categorize intelligence entries
-    clientsContext: v.optional(v.string()), // who the org's clients/customers are
-    vendorsContext: v.optional(v.string()), // key vendors and service providers
-    insuranceContext: v.optional(v.string()), // brokers, carriers, insurance relationships
-    investorsContext: v.optional(v.string()), // investors, shareholders, funding
-    partnersContext: v.optional(v.string()), // joint ventures, affiliates, partners
+    profileOverridesUpdatedByUserId: v.optional(v.id("users")), // joint ventures, affiliates, partners
     relatedLegalEntities: v.optional(
       v.array(
         v.object({
@@ -569,7 +562,6 @@ export default defineSchema({
           incorporationNumber: v.optional(v.string()),
           taxId: v.optional(v.string()),
           jurisdiction: v.optional(v.string()),
-          notes: v.optional(v.string()),
         }),
       ),
     ),
@@ -979,21 +971,6 @@ export default defineSchema({
 
   brokerModelSettings: defineTable({
     brokerOrgId: v.id("organizations"),
-    // Legacy consumer-owned credentials. Keep optional through the audited
-    // widen/migrate/narrow rollout; runtime code must never read this field.
-    providerKeys: v.optional(
-      v.object({
-        openai: v.optional(v.string()),
-        anthropic: v.optional(v.string()),
-        google: v.optional(v.string()),
-        xai: v.optional(v.string()),
-        mistral: v.optional(v.string()),
-        cohere: v.optional(v.string()),
-        fireworks: v.optional(v.string()),
-        moonshot: v.optional(v.string()),
-        deepseek: v.optional(v.string()),
-      }),
-    ),
     routes: v.optional(
       v.object({
         chat: v.optional(modelRouteValidator),
@@ -1137,8 +1114,6 @@ export default defineSchema({
     policyIds: v.optional(v.array(v.id("policies"))),
     requirementIds: v.optional(v.array(v.id("insuranceRequirements"))),
     wikiSectionKeys: v.optional(v.array(v.string())),
-    // Legacy; cleared by migrations:runCompanyWikiLegacyPurge.
-    memoryIds: v.optional(v.array(v.id("orgMemory"))),
     threadId: v.optional(v.id("threads")),
     lastError: v.optional(v.string()),
     createdAt: v.number(),
@@ -1149,121 +1124,6 @@ export default defineSchema({
     .index("thread_email", ["threadId", "emailRef"])
     .index("organization_updated", ["orgId", "updatedAt"])
     .index("status_updated", ["status", "updatedAt"]),
-
-  // The company wiki: one markdown document per organization, held as ordered
-  // sections so concurrent writers merge instead of clobbering a single blob.
-  // Agents read the assembled document whole rather than retrieving fragments.
-  orgWikiSections: defineTable({
-    orgId: v.id("organizations"),
-    key: v.string(),
-    heading: v.string(),
-    body: v.string(),
-    order: v.number(),
-    source: v.union(
-      v.literal("extraction"),
-      v.literal("analysis"),
-      v.literal("chat"),
-      v.literal("email"),
-      v.literal("imessage"),
-      v.literal("slack"),
-      v.literal("manual"),
-      v.literal("operator"),
-      v.literal("mcp"),
-    ),
-    sourceRefs: v.optional(v.array(v.string())),
-    // The bullets in `body` that the company-information reconciler owns. Every
-    // other line was contributed by a conversational or append-only writer, so
-    // reconcile rewrites only these and leaves the rest alone.
-    extractedLines: v.optional(v.array(v.string())),
-    proposedBody: v.optional(v.string()),
-    proposedRationale: v.optional(v.string()),
-    manuallyEditedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("organization", ["orgId", "order"])
-    .index("organization_key", ["orgId", "key"]),
-
-  // Legacy, retained only for the gated company-wiki purge migration. The
-  // curated store is `orgWikiSections`; nothing reads or writes these rows.
-  // Remove both tables in the schema-narrowing release after
-  // `migrations:runCompanyWikiLegacyPurge` reports complete.
-  orgMemory: defineTable({
-    orgId: v.id("organizations"),
-    type: v.union(
-      v.literal("fact"),
-      v.literal("preference"),
-      v.literal("risk_note"),
-      v.literal("observation"),
-    ),
-    content: v.string(),
-    source: v.union(
-      v.literal("extraction"),
-      v.literal("analysis"),
-      v.literal("chat"),
-      v.literal("email"),
-      v.literal("imessage"),
-      v.literal("slack"),
-      v.literal("manual"),
-      v.literal("operator"),
-      v.literal("mcp"),
-    ),
-    policyId: v.optional(v.id("policies")),
-    sourceRef: v.optional(v.string()),
-    sourceRefs: v.optional(v.array(v.string())),
-    confidence: v.optional(v.number()),
-    observedAt: v.optional(v.number()),
-    expiresAt: v.optional(v.number()),
-    provenance: v.optional(
-      v.object({
-        kind: v.literal("organization_fact"),
-        derivation: v.union(
-          v.literal("company_profile_extraction"),
-          v.literal("conversation_extraction"),
-          v.literal("agent_tool"),
-        ),
-        schemaVersion: v.literal("organization-fact-v1"),
-      }),
-    ),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("organization", ["orgId"])
-    .index("organization_type", ["orgId", "type"])
-    .index("organization_source", ["orgId", "sourceRef"]),
-  procurementMemory: defineTable({
-    clientOrgId: v.id("organizations"),
-    kind: v.union(
-      v.literal("placement_preference"),
-      v.literal("broker_appetite"),
-      v.literal("submission_requirement"),
-      v.literal("market_observation"),
-    ),
-    content: v.string(),
-    source: v.union(
-      v.literal("manual"),
-      v.literal("operator_agent"),
-      v.literal("mcp"),
-      v.literal("email"),
-      v.literal("document"),
-      v.literal("procurement_outcome"),
-    ),
-    requestId: v.optional(v.id("procurementRequests")),
-    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
-    brokerOrgId: v.optional(v.id("organizations")),
-    sourceRef: v.optional(v.string()),
-    sourceRefs: v.optional(v.array(v.string())),
-    confidence: v.optional(v.number()),
-    observedAt: v.optional(v.number()),
-    createdByUserId: v.id("users"),
-    updatedByUserId: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("client", ["clientOrgId", "updatedAt"])
-    .index("request", ["requestId", "updatedAt"])
-    .index("broker", ["brokerOrgId", "updatedAt"])
-    .index("source", ["clientOrgId", "sourceRef"]),
   // Passport, integrations, email-inbox, and org-documents tables
   // were removed as part of the v0.2.0 scope simplification. See git history.
 
@@ -1282,22 +1142,6 @@ export default defineSchema({
   })
     .index("email", ["email"])
     .index("organization", ["orgId"]),
-
-  brokerClientAssignments: defineTable({
-    orgId: v.optional(v.id("organizations")), // connected broker org; omitted for standalone external contacts
-    clientOrgId: v.id("organizations"), // client org
-    brokerCompanyName: v.optional(v.string()),
-    producerId: v.optional(v.id("users")), // optional broker user
-    role: v.union(v.literal("primary"), v.literal("secondary")),
-    contactName: v.optional(v.string()),
-    contactEmail: v.optional(v.string()),
-    contactPhone: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
-  })
-    .index("organization_client", ["orgId", "clientOrgId"])
-    .index("organization_producer", ["orgId", "producerId"])
-    .index("client", ["clientOrgId"]),
 
   agentChannelSettings: defineTable({
     clientOrgId: v.id("organizations"),
@@ -1574,101 +1418,6 @@ export default defineSchema({
     .index("client_purpose", ["clientOrgId", "purpose"])
     .index("expiration", ["expiresAt"]),
 
-  policyDeliverySettings: defineTable({
-    brokerOrgId: v.optional(v.id("organizations")),
-    deliveryOwnerOrgId: v.optional(v.id("organizations")),
-    clientOrgId: v.optional(v.id("organizations")),
-    enabled: v.boolean(),
-    channels: v.array(policyDeliveryChannelValidator),
-    defaultAction: policyDeliveryActionValidator,
-    deliverBeforeClientAcceptance: v.boolean(),
-    copyInstructions: v.optional(v.string()),
-    updatedByUserId: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("broker", ["brokerOrgId"])
-    .index("owner_client", ["deliveryOwnerOrgId", "clientOrgId"])
-    .index("broker_client", ["brokerOrgId", "clientOrgId"]),
-
-  policyDeliveryRules: defineTable({
-    brokerOrgId: v.optional(v.id("organizations")),
-    deliveryOwnerOrgId: v.optional(v.id("organizations")),
-    clientOrgId: v.optional(v.id("organizations")),
-    name: v.string(),
-    enabled: v.boolean(),
-    priority: v.number(),
-    filters: policyDeliveryRuleFiltersValidator,
-    llmRuleText: v.optional(v.string()),
-    action: policyDeliveryActionValidator,
-    channels: v.optional(v.array(policyDeliveryChannelValidator)),
-    copyInstructions: v.optional(v.string()),
-    createdByUserId: v.optional(v.id("users")),
-    updatedByUserId: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("broker", ["brokerOrgId"])
-    .index("owner_client", ["deliveryOwnerOrgId", "clientOrgId"])
-    .index("broker_client", ["brokerOrgId", "clientOrgId"])
-    .index("broker_priority", ["brokerOrgId", "priority"]),
-
-  policyDeliveryJobs: defineTable({
-    brokerOrgId: v.optional(v.id("organizations")),
-    deliveryOwnerOrgId: v.optional(v.id("organizations")),
-    clientOrgId: v.id("organizations"),
-    policyId: v.id("policies"),
-    policyFileId: v.optional(v.id("policyFiles")),
-    sourceKind: policyDeliverySourceKindValidator,
-    idempotencyKey: v.string(),
-    status: policyDeliveryStatusValidator,
-    action: policyDeliveryActionValidator,
-    channels: v.array(policyDeliveryChannelValidator),
-    ruleId: v.optional(v.id("policyDeliveryRules")),
-    ruleName: v.optional(v.string()),
-    decisionSummary: v.optional(v.string()),
-    decisionDetails: v.optional(v.any()),
-    recipientName: v.optional(v.string()),
-    recipientEmail: v.optional(v.string()),
-    recipientPhone: v.optional(v.string()),
-    threadId: v.optional(v.id("threads")),
-    emailSentAt: v.optional(v.number()),
-    imessageSentAt: v.optional(v.number()),
-    slackSentAt: v.optional(v.number()),
-    sentAt: v.optional(v.number()),
-    lastError: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("broker_status", ["brokerOrgId", "status", "updatedAt"])
-    .index("owner_status", ["deliveryOwnerOrgId", "status", "updatedAt"])
-    .index("client_updated", ["clientOrgId", "updatedAt"])
-    .index("client_status", ["clientOrgId", "status", "updatedAt"])
-    .index("policy", ["policyId"])
-    .index("thread", ["threadId"])
-    .index("idempotency", ["idempotencyKey"]),
-
-  policyDeliveryAttempts: defineTable({
-    jobId: v.id("policyDeliveryJobs"),
-    brokerOrgId: v.optional(v.id("organizations")),
-    deliveryOwnerOrgId: v.optional(v.id("organizations")),
-    clientOrgId: v.id("organizations"),
-    policyId: v.id("policies"),
-    channel: policyDeliveryChannelValidator,
-    status: v.union(
-      v.literal("sent"),
-      v.literal("failed"),
-      v.literal("skipped"),
-    ),
-    messageId: v.optional(v.string()),
-    error: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index("job", ["jobId"])
-    .index("broker_created", ["brokerOrgId", "createdAt"])
-    .index("owner_created", ["deliveryOwnerOrgId", "createdAt"])
-    .index("client_created", ["clientOrgId", "createdAt"]),
-
   connectedOrgRelationships: defineTable({
     // A client/customer org can view selected insurance system-of-record data
     // from a vendor org after the vendor approves the relationship. This is
@@ -1724,11 +1473,9 @@ export default defineSchema({
   requirementSourceDocuments: defineTable({
     orgId: v.id("organizations"),
     extractionRunId: v.optional(v.string()),
-    certificateHolderId: v.optional(v.id("certificateHolders")),
     certificateHolderIds: v.optional(v.array(v.id("certificateHolders"))),
     dealName: v.optional(v.string()),
     dealType: v.optional(v.string()),
-    internalNotes: v.optional(v.string()),
     fileId: v.optional(v.id("_storage")),
     fileName: v.optional(v.string()),
     contentType: v.optional(v.string()),
@@ -1758,7 +1505,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("organization", ["orgId"])
-    .index("holder", ["certificateHolderId"])
     .index("organization_status", ["orgId", "status"])
     .index("file", ["fileId"]),
 
@@ -2082,7 +1828,6 @@ export default defineSchema({
       ),
     ),
     uploadedByUserId: v.optional(v.id("users")),
-    uploadedByBrokerOrgId: v.optional(v.id("organizations")),
     // Broker-authored corrections remain separate from source-backed extraction.
     policyDetailOverrides: v.optional(policyDetailOverridesValidator),
     policyDetailOverridesUpdatedAt: v.optional(v.number()),
@@ -2586,8 +2331,6 @@ export default defineSchema({
     dismissed: v.optional(v.boolean()),
     // Typed declarations (cl-sdk 1.4+) — line-specific structured data
     declarations: v.optional(v.any()),
-    // Legacy extraction output; current runtime does not read or write it.
-    analysis: v.optional(v.any()),
     // cl-sdk 3.0+ fields
     policyTermType: v.optional(v.string()),
     nextReviewDate: v.optional(v.string()),
@@ -2629,22 +2372,6 @@ export default defineSchema({
           fileName: v.string(),
           fileType: v.string(), // declaration, wording, endorsement, schedule, renewal, certificate, unknown
           status: v.string(), // pending, extracting, complete, error, not_insurance
-        }),
-      ),
-    ),
-    // Whether the reconciled view is up to date across all files
-    reconciliationStatus: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("reconciled"),
-        v.literal("error"),
-      ),
-    ),
-    reconciliationLog: v.optional(
-      v.array(
-        v.object({
-          timestamp: v.number(),
-          message: v.string(),
         }),
       ),
     ),
@@ -2888,8 +2615,7 @@ export default defineSchema({
       v.literal("renewal"),
       v.literal("certificate"),
       v.literal("unknown"),
-    ),
-    extractedData: v.optional(v.any()), // Raw per-file extraction result (InsuranceDocument)
+    ), // Raw per-file extraction result (InsuranceDocument)
     pageCount: v.optional(v.number()),
     createdAt: v.number(),
     orgId: v.id("organizations"),
@@ -2957,7 +2683,6 @@ export default defineSchema({
     clientOrgId: v.id("organizations"),
     title: v.string(),
     normalizedTitle: v.optional(v.string()),
-    narrative: v.optional(v.string()),
     targetEffectiveDate: v.optional(v.string()),
     status: v.union(
       v.literal("draft"),
@@ -2970,8 +2695,6 @@ export default defineSchema({
       v.literal("cancelled"),
     ),
     clientVisible: v.optional(v.boolean()),
-    requirementRevision: v.optional(v.number()),
-    specificationRevision: v.optional(v.number()),
     // Monotonic revision of all client/broker-visible packet content.
     packetRevision: v.optional(v.number()),
     replacingPolicyId: v.optional(v.id("policies")),
@@ -3006,34 +2729,8 @@ export default defineSchema({
       v.literal("quote_accepted"),
       v.literal("quote_rejected"),
     ),
-    // Legacy structured workflow/quote fields. Runtime reads fold them into the
-    // Markdown log, and the next log write clears them for later narrowing.
-    applicationUrl: v.optional(v.string()),
-    applicationQuestions: v.optional(v.array(v.string())),
-    notes: v.optional(v.string()),
-    quoteSummary: v.optional(v.string()),
-    quoteAmount: v.optional(v.number()),
-    quoteCurrency: v.optional(v.string()),
-    quoteUrl: v.optional(v.string()),
     contactUserId: v.optional(v.id("users")),
-    contactSnapshot: v.optional(
-      v.object({
-        name: v.optional(v.string()),
-        email: v.optional(v.string()),
-        phone: v.optional(v.string()),
-      }),
-    ),
     sentAt: v.optional(v.number()),
-    packetSnapshot: v.optional(
-      v.object({
-        requirementRevision: v.number(),
-        specificationRevision: v.number(),
-        requirementIds: v.array(v.id("insuranceRequirements")),
-        specifications: v.array(v.any()),
-        fileItemIds: v.array(v.id("procurementFileItems")),
-        capturedAt: v.number(),
-      }),
-    ),
     packetRevisionAtIssue: v.optional(v.number()),
     createdByUserId: v.id("users"),
     updatedByUserId: v.id("users"),
@@ -3163,44 +2860,6 @@ export default defineSchema({
     .index("client_visible", ["requestId", "clientVisible", "createdAt"])
     .index("storage", ["fileId"]),
 
-  // The procurement packet is an ordered set of markdown sections. Visibility
-  // is a single widening ladder so a broker can never see content the client
-  // cannot also see.
-  procurementPacketSections: defineTable({
-    requestId: v.id("procurementRequests"),
-    clientOrgId: v.id("organizations"),
-    key: v.string(),
-    heading: v.string(),
-    body: v.string(),
-    order: v.number(),
-    audience: v.union(
-      v.literal("operator"),
-      v.literal("client"),
-      v.literal("broker"),
-    ),
-    audienceProposed: v.optional(
-      v.union(v.literal("client"), v.literal("broker")),
-    ),
-    source: v.union(
-      v.literal("manual"),
-      v.literal("client"),
-      v.literal("operator_agent"),
-      v.literal("email"),
-      v.literal("document"),
-    ),
-    sourceRefs: v.optional(v.array(v.string())),
-    proposedBody: v.optional(v.string()),
-    proposedRationale: v.optional(v.string()),
-    manuallyEditedAt: v.optional(v.number()),
-    createdByUserId: v.id("users"),
-    updatedByUserId: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("request", ["requestId", "order"])
-    .index("request_key", ["requestId", "key"])
-    .index("audience", ["requestId", "audience", "order"]),
-
   procurementPacketLinks: defineTable({
     requestId: v.id("procurementRequests"),
     clientOrgId: v.id("organizations"),
@@ -3265,21 +2924,6 @@ export default defineSchema({
     userAgent: v.optional(v.string()),
   }).index("link", ["linkId", "at"]),
 
-  procurementPacketUpdateRuns: defineTable({
-    requestId: v.id("procurementRequests"),
-    sourceFingerprint: v.string(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("complete"),
-      v.literal("failed"),
-    ),
-    leaseExpiresAt: v.optional(v.number()),
-    attempts: v.number(),
-    lastError: v.optional(v.string()),
-    updatedAt: v.number(),
-  }).index("request", ["requestId", "updatedAt"]),
-
   procurementProposals: defineTable({
     requestId: v.id("procurementRequests"),
     clientOrgId: v.id("organizations"),
@@ -3338,11 +2982,7 @@ export default defineSchema({
     // Reviews bind to the broker-visible packet the proposal answered, so a
     // packet edit invalidates them. Widening phase: optional until
     // `migrations:runProposalReviewPacketBackfill` completes.
-    packetRevision: v.optional(v.number()),
-    // Legacy staleness counters from the structured requirement/specification
-    // era. Dropped in the narrowing release.
-    requirementRevision: v.optional(v.number()),
-    specificationRevision: v.optional(v.number()),
+    packetRevision: v.number(),
     modelConclusion: v.union(
       v.literal("meets_requirements"),
       v.literal("has_gaps"),
@@ -3551,7 +3191,6 @@ export default defineSchema({
       v.union(v.literal("listed"), v.literal("attached")),
     ),
     clientVisible: v.optional(v.boolean()),
-    notes: v.optional(v.string()),
     createdByUserId: v.optional(v.id("users")),
     updatedByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
@@ -3586,10 +3225,8 @@ export default defineSchema({
     leaseExpiresAt: v.optional(v.number()),
     profile: v.optional(companyInformationProfileValidator),
     organizationFacts: v.optional(
-      v.array(companyInformationStoredOrganizationFactValidator),
+      v.array(companyInformationOrganizationFactValidator),
     ),
-    // Legacy; cleared by migrations:runCompanyWikiLegacyPurge.
-    procurementFacts: v.optional(v.array(v.any())),
     observedAt: v.number(),
     lastError: v.optional(v.string()),
     createdAt: v.number(),
@@ -3648,7 +3285,6 @@ export default defineSchema({
       ),
     ),
     sourceRef: v.optional(v.string()),
-    notes: v.optional(v.string()),
     createdByUserId: v.optional(v.id("users")),
     updatedByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
@@ -3760,21 +3396,12 @@ export default defineSchema({
     .index("file", ["fileId"]),
 
   certificateWorkflowSettings: defineTable({
-    brokerOrgId: v.optional(v.id("organizations")),
-    clientOrgId: v.optional(v.id("organizations")),
-    populateHoldersFromEndorsements: v.optional(v.boolean()),
+    clientOrgId: v.id("organizations"),
     renewalReissueEnabled: v.boolean(),
-    renewalReissueMode: v.optional(v.literal("review_queue")),
-    renewalReviewLeadDays: v.optional(v.number()),
-    policyChangeRequestsForHeldCertificatesEnabled: v.optional(v.boolean()),
-    channels: v.optional(v.array(policyDeliveryChannelValidator)),
-    copyInstructions: v.optional(v.string()),
     updatedByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("broker", ["brokerOrgId"])
-    .index("broker_client", ["brokerOrgId", "clientOrgId"])
     .index("client", ["clientOrgId"]),
 
   certificateWorkflowJobs: defineTable({
@@ -3793,8 +3420,6 @@ export default defineSchema({
     recipientEmail: v.optional(v.string()),
     recipientPhone: v.optional(v.string()),
     threadId: v.optional(v.id("threads")),
-    reviewNotes: v.optional(v.string()),
-    sendNotes: v.optional(v.string()),
     sentAt: v.optional(v.number()),
     sentByUserId: v.optional(v.id("users")),
     cancelledAt: v.optional(v.number()),
@@ -4101,23 +3726,6 @@ export default defineSchema({
     .index("policy_node", ["policyId", "nodeId"])
     .index("policy_parent", ["policyId", "parentNodeId"]),
 
-  // Compatibility chunks over source spans. Source tree nodes are the primary
-  // retrieval layer; these preserve span IDs for legacy lookup surfaces.
-  sourceChunks: defineTable({
-    orgId: v.id("organizations"),
-    policyId: v.optional(v.id("policies")),
-    chunkId: v.string(),
-    documentId: v.string(),
-    sourceSpanIds: v.array(v.string()),
-    text: v.string(),
-    metadata: v.optional(v.any()),
-    embedding: v.optional(v.array(v.float64())),
-    createdAt: v.number(),
-  })
-    .index("policy", ["policyId"])
-    .index("organization", ["orgId"])
-    .index("chunk", ["chunkId"]),
-
   policyUpdateRuns: defineTable({
     orgId: v.id("organizations"),
     policyId: v.id("policies"),
@@ -4177,23 +3785,6 @@ export default defineSchema({
     .index("organization_group", ["orgId", "fieldGroup"])
     .index("policy_active", ["policyId", "active"])
     .index("record", ["recordHash"]),
-
-  // Conversation turns for cross-thread memory search
-  conversationTurns: defineTable({
-    orgId: v.id("organizations"),
-    conversationId: v.string(), // thread ID or conversation ID
-    role: v.string(), // user, assistant, tool
-    content: v.string(),
-    embedding: v.array(v.float64()), // 1536-dim vector
-    createdAt: v.number(),
-  })
-    .index("conversation", ["conversationId"])
-    .index("organization", ["orgId"])
-    .vectorIndex("embedding", {
-      vectorField: "embedding",
-      dimensions: 1536,
-      filterFields: ["orgId"],
-    }),
 
   publicDemoConversations: defineTable({
     channel: publicDemoChannelValidator,
@@ -5369,7 +4960,6 @@ export default defineSchema({
     subject: v.string(),
     emailBody: v.string(), // plain content (for thread record)
     attachments: v.optional(v.array(pendingEmailAttachmentValidator)),
-    allowMultipleCoiAttachments: v.optional(v.boolean()),
     coiBatchAuthorization: v.optional(
       v.object({
         recipientEmail: v.string(),
@@ -5449,10 +5039,9 @@ export default defineSchema({
     resource: v.optional(v.string()),
     redirectUri: v.string(),
     codeChallenge: v.string(),
-    scope: v.optional(v.string()),
     expiresAt: v.number(),
     usedAt: v.optional(v.number()),
-    scopes: v.optional(v.array(v.union(v.literal("read"), v.literal("write")))),
+    scopes: v.array(v.union(v.literal("read"), v.literal("write"))),
   }).index("code", ["codeHash"]),
 
   oauthTokens: defineTable({
@@ -5465,12 +5054,11 @@ export default defineSchema({
     ),
     orgId: v.optional(v.id("organizations")),
     resource: v.optional(v.string()),
-    scope: v.optional(v.string()),
     expiresAt: v.number(),
     refreshExpiresAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
     createdAt: v.number(),
-    scopes: v.optional(v.array(v.union(v.literal("read"), v.literal("write")))),
+    scopes: v.array(v.union(v.literal("read"), v.literal("write"))),
   })
     .index("token", ["tokenHash"])
     .index("refresh_token", ["refreshTokenHash"])

@@ -18,9 +18,7 @@ export async function readProcurementFileNotes(
     fileItemId: item._id,
     kind: "procurement_file_notes",
   });
-  return document
-    ? parseMarkdownDocument(document.markdown).body
-    : (item.notes ?? "");
+  return document ? parseMarkdownDocument(document.markdown).body : "";
 }
 
 export async function saveProcurementFileNotes(

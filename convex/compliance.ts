@@ -88,16 +88,7 @@ async function requirementSourceHolders(
   ctx: Pick<QueryCtx, "db">,
   source: Doc<"requirementSourceDocuments">,
 ) {
-  const holderIds = [
-    source.certificateHolderId,
-    ...(source.certificateHolderIds ?? []),
-  ].filter(
-    (holderId, index, values): holderId is Id<"certificateHolders"> =>
-      Boolean(holderId) &&
-      values.findIndex(
-        (candidate) => String(candidate) === String(holderId),
-      ) === index,
-  );
+  const holderIds = [...new Set(source.certificateHolderIds ?? [])];
   return (
     await Promise.all(holderIds.map((holderId) => ctx.db.get(holderId)))
   ).filter((holder): holder is Doc<"certificateHolders"> => Boolean(holder));
@@ -800,14 +791,13 @@ export const updateRequirementSource = mutation({
         createdByUserId: access.userId,
         updatedByUserId: access.userId,
       });
-      const previousPrimary = source.certificateHolderId ?? source.certificateHolderIds?.[0];
+      const previousPrimary = source.certificateHolderIds?.[0];
       sourcePatch.certificateHolderIds = [
         certificateHolderId,
         ...(source.certificateHolderIds ?? []).filter(
           (holderId) => holderId !== previousPrimary && holderId !== certificateHolderId,
         ),
       ];
-      sourcePatch.certificateHolderId = undefined;
     }
     if (args.dealName !== undefined)
       sourcePatch.dealName = cleanOptionalString(args.dealName);

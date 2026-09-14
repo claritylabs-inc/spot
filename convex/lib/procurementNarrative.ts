@@ -1,7 +1,6 @@
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { migratePacketDocuments } from "./packetDocuments";
 import {
   getMarkdownDocument,
   saveMarkdownDocument,
@@ -23,7 +22,7 @@ export async function requestNarrative(
     kind: "packet",
     filename: "request-intake.md",
   });
-  if (!document) return request.narrative ?? "";
+  if (!document) return "";
   if (
     !options.includePrivate &&
     parseDocumentVisibility(document.markdown) === "private"
@@ -38,7 +37,6 @@ export async function saveRequestNarrative(
   narrative: string,
   options: { includePrivate?: boolean } = {},
 ) {
-  await migratePacketDocuments(ctx, request._id, true);
   const existing = await getMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
@@ -79,8 +77,6 @@ export async function saveRequestNarrative(
       packetRevision: (request.packetRevision ?? 0) + 1,
       updatedAt: dayjs().valueOf(),
     });
-  if (request.narrative !== undefined)
-    await ctx.db.patch(request._id, { narrative: undefined });
   return document;
 }
 
@@ -91,7 +87,7 @@ export async function seedRequestIntake(
     clientOrgId: Id<"organizations">;
     narrative: string;
     userId: Id<"users">;
-    source: Doc<"procurementPacketSections">["source"];
+    source: "client" | "operator_agent" | "manual";
   },
 ) {
   if (!args.narrative.trim()) return;

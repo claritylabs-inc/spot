@@ -8,7 +8,6 @@ import {
 import {
   readPacketDocument,
   readPacketProjection,
-  migratePacketDocuments,
 } from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { v } from "convex/values";
@@ -101,17 +100,13 @@ export async function updatePacketDocumentByOperator(
     { ...parsed.frontmatter, visibility },
     parsed.body,
   );
-  // Materialize and retire the legacy source in this same transaction before
-  // applying an intentional edit, so the later backfill cannot resurrect it.
-  await migratePacketDocuments(ctx, request._id, true);
-  const canonical = await readPacketDocument(ctx, request, args.filename);
   const document = await saveMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
     kind: "packet",
     filename: args.filename,
     markdown,
-    expectedRevision: canonical.revision,
+    expectedRevision: args.expectedRevision,
   });
   const changed = previous.markdown !== markdown;
   if (changed && (visibility === "shared" || previous.visibility === "shared"))
@@ -148,8 +143,6 @@ export async function upsertPacketSectionByOperator(
     body: string;
     heading?: string;
     audience?: PacketAudience;
-    source?: Doc<"procurementPacketSections">["source"];
-    sourceRefs?: string[];
   },
 ) {
   await directOperator(ctx, args.operatorUserId);

@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import dayjs from "dayjs";
 import { describe, expect, test } from "vitest";
 import schema from "./schema";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 import {
   claimExternalJobInternal,
   completeExternalJobInternal,
@@ -38,7 +39,6 @@ async function fixture(fingerprint = "proposal-fingerprint") {
     const requestId = await ctx.db.insert("procurementRequests", {
       clientOrgId,
       title: "Property placement",
-      narrative: "Place property coverage",
       status: "marketing",
       inboxToken: "proposal-test",
       createdByUserId: operatorUserId,
@@ -46,13 +46,13 @@ async function fixture(fingerprint = "proposal-fingerprint") {
       createdAt: now,
       updatedAt: now,
     });
+    await seedRequestIntake(ctx, { requestId: requestId, clientOrgId: clientOrgId, userId: operatorUserId, narrative: "Place property coverage", source: "manual" });
     const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
       requestId,
       clientOrgId,
       brokerOrgId,
       brokerName: "Broker",
       status: "request_sent",
-      applicationQuestions: [],
       createdByUserId: operatorUserId,
       updatedByUserId: operatorUserId,
       createdAt: now,

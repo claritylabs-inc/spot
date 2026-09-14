@@ -9,10 +9,7 @@ import {
 import { Id } from "./_generated/dataModel";
 import { requireCurrentOrgAccess as requireOrgAccess } from "./lib/access";
 import { getActiveOperatorProfile } from "./lib/operatorIdentity";
-import {
-  normalizeRequestedScopes,
-  parseScopesFromToken,
-} from "./lib/apiAuth";
+import { normalizeRequestedScopes, parseScopesFromToken } from "./lib/apiAuth";
 
 // ── Helpers ──
 
@@ -150,7 +147,8 @@ export const exchangeAuthCode = internalMutation({
     if (codeRecord.usedAt) throw new ConvexError("invalid_grant");
     if (codeRecord.expiresAt < dayjs().valueOf())
       throw new ConvexError("invalid_grant");
-    if (codeRecord.clientId !== args.clientId) throw new ConvexError("invalid_grant");
+    if (codeRecord.clientId !== args.clientId)
+      throw new ConvexError("invalid_grant");
     if (codeRecord.redirectUri !== args.redirectUri)
       throw new ConvexError("invalid_grant");
     const resource = normalizeMcpResource(args.resource);
@@ -170,7 +168,7 @@ export const exchangeAuthCode = internalMutation({
     }
 
     const now = dayjs().valueOf();
-    const scopes = parseScopesFromToken(codeRecord.scopes, codeRecord.scope);
+    const scopes = parseScopesFromToken(codeRecord.scopes);
     await ctx.db.patch(codeRecord._id, { usedAt: now });
 
     const accessTokenRaw = "prsm_at_" + randomHex(48);
@@ -244,7 +242,7 @@ export const validateAccessTokenWithScopes = internalQuery({
       resource: token.resource,
       clientId: token.clientId,
       tokenId: token._id,
-      scopes: parseScopesFromToken(token.scopes, token.scope),
+      scopes: parseScopesFromToken(token.scopes),
     };
   },
 });
@@ -268,13 +266,14 @@ export const refreshAccessToken = internalMutation({
     if (token.refreshExpiresAt && token.refreshExpiresAt < now) {
       throw new ConvexError("invalid_grant");
     }
-    if (token.clientId !== args.clientId) throw new ConvexError("invalid_grant");
+    if (token.clientId !== args.clientId)
+      throw new ConvexError("invalid_grant");
     const resource = normalizeMcpResource(args.resource);
     if (token.resource && resource !== token.resource) {
       throw new ConvexError("invalid_grant");
     }
 
-    const scopes = parseScopesFromToken(token.scopes, token.scope);
+    const scopes = parseScopesFromToken(token.scopes);
     await ctx.db.patch(token._id, { revokedAt: now });
 
     const accessTokenRaw = "prsm_at_" + randomHex(48);
@@ -319,7 +318,11 @@ export const revokeTokenInternal = internalMutation({
           q.eq("refreshTokenHash", args.tokenHash),
         )
         .first());
-    if (token && args.clientId !== undefined && token.clientId !== args.clientId)
+    if (
+      token &&
+      args.clientId !== undefined &&
+      token.clientId !== args.clientId
+    )
       return false;
     if (token && !token.revokedAt) {
       await ctx.db.patch(token._id, { revokedAt: dayjs().valueOf() });

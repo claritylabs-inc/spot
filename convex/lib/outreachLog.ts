@@ -18,32 +18,7 @@ export async function readOutreachLog(
     outreachId: outreach._id,
     kind: "outreach_log",
   });
-  return document
-    ? parseMarkdownDocument(document.markdown).body
-    : legacyOutreachLog(outreach);
-}
-
-export function legacyOutreachLog(
-  outreach: Doc<"procurementBrokerOutreaches">,
-) {
-  const sections = outreach.notes?.trim() ? [outreach.notes] : [];
-  const application = [
-    outreach.applicationUrl
-      ? `[Application link](${outreach.applicationUrl})`
-      : null,
-    ...(outreach.applicationQuestions ?? []).map((question) => `- ${question}`),
-  ].filter(Boolean);
-  if (application.length)
-    sections.push(`## Application\n\n${application.join("\n")}`);
-  const quote = [
-    outreach.quoteSummary?.trim(),
-    outreach.quoteAmount !== undefined
-      ? `Premium: ${outreach.quoteCurrency ?? "USD"} ${outreach.quoteAmount}`
-      : null,
-    outreach.quoteUrl ? `[Quote link](${outreach.quoteUrl})` : null,
-  ].filter(Boolean);
-  if (quote.length) sections.push(`## Legacy quote\n\n${quote.join("\n\n")}`);
-  return sections.join("\n\n");
+  return document ? parseMarkdownDocument(document.markdown).body : "";
 }
 
 export async function saveOutreachLog(

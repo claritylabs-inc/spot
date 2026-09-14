@@ -272,19 +272,7 @@ async function outreachDto(
   ctx: Ctx,
   outreach: Doc<"procurementBrokerOutreaches">,
 ) {
-  const {
-    notes,
-    applicationUrl,
-    applicationQuestions,
-    quoteSummary,
-    quoteAmount,
-    quoteCurrency,
-    quoteUrl,
-    contactSnapshot: _contactSnapshot,
-    packetSnapshot: _packetSnapshot,
-    ...fields
-  } = outreach;
-  return { ...fields, log: await readOutreachLog(ctx, outreach) };
+  return { ...outreach, log: await readOutreachLog(ctx, outreach) };
 }
 
 function outreachLog(value: string | null | undefined) {
@@ -785,7 +773,6 @@ export async function updateProcurementRequestByOperator(
       requiredText(args.narrative, "Client request"),
       { includePrivate: true },
     );
-    patch.narrative = undefined;
   }
   if (args.targetEffectiveDate !== undefined) {
     patch.targetEffectiveDate =
@@ -824,6 +811,7 @@ export async function updateProcurementRequestByOperator(
   const changedFields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
+  if (args.narrative !== undefined) changedFields.push("narrative");
   if (changedFields.length === 0) throw new Error("No request fields changed");
   await ctx.db.patch(request._id, patch);
   await writeOperatorAudit(ctx, {
@@ -1039,17 +1027,11 @@ export async function updateProcurementOutreachByOperator(
   }
   if (args.log !== undefined) {
     await saveOutreachLog(ctx, outreach, outreachLog(args.log) ?? "");
-    patch.notes = undefined;
-    patch.applicationUrl = undefined;
-    patch.applicationQuestions = undefined;
-    patch.quoteSummary = undefined;
-    patch.quoteAmount = undefined;
-    patch.quoteCurrency = undefined;
-    patch.quoteUrl = undefined;
   }
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
+  if (args.log !== undefined) fields.push("log");
   if (fields.length === 0) throw new Error("No outreach fields changed");
   await ctx.db.patch(outreach._id, patch);
   await writeOperatorAudit(ctx, {
@@ -1274,11 +1256,11 @@ export async function updateProcurementFileItemByOperator(
     );
   if (args.notes !== undefined) {
     await saveProcurementFileNotes(ctx, item, optionalText(args.notes) ?? "");
-    patch.notes = undefined;
   }
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
+  if (args.notes !== undefined) fields.push("notes");
   if (fields.length === 0) throw new Error("No file fields changed");
   await ctx.db.patch(item._id, patch);
   const brokerProjectionChanged =

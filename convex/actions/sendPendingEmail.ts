@@ -267,8 +267,7 @@ async function assertSafeDraftAttachments(
   pending: Doc<"pendingEmails">,
 ) {
   const requiresExactBatchAuthorization =
-    countCoiAttachments(pending.attachments) > 1 ||
-    pending.allowMultipleCoiAttachments === true;
+    countCoiAttachments(pending.attachments) > 1;
   if (!requiresExactBatchAuthorization) return;
   const hasExactBatchAuthorization = await hasExactCoiBatchAuthorization(
     ctx,

@@ -194,53 +194,6 @@ test("company Markdown preserves human prose while research proposes additions a
   expect((await t.run((ctx) => readOrgWiki(ctx, ids.orgId))).body).toContain(
     "| Boston | 12 |",
   );
-  expect(
-    await t.run((ctx) => ctx.db.query("orgWikiSections").collect()),
-  ).toEqual([]);
-});
-
-test("legacy wiki migration preserves complete Markdown and review metadata atomically", async () => {
-  const t = convexTest(schema, modules);
-  const orgId = await t.run(async (ctx) => {
-    const orgId = await ctx.db.insert("organizations", {
-      name: "Cove",
-      type: "client",
-    });
-    await ctx.db.insert("orgWikiSections", {
-      orgId,
-      key: "operations",
-      heading: "Operations",
-      body: "A paragraph.\n\n| One | Two |\n| --- | --- |",
-      order: 1,
-      source: "manual",
-      manuallyEditedAt: 1,
-      proposedBody: "Suggested addition",
-      proposedRationale: "Source update",
-      createdAt: 1,
-      updatedAt: 2,
-    });
-    return orgId;
-  });
-  expect(await t.mutation(internal.orgWiki.migrateLegacyBatch, {})).toEqual({
-    migrated: 1,
-    complete: false,
-  });
-  expect(await t.query(internal.orgWiki.verifyLegacyMigration, {})).toEqual({
-    complete: true,
-  });
-  const wiki = await t.run((ctx) => readOrgWiki(ctx, orgId));
-  expect(wiki.body).toContain("A paragraph.\n\n| One | Two |");
-  expect(wiki.proposals).toEqual([
-    {
-      heading: "Operations",
-      body: "Suggested addition",
-      rationale: "Source update",
-    },
-  ]);
-  expect(await t.mutation(internal.orgWiki.migrateLegacyBatch, {})).toEqual({
-    migrated: 0,
-    complete: true,
-  });
 });
 
 test("private client wiki is operator-only across portal, tenant tools and MCP", async () => {

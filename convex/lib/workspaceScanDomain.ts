@@ -1,3 +1,4 @@
+import { requestNarrative } from "./procurementNarrative";
 import { readOutreachLog } from "./outreachLog";
 import { getMarkdownDocument } from "../markdownDocuments";
 import dayjs from "dayjs";
@@ -31,6 +32,7 @@ export type ScanSelection = {
   requestIds?: Id<"procurementRequests">[];
 };
 export type ScanTarget = {
+  outreachLogDocument: Doc<"markdownDocuments"> | null;
   org: Doc<"organizations"> | null;
   request: Doc<"procurementRequests"> | null;
   record:
@@ -187,7 +189,13 @@ export async function resolveScanTarget(
     selection.selectedOrgId,
     selection.organizationIds,
   );
-  if (!org) return { org: null, request: null, record: null };
+  if (!org)
+    return {
+      org: null,
+      request: null,
+      record: null,
+      outreachLogDocument: null,
+    };
   let request: Doc<"procurementRequests"> | null = null;
   if ("request" in operation) {
     const requests = await ctx.db
@@ -219,21 +227,33 @@ export async function resolveScanTarget(
     ).filter(
       (r): r is Doc<"procurementRequests"> => !!r && r.clientOrgId === org._id,
     );
-    const matches = [
+    const candidates = [
       ...new Map(
         [...requests, ...normalizedRequests, ...discoveredRequests].map((r) => [
           r._id,
           r,
         ]),
       ).values(),
-    ].filter(
-      (r) =>
-        normalizedIdentity(r.title) ===
-          normalizedIdentity(operation.request.title) &&
-        normalizedIdentity(`${r.title} ${r.narrative ?? ""}`).includes(
-          normalizedIdentity(operation.request.coverage),
-        ),
-    );
+    ];
+    const matches = (
+      await Promise.all(
+        candidates.map(async (candidate) => ({
+          request: candidate,
+          narrative: await requestNarrative(ctx, candidate, {
+            includePrivate: true,
+          }),
+        })),
+      )
+    )
+      .filter(
+        ({ request: candidate, narrative }) =>
+          normalizedIdentity(candidate.title) ===
+            normalizedIdentity(operation.request.title) &&
+          normalizedIdentity(`${candidate.title} ${narrative}`).includes(
+            normalizedIdentity(operation.request.coverage),
+          ),
+      )
+      .map(({ request: candidate }) => candidate);
     request = selection.selectedRequestId
       ? await ctx.db.get(selection.selectedRequestId)
       : (matches[0] ?? null);
@@ -242,7 +262,7 @@ export async function resolveScanTarget(
     if (
       request &&
       !normalizedIdentity(
-        `${request.title} ${request.narrative ?? ""}`,
+        `${request.title} ${await requestNarrative(ctx, request, { includePrivate: true })}`,
       ).includes(normalizedIdentity(operation.request.coverage))
     )
       throw new ScanAttention(
@@ -256,8 +276,12 @@ export async function resolveScanTarget(
       );
   }
   let record: ScanTarget["record"] = request ?? org;
+  let outreachLogDocument: Doc<"markdownDocuments"> | null = null;
   if (operation.kind === "company_facts")
-    record = await getMarkdownDocument(ctx, { orgId: org._id, kind: "company_wiki" });
+    record = await getMarkdownDocument(ctx, {
+      orgId: org._id,
+      kind: "company_wiki",
+    });
   if (operation.kind === "broker_capabilities")
     record = await ctx.db
       .query("brokerProfiles")
@@ -277,8 +301,14 @@ export async function resolveScanTarget(
         "Several market records match this request and broker",
       );
     record = rows[0] ?? null;
+    if (rows[0])
+      outreachLogDocument = await getMarkdownDocument(ctx, {
+        orgId: org._id,
+        outreachId: rows[0]._id,
+        kind: "outreach_log",
+      });
   }
-  return { org, request, record };
+  return { org, request, record, outreachLogDocument };
 }
 
 export async function assertScanChronology(
@@ -475,10 +505,18 @@ export async function writeScanDomain(
       target.record && "brokerName" in target.record ? target.record : null;
     if (previous) {
       await assertScanChronology(ctx, previous, effectiveAt);
+      if (target.outreachLogDocument)
+        await assertScanChronology(
+          ctx,
+          target.outreachLogDocument,
+          effectiveAt,
+        );
       await updateProcurementOutreachByOperator(ctx, {
         operatorUserId,
         outreachId: previous._id,
-        log: [await readOutreachLog(ctx, previous), op.log].filter(Boolean).join("\n\n"),
+        log: [await readOutreachLog(ctx, previous), op.log]
+          .filter(Boolean)
+          .join("\n\n"),
         status: op.observedStatus ?? undefined,
         source: "workspace_scan",
       });
