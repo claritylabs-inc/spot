@@ -56,6 +56,8 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Catalog
 
+- `convex/lib/agentAttachmentLimits.ts` owns shared attachment byte budgets without a file-count cap. Operator web, email, Slack, iMessage, and MCP registration and cleanup do not truncate file lists by count. Per-file, aggregate-byte, raw-email, channel-transport, and emitted router-asset limits remain enforced.
+
 - `convex/lib/agentEmailDomains.ts` owns the `agent.spot.insure` default and legacy agent address canonicalization across frontend/backend thread displays, replies, and indexed thread lookup. Old approved sender/reply snapshots require regenerated drafts before sending.
 - `convex/lib/authEmailIdentity.ts` and `convex/lib/operatorIdentity.ts` own exact-domain operator OTP identity across `toolsforenlightenment.org`, `spot.insure`, and `claritylabs.inc`. Same normalized localpart shares one canonical user; actual mailbox OTP is required, existing roles/primary email stay stable, and customer/disabled/ambiguous identities cannot link. `operator@` is reserved. `convex/lib/operatorEmailAddress.ts` owns the `operator@agent.spot.insure` inbox and thread addressing. `convex/operatorEmail.ts` and `convex/actions/handleInboundOperatorEmail.ts` adapt DKIM-authenticated original email to private operator threads, shared tools, thread-owned attachments, portal exact approvals, and sender-only replies. Their receipt/delivery ledgers prevent replay and recover abandoned sends with frozen payloads and bounded provider idempotency. See `docs/deployment/operator-email.md`.
 

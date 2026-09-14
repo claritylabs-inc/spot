@@ -59,8 +59,10 @@ The route must preserve MIME and signed headers. Mailing-list rewrites or an
 unsigned forwarding envelope cannot supply operator authorization; the outer
 forwarding email itself must authenticate as the operator.
 
-Raw MIME is bounded to 32 MiB. Attachments use the shared ten-file, 25 MiB
-per-file, 50 MiB aggregate intake limits within that raw-message ceiling.
+Raw MIME is bounded to 32 MiB. Attachments use the shared 25 MiB per-file
+and 50 MiB aggregate intake limits within that raw-message ceiling, with no
+file-count cap. Model processing still enforces the router's rich-asset and
+serialized-request budgets after parsing and selection.
 Long email bodies are preserved as an attached text file; short reply text and
 forwarded evidence remain available to the agent. Storage IDs bind to the
 private operator thread before the task is scheduled. Failed or duplicate

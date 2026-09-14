@@ -87,6 +87,7 @@ acceptance; the root Google MX remains intact.
 
 ## Workflow
 
+- Shared agent attachment intake and operator messages have no file-count cap. `convex/lib/agentAttachmentLimits.ts` retains per-file and aggregate-byte safeguards; email retains its raw MIME ceiling, and iMessage/MCP retain encoded transport budgets. Router rich-asset and serialized-request limits still apply after parsing/selection. Operator attachment registration and cleanup process every supplied file without count-based truncation.
 - After major architecture or data-flow changes, update `AGENTS.md`.
 - Keep `AGENT_TOOLS.md` synchronized with every model-callable operator tool, tenant/client agent tool, internal agent-subagent tool, operator MCP addition, and tenant MCP tool. Any tool add/remove/rename or material availability, capability, effect, role, confirmation, execution-boundary, or MCP-access change must update that inventory in the same change.
 - Prefer documenting current behavior over planned behavior.

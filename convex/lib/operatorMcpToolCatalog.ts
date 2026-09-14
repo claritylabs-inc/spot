@@ -77,7 +77,6 @@ export function buildOperatorMcpToolCatalog(args: {
           },
           attachments: {
             type: "array",
-            maxItems: 10,
             description:
               "Optional PDF, spreadsheet, image, document, or text files for the operator agent to inspect",
             items: {

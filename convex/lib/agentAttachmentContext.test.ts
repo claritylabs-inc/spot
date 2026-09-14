@@ -21,7 +21,6 @@ import {
 } from "./agentAttachmentContext";
 import {
   MAX_AGENT_ATTACHMENT_BYTES,
-  MAX_AGENT_ATTACHMENT_FILES,
   MAX_ROUTER_ATTACHMENT_BYTES,
 } from "./agentAttachmentLimits";
 
@@ -262,7 +261,6 @@ describe("shared agent attachment context", () => {
     );
 
     expect(context.names).toHaveLength(9);
-    expect(MAX_AGENT_ATTACHMENT_FILES).toBe(10);
 
     const pdfBytes = new Uint8Array(20 * 1024 * 1024);
     tryBuildParsedPdfTextMock.mockResolvedValueOnce("Parsed policy evidence");
