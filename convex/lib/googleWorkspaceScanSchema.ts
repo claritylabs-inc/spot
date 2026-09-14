@@ -128,6 +128,7 @@ export const googleWorkspaceScanTables = {
     authorizationRevision: v.number(),
     status: scanSourceStatusValidator,
     evidence: v.optional(scanEvidenceValidator),
+    originalContentFingerprint: v.optional(v.string()),
     active: v.optional(v.boolean()),
     hasError: v.optional(v.boolean()),
     stagedPartCount: v.optional(v.number()),
