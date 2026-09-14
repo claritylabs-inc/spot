@@ -7,7 +7,8 @@ import type { Doc, Id } from "../_generated/dataModel";
 import {
   buildOperatorSlackConfirmationBlocks,
   buildOperatorSlackConfirmationResolvedBlocks,
-  OPERATOR_SLACK_CONFIRMATION_LABELS,
+  operatorSlackConfirmationText,
+  type OperatorSlackConfirmationResolution,
   formatSlackAnswerText,
 } from "../lib/slackBlocks";
 import {
@@ -229,8 +230,7 @@ async function updateOperatorSlackConfirmation(
     delivery: OperatorSlackDelivery;
     messageTs: string;
     summary: string;
-    decision: keyof typeof OPERATOR_SLACK_CONFIRMATION_LABELS;
-  },
+  } & OperatorSlackConfirmationResolution,
 ) {
   const worker = workerConfig();
   const response = await fetch(`${worker.url}/message/update`, {
@@ -243,10 +243,11 @@ async function updateOperatorSlackConfirmation(
       teamId: args.delivery.teamId,
       channelId: args.delivery.channelId,
       messageTs: args.messageTs,
-      mrkdwnText: `${OPERATOR_SLACK_CONFIRMATION_LABELS[args.decision]}: ${args.summary}`,
+      mrkdwnText: operatorSlackConfirmationText(args),
       blocks: buildOperatorSlackConfirmationResolvedBlocks({
         summary: args.summary,
         decision: args.decision,
+        error: args.error,
       }),
     }),
     signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
@@ -859,6 +860,7 @@ export const processOperatorConfirmationInteraction = internalAction({
     messageTs: v.string(),
     threadTs: v.optional(v.string()),
     summary: v.string(),
+    // Accept jobs queued before resolution moved to a fresh persisted-state read.
     unavailableReason: v.optional(
       v.union(v.literal("expired"), v.literal("inactive")),
     ),
@@ -869,14 +871,21 @@ export const processOperatorConfirmationInteraction = internalAction({
       channelId: args.channelId,
       threadTs: args.threadTs,
     };
-    if (args.unavailableReason) {
+    const readResolution = (): Promise<OperatorSlackConfirmationResolution | null> =>
+      ctx.runQuery(internal.operatorSlack.getConfirmationResolution, {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        confirmationId: args.confirmationId,
+      });
+    const resolution = await readResolution();
+    if (resolution) {
       await updateOperatorSlackConfirmation(ctx, {
         delivery,
         messageTs: args.messageTs,
         summary: args.summary,
-        decision: args.unavailableReason,
+        ...resolution,
       });
-      return { status: args.unavailableReason };
+      return { status: resolution.decision };
     }
     const result = await ctx
       .runMutation(internalApi.operatorAgent.confirmActionInternal, {
@@ -891,19 +900,19 @@ export const processOperatorConfirmationInteraction = internalAction({
         await updateOperatorSlackConfirmation(ctx, {
           delivery,
           messageTs: args.messageTs,
-          summary: `${args.summary}\n\n${error instanceof Error ? error.message : "The action could not be validated."}`,
-          decision: "failed",
+          summary: args.summary,
+          error: error instanceof Error ? error.message : undefined,
+          decision: "error",
         });
-        return { status: "failed" as const };
+        return { status: "error" as const };
       });
-    if (result.status === "failed") return result;
+    if (result.status === "error") return result;
     try {
       await updateOperatorSlackConfirmation(ctx, {
         delivery,
         messageTs: args.messageTs,
         summary: args.summary,
-        decision:
-          result.status === "needs_refresh" ? "inactive" : args.decision,
+        ...((await readResolution()) ?? { decision: "inactive" as const }),
       });
     } catch (error) {
       console.warn("[slack] Could not resolve operator confirmation UI", error);
