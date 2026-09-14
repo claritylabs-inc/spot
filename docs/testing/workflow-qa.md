@@ -6,7 +6,7 @@ behavior before execution. Evidence lives in `.context/qa/platform/`.
 
 Use the native-local app at `http://localhost:8080`, visible desktop Chrome,
 local email-capture OTPs, and seeded operator (`terry@claritylabs.inc`), client
-(`adyan@cove.dev`), and broker (`terry@montgomeryrisk.com`) identities. Keep each
+(`adyan@cove.dev`), and broker (`terry@example-risk.example`) identities. Keep each
 role in an isolated context. Use synthetic fixtures for writes and restore
 original values afterward. Do not send live email, change shared router state,
 bind coverage, or alter production while testing.

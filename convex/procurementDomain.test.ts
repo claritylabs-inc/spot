@@ -790,6 +790,119 @@ describe("procurement domain boundaries", () => {
     ).rejects.toThrow("current staff-confirmed review");
   });
 
+  test("excludes Spot acquisition brands from registration, existing directory rows, and outreach", async () => {
+    const f = await fixture();
+    for (const identity of [
+      { name: "Montgomery Risk" },
+      {
+        name: "Unknown name",
+        website: "https://WWW.MONTGOMERYRISK.COM./about",
+      },
+      { name: "Unknown name", website: "https://quotes.fortmasonpartners.com" },
+    ]) {
+      await expect(
+        f.operator.mutation(api.brokerProfiles.createStandalone, {
+          ...identity,
+          networkStatus: "prospect",
+          writingStates: [],
+          lineOfBusinessCodes: [],
+        }),
+      ).rejects.toThrow("Spot-owned");
+    }
+    await expect(
+      f.operator.mutation(api.brokerProfiles.upsert, {
+        brokerOrgId: f.brokerOrgId,
+        website: "https://hayesrisk.com",
+      }),
+    ).rejects.toThrow("Spot-owned");
+
+    const threadId = await f.t.mutation(
+      internal.operatorAgent.createOrGetChannelThreadInternal,
+      {
+        operatorUserId: f.operatorUserId,
+        channel: "mcp",
+        conversationKey: "acquisition-exclusion",
+      },
+    );
+    const invoke = (toolName: string, input: Record<string, unknown>) =>
+      f.t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
+        operatorUserId: f.operatorUserId,
+        threadId,
+        channel: "mcp",
+        toolName,
+        input,
+        idempotencyKey: toolName,
+      });
+    expect(
+      await invoke("create_broker_network_profile", {
+        name: "Montgomery Risk Partners",
+      }),
+    ).toMatchObject({ outcome: { status: "failed" } });
+    expect(
+      await f.t.query(internal.operatorAgent.getPendingConfirmationInternal, {
+        operatorUserId: f.operatorUserId,
+        threadId,
+      }),
+    ).toBeNull();
+
+    // Existing records must stop being eligible without deleting their history.
+    const request = await createRequest(f, "Acquisition exclusion");
+    await expect(
+      f.operator.mutation(api.procurementRequests.createOutreach, {
+        requestId: request.requestId,
+        brokerOrgId: f.brokerOrgId,
+        contactEmail: "hello@kearnyrisk.com",
+      }),
+    ).rejects.toThrow("Spot-owned");
+    const outreach = await f.operator.mutation(
+      api.procurementRequests.createOutreach,
+      {
+        requestId: request.requestId,
+        brokerOrgId: f.brokerOrgId,
+      },
+    );
+    const clientFileId = await seedProposalFile(f);
+    const proposal = await f.operator.mutation(api.procurementProposals.file, {
+      requestId: request.requestId,
+      outreachId: outreach.outreachId,
+      sources: [{ kind: "client_file", clientFileId }],
+    });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.brokerOrgId, {
+        name: "Montgomery Risk",
+        website: "https://www.montgomeryrisk.com/",
+      }),
+    );
+    expect(await f.operator.query(api.brokerProfiles.list, {})).toEqual([]);
+    const search = await invoke("search_organizations", { type: "broker" });
+    expect(search.outcome).toMatchObject({ status: "succeeded", result: [] });
+    expect(
+      (await invoke("get_organization", { orgId: f.brokerOrgId })).outcome,
+    ).toMatchObject({ status: "succeeded", result: { type: "spot" } });
+    await expect(
+      f.operator.mutation(api.procurementRequests.createOutreach, {
+        requestId: request.requestId,
+        brokerOrgId: f.brokerOrgId,
+      }),
+    ).rejects.toThrow("Spot-owned");
+    await expect(
+      f.operator.mutation(api.procurementProposals.file, {
+        requestId: request.requestId,
+        outreachId: outreach.outreachId,
+        sources: [{ kind: "client_file", clientFileId }],
+      }),
+    ).rejects.toThrow("Spot-owned");
+    await expect(
+      f.operator.mutation(api.procurementProposals.select, {
+        proposalId: proposal.proposalId,
+      }),
+    ).rejects.toThrow("Spot-owned");
+    expect(
+      await f.t.run((ctx) => ctx.db.get(outreach.outreachId)),
+    ).not.toBeNull();
+    expect(await f.t.run((ctx) => ctx.db.get(f.brokerOrgId))).not.toBeNull();
+  });
+
   test("supports broker profiles without users and keeps member edits read-only", async () => {
     const f = await fixture();
     const standalone = await f.operator.mutation(
@@ -983,7 +1096,7 @@ describe("procurement domain boundaries", () => {
     const f = await fixture();
     const brokerOrgId = await f.t.run((ctx) =>
       ctx.db.insert("organizations", {
-        name: "Montgomery Risk",
+        name: "Second Broker",
         type: "broker",
       }),
     );

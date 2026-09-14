@@ -59,16 +59,16 @@ deployment and database that belong only to that worktree. Workspace setup:
    enabled), maps the copied `NEXT_PUBLIC_MAPBOX_TOKEN` to Convex
    `MAPBOX_ACCESS_TOKEN` for agent address validation, creates worktree-local
    worker secrets, and points Convex at the worktree's worker ports.
-4. Pushes the schema/functions and seeds the new database once with a curated,
-   minimal shared-dev fixture: `terry@claritylabs.inc` as an operator,
-   Montgomery Risk with `terry@montgomeryrisk.com` as its admin, Cove with
+4. Pushes the schema/functions and idempotently extends the local database with
+   a curated fixture: `terry@claritylabs.inc` as an operator,
+   Example Risk with `terry@example-risk.example` as its admin, Cove with
    `adyan@cove.dev` as its admin, unique phone identities for both customer
-   accounts and one final Cove policy. Cove is standalone; Montgomery Risk is a
+   accounts and one final Cove policy. Cove is standalone; Example Risk is a
    supplier-network profile with seeded writing states and ACORD lines, no
-   client ownership, and no policy-upload provenance. Setup fetches and saves
-   the Montgomery Risk and Cove website favicons in the worktree's Convex file
-   storage. The configured
-   `IMESSAGE_TERMINAL_FROM_PHONE` is assigned to the Montgomery Risk admin so
+   client ownership, and no policy-upload provenance. Setup generates a synthetic
+   Example Risk icon and imports Cove's favicon into local Convex file storage.
+   Existing Montgomery Risk fixtures are renamed in place during setup. The configured
+   `IMESSAGE_TERMINAL_FROM_PHONE` is assigned to the Example Risk admin so
    Spectrum starts in an org-scoped broker context. Setup then compiles the
    workers. Local macOS setup also starts Apple `container` and builds
    worktree-tagged Linux/amd64 worker images; cloud setup uses the compiled
@@ -113,8 +113,8 @@ same capture stream in a dedicated terminal when desired.
 
 Spectrum is optional and reserves `$CONDUCTOR_PORT + 2`. Start its interactive
 TUI in a separate terminal with `npm run conductor:spectrum`, or use the
-**Spectrum terminal** Run template. It starts as the Montgomery Risk admin. Use
-`/whoami` to inspect the current sender, `/as broker` for Montgomery Risk,
+**Spectrum terminal** Run template. It starts as the Example Risk admin. Use
+`/whoami` to inspect the current sender, `/as broker` for Example Risk,
 `/as client` for Cove, and `/as public` for the unlinked public-demo path.
 `/as +<E.164 phone>` can test an explicit local identity; the following message
 uses the newly selected sender.

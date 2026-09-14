@@ -9,6 +9,7 @@ import {
 } from "../procurementRequests";
 import { assertFeatureFlagAllowedForOrg } from "./featureFlags";
 import {
+  assertExternalBrokerIdentity,
   normalizeBrokerLineOfBusinessCodes,
   normalizeBrokerWritingStates,
 } from "./brokerProfileValidation";
@@ -140,6 +141,7 @@ async function requireBrokerOrganization(ctx: MutationCtx, value: unknown) {
   );
   if (broker.type !== "broker")
     throw new Error("Broker organization not found");
+  assertExternalBrokerIdentity(broker);
   return broker;
 }
 
@@ -223,6 +225,10 @@ function validateOptionalUrl(value: unknown) {
 }
 
 function validateBrokerProfileFields(input: Record<string, unknown>) {
+  assertExternalBrokerIdentity({
+    name: typeof input.name === "string" ? input.name : undefined,
+    website: typeof input.website === "string" ? input.website : undefined,
+  });
   if (Array.isArray(input.writingStates)) {
     normalizeBrokerWritingStates(
       input.writingStates.filter(
@@ -386,6 +392,7 @@ async function preflightOutreachCreate(
   await requireProcurementRequest(ctx, input.procurementRequestId);
   await requireBrokerOrganization(ctx, input.brokerOrgId);
   validateOptionalEmail(input.contactEmail);
+  assertExternalBrokerIdentity({ email: normalizedText(input.contactEmail) });
 }
 
 async function preflightOutreachUpdate(
@@ -399,8 +406,17 @@ async function preflightOutreachUpdate(
     "Broker outreach",
   );
   await requireProcurementRequest(ctx, outreach.requestId);
-  await requireBrokerOrganization(ctx, input.brokerOrgId);
+  await requireBrokerOrganization(
+    ctx,
+    input.brokerOrgId ?? outreach.brokerOrgId,
+  );
   validateOptionalEmail(input.contactEmail);
+  assertExternalBrokerIdentity({
+    email:
+      input.contactEmail === undefined
+        ? outreach.contactEmail
+        : normalizedText(input.contactEmail),
+  });
 }
 
 async function preflightProposalFile(
@@ -420,6 +436,8 @@ async function preflightProposalFile(
   );
   if (outreach.requestId !== request._id)
     throw new Error("Outreach does not belong to this request");
+  await requireBrokerOrganization(ctx, outreach.brokerOrgId);
+  assertExternalBrokerIdentity({ email: outreach.contactEmail });
   const clientFileIds = Array.isArray(input.clientFileIds)
     ? input.clientFileIds
     : [];
@@ -637,6 +655,7 @@ async function preflightProposalReviewConfirm(
     "Proposal",
   );
   const request = await requireProcurementRequest(ctx, review.requestId);
+  await requireBrokerOrganization(ctx, proposal.brokerOrgId);
   if (
     proposal.requestId !== request._id ||
     proposal.clientOrgId !== request.clientOrgId ||
@@ -658,6 +677,7 @@ async function preflightProposalSelect(
     "Proposal",
   );
   const request = await requireProcurementRequest(ctx, proposal.requestId);
+  await requireBrokerOrganization(ctx, proposal.brokerOrgId);
   if (proposal.clientOrgId !== request.clientOrgId) {
     throw new Error("Proposal belongs to a different client");
   }

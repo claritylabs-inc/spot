@@ -1,4 +1,9 @@
 import dayjs from "dayjs";
+import {
+  assertExternalBrokerIdentity,
+  isSpotOwnedBrokerIdentity,
+  isSpotOwnedDomain,
+} from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -273,6 +278,7 @@ async function requireBrokerOrganization(
   if (!broker || broker.type !== "broker") {
     throw new Error("Broker organization not found");
   }
+  assertExternalBrokerIdentity(broker);
   return broker;
 }
 
@@ -901,6 +907,7 @@ export async function createProcurementOutreachByOperator(
   const request = await requireRequest(ctx, args.requestId);
   const broker = await requireBrokerOrganization(ctx, args.brokerOrgId);
   if (!broker) throw new Error("Broker organization is required");
+  assertExternalBrokerIdentity({ email: args.contactEmail });
   if (args.contactUserId) {
     const membership = await ctx.db
       .query("orgMemberships")
@@ -910,6 +917,8 @@ export async function createProcurementOutreachByOperator(
       .unique();
     if (!membership)
       throw new Error("Broker contact must belong to the selected broker");
+    const contact = await ctx.db.get(args.contactUserId);
+    assertExternalBrokerIdentity({ email: contact?.email });
   }
   const now = dayjs().valueOf();
   const contactSnapshot = {
@@ -1020,6 +1029,13 @@ export async function updateProcurementOutreachByOperator(
     patch.brokerName = broker.name;
   }
   const nextBrokerOrgId = patch.brokerOrgId ?? outreach.brokerOrgId;
+  await requireBrokerOrganization(ctx, nextBrokerOrgId);
+  assertExternalBrokerIdentity({
+    email:
+      args.contactEmail === undefined
+        ? outreach.contactEmail
+        : args.contactEmail,
+  });
   if (args.contactUserId !== undefined) {
     if (args.contactUserId) {
       if (!nextBrokerOrgId) throw new Error("Select a broker before a contact");
@@ -1031,6 +1047,8 @@ export async function updateProcurementOutreachByOperator(
         .unique();
       if (!membership)
         throw new Error("Broker contact must belong to the selected broker");
+      const contact = await ctx.db.get(args.contactUserId);
+      assertExternalBrokerIdentity({ email: contact?.email });
     }
     patch.contactUserId = args.contactUserId ?? undefined;
   }
@@ -1493,7 +1511,23 @@ export async function previewProcurementEmailReconciliation(
   const participantEmails = new Set(
     thread.participantEmails.map(normalizeProcurementEmail),
   );
-  const matchingOutreaches = outreaches.filter(
+  const eligibleOutreaches = (
+    await Promise.all(
+      outreaches.map(async (outreach) => {
+        const broker = outreach.brokerOrgId
+          ? await ctx.db.get(outreach.brokerOrgId)
+          : null;
+        return broker?.type === "broker" &&
+          !isSpotOwnedBrokerIdentity(broker) &&
+          !isSpotOwnedDomain(outreach.contactEmail)
+          ? outreach
+          : null;
+      }),
+    )
+  ).filter(
+    (outreach): outreach is NonNullable<typeof outreach> => outreach !== null,
+  );
+  const matchingOutreaches = eligibleOutreaches.filter(
     (outreach) =>
       outreach.contactEmail &&
       participantEmails.has(normalizeProcurementEmail(outreach.contactEmail)),
@@ -1501,10 +1535,12 @@ export async function previewProcurementEmailReconciliation(
   const suggestedOutreach =
     matchingOutreaches.length === 1 ? matchingOutreaches[0] : null;
   const selectedOutreach = selectedOutreachId
-    ? outreaches.find((outreach) => outreach._id === selectedOutreachId)
+    ? eligibleOutreaches.find((outreach) => outreach._id === selectedOutreachId)
     : suggestedOutreach;
   if (selectedOutreachId && !selectedOutreach) {
-    throw new Error("Selected outreach does not belong to this request");
+    throw new Error(
+      "Selected outreach must belong to this request and an external broker",
+    );
   }
   const selectedProposalIds = new Set(
     proposals
@@ -1543,9 +1579,9 @@ export async function previewProcurementEmailReconciliation(
     files,
     unfiledFiles,
     selectedOutreachId: selectedOutreach?._id ?? null,
-    // Every outreach on the thread's current request, so a client that moved
+    // Eligible outreaches on the thread's current request, so a client that moved
     // the thread can rebuild its picker instead of trusting a stale snapshot.
-    outreaches: outreaches.map((outreach) => ({
+    outreaches: eligibleOutreaches.map((outreach) => ({
       outreachId: outreach._id,
       brokerOrgId: outreach.brokerOrgId,
       brokerName: outreach.brokerName,

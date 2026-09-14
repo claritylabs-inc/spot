@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -1533,6 +1534,11 @@ async function executeToolDomain(
             .take(500)
       : await ctx.db.query("organizations").take(1_000);
     return organizations
+      .filter(
+        (organization) =>
+          organization.type !== "broker" ||
+          !isSpotOwnedBrokerIdentity(organization),
+      )
       .map((organization) => ({
         organization,
         score: organizationSearchScore(organization, queryText),
@@ -1572,7 +1578,11 @@ async function executeToolDomain(
     return {
       orgId,
       name: organization.name,
-      type: organization.type ?? "client",
+      type:
+        organization.type === "broker" &&
+        isSpotOwnedBrokerIdentity(organization)
+          ? "spot"
+          : (organization.type ?? "client"),
       status: organization.operatorStatus ?? "live",
       slug: organization.slug,
       website: organization.website,
@@ -1604,7 +1614,12 @@ async function executeToolDomain(
     return {
       organizations: {
         total: organizations.length,
-        brokers: organizations.filter((org) => org.type === "broker").length,
+        brokers: organizations.filter(
+          (org) => org.type === "broker" && !isSpotOwnedBrokerIdentity(org),
+        ).length,
+        spot: organizations.filter(
+          (org) => org.type === "broker" && isSpotOwnedBrokerIdentity(org),
+        ).length,
         clients: organizations.filter((org) => org.type !== "broker").length,
       },
       policies: {

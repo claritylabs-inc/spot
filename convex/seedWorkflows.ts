@@ -68,11 +68,11 @@ const DOCUMENTS = [
   },
   {
     key: "quote",
-    name: "Montgomery renewal quote - local fixture.pdf",
+    name: "Example Risk renewal quote - local fixture.pdf",
     clientVisible: false,
     paragraphs: [
       "SYNTHETIC LOCAL FIXTURE - NOT A BINDABLE QUOTE",
-      `Insured: ${policy.insuredName}. Broker: Montgomery Risk. Insurer: ${policy.carrier}.`,
+      `Insured: ${policy.insuredName}. Broker: ${policy.broker}. Insurer: ${policy.carrier}.`,
       "Proposed term: March 15, 2027 to March 15, 2028. Annual premium: CAD 51,000.",
       "Technology E&O: CAD 5,000,000 limit; CAD 25,000 deductible. Cyber liability: CAD 2,000,000 limit; CAD 25,000 deductible. Media liability: CAD 1,000,000 limit.",
       "Subject to a signed application and current loss runs. The cyber limit is CAD 1,000,000 below the requested CAD 3,000,000. No coverage is bound.",
@@ -470,7 +470,7 @@ export const insert = internalMutation({
       ],
       [
         "market_strategy",
-        "Internal QA note: Montgomery's cyber offer is CAD 1 million below target. Ask for a revised limit before staff confirmation or selection.",
+        "Internal QA note: Example Risk's cyber offer is CAD 1 million below target. Ask for a revised limit before staff confirmation or selection.",
         "operator",
       ],
       [

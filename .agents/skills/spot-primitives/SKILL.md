@@ -56,6 +56,8 @@ Prefer extending the existing primitive when the meaning matches. Add a new prim
 
 ## Catalog
 
+- `convex/lib/brokerProfileValidation.ts` owns external broker identity eligibility alongside writing-state and ACORD-line validation. `config/spot-acquisition-domains.json` snapshots registered Montgomery Risk acquisition sites; refresh with `node scripts/sync-acquisition-domains.mjs ../montgomery-risk` (`--check` verifies parity). Portal/operator/MCP registration, edits, provisioning, directory/search reads, outreach, proposal filing, review confirmation, and selection reject Spot-owned domains/subdomains and exact brand names. Existing rows remain historical records, excluded from broker eligibility. Never use this classification to grant operator identity or access.
+
 - `convex/lib/agentAttachmentLimits.ts` owns shared attachment byte budgets without a file-count cap. Operator web, email, Slack, iMessage, and MCP registration and cleanup do not truncate file lists by count. Per-file, aggregate-byte, raw-email, channel-transport, and emitted router-asset limits remain enforced.
 
 - `convex/lib/agentEmailDomains.ts` owns the `agent.spot.insure` default and legacy agent address canonicalization across frontend/backend thread displays, replies, and indexed thread lookup. Old approved sender/reply snapshots require regenerated drafts before sending.

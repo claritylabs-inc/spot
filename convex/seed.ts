@@ -219,13 +219,23 @@ export const seed = action({
       hostChannelId: LOCAL_SLACK_FIXTURE.channelId,
       channelName: LOCAL_SLACK_FIXTURE.channelName,
     });
-    const brokerLogo = await ctx.runAction(
-      internal.actions.extractCompanyInfo.importOrgLogoForOrgInternal,
-      {
+    const broker = await ctx.runQuery(internal.orgs.getInternal, {
+      id: fixture.brokerOrgId,
+    });
+    if (!broker?.iconStorageId) {
+      const iconStorageId = await ctx.storage.store(
+        new Blob(
+          [
+            '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#17324d"/><path d="M20 16h26v7H28v6h15v7H28v6h18v7H20z" fill="white"/></svg>',
+          ],
+          { type: "image/svg+xml" },
+        ),
+      );
+      await ctx.runMutation(internal.orgs.setIconInternal, {
         orgId: fixture.brokerOrgId,
-        url: LOCAL_FIXTURE.broker.website,
-      },
-    );
+        iconStorageId,
+      });
+    }
     const clientLogo = await ctx.runAction(
       internal.actions.extractCompanyInfo.importOrgLogoForOrgInternal,
       {
@@ -233,13 +243,9 @@ export const seed = action({
         url: LOCAL_FIXTURE.client.website,
       },
     );
-    const missingLogos = [
-      brokerLogo.success ? null : LOCAL_FIXTURE.broker.name,
-      clientLogo.success ? null : LOCAL_FIXTURE.client.name,
-    ].filter((name) => name !== null);
-    if (missingLogos.length > 0) {
+    if (!clientLogo.success) {
       throw new Error(
-        `Could not seed stored favicon logos for ${missingLogos.join(" and ")}`,
+        `Could not seed stored favicon logo for ${LOCAL_FIXTURE.client.name}`,
       );
     }
     const workflow = await seedWorkflowFixtures(ctx, fixture);
@@ -474,7 +480,7 @@ export const insertLocalFixture = internalMutation({
       accountKind: "customer",
       now,
       phone: brokerPhone,
-      legacyEmails: ["terry@releaserent.com"],
+      legacyEmails: ["terry@montgomeryrisk.com", "terry@releaserent.com"],
     });
     const existingBrokerBySlug = await ctx.db
       .query("organizations")
@@ -482,6 +488,10 @@ export const insertLocalFixture = internalMutation({
       .first();
     const existingBroker =
       existingBrokerBySlug ??
+      (await ctx.db
+        .query("organizations")
+        .withIndex("slug", (query) => query.eq("slug", "montgomery-risk"))
+        .first()) ??
       (await ctx.db
         .query("organizations")
         .withIndex("slug", (query) => query.eq("slug", "release"))
@@ -496,8 +506,15 @@ export const insertLocalFixture = internalMutation({
     };
     let brokerOrgId: Id<"organizations">;
     if (existingBroker) {
-      if (existingBroker.slug === "release") {
+      if (
+        existingBroker.slug === "release" ||
+        existingBroker.slug === "montgomery-risk"
+      ) {
         await ctx.db.patch(existingBroker._id, brokerFields);
+        if (existingBroker.iconStorageId) {
+          await ctx.storage.delete(existingBroker.iconStorageId);
+          await ctx.db.patch(existingBroker._id, { iconStorageId: undefined });
+        }
       }
       brokerOrgId = existingBroker._id;
     } else {
