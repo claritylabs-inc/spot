@@ -347,3 +347,16 @@ The first widening release is PR #346 (`515265cd`); production release run `3490
 Shared development has a client that retains its retired broker association and a policy already owned by that client with historical broker-upload metadata. Those pointers are removable without changing ownership. The widening migration records their prior values in the operator audit ledger and clears only the unused references after backup. It retains the historical uploader side and user because the policy UI displays that provenance. Broker-owned or unresolved policies still require evidence-based reconciliation; the migration never assigns a replacement owner.
 
 The shared-development `brokerActivity` inventory contains 38 retired status notifications: 37 extraction completions and one upload. They carry source policy references rather than unique policy facts. The backed-up retired-store purge removes these unused duplicates, and the final inventory counts are recorded after migration. Production has zero rows in this table.
+
+### Archived company facts recovery
+
+The production export from migration run `34902637845` contained 22 legacy
+`orgMemory` extraction facts that were absent from both the company wiki and
+persisted extraction results. Preserve these as dated historical information in
+the existing company Markdown file before the narrowing release. The temporary
+`restore_company_facts` option on the migration workflow downloads only that
+reviewed run's artifact, requires a fresh backed-up apply, preserves the current
+wiki body and frontmatter, and verifies every recovered fact plus an unchanged
+replay. It does not replace current profile facts or claim fresh verification.
+The recovery mutation, script, and workflow are removed with the other one-time
+migration machinery after successful readback.
