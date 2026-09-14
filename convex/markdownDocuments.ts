@@ -128,6 +128,12 @@ export async function saveMarkdownDocument(
 ) {
   if (!/^[^/\\\u0000-\u001f]+\.md$/i.test(args.filename))
     throw new Error("Use a plain .md filename");
+  if (
+    args.kind === "packet" &&
+    args.filename !== "private.md" &&
+    args.filename !== "public.md"
+  )
+    throw new Error("Procurement requests use only private.md and public.md");
   const existing = await getMarkdownDocument(ctx, args);
   const owner = await ctx.db.get(
     args.requestId ??
@@ -149,12 +155,19 @@ export async function saveMarkdownDocument(
     throw new Error("Markdown document organization mismatch");
   const organization =
     args.kind === "company_wiki" ? await ctx.db.get(args.orgId) : null;
-  const fallback = existing
-    ? parseDocumentVisibility(existing.markdown)
-    : args.kind === "company_wiki" && organization?.type === "client"
-      ? "shared"
-      : "private";
+  const fallback =
+    args.kind === "packet"
+      ? args.filename === "public.md"
+        ? "shared"
+        : "private"
+      : existing
+        ? parseDocumentVisibility(existing.markdown)
+        : args.kind === "company_wiki" && organization?.type === "client"
+          ? "shared"
+          : "private";
   const markdown = withDocumentVisibility(args.markdown, fallback);
+  if (args.kind === "packet" && parseDocumentVisibility(markdown) !== fallback)
+    throw new Error(`${args.filename} must have visibility: ${fallback}`);
   if (
     args.kind === "company_wiki" &&
     organization?.type === "broker" &&

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Copy, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,12 +10,9 @@ import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import {
-  OperationalPanel,
-  OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
@@ -89,11 +86,12 @@ export function PacketLinkDrawer({
   );
 }
 
+const PACKET_FILES = ["private.md", "public.md"] as const;
+
 export function PacketWorkspace({
   requestId,
 }: {
   requestId: Id<"procurementRequests">;
-  readOnly: boolean;
 }) {
   const packet = useQuery(api.procurementPacket.get, { requestId });
   if (!packet)
@@ -103,35 +101,29 @@ export function PacketWorkspace({
       </OperationalPanel>
     );
   return (
-    <div className="space-y-4">
-      {packet.documents.length ? (
-        packet.documents.map((document) => (
-          <OperationalPanel
-            key={document.filename}
-            as="section"
-            aria-label={document.filename}
-          >
-            <OperationalPanelBody className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className={typeStyle("label.field")}>
-                  {document.filename}
-                </span>
-                <StatusTag tone="neutral">
-                  {document.visibility === "shared" ? "Shared" : "Private"}
-                </StatusTag>
-              </div>
-              <ProseMarkdown>
-                {markdownBody(document.markdown) || "No content yet."}
-              </ProseMarkdown>
-            </OperationalPanelBody>
-          </OperationalPanel>
-        ))
-      ) : (
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          No Markdown files yet.
-        </p>
-      )}
-    </div>
+    <Tabs defaultValue="private.md">
+      <TabsList variant="pill" aria-label="Packet files">
+        {PACKET_FILES.map((filename) => (
+          <TabsTrigger key={filename} value={filename}>
+            {filename}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {PACKET_FILES.map((filename) => {
+        const document = packet.documents.find(
+          (document) => document.filename === filename,
+        );
+        return (
+          <TabsContent key={filename} value={filename} className="pt-3">
+            <ProseMarkdown gfm>
+              {document
+                ? markdownBody(document.markdown) || "No content yet."
+                : "No content yet."}
+            </ProseMarkdown>
+          </TabsContent>
+        );
+      })}
+    </Tabs>
   );
 }
 
@@ -155,16 +147,16 @@ function LoadedPacketEditor({
   onClose: () => void;
 }) {
   const updateDocument = useMutation(api.procurementPacket.updateDocument);
-  const fieldId = useId();
-  const [filename, setFilename] = useState("");
-  const [files, setFiles] = useState(
-    documents.map((document) => document.filename),
-  );
-  const [drafts, setDrafts] = useState(() =>
+  const latestDrafts = () =>
     Object.fromEntries(
-      documents.map((document) => [document.filename, document.markdown]),
-    ),
-  );
+      PACKET_FILES.map((filename) => [
+        filename,
+        documents.find((document) => document.filename === filename)
+          ?.markdown ??
+          `---\nvisibility: ${filename === "public.md" ? "shared" : "private"}\n---\n`,
+      ]),
+    );
+  const [drafts, setDrafts] = useState(latestDrafts);
   const revisions = useRef(
     Object.fromEntries(
       documents.map((document) => [document.filename, document.revision]),
@@ -175,7 +167,8 @@ function LoadedPacketEditor({
     mutationName: "procurementPacket.updateDocument",
     args: drafts,
     flush: async (next) => {
-      for (const [filename, markdown] of Object.entries(next)) {
+      for (const filename of PACKET_FILES) {
+        const markdown = next[filename];
         if (markdown === saved.current[filename]) continue;
         const result = await updateDocument({
           requestId,
@@ -200,19 +193,42 @@ function LoadedPacketEditor({
           });
       }}
       title="Edit packet"
-    >
-      <AutoSaveStatus status={autoSave.status} />
-      <div className="space-y-5">
-        {files.map((filename) => (
-          <div key={filename} className="space-y-1.5">
-            <label
-              htmlFor={`${fieldId}-${filename}`}
-              className={`text-muted-foreground ${typeStyle("label.field")}`}
+      actions={
+        <div className="flex items-center gap-2">
+          <AutoSaveStatus status={autoSave.status} />
+          {autoSave.status === "error" ? (
+            <PillButton
+              variant="destructive"
+              onClick={() => {
+                const latest = latestDrafts();
+                revisions.current = Object.fromEntries(
+                  documents.map((document) => [
+                    document.filename,
+                    document.revision,
+                  ]),
+                );
+                saved.current = latest;
+                setDrafts(latest);
+              }}
             >
+              Discard edits
+            </PillButton>
+          ) : null}
+        </div>
+      }
+    >
+      <Tabs defaultValue="private.md">
+        <TabsList variant="pill" aria-label="Edit packet files">
+          {PACKET_FILES.map((filename) => (
+            <TabsTrigger key={filename} value={filename}>
               {filename}
-            </label>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {PACKET_FILES.map((filename) => (
+          <TabsContent key={filename} value={filename} className="pt-3">
             <Textarea
-              id={`${fieldId}-${filename}`}
+              aria-label={filename}
               value={drafts[filename]}
               onChange={(event) =>
                 setDrafts((current) => ({
@@ -220,47 +236,11 @@ function LoadedPacketEditor({
                   [filename]: event.target.value,
                 }))
               }
-              className="min-h-72"
+              className="min-h-96"
             />
-          </div>
+          </TabsContent>
         ))}
-        <div className="flex items-end gap-2">
-          <label className="flex-1 space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("label.field")}`}
-            >
-              New Markdown file
-            </span>
-            <Input
-              value={filename}
-              onChange={(event) => setFilename(event.target.value)}
-              placeholder="notes.md"
-            />
-          </label>
-          <PillButton
-            variant="secondary"
-            onClick={() => {
-              const name = filename.trim();
-              if (!/^[^/\\\u0000-\u001f]+\.md$/i.test(name)) {
-                toast.error("Enter a plain .md filename");
-                return;
-              }
-              if (files.includes(name)) {
-                toast.error("A file with that name already exists");
-                return;
-              }
-              setFiles((current) => [...current, name]);
-              setDrafts((current) => ({
-                ...current,
-                [name]: "---\nvisibility: private\n---\n",
-              }));
-              setFilename("");
-            }}
-          >
-            Add file
-          </PillButton>
-        </div>
-      </div>
+      </Tabs>
     </SettingsDrawer>
   );
 }

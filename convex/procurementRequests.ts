@@ -1,8 +1,4 @@
-import {
-  readProcurementFileNotes,
-  saveProcurementFileNotes,
-} from "./lib/procurementFileNotes";
-import { readOutreachLog, saveOutreachLog } from "./lib/outreachLog";
+import { requestPacketText } from "./lib/procurementNarrative";
 import {
   completionOutcomeValidator,
   normalizeCompletionOutcome,
@@ -44,11 +40,7 @@ import {
   uniqueProcurementEmails,
   type ProcurementEmailCategory,
 } from "./lib/procurement";
-import {
-  requestNarrative,
-  saveRequestNarrative,
-  seedRequestIntake,
-} from "./lib/procurementNarrative";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 import { getAgentDomain } from "./lib/resend";
 import {
   throwUserFacingError,
@@ -284,11 +276,7 @@ async function outreachDto(
     packetSnapshot: _packetSnapshot,
     ...fields
   } = outreach;
-  return { ...fields, log: await readOutreachLog(ctx, outreach) };
-}
-
-function outreachLog(value: string | null | undefined) {
-  return value?.trim() ? requiredText(value, "Log") : undefined;
+  return fields;
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
@@ -318,9 +306,9 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
         .withIndex("request", (index) => index.eq("requestId", request._id))
         .collect(),
     ]);
+  const { narrative: _narrative, ...requestFields } = request;
   return {
-    ...request,
-    narrative: await requestNarrative(ctx, request, { includePrivate: true }),
+    ...requestFields,
     completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
@@ -466,9 +454,9 @@ export async function getProcurementRequestDetails(
       const file = item.clientFileId
         ? await ctx.db.get(item.clientFileId)
         : null;
+      const { notes: _notes, ...itemFields } = item;
       return {
-        ...item,
-        notes: await readProcurementFileNotes(ctx, item),
+        ...itemFields,
         clientFile: file
           ? {
               _id: file._id,
@@ -555,16 +543,21 @@ export async function listProcurementRequestSummaries(
         .order("desc")
         .take(MAX_REQUESTS);
   const search = args.query?.trim().toLowerCase();
-  const summaries = await Promise.all(rows.map((row) => requestRow(ctx, row)));
-  return summaries
-    .filter(
-      (row) =>
-        !search ||
-        [row.title, row.narrative].some((value) =>
-          value.toLowerCase().includes(search),
-        ),
-    )
-    .slice(0, limit);
+  const matches = search
+    ? (
+        await Promise.all(
+          rows.map(async (row) => ({
+            row,
+            text: `${row.title} ${await requestPacketText(ctx, row)}`.toLowerCase(),
+          })),
+        )
+      )
+        .filter(({ text }) => text.includes(search))
+        .map(({ row }) => row)
+    : rows;
+  return Promise.all(
+    matches.slice(0, limit).map((row) => requestRow(ctx, row)),
+  );
 }
 
 export const list = query({
@@ -758,7 +751,6 @@ export async function updateProcurementRequestByOperator(
     operatorUserId: Id<"users">;
     requestId: Id<"procurementRequests">;
     title?: string;
-    narrative?: string;
     targetEffectiveDate?: string | null;
     status?: RequestStatus;
     replacingPolicyId?: Id<"policies"> | null;
@@ -777,15 +769,6 @@ export async function updateProcurementRequestByOperator(
   if (args.title !== undefined) {
     patch.title = requiredText(args.title, "Title", 200);
     patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g, " ");
-  }
-  if (args.narrative !== undefined) {
-    await saveRequestNarrative(
-      ctx,
-      request,
-      requiredText(args.narrative, "Client request"),
-      { includePrivate: true },
-    );
-    patch.narrative = undefined;
   }
   if (args.targetEffectiveDate !== undefined) {
     patch.targetEffectiveDate =
@@ -845,7 +828,6 @@ export const update = mutation({
   args: {
     requestId: v.id("procurementRequests"),
     title: v.optional(v.string()),
-    narrative: v.optional(v.string()),
     targetEffectiveDate: v.optional(v.union(v.string(), v.null())),
     status: v.optional(requestStatusValidator),
     replacingPolicyId: v.optional(v.union(v.id("policies"), v.null())),
@@ -876,7 +858,6 @@ export async function createProcurementOutreachByOperator(
     contactEmail?: string;
     contactPhone?: string;
     status?: OutreachStatus;
-    log?: string;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -919,11 +900,6 @@ export async function createProcurementOutreachByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  await saveOutreachLog(
-    ctx,
-    (await ctx.db.get(outreachId))!,
-    outreachLog(args.log) ?? "",
-  );
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -948,7 +924,6 @@ export const createOutreach = mutation({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     status: v.optional(outreachStatusValidator),
-    log: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -971,7 +946,6 @@ export async function updateProcurementOutreachByOperator(
     contactEmail?: string | null;
     contactPhone?: string | null;
     status?: OutreachStatus;
-    log?: string | null;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1037,16 +1011,6 @@ export async function updateProcurementOutreachByOperator(
       patch.sentAt = dayjs().valueOf();
     }
   }
-  if (args.log !== undefined) {
-    await saveOutreachLog(ctx, outreach, outreachLog(args.log) ?? "");
-    patch.notes = undefined;
-    patch.applicationUrl = undefined;
-    patch.applicationQuestions = undefined;
-    patch.quoteSummary = undefined;
-    patch.quoteAmount = undefined;
-    patch.quoteCurrency = undefined;
-    patch.quoteUrl = undefined;
-  }
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
@@ -1077,7 +1041,6 @@ export const updateOutreach = mutation({
     contactEmail: v.optional(v.union(v.string(), v.null())),
     contactPhone: v.optional(v.union(v.string(), v.null())),
     status: v.optional(outreachStatusValidator),
-    log: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1101,7 +1064,6 @@ export async function createProcurementFileItemByOperator(
     status?: FileStatus;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
-    notes?: string;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1149,12 +1111,6 @@ export async function createProcurementFileItemByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  if (args.notes?.trim())
-    await saveProcurementFileNotes(
-      ctx,
-      (await ctx.db.get(fileItemId))!,
-      optionalText(args.notes) ?? "",
-    );
   if (args.clientFileId) {
     await scheduleClientFileCompanyInformation(ctx, args.clientFileId);
   }
@@ -1189,7 +1145,6 @@ export const createFileItem = mutation({
     status: v.optional(fileStatusValidator),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
-    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1213,7 +1168,6 @@ export async function updateProcurementFileItemByOperator(
     status?: FileStatus;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
-    notes?: string | null;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1272,10 +1226,6 @@ export async function updateProcurementFileItemByOperator(
       "missing_client_file",
       "A visible procurement item must reference a client file",
     );
-  if (args.notes !== undefined) {
-    await saveProcurementFileNotes(ctx, item, optionalText(args.notes) ?? "");
-    patch.notes = undefined;
-  }
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
@@ -1331,7 +1281,6 @@ export const updateFileItem = mutation({
     status: v.optional(fileStatusValidator),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
-    notes: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);

@@ -59,6 +59,39 @@ describe("operator MCP tool catalog", () => {
     }
   });
 
+  test("procurement prose uses only the two request files", () => {
+    for (const filename of ["private.md", "public.md"]) {
+      expect(
+        parseOperatorAgentToolInput("update_procurement_packet", {
+          procurementRequestId: "request-1",
+          filename,
+          markdown: "Current request notes",
+          expectedRevision: 1,
+        }),
+      ).toMatchObject({ filename });
+    }
+    expect(() =>
+      parseOperatorAgentToolInput("update_procurement_packet", {
+        procurementRequestId: "request-1",
+        filename: "market-log.md",
+        markdown: "Separate notes",
+        expectedRevision: 0,
+      }),
+    ).toThrow();
+    for (const [name, id, field] of [
+      ["update_procurement_request", "procurementRequestId", "narrative"],
+      ["update_procurement_broker_outreach", "procurementOutreachId", "log"],
+      ["update_procurement_file_item", "procurementFileItemId", "notes"],
+    ]) {
+      expect(() =>
+        parseOperatorAgentToolInput(name, {
+          [id]: "record-1",
+          [field]: "Notes",
+        }),
+      ).toThrow();
+    }
+  });
+
   test("grounds representative dates, emails, and websites in executable schemas", () => {
     expect(
       parseOperatorAgentToolInput("create_procurement_request", {
@@ -115,13 +148,13 @@ describe("operator MCP tool catalog", () => {
         name: "update_procurement_broker_outreach",
         id: "procurementOutreachId",
         omitted: "status",
-        cleared: "log",
+        cleared: "contactPhone",
       },
       {
         name: "update_procurement_file_item",
         id: "procurementFileItemId",
         omitted: "label",
-        cleared: "notes",
+        cleared: "clientFileId",
       },
     ];
     for (const { name, id, omitted, cleared } of cases) {

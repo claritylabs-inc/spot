@@ -1,6 +1,9 @@
 import { saveMarkdownDocument } from "./markdownDocuments";
-import { requestNarrative } from "./lib/procurementNarrative";
-import { readOutreachLog } from "./lib/outreachLog";
+import { requestPacketText } from "./lib/procurementNarrative";
+import {
+  readPacketProjection,
+  readPacketDocument,
+} from "./lib/packetDocuments";
 import {
   googleWorkspaceScanBodyFingerprint,
   googleWorkspaceScanContentFingerprint,
@@ -599,6 +602,7 @@ async function replaceEvidence(
   text: string,
   operation: ScanOperation,
   sequence: string,
+  beforeApply?: () => Promise<unknown>,
 ) {
   const evidence = {
     ...f.evidence,
@@ -630,6 +634,7 @@ async function replaceEvidence(
     internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
     args,
   );
+  await beforeApply?.();
   return f.t.mutation(
     internal.operatorGoogleWorkspaceReconciliation.applyInternal,
     { ...args, snapshot: prepared.snapshot },
@@ -706,7 +711,7 @@ test("creates standalone clients and client-visible requests without grants or s
       .withIndex("organization", (q) => q.eq("clientOrgId", client._id))
       .collect();
     expect(requests).toHaveLength(1);
-    expect(await requestNarrative(ctx, requests[0])).toBe(
+    expect(await requestPacketText(ctx, requests[0])).toContain(
       "Cyber insurance requested",
     );
     expect(requests[0]).toMatchObject({
@@ -1143,7 +1148,16 @@ test("broker decline and later quote update one private market record without fa
   );
   expect(rows).toHaveLength(1);
   expect(rows[0].status).toBe("quote_received");
-  const log = await f.t.run((ctx) => readOutreachLog(ctx, rows[0]));
+  const log = await f.t.run(
+    async (ctx) =>
+      (
+        await readPacketProjection(
+          ctx,
+          (await ctx.db.get(rows[0].requestId))!,
+          "operator",
+        )
+      ).markdown,
+  );
   expect(log).toContain("declined");
   expect(log).toContain("provided a quote");
   expect(rows[0].packetSnapshot).toBeUndefined();
@@ -2221,7 +2235,7 @@ test("matches coverage held only in canonical intake for a generically named req
       orgId: f.orgId,
       requestId: f.requestId,
       kind: "packet",
-      filename: "request-intake.md",
+      filename: "private.md",
       expectedRevision: 0,
       markdown: "---\nvisibility: private\n---\nAuto coverage requested",
     });
@@ -2245,3 +2259,125 @@ test("matches coverage held only in canonical intake for a generically named req
     "completed",
   );
 });
+
+test.each(["correct", "before_apply", "before_correction"] as const)(
+  "market log and status correction handles %s without losing manual Markdown",
+  async (scenario) => {
+    const f = await fixture();
+    const { outreachId, original } = await f.t.run(async (ctx) => {
+      const brokerOrgId = await ctx.db.insert("organizations", {
+        name: "Montgomery",
+        type: "broker",
+        primaryContactEmail: "broker@montgomery.test",
+      });
+      const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
+        requestId: f.requestId,
+        clientOrgId: f.orgId,
+        brokerOrgId,
+        brokerName: "Montgomery",
+        status: "observed",
+        createdByUserId: f.userId,
+        updatedByUserId: f.userId,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const original = await saveMarkdownDocument(ctx, {
+        orgId: f.orgId,
+        requestId: f.requestId,
+        kind: "packet",
+        filename: "private.md",
+        expectedRevision: 0,
+        markdown:
+          "---\nvisibility: private\nreviewedBy: operator\n---\nOriginal private market notes",
+      });
+      await ctx.db.patch(original._id, { updatedAt: 1 });
+      return {
+        outreachId,
+        original: {
+          ...original,
+          markdown: (
+            await readPacketDocument(
+              ctx,
+              (await ctx.db.get(f.requestId))!,
+              "private.md",
+            )
+          ).markdown,
+        },
+      };
+    });
+    f.evidence.to.push("broker@montgomery.test");
+    const text = "Montgomery provided a quote for Cove Auto coverage.";
+    const operation: ScanOperation = {
+      kind: "market_activity",
+      identity,
+      brokerIdentity: {
+        kind: "broker",
+        name: "Montgomery",
+        contactEmail: "broker@montgomery.test",
+        address: null,
+      },
+      request: { title: "Auto", coverage: "Auto" },
+      effectiveDate: "2026-09-13",
+      excerpt: text,
+      explanation: "Quote received",
+      log: "New quote details",
+      observedStatus: "quote_received",
+    };
+    const manualEdit = async (expectedRevision: number) =>
+      f.t.run((ctx) =>
+        saveMarkdownDocument(ctx, {
+          orgId: f.orgId,
+          requestId: f.requestId,
+          kind: "packet",
+          filename: "private.md",
+          expectedRevision,
+          markdown:
+            "---\nvisibility: private\nreviewedBy: operator\n---\nLater manual notes",
+        }),
+      );
+    if (scenario === "before_apply") {
+      await expect(
+        replaceEvidence(f, text, operation, "quote", () => manualEdit(1)),
+      ).rejects.toThrow("changed during analysis");
+      expect((await f.t.run((ctx) => ctx.db.get(outreachId)))?.status).toBe(
+        "observed",
+      );
+      expect(
+        (await f.t.run((ctx) => ctx.db.get(original._id)))?.markdown,
+      ).toContain("Later manual notes");
+      return;
+    }
+    const applied = await replaceEvidence(f, text, operation, "quote");
+    const changes = await f.t.run((ctx) =>
+      ctx.db
+        .query("operatorWorkspaceScanChanges")
+        .withIndex("finding", (q) => q.eq("findingId", applied.findingId))
+        .collect(),
+    );
+    expect(changes.map((change) => change.table).sort()).toEqual([
+      "markdownDocuments",
+      "procurementBrokerOutreaches",
+    ]);
+    const after = await f.t.run((ctx) => ctx.db.get(original._id));
+    expect(after?.markdown).toContain("New quote details");
+    expect(after?.markdown).toContain("visibility: private");
+    if (scenario === "before_correction") await manualEdit(2);
+    const corrected = await f.t
+      .withIdentity({ subject: `${f.userId}|session` })
+      .mutation(api.operatorGoogleWorkspaceScanActivity.correctActivity, {
+        activityId: applied.findingId,
+      });
+    const row = await f.t.run((ctx) => ctx.db.get(outreachId));
+    const document = await f.t.run((ctx) => ctx.db.get(original._id));
+    if (scenario === "before_correction") {
+      expect(corrected.status).toBe("conflict");
+      expect(row?.status).toBe("quote_received");
+      expect(document?.markdown).toContain("Later manual notes");
+    } else {
+      expect(corrected.status).toBe("corrected");
+      expect(row?.status).toBe("observed");
+      expect(document?.markdown).toBe(original.markdown);
+      expect(document?.revision).toBe(after!.revision + 1);
+    }
+  },
+);

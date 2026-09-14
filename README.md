@@ -8,6 +8,8 @@ Spot is the insurance intelligence platform from Tools for Enlightenment. It com
 
 For contributor-facing implementation detail, see [AGENTS.md](AGENTS.md).
 
+Procurement requests use two ordinary Markdown files: `private.md` for internal work and `public.md` for shared material. Intake, broker history, follow-ups, and file-handling prose live in those files. Public content is available through authorized request access or an issued packet link; the filename does not publish it to the internet. Workflow fields and immutable issued snapshots remain separate. See the [procurement data inventory](docs/procurement/data-inventory.md) and [implementation/release record](docs/architecture/backend-simplification.md).
+
 ## What Spot Does
 
 - Ingests insurance-related documents from email and uploads

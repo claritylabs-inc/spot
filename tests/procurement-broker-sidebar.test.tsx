@@ -49,11 +49,10 @@ const outreach = {
   brokerName: "Example broker",
   contactEmail: "contact@example.com",
   status: "request_sent" as const,
-  log: "Original log",
   updatedAt: 1,
 };
 
-test("saving an open log preserves a status updated by extraction", async () => {
+test("saving contact edits preserves a status updated by extraction", async () => {
   let current = { ...outreach, status: "request_sent" };
   mocks.query.mockImplementation((reference) =>
     getFunctionName(reference) === "procurementRequests:get"
@@ -83,27 +82,29 @@ test("saving an open log preserves a status updated by extraction", async () => 
     );
   try {
     await rerender();
-    const input = container.querySelector("textarea")!;
+    const input = container.querySelector<HTMLInputElement>(
+      'input[type="email"]',
+    )!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
-        HTMLTextAreaElement.prototype,
+        HTMLInputElement.prototype,
         "value",
-      )!.set!.call(input, "Follow up on the limit");
+      )!.set!.call(input, "renewals@example.com");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     current = { ...current, status: "quote_received" };
     await rerender();
-    expect(input.value).toBe("Follow up on the limit");
+    expect(input.value).toBe("renewals@example.com");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     const saved = mocks.update.mock.calls[0][0];
     expect(saved).toMatchObject({
       outreachId: outreach._id,
-      log: "Follow up on the limit",
+      contactEmail: "renewals@example.com",
     });
     expect(saved.status).toBeUndefined();
-    expect(saved.contactEmail).toBeUndefined();
+    expect(saved.contactName).toBeUndefined();
   } finally {
     await act(async () => root.unmount());
     container.remove();

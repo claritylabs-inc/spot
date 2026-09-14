@@ -4,6 +4,8 @@ import migrationsTest from "@convex-dev/migrations/test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { saveMarkdownDocument } from "./markdownDocuments";
+import { parseMarkdownDocument, stringifyMarkdownDocument } from "./lib/markdownDocument";
 
 // Logo discovery is the only network dependency of the local seed.
 vi.mock("./actions/extractCompanyInfo", async (importOriginal) => {
@@ -66,8 +68,15 @@ test("rerunning setup preserves edited work and reuses records and stored files"
     await ctx.db.patch(ids.brokerUserId, { email: "terry@montgomeryrisk.com" });
     const wiki = await ctx.db.query("markdownDocuments").filter((q) => q.eq(q.field("kind"), "company_wiki")).first();
     await ctx.db.patch(wiki!._id, { markdown: "User-edited wiki" });
-    const section = await ctx.db.query("markdownDocuments").filter((q) => q.eq(q.field("filename"), "submission-packet.md")).first();
-    await ctx.db.patch(section!._id, { markdown: "User-edited packet" });
+    const packetFiles = await ctx.db.query("markdownDocuments").withIndex("request_kind", (q) => q.eq("requestId", ids.requestId!).eq("kind", "packet")).collect();
+    expect(packetFiles.map((document) => document.filename).sort()).toEqual(["private.md", "public.md"]);
+    const publicFile = packetFiles.find((document) => document.filename === "public.md")!;
+    const privateFile = packetFiles.find((document) => document.filename === "private.md")!;
+    await saveMarkdownDocument(ctx, {
+      orgId: publicFile.orgId, requestId: ids.requestId!, kind: "packet", filename: "public.md",
+      markdown: stringifyMarkdownDocument(parseMarkdownDocument(publicFile.markdown).frontmatter, "User-edited packet"),
+      expectedRevision: publicFile.revision,
+    });
     const archived = (await ctx.db.query("clientFiles").collect()).find(
       (file) => file.archivedAt,
     )!;
@@ -77,7 +86,9 @@ test("rerunning setup preserves edited work and reuses records and stored files"
     });
     return {
       wikiId: wiki!._id,
-      sectionId: section!._id,
+      publicFileId: publicFile._id,
+      privateFileId: privateFile._id,
+      privateMarkdown: privateFile.markdown,
       archivedId: archived._id,
       files: await ctx.db.query("clientFiles").collect(),
     };
@@ -117,9 +128,10 @@ test("rerunning setup preserves edited work and reuses records and stored files"
     expect((await ctx.db.get(ids.requestId!))?.status).toBe("binding");
     expect((await ctx.db.get(ids.policyId))?.premiumAmount).toBe(99_000);
     expect((await ctx.db.get(before.wikiId))?.markdown).toBe("User-edited wiki");
-    expect((await ctx.db.get(before.sectionId))?.markdown).toBe(
-      "User-edited packet",
-    );
+    const packetFiles = await ctx.db.query("markdownDocuments").withIndex("request_kind", (q) => q.eq("requestId", ids.requestId!).eq("kind", "packet")).collect();
+    expect(packetFiles.map((document) => document.filename).sort()).toEqual(["private.md", "public.md"]);
+    expect(parseMarkdownDocument((await ctx.db.get(before.publicFileId))!.markdown).body).toBe("User-edited packet");
+    expect((await ctx.db.get(before.privateFileId))?.markdown).toBe(before.privateMarkdown);
     expect((await ctx.db.get(before.archivedId))?.archivedAt).toBeUndefined();
     expect(
       (

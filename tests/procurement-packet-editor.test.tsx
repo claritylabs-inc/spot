@@ -20,14 +20,14 @@ vi.mock("sonner", () => ({ toast: { error: mocks.error, success: vi.fn() } }));
 vi.mock("@/components/settings/settings-drawer", () => ({
   SettingsDrawer: ({
     children,
-    footer,
+    actions,
   }: {
     children: ReactNode;
-    footer: ReactNode;
+    actions: ReactNode;
   }) => (
     <div>
       {children}
-      {footer}
+      {actions}
     </div>
   ),
 }));
@@ -45,7 +45,7 @@ afterEach(() => {
 test("preserves unsaved packet edits across live updates and a rejected save", async () => {
   const requestId = "request" as Id<"procurementRequests">;
   const packetDocument = {
-    filename: "submission-packet.md",
+    filename: "private.md",
     markdown: "Original",
     revision: 1,
   };
@@ -71,7 +71,9 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
     });
   try {
     await render();
-    const input = container.querySelector("textarea")!;
+    const input = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="private.md"]',
+    )!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLTextAreaElement.prototype,
@@ -85,19 +87,52 @@ test("preserves unsaved packet edits across live updates and a rejected save", a
       ],
     });
     await render();
-    expect(container.querySelector("textarea")?.value).toBe("My unsaved draft");
+    expect(
+      container.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="private.md"]',
+      )?.value,
+    ).toBe("My unsaved draft");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
       requestId,
-      filename: "submission-packet.md",
+      filename: "private.md",
       expectedRevision: 1,
       markdown: "My unsaved draft",
     });
-    expect(container.querySelector("textarea")?.value).toBe("My unsaved draft");
+    expect(
+      container.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="private.md"]',
+      )?.value,
+    ).toBe("My unsaved draft");
     expect(onClose).not.toHaveBeenCalled();
     expect(mocks.error).toHaveBeenCalled();
+    const discard = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Discard edits",
+    );
+    expect(discard).toBeDefined();
+    await act(async () => discard!.click());
+    expect(input.value).toBe("Another operator's edit");
+    mocks.save.mockResolvedValue({ revision: 3 });
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(input, "Updated from latest draft");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.save).toHaveBeenLastCalledWith({
+      requestId,
+      filename: "private.md",
+      expectedRevision: 2,
+      markdown: "Updated from latest draft",
+    });
+    expect(onClose).not.toHaveBeenCalled();
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -109,7 +144,7 @@ test("successive packet autosaves use the acknowledged revision without closing 
   mocks.query.mockReturnValue({
     documents: [
       {
-        filename: "submission-packet.md",
+        filename: "private.md",
         markdown: "Original",
         revision: 4,
       },
@@ -136,7 +171,9 @@ test("successive packet autosaves use the acknowledged revision without closing 
     );
     for (const value of ["First edit", "Second edit"]) {
       await act(async () => {
-        const input = container.querySelector("textarea")!;
+        const input = container.querySelector<HTMLTextAreaElement>(
+          'textarea[aria-label="private.md"]',
+        )!;
         Object.getOwnPropertyDescriptor(
           HTMLTextAreaElement.prototype,
           "value",
@@ -150,19 +187,23 @@ test("successive packet autosaves use the acknowledged revision without closing 
     expect(mocks.save.mock.calls.map(([args]) => args)).toEqual([
       {
         requestId,
-        filename: "submission-packet.md",
+        filename: "private.md",
         expectedRevision: 4,
         markdown: "First edit",
       },
       {
         requestId,
-        filename: "submission-packet.md",
+        filename: "private.md",
         expectedRevision: 5,
         markdown: "Second edit",
       },
     ]);
     expect(onClose).not.toHaveBeenCalled();
-    expect(container.querySelector("textarea")?.value).toBe("Second edit");
+    expect(
+      container.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="private.md"]',
+      )?.value,
+    ).toBe("Second edit");
   } finally {
     await act(async () => root.unmount());
     container.remove();

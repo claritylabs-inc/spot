@@ -78,7 +78,6 @@ test("review candidates paginate beyond 100 with exact organization ownership an
         await ctx.db.insert("procurementRequests", {
           clientOrgId: orgId,
           title: `Auto ${i}`,
-          narrative: "Synthetic request",
           status: "submitted",
           clientVisible: true,
           inboxToken: `fixture-${i}`,

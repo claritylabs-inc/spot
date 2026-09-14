@@ -1,3 +1,4 @@
+import { appendPrivatePacketNote } from "./lib/packetDocuments";
 import { readPacketProjection } from "./lib/packetDocuments";
 import { readOrgWiki } from "./orgWiki";
 import dayjs from "dayjs";
@@ -484,8 +485,13 @@ export const insert = internalMutation({
       contactEmail: LOCAL_FIXTURE.broker.admin.email,
       status: "quote_received",
       source: "operator",
-      log: "## Local fixture market log\n\n- Illustrative terms received: CAD 51,000 premium, CAD 5 million E&O and CAD 2 million cyber.\n- Signed application and loss runs remain outstanding.\n- Follow up on the cyber limit shortfall. No live outreach was sent.",
     });
+    await appendPrivatePacketNote(
+      ctx,
+      (await ctx.db.get(requestId))!,
+      "Local fixture market log",
+      "Illustrative terms received: CAD 51,000 premium. Signed application and loss runs remain outstanding. No live outreach was sent.",
+    );
     for (const [key, purpose, brokerRelease, clientVisible] of [
       ["profile", "application", "attached", true],
       ["policy", "other", "hidden", true],
@@ -627,7 +633,9 @@ export const insert = internalMutation({
       },
     });
     const request = await ctx.db.get(requestId);
-    const sections = request ? (await readPacketProjection(ctx, request, "client")).sections : [];
+    const sections = request
+      ? (await readPacketProjection(ctx, request, "client")).sections
+      : [];
     await ctx.db.insert("procurementProposalReviews", {
       proposalId,
       requestId,
@@ -640,14 +648,12 @@ export const insert = internalMutation({
         .map((section) => ({
           sectionKey: section.key,
           conclusion:
-            section.key === "submission-packet.md"
-              ? "has_gap"
-              : "insufficient_evidence",
+            section.key === "public.md" ? "has_gap" : "insufficient_evidence",
           summary:
-            section.key === "submission-packet.md"
+            section.key === "public.md"
               ? "Synthetic review: cyber limit is CAD 2 million against CAD 3 million requested. Obtain revised terms."
               : "Synthetic review: staff must verify this section against the returned terms.",
-          evidence: section.key === "submission-packet.md" ? evidence : [],
+          evidence: section.key === "public.md" ? evidence : [],
         })),
       createdAt: now,
       updatedAt: now,

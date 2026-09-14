@@ -1,4 +1,5 @@
-import { requestNarrative } from "./lib/procurementNarrative";
+import { getMarkdownDocument } from "./markdownDocuments";
+import { requestPacketText } from "./lib/procurementNarrative";
 import { readOrgWiki } from "./orgWiki";
 import { indexPolicyUploadFingerprintPage } from "./lib/policyImportDedup";
 import { scanInsuredAddressValidator } from "./lib/scanReconciliationSchema";
@@ -510,6 +511,32 @@ export const applyInternal = internalMutation({
         effectiveAt,
         appliedAt: dayjs().valueOf(),
       });
+      if (
+        result.table === "procurementBrokerOutreaches" &&
+        "clientOrgId" in record
+      ) {
+        const document = await getMarkdownDocument(ctx, {
+          orgId: record.clientOrgId,
+          requestId: target.request!._id,
+          kind: "packet",
+          filename: "private.md",
+        });
+        if (
+          document &&
+          JSON.stringify(document) !== JSON.stringify(target.privateDocument)
+        )
+          await ctx.db.insert("operatorWorkspaceScanChanges", {
+            findingId,
+            entityId: document._id,
+            table: "markdownDocuments",
+            beforeJson: JSON.stringify(target.privateDocument),
+            afterJson: JSON.stringify(document),
+            fields: ["markdown", "revision"],
+            created: !target.privateDocument,
+            effectiveAt,
+            appliedAt: dayjs().valueOf(),
+          });
+      }
       await writeOperatorAudit(ctx, {
         operatorUserId,
         type: "setup_write",
@@ -849,9 +876,7 @@ export const getKnownContextInternal = internalQuery({
                     .take(50)
                 ).map(async (r) => ({
                   title: r.title,
-                  narrative: await requestNarrative(ctx, r, {
-                    includePrivate: true,
-                  }),
+                  narrative: await requestPacketText(ctx, r),
                   status: r.status,
                   targetEffectiveDate: r.targetEffectiveDate,
                 })),

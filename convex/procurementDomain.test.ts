@@ -17,7 +17,6 @@ import {
 import { upsertPacketSectionByOperator } from "./procurementPacket";
 import schema from "./schema";
 import { stringifyMarkdownDocument } from "./lib/markdownDocument";
-import { readOutreachLog } from "./lib/outreachLog";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -154,9 +153,9 @@ describe("procurement domain boundaries", () => {
     });
     const edits = {
       requestId,
-      filename: "request-intake.md",
+      filename: "public.md",
       expectedRevision: initial.documents.find(
-        (document) => document.filename === "request-intake.md",
+        (document) => document.filename === "public.md",
       )!.revision,
       markdown: stringifyMarkdownDocument(
         { title: "Packet" },
@@ -206,7 +205,7 @@ describe("procurement domain boundaries", () => {
     const client = await f.client.query(api.clientProcurementRequests.get, {
       requestId,
     });
-    expect(client.narrative).toBe("");
+    expect(client).not.toHaveProperty("narrative");
     expect(JSON.stringify(client)).not.toContain("Private negotiation facts");
     expect(JSON.stringify(client)).not.toContain("Private metadata");
     const broker = await f.operator.query(api.procurementPacket.preview, {
@@ -228,113 +227,17 @@ describe("procurement domain boundaries", () => {
     const operator = await f.operator.query(api.procurementPacket.get, {
       requestId,
     });
-    expect(operator.documents).toHaveLength(1);
-    expect(operator.documents[0].filename).toBe("request-intake.md");
+    expect(operator.documents).toHaveLength(2);
+    expect(operator.documents[0].filename).toBe("private.md");
     expect(operator.markdown).toContain("Private negotiation facts");
     await expect(
       f.client.mutation(api.procurementPacket.updateDocument, {
         requestId,
-        filename: "request-intake.md",
+        filename: "private.md",
         expectedRevision: operator.documents[0].revision,
         markdown: "Client cannot replace private intake",
       }),
     ).rejects.toThrow();
-  });
-
-  test.each(["submission-packet.md", "new-research.md"])(
-    "editing %s before backfill atomically preserves and retires legacy packet rows",
-    async (filename) => {
-      const f = await fixture();
-      const { requestId } = await createRequest(f, "Legacy packet editing");
-      await f.t.run(async (ctx) => {
-        for (const document of await ctx.db
-          .query("markdownDocuments")
-          .withIndex("request_kind", (q) =>
-            q.eq("requestId", requestId).eq("kind", "packet"),
-          )
-          .collect())
-          await ctx.db.delete(document._id);
-        for (const audience of ["broker", "operator"] as const)
-          await ctx.db.insert("procurementPacketSections", {
-            requestId,
-            clientOrgId: f.clientOrgId,
-            key: audience,
-            heading: audience,
-            body: `${audience} original`,
-            order: 0,
-            audience,
-            source: "manual",
-            createdAt: 1,
-            updatedAt: 1,
-            createdByUserId: f.operatorUserId,
-            updatedByUserId: f.operatorUserId,
-          });
-      });
-      const edit = {
-        requestId,
-        filename,
-        expectedRevision: 0,
-        markdown: stringifyMarkdownDocument(
-          { visibility: "shared" },
-          "Intentional edit",
-        ),
-      };
-      await f.operator.mutation(api.procurementPacket.updateDocument, edit);
-      expect(
-        await f.t.run((ctx) =>
-          ctx.db.query("procurementPacketSections").collect(),
-        ),
-      ).toHaveLength(0);
-      await f.t.mutation(internal.procurementMarkdownMigration.migratePage, {
-        table: "procurementRequests",
-        cursor: null,
-      });
-      const packet = await f.operator.query(api.procurementPacket.get, {
-        requestId,
-      });
-      expect(
-        packet.documents.find((document) => document.filename === filename)
-          ?.markdown,
-      ).toContain("Intentional edit");
-      expect(
-        packet.documents.find(
-          (document) => document.filename === "operator-packet.md",
-        )?.markdown,
-      ).toContain("operator original");
-      if (filename !== "submission-packet.md")
-        expect(
-          packet.documents.find(
-            (document) => document.filename === "submission-packet.md",
-          )?.markdown,
-        ).toContain("broker original");
-      await expect(
-        f.operator.mutation(api.procurementPacket.updateDocument, edit),
-      ).rejects.toThrow("packet changed");
-    },
-  );
-
-  test("rejects oversized outreach logs without losing existing content", async () => {
-    const f = await fixture();
-    const { requestId } = await createRequest(f, "Long outreach log");
-    const { outreachId } = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
-      {
-        requestId,
-        brokerOrgId: f.brokerOrgId,
-        log: "Keep this log",
-      },
-    );
-    await f.t.run((ctx) =>
-      ctx.db.patch(outreachId, { quoteSummary: "Keep legacy context" }),
-    );
-    const before = await f.t.run((ctx) => ctx.db.get(outreachId));
-    await expect(
-      f.operator.mutation(api.procurementRequests.updateOutreach, {
-        outreachId,
-        log: "x".repeat(20_001),
-      }),
-    ).rejects.toThrow("Log must be");
-    expect(await f.t.run((ctx) => ctx.db.get(outreachId))).toEqual(before);
   });
 
   test("automatically creates one shared packet link for every new request", async () => {
@@ -362,54 +265,6 @@ describe("procurement domain boundaries", () => {
         }),
       ]);
     }
-  });
-
-  test("exposes one outreach Markdown log and retires legacy workflow fields on edit", async () => {
-    const f = await fixture();
-    const request = await createRequest(f, "Broker log");
-    const outreach = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
-      {
-        requestId: request.requestId,
-        brokerOrgId: f.brokerOrgId,
-        log: "Initial contact sent.",
-      },
-    );
-    await f.t.run(async (ctx) => {
-      const document = await ctx.db
-        .query("markdownDocuments")
-        .withIndex("outreach_kind", (q) =>
-          q.eq("outreachId", outreach.outreachId).eq("kind", "outreach_log"),
-        )
-        .unique();
-      if (document) await ctx.db.delete(document._id);
-      return ctx.db.patch(outreach.outreachId, {
-        applicationUrl: "https://example.com/application",
-        applicationQuestions: ["Who are the drivers?"],
-        quoteSummary: "Legacy quote summary",
-      });
-    });
-
-    const before = await f.operator.query(api.procurementRequests.get, {
-      requestId: request.requestId,
-    });
-    expect(before.outreaches[0]).toMatchObject({
-      log: expect.stringContaining("https://example.com/application"),
-    });
-    expect(before.outreaches[0]).not.toHaveProperty("applicationUrl");
-    expect(before.outreaches[0]).not.toHaveProperty("quoteSummary");
-
-    await f.operator.mutation(api.procurementRequests.updateOutreach, {
-      outreachId: outreach.outreachId,
-      log: "- Followed up with underwriting.",
-    });
-    const stored = await f.t.run((ctx) => ctx.db.get(outreach.outreachId));
-    expect(stored).not.toHaveProperty("applicationQuestions");
-    expect(await f.t.run((ctx) => readOutreachLog(ctx, stored!))).toBe(
-      "- Followed up with underwriting.",
-    );
-    expect(stored).not.toHaveProperty("applicationUrl");
-    expect(stored).not.toHaveProperty("quoteSummary");
   });
 
   test("stores client request uploads as canonical artifacts without activity rows", async () => {
@@ -790,7 +645,6 @@ describe("procurement domain boundaries", () => {
     expect(dto).toMatchObject({
       title: "Property renewal",
       status: "submitted",
-      narrative: "We need property coverage",
     });
     expect(dto).not.toHaveProperty("proposals");
     expect(dto).not.toHaveProperty("outreaches");

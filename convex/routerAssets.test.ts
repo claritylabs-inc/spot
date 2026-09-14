@@ -12,6 +12,7 @@ import {
 } from "./actions/routerAssets";
 import { routerAssetSigningConfiguration } from "./lib/routerAssetSignature";
 import schema from "./schema";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -34,7 +35,6 @@ async function runningProposalJob() {
     const requestId = await ctx.db.insert("procurementRequests", {
       clientOrgId: orgId,
       title: "Asset test",
-      narrative: "Test",
       status: "marketing",
       inboxToken: "router-asset-test",
       createdByUserId: userId,
@@ -42,13 +42,13 @@ async function runningProposalJob() {
       createdAt: now,
       updatedAt: now,
     });
+    await seedRequestIntake(ctx, { requestId: requestId, clientOrgId: orgId, userId: userId, narrative: "Test", source: "manual" });
     const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
       requestId,
       clientOrgId: orgId,
       brokerOrgId,
       brokerName: "Broker",
       status: "request_sent",
-      applicationQuestions: [],
       createdByUserId: userId,
       updatedByUserId: userId,
       createdAt: now,
