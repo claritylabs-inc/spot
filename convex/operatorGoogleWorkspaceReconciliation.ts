@@ -299,10 +299,19 @@ export const recordFindingInternal = internalMutation({
       }
     }
     const orgId = target?.org?._id;
+    const broker =
+      operation?.kind === "market_activity"
+        ? await resolveScanOrganization(ctx, operation.brokerIdentity).catch(
+            () => null,
+          )
+        : target?.org?.type === "broker"
+          ? target.org
+          : null;
     const requestId = target?.request?._id;
     const values = {
       sourceId: source._id,
       entityId: orgId ? String(orgId) : previous?.entityId,
+      brokerId: broker?._id ?? previous?.brokerId,
       requestId: requestId ?? previous?.requestId,
       recordId: requestId
         ? String(requestId)
@@ -476,8 +485,11 @@ export const applyInternal = internalMutation({
       recordId: String(result.id),
       brokerId:
         operation.identity.kind === "broker"
-          ? (target.org?._id ?? ctx.db.normalizeId("organizations", result.id) ?? undefined)
-          : result.table === "procurementBrokerOutreaches" && "brokerOrgId" in record
+          ? (target.org?._id ??
+            ctx.db.normalizeId("organizations", result.id) ??
+            undefined)
+          : result.table === "procurementBrokerOutreaches" &&
+              "brokerOrgId" in record
             ? record.brokerOrgId
             : undefined,
       requestId:

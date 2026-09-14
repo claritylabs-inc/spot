@@ -65,6 +65,7 @@ export async function resolveScanOrganization(
       );
     return org;
   }
+  const boundIds: Id<"organizations">[] = [];
   for (const identityKey of scanIdentityKeys(identity)) {
     const bound = await ctx.db
       .query("operatorWorkspaceScanIdentities")
@@ -80,7 +81,7 @@ export async function resolveScanOrganization(
         throw new ScanAttention(
           "Previously matched organization identity changed",
         );
-      return org;
+      boundIds.push(org._id);
     }
   }
   const contactEmail = normalizedIdentity(identity.contactEmail);
@@ -126,7 +127,9 @@ export async function resolveScanOrganization(
     }
   }
   const discovered = (
-    await Promise.all(discoveredIds.map((id) => ctx.db.get(id)))
+    await Promise.all(
+      [...new Set([...discoveredIds, ...boundIds])].map((id) => ctx.db.get(id)),
+    )
   ).filter((org): org is Doc<"organizations"> => !!org);
   const organizations = [
     ...new Map(

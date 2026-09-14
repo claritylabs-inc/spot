@@ -396,13 +396,37 @@ test("reviewing a candidate organization loads only its request options without 
     return { orgId, requestId, brokerId };
   });
   const operator = f.t.withIdentity({ subject: `${f.userId}|session` });
-  const args = { activityId: findingId, kind: "request" as const, paginationOpts: { numItems: 50, cursor: null } };
-  expect((await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, args)).page).toEqual([]);
-  const selected = await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, selectedOrgId: other.orgId });
-  expect(selected.page.map(request => request.id)).toEqual([other.requestId]);
-  const orgs = await operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, kind: "organization" });
-  expect(orgs.page.find(org => org.id === other.orgId)?.label).toContain("other@cove.test");
-  await expect(operator.query(api.operatorGoogleWorkspaceScanActivity.listActivityCandidates, { ...args, selectedOrgId: other.brokerId })).rejects.toThrow("correct type");
+  const args = {
+    activityId: findingId,
+    kind: "request" as const,
+    paginationOpts: { numItems: 50, cursor: null },
+  };
+  expect(
+    (
+      await operator.query(
+        api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+        args,
+      )
+    ).page,
+  ).toEqual([]);
+  const selected = await operator.query(
+    api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+    { ...args, selectedOrgId: other.orgId },
+  );
+  expect(selected.page.map((request) => request.id)).toEqual([other.requestId]);
+  const orgs = await operator.query(
+    api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+    { ...args, kind: "organization" },
+  );
+  expect(orgs.page.find((org) => org.id === other.orgId)?.label).toContain(
+    "other@cove.test",
+  );
+  await expect(
+    operator.query(
+      api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+      { ...args, selectedOrgId: other.brokerId },
+    ),
+  ).rejects.toThrow("correct type");
   expect(
     (await f.t.run((ctx) => ctx.db.get(findingId)))?.selectedOrgId,
   ).toBeUndefined();
@@ -1933,4 +1957,28 @@ test("response-loss cleanup never deletes an original retained by committed stag
   expect(
     await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.fileId))),
   ).toBe(true);
+});
+
+test("a historical identity alias does not replace current contact association", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    for (const identityKey of ["client:cove:client@cove.test"])
+      await ctx.db.insert("operatorWorkspaceScanIdentities", {
+        identityKey,
+        orgId: f.orgId,
+        createdAt: 1,
+      });
+    await ctx.db.patch(f.orgId, {
+      primaryContactEmail: "new-contact@cove.test",
+    });
+  });
+  await expect(
+    f.t.query(
+      internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+      f.args,
+    ),
+  ).rejects.toThrow();
+  expect((await f.t.run((ctx) => ctx.db.get(f.requestId)))?.status).toBe(
+    "marketing",
+  );
 });
