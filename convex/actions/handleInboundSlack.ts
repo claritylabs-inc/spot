@@ -1,7 +1,6 @@
 "use node";
 
 import { v } from "convex/values";
-import { slackAttachments } from "../lib/slackAttachments";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -72,7 +71,7 @@ function operatorSlackContent(event: Doc<"slackInboundEvents">) {
     : event.content;
   const trimmed = withoutMention.trim();
   if (trimmed) return trimmed;
-  const filenames = slackAttachments(event).map(({ filename }) => filename);
+  const filenames = (event.attachments ?? []).map(({ filename }) => filename);
   return filenames.length > 0
     ? `[Attached ${filenames.join(", ")}]`
     : "Please help with this.";
@@ -355,7 +354,7 @@ async function processOperatorBatch(
         eventId: refreshedEvent._id,
       })) as Doc<"slackInboundEvents"> | null;
       if (!refreshedEvent) continue;
-      const inboundAttachments = slackAttachments(refreshedEvent);
+      const inboundAttachments = refreshedEvent.attachments ?? [];
       const titleGeneration =
         !refreshedEvent.isDirectMessage &&
         (channelThread.created ||
@@ -539,7 +538,7 @@ async function fetchAttachment(
   ctx: ActionCtx,
   event: Doc<"slackInboundEvents">,
 ) {
-  const attachments = slackAttachments(event);
+  const attachments = event.attachments ?? [];
   for (const attachment of attachments) {
     normalizeAgentAttachmentFilename(attachment.filename);
   }

@@ -20,16 +20,9 @@ async function ignoreEvent(
   await ctx.db.patch(event._id, {
     status: "ignored",
     content: "",
-    attachment: undefined,
     attachments: undefined,
     updatedAt: dayjs().valueOf(),
   });
-}
-
-function eventMentionsSpot(
-  event: Pick<Doc<"slackInboundEvents">, "mentionsSpot" | "mentionsGlass">,
-) {
-  return event.mentionsSpot ?? event.mentionsGlass ?? false;
 }
 
 async function hasActiveSlackThread(
@@ -90,7 +83,7 @@ export const authorizeBatch = internalMutation({
       const conversationKey = operatorSlackConversationKey(event);
       const activeThread =
         directMessage ||
-        eventMentionsSpot(event) ||
+        event.mentionsSpot ||
         (event.threadTs !== event.messageTs &&
           (activeConversationKeys.has(conversationKey) ||
             (await hasActiveSlackThread(ctx, event))));

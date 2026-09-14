@@ -656,13 +656,13 @@ describe("Slack Events API webhook", () => {
       ctx.db.query("slackInboundEvents").collect(),
     );
     expect(events).toHaveLength(1);
-    expect(events[0].attachment).toBeUndefined();
+    expect(events[0]).not.toHaveProperty("attachment");
     expect(events[0]).not.toHaveProperty("spectrumMessageId");
     expect(events[0].attachments).toHaveLength(12);
     expect(events[0].attachments).toEqual(expect.arrayContaining(attachments));
   });
 
-  test("preserves downloaded legacy files when recording another file and rejects scrubbed attachments", async () => {
+  test("preserves downloaded files when recording another file and rejects scrubbed attachments", async () => {
     const t = convexTest(schema, modules);
     const fixture = await t.run(async (ctx) => {
       const existingFileId = await ctx.storage.store(new Blob(["first"]));
@@ -692,8 +692,8 @@ describe("Slack Events API webhook", () => {
         receivedAt: 0,
         scheduledFor: 0,
         updatedAt: 0,
-        attachment: { ...first, fileId: existingFileId },
-        attachments: [first, second],
+        mentionsSpot: false,
+        attachments: [{ ...first, fileId: existingFileId }, second],
       });
       return { eventId, existingFileId, nextFileId };
     });
@@ -703,31 +703,10 @@ describe("Slack Events API webhook", () => {
       fileId: fixture.nextFileId,
     });
     const event = await t.run((ctx) => ctx.db.get(fixture.eventId));
-    expect(event?.attachment).toBeUndefined();
     expect(event?.attachments?.map((file) => file.fileId)).toEqual([
       fixture.existingFileId,
       fixture.nextFileId,
     ]);
-    await t.run((ctx) =>
-      ctx.db.patch(fixture.eventId, {
-        attachment: {
-          providerFileId: "F-2",
-          filename: "second.pdf",
-          contentType: "application/pdf",
-          fileId: fixture.existingFileId,
-        },
-      }),
-    );
-    await expect(
-      t.mutation(internal.slack.attachInboundFile, {
-        eventId: fixture.eventId,
-        providerFileId: "F-2",
-        fileId: fixture.nextFileId,
-      }),
-    ).rejects.toThrow("conflicting stored file references");
-    await t.run((ctx) =>
-      ctx.db.patch(fixture.eventId, { attachment: undefined }),
-    );
     await t.run((ctx) =>
       ctx.db.patch(fixture.eventId, { attachments: undefined }),
     );
@@ -883,95 +862,98 @@ describe("Slack Events API webhook", () => {
     expect(state.settings?.slackEnabled).toBe(true);
   });
 
-  test("verifies, authorizes, deduplicates, and acknowledges Block Kit actions", async () => {
-    const t = convexTest(schema, modules);
-    const { clientOrgId, connectionId } = await seedConnection(t);
-    const fixture = await t.run(async (ctx) => {
-      const actorId = await ctx.db.insert("slackActors", {
-        connectionId,
-        clientOrgId,
-        teamId: "T-CUSTOMER",
-        slackUserId: "U-CUSTOMER",
-        classification: "customer_member",
-        displayName: "Customer",
-        createdAt: 1,
-        updatedAt: 1,
+  test.each(["spot_response_feedback", "glass_response_feedback"])(
+    "authorizes and deduplicates signed %s controls for canonical operators",
+    async (actionId) => {
+      const t = convexTest(schema, modules);
+      const { clientOrgId, connectionId } = await seedConnection(t);
+      const fixture = await t.run(async (ctx) => {
+        const actorId = await ctx.db.insert("slackActors", {
+          connectionId,
+          clientOrgId,
+          teamId: "T-CUSTOMER",
+          slackUserId: "U-CUSTOMER",
+          classification: "spot_operator",
+          displayName: "Customer",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        const threadId = await ctx.db.insert("threads", {
+          orgId: clientOrgId,
+          title: "Slack support",
+          createdBy: (await ctx.db.get(connectionId))!.serviceUserId,
+          lastMessageAt: 1,
+          originChannel: "slack",
+          slackConnectionId: connectionId,
+          slackChannelId: "C-PRIMARY",
+          slackThreadTs: "1800.0",
+          slackConversationKind: "channel",
+          slackState: "active",
+        });
+        const messageId = await ctx.db.insert("threadMessages", {
+          threadId,
+          orgId: clientOrgId,
+          channel: "slack",
+          role: "agent",
+          content: "Answer",
+        });
+        return { actorId, threadId, messageId };
       });
-      const threadId = await ctx.db.insert("threads", {
-        orgId: clientOrgId,
-        title: "Slack support",
-        createdBy: (await ctx.db.get(connectionId))!.serviceUserId,
-        lastMessageAt: 1,
-        originChannel: "slack",
-        slackConnectionId: connectionId,
-        slackChannelId: "C-PRIMARY",
-        slackThreadTs: "1800.0",
-        slackConversationKind: "channel",
-        slackState: "active",
-      });
-      const messageId = await ctx.db.insert("threadMessages", {
-        threadId,
-        orgId: clientOrgId,
-        channel: "slack",
-        role: "agent",
-        content: "Answer",
-      });
-      return { actorId, threadId, messageId };
-    });
-    const created = await t.mutation(
-      (internal as any).slackPresentation.create,
-      {
-        orgId: clientOrgId,
-        threadId: fixture.threadId,
-        threadMessageId: fixture.messageId,
-        connectionId,
-        teamId: "T-CUSTOMER",
-        channelId: "C-PRIMARY",
-        threadTs: "1800.0",
-        mode: "message",
-      },
-    );
-    await t.mutation((internal as any).slackPresentation.markActive, {
-      id: created.presentation._id,
-      providerMessageId: "1800.1",
-    });
-    await t.mutation((internal as any).slackPresentation.markFinal, {
-      id: created.presentation._id,
-      providerMessageId: "1800.1",
-    });
-    const payload = {
-      type: "block_actions",
-      team: { id: "T-CUSTOMER" },
-      user: { id: "U-CUSTOMER", team_id: "T-CUSTOMER" },
-      channel: { id: "C-PRIMARY" },
-      message: { ts: "1800.1" },
-      actions: [
+      const created = await t.mutation(
+        (internal as any).slackPresentation.create,
         {
-          action_id: "spot_response_feedback",
-          action_ts: "1800.2",
-          value: `positive:${created.actionToken}`,
+          orgId: clientOrgId,
+          threadId: fixture.threadId,
+          threadMessageId: fixture.messageId,
+          connectionId,
+          teamId: "T-CUSTOMER",
+          channelId: "C-PRIMARY",
+          threadTs: "1800.0",
+          mode: "message",
         },
-      ],
-    };
-    expect((await signedInteraction(t, payload)).status).toBe(200);
-    expect((await signedInteraction(t, payload)).status).toBe(200);
-    const interactions = await t.run((ctx) =>
-      ctx.db.query("slackInteractionEvents").collect(),
-    );
-    expect(interactions).toHaveLength(1);
-    expect(interactions[0]).toMatchObject({
-      actionId: "spot_response_feedback",
-      actorId: fixture.actorId,
-    });
+      );
+      await t.mutation((internal as any).slackPresentation.markActive, {
+        id: created.presentation._id,
+        providerMessageId: "1800.1",
+      });
+      await t.mutation((internal as any).slackPresentation.markFinal, {
+        id: created.presentation._id,
+        providerMessageId: "1800.1",
+      });
+      const payload = {
+        type: "block_actions",
+        team: { id: "T-CUSTOMER" },
+        user: { id: "U-CUSTOMER", team_id: "T-CUSTOMER" },
+        channel: { id: "C-PRIMARY" },
+        message: { ts: "1800.1" },
+        actions: [
+          {
+            action_id: actionId,
+            action_ts: "1800.2",
+            value: `positive:${created.actionToken}`,
+          },
+        ],
+      };
+      expect((await signedInteraction(t, payload)).status).toBe(200);
+      expect((await signedInteraction(t, payload)).status).toBe(200);
+      const interactions = await t.run((ctx) =>
+        ctx.db.query("slackInteractionEvents").collect(),
+      );
+      expect(interactions).toHaveLength(1);
+      expect(interactions[0]).toMatchObject({
+        actionId: "spot_response_feedback",
+        actorId: fixture.actorId,
+      });
 
-    const missingMessage = structuredClone(payload);
-    delete (missingMessage as { message?: unknown }).message;
-    expect((await signedInteraction(t, missingMessage)).status).toBe(200);
-    const interactionsAfterMissingMessage = await t.run((ctx) =>
-      ctx.db.query("slackInteractionEvents").collect(),
-    );
-    expect(interactionsAfterMissingMessage).toHaveLength(1);
-  });
+      const missingMessage = structuredClone(payload);
+      delete (missingMessage as { message?: unknown }).message;
+      expect((await signedInteraction(t, missingMessage)).status).toBe(200);
+      const interactionsAfterMissingMessage = await t.run((ctx) =>
+        ctx.db.query("slackInteractionEvents").collect(),
+      );
+      expect(interactionsAfterMissingMessage).toHaveLength(1);
+    },
+  );
 
   test("records a signed negative-feedback modal submission for the same actor", async () => {
     const t = convexTest(schema, modules);

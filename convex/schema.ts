@@ -1346,13 +1346,11 @@ export default defineSchema({
     classification: v.union(
       v.literal("customer_member"),
       v.literal("spot_operator"),
-      v.literal("glass_operator"),
       v.literal("external"),
       v.literal("bot"),
     ),
     operatorUserId: v.optional(v.id("users")),
     spotUserId: v.optional(v.id("users")),
-    glassUserId: v.optional(v.id("users")),
     displayName: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -3979,7 +3977,6 @@ export default defineSchema({
     eventKey: v.string(),
     canonicalEventKey: v.optional(v.string()),
     providerEventId: v.optional(v.string()),
-    spectrumMessageId: v.optional(v.string()),
     connectionId: v.optional(v.id("slackWorkspaceConnections")),
     teamId: v.string(),
     channelId: v.string(),
@@ -3992,7 +3989,6 @@ export default defineSchema({
     senderEmail: v.optional(v.string()),
     senderIsBot: v.optional(v.boolean()),
     content: v.string(),
-    attachment: v.optional(slackStoredAttachmentValidator),
     attachments: v.optional(v.array(slackStoredAttachmentValidator)),
     eventType: v.union(
       v.literal("message"),
@@ -4002,10 +3998,7 @@ export default defineSchema({
     isDirectMessage: v.optional(v.boolean()),
     isPrivateChannel: v.optional(v.boolean()),
     isPrimaryChannel: v.boolean(),
-    // Both fields stay optional for the widening release so existing inbound
-    // events remain valid until the production backfill has completed.
-    mentionsSpot: v.optional(v.boolean()),
-    mentionsGlass: v.optional(v.boolean()),
+    mentionsSpot: v.boolean(),
     mentionedBotUserId: v.optional(v.string()),
     status: v.union(
       v.literal("queued"),

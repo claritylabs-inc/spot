@@ -28,6 +28,7 @@ test("resumed Slack downloads enforce actual stored bytes and keep the first dow
       content: "files",
       eventType: "message",
       isPrimaryChannel: true,
+      mentionsSpot: false,
       status: "processing",
       attemptCount: 2,
       receivedAt: 0,
