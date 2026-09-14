@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 
-import { act, type ReactNode } from "react";
+import { act, useState, type ReactNode } from "react";
 import { createSyncStore, SyncProvider } from "@claritylabs/cl-sync";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { PacketEditor } from "../components/procurement/packet-workspace";
+import { useGuardedRightPanel } from "../lib/use-guarded-right-panel";
 import type { Id } from "../convex/_generated/dataModel";
 
 const mocks = vi.hoisted(() => ({
@@ -38,13 +39,16 @@ vi.mock("@/components/settings/settings-drawer", () => ({
   SettingsDrawer: ({
     children,
     actions,
+    onOpenChange,
   }: {
     children: ReactNode;
     actions: ReactNode;
+    onOpenChange: (open: boolean) => void;
   }) => (
     <div>
       {children}
       {actions}
+      <button onClick={() => onOpenChange(false)}>Close editor</button>
     </div>
   ),
 }));
@@ -291,6 +295,165 @@ test("imports a Markdown file into the selected packet document", async () => {
       filename: "private.md",
       expectedRevision: 2,
       markdown,
+    });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("failed packet edits block sidebar replacements until explicitly discarded", async () => {
+  const requestId = "request" as Id<"procurementRequests">;
+  const privateDocument = {
+    filename: "private.md",
+    markdown: "Original notes",
+    revision: 1,
+  };
+  const sharedDocument = {
+    filename: "public.md",
+    markdown: "Shared requirements",
+    revision: 4,
+  };
+  mocks.query.mockReturnValue({ documents: [privateDocument, sharedDocument] });
+  mocks.save.mockRejectedValue(
+    new Error("The packet changed while you were editing"),
+  );
+  function Workspace() {
+    const [filename, setFilename] = useState<"private.md" | "public.md">(
+      "private.md",
+    );
+    const { rightPanel, setRightPanel } = useGuardedRightPanel();
+    return (
+      <>
+        <button onClick={() => setFilename("private.md")}>Notes</button>
+        <button onClick={() => setFilename("public.md")}>Shared</button>
+        <button
+          onClick={() =>
+            setRightPanel(
+              <PacketEditor
+                key={`${requestId}:${filename}`}
+                requestId={requestId}
+                filename={filename}
+                onClose={() => setRightPanel(null)}
+              />,
+            )
+          }
+        >
+          Edit file
+        </button>
+        <button onClick={() => setRightPanel(<p>Request settings</p>)}>
+          Edit request
+        </button>
+        {rightPanel}
+      </>
+    );
+  }
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const store = createSyncStore({
+    scope: { appId: "packet-replacements" },
+    persistence: "memory",
+  });
+  const click = async (label: string) => {
+    const button = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === label,
+    );
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+  };
+  const privateInput = () =>
+    container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="private.md"]',
+    );
+  try {
+    await act(async () =>
+      root.render(
+        <SyncProvider store={store}>
+          <Workspace />
+        </SyncProvider>,
+      ),
+    );
+    await click("Edit file");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(privateInput(), "Unsaved private draft");
+      privateInput()!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
+      requestId,
+      filename: "private.md",
+      expectedRevision: 1,
+      markdown: "Unsaved private draft",
+    });
+    await click("Shared");
+    await click("Edit file");
+    expect(privateInput()?.value).toBe("Unsaved private draft");
+    expect(
+      container.querySelector('textarea[aria-label="public.md"]'),
+    ).toBeNull();
+    await click("Notes");
+    await click("Edit file");
+    expect(privateInput()?.value).toBe("Unsaved private draft");
+    await click("Edit request");
+    expect(container.textContent).not.toContain("Request settings");
+    expect(privateInput()?.value).toBe("Unsaved private draft");
+    await click("Close editor");
+    expect(privateInput()?.value).toBe("Unsaved private draft");
+    expect(
+      mocks.save.mock.calls.every(
+        ([args]) =>
+          args.filename === "private.md" && args.expectedRevision === 1,
+      ),
+    ).toBe(true);
+    await click("Discard edits");
+    expect(privateInput()?.value).toBe("Original notes");
+    const attempts = mocks.save.mock.calls.length;
+    await click("Shared");
+    await click("Edit file");
+    expect(
+      container.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="public.md"]',
+      )?.value,
+    ).toBe("Shared requirements");
+    expect(privateInput()).toBeNull();
+    expect(mocks.save).toHaveBeenCalledTimes(attempts);
+    await click("Close editor");
+    expect(container.querySelector("textarea")).toBeNull();
+
+    await click("Edit file");
+    const pendingSave = Promise.withResolvers<{ revision: number }>();
+    mocks.save.mockReturnValue(pendingSave.promise);
+    await act(async () => {
+      const input = container.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="public.md"]',
+      )!;
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(input, "Updated shared requirements");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("Notes");
+    await click("Edit file");
+    await click("Edit request");
+    expect(
+      container.querySelector('textarea[aria-label="public.md"]'),
+    ).not.toBeNull();
+    expect(container.textContent).not.toContain("Request settings");
+    await act(async () => pendingSave.resolve({ revision: 5 }));
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.textContent).toContain("Request settings");
+    expect(mocks.save).toHaveBeenLastCalledWith({
+      requestId,
+      filename: "public.md",
+      expectedRevision: 4,
+      markdown: "Updated shared requirements",
     });
   } finally {
     await act(async () => root.unmount());
