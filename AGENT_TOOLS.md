@@ -16,6 +16,8 @@ When any source above adds, removes, renames, or materially changes a tool, upda
 
 ## Operator agent registry
 
+Spot-owned acquisition brands and domains from `config/spot-acquisition-domains.json` represent Spot. `web_search` and `create_broker_network_profile` advertise the list to operator/MCP callers. Broker registration, profile updates, outreach, proposal filing, review confirmation, and selection reject those identities at preflight and execution; broker directory/search results exclude existing matching rows. Exact `get_organization` reads label historical matching rows `spot`. Records and history remain stored; this classification never grants operator access.
+
 Operator attachment intake has no file-count cap across web, email, Slack,
 iMessage, and MCP. Per-file, aggregate-byte, channel transport, and emitted
 router-asset budgets still apply; `run_operator_task` accepts attachment arrays
@@ -31,7 +33,7 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------- | -------- | ------------ | --------- |
 | `web_search` | Research public companies or retrieve public URLs with source links and provider diagnostics; uses global web retrieval settings with Parallel/Exa fallbacks. | `operator.web.read` | read | operator | none | action |
 | `search_organizations`                     | Search customer and broker organizations and resolve exact IDs.                                                         | `operator.organizations.read`   | read             | operator | none         | mutation  |
-| `get_organization`                         | Read an organization's profile, lifecycle, flags, membership count, and policy count.                                   | `operator.organizations.read`   | read             | operator | none         | mutation  |
+| `get_organization`                         | Read organization details; legacy Spot-owned acquisition broker rows return type `spot`.                                | `operator.organizations.read`   | read             | operator | none         | mutation  |
 | `get_operator_overview`                    | Read compact platform, policy, extraction, and operator-run counts.                                                     | `operator.platform.read`        | read             | operator | none         | mutation  |
 | `list_company_mailboxes`                   | Discover configured company Gmail mailboxes with bounded pagination.                                                   | `operator.company_email.read`   | read             | operator | none         | action    |
 | `search_company_email`                     | Search company Gmail with mailbox provenance, continuation, and explicit partial failures.                              | `operator.company_email.read`   | read             | operator | none         | action    |

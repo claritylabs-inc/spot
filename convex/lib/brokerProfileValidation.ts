@@ -1,5 +1,85 @@
 import { isLobCode, type AcordLobCode } from "./linesOfBusiness";
 import { NoWriteInputError } from "./noWriteInputError";
+import acquisitionBrands from "../../config/spot-acquisition-domains.json";
+
+export const SPOT_ACQUISITION_BRANDS = acquisitionBrands;
+export const SPOT_ACQUISITION_GUIDANCE = `Spot's own acquisition brands are ${acquisitionBrands.map((brand) => `${brand.name} (${brand.domain})`).join(", ")}. Their websites, subdomains, and email identities represent Spot. Never classify them as external brokers, add them to the broker network, or use them as procurement markets. This classification grants no operator access.`;
+
+const SPOT_OWNED_DOMAINS = [
+  "spot.insure",
+  "claritylabs.inc",
+  "toolsforenlightenment.org",
+  "glass.insure",
+  ...acquisitionBrands.map((brand) => brand.domain),
+];
+
+function normalizedBrandName(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const SPOT_OWNED_NAMES = new Set(
+  [
+    "Spot",
+    "Clarity Labs",
+    "Tools for Enlightenment",
+    ...acquisitionBrands.flatMap((brand) => [brand.name, brand.alias]),
+  ].map(normalizedBrandName),
+);
+
+// Classification only. Never use this allowlist to authorize a user or mailbox.
+export function isSpotOwnedDomain(value?: string | null) {
+  if (!value?.trim()) return false;
+  const input = value.trim().replace(/^mailto:/i, "");
+  try {
+    const url = new URL(
+      input.startsWith("//")
+        ? `https:${input}`
+        : /^[a-z][a-z0-9+.-]*:\/\//i.test(input)
+          ? input
+          : `https://${input}`,
+    );
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    return SPOT_OWNED_DOMAINS.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
+type BrokerIdentity = {
+  name?: string | null;
+  website?: string | null;
+  slug?: string | null;
+  email?: string | null;
+};
+
+export function isSpotOwnedBrokerIdentity(identity: BrokerIdentity) {
+  return (
+    isSpotOwnedDomain(identity.website) ||
+    isSpotOwnedDomain(identity.email) ||
+    [identity.name, identity.slug].some(
+      (name) =>
+        !!name &&
+        (SPOT_OWNED_NAMES.has(normalizedBrandName(name)) ||
+          isSpotOwnedDomain(name)),
+    )
+  );
+}
+
+export function assertExternalBrokerIdentity(identity: BrokerIdentity) {
+  if (isSpotOwnedBrokerIdentity(identity)) {
+    throw new NoWriteInputError(
+      "spot_owned_broker_identity",
+      "This is a Spot-owned acquisition brand or domain. Treat it as Spot; it cannot be registered or used as an external broker.",
+    );
+  }
+}
 
 export const USPS_STATE_CODES = [
   "AL",

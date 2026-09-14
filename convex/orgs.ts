@@ -8,6 +8,7 @@ import {
 } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import dayjs from "dayjs";
+import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { internal as _internal } from "./_generated/api";
 import {
@@ -504,6 +505,11 @@ export const updateOrg = mutation({
   },
   handler: async (ctx, args) => {
     const { orgId } = await requireOrgAdminWrite(ctx);
+    const organization = await ctx.db.get(orgId);
+    if (organization?.type === "broker") {
+      assertExternalBrokerIdentity(organization);
+      assertExternalBrokerIdentity({ ...organization, ...args });
+    }
     await ctx.db.patch(orgId, args);
   },
 });

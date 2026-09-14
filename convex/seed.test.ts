@@ -57,6 +57,13 @@ test("rerunning setup preserves edited work and reuses records and stored files"
       .withIndex("broker", (q) => q.eq("brokerOrgId", ids.brokerOrgId))
       .unique();
     await ctx.db.patch(profile!._id, { networkStatus: "inactive" });
+    // An older worktree's acquisition fixture must be renamed in place.
+    await ctx.db.patch(ids.brokerOrgId, {
+      name: "Montgomery Risk",
+      slug: "montgomery-risk",
+      website: "https://montgomeryrisk.com",
+    });
+    await ctx.db.patch(ids.brokerUserId, { email: "terry@montgomeryrisk.com" });
     const wiki = await ctx.db.query("orgWikiSections").first();
     await ctx.db.patch(wiki!._id, { body: "User-edited wiki" });
     const section = await ctx.db.query("procurementPacketSections").first();
@@ -78,9 +85,20 @@ test("rerunning setup preserves edited work and reuses records and stored files"
   const second = await t.action(api.seed.seed, {});
   await t.finishAllScheduledFunctions(vi.runAllTimers);
   expect(second.requestId).toBe(ids.requestId);
+  expect(second.brokerOrgId).toBe(ids.brokerOrgId);
+  expect(second.brokerUserId).toBe(ids.brokerUserId);
   expect(second.proposalId).toBe(ids.proposalId);
   expect(second.operatorThreadId).toBe(ids.operatorThreadId);
   await t.run(async (ctx) => {
+    expect(await ctx.db.get(ids.brokerOrgId)).toMatchObject({
+      name: "Example Risk",
+      slug: "example-risk",
+      website: "https://example-risk.example",
+    });
+    expect(await ctx.db.get(ids.brokerUserId)).toMatchObject({
+      email: "terry@example-risk.example",
+      accountKind: "customer",
+    });
     expect(await ctx.db.query("pendingEmails").collect()).toHaveLength(0);
     expect(
       await ctx.db.query("procurementProposalExtractionJobs").collect(),

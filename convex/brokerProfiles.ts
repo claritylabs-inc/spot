@@ -10,6 +10,8 @@ import {
 } from "./_generated/server";
 import { getOrgAccess } from "./lib/access";
 import {
+  assertExternalBrokerIdentity,
+  isSpotOwnedBrokerIdentity,
   normalizeBrokerLineOfBusinessCodes,
   normalizeBrokerWritingStates,
 } from "./lib/brokerProfileValidation";
@@ -40,6 +42,7 @@ async function requireBroker(
   const broker = await ctx.db.get(brokerOrgId);
   if (!broker || broker.type !== "broker")
     throw new Error("Broker organization not found");
+  assertExternalBrokerIdentity(broker);
   return broker;
 }
 
@@ -144,7 +147,9 @@ export async function listBrokerProfiles(
     .withIndex("type", (q) => q.eq("type", "broker"))
     .collect();
   const rows = await Promise.all(
-    brokers.map((broker) => profileRow(ctx, broker)),
+    brokers
+      .filter((broker) => !isSpotOwnedBrokerIdentity(broker))
+      .map((broker) => profileRow(ctx, broker)),
   );
   const search = args.search?.trim().toLowerCase();
   const state = args.writingState?.trim().toUpperCase();
@@ -180,6 +185,7 @@ export async function updateBrokerProfileByOperator(
 ) {
   const operator = await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const broker = await requireBroker(ctx, args.brokerOrgId);
+  assertExternalBrokerIdentity({ ...broker, ...args });
   const now = dayjs().valueOf();
   if (
     args.iconStorageId &&
@@ -286,6 +292,7 @@ export const upsert = mutation({
       !(access.accessType === "member" && access.role === "admin")
     )
       throw new Error("Broker admin required");
+    assertExternalBrokerIdentity({ ...broker, ...args });
     const now = dayjs().valueOf();
     if (
       args.iconStorageId &&
@@ -392,6 +399,7 @@ export async function createStandaloneBrokerByOperator(
   const operator = await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const name = args.name.trim();
   if (!name) throw new Error("Broker name is required");
+  assertExternalBrokerIdentity(args);
   const writingStates = normalizeBrokerWritingStates(args.writingStates ?? []);
   const lineOfBusinessCodes = normalizeBrokerLineOfBusinessCodes(
     args.lineOfBusinessCodes ?? [],

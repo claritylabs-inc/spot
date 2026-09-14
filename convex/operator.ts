@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
 import {
@@ -1587,6 +1588,7 @@ export const upsertBrokerInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertCustomerUser(ctx, args.adminUserId);
+    assertExternalBrokerIdentity({ ...args.broker, email: args.adminEmail });
     const brokerName = args.broker.name.trim();
     if (!brokerName) throw new Error("Broker name is required");
     const slug = args.broker.slug

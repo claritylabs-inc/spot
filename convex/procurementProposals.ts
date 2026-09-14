@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -143,6 +144,8 @@ async function assertBrokerOutreach(
   const broker = await ctx.db.get(resolvedBrokerOrgId);
   if (!broker || broker.type !== "broker")
     throw new Error("Broker organization not found");
+  assertExternalBrokerIdentity(broker);
+  assertExternalBrokerIdentity({ email: outreach.contactEmail });
   if (outreach.brokerOrgId !== broker._id)
     throw new Error("Proposal broker must match its outreach");
   return { request, outreach, broker };
@@ -1430,6 +1433,12 @@ export async function confirmProcurementProposalReviewByOperator(
   const review = await ctx.db.get(args.reviewId);
   if (!review) throw new Error("Review not found");
   const proposal = await requireProposal(ctx, review.proposalId);
+  await assertBrokerOutreach(
+    ctx,
+    proposal.requestId,
+    proposal.outreachId,
+    proposal.brokerOrgId,
+  );
   const request = await ctx.db.get(review.requestId);
   if (
     !request ||
@@ -1487,6 +1496,12 @@ export async function selectProcurementProposalByOperator(
 ) {
   await requireDirectOperator(ctx, args.operatorUserId);
   const proposal = await requireProposal(ctx, args.proposalId);
+  await assertBrokerOutreach(
+    ctx,
+    proposal.requestId,
+    proposal.outreachId,
+    proposal.brokerOrgId,
+  );
   const request = await ctx.db.get(proposal.requestId);
   if (!request) throw new Error("Request not found");
   if (proposal.status !== "reviewed" && proposal.status !== "selected") {
