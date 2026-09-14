@@ -4,6 +4,13 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 const internalApi = internal as any;
 
+crons.interval(
+  "dispatch scheduled Workspace reconciliation",
+  { minutes: 1 },
+  internal.operatorGoogleWorkspaceScan.dispatchInternal,
+  {},
+);
+
 crons.cron(
   "monitor vendor compliance",
   "0 14 * * *",

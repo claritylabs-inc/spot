@@ -1265,3 +1265,25 @@ export async function runGoogleWorkspaceTool(
   }
   return output;
 }
+
+/** Scheduled collection shares MIME/header parsing while persisting the complete body in pages. */
+export async function readGoogleWorkspaceScanMessage(provider: GoogleWorkspaceProvider, mailbox: string, message: GoogleWorkspaceMessage) {
+  const unavailable = await loadExternalBodyParts(provider, mailbox, message, {
+    bytes: 35 * 1024 * 1024, requests: 100, deadline: dayjs().add(3, "minute").valueOf(),
+  });
+  return (await threadMessage(mailbox, message, 0, Number.MAX_SAFE_INTEGER, unavailable)).value;
+}
+
+/** Resolve the connector's mailbox-bound opaque MIME-part reference to original bytes. */
+export async function readGoogleWorkspaceScanAttachment(provider: GoogleWorkspaceProvider, args: {mailbox: string; messageId: string; threadId: string; attachmentId: string}) {
+  const message = await provider.getMessageFull(args);
+  if (message.threadId !== args.threadId || message.labelIds?.some(label => ["DRAFT", "SPAM", "TRASH"].includes(label))) throw new Error("The source message is no longer eligible.");
+  const located = allParts(message).find(part => `part:${part.stablePartId}` === args.attachmentId);
+  if (!located || !isAttachmentPart(located.part)) throw new Error("The source attachment is no longer available.");
+  if (located.part.body.size > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes) throw new Error("The source attachment exceeds the import limit.");
+  const data = located.part.body.data ?? (located.part.body.attachmentId ? (await provider.getAttachment({...args, attachmentId: located.part.body.attachmentId})).data : null);
+  if (data === null) throw new Error("The source attachment has no content.");
+  const bytes = decodePartData(data);
+  if (bytes.byteLength > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes) throw new Error("The source attachment exceeds the import limit.");
+  return {bytes, ...attachmentMetadata(located)};
+}
