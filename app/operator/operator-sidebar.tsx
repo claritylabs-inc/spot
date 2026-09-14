@@ -9,6 +9,7 @@ import {
   LogOut,
   MessageSquareText,
   ScrollText,
+  Settings,
   Route,
   Radio,
   User,
@@ -55,7 +56,8 @@ export function OperatorSidebar({
     | "channels"
     | "routing"
     | "telemetry"
-    | "profile";
+    | "profile"
+    | "settings";
 }) {
   const { signOut } = useAuthActions();
   const pathname = usePathname();
@@ -210,6 +212,13 @@ export function OperatorSidebar({
         </div>
       </div>
       <div className="space-y-0.5 border-t border-border px-2 py-2">
+        <SidebarMenuItem
+          href="/operator/settings"
+          label="Settings"
+          icon={Settings}
+          active={active === "settings"}
+          collapsed={collapsed}
+        />
         <SidebarMenuItem
           href="/operator/profile"
           label="Profile"

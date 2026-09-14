@@ -48,6 +48,7 @@ type BackendRun = {
 };
 
 type BackendConfirmation = {
+  approvalMode?: "automatic";
   _id: string;
   promptMessageId: string;
   summary: string;
@@ -132,6 +133,7 @@ export type OperatorAgentThread = {
 export type OperatorAgentIntent = { id: string; label: string };
 
 export type OperatorAgentConfirmation = {
+  approvalMode?: "automatic";
   id: string;
   promptMessageId: string;
   title: string;
@@ -262,6 +264,7 @@ function normalizeConfirmation(
     id: confirmation._id,
     promptMessageId: confirmation.promptMessageId,
     title: confirmation.summary,
+    approvalMode: confirmation.approvalMode,
     destructive: confirmation.effect === "destructive",
     state: confirmation.state,
     actionable: confirmation.actionable,

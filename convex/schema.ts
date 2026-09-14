@@ -809,6 +809,13 @@ export default defineSchema({
     .index("slack_user", ["slackTeamId", "slackUserId"])
     .index("status", ["status"]),
 
+  operatorAgentSettings: defineTable({
+    key: v.literal("default"),
+    approveAll: v.boolean(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }).index("key", ["key"]),
+
   operatorGoogleWorkspaceConfig: defineTable({
     key: v.literal("default"),
     enabled: v.boolean(),
@@ -5081,6 +5088,7 @@ export default defineSchema({
     promptMessageId: v.id("operatorAgentMessages"),
     payload: operatorToolActionConfirmationPayloadValidator,
     status: threadActionConfirmationStatusValidator,
+    approvalMode: v.optional(v.literal("automatic")),
     expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),

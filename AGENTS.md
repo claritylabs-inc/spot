@@ -2,6 +2,24 @@
 
 Guidance for any coding agent working in this repository: Codex, Claude Code, Cursor, or similar tools.
 
+## Current operator approval setting
+
+Operator Settings (`/operator/settings`) owns one global **Approve all** switch,
+shared by every operator and off by default. `operatorAgentSettings` stores the
+setting; only active operators outside impersonation may change it, through the
+portal API (never an agent tool or MCP tool). With it enabled, all new exact-gated
+operator tool calls—including external sends, access/global changes, and
+destructive actions—receive automatic fingerprint-bound approval and execute
+without pausing the tool loop. The shared `requestOrExecuteToolInternal` path
+serves web, email, Slack, iMessage, and operator MCP. Role, OAuth write scope,
+impersonation, preflight/source validation, cancellation, idempotency, and audit
+checks remain enforced. Automatic approval is recorded on the existing
+confirmation ledger and shown as Auto-approved; action execution rechecks the
+current global switch. Existing pending confirmations still require a decision;
+disabling the switch restores manual approval for new calls. Tenant approvals
+are unchanged. References below to exact confirmation describe the default
+manual mode; the global switch can satisfy that gate automatically.
+
 ## Current procurement and ownership boundary
 
 The current implementation supersedes older ownership descriptions later in

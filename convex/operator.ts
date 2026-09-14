@@ -380,6 +380,56 @@ export const current = query({
   },
 });
 
+export async function getOperatorAgentSettings(ctx: QueryCtx | MutationCtx) {
+  return ctx.db
+    .query("operatorAgentSettings")
+    .withIndex("key", (q) => q.eq("key", "default"))
+    .unique();
+}
+
+export const getAgentSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOperator(ctx);
+    const settings = await getOperatorAgentSettings(ctx);
+    return { approveAll: settings?.approveAll === true };
+  },
+});
+
+export const setApproveAll = mutation({
+  args: { approveAll: v.boolean() },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const impersonation = await ctx.db
+      .query("operatorImpersonationSessions")
+      .withIndex("operator_status", (q) =>
+        q.eq("operatorUserId", operator.userId).eq("status", "active"),
+      )
+      .first();
+    if (impersonation) {
+      throw new Error("Stop impersonating before changing approval settings.");
+    }
+    const settings = await getOperatorAgentSettings(ctx);
+    const patch = {
+      approveAll: args.approveAll,
+      updatedBy: operator.userId,
+      updatedAt: dayjs().valueOf(),
+    };
+    if (settings) await ctx.db.patch(settings._id, patch);
+    else
+      await ctx.db.insert("operatorAgentSettings", {
+        key: "default",
+        ...patch,
+      });
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      summary: `${args.approveAll ? "Enabled" : "Disabled"} Approve all for all operator agent actions`,
+      metadata: { approveAll: args.approveAll },
+    });
+  },
+});
+
 async function listOperatorClientRows(ctx: QueryCtx) {
   const clients = await ctx.db
     .query("organizations")

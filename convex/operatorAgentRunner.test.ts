@@ -739,3 +739,113 @@ test("resumes when approval-time preflight proves the target stale without writi
   expect(finished.run.status).toBe("completed");
   expect(generate).toHaveBeenCalledTimes(2);
 });
+
+test("Approve all completes a batch of writes in one model run without approval pauses or duplicate execution", async () => {
+  vi.useFakeTimers();
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      email: "terry@claritylabs.inc",
+      accountKind: "operator",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "terry@claritylabs.inc",
+      role: "operator",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("operatorAgentSettings", {
+      key: "default",
+      approveAll: true,
+      updatedBy: userId,
+      updatedAt: 1,
+    });
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Cove",
+      type: "client",
+    });
+    return { userId, orgId };
+  });
+  const threadId = await t.mutation(
+    internal.operatorAgent.createOrGetChannelThreadInternal,
+    {
+      operatorUserId: ids.userId,
+      channel: "slack",
+      conversationKey: "automatic-batch",
+    },
+  );
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    const inputs = ["onboarding", "live"].map((status) => ({
+      orgId: ids.orgId,
+      status,
+    }));
+    const results = await Promise.all(
+      inputs.map((input) =>
+        options.tools.set_organization_status.execute(input),
+      ),
+    );
+    expect(results.map((result) => result.status)).toEqual([
+      "succeeded",
+      "succeeded",
+    ]);
+    expect(await options.stopWhen[1]({ steps: [] })).toBe(false);
+    expect(
+      await t.query(internal.operatorAgent.getPendingConfirmationInternal, {
+        operatorUserId: ids.userId,
+        threadId,
+      }),
+    ).toBeNull();
+    return {
+      text: "Cove is now live.",
+      steps: [
+        {
+          toolCalls: inputs.map((input) => ({
+            toolName: "set_organization_status",
+            input,
+          })),
+          toolResults: results.map((output) => ({
+            toolName: "set_organization_status",
+            output,
+          })),
+        },
+      ],
+    };
+  });
+  const queued = await t.mutation(
+    internal.operatorAgent.enqueueMessageInternal,
+    {
+      operatorUserId: ids.userId,
+      threadId,
+      channel: "slack",
+      content: "Set up Cove and mark it live",
+      dedupeKey: "batch",
+    },
+  );
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(generate).toHaveBeenCalledOnce();
+  const result = await t.query(
+    internal.operatorAgent.getRunResultForOperatorInternal,
+    {
+      operatorUserId: ids.userId,
+      runId: queued.runId,
+    },
+  );
+  expect(result.run.status).toBe("completed");
+  expect(result.response?.content).toBe("Cove is now live.");
+  const state = await t.run(async (ctx) => ({
+    org: await ctx.db.get(ids.orgId),
+    audit: await ctx.db.query("agentActionAuditEvents").collect(),
+    confirmations: await ctx.db.query("operatorAgentConfirmations").collect(),
+  }));
+  expect(state.org?.operatorStatus).toBe("live");
+  expect(state.audit).toHaveLength(2);
+  expect(state.audit.every((row) => row.status === "succeeded")).toBe(true);
+  expect(state.confirmations).toHaveLength(2);
+  expect(
+    state.confirmations.every(
+      (row) => row.status === "completed" && row.approvalMode === "automatic",
+    ),
+  ).toBe(true);
+});
