@@ -681,6 +681,27 @@ test("creates standalone clients and client-visible requests without grants or s
   expect(first.status).toBe("updated");
   expect(second.status).toBe("updated");
 });
+test("automatically creates one prospect broker without users, invitations or inherited access", async () => {
+  const f = await fixture();
+  const text = "Harbor Risk offers brokerage services from 10 Main Street Boston MA 02110.";
+  const op: ScanOperation = {
+    kind: "create_organization", website: null,
+    identity: { kind: "broker", name: "Harbor Risk", contactEmail: "broker@harbor.test", address: { street1: "10 Main Street", city: "Boston", state: "MA", zip: "02110" } },
+    effectiveDate: "2026-09-13", excerpt: text, explanation: "Explicit broker identity",
+  };
+  await replaceEvidence(f, text, op, "new-broker");
+  await replaceEvidence(f, text, op, "broker-copy");
+  await f.t.run(async ctx => {
+    const brokers = await ctx.db.query("organizations").withIndex("type", q => q.eq("type", "broker")).collect();
+    expect(brokers).toHaveLength(1);
+    expect(await ctx.db.query("brokerProfiles").withIndex("broker", q => q.eq("brokerOrgId", brokers[0]._id)).unique()).toMatchObject({ networkStatus: "prospect" });
+    expect(await ctx.db.query("users").collect()).toHaveLength(1);
+    expect(await ctx.db.query("orgMemberships").collect()).toEqual([]);
+    expect(await ctx.db.query("orgInvitations").collect()).toEqual([]);
+    expect(await ctx.db.query("clientInvitations").collect()).toEqual([]);
+    expect(await ctx.db.system.query("_scheduled_functions").collect()).toEqual([]);
+  });
+});
 test("wiki facts retain unrelated manual bullets and correction restores removed outcome fields", async () => {
   const f = await fixture();
   await f.t.run((ctx) =>
