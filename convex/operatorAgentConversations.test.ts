@@ -117,6 +117,13 @@ test("reads paginated owned and shared operator conversations, preserving full m
     status: "succeeded",
     result: { conversations: [{ threadId: ids.shared }] },
   });
+  const detail = await t
+    .withIdentity({ subject: `${ids.owner}|session` })
+    .query(api.operatorAgent.getThread, { threadId });
+  expect(
+    detail.messages.find((message) => message._id === shared.agentMessageId)
+      ?.toolCalls,
+  ).toMatchObject([{ name: "list_operator_conversations", effect: "read" }]);
   const first = await invoke(
     "read_operator_conversation",
     { operatorThreadId: ids.shared, limit: 1 },

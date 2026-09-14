@@ -27,6 +27,7 @@ import {
 } from "./lib/featureFlags";
 import {
   getOperatorAgentToolSpec,
+  isOperatorAgentToolName,
   parseOperatorAgentToolInput,
   operatorUpdateFieldLabel,
   operatorUpdateValue,
@@ -3287,7 +3288,15 @@ export const getThread = query({
     const visibleMessageIds = new Set(messages.map((message) => message._id));
     return {
       thread,
-      messages,
+      messages: messages.map((message) => ({
+        ...message,
+        toolCalls: message.toolCalls?.map((call) => ({
+          ...call,
+          effect: isOperatorAgentToolName(call.name)
+            ? getOperatorAgentToolSpec(call.name).effect
+            : undefined,
+        })),
+      })),
       activeRun,
       recentRuns: runs,
       confirmations: confirmations
