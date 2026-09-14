@@ -1459,34 +1459,6 @@ function shouldRejectDocument(decision: ExtractionGateDecision): boolean {
   return !decision.shouldExtract && decision.confidence >= 0.7;
 }
 
-async function notifyExtractionReviewRequired(
-  ctx: ActionCtx,
-  args: {
-    orgId: Id<"organizations">;
-    policyId: string;
-    policyNumber?: string;
-    carrier?: string;
-    questionCount: number;
-  },
-) {
-  const label =
-    args.policyNumber && args.policyNumber !== "Unknown"
-      ? `policy ${args.policyNumber}`
-      : args.carrier
-        ? `${args.carrier} policy`
-        : "a policy";
-  await ctx.runMutation((internal as any).lib.notify.notifyInternal, {
-    orgId: args.orgId,
-    type: "incomplete_extraction",
-    title: "Policy extraction needs review",
-    body: `Spot finished extracting ${label}, but ${args.questionCount} coverage ${args.questionCount === 1 ? "term needs" : "terms need"} review.`,
-    severity: "warning",
-    actionType: "view_policy",
-    actionPayload: { policyId: args.policyId, tab: "review" },
-    sourceRef: { policyId: args.policyId, kind: "extraction_review" },
-  });
-}
-
 async function advanceLeasedPhase(
   ctx: ActionCtx,
   jobId: string,
@@ -2333,7 +2305,6 @@ export function makePhases(
           policyNumber?: string;
           carrier?: string;
         } | null;
-        let carrierDisplayName = finalPolicy?.carrier;
         if (finalPolicy?.orgId) {
           try {
             const carrierIdentity = (await convexCtx.runAction(
@@ -2346,14 +2317,7 @@ export function makePhases(
                 : "Carrier branding unavailable",
               carrierIdentity.success ? "info" : "warn",
             );
-            if (carrierIdentity.success) {
-              const enrichedPolicy = await convexCtx.runQuery(
-                internal.policies.getInternal,
-                { id: policyId as Id<"policies"> },
-              );
-              carrierDisplayName =
-                enrichedPolicy?.carrier ?? carrierDisplayName;
-            }
+
           } catch (error) {
             console.warn("[policyExtraction] carrier branding failed", error);
             await pCtx.log("Carrier branding could not be stored", "warn");
@@ -2370,16 +2334,14 @@ export function makePhases(
             finalPolicy.extractionReview,
           );
           if (reviewQuestions.length > 0) {
-            await notifyExtractionReviewRequired(convexCtx, {
-              orgId: finalPolicy.orgId as Id<"organizations">,
-              policyId,
-              policyNumber: finalPolicy.policyNumber,
-              carrier: carrierDisplayName,
-              questionCount: reviewQuestions.length,
-            });
-            await pCtx.log(
-              `Created extraction review notification for ${reviewQuestions.length} coverage ${reviewQuestions.length === 1 ? "term" : "terms"}`,
+            const notified = await convexCtx.runMutation(
+              internal.lib.notify.notifyPolicyExtractionReviewInternal,
+              { policyId: policyId as Id<"policies">, questionCount: reviewQuestions.length },
             );
+            if (notified)
+              await pCtx.log(
+                `Created extraction review notification for ${reviewQuestions.length} coverage ${reviewQuestions.length === 1 ? "term" : "terms"}`,
+              );
           }
         }
       } catch {
