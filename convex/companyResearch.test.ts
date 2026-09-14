@@ -64,6 +64,107 @@ test("intake searches public identity and adds cited facts without replacing man
   expect(runWebRetrieval).toHaveBeenCalledTimes(2);
 });
 
+test("research accepts root and www variants across discovery, retrieval and completion", async () => {
+  const { t, orgId } = await fixture();
+  vi.mocked(runWebRetrieval)
+    .mockResolvedValueOnce({
+      provider: "model_default",
+      attempts: [],
+      text: "Cove Software Inc. operates Cove.",
+      sources: [{ url: "https://www.cove.example/about" }],
+    })
+    .mockResolvedValueOnce({
+      provider: "model_default",
+      attempts: [],
+      text: "Cove creates business software.",
+      sources: [{ url: "https://www.cove.example/about" }],
+    });
+  vi.mocked(generateObjectForOrg)
+    .mockResolvedValueOnce({
+      output: {
+        officialWebsite: "https://cove.example/",
+        identityConfirmed: true,
+        sourceUrl: "https://cove.example/about",
+        reason: "",
+      },
+    } as never)
+    .mockResolvedValueOnce({
+      output: {
+        identityConfirmed: true,
+        industry: null,
+        industryVertical: null,
+        facts: [
+          {
+            key: "operations",
+            content: "Cove creates business software.",
+            sourceRef: "https://cove.example/about",
+          },
+        ],
+        reason: "",
+      },
+    } as never);
+
+  await t.action(run, { orgId });
+
+  expect(vi.mocked(runWebRetrieval).mock.calls[1][2]).toMatchObject({
+    url: "https://cove.example/",
+    allowedDomains: ["cove.example", "www.cove.example"],
+  });
+  await t.run(async (ctx) => {
+    const org = await ctx.db.get(orgId);
+    expect(org?.website).toBe("https://cove.example/");
+    expect(org?.companyResearch).toMatchObject({
+      status: "partial",
+      sourceUrls: ["https://www.cove.example/about"],
+      facts: [
+        {
+          content: "Cove creates business software.",
+          sourceRef: "https://www.cove.example/about",
+        },
+      ],
+      unresolvedFields: ["industry", "industryVertical"],
+    });
+  });
+});
+
+test("research rejects non-www subdomains as different sites", async () => {
+  const { t, orgId } = await fixture();
+  vi.mocked(runWebRetrieval).mockResolvedValueOnce({
+    provider: "model_default",
+    attempts: [],
+    text: "A blog mentions Cove Software Inc.",
+    sources: [{ url: "https://blog.cove.example/company" }],
+  });
+  vi.mocked(generateObjectForOrg).mockResolvedValueOnce({
+    output: {
+      officialWebsite: "https://cove.example/",
+      identityConfirmed: true,
+      sourceUrl: "https://blog.cove.example/company",
+      reason: "Exact company match",
+    },
+  } as never);
+
+  await t.action(run, { orgId });
+
+  expect(runWebRetrieval).toHaveBeenCalledTimes(1);
+  await t.run(async (ctx) => {
+    const org = await ctx.db.get(orgId);
+    expect(org?.website).toBeUndefined();
+    expect(org?.companyResearch).toMatchObject({
+      status: "partial",
+      sourceUrls: [],
+      facts: [],
+      unresolvedFields: [
+        "website",
+        "industry",
+        "industryVertical",
+        "publicIdentity",
+        "companyFacts",
+      ],
+    });
+  });
+});
+
 test("stale research cannot overwrite a concurrent manual website or update the wiki", async () => {
   const { t, orgId } = await fixture();
   const lease = await t.mutation(claim, { orgId });
