@@ -159,11 +159,11 @@ test("portal client edits preserve omitted website and clear an incompatible ver
     .withIdentity({ subject: `${operatorUserId}|session` })
     .mutation(api.operator.updateClientSettings, {
       clientOrgId,
-      name: "Harbor",
       industry: "construction",
     });
   const org = await t.run((ctx) => ctx.db.get(clientOrgId));
   expect(org).toMatchObject({
+    name: "Harbor",
     website: "https://harbor.example",
     industry: "construction",
     relatedLegalEntities: [
@@ -203,6 +203,46 @@ test("insurance profile form persists explicit empty entity type and source iden
   expect((await t.run((ctx) => ctx.db.get(orgId)))?.profileOverrides).toEqual(
     profile,
   );
+});
+
+test("editing one insurance field preserves agent updates and does not freeze extracted fields", async () => {
+  const { t, operatorUserId } = await fixture();
+  const orgId = await t.run((ctx) =>
+    ctx.db.insert("organizations", {
+      name: "Harbor",
+      type: "client",
+      profileOverrides: {
+        entityType: "corporation",
+        operationsDescription: "Agent researched operations",
+      },
+    }),
+  );
+  const operator = t.withIdentity({ subject: `${operatorUserId}|session` });
+  const result = await operator.mutation(api.orgs.updateOrganizationProfile, {
+    operatorClientOrgId: orgId,
+    profile: { fein: "123456789" },
+  });
+  expect(result).toMatchObject({
+    entityType: "corporation",
+    operationsDescription: "Agent researched operations",
+    fein: "12-3456789",
+  });
+  const saved = await t.run((ctx) => ctx.db.get(orgId));
+  expect(saved?.profileOverrides).toEqual({
+    entityType: "corporation",
+    operationsDescription: "Agent researched operations",
+    fein: "12-3456789",
+  });
+  await operator.mutation(api.orgs.updateOrganizationProfile, {
+    operatorClientOrgId: orgId,
+    profile: { fein: "", mailingAddress: {} },
+  });
+  expect((await t.run((ctx) => ctx.db.get(orgId)))?.profileOverrides).toEqual({
+    entityType: "corporation",
+    operationsDescription: "Agent researched operations",
+    fein: "",
+    mailingAddress: {},
+  });
 });
 
 test("accepting a vendor invitation researches the newly created client", async () => {

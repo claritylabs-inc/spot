@@ -51,12 +51,10 @@ import {
   useCachedOperatorCurrent,
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
+import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import {
-  ClientCompanyDetails,
-  type OperatorClientRelatedLegalEntity,
-} from "./client-company-details";
+import { ClientCompanyDetails } from "./client-company-details";
 import {
   parseOperatorClientSection,
   type OperatorClientPageTab,
@@ -139,15 +137,25 @@ function ClientWorkspace({
   const { patchClientSettings, patchClientStatus } =
     useOperatorClientCacheActions();
   const activeTab = parseTab(searchParams.get("tab"));
-  const [organizationName, setOrganizationName] = useState(supportDetails.name);
-  const [website, setWebsite] = useState(supportDetails.website ?? "");
-  const [industry, setIndustry] = useState(supportDetails.industry ?? "");
-  const [industryVertical, setIndustryVertical] = useState(
-    supportDetails.industryVertical ?? "",
-  );
-  const [relatedLegalEntities, setRelatedLegalEntities] = useState<
-    OperatorClientRelatedLegalEntity[]
-  >(supportDetails.relatedLegalEntities ?? []);
+  const settingsDraft = useLiveRecordDraft(clientOrgId, {
+    name: supportDetails.name,
+    website: supportDetails.website ?? "",
+    industry: supportDetails.industry ?? "",
+    industryVertical: supportDetails.industryVertical ?? "",
+    relatedLegalEntities: supportDetails.relatedLegalEntities ?? [],
+  });
+  const {
+    name: organizationName,
+    website,
+    industry,
+    industryVertical,
+    relatedLegalEntities,
+  } = settingsDraft.value;
+  const setOrganizationName = settingsDraft.field("name");
+  const setWebsite = settingsDraft.field("website");
+  const setIndustry = settingsDraft.field("industry");
+  const setIndustryVertical = settingsDraft.field("industryVertical");
+  const setRelatedLegalEntities = settingsDraft.field("relatedLegalEntities");
   const [textFieldFocused, setTextFieldFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [disableDialogOpen, setDisableDialogOpen] = useState(false);
@@ -171,28 +179,38 @@ function ClientWorkspace({
 
   const clientSettingsArgs = {
     clientOrgId,
-    name: organizationName.trim(),
-    website: website.trim() || undefined,
-    industry: industry || undefined,
-    industryVertical: industryVertical || undefined,
-    relatedLegalEntities: relatedLegalEntities
-      .map((entity) => ({
-        ...entity,
-        legalName: entity.legalName.trim(),
-      }))
-      .filter((entity) => entity.legalName),
+    ...settingsDraft.patch,
+    ...(settingsDraft.patch.name !== undefined
+      ? { name: organizationName.trim() }
+      : {}),
+    ...(settingsDraft.patch.website !== undefined
+      ? { website: website.trim() }
+      : {}),
+    ...(settingsDraft.patch.relatedLegalEntities !== undefined
+      ? {
+          relatedLegalEntities: relatedLegalEntities
+            .map((entity) => ({
+              ...entity,
+              legalName: entity.legalName.trim(),
+            }))
+            .filter((entity) => entity.legalName),
+        }
+      : {}),
   };
   const clientSettingsAutoSave = useLocalFirstAutoSave({
     mutationName: "operator.updateClientSettings",
-    args: clientSettingsArgs,
-    valueKey: JSON.stringify(clientSettingsArgs),
+    args: { patch: clientSettingsArgs, revision: settingsDraft.revision },
+    valueKey: String(settingsDraft.revision),
     resetKey: clientOrgId,
     enabled: true,
-    canSave: !validationError,
+    canSave:
+      !validationError &&
+      relatedLegalEntities.every((entity) => entity.legalName.trim()),
     autoSave: !textFieldFocused,
     delayMs: 700,
-    flush: async (args) => {
+    flush: async ({ patch: args, revision }) => {
       await updateClientSettings(args);
+      settingsDraft.acknowledge(revision);
       const { clientOrgId: updatedClientOrgId, ...patch } = args;
       await patchClientSettings(updatedClientOrgId, patch);
     },
@@ -223,7 +241,7 @@ function ClientWorkspace({
   }
 
   const saveOrganizationProfile = useCallback(
-    (profile: OrganizationProfile | null) =>
+    (profile: Partial<OrganizationProfile> | null) =>
       updateOrganizationProfile({
         operatorClientOrgId: clientOrgId,
         profile,
