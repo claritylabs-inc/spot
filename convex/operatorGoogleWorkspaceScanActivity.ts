@@ -202,6 +202,74 @@ export const getActivity = query({
     );
   },
 });
+export const listActivityCandidates = query({
+  args: {
+    activityId: v.string(),
+    kind: v.union(v.literal("organization"), v.literal("request")),
+    selectedOrgId: v.optional(v.id("organizations")),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const finding = await requireFinding(ctx, args.activityId);
+    if (
+      !finding.operationJson ||
+      finding.status === "updated" ||
+      finding.resolvedAt
+    ) {
+      return { page: [], continueCursor: "", isDone: true };
+    }
+    const operation = scanOperationSchema.parse(
+      JSON.parse(finding.operationJson),
+    );
+    const paginationOpts = {
+      ...args.paginationOpts,
+      numItems: Math.min(50, args.paginationOpts.numItems),
+    };
+    if (args.kind === "organization") {
+      const page = await ctx.db
+        .query("organizations")
+        .withIndex("type", (q) => q.eq("type", operation.identity.kind))
+        .paginate(paginationOpts);
+      return {
+        ...page,
+        page: page.page.map((org) => ({
+          id: org._id,
+          label: [
+            org.name,
+            org.primaryContactEmail,
+            org.mailingAddress?.street1,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        })),
+      };
+    }
+    const orgId = args.selectedOrgId ?? finding.selectedOrgId;
+    if (!orgId) return { page: [], continueCursor: "", isDone: true };
+    const org = await ctx.db.get(orgId);
+    if (!org || org.type !== operation.identity.kind) {
+      throw new Error("Select an existing organization of the correct type");
+    }
+    const page = await ctx.db
+      .query("procurementRequests")
+      .withIndex("organization", (q) => q.eq("clientOrgId", orgId))
+      .paginate(paginationOpts);
+    return {
+      ...page,
+      page: page.page.map((request) => ({
+        id: request._id,
+        label: [
+          request.title,
+          request.targetEffectiveDate,
+          request.status.replaceAll("_", " "),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      })),
+    };
+  },
+});
 const resolutionArgs = { activityId: v.string(), note: v.optional(v.string()) };
 async function writeAccess(ctx: MutationCtx, activityId: string) {
   const operator = await requireOperator(ctx);
