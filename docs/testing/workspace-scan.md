@@ -59,6 +59,39 @@ workflow, and mocked provider tests do not prove live delegated Gmail access.
 | Scope | Status | Evidence |
 | --- | --- | --- |
 | Existing connector, interactive imports and procurement baseline | Passed | `npx vitest run convex/operatorGoogleWorkspace.test.ts convex/operatorPolicyImports.test.ts convex/procurementDomain.test.ts`: 3 files, 37 tests, pinned baseline. |
-| Scheduled collection/reconciliation cases above | Not run | Awaiting integrated implementation. |
-| Synthetic browser workflow | Not run | Awaiting integrated implementation. |
+| Integrated focused collection/domain/import/UI checks | Passed | Fourteen files, 132 tests passed after the major source/import followup. Final full suite below includes subsequent alias, capability-withdrawal and concurrent client-request regressions. |
+| Full repository regression | Passed | `npx vitest run --maxWorkers=2`: 129 files, 505 tests on the final integrated implementation. |
+| App TypeScript, lint and production build | Passed | `npx tsc --noEmit --pretty false`, `npm run lint`, and `npm run build` passed on the final implementation. The build also checked shared SDK/router package versions. |
+| Local Convex generation and typecheck | Passed after fixture removal | `CONVEX_AGENT_MODE=anonymous npx convex dev --once --local-cloud-port 8083 --local-site-port 8084 --typecheck enable` passed against the worktree-local deployment after removing temporary browser functions. Generated bindings contain only the final modules. No shared deployment was selected. |
+| Additional import grouping assertions | Passed | Reconciliation suite: 34 tests. A quote, ambiguous document and nominal bound-policy classification with incomplete grouping all reject automatic policy creation even if the later model proposes an import. |
+| Synthetic headless browser | Passed at stated scope | Fresh local captured-OTP operator login; paused default, prerequisite disclosure, Escape, desktop/mobile light/dark, no horizontal overflow; keyboard activity/provenance/source href, dismiss persistence and paused retry refusal (portal lane). Integration repeated GEICO outcome rendering, successful correction and supersession conflict on the final backend and verified persisted states. An isolated client captured-OTP session verified the reported outcome without operator evidence/actions at 390px width. Screenshots were inspected; synthetic fixture records/functions were removed and the seeded client request restored afterward. |
+| Visible desktop / automatic provider-to-extraction browser workflow | Not run | Cloud environment has no visible desktop. Headless checks used local persisted fixtures; provider/model/action/import execution is exercised with synthetic automated adapters, not a live Gmail or router session. |
 | Live Workspace, shared-dev and production | Not run | Outside this implementation's authorization. |
+
+## Implementation and verification map
+
+| Approved behavior | Implementation owners | Behavioral verification |
+| --- | --- | --- |
+| Whole-customer schedule, initial/history collection, durable recovery and partial progress | `operatorGoogleWorkspaceScan.ts`, `actions/operatorGoogleWorkspaceScan.ts`, `lib/googleWorkspaceScanState.ts`, `crons.ts` | `operatorGoogleWorkspaceScan.test.ts`: Directory pagination beyond live-tool caps, checkpoint-before-backfill arrivals, expired history, page replay, source adoption, reservation limits, renewed and reclaimed leases, failed-source counters. |
+| Explicit authorization, pause, sponsor loss, credential rotation and concurrent settings edits | Scan APIs/state and portal scan controls | Scan tests reject stale source writes and both settings-version races; controls tests preserve stale drafts and require explicit enable. Provider action tests stop later reads after pause. |
+| Source integrity, duplicate mailbox provenance, old forwards and untrusted instructions | `lib/googleWorkspaceReconciliation.ts`, reconciliation action and atomic mutation | Reconciliation tests reject incomplete/missing/reordered/changed parts, crafted participants, old quoted assertions and instruction excerpts; two mailbox copies apply once while preserving both sources. Excluded parents cannot supply identity or trigger attachment hydration. |
+| Safe creation, exact identity, concurrent duplicates and client privacy | Shared operator/request constructors, `lib/workspaceScanDomain.ts`, allowlisted client DTO | Reconciliation tests create standalone clients, prospect brokers and visible requests without users/invitations/sharing; large inventories, legal-name variants, changed historical aliases and client/operator request creation races are covered. Candidate test pages beyond 100 and rejects tenants. |
+| GEICO exact request and newer-over-manual updates | Reconciliation validator/domain, procurement outcome schema/API and shared outcome view | Completed vs tentative/negated/wrong-coverage tests, including public reviewed target selection; old vs newer/manual and concurrent target mutation; no client deactivation, other-request closure or invented policy. Outcome schema tests and client DTO assertions preserve the audience boundary. |
+| Company facts, broker capabilities and private market activity | `orgWiki.ts`, `brokerProfiles.ts`, `procurementRequests.ts` shared helpers | Unrelated wiki facts survive; additions retain capabilities; explicit withdrawals cannot remove a state retained in a contrasting clause. Decline and quote reuse one exact market row; different brokers retain separate events and broker-linked activity. |
+| Bound PDF ownership, content dedup and normal extraction | Reconciliation action/staging, `operatorPolicyImports.ts`, `lib/policyImportDedup.ts`, policy extraction pipeline | Actual synthetic original bytes through router classifier and shared import; quote and conflicting insured rejection; attachment-only exact insured identity; reviewed owner mapping; 221-policy inventory and concurrent hash change; committed import followed by action failure/retry creates one policy. |
+| Portal-only extraction results with ordinary interactive behavior preserved | Extraction invocation marker, shared notification mutation and retry state | `workspaceScanNotifications.test.ts`: scheduled invocation sends nothing; duplicate reference to interactive policy still notifies; worker claim/checkpoint preserves origin; resume/restart retains it and manual full rerun clears it. Existing interactive exact-confirmation import tests pass. |
+| Activity, candidates, resolution, retry, conditional correction and record navigation | `operatorGoogleWorkspaceScanActivity.ts`, `components/operator/workspace-scan`, affected record views | Candidate pagination/owner tests, dismissed evidence retry regression, union of changed fields and supersession checks, broker/request/policy links; UI tests cover explicit selection and draft/version handling. Local headless browser verifies keyboard source drawer, dismiss and real correction/conflict persistence. |
+
+Independent review used the two assigned sibling lanes after their implementation
+work. Reviewers reproduced defects against earlier commits, then retested the
+fixed mutations/actions. Final signoffs cover conflicting PDF ownership, reviewed
+PDF matching, separate broker events, failure precedence, excluded parent context,
+pause between provider calls, committed-original cleanup and capability withdrawal
+contrasts. These are scoped test-backed reviews; they do not establish live Google
+or model quality, or a full provider-to-extraction browser run.
+
+The final operator browser rerun initially received a development-server 404 for
+a route present in the successful production build. Restarting Next with only
+its stale `.next/dev` cache moved aside restored the route; the identical browser
+workflow then passed. No application code, auth state or database reset was
+needed. This was an environment recovery, not a passed assertion before retry.
