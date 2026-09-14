@@ -264,7 +264,6 @@ export async function commitValidatedOperatorPolicyImport(
     });
     await ctx.db.patch(policyId, {
       files: [{ fileId, fileName, fileType: "unknown", status: "extracting" }],
-      reconciliationStatus: "pending",
     });
     await ctx.scheduler.runAfter(
       0,

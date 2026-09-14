@@ -1064,7 +1064,7 @@ export const processInbound = internalAction({
       const systemPrompt = buildSystemPromptForContext({
         org: {
           name: org.name,
-          context: org.context,
+
         },
         mode:
           effectiveMode === "direct"

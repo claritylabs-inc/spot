@@ -1,3 +1,9 @@
+import { parseMarkdownDocument } from "./markdownDocument";
+import {
+  clientIdentity,
+  clientIdentityMatches,
+  clientClassificationPatch,
+} from "./clientProfile";
 import dayjs from "dayjs";
 
 import type { Id, TableNames } from "../_generated/dataModel";
@@ -14,16 +20,13 @@ import {
   normalizeBrokerWritingStates,
 } from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
-import { isCompanyWikiFact, normalizeWikiContent } from "./orgWikiPolicy";
-import { isOrgWikiSectionKey, wikiBulletLines } from "./orgWiki";
-import { defaultPacketSection } from "./procurementPacket";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "confirm_policy_fact",
-  "update_client_wiki_section",
-  "update_procurement_packet_section",
+  "update_client_wiki",
+  "update_procurement_packet",
   "retry_failed_policy_extraction",
   "generate_coi",
   "import_policy_files",
@@ -50,6 +53,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_procurement_email_thread",
   "create_client_organization",
   "update_organization_profile",
+  "research_client",
   "set_organization_status",
   "set_client_feature_flag",
   "send_operator_slack_message",
@@ -246,29 +250,6 @@ function validateBrokerProfileFields(input: Record<string, unknown>) {
   if (input.website !== null) validateOptionalUrl(input.website);
   if (input.name !== undefined && !normalizedText(input.name)) {
     throw new Error("Broker name cannot be blank");
-  }
-}
-
-/** Every line an operator writes into the wiki has to survive the same
- * company-context gate the extraction writers do. */
-async function validateCompanyWikiSection(
-  ctx: MutationCtx,
-  args: { orgId: Id<"organizations">; key: unknown; body: unknown },
-) {
-  const organization = await requireClientOrganization(ctx, args.orgId);
-  if (!isOrgWikiSectionKey(args.key)) {
-    throw new Error("Unknown company wiki section");
-  }
-  const body = typeof args.body === "string" ? args.body : "";
-  for (const line of wikiBulletLines(body)) {
-    if (
-      !isCompanyWikiFact({
-        content: normalizeWikiContent(line),
-        orgName: organization.name,
-      })
-    ) {
-      throw new Error("The company wiki holds stable company facts only");
-    }
   }
 }
 
@@ -714,15 +695,15 @@ async function preflightClientOrganizationCreate(
   ctx: MutationCtx,
   input: Record<string, unknown>,
 ) {
-  const name = normalizedText(input.name);
+  const name = clientIdentity(normalizedText(input.name) ?? "").name;
   if (!name) throw new Error("Client name is required");
   validateOptionalUrl(input.website);
   const clients = await ctx.db
     .query("organizations")
     .withIndex("type", (query) => query.eq("type", "client"))
     .collect();
-  const duplicate = clients.find(
-    (client) => client.name.trim().toLowerCase() === name.toLowerCase(),
+  const duplicate = clients.find((client) =>
+    clientIdentityMatches(client, String(input.name)),
   );
   if (duplicate)
     throw new Error(
@@ -815,18 +796,6 @@ async function preflightUpdateClientFile(
   });
 }
 
-/** A packet section can only be written under a canonical key, and a sensitive
- * section can never be widened past the operator. */
-function preflightPacketSection(
-  canonical: { sensitive: boolean },
-  audience: unknown,
-) {
-  if (audience === undefined || audience === null) return;
-  if (canonical.sensitive && audience !== "operator") {
-    throw new Error("Sensitive packet sections require operator visibility");
-  }
-}
-
 export async function preflightOperatorToolConfirmation(
   ctx: MutationCtx,
   args: PreflightArgs,
@@ -865,21 +834,20 @@ export async function preflightOperatorToolConfirmation(
     case "confirm_policy_fact":
       await preflightConfirmPolicyFact(ctx, args.input);
       return;
-    case "update_client_wiki_section": {
-      const orgId = exactId(
+    case "update_client_wiki": {
+      const organization = await requireDocument(
         ctx,
         "organizations",
         args.input.orgId,
-        "Client organization",
+        "Organization",
       );
-      await validateCompanyWikiSection(ctx, {
-        orgId,
-        key: args.input.key,
-        body: args.input.body,
-      });
+      if (organization.type !== "client" && organization.type !== "broker") {
+        throw new Error("Client or supplier organization not found");
+      }
+      parseMarkdownDocument(String(args.input.markdown));
       return;
     }
-    case "update_procurement_packet_section": {
+    case "update_procurement_packet": {
       const request = await requireDocument(
         ctx,
         "procurementRequests",
@@ -887,10 +855,7 @@ export async function preflightOperatorToolConfirmation(
         "Procurement request",
       );
       await requireClientOrganization(ctx, request.clientOrgId);
-      preflightPacketSection(
-        defaultPacketSection(String(args.input.key)),
-        args.input.audience,
-      );
+      parseMarkdownDocument(String(args.input.markdown));
       return;
     }
     case "retry_failed_policy_extraction": {
@@ -1028,17 +993,48 @@ export async function preflightOperatorToolConfirmation(
     case "create_client_organization":
       await preflightClientOrganizationCreate(ctx, args.input);
       return;
-    case "update_organization_profile":
-      await requireDocument(
+    case "update_organization_profile": {
+      const org = await requireDocument(
         ctx,
         "organizations",
         args.input.orgId,
         "Organization",
       );
       if (args.input.website !== null) validateOptionalUrl(args.input.website);
-      if (args.input.name !== undefined && !normalizedText(args.input.name)) {
+      if (args.input.name !== undefined && !normalizedText(args.input.name))
         throw new Error("Organization name cannot be blank");
-      }
+      clientClassificationPatch(org, {
+        industry:
+          args.input.industry === undefined
+            ? undefined
+            : (normalizedText(args.input.industry) ?? null),
+        industryVertical:
+          args.input.industryVertical === undefined
+            ? undefined
+            : (normalizedText(args.input.industryVertical) ?? null),
+      });
+      if (org.type === "broker")
+        assertExternalBrokerIdentity({
+          ...org,
+          ...(args.input.name !== undefined
+            ? { name: String(args.input.name) }
+            : {}),
+          ...(args.input.website !== undefined
+            ? { website: normalizedText(args.input.website) }
+            : {}),
+        });
+      if (
+        org.type === "broker" &&
+        (args.input.relatedLegalEntities !== undefined ||
+          args.input.insuranceProfile !== undefined)
+      )
+        throw new Error(
+          "Insurance profile and legal entities are client-only fields",
+        );
+      return;
+    }
+    case "research_client":
+      await requireClientOrganization(ctx, args.input.orgId);
       return;
     case "set_organization_status":
       await requireDocument(

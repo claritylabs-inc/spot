@@ -1,3 +1,4 @@
+import { requestPacketText } from "./lib/procurementNarrative";
 import {
   completionOutcomeValidator,
   normalizeCompletionOutcome,
@@ -39,10 +40,7 @@ import {
   uniqueProcurementEmails,
   type ProcurementEmailCategory,
 } from "./lib/procurement";
-import {
-  requestNarrative,
-  seedNarrativePacketSection,
-} from "./lib/procurementNarrative";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 import { getAgentDomain } from "./lib/resend";
 import {
   throwUserFacingError,
@@ -229,52 +227,6 @@ async function requirePolicyForRequest(
   return policy;
 }
 
-async function outreachPacketSnapshot(
-  ctx: Ctx,
-  request: Doc<"procurementRequests">,
-) {
-  const [requirementLinks, specifications, files] = await Promise.all([
-    ctx.db
-      .query("procurementRequestRequirements")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect(),
-    ctx.db
-      .query("procurementSpecifications")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect(),
-    ctx.db
-      .query("procurementFileItems")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect(),
-  ]);
-  return {
-    requirementRevision: request.requirementRevision ?? 0,
-    specificationRevision: request.specificationRevision ?? 0,
-    requirementIds: requirementLinks.map((link) => link.requirementId),
-    specifications: specifications.map(
-      ({
-        key,
-        label,
-        value,
-        sourceExcerpt,
-        sourcePageStart,
-        sourcePageEnd,
-      }) => ({
-        key,
-        label,
-        value,
-        sourceExcerpt,
-        sourcePageStart,
-        sourcePageEnd,
-      }),
-    ),
-    fileItemIds: files
-      .filter((file) => file.status === "available" || file.status === "sent")
-      .map((file) => file._id),
-    capturedAt: dayjs().valueOf(),
-  };
-}
-
 async function requireBrokerOrganization(
   ctx: Ctx,
   brokerOrgId: Id<"organizations"> | undefined,
@@ -308,7 +260,10 @@ function requestForwardingAddress(request: Doc<"procurementRequests">) {
   return procurementForwardingAddress(request.inboxToken, getAgentDomain());
 }
 
-function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
+async function outreachDto(
+  ctx: Ctx,
+  outreach: Doc<"procurementBrokerOutreaches">,
+) {
   const {
     notes,
     applicationUrl,
@@ -317,28 +272,11 @@ function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
     quoteAmount,
     quoteCurrency,
     quoteUrl,
+    contactSnapshot: _contactSnapshot,
+    packetSnapshot: _packetSnapshot,
     ...fields
   } = outreach;
-  const sections: string[] = notes?.trim() ? [notes.trim()] : [];
-  const application = [
-    applicationUrl ? `[Application link](${applicationUrl})` : null,
-    ...applicationQuestions.map((question) => `- ${question}`),
-  ].filter(Boolean);
-  if (application.length)
-    sections.push(`## Application\n\n${application.join("\n")}`);
-  const quote = [
-    quoteSummary?.trim(),
-    quoteAmount !== undefined
-      ? `Premium: ${quoteCurrency ?? "USD"} ${quoteAmount}`
-      : null,
-    quoteUrl ? `[Quote link](${quoteUrl})` : null,
-  ].filter(Boolean);
-  if (quote.length) sections.push(`## Legacy quote\n\n${quote.join("\n\n")}`);
-  return { ...fields, log: sections.join("\n\n") };
-}
-
-function outreachLog(value: string | null | undefined) {
-  return value?.trim() ? requiredText(value, "Log") : undefined;
+  return fields;
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
@@ -368,9 +306,9 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
         .withIndex("request", (index) => index.eq("requestId", request._id))
         .collect(),
     ]);
+  const { narrative: _narrative, ...requestFields } = request;
   return {
-    ...request,
-    narrative: requestNarrative(request),
+    ...requestFields,
     completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
@@ -474,8 +412,6 @@ export async function getProcurementRequestDetails(
     outreaches,
     fileItems,
     emailThreads,
-    requirementLinks,
-    specifications,
     proposals,
     requestAudits,
     legacyOperatorAudits,
@@ -497,14 +433,6 @@ export async function getProcurementRequestDetails(
       .order("desc")
       .take(50),
     ctx.db
-      .query("procurementRequestRequirements")
-      .withIndex("request", (q) => q.eq("requestId", requestId))
-      .collect(),
-    ctx.db
-      .query("procurementSpecifications")
-      .withIndex("request", (q) => q.eq("requestId", requestId))
-      .collect(),
-    ctx.db
       .query("procurementProposals")
       .withIndex("request", (q) => q.eq("requestId", requestId))
       .collect(),
@@ -521,18 +449,14 @@ export async function getProcurementRequestDetails(
       .order("desc")
       .take(250),
   ]);
-  const confirmedRequirements = (
-    await Promise.all(
-      requirementLinks.map((link) => ctx.db.get(link.requirementId)),
-    )
-  ).filter(Boolean);
   const files = await Promise.all(
     fileItems.map(async (item) => {
       const file = item.clientFileId
         ? await ctx.db.get(item.clientFileId)
         : null;
+      const { notes: _notes, ...itemFields } = item;
       return {
-        ...item,
+        ...itemFields,
         clientFile: file
           ? {
               _id: file._id,
@@ -574,11 +498,11 @@ export async function getProcurementRequestDetails(
   const activeEmailThreads = emailThreads.filter(activeEmailThread);
   return {
     request: summary,
-    outreaches: outreaches.map(outreachDto),
+    outreaches: await Promise.all(
+      outreaches.map((outreach) => outreachDto(ctx, outreach)),
+    ),
     files,
     emailThreads: activeEmailThreads,
-    confirmedRequirements,
-    specifications,
     proposals,
     auditEvents,
     timeline: buildRequestTimeline({
@@ -619,16 +543,21 @@ export async function listProcurementRequestSummaries(
         .order("desc")
         .take(MAX_REQUESTS);
   const search = args.query?.trim().toLowerCase();
-  const filtered = rows
-    .filter((row) =>
-      search
-        ? [row.title, requestNarrative(row)].some((value) =>
-            value.toLowerCase().includes(search),
-          )
-        : true,
-    )
-    .slice(0, limit);
-  return await Promise.all(filtered.map((row) => requestRow(ctx, row)));
+  const matches = search
+    ? (
+        await Promise.all(
+          rows.map(async (row) => ({
+            row,
+            text: `${row.title} ${await requestPacketText(ctx, row)}`.toLowerCase(),
+          })),
+        )
+      )
+        .filter(({ text }) => text.includes(search))
+        .map(({ row }) => row)
+    : rows;
+  return Promise.all(
+    matches.slice(0, limit).map((row) => requestRow(ctx, row)),
+  );
 }
 
 export const list = query({
@@ -731,8 +660,9 @@ export async function createProcurementRequestByOperator(
   const requestId = await ctx.db.insert("procurementRequests", {
     clientOrgId: args.clientOrgId,
     title: requiredText(args.title, "Title", 200),
-    normalizedTitle: requiredText(args.title, "Title", 200).toLowerCase().replace(/\s+/g," "),
-    narrative,
+    normalizedTitle: requiredText(args.title, "Title", 200)
+      .toLowerCase()
+      .replace(/\s+/g, " "),
     targetEffectiveDate: optionalDate(args.targetEffectiveDate),
     status:
       args.resultingPolicyId || args.completionOutcome
@@ -742,8 +672,6 @@ export async function createProcurementRequestByOperator(
       ? normalizeCompletionOutcome(args.completionOutcome)
       : undefined,
     clientVisible: args.clientVisible ?? false,
-    requirementRevision: 0,
-    specificationRevision: 0,
     replacingPolicyId: args.replacingPolicyId,
     resultingPolicyId: args.resultingPolicyId,
     inboxToken,
@@ -752,7 +680,7 @@ export async function createProcurementRequestByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  await seedNarrativePacketSection(ctx, {
+  await seedRequestIntake(ctx, {
     requestId,
     clientOrgId: args.clientOrgId,
     narrative,
@@ -823,7 +751,6 @@ export async function updateProcurementRequestByOperator(
     operatorUserId: Id<"users">;
     requestId: Id<"procurementRequests">;
     title?: string;
-    narrative?: string;
     targetEffectiveDate?: string | null;
     status?: RequestStatus;
     replacingPolicyId?: Id<"policies"> | null;
@@ -841,10 +768,7 @@ export async function updateProcurementRequestByOperator(
   };
   if (args.title !== undefined) {
     patch.title = requiredText(args.title, "Title", 200);
-    patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g," ");
-  }
-  if (args.narrative !== undefined) {
-    patch.narrative = requiredText(args.narrative, "Client request");
+    patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g, " ");
   }
   if (args.targetEffectiveDate !== undefined) {
     patch.targetEffectiveDate =
@@ -904,7 +828,6 @@ export const update = mutation({
   args: {
     requestId: v.id("procurementRequests"),
     title: v.optional(v.string()),
-    narrative: v.optional(v.string()),
     targetEffectiveDate: v.optional(v.union(v.string(), v.null())),
     status: v.optional(requestStatusValidator),
     replacingPolicyId: v.optional(v.union(v.id("policies"), v.null())),
@@ -935,7 +858,6 @@ export async function createProcurementOutreachByOperator(
     contactEmail?: string;
     contactPhone?: string;
     status?: OutreachStatus;
-    log?: string;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -957,12 +879,9 @@ export async function createProcurementOutreachByOperator(
     assertExternalBrokerIdentity({ email: contact?.email });
   }
   const now = dayjs().valueOf();
-  const contactSnapshot = {
-    name: optionalText(args.contactName, 200),
-    email: optionalEmail(args.contactEmail),
-    phone: optionalText(args.contactPhone, 100),
-  };
-  const sent = args.source !== "workspace_scan" && (args.status ?? "request_sent") === "request_sent";
+  const sent =
+    args.source !== "workspace_scan" &&
+    (args.status ?? "request_sent") === "request_sent";
   const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
     requestId: request._id,
     clientOrgId: request.clientOrgId,
@@ -974,14 +893,8 @@ export async function createProcurementOutreachByOperator(
     contactEmail: optionalEmail(args.contactEmail),
     contactPhone: optionalText(args.contactPhone, 100),
     contactUserId: args.contactUserId,
-    contactSnapshot,
     sentAt: sent ? now : undefined,
-    packetSnapshot: sent
-      ? await outreachPacketSnapshot(ctx, request)
-      : undefined,
     status: args.status ?? "request_sent",
-    applicationQuestions: [],
-    notes: outreachLog(args.log),
     createdByUserId: args.operatorUserId,
     updatedByUserId: args.operatorUserId,
     createdAt: now,
@@ -1011,7 +924,6 @@ export const createOutreach = mutation({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     status: v.optional(outreachStatusValidator),
-    log: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1034,7 +946,6 @@ export async function updateProcurementOutreachByOperator(
     contactEmail?: string | null;
     contactPhone?: string | null;
     status?: OutreachStatus;
-    log?: string | null;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1094,32 +1005,11 @@ export async function updateProcurementOutreachByOperator(
     patch.contactEmail = optionalEmail(args.contactEmail);
   if (args.contactPhone !== undefined)
     patch.contactPhone = optionalText(args.contactPhone, 100);
-  if (
-    args.contactName !== undefined ||
-    args.contactEmail !== undefined ||
-    args.contactPhone !== undefined
-  ) {
-    patch.contactSnapshot = {
-      name: patch.contactName ?? outreach.contactName,
-      email: patch.contactEmail ?? outreach.contactEmail,
-      phone: patch.contactPhone ?? outreach.contactPhone,
-    };
-  }
   if (args.status !== undefined) {
     patch.status = args.status;
     if (args.status === "request_sent" && !outreach.sentAt) {
       patch.sentAt = dayjs().valueOf();
-      patch.packetSnapshot = await outreachPacketSnapshot(ctx, request);
     }
-  }
-  if (args.log !== undefined) {
-    patch.notes = outreachLog(args.log);
-    patch.applicationUrl = undefined;
-    patch.applicationQuestions = [];
-    patch.quoteSummary = undefined;
-    patch.quoteAmount = undefined;
-    patch.quoteCurrency = undefined;
-    patch.quoteUrl = undefined;
   }
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
@@ -1151,7 +1041,6 @@ export const updateOutreach = mutation({
     contactEmail: v.optional(v.union(v.string(), v.null())),
     contactPhone: v.optional(v.union(v.string(), v.null())),
     status: v.optional(outreachStatusValidator),
-    log: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1175,7 +1064,6 @@ export async function createProcurementFileItemByOperator(
     status?: FileStatus;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
-    notes?: string;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1218,7 +1106,6 @@ export async function createProcurementFileItemByOperator(
     status: args.status ?? (args.clientFileId ? "available" : "requested"),
     brokerRelease: args.brokerRelease ?? "hidden",
     clientVisible: args.clientVisible ?? false,
-    notes: optionalText(args.notes),
     createdByUserId: args.operatorUserId,
     updatedByUserId: args.operatorUserId,
     createdAt: now,
@@ -1258,7 +1145,6 @@ export const createFileItem = mutation({
     status: v.optional(fileStatusValidator),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
-    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1282,7 +1168,6 @@ export async function updateProcurementFileItemByOperator(
     status?: FileStatus;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
-    notes?: string | null;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1341,7 +1226,6 @@ export async function updateProcurementFileItemByOperator(
       "missing_client_file",
       "A visible procurement item must reference a client file",
     );
-  if (args.notes !== undefined) patch.notes = optionalText(args.notes);
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
@@ -1397,7 +1281,6 @@ export const updateFileItem = mutation({
     status: v.optional(fileStatusValidator),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
-    notes: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);

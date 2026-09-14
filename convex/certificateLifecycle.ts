@@ -1,3 +1,4 @@
+import { copyHolderNotes } from "./certificateNotes";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import {
@@ -651,10 +652,11 @@ export const recordIssuedVersionInternal = internalMutation({
         holderId = await ctx.db.insert("certificateHolders", {
           orgId: args.orgId,
           ...holderDetails,
-          notes: holder.notes,
           createdByUserId: args.createdByUserId ?? holder.createdByUserId,
           createdAt: now,
         });
+        const copiedHolder = await ctx.db.get(holderId);
+        if (copiedHolder) await copyHolderNotes(ctx, holder, copiedHolder);
         await ctx.db.patch(args.certificateId, {
           holderId,
           dedupeKey: policyCertificateDedupeKey({

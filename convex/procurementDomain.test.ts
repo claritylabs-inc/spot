@@ -16,6 +16,7 @@ import {
 } from "./lib/procurementCapabilities";
 import { upsertPacketSectionByOperator } from "./procurementPacket";
 import schema from "./schema";
+import { stringifyMarkdownDocument } from "./lib/markdownDocument";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -152,43 +153,31 @@ describe("procurement domain boundaries", () => {
     });
     const edits = {
       requestId,
-      expectedPacketRevision: initial.packetRevision,
-      sections: [
-        { key: "intake_narrative", body: "Updated narrative" },
-        { key: "summary", body: "Updated summary" },
-      ],
+      filename: "public.md",
+      expectedRevision: initial.documents.find(
+        (document) => document.filename === "public.md",
+      )!.revision,
+      markdown: stringifyMarkdownDocument(
+        { title: "Packet" },
+        "Updated narrative\n\n## Summary\n\nUpdated summary",
+      ),
     };
     await expect(
-      f.client.mutation(api.procurementPacket.updateSections, edits),
+      f.client.mutation(api.procurementPacket.updateDocument, edits),
     ).rejects.toThrow();
     await expect(
-      f.broker.mutation(api.procurementPacket.updateSections, edits),
+      f.broker.mutation(api.procurementPacket.updateDocument, edits),
     ).rejects.toThrow();
-    await f.operator.mutation(api.procurementPacket.updateSections, edits);
+    await f.operator.mutation(api.procurementPacket.updateDocument, edits);
     const saved = await f.operator.query(api.procurementPacket.get, {
       requestId,
     });
-    expect(saved.sections).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          key: "intake_narrative",
-          body: "Updated narrative",
-          source: "manual",
-        }),
-        expect.objectContaining({
-          key: "summary",
-          body: "Updated summary",
-          source: "manual",
-        }),
-      ]),
-    );
+    expect(saved.markdown).toContain("Updated narrative");
+    expect(saved.markdown).toContain("Updated summary");
     await expect(
-      f.operator.mutation(api.procurementPacket.updateSections, {
+      f.operator.mutation(api.procurementPacket.updateDocument, {
         ...edits,
-        sections: edits.sections.map((section) => ({
-          ...section,
-          body: "Stale draft",
-        })),
+        markdown: "Stale draft",
       }),
     ).rejects.toThrow("packet changed");
     expect(
@@ -196,28 +185,59 @@ describe("procurement domain boundaries", () => {
     ).toEqual(saved);
   });
 
-  test("rejects oversized outreach logs without losing existing content", async () => {
+  test("private intake YAML remains operator-only across request and packet projections", async () => {
     const f = await fixture();
-    const { requestId } = await createRequest(f, "Long outreach log");
-    const { outreachId } = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
+    const { requestId } = await f.operator.mutation(
+      api.procurementRequests.create,
       {
-        requestId,
-        brokerOrgId: f.brokerOrgId,
-        log: "Keep this log",
+        clientOrgId: f.clientOrgId,
+        title: "Private intake",
+        narrative: stringifyMarkdownDocument(
+          { visibility: "private", note: "Private metadata" },
+          "Private negotiation facts",
+        ),
       },
     );
-    await f.t.run((ctx) =>
-      ctx.db.patch(outreachId, { quoteSummary: "Keep legacy context" }),
+    await f.operator.mutation(api.procurementRequests.update, {
+      requestId,
+      clientVisible: true,
+    });
+    const client = await f.client.query(api.clientProcurementRequests.get, {
+      requestId,
+    });
+    expect(client).not.toHaveProperty("narrative");
+    expect(JSON.stringify(client)).not.toContain("Private negotiation facts");
+    expect(JSON.stringify(client)).not.toContain("Private metadata");
+    const broker = await f.operator.query(api.procurementPacket.preview, {
+      requestId,
+    });
+    expect(JSON.stringify(broker)).not.toContain("Private negotiation facts");
+    expect(JSON.stringify(broker)).not.toContain("Private metadata");
+    const issued = await f.operator.mutation(api.procurementPacket.mintLink, {
+      requestId,
+    });
+    const publicView = await f.t.query(api.procurementPacket.getByToken, {
+      token: issued.token,
+    });
+    expect(publicView).not.toBeNull();
+    expect(JSON.stringify(publicView)).not.toContain(
+      "Private negotiation facts",
     );
-    const before = await f.t.run((ctx) => ctx.db.get(outreachId));
+    expect(JSON.stringify(publicView)).not.toContain("Private metadata");
+    const operator = await f.operator.query(api.procurementPacket.get, {
+      requestId,
+    });
+    expect(operator.documents).toHaveLength(2);
+    expect(operator.documents[0].filename).toBe("private.md");
+    expect(operator.markdown).toContain("Private negotiation facts");
     await expect(
-      f.operator.mutation(api.procurementRequests.updateOutreach, {
-        outreachId,
-        log: "x".repeat(20_001),
+      f.client.mutation(api.procurementPacket.updateDocument, {
+        requestId,
+        filename: "private.md",
+        expectedRevision: operator.documents[0].revision,
+        markdown: "Client cannot replace private intake",
       }),
-    ).rejects.toThrow("Log must be");
-    expect(await f.t.run((ctx) => ctx.db.get(outreachId))).toEqual(before);
+    ).rejects.toThrow();
   });
 
   test("automatically creates one shared packet link for every new request", async () => {
@@ -245,47 +265,6 @@ describe("procurement domain boundaries", () => {
         }),
       ]);
     }
-  });
-
-  test("exposes one outreach Markdown log and retires legacy workflow fields on edit", async () => {
-    const f = await fixture();
-    const request = await createRequest(f, "Broker log");
-    const outreach = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
-      {
-        requestId: request.requestId,
-        brokerOrgId: f.brokerOrgId,
-        log: "Initial contact sent.",
-      },
-    );
-    await f.t.run((ctx) =>
-      ctx.db.patch(outreach.outreachId, {
-        applicationUrl: "https://example.com/application",
-        applicationQuestions: ["Who are the drivers?"],
-        quoteSummary: "Legacy quote summary",
-      }),
-    );
-
-    const before = await f.operator.query(api.procurementRequests.get, {
-      requestId: request.requestId,
-    });
-    expect(before.outreaches[0]).toMatchObject({
-      log: expect.stringContaining("https://example.com/application"),
-    });
-    expect(before.outreaches[0]).not.toHaveProperty("applicationUrl");
-    expect(before.outreaches[0]).not.toHaveProperty("quoteSummary");
-
-    await f.operator.mutation(api.procurementRequests.updateOutreach, {
-      outreachId: outreach.outreachId,
-      log: "- Followed up with underwriting.",
-    });
-    const stored = await f.t.run((ctx) => ctx.db.get(outreach.outreachId));
-    expect(stored).toMatchObject({
-      applicationQuestions: [],
-      notes: "- Followed up with underwriting.",
-    });
-    expect(stored).not.toHaveProperty("applicationUrl");
-    expect(stored).not.toHaveProperty("quoteSummary");
   });
 
   test("stores client request uploads as canonical artifacts without activity rows", async () => {
@@ -666,7 +645,6 @@ describe("procurement domain boundaries", () => {
     expect(dto).toMatchObject({
       title: "Property renewal",
       status: "submitted",
-      narrative: "We need property coverage",
     });
     expect(dto).not.toHaveProperty("proposals");
     expect(dto).not.toHaveProperty("outreaches");
@@ -2161,9 +2139,7 @@ describe("operator procurement tools", () => {
 
   test("keeps every browser procurement capability agent-backed or explicitly excepted", () => {
     expect(PROCUREMENT_CAPABILITY_MANIFEST_VERSION).toBe(1);
-    expect(PROCUREMENT_CAPABILITY_EXCEPTIONS).toEqual([
-      expect.objectContaining({ id: "packet.resolve_generated_change" }),
-    ]);
+    expect(PROCUREMENT_CAPABILITY_EXCEPTIONS).toEqual([]);
     for (const capability of PROCUREMENT_CAPABILITIES) {
       if (!("agentTools" in capability)) continue;
       expect(capability.agentTools.length, capability.id).toBeGreaterThan(0);
@@ -2201,7 +2177,7 @@ describe("operator procurement tools", () => {
       "create_procurement_file_item",
       "update_procurement_file_item",
       "update_procurement_email_thread",
-      "update_procurement_packet_section",
+      "update_procurement_packet",
       "file_procurement_proposal",
       "file_procurement_email_quote",
       "archive_procurement_proposal",

@@ -102,6 +102,7 @@ export const scanReconciliationTables = {
       v.literal("procurementRequests"),
       v.literal("brokerProfiles"),
       v.literal("orgWikiSections"),
+      v.literal("markdownDocuments"),
       v.literal("procurementBrokerOutreaches"),
       v.literal("policies"),
     ),

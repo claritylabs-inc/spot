@@ -1,3 +1,4 @@
+import { readPacketProjection } from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
@@ -18,7 +19,6 @@ import {
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
 import { buildProposalMarkdown } from "./lib/proposalMarkdown";
-import { audienceIncludes } from "./lib/procurementPacket";
 import {
   findReusableClientFileByContent,
   normalizeClientFileSha256,
@@ -265,10 +265,7 @@ async function proposalDto(
         .collect(),
       ctx.db.get(proposal.brokerOrgId),
       ctx.db.get(proposal.requestId),
-      ctx.db
-        .query("procurementPacketSections")
-        .withIndex("request", (q) => q.eq("requestId", proposal.requestId))
-        .collect(),
+      ctx.db.get(proposal.requestId).then(async (request) => request ? (await readPacketProjection(ctx, request, "client")).sections : []),
       recentJobs(ctx, proposal._id),
     ]);
   const documentRows = await Promise.all(
@@ -1336,17 +1333,7 @@ export const getReviewInputInternal = internalQuery({
       return null;
     const request = await ctx.db.get(proposal.requestId);
     if (!request) return null;
-    const sections = (
-      await ctx.db
-        .query("procurementPacketSections")
-        .withIndex("request", (q) => q.eq("requestId", request._id))
-        .collect()
-    )
-      .filter(
-        (section) =>
-          audienceIncludes(section.audience, "client") && section.body.trim(),
-      )
-      .sort((a, b) => a.order - b.order);
+    const sections = (await readPacketProjection(ctx, request, "client")).sections;
     const { markdown, legend } = buildProposalMarkdown(proposal.extractedOffer);
     return {
       proposalId: proposal._id,
@@ -1526,15 +1513,7 @@ export async function selectProcurementProposalByOperator(
       "Only a proposal confirmed to meet every requirement can be selected",
     );
   }
-  const brokerSections = (
-    await ctx.db
-      .query("procurementPacketSections")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect()
-  ).filter(
-    (section) =>
-      audienceIncludes(section.audience, "client") && section.body.trim(),
-  );
+  const brokerSections = (await readPacketProjection(ctx, request, "client")).sections;
   if (brokerSections.length === 0) {
     throw new Error(
       "Share at least one broker-visible packet section before selecting a proposal",

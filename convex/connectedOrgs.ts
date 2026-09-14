@@ -1,3 +1,4 @@
+import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -63,7 +64,7 @@ function publicOrg(org: Doc<"organizations">) {
     website: org.website,
     industry: org.industry,
     industryVertical: org.industryVertical,
-    context: org.context,
+
     type: org.type ?? "client",
   };
 }
@@ -551,6 +552,7 @@ export const acceptInvitation = mutation({
           primaryInsuranceContactId: userId,
         });
         await ctx.db.insert("orgMemberships", { orgId: vendorOrgId, userId, role: "admin" });
+        await scheduleCompanyResearch(ctx, vendorOrgId);
       }
     } else {
       await requireConnectVendorOrg(ctx, vendorOrgId);

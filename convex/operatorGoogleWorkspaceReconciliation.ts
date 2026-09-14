@@ -1,3 +1,6 @@
+import { getMarkdownDocument } from "./markdownDocuments";
+import { requestPacketText } from "./lib/procurementNarrative";
+import { readOrgWiki } from "./orgWiki";
 import { indexPolicyUploadFingerprintPage } from "./lib/policyImportDedup";
 import { scanInsuredAddressValidator } from "./lib/scanReconciliationSchema";
 import {
@@ -508,6 +511,32 @@ export const applyInternal = internalMutation({
         effectiveAt,
         appliedAt: dayjs().valueOf(),
       });
+      if (
+        result.table === "procurementBrokerOutreaches" &&
+        "clientOrgId" in record
+      ) {
+        const document = await getMarkdownDocument(ctx, {
+          orgId: record.clientOrgId,
+          requestId: target.request!._id,
+          kind: "packet",
+          filename: "private.md",
+        });
+        if (
+          document &&
+          JSON.stringify(document) !== JSON.stringify(target.privateDocument)
+        )
+          await ctx.db.insert("operatorWorkspaceScanChanges", {
+            findingId,
+            entityId: document._id,
+            table: "markdownDocuments",
+            beforeJson: JSON.stringify(target.privateDocument),
+            afterJson: JSON.stringify(document),
+            fields: ["markdown", "revision"],
+            created: !target.privateDocument,
+            effectiveAt,
+            appliedAt: dayjs().valueOf(),
+          });
+      }
       await writeOperatorAudit(ctx, {
         operatorUserId,
         type: "setup_write",
@@ -833,29 +862,25 @@ export const getKnownContextInternal = internalQuery({
                 .withIndex("broker", (q) => q.eq("brokerOrgId", org._id))
                 .unique()
             : null,
-        wiki:
-          org.type === "client"
-            ? await ctx.db
-                .query("orgWikiSections")
-                .withIndex("organization", (q) => q.eq("orgId", org._id))
-                .take(7)
-            : [],
+        wiki: org.type === "client" ? await readOrgWiki(ctx, org._id) : null,
         requests:
           org.type === "client"
-            ? (
-                await ctx.db
-                  .query("procurementRequests")
-                  .withIndex("organization", (q) =>
-                    q.eq("clientOrgId", org._id),
-                  )
-                  .order("desc")
-                  .take(50)
-              ).map((r) => ({
-                title: r.title,
-                narrative: r.narrative,
-                status: r.status,
-                targetEffectiveDate: r.targetEffectiveDate,
-              }))
+            ? await Promise.all(
+                (
+                  await ctx.db
+                    .query("procurementRequests")
+                    .withIndex("organization", (q) =>
+                      q.eq("clientOrgId", org._id),
+                    )
+                    .order("desc")
+                    .take(50)
+                ).map(async (r) => ({
+                  title: r.title,
+                  narrative: await requestPacketText(ctx, r),
+                  status: r.status,
+                  targetEffectiveDate: r.targetEffectiveDate,
+                })),
+              )
             : [],
       })),
     );

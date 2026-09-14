@@ -1,3 +1,4 @@
+import { readPacketProjection } from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 
@@ -15,10 +16,7 @@ import {
   normalizeClientFileSha256,
 } from "./lib/clientFiles";
 import { createProcurementInboxToken } from "./lib/procurement";
-import {
-  requestNarrative,
-  seedNarrativePacketSection,
-} from "./lib/procurementNarrative";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 import { assemblePacketMarkdown } from "./lib/procurementPacket";
 
 async function createUniqueInboxToken(ctx: MutationCtx) {
@@ -87,10 +85,9 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
       .withIndex("request", (q) => q.eq("requestId", request._id))
       .collect(),
     request.resultingPolicyId ? ctx.db.get(request.resultingPolicyId) : null,
-    ctx.db
-      .query("procurementPacketSections")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect(),
+    readPacketProjection(ctx, request, "client").then(
+      (projection) => projection.sections,
+    ),
   ]);
   const files = await Promise.all(
     fileItems
@@ -113,7 +110,6 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
   return {
     _id: request._id,
     title: request.title,
-    narrative: requestNarrative(request),
     completionOutcome: request.completionOutcome,
     packet: {
       markdown: assemblePacketMarkdown(packetSections, { audience: "client" }),
@@ -174,19 +170,16 @@ export const create = mutation({
       clientOrgId: access.orgId,
       title,
       normalizedTitle: title.toLowerCase().replace(/\s+/g, " "),
-      narrative,
       targetEffectiveDate: optionalEffectiveDate(args.targetEffectiveDate),
       status: "submitted",
       clientVisible: true,
-      requirementRevision: 0,
-      specificationRevision: 0,
       inboxToken: await createUniqueInboxToken(ctx),
       createdByUserId: access.userId,
       updatedByUserId: access.userId,
       createdAt: now,
       updatedAt: now,
     });
-    await seedNarrativePacketSection(ctx, {
+    await seedRequestIntake(ctx, {
       requestId,
       clientOrgId: access.orgId,
       narrative,

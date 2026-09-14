@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { readHolderNotes, saveHolderNotes } from "./certificateNotes";
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -92,12 +93,15 @@ export const listForOrg = query({
     query: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await getOrgAccess(ctx, args.orgId);
+    const access = await getOrgAccess(ctx, args.orgId, { allowOperator: true });
     assertCanReadPolicies(access);
-    const holders = await ctx.db
+    const rows = await ctx.db
       .query("certificateHolders")
       .withIndex("organization", (q) => q.eq("orgId", args.orgId))
       .collect();
+    const holders = await Promise.all(rows.map(async (holder) => ({
+      ...holder, notes: await readHolderNotes(ctx, holder, access.accessType === "operator"),
+    })));
     const needle = normalizeCertificateHolderName(args.query ?? "");
     if (!needle)
       return holders.sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -121,10 +125,13 @@ export const listForOrgInternal = internalQuery({
     query: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const holders = await ctx.db
+    const rows = await ctx.db
       .query("certificateHolders")
       .withIndex("organization", (q) => q.eq("orgId", args.orgId))
       .collect();
+    const holders = await Promise.all(rows.map(async (holder) => ({
+      ...holder, notes: await readHolderNotes(ctx, holder),
+    })));
     const needle = normalizeCertificateHolderName(args.query ?? "");
     const filtered = needle
       ? holders.filter(
@@ -216,20 +223,21 @@ export async function upsertCertificateHolder(
     mapboxMetadata: args.mapboxMetadata,
     source: args.source,
     sourceRef: args.sourceRef,
-    notes: cleanOptional(args.notes),
     updatedByUserId: args.updatedByUserId,
     updatedAt: now,
   };
-  if (existing) {
-    await ctx.db.patch(existing._id, patch);
-    return existing._id;
-  }
-  return await ctx.db.insert("certificateHolders", {
+  const holderId = existing?._id ?? await ctx.db.insert("certificateHolders", {
     orgId: args.orgId,
     ...patch,
     createdByUserId: args.createdByUserId,
     createdAt: now,
   });
+  if (existing) await ctx.db.patch(holderId, patch);
+  if (args.notes !== undefined) {
+    const holder = await ctx.db.get(holderId);
+    if (holder) await saveHolderNotes(ctx, holder, args.notes, { actorUserId: args.updatedByUserId ?? args.createdByUserId });
+  }
+  return holderId;
 }
 
 export const upsertInternal = internalMutation({
@@ -355,6 +363,7 @@ export const populateForPolicyInternal = internalMutation({
 export const getInternal = internalQuery({
   args: { holderId: v.id("certificateHolders") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.holderId);
+    const holder = await ctx.db.get(args.holderId);
+    return holder ? { ...holder, notes: await readHolderNotes(ctx, holder) } : null;
   },
 });

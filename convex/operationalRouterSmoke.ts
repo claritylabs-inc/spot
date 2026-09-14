@@ -32,7 +32,7 @@ export const createFixture = internalMutation({
     const expiresAt = createdAt + OPERATIONAL_ROUTER_SMOKE_TTL_MS;
     const orgId = await ctx.db.insert("organizations", {
       name: fixtureName(args.marker),
-      context: fixtureContext(args.marker),
+      smokeMarker: fixtureContext(args.marker),
       type: "client",
     });
     const smokeRunId = await ctx.db.insert("operationalRouterSmokeRuns", {
@@ -67,7 +67,7 @@ export const cleanupFixture = internalMutation({
     if (
       !organization ||
       organization.name !== fixtureName(smokeRun.marker) ||
-      organization.context !== fixtureContext(smokeRun.marker) ||
+      (organization.smokeMarker ?? organization.context) !== fixtureContext(smokeRun.marker) ||
       organization.type !== "client"
     ) {
       throw new Error("Operational router smoke fixture ownership mismatch");

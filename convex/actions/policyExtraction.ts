@@ -1775,7 +1775,6 @@ export function makePhases(
                       status: "not_insurance",
                     },
                   ],
-                  reconciliationStatus: "error" as const,
                 },
               );
             }
@@ -1977,8 +1976,6 @@ export function makePhases(
           documentChunksForEmbedding: chunks,
           sourceSpansForStorage:
             canonicalSpans as PolicyExtractionState["sourceSpansForStorage"],
-          sourceChunksForEmbedding:
-            sourceChunks as PolicyExtractionState["sourceChunksForEmbedding"],
           sourceNodesForStorage: sourceNodes,
         },
       );
@@ -2014,7 +2011,6 @@ export function makePhases(
       );
       const chunks = embeddingPayload.documentChunksForEmbedding;
       const sourceSpans = embeddingPayload.sourceSpansForStorage;
-      const sourceChunks = embeddingPayload.sourceChunksForEmbedding;
       const sourceNodes = embeddingPayload.sourceNodesForStorage;
       const embedTexts = makeEmbedTexts(
         convexCtx,
@@ -2079,9 +2075,9 @@ export function makePhases(
         await pCtx.log(`Stored ${embedded}/${chunks.length} chunks`);
       }
 
-      if (sourceSpans?.length || sourceChunks?.length || sourceNodes?.length) {
+      if (sourceSpans?.length || sourceNodes?.length) {
         await pCtx.log(
-          `Storing ${sourceSpans?.length ?? 0} source spans, ${sourceNodes?.length ?? 0} source nodes, and ${sourceChunks?.length ?? 0} compatibility source chunks in batches of ${SOURCE_STORAGE_BATCH_SIZE}...`,
+          `Storing ${sourceSpans?.length ?? 0} source spans, ${sourceNodes?.length ?? 0} source nodes in batches of ${SOURCE_STORAGE_BATCH_SIZE}...`,
         );
         await deletePolicyRowsInBatches(
           convexCtx,
@@ -2166,34 +2162,6 @@ export function makePhases(
           }
           await pCtx.log(
             `Stored ${storedSourceNodes}/${sourceNodes.length} source nodes`,
-          );
-        }
-
-        if (sourceChunks?.length) {
-          const chunkRows = sourceChunks.map((chunk) => ({
-            orgId: state.orgId,
-            policyId,
-            chunkId: chunk.id,
-            documentId: chunk.documentId ?? policyId,
-            sourceSpanIds: chunk.sourceSpanIds ?? [],
-            text: chunk.text,
-            metadata: chunk.metadata,
-            createdAt: nowMs(),
-          }));
-          let storedSourceChunks = 0;
-          for (const batch of chunkItems(
-            chunkRows,
-            SOURCE_STORAGE_BATCH_SIZE,
-          )) {
-            if (await isCancelled()) throw new Error(CANCELLED_BY_USER);
-            await convexCtx.runMutation(
-              (internal as any).sourceSpans.insertChunksBatch,
-              { chunks: batch },
-            );
-            storedSourceChunks += batch.length;
-          }
-          await pCtx.log(
-            `Stored ${storedSourceChunks}/${sourceChunks.length} source chunks`,
           );
         }
       }
@@ -3148,8 +3116,6 @@ async function completeExternalExtractFromPayload(
       chunks as PolicyExtractionState["documentChunksForEmbedding"],
     sourceSpansForStorage:
       canonicalSpans as PolicyExtractionState["sourceSpansForStorage"],
-    sourceChunksForEmbedding:
-      sourceChunks as PolicyExtractionState["sourceChunksForEmbedding"],
     sourceNodesForStorage: sourceNodes,
   });
   const nextState: PolicyExtractionState = {
@@ -3732,7 +3698,6 @@ async function rejectedByDocumentGateBeforeExternalHandoff(
           status: "not_insurance",
         },
       ],
-      reconciliationStatus: "error" as const,
     });
   }
   await ctx.runMutation((internal as any).policies.pipelineRejectExternalJob, {

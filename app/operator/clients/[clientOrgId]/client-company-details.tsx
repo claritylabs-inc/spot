@@ -19,6 +19,16 @@ export type OperatorClientRelatedLegalEntity = NonNullable<
   ClientSupportDetails["relatedLegalEntities"]
 >[number];
 
+const relationshipOptions = [
+  { value: "current", label: "Current legal name" },
+  { value: "dba", label: "Doing business as" },
+  { value: "fka", label: "Formerly known as" },
+  { value: "subsidiary", label: "Subsidiary" },
+  { value: "parent", label: "Parent" },
+  { value: "affiliate", label: "Affiliate" },
+  { value: "other", label: "Other related entity" },
+];
+
 function Field({
   label,
   children,
@@ -65,7 +75,7 @@ export function ClientCompanyDetails({
   ) {
     setRelatedLegalEntities((current) =>
       current.map((entity, entityIndex) =>
-        entityIndex === index ? { ...entity, ...patch } : entity,
+        entityIndex === index ? { ...entity, ...patch, source: undefined } : entity,
       ),
     );
   }
@@ -142,26 +152,43 @@ export function ClientCompanyDetails({
         ) : (
           <div className="space-y-2">
             {relatedLegalEntities.map((entity, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  value={entity.legalName}
-                  onChange={(event) =>
-                    updateRelatedLegalEntity(index, {
-                      legalName: event.target.value,
-                    })
-                  }
-                  onFocus={onTextFocus}
-                  onBlur={onTextBlur}
-                  placeholder="DBA, FKA, parent, subsidiary, or affiliate"
-                />
-                <button
+              <div key={index} className="flex items-start gap-2">
+                <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                  <Input
+                    value={entity.legalName}
+                    onChange={(event) =>
+                      updateRelatedLegalEntity(index, {
+                        legalName: event.target.value,
+                      })
+                    }
+                    onFocus={onTextFocus}
+                    onBlur={onTextBlur}
+                    aria-label={`Legal name ${index + 1}`}
+                    placeholder="Legal entity name"
+                  />
+                  <SearchableSelect
+                    options={relationshipOptions}
+                    value={entity.relationship ?? "other"}
+                    ariaLabel={`Relationship for ${entity.legalName || "legal entity"}`}
+                    onChange={(relationship) => {
+                      updateRelatedLegalEntity(index, {
+                        relationship: relationship as OperatorClientRelatedLegalEntity["relationship"],
+                      });
+                      onSaveRequested();
+                    }}
+                    placeholder="Select relationship"
+                  />
+                </div>
+                <PillButton
                   type="button"
+                  variant="destructive"
+                  size="compact"
+                  iconOnly
+                  label={`Remove ${entity.legalName || "legal entity"}`}
                   onClick={() => removeRelatedLegalEntity(index)}
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-input text-muted-foreground transition-colors hover:bg-foreground/4 hover:text-foreground"
-                  aria-label={`Remove ${entity.legalName || "legal entity"}`}
                 >
                   <Trash2 className="size-3.5" />
-                </button>
+                </PillButton>
               </div>
             ))}
           </div>

@@ -40,20 +40,11 @@ export const PROCUREMENT_CAPABILITIES = [
   },
   {
     id: "packet.read_write",
-    browserSurface: "packet section workspace",
+    browserSurface: "packet Markdown workspace",
     agentTools: [
       "lookup_procurement_packet",
-      "update_procurement_packet_section",
+      "update_procurement_packet",
     ],
-  },
-  {
-    id: "packet.resolve_generated_change",
-    browserSurface: "packet proposed-section accept and reject controls",
-    exception: {
-      owner: "procurement-platform",
-      reason:
-        "The agent writes a confirmed section directly; accept/reject only resolves browser-generated draft state and has no separate agent business intent.",
-    },
   },
   {
     id: "packet.share",

@@ -1,4 +1,3 @@
-import dayjs from "dayjs";
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -25,6 +24,7 @@ import {
 } from "./lib/orgWiki";
 import {
   isCompanyWikiFact,
+  assertAgentWikiContent,
   normalizeWikiContent,
   type OrgWikiSource,
 } from "./lib/orgWikiPolicy";
@@ -37,18 +37,106 @@ const wikiSectionKeyValidator = v.union(
   ...ORG_WIKI_SECTIONS.map(([key]) => v.literal(key)),
 );
 const wikiSourceValidator = v.union(
-  v.literal("extraction"), v.literal("analysis"), v.literal("chat"),
-  v.literal("email"), v.literal("imessage"), v.literal("slack"),
-  v.literal("manual"), v.literal("operator"), v.literal("mcp"),
+  v.literal("extraction"),
+  v.literal("analysis"),
+  v.literal("chat"),
+  v.literal("email"),
+  v.literal("imessage"),
+  v.literal("slack"),
+  v.literal("manual"),
+  v.literal("operator"),
+  v.literal("mcp"),
 );
 const MAX_SECTION_BODY = 20_000;
 
-async function orgNameById(ctx: QueryCtx | MutationCtx, orgId: Id<"organizations">) {
+import { getMarkdownDocument, saveMarkdownDocument } from "./markdownDocuments";
+import {
+  readMarkdownHeading,
+  replaceMarkdownHeading,
+  parseMarkdownDocument,
+  parseDocumentVisibility,
+} from "./lib/markdownDocument";
+import {
+  manualWikiDocument,
+  readWikiDocument,
+  renderWikiDocument,
+  type WikiMetadata,
+} from "./lib/orgWikiDocument";
+
+async function loadWiki(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  const document = await getMarkdownDocument(ctx, {
+    orgId,
+    kind: "company_wiki",
+  });
+  if (document)
+    return { document, legacy: [], ...readWikiDocument(document.markdown) };
+  const legacy = await ctx.db
+    .query("orgWikiSections")
+    .withIndex("organization", (q) => q.eq("orgId", orgId))
+    .collect();
+  const metadata: WikiMetadata = {
+    contributions: {},
+    proposals: {},
+    protectedHeadings: [],
+  };
+  for (const section of legacy) {
+    if (section.manuallyEditedAt)
+      metadata.protectedHeadings!.push(section.heading);
+    if (section.extractedLines?.length)
+      metadata.contributions![section.heading] = {
+        lines: section.extractedLines,
+        sources: section.sourceRefs ?? [],
+      };
+    if (section.proposedBody)
+      metadata.proposals![section.heading] = {
+        body: section.proposedBody,
+        rationale: section.proposedRationale ?? "Suggested update",
+      };
+  }
+  return {
+    document: null,
+    legacy,
+    ...readWikiDocument(
+      renderWikiDocument(assembleOrgWikiMarkdown(legacy), metadata),
+    ),
+  };
+}
+
+type WikiState = Awaited<ReturnType<typeof loadWiki>>;
+
+async function persistWiki(
+  ctx: MutationCtx,
+  orgId: Id<"organizations">,
+  state: WikiState,
+  body: string,
+  metadata: WikiMetadata,
+) {
+  const document = await saveMarkdownDocument(ctx, {
+    orgId,
+    kind: "company_wiki",
+    filename: "company-wiki.md",
+    markdown: renderWikiDocument(body, metadata, state.frontmatter),
+    expectedRevision: state.document?.revision ?? 0,
+  });
+  for (const section of state.legacy) await ctx.db.delete(section._id);
+  return document;
+}
+
+async function orgNameById(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
   const org = await ctx.db.get(orgId);
   return org?.name ?? null;
 }
 
-async function requireClientWikiOrganization(ctx: QueryCtx | MutationCtx, orgId: Id<"organizations">) {
+async function requireClientWikiOrganization(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
   const organization = await ctx.db.get(orgId);
   if (!organization || organization.type !== "client") {
     throw new Error("Client organization not found");
@@ -56,9 +144,38 @@ async function requireClientWikiOrganization(ctx: QueryCtx | MutationCtx, orgId:
   return organization;
 }
 
-async function requireWikiAdmin(ctx: QueryCtx | MutationCtx, orgId: Id<"organizations">) {
+async function readSharedWiki(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  await requireClientWikiOrganization(ctx, orgId);
+  const wiki = await readOrgWiki(ctx, orgId);
+  return parseDocumentVisibility(wiki.markdown, "shared") === "shared"
+    ? wiki
+    : null;
+}
+
+async function requireSharedWikiWrite(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+  markdown?: string,
+) {
+  if (
+    !(await readSharedWiki(ctx, orgId)) ||
+    (markdown !== undefined &&
+      parseDocumentVisibility(markdown, "shared") !== "shared")
+  )
+    throw new Error("This company document is available only to operators");
+}
+
+async function requireWikiAdmin(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  await requireClientWikiOrganization(ctx, orgId);
   const access = await getOrgAccess(ctx, orgId);
   await assertImpersonatedSetupWrite(ctx, orgId);
+  await requireSharedWikiWrite(ctx, orgId);
   if (access.accessType !== "member" || access.role !== "admin") {
     throwUserFacingError(
       userFacingErrorCodes.orgAdminRequired,
@@ -72,9 +189,13 @@ async function requireDirectWikiAdminForUser(
   orgId: Id<"organizations">,
   userId: Id<"users">,
 ) {
+  await requireClientWikiOrganization(ctx, orgId);
+  await requireSharedWikiWrite(ctx, orgId);
   const membership = await ctx.db
     .query("orgMemberships")
-    .withIndex("organization_user", (q) => q.eq("orgId", orgId).eq("userId", userId))
+    .withIndex("organization_user", (q) =>
+      q.eq("orgId", orgId).eq("userId", userId),
+    )
     .first();
   if (!membership || membership.role !== "admin") {
     throwUserFacingError(
@@ -84,7 +205,10 @@ async function requireDirectWikiAdminForUser(
   }
 }
 
-async function requireDirectOperatorWikiWrite(ctx: MutationCtx, operatorUserId: Id<"users">) {
+async function requireDirectOperatorWikiWrite(
+  ctx: MutationCtx,
+  operatorUserId: Id<"users">,
+) {
   await requireOperatorForUser(ctx, operatorUserId);
   const active = await ctx.db
     .query("operatorImpersonationSessions")
@@ -95,27 +219,60 @@ async function requireDirectOperatorWikiWrite(ctx: MutationCtx, operatorUserId: 
   if (active) throwUserFacingError(userFacingErrorCodes.impersonationReadOnly);
 }
 
-async function sectionForKey(ctx: QueryCtx | MutationCtx, orgId: Id<"organizations">, key: string) {
-  return await ctx.db
-    .query("orgWikiSections")
-    .withIndex("organization_key", (q) => q.eq("orgId", orgId).eq("key", key))
-    .first();
+async function requireOperatorWikiOrganization(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  const organization = await ctx.db.get(orgId);
+  if (
+    !organization ||
+    (organization.type !== "client" && organization.type !== "broker")
+  )
+    throw new Error("Company not found");
+  return organization;
 }
 
-/** The whole document, plus the sections still empty. */
-export async function readOrgWiki(ctx: QueryCtx | MutationCtx, orgId: Id<"organizations">) {
-  const sections = await ctx.db
-    .query("orgWikiSections")
-    .withIndex("organization", (q) => q.eq("orgId", orgId))
-    .collect();
-  const ordered = [...sections].sort((a, b) => a.order - b.order);
+async function sectionForKey(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+  key: string,
+) {
+  const heading = requireOrgWikiSection(key).heading;
+  const state = await loadWiki(ctx, orgId);
+  const body = readMarkdownHeading(state.body, heading);
+  if (!body) return null;
+  return {
+    body,
+    sourceRefs: state.metadata.contributions?.[heading]?.sources ?? [],
+    extractedLines: state.metadata.contributions?.[heading]?.lines ?? [],
+    manuallyEditedAt:
+      state.metadata.manual ||
+      state.metadata.protectedHeadings?.includes(heading)
+        ? 1
+        : undefined,
+    proposedBody: state.metadata.proposals?.[heading]?.body,
+    proposedRationale: state.metadata.proposals?.[heading]?.rationale,
+    source: "extraction" as OrgWikiSource,
+  };
+}
+
+/** The canonical Markdown file and its pending source-grounded suggestions. */
+export async function readOrgWiki(
+  ctx: QueryCtx | MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  const state = await loadWiki(ctx, orgId);
   return {
     orgId,
-    sections: ordered,
-    markdown: assembleOrgWikiMarkdown(ordered),
-    gaps: ORG_WIKI_SECTIONS.filter(
-      ([key]) => !sections.some((section) => section.key === key && section.body.trim()),
-    ).map(([key, heading]) => ({ key, heading })),
+    filename: state.document?.filename ?? "company-wiki.md",
+    revision: state.document?.revision ?? 0,
+    markdown:
+      state.document?.markdown ??
+      renderWikiDocument(state.body, state.metadata, state.frontmatter),
+    body: state.body,
+    proposals: Object.entries(state.metadata.proposals ?? {}).map(
+      ([heading, proposal]) => ({ heading, ...proposal }),
+    ),
   };
 }
 
@@ -131,46 +288,40 @@ async function writeSection(
     manual: boolean;
   },
 ) {
-  const canonical = requireOrgWikiSection(args.key);
-  const body = args.body.trim();
-  if (body.length > MAX_SECTION_BODY) {
-    throw new Error(`Wiki section must be ${MAX_SECTION_BODY.toLocaleString()} characters or fewer`);
+  const heading = requireOrgWikiSection(args.key).heading;
+  if (args.body.length > MAX_SECTION_BODY)
+    throw new Error("Wiki contribution exceeds 20,000 characters");
+  const state = await loadWiki(ctx, args.orgId);
+  const metadata = state.metadata;
+  if (args.manual) {
+    metadata.protectedHeadings = [
+      ...new Set([...(metadata.protectedHeadings ?? []), heading]),
+    ];
+    if (metadata.contributions) delete metadata.contributions[heading];
+  } else if (args.extractedLines) {
+    metadata.contributions = {
+      ...metadata.contributions,
+      [heading]: { lines: args.extractedLines, sources: args.sourceRefs ?? [] },
+    };
   }
-  const existing = await sectionForKey(ctx, args.orgId, args.key);
-  const now = dayjs().valueOf();
-  if (!existing) {
-    if (!body) return null;
-    return await ctx.db.insert("orgWikiSections", {
-      orgId: args.orgId,
-      key: canonical.key,
-      heading: canonical.heading,
-      body,
-      order: canonical.order,
-      source: args.source,
-      sourceRefs: args.sourceRefs,
-      extractedLines: args.manual ? undefined : args.extractedLines,
-      manuallyEditedAt: args.manual ? now : undefined,
-      createdAt: now,
-      updatedAt: now,
-    });
+  const proposal = metadata.proposals?.[heading];
+  if (proposal) {
+    if (args.manual) delete metadata.proposals![heading];
+    else {
+      const previous = readMarkdownHeading(state.body, heading);
+      proposal.body = proposal.body.startsWith(previous)
+        ? `${args.body.trim()}${proposal.body.slice(previous.length)}`
+        : `${args.body.trim()}\n\n${proposal.body}`;
+    }
   }
-  if (!body) {
-    await ctx.db.delete(existing._id);
-    return null;
-  }
-  await ctx.db.patch(existing._id, {
-    body,
-    source: args.source,
-    sourceRefs: args.sourceRefs ?? existing.sourceRefs,
-    extractedLines: args.manual
-      ? undefined
-      : (args.extractedLines ?? existing.extractedLines),
-    proposedBody: undefined,
-    proposedRationale: undefined,
-    manuallyEditedAt: args.manual ? now : existing.manuallyEditedAt,
-    updatedAt: now,
-  });
-  return existing._id;
+  const document = await persistWiki(
+    ctx,
+    args.orgId,
+    state,
+    replaceMarkdownHeading(state.body, heading, args.body),
+    metadata,
+  );
+  return document._id;
 }
 
 /** Add lines to a section without disturbing what is already written. Used by
@@ -189,14 +340,19 @@ export async function appendOrgWikiFacts(
   const orgName = await orgNameById(ctx, args.orgId);
   const accepted = args.facts
     .map((fact) => normalizeWikiContent(fact))
-    .filter((content) => isCompanyWikiFact({ content, orgName, trusted: args.trusted }));
+    .filter((content) =>
+      isCompanyWikiFact({ content, orgName, trusted: args.trusted }),
+    );
   if (accepted.length === 0) return { accepted: 0, alreadyPresent: false };
   const existing = await sectionForKey(ctx, args.orgId, args.key);
-  const body = renderWikiBullets([...wikiBulletLines(existing?.body ?? ""), ...accepted]);
-  if (existing?.body === body) return { accepted: 0, alreadyPresent: true };
-  const sourceRefs = [...new Set([...(existing?.sourceRefs ?? []), ...(args.sourceRefs ?? [])])].sort();
+  const additions = accepted.filter((fact) => !existing?.body.includes(fact));
+  if (!additions.length) return { accepted: 0, alreadyPresent: true };
+  const body = `${existing?.body ?? ""}${existing?.body ? "\n\n" : ""}${renderWikiBullets(additions)}`;
+  const sourceRefs = [
+    ...new Set([...(existing?.sourceRefs ?? []), ...(args.sourceRefs ?? [])]),
+  ].sort();
   await writeSection(ctx, { ...args, body, sourceRefs, manual: false });
-  return { accepted: accepted.length, alreadyPresent: false };
+  return { accepted: additions.length, alreadyPresent: false };
 }
 
 /** Rewrite only the lines the company-information reconciler owns, from the
@@ -208,80 +364,69 @@ export async function reconcileExtractedCompanyFacts(
   ctx: MutationCtx,
   args: {
     orgId: Id<"organizations">;
-    facts: Array<{ key: OrgWikiSectionKey; content: string; sourceRef: string }>;
+    facts: Array<{
+      key: OrgWikiSectionKey;
+      content: string;
+      sourceRef: string;
+    }>;
     source: OrgWikiSource;
   },
 ) {
   const orgName = await orgNameById(ctx, args.orgId);
-  const now = dayjs().valueOf();
-  for (const [key] of ORG_WIKI_SECTIONS) {
+  const state = await loadWiki(ctx, args.orgId);
+  const metadata = state.metadata;
+  let body = state.body;
+  for (const [key, heading] of ORG_WIKI_SECTIONS) {
     const facts = args.facts.filter(
       (fact) =>
         fact.key === key &&
         isCompanyWikiFact({ content: fact.content, orgName, trusted: true }),
     );
-    const existing = await sectionForKey(ctx, args.orgId, key);
-    // Round-tripped through the renderer so these read back exactly as they
-    // appear in `body`, which is what the subtraction below relies on.
-    const extractedLines = wikiBulletLines(
+    const lines = wikiBulletLines(
       renderWikiBullets(facts.map((fact) => fact.content)),
     );
-    if (!existing && extractedLines.length === 0) continue;
-    const sourceRefs = [...new Set(facts.map((fact) => fact.sourceRef))].sort();
-
-    if (existing?.manuallyEditedAt) {
-      // The human owns this section, so the sources are offered as a reviewable
-      // replacement. With no facts there is nothing to review, and proposing an
-      // empty body would just ask the admin to blank their own writing.
-      const proposedBody = renderWikiBullets(extractedLines);
-      if (
-        !proposedBody ||
-        existing.body === proposedBody ||
-        existing.proposedBody === proposedBody
-      ) {
-        continue;
-      }
-      await ctx.db.patch(existing._id, {
-        proposedBody,
-        proposedRationale: `Extracted from ${sourceRefs.length} source${sourceRefs.length === 1 ? "" : "s"}`,
-        updatedAt: now,
-      });
+    const current = readMarkdownHeading(body, heading);
+    if (metadata.manual || metadata.protectedHeadings?.includes(heading)) {
+      const base = metadata.proposals?.[heading]?.body ?? current;
+      const additions = lines.filter((line) => !base.includes(line));
+      if (additions.length)
+        metadata.proposals = {
+          ...metadata.proposals,
+          [heading]: {
+            body: `${base}${base ? "\n\n" : ""}${renderWikiBullets(additions)}`,
+            rationale: `Suggested facts from ${new Set(facts.map((fact) => fact.sourceRef)).size} sources`,
+          },
+        };
       continue;
     }
-
-    const priorExtracted = new Set(existing?.extractedLines ?? []);
-    const retained = wikiBulletLines(existing?.body ?? "").filter(
-      (line) => !priorExtracted.has(line),
-    );
-    const body = renderWikiBullets([...retained, ...extractedLines]);
-    const unchanged =
-      existing !== null &&
-      existing.body === body &&
-      existing.source === args.source &&
-      sameLines(existing.extractedLines ?? [], extractedLines) &&
-      sameLines(existing.sourceRefs ?? [], sourceRefs);
-    if (unchanged) continue;
-    await writeSection(ctx, {
-      orgId: args.orgId,
-      key,
-      body,
-      source: args.source,
-      sourceRefs,
-      extractedLines,
-      manual: false,
-    });
+    const owned = new Set(metadata.contributions?.[heading]?.lines ?? []);
+    const retained = current
+      .split("\n")
+      .filter((line) => {
+        const bullet = /^\s*[-*]\s+(.+)$/.exec(line);
+        return !bullet || !owned.has(bullet[1].trim());
+      })
+      .join("\n")
+      .trim();
+    const additions = lines.filter((line) => !retained.includes(line));
+    const content = `${retained}${retained && additions.length ? "\n\n" : ""}${renderWikiBullets(additions)}`;
+    body = replaceMarkdownHeading(body, heading, content);
+    metadata.contributions = {
+      ...metadata.contributions,
+      [heading]: {
+        lines: additions,
+        sources: [...new Set(facts.map((fact) => fact.sourceRef))],
+      },
+    };
   }
-}
-
-function sameLines(a: string[], b: string[]) {
-  return a.length === b.length && a.every((line, index) => line === b[index]);
+  await persistWiki(ctx, args.orgId, state, body, metadata);
 }
 
 // ── Internal ──
 
 export const getInternal = internalQuery({
   args: { orgId: v.id("organizations") },
-  handler: async (ctx, args) => await readOrgWiki(ctx, args.orgId),
+  handler: async (ctx, args) => await readSharedWiki(ctx, args.orgId),
 });
 
 export const appendFacts = internalMutation({
@@ -293,32 +438,26 @@ export const appendFacts = internalMutation({
     sourceRefs: v.optional(v.array(v.string())),
     trusted: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => await appendOrgWikiFacts(ctx, args),
+  handler: async (ctx, args) => {
+    if (!(await readSharedWiki(ctx, args.orgId)))
+      return { accepted: 0, alreadyPresent: false };
+    return appendOrgWikiFacts(ctx, args);
+  },
 });
 
 export const getForMcp = internalQuery({
   args: { orgId: v.id("organizations"), userId: v.id("users") },
   handler: async (ctx, args) => {
+    await requireClientWikiOrganization(ctx, args.orgId);
     const membership = await ctx.db
       .query("orgMemberships")
-      .withIndex("organization_user", (q) => q.eq("orgId", args.orgId).eq("userId", args.userId))
+      .withIndex("organization_user", (q) =>
+        q.eq("orgId", args.orgId).eq("userId", args.userId),
+      )
       .first();
-    if (!membership) throwUserFacingError(userFacingErrorCodes.orgAccessRequired);
-    return await readOrgWiki(ctx, args.orgId);
-  },
-});
-
-export const upsertSectionForMcp = internalMutation({
-  args: {
-    orgId: v.id("organizations"),
-    userId: v.id("users"),
-    key: wikiSectionKeyValidator,
-    body: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await requireDirectWikiAdminForUser(ctx, args.orgId, args.userId);
-    await writeSection(ctx, { ...args, source: "mcp", manual: true });
-    return await readOrgWiki(ctx, args.orgId);
+    if (!membership)
+      throwUserFacingError(userFacingErrorCodes.orgAccessRequired);
+    return await readSharedWiki(ctx, args.orgId);
   },
 });
 
@@ -327,6 +466,7 @@ export const upsertSectionForMcp = internalMutation({
 export const get = query({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
+    await requireClientWikiOrganization(ctx, args.orgId);
     const access = await getOrgAccess(ctx, args.orgId);
     if (access.accessType !== "member") {
       throwUserFacingError(
@@ -334,43 +474,7 @@ export const get = query({
         "The company wiki is available only to members of this organization.",
       );
     }
-    return await readOrgWiki(ctx, args.orgId);
-  },
-});
-
-export const upsertSection = mutation({
-  args: { orgId: v.id("organizations"), key: wikiSectionKeyValidator, body: v.string() },
-  handler: async (ctx, args) => {
-    await requireWikiAdmin(ctx, args.orgId);
-    await writeSection(ctx, { ...args, source: "manual", manual: true });
-    return await readOrgWiki(ctx, args.orgId);
-  },
-});
-
-export const acceptProposal = mutation({
-  args: { orgId: v.id("organizations"), key: wikiSectionKeyValidator },
-  handler: async (ctx, args) => {
-    await requireWikiAdmin(ctx, args.orgId);
-    const section = await sectionForKey(ctx, args.orgId, args.key);
-    if (!section?.proposedBody) throw new Error("No wiki proposal pending");
-    await ctx.db.patch(section._id, {
-      body: section.proposedBody, proposedBody: undefined,
-      proposedRationale: undefined, updatedAt: dayjs().valueOf(),
-    });
-    return await readOrgWiki(ctx, args.orgId);
-  },
-});
-
-export const rejectProposal = mutation({
-  args: { orgId: v.id("organizations"), key: wikiSectionKeyValidator },
-  handler: async (ctx, args) => {
-    await requireWikiAdmin(ctx, args.orgId);
-    const section = await sectionForKey(ctx, args.orgId, args.key);
-    if (!section) throw new Error("Wiki section not found");
-    await ctx.db.patch(section._id, {
-      proposedBody: undefined, proposedRationale: undefined, updatedAt: dayjs().valueOf(),
-    });
-    return await readOrgWiki(ctx, args.orgId);
+    return await readSharedWiki(ctx, args.orgId);
   },
 });
 
@@ -380,41 +484,10 @@ export const getForOperator = query({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    await requireClientWikiOrganization(ctx, args.orgId);
+    await requireOperatorWikiOrganization(ctx, args.orgId);
     return await readOrgWiki(ctx, args.orgId);
   },
 });
-
-export const upsertSectionForOperator = mutation({
-  args: { orgId: v.id("organizations"), key: wikiSectionKeyValidator, body: v.string() },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    return await upsertOrgWikiSectionByOperator(ctx, { ...args, operatorUserId: operator.userId });
-  },
-});
-
-export async function upsertOrgWikiSectionByOperator(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    orgId: Id<"organizations">;
-    key: OrgWikiSectionKey;
-    body: string;
-    source?: "operator" | "mcp";
-  },
-) {
-  await requireDirectOperatorWikiWrite(ctx, args.operatorUserId);
-  await requireClientWikiOrganization(ctx, args.orgId);
-  await writeSection(ctx, { ...args, source: args.source ?? "operator", manual: true });
-  await writeOperatorAudit(ctx, {
-    operatorUserId: args.operatorUserId,
-    type: "setup_write",
-    targetOrgId: args.orgId,
-    summary: "Updated company wiki",
-    metadata: { domain: "org_wiki", operation: "upsert", wikiSectionKey: args.key },
-  });
-  return await readOrgWiki(ctx, args.orgId);
-}
 
 /** Called only inside the scan source's atomic authorization boundary. */
 export async function writeWorkspaceScanCompanyFacts(
@@ -424,7 +497,7 @@ export async function writeWorkspaceScanCompanyFacts(
     orgId: Id<"organizations">;
     key: OrgWikiSectionKey;
     body: string;
-    replaces:string[];
+    replaces: string[];
   },
 ) {
   await requireDirectOperatorWikiWrite(ctx, args.operatorUserId);
@@ -437,15 +510,218 @@ export async function writeWorkspaceScanCompanyFacts(
     throw new Error(
       "Company facts must contain audience-safe company information",
     );
-  const current=await sectionForKey(ctx,args.orgId,args.key);
-  const existing=wikiBulletLines(current?.body??"");
-  if(args.replaces.some(line=>!existing.includes(line)))throw new Error("A contradicted company fact changed during analysis");
-  const merged=[...existing.filter(line=>!args.replaces.includes(line)),...lines];
+  const current = await sectionForKey(ctx, args.orgId, args.key);
+  const existing = wikiBulletLines(current?.body ?? "");
+  if (args.replaces.some((line) => !existing.includes(line)))
+    throw new Error("A contradicted company fact changed during analysis");
+  const retained = (current?.body ?? "")
+    .split("\n")
+    .filter(
+      (line) => !args.replaces.includes(line.replace(/^\s*[-*]\s+/, "").trim()),
+    )
+    .join("\n")
+    .trim();
   return writeSection(ctx, {
     orgId: args.orgId,
     key: args.key,
-    body: renderWikiBullets(merged),
+    body: `${retained}${retained ? "\n\n" : ""}${renderWikiBullets(lines)}`,
     source: "email",
     manual: false,
   });
 }
+
+async function saveWikiFile(
+  ctx: MutationCtx,
+  args: {
+    orgId: Id<"organizations">;
+    markdown: string;
+    expectedRevision: number;
+    agent?: boolean;
+  },
+) {
+  const state = await loadWiki(ctx, args.orgId);
+  let markdown = manualWikiDocument(args.markdown);
+  if (args.agent) {
+    const parsed = parseMarkdownDocument(args.markdown);
+    assertAgentWikiContent(state.body, parsed.body);
+    const metadataText = (metadata: Record<string, unknown>) => {
+      const strings: string[] = [];
+      const visit = (value: unknown) => {
+        if (typeof value === "string" && !/^https?:\/\//i.test(value))
+          strings.push(value);
+        else if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === "object")
+          for (const [key, item] of Object.entries(value))
+            if (key !== "_spot") visit(item);
+      };
+      visit(metadata);
+      return strings.join("\n");
+    };
+    assertAgentWikiContent(
+      metadataText(state.frontmatter),
+      metadataText(parsed.frontmatter),
+    );
+    for (const [heading, proposal] of Object.entries(
+      state.metadata.proposals ?? {},
+    )) {
+      const previous = readMarkdownHeading(state.body, heading);
+      const current = readMarkdownHeading(parsed.body, heading);
+      if (previous !== current) {
+        proposal.body = proposal.body.startsWith(previous)
+          ? `${current}${proposal.body.slice(previous.length)}`
+          : [current, proposal.body].filter(Boolean).join("\n\n");
+      }
+    }
+    markdown = renderWikiDocument(
+      parsed.body,
+      state.metadata,
+      parsed.frontmatter,
+    );
+  }
+  const document = await saveMarkdownDocument(ctx, {
+    orgId: args.orgId,
+    kind: "company_wiki",
+    filename: "company-wiki.md",
+    markdown,
+    expectedRevision: args.expectedRevision,
+  });
+  for (const section of state.legacy) await ctx.db.delete(section._id);
+  return document;
+}
+
+const wikiFileArgs = {
+  orgId: v.id("organizations"),
+  markdown: v.string(),
+  expectedRevision: v.number(),
+};
+
+export const save = mutation({
+  args: wikiFileArgs,
+  handler: async (ctx, args) => {
+    await requireWikiAdmin(ctx, args.orgId);
+    await requireSharedWikiWrite(ctx, args.orgId, args.markdown);
+    await saveWikiFile(ctx, args);
+    return readOrgWiki(ctx, args.orgId);
+  },
+});
+
+export const saveForMcp = internalMutation({
+  args: { ...wikiFileArgs, userId: v.id("users") },
+  handler: async (ctx, args) => {
+    await requireDirectWikiAdminForUser(ctx, args.orgId, args.userId);
+    await requireSharedWikiWrite(ctx, args.orgId, args.markdown);
+    await saveWikiFile(ctx, { ...args, agent: true });
+    return readOrgWiki(ctx, args.orgId);
+  },
+});
+
+export async function upsertOrgWikiDocumentByOperator(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    orgId: Id<"organizations">;
+    markdown: string;
+    expectedRevision: number;
+    source?: "operator" | "mcp";
+  },
+) {
+  await requireDirectOperatorWikiWrite(ctx, args.operatorUserId);
+  await requireOperatorWikiOrganization(ctx, args.orgId);
+  await saveWikiFile(ctx, { ...args, agent: args.source !== undefined });
+  await writeOperatorAudit(ctx, {
+    operatorUserId: args.operatorUserId,
+    type: "setup_write",
+    targetOrgId: args.orgId,
+    summary: "Updated company wiki",
+    metadata: { domain: "org_wiki", operation: "save_document" },
+  });
+  return readOrgWiki(ctx, args.orgId);
+}
+
+export const saveForOperator = mutation({
+  args: wikiFileArgs,
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    return upsertOrgWikiDocumentByOperator(ctx, {
+      ...args,
+      operatorUserId: operator.userId,
+    });
+  },
+});
+
+async function resolveWikiFileProposal(
+  ctx: MutationCtx,
+  args: {
+    orgId: Id<"organizations">;
+    heading: string;
+    accept: boolean;
+    expectedRevision: number;
+  },
+) {
+  const state = await loadWiki(ctx, args.orgId);
+  if ((state.document?.revision ?? 0) !== args.expectedRevision)
+    throw new Error(
+      "This document changed. Reload it before resolving the suggestion.",
+    );
+  const proposal = state.metadata.proposals?.[args.heading];
+  if (!proposal) throw new Error("No wiki proposal pending");
+  delete state.metadata.proposals![args.heading];
+  await persistWiki(
+    ctx,
+    args.orgId,
+    state,
+    args.accept
+      ? replaceMarkdownHeading(state.body, args.heading, proposal.body)
+      : state.body,
+    state.metadata,
+  );
+  return readOrgWiki(ctx, args.orgId);
+}
+
+const proposalFileArgs = {
+  orgId: v.id("organizations"),
+  heading: v.string(),
+  accept: v.boolean(),
+  expectedRevision: v.number(),
+};
+export const resolveProposal = mutation({
+  args: proposalFileArgs,
+  handler: async (ctx, args) => {
+    await requireWikiAdmin(ctx, args.orgId);
+    return resolveWikiFileProposal(ctx, args);
+  },
+});
+export const resolveProposalForOperator = mutation({
+  args: proposalFileArgs,
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWikiWrite(ctx, operator.userId);
+    await requireOperatorWikiOrganization(ctx, args.orgId);
+    return resolveWikiFileProposal(ctx, args);
+  },
+});
+
+export const migrateLegacyBatch = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const first = await ctx.db.query("orgWikiSections").first();
+    if (!first) return { migrated: 0, complete: true };
+    const existing = await getMarkdownDocument(ctx, {
+      orgId: first.orgId,
+      kind: "company_wiki",
+    });
+    if (existing)
+      throw new Error(
+        "Legacy wiki rows coexist with a canonical file; review before migration",
+      );
+    const state = await loadWiki(ctx, first.orgId);
+    await persistWiki(ctx, first.orgId, state, state.body, state.metadata);
+    return { migrated: state.legacy.length, complete: false };
+  },
+});
+export const verifyLegacyMigration = internalQuery({
+  args: {},
+  handler: async (ctx) => ({
+    complete: (await ctx.db.query("orgWikiSections").first()) === null,
+  }),
+});

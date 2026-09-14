@@ -1,3 +1,6 @@
+import { requestPacketText } from "./procurementNarrative";
+import { appendPrivatePacketNote, readPacketDocument } from "./packetDocuments";
+import { getMarkdownDocument } from "../markdownDocuments";
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -29,13 +32,14 @@ export type ScanSelection = {
   requestIds?: Id<"procurementRequests">[];
 };
 export type ScanTarget = {
+  privateDocument: Doc<"markdownDocuments"> | null;
   org: Doc<"organizations"> | null;
   request: Doc<"procurementRequests"> | null;
   record:
     | Doc<"organizations">
     | Doc<"procurementRequests">
     | Doc<"brokerProfiles">
-    | Doc<"orgWikiSections">
+    | Doc<"markdownDocuments">
     | Doc<"procurementBrokerOutreaches">
     | null;
 };
@@ -185,7 +189,13 @@ export async function resolveScanTarget(
     selection.selectedOrgId,
     selection.organizationIds,
   );
-  if (!org) return { org: null, request: null, record: null };
+  if (!org)
+    return {
+      org: null,
+      request: null,
+      record: null,
+      privateDocument: null,
+    };
   let request: Doc<"procurementRequests"> | null = null;
   if ("request" in operation) {
     const requests = await ctx.db
@@ -217,21 +227,31 @@ export async function resolveScanTarget(
     ).filter(
       (r): r is Doc<"procurementRequests"> => !!r && r.clientOrgId === org._id,
     );
-    const matches = [
+    const candidates = [
       ...new Map(
         [...requests, ...normalizedRequests, ...discoveredRequests].map((r) => [
           r._id,
           r,
         ]),
       ).values(),
-    ].filter(
-      (r) =>
-        normalizedIdentity(r.title) ===
-          normalizedIdentity(operation.request.title) &&
-        normalizedIdentity(`${r.title} ${r.narrative ?? ""}`).includes(
-          normalizedIdentity(operation.request.coverage),
-        ),
-    );
+    ];
+    const matches = (
+      await Promise.all(
+        candidates.map(async (candidate) => ({
+          request: candidate,
+          narrative: await requestPacketText(ctx, candidate),
+        })),
+      )
+    )
+      .filter(
+        ({ request: candidate, narrative }) =>
+          normalizedIdentity(candidate.title) ===
+            normalizedIdentity(operation.request.title) &&
+          normalizedIdentity(`${candidate.title} ${narrative}`).includes(
+            normalizedIdentity(operation.request.coverage),
+          ),
+      )
+      .map(({ request: candidate }) => candidate);
     request = selection.selectedRequestId
       ? await ctx.db.get(selection.selectedRequestId)
       : (matches[0] ?? null);
@@ -240,7 +260,7 @@ export async function resolveScanTarget(
     if (
       request &&
       !normalizedIdentity(
-        `${request.title} ${request.narrative ?? ""}`,
+        `${request.title} ${await requestPacketText(ctx, request)}`,
       ).includes(normalizedIdentity(operation.request.coverage))
     )
       throw new ScanAttention(
@@ -254,13 +274,12 @@ export async function resolveScanTarget(
       );
   }
   let record: ScanTarget["record"] = request ?? org;
+  let privateDocument: Doc<"markdownDocuments"> | null = null;
   if (operation.kind === "company_facts")
-    record = await ctx.db
-      .query("orgWikiSections")
-      .withIndex("organization_key", (q) =>
-        q.eq("orgId", org._id).eq("key", operation.section),
-      )
-      .unique();
+    record = await getMarkdownDocument(ctx, {
+      orgId: org._id,
+      kind: "company_wiki",
+    });
   if (operation.kind === "broker_capabilities")
     record = await ctx.db
       .query("brokerProfiles")
@@ -280,8 +299,20 @@ export async function resolveScanTarget(
         "Several market records match this request and broker",
       );
     record = rows[0] ?? null;
+    privateDocument = await getMarkdownDocument(ctx, {
+      orgId: org._id,
+      requestId: request._id,
+      kind: "packet",
+      filename: "private.md",
+    });
+    if (privateDocument)
+      privateDocument = {
+        ...privateDocument,
+        markdown: (await readPacketDocument(ctx, request, "private.md"))
+          .markdown,
+      };
   }
-  return { org, request, record };
+  return { org, request, record, privateDocument };
 }
 
 export async function assertScanChronology(
@@ -419,7 +450,7 @@ export async function writeScanDomain(
       replaces: op.replaces,
     });
     if (!id) throw new ScanAttention("No company facts supplied");
-    return { table: "orgWikiSections" as const, id, created: !target.record };
+    return { table: "markdownDocuments" as const, id, created: !target.record };
   }
   if (op.kind === "broker_capabilities") {
     if (org.type !== "broker")
@@ -475,16 +506,17 @@ export async function writeScanDomain(
         "Exact broker identity is required for market activity",
       );
     const previous =
-      target.record && "requestId" in target.record ? target.record : null;
+      target.record && "brokerName" in target.record ? target.record : null;
+    await appendPrivatePacketNote(ctx, target.request, broker.name, op.log);
     if (previous) {
       await assertScanChronology(ctx, previous, effectiveAt);
-      await updateProcurementOutreachByOperator(ctx, {
-        operatorUserId,
-        outreachId: previous._id,
-        log: [previous.notes, op.log].filter(Boolean).join("\n\n"),
-        status: op.observedStatus ?? undefined,
-        source: "workspace_scan",
-      });
+      if (op.observedStatus)
+        await updateProcurementOutreachByOperator(ctx, {
+          operatorUserId,
+          outreachId: previous._id,
+          status: op.observedStatus ?? undefined,
+          source: "workspace_scan",
+        });
       return {
         table: "procurementBrokerOutreaches" as const,
         id: previous._id,
@@ -496,7 +528,6 @@ export async function writeScanDomain(
       requestId: target.request._id,
       brokerOrgId: broker._id,
       status: op.observedStatus ?? "observed",
-      log: op.log,
       source: "workspace_scan",
     });
     return {

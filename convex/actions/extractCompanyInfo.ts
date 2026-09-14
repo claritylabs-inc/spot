@@ -1,13 +1,9 @@
 "use node";
 
 import { v } from "convex/values";
-import { z } from "zod";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { api, internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
-import { generateObjectForOrg } from "../lib/models";
-import { INDUSTRIES } from "../lib/industries";
-import { runWebRetrieval } from "../lib/webRetrieval";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   normalizePublicWebsiteUrl,
   storeWebsiteFavicon,
@@ -17,76 +13,15 @@ import {
   userFacingErrorCodes,
 } from "../lib/userFacingErrors";
 
-// Build a compact reference of valid industry/vertical values for the prompt
-const INDUSTRY_REF = INDUSTRIES.map(
-  (i) => `${i.value}: [${i.verticals.map((v) => v.value).join(", ")}]`,
-).join("\n");
-
-const CompanyInfoSchema = z.object({
-  companyContext: z
-    .string()
-    .describe(
-      "2-4 sentence factual description: what the company does, industry, size if known, location, key products/services.",
-    ),
-  industry: z
-    .string()
-    .describe(
-      "Best-matching industry value from the provided list. Empty string if unclear.",
-    ),
-  industryVertical: z
-    .string()
-    .describe(
-      "Best-matching vertical value for that industry. Empty string if unclear.",
-    ),
-  naicsCode: z
-    .string()
-    .describe("NAICS code if explicitly visible. Empty string if not evident."),
-  yearsInBusiness: z
-    .string()
-    .describe(
-      "Years in business if explicitly visible as a number. Empty string if not evident.",
-    ),
-  numberOfEmployees: z
-    .string()
-    .describe(
-      "Employee count if explicitly visible as a number. Empty string if not evident.",
-    ),
-  annualRevenue: z
-    .string()
-    .describe(
-      "Annual revenue if explicitly visible. Preserve units/currency. Empty string if not evident.",
-    ),
-  atomicFacts: z
-    .array(z.string())
-    .describe(
-      [
-        "Atomic, durable facts about the company that are useful as long-term memory.",
-        "Each entry MUST follow these rules:",
-        "- Exactly ONE fact per entry. Never combine facts with 'and', commas, or semicolons.",
-        "- A single short declarative sentence, ideally under 15 words.",
-        "- Self-contained and unambiguous when read in isolation (use the company's name, not 'we'/'the company'/'they').",
-        "- Only include facts explicitly evident from the website content. Do not speculate, summarize broadly, or hedge ('appears to', 'likely', 'may').",
-        "- Prefer concrete, structured statements (products, services, locations, named clients/partners/investors, headcount, founding year, NAICS, revenue) over generic marketing language.",
-        "- Do NOT prefix entries with labels like 'NAICS:' or 'Clients:' — write a complete sentence instead (e.g. 'Acme's NAICS code is 541512.').",
-        "- Skip duplicates and near-duplicates. Return [] if nothing reliable is evident.",
-        "Examples: 'Acme builds AI software for commercial insurance brokers.', 'Acme is headquartered in San Francisco, California.', 'Acme employs about 25 people.', 'Acme's investors include Sequoia Capital.'",
-      ].join(" "),
-    ),
-});
-
-type CompanyInfo = z.infer<typeof CompanyInfoSchema>;
-type ExtractCompanyInfoResult = {
-  error?: string;
-  success?: true;
-  companyContext?: string;
-  industry?: string;
-  industryVertical?: string;
-} & Partial<
-  Omit<CompanyInfo, "companyContext" | "industry" | "industryVertical">
->;
 type OrgLogoImportResult =
   | { success: true; iconStorageId: Id<"_storage">; error?: undefined }
   | { success: false; iconStorageId?: undefined; error: string };
+
+type CompanyResearchRequestResult = {
+  success: true;
+  queued: boolean;
+  status: NonNullable<Doc<"organizations">["companyResearch"]>["status"];
+};
 
 async function storeFaviconForOrg(
   ctx: ActionCtx,
@@ -120,102 +55,6 @@ async function importOrgLogoForOrg(
   return { success: true, iconStorageId } as const;
 }
 
-async function extractAndApplyCompanyInfo(
-  ctx: ActionCtx,
-  targetOrgId: Id<"organizations">,
-  rawUrl: string,
-): Promise<ExtractCompanyInfoResult> {
-  const url = normalizePublicWebsiteUrl(rawUrl);
-  if (!url) return { error: "Website URL is required" };
-
-  const faviconPromise = storeFaviconForOrg(ctx, targetOrgId, url).catch(
-    () => null,
-  );
-
-  const retrieval = await runWebRetrieval(ctx, targetOrgId, {
-    url,
-    goal: "Extract factual company profile information from this organization's public website.",
-    maxResults: 1,
-  });
-  const content = retrieval.text;
-  if (!content) {
-    await faviconPromise;
-    return { error: "Could not retrieve website content" };
-  }
-
-  const { output: object } = await generateObjectForOrg<CompanyInfo>(
-    ctx,
-    targetOrgId,
-    "triage",
-    {
-      schema: CompanyInfoSchema,
-      maxOutputTokens: 2048,
-      prompt: `Extract company information from the website content below.
-
-Valid industry values and their verticals:
-${INDUSTRY_REF}
-
-For industry/industryVertical fields, only return a value that exactly matches the list above. Otherwise return an empty string. For text fields, return an empty string if the answer is not evident — do not guess.
-Only return NAICS, yearsInBusiness, numberOfEmployees, and annualRevenue when explicitly stated on the site.
-
-For atomicFacts, decompose what's on the site into the smallest possible standalone facts (one idea each, one short sentence each). Do not paraphrase the same fact twice. Do not include the verbose companyContext sentence as an atomicFact.
-
-Website content:
-${content}`,
-    },
-  );
-
-  const matchedIndustry = INDUSTRIES.find((i) => i.value === object.industry);
-  const industry = matchedIndustry?.value;
-  const industryVertical = matchedIndustry?.verticals.find(
-    (v) => v.value === object.industryVertical,
-  )?.value;
-
-  const companyContext = object.companyContext;
-  const orgUpdates: Record<string, string> = { context: companyContext };
-  if (industry) orgUpdates.industry = industry;
-  if (industryVertical) orgUpdates.industryVertical = industryVertical;
-  await ctx.runMutation(internal.orgs.updateProfileInternal, {
-    orgId: targetOrgId,
-    ...orgUpdates,
-  });
-
-  const seen = new Set<string>();
-  const facts = (object.atomicFacts ?? [])
-    .map((fact) => fact.trim())
-    .filter((fact) => {
-      if (!fact) return false;
-      if (fact.length > 240) return false;
-      const key = fact.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-  if (facts.length > 0) {
-    await ctx.runMutation(internal.orgWiki.appendFacts, {
-      orgId: targetOrgId,
-      key: "profile",
-      facts,
-      source: "extraction",
-      trusted: true,
-    });
-  }
-
-  await faviconPromise;
-
-  return {
-    success: true,
-    companyContext,
-    industry,
-    industryVertical,
-    naicsCode: object.naicsCode || undefined,
-    yearsInBusiness: object.yearsInBusiness || undefined,
-    numberOfEmployees: object.numberOfEmployees || undefined,
-    annualRevenue: object.annualRevenue || undefined,
-  };
-}
-
 async function resolveTargetOrgId(
   ctx: ActionCtx,
   orgId: Id<"organizations"> | undefined,
@@ -245,12 +84,13 @@ async function resolveTargetOrgId(
 }
 
 export const extractCompanyInfo = action({
-  args: { url: v.string(), orgId: v.optional(v.id("organizations")) },
+  args: { url: v.optional(v.string()), orgId: v.optional(v.id("organizations")) },
   returns: v.any(),
-  handler: async (ctx, args): Promise<ExtractCompanyInfoResult> => {
+  handler: async (ctx, args): Promise<CompanyResearchRequestResult> => {
     const targetOrgId = await resolveTargetOrgId(ctx, args.orgId);
-
-    return await extractAndApplyCompanyInfo(ctx, targetOrgId, args.url);
+    const viewer = await ctx.runQuery(api.users.viewer);
+    if (!viewer) throwUserFacingError(userFacingErrorCodes.authRequired);
+    return await ctx.runMutation(internal.companyResearch.requestForUser, { orgId: targetOrgId, userId: viewer._id });
   },
 });
 
@@ -280,9 +120,9 @@ export const importOrgLogoForOrgInternal = internalAction({
 });
 
 export const extractCompanyInfoForOrgInternal = internalAction({
-  args: { url: v.string(), orgId: v.id("organizations") },
+  args: { url: v.optional(v.string()), orgId: v.id("organizations") },
   returns: v.any(),
-  handler: async (ctx, args): Promise<ExtractCompanyInfoResult> => {
-    return await extractAndApplyCompanyInfo(ctx, args.orgId, args.url);
+  handler: async (ctx, args): Promise<CompanyResearchRequestResult> => {
+    return await ctx.runMutation(internal.companyResearch.request, { orgId: args.orgId });
   },
 });

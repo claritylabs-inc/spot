@@ -28,7 +28,6 @@ export const insert = internalMutation({
       v.literal("certificate"),
       v.literal("unknown"),
     ),
-    extractedData: v.optional(v.any()),
     pageCount: v.optional(v.number()),
     orgId: v.id("organizations"),
   },
@@ -37,31 +36,6 @@ export const insert = internalMutation({
       ...args,
       createdAt: dayjs().valueOf(),
     });
-  },
-});
-
-export const updateExtraction = internalMutation({
-  args: {
-    id: v.id("policyFiles"),
-    extractedData: v.optional(v.any()),
-  },
-  handler: async (ctx, args) => {
-    const { id, ...fields } = args;
-    await ctx.db.patch(id, fields);
-  },
-});
-
-export const appendExtractionLog = internalMutation({
-  args: {
-    id: v.id("policyFiles"),
-    message: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const file = await ctx.db.get(args.id);
-    if (!file) return;
-    const log = file.pipelineLog ?? [];
-    log.push({ timestamp: dayjs().valueOf(), message: args.message });
-    await ctx.db.patch(args.id, { pipelineLog: log });
   },
 });
 

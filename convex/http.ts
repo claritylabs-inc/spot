@@ -19,7 +19,6 @@ import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
 import { buildEmailDraftTextSummary } from "./lib/emailDraftSummary";
-import { ORG_WIKI_SECTION_KEYS, isOrgWikiSectionKey } from "./lib/orgWiki";
 import { canAccessThread } from "./lib/threadAccess";
 import {
   parseSlackEventPayload,
@@ -2174,7 +2173,7 @@ http.route({
         website: org.website,
         industry: org.industry,
         industryVertical: org.industryVertical,
-        context: org.context,
+
       });
     } catch (e) {
       if (e instanceof Response) return e;
@@ -2659,25 +2658,13 @@ const MCP_TOOLS: TenantMcpToolCatalogEntry[] = [
   {
     name: "read_company_wiki",
     description:
-      "Read the company wiki for the OAuth token's organization: the whole markdown document, its sections, and the sections still empty.",
+      "Read the company wiki for the OAuth token's organization: the complete .md file with YAML front matter, filename, body, and revision.",
     inputSchema: { type: "object" as const, properties: {} },
   },
   {
-    name: "write_company_wiki_section",
-    description:
-      "Rewrite one section of the company wiki for the OAuth token's organization. Send the whole section body as markdown; an empty body clears the section. Requires write scope and current org admin membership.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        section: {
-          type: "string",
-          enum: [...ORG_WIKI_SECTION_KEYS],
-          description: "Company wiki section key",
-        },
-        body: { type: "string", description: "Whole section body as markdown" },
-      },
-      required: ["section", "body"],
-    },
+    name: "write_company_wiki",
+    description: "Replace the complete company .md document including YAML front matter for the token's organization. Read it first and send its revision. Requires write scope and direct org admin membership.",
+    inputSchema: { type: "object" as const, properties: { markdown: { type: "string" }, expected_revision: { type: "integer", minimum: 0 } }, required: ["markdown", "expected_revision"] },
     effect: "write",
   },
   {
@@ -3121,19 +3108,9 @@ async function handleToolCall(
       });
       return mcpTextResult(wiki);
     }
-    case "write_company_wiki_section": {
-      if (typeof args.section !== "string" || typeof args.body !== "string") {
-        throw new Error("section and body are required");
-      }
-      if (!isOrgWikiSectionKey(args.section)) {
-        throw new Error("Unknown company wiki section");
-      }
-      const wiki = await ctx.runMutation(internal.orgWiki.upsertSectionForMcp, {
-        orgId,
-        userId,
-        key: args.section,
-        body: args.body,
-      });
+    case "write_company_wiki": {
+      if (typeof args.markdown !== "string" || !Number.isInteger(args.expected_revision)) throw new Error("markdown and expected_revision are required");
+      const wiki = await ctx.runMutation(internal.orgWiki.saveForMcp, { orgId, userId, markdown: args.markdown, expectedRevision: Number(args.expected_revision) });
       return mcpTextResult(wiki);
     }
     case "list_policies": {
@@ -3451,7 +3428,7 @@ async function handleToolCall(
                 website: org.website,
                 industry: org.industry,
                 industryVertical: org.industryVertical,
-                context: org.context,
+
               },
               null,
               2,

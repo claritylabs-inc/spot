@@ -1,55 +1,60 @@
-import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
-import { PACKET_SECTIONS, defaultPacketSection } from "./procurementPacket";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+import {
+  readPacketProjection,
+  migratePacketDocuments,
+  readPacketDocument,
+} from "./packetDocuments";
+import { saveMarkdownDocument } from "../markdownDocuments";
+import {
+  parseDocumentVisibility,
+  parseMarkdownDocument,
+  stringifyMarkdownDocument,
+} from "./markdownDocument";
 
-export const NARRATIVE_SECTION_KEY = "intake_narrative";
-
-export function requestNarrative(request: Doc<"procurementRequests">) {
-  return request.narrative;
+export async function requestPacketText(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"procurementRequests">,
+) {
+  return (await readPacketProjection(ctx, request, "operator")).markdown;
 }
 
-export async function seedNarrativePacketSection(
+export async function seedRequestIntake(
   ctx: MutationCtx,
   args: {
     requestId: Id<"procurementRequests">;
     clientOrgId: Id<"organizations">;
     narrative: string;
     userId: Id<"users">;
-    source: Doc<"procurementPacketSections">["source"];
+    source: "client" | "operator_agent" | "manual";
   },
 ) {
-  const body = args.narrative.trim();
-  if (!body) return;
-  const existing = await ctx.db
-    .query("procurementPacketSections")
-    .withIndex("request_key", (q) =>
-      q.eq("requestId", args.requestId).eq("key", NARRATIVE_SECTION_KEY),
-    )
-    .first();
-  if (existing) return;
   const request = await ctx.db.get(args.requestId);
   if (!request) throw new Error("Procurement request not found");
-  const canonical = defaultPacketSection(NARRATIVE_SECTION_KEY);
-  const now = dayjs().valueOf();
-  await ctx.db.insert("procurementPacketSections", {
-    requestId: args.requestId,
-    clientOrgId: args.clientOrgId,
-    key: NARRATIVE_SECTION_KEY,
-    heading: canonical.heading,
-    body,
-    order: PACKET_SECTIONS.findIndex(([key]) => key === NARRATIVE_SECTION_KEY),
-    audience: canonical.defaultAudience,
-    source: args.source,
-    createdByUserId: args.userId,
-    updatedByUserId: args.userId,
-    createdAt: now,
-    updatedAt: now,
+  const visibility = parseDocumentVisibility(args.narrative, "shared");
+  if (args.source === "client" && visibility !== "shared")
+    throw new Error("Client request intake must be shared");
+  await migratePacketDocuments(ctx, args.requestId);
+  if (!args.narrative.trim()) return;
+  const filename = visibility === "private" ? "private.md" : "public.md";
+  const document = await readPacketDocument(ctx, request, filename);
+  const previous = parseMarkdownDocument(document.markdown);
+  const incoming = parseMarkdownDocument(args.narrative);
+  await saveMarkdownDocument(ctx, {
+    orgId: request.clientOrgId,
+    requestId: request._id,
+    kind: "packet",
+    filename,
+    markdown: stringifyMarkdownDocument(
+      { ...previous.frontmatter, ...incoming.frontmatter, visibility },
+      [previous.body, `## Request\n\n${incoming.body}`]
+        .filter(Boolean)
+        .join("\n\n"),
+    ),
+    expectedRevision: document.revision,
   });
-  if (canonical.defaultAudience !== "operator")
-    await ctx.db.patch(args.requestId, {
+  if (visibility === "shared")
+    await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
-      updatedAt: now,
-      updatedByUserId: args.userId,
     });
 }

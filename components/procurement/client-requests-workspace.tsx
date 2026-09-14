@@ -212,11 +212,7 @@ export function ClientRequestsList({
                   >
                     {request.title}
                   </p>
-                  <p
-                    className={`mt-1 line-clamp-2 text-muted-foreground ${typeStyle("body.default")}`}
-                  >
-                    {request.narrative}
-                  </p>
+
                   <p
                     className={`mt-2 text-muted-foreground ${typeStyle("caption.default")}`}
                   >
@@ -439,17 +435,11 @@ export function ClientRequestDetail({
       </OperationalLabelValueList>
 
       <OperationalPanel>
-        <OperationalPanelHeader title="Submission packet" />
+        <OperationalPanelHeader title="public.md" />
         <OperationalPanelBody>
-          {request.packet.markdown ? (
-            <ProseMarkdown>{request.packet.markdown}</ProseMarkdown>
-          ) : (
-            <p
-              className={`whitespace-pre-wrap text-foreground ${typeStyle("prose.default")}`}
-            >
-              {request.narrative}
-            </p>
-          )}
+          <ProseMarkdown gfm>
+            {request.packet.markdown || "No packet content shared yet."}
+          </ProseMarkdown>
         </OperationalPanelBody>
       </OperationalPanel>
 

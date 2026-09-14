@@ -1,3 +1,16 @@
+import { saveMarkdownDocument } from "./markdownDocuments";
+import {
+  parseMarkdownDocument,
+  stringifyMarkdownDocument,
+  replaceMarkdownHeading,
+  parseDocumentVisibility,
+} from "./lib/markdownDocument";
+import {
+  readPacketDocument,
+  readPacketProjection,
+  migratePacketDocuments,
+  packetFileVisibility,
+} from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -22,11 +35,9 @@ import {
 import { requireDirectOperatorWrite } from "./procurementRequests";
 import { readOrgWiki } from "./orgWiki";
 import {
-  PACKET_SECTIONS,
   assemblePacketMarkdown,
   composeRequestMarkdown,
   defaultPacketSection,
-  audienceIncludes,
   type PacketAudience,
 } from "./lib/procurementPacket";
 
@@ -35,30 +46,6 @@ const audienceValidator = v.union(
   v.literal("client"),
   v.literal("broker"),
 );
-
-function brokerSectionProjectionChanged(
-  previous: Pick<
-    Doc<"procurementPacketSections">,
-    "audience" | "heading" | "body" | "order"
-  > | null,
-  next: Pick<
-    Doc<"procurementPacketSections">,
-    "audience" | "heading" | "body" | "order"
-  >,
-) {
-  const wasVisible = previous
-    ? audienceIncludes(previous.audience, "client")
-    : false;
-  const isVisible = audienceIncludes(next.audience, "client");
-  return (
-    wasVisible !== isVisible ||
-    (isVisible &&
-      (!previous ||
-        previous.heading !== next.heading ||
-        previous.body !== next.body ||
-        previous.order !== next.order))
-  );
-}
 
 function packetLinkStatus(
   link: Pick<
@@ -92,6 +79,69 @@ async function directOperator(ctx: MutationCtx, userId: Id<"users">) {
   await requireDirectOperatorWrite(ctx, userId);
 }
 
+export async function updatePacketDocumentByOperator(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    requestId: Id<"procurementRequests">;
+    filename: string;
+    markdown: string;
+    expectedRevision: number;
+  },
+) {
+  await directOperator(ctx, args.operatorUserId);
+  const request = await requestForOperator(ctx, args.requestId);
+  const previous = await readPacketDocument(ctx, request, args.filename);
+  if (previous.revision !== args.expectedRevision)
+    throw new Error(
+      "The packet changed while you were editing. Reload it before saving.",
+    );
+  const parsed = parseMarkdownDocument(args.markdown);
+  const visibility = packetFileVisibility(args.filename);
+  if (parseDocumentVisibility(args.markdown, visibility) !== visibility)
+    throw new Error(`${args.filename} must use visibility: ${visibility}`);
+  const markdown = stringifyMarkdownDocument(
+    { ...parsed.frontmatter, visibility },
+    parsed.body,
+  );
+  // Materialize and retire the legacy source in this same transaction before
+  // applying an intentional edit, so the later backfill cannot resurrect it.
+  await migratePacketDocuments(ctx, request._id);
+  const canonical = await readPacketDocument(ctx, request, args.filename);
+  const document = await saveMarkdownDocument(ctx, {
+    orgId: request.clientOrgId,
+    requestId: request._id,
+    kind: "packet",
+    filename: args.filename,
+    markdown,
+    expectedRevision: canonical.revision,
+  });
+  const changed = previous.markdown !== markdown;
+  if (changed && (visibility === "shared" || previous.visibility === "shared"))
+    await ctx.db.patch(request._id, {
+      packetRevision: (request.packetRevision ?? 0) + 1,
+      updatedByUserId: args.operatorUserId,
+      updatedAt: dayjs().valueOf(),
+    });
+  const auditEventId = await writeOperatorAudit(ctx, {
+    operatorUserId: args.operatorUserId,
+    type: "setup_write",
+    targetOrgId: request.clientOrgId,
+    summary: `Updated ${document.filename} on ${request.title}`,
+    metadata: {
+      domain: "procurement",
+      requestId: request._id,
+      documentId: document._id,
+      operation: "update_packet_document",
+      filename: args.filename,
+      visibility,
+    },
+  });
+  return { id: document._id, revision: document.revision, auditEventId };
+}
+
+// Compatibility adapter for local fixture builders. The stored owner is the
+// Markdown document; new APIs edit it as a whole with a revision check.
 export async function upsertPacketSectionByOperator(
   ctx: MutationCtx,
   args: {
@@ -107,132 +157,39 @@ export async function upsertPacketSectionByOperator(
 ) {
   await directOperator(ctx, args.operatorUserId);
   const request = await requestForOperator(ctx, args.requestId);
-  const now = dayjs().valueOf();
   const canonical = defaultPacketSection(args.key);
-  const existing = await ctx.db
-    .query("procurementPacketSections")
-    .withIndex("request_key", (q) =>
-      q.eq("requestId", request._id).eq("key", args.key),
-    )
-    .first();
-  const audience =
-    args.audience ?? existing?.audience ?? canonical.defaultAudience;
-  if (canonical.sensitive && audience !== "operator")
-    throw new Error("Sensitive packet sections require operator visibility");
-  const values = {
-    requestId: request._id,
-    clientOrgId: request.clientOrgId,
-    key: args.key,
-    heading: args.heading?.trim() || existing?.heading || canonical.heading,
-    body: args.body.trim(),
-    order:
-      existing?.order ?? PACKET_SECTIONS.findIndex(([key]) => key === args.key),
-    audience,
-    source: args.source ?? existing?.source ?? "manual",
-    sourceRefs: args.sourceRefs ?? existing?.sourceRefs,
-    manuallyEditedAt: now,
-    createdByUserId: existing?.createdByUserId ?? args.operatorUserId,
-    updatedByUserId: args.operatorUserId,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
-  const id =
-    existing?._id ?? (await ctx.db.insert("procurementPacketSections", values));
-  if (existing) await ctx.db.patch(existing._id, values);
-  if (brokerSectionProjectionChanged(existing, values))
-    await ctx.db.patch(request._id, {
-      packetRevision: (request.packetRevision ?? 0) + 1,
-      updatedAt: now,
-      updatedByUserId: args.operatorUserId,
-    });
-  const auditEventId = await writeOperatorAudit(ctx, {
+  const visibility = args.audience ?? canonical.defaultAudience;
+  if (canonical.sensitive && visibility !== "operator")
+    throw new Error("Sensitive packet content requires operator visibility");
+  const filename = visibility === "operator" ? "private.md" : "public.md";
+  const previous = await readPacketDocument(ctx, request, filename);
+  const parsed = parseMarkdownDocument(previous.markdown);
+  return await updatePacketDocumentByOperator(ctx, {
     operatorUserId: args.operatorUserId,
-    type: "setup_write",
-    targetOrgId: request.clientOrgId,
-    summary: `${existing ? "Updated" : "Created"} packet section ${values.heading} on ${request.title}`,
-    metadata: {
-      domain: "procurement",
-      requestId: request._id,
-      packetSectionId: id,
-      operation: existing ? "update_packet_section" : "create_packet_section",
-      audience,
-      source: values.source,
-    },
+    requestId: args.requestId,
+    filename,
+    expectedRevision: previous.revision,
+    markdown: stringifyMarkdownDocument(
+      {
+        ...parsed.frontmatter,
+        visibility: visibility === "operator" ? "private" : "shared",
+      },
+      replaceMarkdownHeading(
+        parsed.body,
+        args.heading ?? canonical.heading,
+        args.body.trim(),
+      ),
+    ),
   });
-  return { id, auditEventId };
 }
 
-export async function setPacketSectionAudienceByOperator(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    sectionId: Id<"procurementPacketSections">;
-    audience: PacketAudience;
-  },
-) {
-  await directOperator(ctx, args.operatorUserId);
-  const section = await ctx.db.get(args.sectionId);
-  if (!section) throw new Error("Packet section not found");
-  const canonical = defaultPacketSection(section.key);
-  if (canonical.sensitive && args.audience !== "operator")
-    throw new Error("Sensitive packet sections cannot be widened");
-  if (
-    args.audience === "operator" ||
-    audienceIncludes(args.audience, section.audience)
-  ) {
-    const now = dayjs().valueOf();
-    await ctx.db.patch(section._id, {
-      audience: args.audience,
-      audienceProposed: undefined,
-      updatedByUserId: args.operatorUserId,
-      updatedAt: now,
-    });
-    const request = await ctx.db.get(section.requestId);
-    if (
-      request &&
-      brokerSectionProjectionChanged(section, {
-        ...section,
-        audience: args.audience,
-      })
-    )
-      await ctx.db.patch(request._id, {
-        packetRevision: (request.packetRevision ?? 0) + 1,
-        updatedAt: now,
-        updatedByUserId: args.operatorUserId,
-      });
-    if (request && args.audience !== section.audience)
-      await writeOperatorAudit(ctx, {
-        operatorUserId: args.operatorUserId,
-        type: "setup_write",
-        targetOrgId: request.clientOrgId,
-        summary: `Changed packet section ${section.heading} audience to ${args.audience}`,
-        metadata: {
-          domain: "procurement",
-          requestId: request._id,
-          packetSectionId: section._id,
-          operation: "set_packet_section_audience",
-          previousAudience: section.audience,
-          nextAudience: args.audience,
-        },
-      });
-  }
-  return { ok: true };
-}
-
-/** The client wiki composes in on read rather than being copied into the
- * packet, so a new request starts with the client's durable background and
- * later wiki edits reach requests already open. Operator audience only: the
- * client and broker projections stay the packet alone. */
-export async function listPacketSections(
+export async function listPacketDocuments(
   ctx: QueryCtx | MutationCtx,
   args: { requestId: Id<"procurementRequests">; audience?: PacketAudience },
 ) {
   const request = await requestForOperator(ctx, args.requestId);
-  const sections = await ctx.db
-    .query("procurementPacketSections")
-    .withIndex("request", (q) => q.eq("requestId", request._id))
-    .collect();
   const audience = args.audience ?? "operator";
+  const projection = await readPacketProjection(ctx, request, audience);
   const wiki =
     audience === "operator"
       ? await readOrgWiki(ctx, request.clientOrgId)
@@ -240,24 +197,19 @@ export async function listPacketSections(
   return {
     requestId: request._id,
     packetRevision: request.packetRevision ?? 0,
-    sections: sections
-      .filter(
-        (section) =>
-          audience === "operator" ||
-          audienceIncludes(section.audience, audience),
-      )
-      .sort((a, b) => a.order - b.order),
+    documents: projection.documents,
     clientWiki: wiki
-      ? { orgId: wiki.orgId, sections: wiki.sections, markdown: wiki.markdown }
+      ? {
+          orgId: wiki.orgId,
+          filename: wiki.filename,
+          revision: wiki.revision,
+          markdown: wiki.markdown,
+        }
       : null,
     markdown: composeRequestMarkdown({
       wikiMarkdown: wiki?.markdown ?? "",
-      packetMarkdown: assemblePacketMarkdown(sections, { audience }),
+      packetMarkdown: projection.markdown,
     }),
-    gaps: PACKET_SECTIONS.filter(
-      ([key]) =>
-        !sections.some((section) => section.key === key && section.body.trim()),
-    ).map(([key, heading]) => ({ key, heading })),
   };
 }
 
@@ -272,22 +224,16 @@ async function brokerPacketProjection(
   const outreach = args.outreachId ? await ctx.db.get(args.outreachId) : null;
   if (args.outreachId && (!outreach || outreach.requestId !== request._id))
     throw new Error("Outreach does not belong to this request");
-  const [sections, fileItems] = await Promise.all([
-    ctx.db
-      .query("procurementPacketSections")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect(),
+  const [projection, fileItems] = await Promise.all([
+    readPacketProjection(ctx, request, "client"),
     ctx.db
       .query("procurementFileItems")
       .withIndex("request", (q) => q.eq("requestId", request._id))
       .collect(),
   ]);
-  const visibleSections = sections
-    // Client and broker views are intentionally the same shared document.
-    // "operator" remains the only private section audience.
-    .filter((section) => audienceIncludes(section.audience, "client"))
-    .sort((left, right) => left.order - right.order)
-    .map(({ key, heading, body, order }) => ({ key, heading, body, order }));
+  const visibleSections = projection.sections.map(
+    ({ key, heading, body, order }) => ({ key, heading, body, order }),
+  );
   const files = (
     await Promise.all(
       fileItems
@@ -342,13 +288,7 @@ async function brokerPacketProjection(
       { audience: "broker" },
     ),
     files,
-    gaps: PACKET_SECTIONS.filter(
-      ([key, , defaultAudience]) =>
-        audienceIncludes(defaultAudience, "client") &&
-        !visibleSections.some(
-          (section) => section.key === key && section.body.trim(),
-        ),
-    ).map(([key, heading]) => ({ key, heading })),
+    gaps: [],
   };
 }
 
@@ -435,204 +375,23 @@ export const get = query({
   },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    return await listPacketSections(ctx, args);
+    return await listPacketDocuments(ctx, args);
   },
 });
 
-export const updateSections = mutation({
+export const updateDocument = mutation({
   args: {
     requestId: v.id("procurementRequests"),
-    expectedPacketRevision: v.number(),
-    sections: v.array(v.object({ key: v.string(), body: v.string() })),
+    filename: v.string(),
+    markdown: v.string(),
+    expectedRevision: v.number(),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    await directOperator(ctx, operator.userId);
-    const request = await requestForOperator(ctx, args.requestId);
-    if ((request.packetRevision ?? 0) !== args.expectedPacketRevision)
-      throw new Error(
-        "The packet changed while you were editing. Copy your changes, then reopen the editor to review the latest packet.",
-      );
-    for (const section of args.sections) {
-      await upsertPacketSectionByOperator(ctx, {
-        operatorUserId: operator.userId,
-        requestId: args.requestId,
-        ...section,
-        source: "manual",
-      });
-    }
-    return {
-      ok: true,
-      packetRevision: (await ctx.db.get(args.requestId))?.packetRevision ?? 0,
-    };
-  },
-});
-
-/** Apply source-backed machine updates without silently changing a human edit
- * or the projection already visible to a recipient. */
-export const applyAgentUpdateInternal = internalMutation({
-  args: {
-    requestId: v.id("procurementRequests"),
-    sourceFingerprint: v.string(),
-    sections: v.array(
-      v.object({
-        key: v.string(),
-        body: v.string(),
-        audienceProposed: v.optional(
-          v.union(v.literal("client"), v.literal("broker")),
-        ),
-        rationale: v.optional(v.string()),
-        sourceRefs: v.array(v.string()),
-      }),
-    ),
-  },
-  handler: async (ctx, args) => {
-    const request = await requestForOperator(ctx, args.requestId);
-    const now = dayjs().valueOf();
-    let changed = false;
-    for (const update of args.sections) {
-      const canonical = defaultPacketSection(update.key);
-      if (canonical.sensitive && update.audienceProposed) continue;
-      const existing = await ctx.db
-        .query("procurementPacketSections")
-        .withIndex("request_key", (q) =>
-          q.eq("requestId", request._id).eq("key", update.key),
-        )
-        .first();
-      if (existing?.manuallyEditedAt) continue;
-      const priorRefs = new Set(existing?.sourceRefs ?? []);
-      if (update.sourceRefs.some((ref) => priorRefs.has(ref))) continue;
-      const sourceRefs = [...priorRefs, ...update.sourceRefs].slice(-50);
-      if (!existing) {
-        await ctx.db.insert("procurementPacketSections", {
-          requestId: request._id,
-          clientOrgId: request.clientOrgId,
-          key: update.key,
-          heading: canonical.heading,
-          body: update.body.trim(),
-          order: PACKET_SECTIONS.findIndex(([key]) => key === update.key),
-          audience: "operator",
-          audienceProposed: update.audienceProposed,
-          source: "email",
-          sourceRefs,
-          proposedRationale: update.rationale,
-          createdByUserId: request.updatedByUserId,
-          updatedByUserId: request.updatedByUserId,
-          createdAt: now,
-          updatedAt: now,
-        });
-        changed = true;
-      } else {
-        const patch: Record<string, unknown> = { sourceRefs, updatedAt: now };
-        if (existing.audience === "operator") patch.body = update.body.trim();
-        else patch.proposedBody = update.body.trim();
-        if (update.audienceProposed)
-          patch.audienceProposed = update.audienceProposed;
-        if (update.rationale) patch.proposedRationale = update.rationale;
-        await ctx.db.patch(existing._id, patch);
-        changed = true;
-      }
-    }
-    if (changed) {
-      const run = await ctx.db
-        .query("procurementPacketUpdateRuns")
-        .withIndex("request", (q) => q.eq("requestId", request._id))
-        .order("desc")
-        .first();
-      if (!run || run.sourceFingerprint !== args.sourceFingerprint)
-        await ctx.db.insert("procurementPacketUpdateRuns", {
-          requestId: request._id,
-          sourceFingerprint: args.sourceFingerprint,
-          status: "complete",
-          attempts: 1,
-          updatedAt: now,
-        });
-    }
-    return { changed };
-  },
-});
-
-export const acceptProposal = mutation({
-  args: { sectionId: v.id("procurementPacketSections") },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    await directOperator(ctx, operator.userId);
-    const section = await ctx.db.get(args.sectionId);
-    if (!section || (!section.proposedBody && !section.audienceProposed))
-      throw new Error("No packet proposal pending");
-    const now = dayjs().valueOf();
-    const nextAudience = section.audienceProposed ?? section.audience;
-    await ctx.db.patch(section._id, {
-      body: section.proposedBody ?? section.body,
-      audience: nextAudience,
-      proposedBody: undefined,
-      audienceProposed: undefined,
-      proposedRationale: undefined,
-      updatedAt: now,
-      updatedByUserId: operator.userId,
+    return updatePacketDocumentByOperator(ctx, {
+      ...args,
+      operatorUserId: operator.userId,
     });
-    const request = await ctx.db.get(section.requestId);
-    if (
-      request &&
-      brokerSectionProjectionChanged(section, {
-        ...section,
-        body: section.proposedBody ?? section.body,
-        audience: nextAudience,
-      })
-    )
-      await ctx.db.patch(request._id, {
-        packetRevision: (request.packetRevision ?? 0) + 1,
-        updatedAt: now,
-        updatedByUserId: operator.userId,
-      });
-    const auditEventId = request
-      ? await writeOperatorAudit(ctx, {
-          operatorUserId: operator.userId,
-          type: "setup_write",
-          targetOrgId: request.clientOrgId,
-          summary: `Accepted proposed changes to packet section ${section.heading}`,
-          metadata: {
-            domain: "procurement",
-            requestId: request._id,
-            packetSectionId: section._id,
-            operation: "accept_packet_section_proposal",
-          },
-        })
-      : null;
-    return { ok: true, auditEventId };
-  },
-});
-
-export const rejectProposal = mutation({
-  args: { sectionId: v.id("procurementPacketSections") },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    await directOperator(ctx, operator.userId);
-    const section = await ctx.db.get(args.sectionId);
-    if (!section) throw new Error("Packet section not found");
-    const request = await ctx.db.get(section.requestId);
-    await ctx.db.patch(section._id, {
-      proposedBody: undefined,
-      audienceProposed: undefined,
-      proposedRationale: undefined,
-      updatedAt: dayjs().valueOf(),
-      updatedByUserId: operator.userId,
-    });
-    const auditEventId = request
-      ? await writeOperatorAudit(ctx, {
-          operatorUserId: operator.userId,
-          type: "setup_write",
-          targetOrgId: request.clientOrgId,
-          summary: `Rejected proposed changes to packet section ${section.heading}`,
-          metadata: {
-            domain: "procurement",
-            requestId: request._id,
-            packetSectionId: section._id,
-            operation: "reject_packet_section_proposal",
-          },
-        })
-      : null;
-    return { ok: true, auditEventId };
   },
 });
 
@@ -1018,15 +777,8 @@ export const getByToken = query({
       (link.outreachId && (!outreach || outreach.requestId !== request._id))
     )
       return null;
-    const sections = await ctx.db
-      .query("procurementPacketSections")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect();
-    const visible = link.sectionSnapshot
-      ? link.sectionSnapshot
-      : sections
-          .filter((section) => audienceIncludes(section.audience, "client"))
-          .sort((a, b) => a.order - b.order);
+    const current = await readPacketProjection(ctx, request, "client");
+    const visible = link.sectionSnapshot ?? current.sections;
     const fileItems = await ctx.db
       .query("procurementFileItems")
       .withIndex("request", (q) => q.eq("requestId", request._id))

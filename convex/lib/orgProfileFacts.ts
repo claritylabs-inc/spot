@@ -3,6 +3,8 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { normalizeDeclarationValue } from "./declarationFacts";
+import { clientIdentity } from "./clientProfile";
+import { scheduleCompanyResearch } from "../companyResearch";
 import {
   irsEntityTypeLabel,
   normalizeIrsEntityType,
@@ -86,17 +88,17 @@ export function resolveEffectiveOrganizationProfile(
     ? org.profileFacts as Record<string, unknown>
     : {};
   return {
-    mailingAddress: compactAddress(overrides?.mailingAddress)
-      ?? profileAddress(facts.mailingAddress)
-      ?? compactAddress(org.mailingAddress)
-      ?? {},
+    mailingAddress: overrides?.mailingAddress !== undefined
+      ? compactAddress(overrides.mailingAddress) ?? {}
+      : profileAddress(facts.mailingAddress) ?? compactAddress(org.mailingAddress) ?? {},
     entityType:
       normalizeIrsEntityType(overrides?.entityType ?? profileValue(facts.entityType)),
-    fein: profileValue({ value: overrides?.fein ?? overrides?.taxId })
-      || profileValue(facts.fein)
-      || profileValue(facts.taxId),
-    businessNumber: profileValue({ value: overrides?.businessNumber })
-      || profileValue(facts.businessNumber),
+    fein: overrides?.fein !== undefined || overrides?.taxId !== undefined
+      ? cleanText(overrides.fein ?? overrides.taxId) ?? ""
+      : profileValue(facts.fein) || profileValue(facts.taxId),
+    businessNumber: overrides?.businessNumber !== undefined
+      ? cleanText(overrides.businessNumber) ?? ""
+      : profileValue(facts.businessNumber),
     operationsDescription:
       overrides?.operationsDescription ?? profileValue(facts.operationsDescription),
   };
@@ -110,14 +112,16 @@ export function effectiveOrganizationProfileFacts(
     : {};
   const profile = resolveEffectiveOrganizationProfile(org);
   const effective = {
-    ...facts,
+    ...Object.fromEntries(Object.entries(facts).filter(([key]) => ![
+      "mailingAddress", "entityType", "fein", "taxId", "businessNumber", "operationsDescription",
+    ].includes(key))),
     ...(Object.keys(profile.mailingAddress).length > 0
       ? { mailingAddress: { value: profile.mailingAddress } }
       : {}),
     ...(profile.entityType
       ? { entityType: { value: irsEntityTypeLabel(profile.entityType) } }
       : {}),
-    ...(profile.fein ? { fein: { value: profile.fein } } : {}),
+    ...(profile.fein ? { fein: { value: profile.fein }, taxId: { value: profile.fein } } : {}),
     ...(profile.businessNumber
       ? { businessNumber: { value: profile.businessNumber } }
       : {}),
@@ -130,6 +134,7 @@ export function effectiveOrganizationProfileFacts(
 
 type RelatedLegalEntity = {
   legalName: string;
+  source?: "extraction";
   relationship?: "current" | "fka" | "dba" | "subsidiary" | "parent" | "affiliate" | "other";
   incorporationNumber?: string;
   taxId?: string;
@@ -507,11 +512,11 @@ function mergeRelatedLegalEntities(
   current: unknown,
   orgName: string | undefined,
   profileFacts: {
-    namedInsured?: ReturnType<typeof scalarProfileFact>;
-    dba?: ReturnType<typeof scalarProfileFact>;
-    taxId?: ReturnType<typeof scalarProfileFact>;
-    entityType?: ReturnType<typeof scalarProfileFact>;
-    additionalNamedInsureds?: Array<NonNullable<ReturnType<typeof scalarProfileFact>>>;
+    namedInsured?: { value: string };
+    dba?: { value: string };
+    taxId?: { value: string };
+    entityType?: { value: string };
+    additionalNamedInsureds?: Array<{ value: string }>;
   },
 ): RelatedLegalEntity[] | undefined {
   const existing = Array.isArray(current)
@@ -522,10 +527,9 @@ function mergeRelatedLegalEntities(
       (item as RelatedLegalEntity).legalName.trim().length > 0,
     )
     : [];
-  const next = existing.map((entity) => ({ ...entity }));
+  const next = existing.filter((entity) => entity.source !== "extraction").map((entity) => ({ ...entity }));
   const seen = new Set(next.map((entity) => normalizedEntityName(entity.legalName)));
   const orgNameKey = normalizedEntityName(orgName);
-  if (orgNameKey) seen.add(orgNameKey);
 
   const addEntity = (
     value: string | undefined,
@@ -534,18 +538,18 @@ function mergeRelatedLegalEntities(
   ) => {
     const legalName = cleanText(value);
     const key = normalizedEntityName(legalName);
-    if (!legalName || !key || seen.has(key)) return;
+    if (!legalName || !key || seen.has(key) || (relationship === "dba" && key === orgNameKey)) return;
     seen.add(key);
     next.push({
       legalName,
       relationship,
+      source: "extraction",
       ...details,
     });
   };
 
   addEntity(profileFacts.namedInsured?.value, "current", {
     taxId: profileFacts.taxId?.value,
-    notes: profileFacts.entityType?.value ? `Entity type: ${profileFacts.entityType.value}` : undefined,
   });
   addEntity(profileFacts.dba?.value, "dba");
   for (const insured of profileFacts.additionalNamedInsureds ?? []) {
@@ -691,13 +695,19 @@ export async function syncOrgProfileFromDeclarationFacts(
     patch.mailingAddress = undefined;
   }
 
-  const relatedLegalEntities = mergeRelatedLegalEntities(orgRecord.relatedLegalEntities, org.name, {
-    namedInsured: policyNamedInsured,
-    dba: policyDba,
-    entityType: policyEntityType,
-    taxId: policyTaxId,
-    additionalNamedInsureds: policyAdditionalNamedInsureds,
-  });
+  const currentIdentity = clientIdentity(org.name);
+  const dbaName = cleanText(dba?.value);
+  const nameIsLegalInsured = normalizedEntityName(org.name) === normalizedEntityName(namedInsured?.value);
+  const nameDeclaresDba = currentIdentity.name !== org.name
+    && normalizedEntityName(currentIdentity.name) === normalizedEntityName(dbaName);
+  const displayName = dbaName && (nameIsLegalInsured || nameDeclaresDba) ? dbaName : org.name;
+  if (displayName !== org.name) patch.name = displayName;
+
+  const relatedLegalEntities = mergeRelatedLegalEntities(
+    orgRecord.relatedLegalEntities,
+    displayName,
+    profileFacts,
+  );
   if (relatedLegalEntities) patch.relatedLegalEntities = relatedLegalEntities;
 
   if (Object.keys(patch).length === 0) {
@@ -706,6 +716,7 @@ export async function syncOrgProfileFromDeclarationFacts(
 
   patch.profileFactsUpdatedAt = dayjs().valueOf();
   await ctx.db.patch(orgId, patch as never);
+  await scheduleCompanyResearch(ctx, orgId);
   return {
     updated: true,
     keys: Object.keys(patch),

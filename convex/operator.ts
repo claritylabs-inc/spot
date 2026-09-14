@@ -1,3 +1,5 @@
+import { clientIdentity, clientIdentityMatches, clientClassificationPatch } from "./lib/clientProfile";
+import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
@@ -56,6 +58,7 @@ const operatorClientUserValidator = v.object({
 });
 const relatedLegalEntityValidator = v.object({
   legalName: v.string(),
+  source: v.optional(v.literal("extraction")),
   relationship: v.optional(
     v.union(
       v.literal("current"),
@@ -720,7 +723,6 @@ export const getPolicyExtractionOperations = query({
       sourceSpans,
       sourceNodes,
       documentChunks,
-      sourceChunks,
       policyFiles,
       artifacts,
       versions,
@@ -748,10 +750,6 @@ export const getPolicyExtractionOperations = query({
         .take(takeCount),
       ctx.db
         .query("documentChunks")
-        .withIndex("policy", (q) => q.eq("policyId", args.policyId))
-        .take(takeCount),
-      ctx.db
-        .query("sourceChunks")
         .withIndex("policy", (q) => q.eq("policyId", args.policyId))
         .take(takeCount),
       ctx.db
@@ -805,7 +803,6 @@ export const getPolicyExtractionOperations = query({
         sourceSpans: boundedArtifactCount(sourceSpans),
         sourceNodes: boundedArtifactCount(sourceNodes),
         documentChunks: boundedArtifactCount(documentChunks),
-        sourceChunks: boundedArtifactCount(sourceChunks),
         policyFiles: boundedArtifactCount(policyFiles),
         artifacts: boundedArtifactCount(artifacts),
         versions: boundedArtifactCount(versions),
@@ -1199,16 +1196,6 @@ export const createSoloClient = action({
         },
       },
     );
-    if (website) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.actions.extractCompanyInfo.extractCompanyInfoForOrgInternal,
-        {
-          orgId: result.clientOrgId,
-          url: website,
-        },
-      );
-    }
     return result;
   },
 });
@@ -1232,12 +1219,6 @@ export const createClientWithoutUsersForAgentInternal = internalAction({
         client: { name: args.name, website },
       },
     );
-    if (website)
-      await ctx.scheduler.runAfter(
-        0,
-        internal.actions.extractCompanyInfo.extractCompanyInfoForOrgInternal,
-        { orgId: result.clientOrgId, url: website },
-      );
     return {
       ...result,
       deepLink: `/operator/clients/${result.clientOrgId}`,
@@ -1321,23 +1302,19 @@ export const updateClientSettings = mutation({
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.type !== "client")
       throw new Error("Client not found");
-    const name = args.name.trim();
+    const identity = clientIdentity(args.name, args.relatedLegalEntities ?? client.relatedLegalEntities);
+    const name = identity.name;
     if (!name) throw new Error("Organization name is required");
 
     const patch = {
       name,
-      website: args.website?.trim() || undefined,
-      industry: args.industry?.trim() || undefined,
-      industryVertical: args.industryVertical?.trim() || undefined,
-      relatedLegalEntities: args.relatedLegalEntities
-        ?.map((entity) => ({
-          ...entity,
-          legalName: entity.legalName.trim(),
-        }))
-        .filter((entity) => entity.legalName),
+      ...(args.website !== undefined ? { website: args.website.trim() || undefined } : {}),
+      ...clientClassificationPatch(client, args),
+      relatedLegalEntities: identity.relatedLegalEntities,
     };
 
     await ctx.db.patch(args.clientOrgId, patch);
+    await scheduleCompanyResearch(ctx, args.clientOrgId);
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "setup_write",
@@ -1732,10 +1709,14 @@ export async function createStandaloneClientOrganizationByOperator(
 ) {
   await requireOperatorForUser(ctx, args.operatorUserId);
   await assertNoOperatorImpersonation(ctx, args.operatorUserId);
-  const name = args.name.trim();
-  if (!name) throw new Error("Client name is required");
-  return ctx.db.insert("organizations", {
-    name,
+  const identity = clientIdentity(args.name);
+  if (!identity.name) throw new Error("Client name is required");
+  const existingClients = await ctx.db.query("organizations")
+    .withIndex("type", (q) => q.eq("type", "client")).collect();
+  const duplicate = existingClients.find((client) => clientIdentityMatches(client, args.name));
+  if (duplicate) throw new Error(`Client ${duplicate.name} already exists as ${duplicate._id}`);
+  const orgId = await ctx.db.insert("organizations", {
+    ...identity,
     type: "client",
     website: normalizeWebsiteUrl(args.website),
     allowedEmails: [],
@@ -1743,6 +1724,8 @@ export async function createStandaloneClientOrganizationByOperator(
     onboardingComplete: true,
     operatorStatus: args.operatorStatus ?? "onboarding",
   });
+  await scheduleCompanyResearch(ctx, orgId);
+  return orgId;
 }
 
 export const createSoloClientInternal = internalMutation({
@@ -1778,19 +1761,8 @@ export const createSoloClientInternal = internalMutation({
     if (args.users.length > 0 && !primaryAdminInput) {
       throw new Error("At least one client user must be an admin");
     }
-    const clientName = args.client.name.trim();
+    const clientName = clientIdentity(args.client.name).name;
     if (!clientName) throw new Error("Client name is required");
-    const existingClients = await ctx.db
-      .query("organizations")
-      .withIndex("type", (query) => query.eq("type", "client"))
-      .collect();
-    const duplicate = existingClients.find(
-      (client) => client.name.trim().toLowerCase() === clientName.toLowerCase(),
-    );
-    if (duplicate)
-      throw new Error(
-        `Client ${duplicate.name} already exists as ${duplicate._id}`,
-      );
     const seenUserIds = new Set<Id<"users">>();
     const seenEmails = new Set<string>();
     const seenPhones = new Set<string>();
@@ -1838,7 +1810,7 @@ export const createSoloClientInternal = internalMutation({
 
     const clientOrgId = await createStandaloneClientOrganizationByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      name: clientName,
+      name: args.client.name,
       website: args.client.website,
     });
     await ctx.db.patch(clientOrgId, {

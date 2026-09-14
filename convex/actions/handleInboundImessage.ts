@@ -666,7 +666,7 @@ export const processInbound = internalAction({
         buildSystemPromptForContext({
           org: {
             name: org.name,
-            context: org.context,
+
           },
           mode: "direct",
           userName,

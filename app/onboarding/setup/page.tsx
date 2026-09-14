@@ -311,11 +311,11 @@ export default function ClientOnboardingSetupPage() {
       }
       if (trimmedSite) {
         const enrichToast = toast.loading(
-          "Enriching your profile from your website…",
+          "Scheduling company research…",
         );
         void extractCompanyInfo({ url: trimmedSite })
           .then(() =>
-            toast.success("Profile enriched from your website.", {
+            toast.success("Company research queued.", {
               id: enrichToast,
             }),
           )

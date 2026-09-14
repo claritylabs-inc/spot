@@ -38,6 +38,29 @@ const UNSAFE_COMPANY_WIKI_PATTERNS = [
   /\b[A-Z]{2,}(?:-[A-Z0-9]{2,}){2,}\b/,
 ];
 
+/** Check newly introduced prose without imposing the extraction fact format
+ * on a complete authored Markdown document. */
+export function assertAgentWikiContent(previous: string, proposed: string) {
+  const existing = new Set(previous.split("\n").map((line) => line.trim()));
+  for (const line of proposed.split("\n")) {
+    const trimmed = line.trim();
+    if (
+      !trimmed ||
+      existing.has(trimmed) ||
+      /^#{1,6}\s|^[-*_`~|:\s]+$/.test(trimmed)
+    )
+      continue;
+    const content = trimmed
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/^[-*+]\s+|^\d+\.\s+/, "");
+    if (UNSAFE_COMPANY_WIKI_PATTERNS.some((pattern) => pattern.test(content))) {
+      throw new Error(
+        "Company wiki edits must contain company information, not policy terms, delivery instructions, or task status.",
+      );
+    }
+  }
+}
+
 function orgNameTokens(orgName: string | undefined | null) {
   return uniqueSearchTerms(orgName ?? "").filter(
     (token) => token.length > 1 && !ORG_SUFFIXES.has(token),
@@ -74,7 +97,5 @@ export function isCompanyWikiFact(args: {
   if (!mentionsOrganization(content, args.orgName)) return false;
   if (args.trusted) return true;
   if (/^(we|our|i|the user|user)\b/i.test(content)) return false;
-  return !UNSAFE_COMPANY_WIKI_PATTERNS.some((pattern) =>
-    pattern.test(content),
-  );
+  return !UNSAFE_COMPANY_WIKI_PATTERNS.some((pattern) => pattern.test(content));
 }

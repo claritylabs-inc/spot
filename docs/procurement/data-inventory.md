@@ -1,76 +1,98 @@
 # Procurement data and artifact inventory
 
-This inventory records the current canonical owner, active readers, retention
-need, and narrowing direction for procurement data. It is a release guard: a
-field is removed only after its named migration has completed on the target and
-the replacement read path has been verified.
+## Markdown files
 
-## Canonical artifact model
+Every procurement request has exactly two ordinary Markdown files in
+`markdownDocuments`, both owned by the request:
 
-`clientFiles` is the canonical stored-file identity. It owns the one storage
-blob plus organization, SHA-256 content identity, original/display names, MIME
-type, size, provenance, client visibility, policy association, and
-archive/delete lifecycle. A file is uploaded once per client/content hash and
-linked many times:
+| File | Readership | Content |
+| --- | --- | --- |
+| `private.md` | Operators only; YAML `visibility: private`. | Internal work, broker observations, follow-ups, and file-handling notes. |
+| `public.md` | The request’s authorized shared audience; YAML `visibility: shared`. | Shared submission material and initial request narrative by default. |
 
-| Association      | Identity and metadata                                                                                             | Blob ownership                                                                                                      |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Request/packet   | `procurementFileItems.clientFileId`; purpose, status, outreach, source message, client visibility, broker release | `clientFiles.fileId`                                                                                                |
-| Proposal         | `procurementProposalDocuments.clientFileId`; proposal, content hash, extraction filename                          | `clientFiles.fileId`                                                                                                |
-| Imported message | `procurementEmailMessages.clientFileIds` and `procurementFileItems.sourceEmailMessageId`                          | `clientFiles.fileId`                                                                                                |
-| Policy           | `clientFiles.policyId`                                                                                            | The client-file blob remains canonical for this association; policy source lifecycle remains owned by policy files. |
+Explicitly private operator intake goes into `private.md`. There are no
+separate intake, outreach-log, or file-note documents, arbitrary extra packet
+files, required headings, or nested metadata protocol. Authors use ordinary
+Markdown and YAML. Request, outreach, and file-item updates carry workflow
+fields; later prose edits replace one of the two files with `expectedRevision`.
+The exact-confirmed operator tool is `update_procurement_packet`.
 
-New proposal uploads are normalized to private `clientFiles` rows inside the
-atomic filing command. Browser uploads are first bound to a short-lived
-`clientFileUploadIntents` row; a successful filing consumes the intent, and a
-failed or abandoned filing discards the unreferenced blob through the same
-scheduled cleanup contract as the client-file dropbox. Existing client files
-and request file items reuse their blob. `fileId` on proposal documents is a
-compatibility/cache field and must equal the canonical client file's `fileId`;
-it is not an independently owned copy. Legacy `procurementRequestDocuments` is
-not a source for new operator work.
+The public filename does not publish content to the anonymous internet.
+Reading requires authorized request access or a valid issued packet link.
+Operators may read both files; client and broker sharing exposes public content
+only. Filenames and visibility must agree. Front matter cannot change the
+owning organization/request or grant editing authority.
 
-Forwarded quote attachments follow the same rule. Reconciliation reads the
-thread's canonical `clientFileIds`, proposes an outreach only when exactly one
-saved outreach contact matches a thread participant, and otherwise requires an
-operator to choose the outreach. Web and Spot-agent filing both call the same
-atomic command, which records `sourceEmailThreadId` in the request audit and
-converges safely when replayed.
+Updating `public.md` advances the request’s packet revision. Existing packet
+links retain immutable issued text/artifact snapshots until revoked or
+replaced; editing a file does not rewrite historical issuance. Released
+artifacts still require their current release state and file lifecycle checks.
+Source PDFs and other uploaded artifacts remain files in their own right;
+the two-file rule governs editable procurement prose.
 
-## Active tables and fields
+## Stored artifacts
 
-| Table                                        | Field groups                                                                                                                                                                    | Writers                                                   | Active readers                                                     | Retention and canonical direction                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `procurementRequests`                        | identity/client, title + `narrative`, workflow/effective date/visibility, packet revision, policy links, inbox token, audit stamps                                              | operator/client request services     | operator workbench and agent, allowlisted client DTO, inbox router | Durable project root. `narrative` is required and is the sole request prose; only current request statuses are stored. `requirementRevision`/`specificationRevision` narrow after packet-review migration. |
-| `procurementBrokerOutreaches`                | request/client/broker identity, immutable broker/contact snapshot, status, application facts, legacy quote summaries, sent/revision state, legacy packet snapshot, audit stamps | outreach service and packet delivery                      | operator workbench/agent, broker profile history, packet delivery  | Durable market audit. Proposals own quote truth; `quoteSummary`, `quoteAmount`, `quoteCurrency`, and `quoteUrl` are compatibility reads pending a separate backfill. `packetSnapshot` is superseded by link snapshots.                                                                                                                             |
-| `procurementPacketSections`                  | canonical key/heading/body/order/audience, source references, proposed change state, manual ownership, audit stamps                                                             | packet service, intake/extraction proposals               | operator/client/broker packet projections and proposal review      | Canonical request submission content. Retain. Proposed fields are browser review state, not a second durable packet.                                                                                                                                                                                                                               |
-| `procurementPacketLinks`                     | request/outreach, token hash, recipient, expiry/revocation, packet revision, immutable section and file snapshots, delivery/view aggregates, audit stamps                       | packet sharing service                                    | operator sharing console/agent and token projection                | Retain through expiry plus audit policy. Secrets are never listed after issue; rotate/revoke creates auditable state. Legacy rows without snapshots remain compatibility-readable and should be rotated.                                                                                                                                           |
-| `procurementPacketViews`                     | link/request, timestamp/redacted route template/user agent                                                                                                                      | token-validated public packet view recorder               | operator link audit aggregates                                     | Append-only access audit. The raw magic-link token is never written into `path`; apply the product security retention policy and never expose raw user agent to brokers/clients.                                                                                                                                                                   |
-| `procurementPacketUpdateRuns`                | request/fingerprint/status/lease/attempt/error                                                                                                                                  | packet extraction updater                                 | packet update scheduler/diagnostics                                | Operational ledger; bounded retention can follow extraction telemetry policy.                                                                                                                                                                                                                                                                      |
-| `procurementProposals`                       | request/client/broker/outreach, explicit supersession/status, extraction fingerprint/offer, selection/archive state, audit stamps                                               | atomic proposal and review/select services                | operator workbench/agent only                                      | Durable private decision record. Active proposal uniqueness is enforced by the filing command; empty shells are no longer created.                                                                                                                                                                                                                 |
-| `procurementProposalDocuments`               | proposal/request/client, compatibility storage metadata/hash, canonical `clientFileId`, audit stamps                                                                            | atomic filing service                                     | proposal extraction/review and operator source download            | Durable association/evidence manifest. Backfill `clientFileId` on legacy rows before making it required; then consider dropping duplicated size/MIME/storage fields after read-compare.                                                                                                                                                            |
-| `procurementProposalReviews`                 | proposal/request/client, extraction + packet revision bindings, conclusions/findings/confirmation, audit stamps                                                                 | proposal review service                                   | operator workbench/agent only                                      | Durable decision evidence. Drop requirement/specification revisions and require packet revision after `runProposalReviewPacketBackfill`.                                                                                                                                                                                                           |
-| `procurementProposalExtractionJobs`          | scope/fingerprint/requester, status/attempts/lease/worker, completion payload/error, timestamps                                                                                 | atomic filing, worker, retry/cancel controls              | worker plus unified operator extraction diagnostics                | Operational ledger with terminal history. Preserve enough history to explain retries; apply extraction telemetry retention later.                                                                                                                                                                                                                  |
-| `procurementProposalExtractionArtifacts`     | proposal/job/kind/value/time                                                                                                                                                    | proposal worker                                           | proposal reconstruction/diagnostics                                | Derived output; retain while its proposal/review is retained, then cascade.                                                                                                                                                                                                                                                                        |
-| `proposalSourceSpans`, `proposalSourceNodes` | proposal/document/fingerprint identity, source-native text hierarchy/evidence metadata                                                                                          | proposal worker                                           | proposal renderer/review/evidence lookup                           | Canonical proposal evidence; private and lifecycle-bound to proposal documents.                                                                                                                                                                                                                                                                    |
-| `procurementEmailThreads`                    | addressed/current request, normalized subject/category/provenance, participants/count/lifecycle/timestamps                                                                      | inbound procurement email and operator correction         | operator correspondence workbench/agent                            | Durable imported correspondence index. Reassignment preserves `addressedRequestId` provenance.                                                                                                                                                                                                                                                     |
-| `procurementEmailMessages`                   | provider IDs/threading/envelope, current text/HTML/forward metadata, canonical client-file IDs, timestamps                                                                      | inbound procurement email                                 | operator correspondence workbench/agent                            | Durable correspondence evidence. Provider message IDs deduplicate imports; attachment hashes deduplicate through `clientFiles`.                                                                                                                                                                                                                    |
-| `procurementFileItems`                       | request/outreach/client-file/message associations, purpose/status/release/visibility/notes, audit stamps                                                                        | file-item service and atomic proposal filing              | workbench/agent, packet preview/link/file delivery                 | Canonical request-level artifact association. Release state controls broker listing/download; a missing `clientFileId` represents an outstanding request, not a second file.                                                                                                                                                                       |
-| `brokerProfiles`                             | broker network status, office, states/LOBs, audit stamps                                                                                                                        | broker profile service                                    | operator directory/agent and broker self-profile boundary          | Durable supplier identity; never grants client or proposal access.                                                                                                                                                                                                                                                                                 |
-| `clientFiles`                                | blob and file identity, organization + SHA-256 content identity, provenance, visibility, policy/lifecycle/naming, audit stamps                                                  | client-file service, email import, atomic proposal filing | authorized file surfaces/agents and linked procurement readers     | Canonical stored artifact identity. Active files with the same client and content hash converge during touched upload/import paths; archive/delete propagates to every association reader.                                                                                                                                                         |
-| `operatorAuditEvents`                        | immutable actor/type/summary, optional client/user/request targets, bounded metadata, timestamp                                                                                 | operator domain services                                  | operator request workbench audit projection                        | Cross-domain append-only audit owner. New procurement events derive and index `requestId` from their metadata; the workbench retains a bounded metadata-filtered fallback for legacy rows written before the index field existed.                                                                                                                  |
+`clientFiles` owns canonical blob identity, content hash, display/original
+names, MIME type, size, provenance, client visibility, policy association, and
+archive/delete lifecycle. Request file items and proposal documents link to
+that identity rather than copying blobs. Proposal uploads normalize to private
+client-file rows, with short-lived upload intents cleaning abandoned blobs.
 
-## Legacy stores awaiting gated narrowing
+| Active table | Responsibility |
+| --- | --- |
+| `procurementRequests` | Request identity, workflow, effective date, packet revision, policy links, inbox routing and audit stamps. |
+| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s private.md. |
+| `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing clientFileId means an outstanding request. |
+| `procurementPacketLinks` | Token hash, recipient, revocation/expiry and immutable issued text/artifact snapshots. |
+| `procurementPacketViews` | Token-validated access audit without raw magic-link tokens. |
+| `procurementProposals` | Operator-private offer, selection/archive state and extraction identity. |
+| `procurementProposalDocuments` | Source/evidence manifest linking canonical client files; legacy duplicate storage metadata remains until separately audited. |
+| `procurementProposalReviews` | Private model/staff decision evidence bound to extraction fingerprint and packet revision. |
+| `procurementProposalExtractionJobs`, `procurementProposalExtractionArtifacts` | Lease/retry/completion ownership and retained extraction diagnostics. |
+| `proposalSourceSpans`, `proposalSourceNodes` | Private source-native proposal evidence and hierarchy. |
+| `procurementEmailThreads`, `procurementEmailMessages` | Imported correspondence and canonical attachment associations. Current request and originally addressed request remain separate provenance. |
+| `procurementSmsEvents` | Operator market-contact provider event/delivery deduplication, separate from customer channels. |
+| `brokerProfiles` | Supplier network status, office, writing states and LOB filters; never client/proposal access. |
+| `operatorAuditEvents` | Append-only actor/action/request audit. |
 
-| Table                            | Current reader/writer status                                     | Replacement and removal gate                                                                                                            |
-| -------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `procurementRequirementDrafts`   | Compatibility intake/review paths only.                          | Packet sections plus source-backed requirements. Inventory live rows before a dedicated migration; do not silently promote drafts.      |
-| `procurementRequestRequirements` | Read for compatibility in request details and packet migration.  | Broker-visible packet sections. Remove after proposal reviews are packet-bound and linked requirements have been audited.               |
-| `procurementSpecifications`      | Read for compatibility in request details and packet migration.  | Packet sections. Remove after `runProposalReviewPacketBackfill` and read-compare.                                                       |
-| `procurementRequestActivities`   | No active product reader or writer; retained for migration only. | Imported correspondence and action-derived audit timeline. Migrate only business-significant events, verify the client DTO, then purge. |
-| `procurementRequestDocuments`    | No active product reader or writer; retained for migration only. | `clientFiles` + `procurementFileItems`. Backfill blobs and visibility associations before purging.                                      |
-| `procurementMemory`              | Retired row store retained only for gated migration.             | Company wiki and request packet. Remove only through `runCompanyWikiLegacyPurge`.                                                       |
+## Migration and narrowing gates
 
-Request-specific broker chatter must remain in imported correspondence or the
-request audit. It never becomes company wiki knowledge unless a separate,
-explicit source-backed reconciliation promotes a durable company fact.
+Run `procurementMarkdownMigration:auditPage` and then, after reviewing the
+approved deployment, `procurementMarkdownMigration:migratePage` with
+`{"table":"<table>","cursor":null}`. Pass every returned cursor unchanged until
+`isDone: true`; accumulate the complete audit. Migrate requests first, then
+outreaches, file items and legacy packet sections. Later passes verify cleanup
+and convert the owning request when needed.
+
+The request conversion materializes `private.md` and `public.md` together,
+preserving the audience of each source. Existing private packet files, outreach
+logs, and file notes go into private content; existing shared packet/intake
+content goes into public content. Preserve unique text, source references,
+manual edits, and unresolved proposals without treating a proposal as accepted.
+Only after verified preservation may the transaction remove old canonical
+sidecar documents, legacy section rows, and inline narrative fields. No issued
+link snapshot changes. The migration must not create a required section or
+nested metadata model for future editing.
+
+After every Markdown phase reports total `remaining: 0`, the following can
+narrow: `procurementRequests.narrative`,
+`procurementBrokerOutreaches.notes/applicationUrl/applicationQuestions/quoteSummary/quoteAmount/quoteCurrency/quoteUrl`,
+`procurementFileItems.notes`, the `procurementPacketSections` table. Remove compatibility readers
+and migration-only source types in the same narrowing release.
+
+Separately, `procurementSchemaCleanup:auditPage` and `migratePage` handle
+outreach `contactSnapshot`/`packetSnapshot` and request/review
+`requirementRevision`/`specificationRevision`. The current cleanup deletes
+unconfirmable pre-packet reviews before clearing legacy counters. Require a
+complete audit with zero `changed` and `unboundReviews` before removing those
+fields and making review `packetRevision` required. The two-file revision is
+currently being implemented; final local validation and production migration
+results belong in [the execution record](../architecture/backend-simplification.md).
+
+`procurementSchemaCleanup:inventoryLegacyPage` inventories the retired
+requirement drafts/links/specifications, request activities/documents,
+clientInvitations and brokerActivity without deleting business evidence. These
+stores require empty-table proof or reviewed source mapping before narrowing.
+Canonical insuranceRequirements remain active in compliance. The unused `procurementPacketUpdateRuns` store requires a production count:
+remove it if empty, or preserve material history losslessly before removing it.
+Its retired writer is no longer active.

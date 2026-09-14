@@ -16,10 +16,6 @@ import {
 
 export const DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS = {
   renewalReissueEnabled: true,
-  renewalReissueMode: "review_queue" as const,
-  renewalReviewLeadDays: 60,
-  channels: ["email"] as Array<"email" | "imessage">,
-  copyInstructions: undefined as string | undefined,
 };
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -33,24 +29,6 @@ function valuesFromRow(row?: Doc<"certificateWorkflowSettings"> | null) {
     renewalReissueEnabled:
       row?.renewalReissueEnabled ??
       DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS.renewalReissueEnabled,
-    renewalReissueMode: "review_queue" as const,
-    renewalReviewLeadDays:
-      row?.renewalReviewLeadDays ??
-      DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS.renewalReviewLeadDays,
-    channels: row?.channels ?? DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS.channels,
-    copyInstructions: row?.copyInstructions,
-  };
-}
-
-function legacyRowDefaults() {
-  return {
-    populateHoldersFromEndorsements: true,
-    renewalReissueMode: "review_queue" as const,
-    renewalReviewLeadDays:
-      DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS.renewalReviewLeadDays,
-    policyChangeRequestsForHeldCertificatesEnabled: false,
-    channels: DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS.channels,
-    copyInstructions: DEFAULT_CERTIFICATE_WORKFLOW_SETTINGS.copyInstructions,
   };
 }
 
@@ -114,9 +92,7 @@ export const updateClientOverride = mutation({
     assertClientAdmin(access);
     const now = dayjs().valueOf();
     const patch = {
-      brokerOrgId: undefined,
       clientOrgId: access.orgId,
-      ...legacyRowDefaults(),
       renewalReissueEnabled: args.renewalReissueEnabled,
       updatedByUserId: access.userId,
       updatedAt: now,

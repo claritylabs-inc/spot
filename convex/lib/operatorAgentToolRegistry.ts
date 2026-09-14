@@ -1,7 +1,11 @@
+import {
+  relatedLegalEntitySchema,
+  insuranceProfilePatchSchema,
+} from "./clientProfile";
+import { INDUSTRIES } from "./industries";
 import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 
-import { ORG_WIKI_SECTION_KEYS } from "./orgWiki";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   SPOT_ACQUISITION_GUIDANCE,
@@ -75,13 +79,6 @@ function clearable<TSchema extends z.ZodType>(schema: TSchema) {
 const organizationId = z.string().min(1).describe("Exact organization ID");
 const policyId = z.string().min(1).describe("Exact policy ID");
 const clientFileId = z.string().min(1).describe("Exact client file ID");
-const orgWikiSectionKey = z
-  .enum(ORG_WIKI_SECTION_KEYS)
-  .describe("Company wiki section key");
-const procurementPacketSectionKey = z
-  .string()
-  .min(1)
-  .describe("Canonical packet section key");
 const procurementRequestId = z
   .string()
   .min(1)
@@ -192,7 +189,6 @@ const procurementEmailCategory = z.enum([
   "mixed",
   "other",
 ]);
-const packetAudience = z.enum(["operator", "client", "broker"]);
 
 export function operatorUpdateFieldLabel(key: string) {
   if (key === "lineOfBusinessCodes") return "Lines of business";
@@ -293,7 +289,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_organization: defineOperatorTool({
     version: 1,
     description:
-      "Get current organization profile, lifecycle, feature flags, membership count, and policy count by exact organization ID.",
+      "Get the full current organization identity, legal entities, effective insurance profile, public research status, lifecycle, feature flags and counts by exact organization ID. Read the company wiki separately.",
     inputSchema: z.object({ orgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -651,7 +647,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   lookup_client_wiki: defineOperatorTool({
     version: 1,
     description:
-      "Read the whole company wiki for one exact client organization: the assembled markdown, its sections, and the sections still empty. Never use this for policy or workflow facts.",
+      "Read the complete company .md file with YAML front matter, filename, revision, body, and proposed updates for one exact client or supplier organization. Supplier documents are operator-private. Never use this for policy or workflow facts.",
     inputSchema: z.object({ orgId: organizationId }),
     capability: "operator.wiki.read",
     effect: "read",
@@ -661,14 +657,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Read the company wiki for organization ${input.orgId}`,
   }),
-  update_client_wiki_section: defineOperatorTool({
+  update_client_wiki: defineOperatorTool({
     version: 1,
     description:
-      "Rewrite one section of a client's company wiki. Send the whole section body as markdown; an empty body clears the section. Policy, certificate, email, and workflow facts are rejected.",
+      "Replace the client or supplier company .md document, including ordinary YAML front matter. Read lookup_client_wiki first, preserve existing facts and prose, and send its revision. Policy terms and workflow state belong in their own records.",
     inputSchema: z.object({
       orgId: organizationId,
-      key: orgWikiSectionKey,
-      body: z.string().max(20_000),
+      markdown: z.string().max(524288),
+      expectedRevision: z.number().int().min(0),
     }),
     capability: "operator.wiki.write",
     effect: "reversible_write",
@@ -676,15 +672,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) =>
-      `Update company wiki section ${input.key} for organization ${input.orgId}`,
+      `Update company Markdown for organization ${input.orgId}`,
   }),
   lookup_procurement_packet: defineOperatorTool({
     version: 2,
     description:
-      "Read one procurement request packet as assembled Markdown. Client and broker audiences resolve to the same shared document; operator-only context is never shared.",
+      "Read private.md and public.md for a procurement request, including their revisions. All request prose lives in these two files. Use preview_broker_packet to inspect public.md and released attachments.",
     inputSchema: z.object({
       procurementRequestId,
-      audience: omittable(packetAudience),
     }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -729,15 +724,15 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `List broker packet links for request ${input.procurementRequestId}`,
   }),
-  update_procurement_packet_section: defineOperatorTool({
-    version: 1,
+  update_procurement_packet: defineOperatorTool({
+    version: 2,
     description:
-      "Rewrite one section of a procurement request packet. Send the whole section body as markdown; an empty body clears the section.",
+      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, broker outreach history, and follow-ups in these files.",
     inputSchema: z.object({
       procurementRequestId,
-      key: procurementPacketSectionKey,
-      body: z.string().max(20_000),
-      audience: omittable(packetAudience),
+      filename: z.enum(["private.md", "public.md"]),
+      markdown: z.string().max(524288),
+      expectedRevision: z.number().int().min(0),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -748,12 +743,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Update procurement packet section ${input.key} on request ${input.procurementRequestId}`,
+      `Save ${input.filename} for request ${input.procurementRequestId}`,
   }),
   list_procurement_requests: defineOperatorTool({
     version: 1,
     description:
-      "List new-policy procurement requests for one exact client organization, including the intake narrative, request-specific forwarding addresses, policy links, broker progress, files, and imported-email counts.",
+      "List new-policy procurement requests for one exact client organization, including request-specific forwarding addresses, policy links, broker progress, files, and imported-email counts.",
     inputSchema: z.object({
       orgId: organizationId,
       query: omittable(z.string().max(200)),
@@ -1160,7 +1155,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     // Invalidates pending confirmations created against the retired fields.
     version: 5,
     description:
-      "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
+      "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and initializes public.md, or private.md when its front matter explicitly sets visibility: private. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
     inputSchema: z.object({
       orgId: organizationId,
       title: z.string().min(1).max(200),
@@ -1194,14 +1189,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     },
   }),
   update_procurement_request: defineOperatorTool({
-    version: 4,
+    version: 5,
     description:
-      "Update supplied fields on one exact procurement request. Null clears an effective date or policy link; omitted fields stay unchanged.",
+      "Update supplied workflow fields on one exact procurement request. Edit prose through update_procurement_packet in private.md or public.md. Null clears an effective date or policy link; omitted fields stay unchanged.",
     inputSchema: z
       .object({
         procurementRequestId,
         title: omittable(z.string().min(1).max(200)),
-        narrative: omittable(z.string().min(1).max(20_000)),
         targetEffectiveDate: clearable(isoCalendarDate).describe(
           "Omit to preserve the saved date. Pass null only to deliberately clear it.",
         ),
@@ -1538,9 +1532,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_broker_outreach: defineOperatorTool({
-    version: 4,
+    version: 5,
     description:
-      "Add an external broker-network organization to an exact procurement request with a selected contact, workflow status, and optional Markdown log. Spot-owned acquisition organizations and contact domains are ineligible.",
+      "Add an external broker-network organization to an exact procurement request with a selected contact and workflow status. Keep outreach notes in the request’s private.md. Spot-owned acquisition organizations and contact domains are ineligible.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgId: organizationId,
@@ -1548,7 +1542,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       contactEmail: omittable(emailAddress),
       contactPhone: omittable(z.string().max(100)),
       status: omittable(procurementOutreachStatus),
-      log: omittable(z.string().max(20_000)),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -1562,9 +1555,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add broker ${input.brokerOrgId} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_broker_outreach: defineOperatorTool({
-    version: 4,
+    version: 5,
     description:
-      "Update supplied external broker outreach identity, exact workflow status, or its single Markdown log. Spot-owned acquisition organizations and contact domains are ineligible. File quote documents as private proposals.",
+      "Update supplied external broker outreach identity or workflow status. Keep outreach notes in the request’s private.md. Spot-owned acquisition organizations and contact domains are ineligible. File quote documents as private proposals.",
     inputSchema: z
       .object({
         procurementOutreachId,
@@ -1575,7 +1568,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         ),
         contactPhone: clearable(z.string().max(100)),
         status: omittable(procurementOutreachStatus),
-        log: clearable(z.string().max(20_000)),
       })
       .refine(
         (input) =>
@@ -1601,7 +1593,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_file_item: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
       "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional for a hidden requested document, but is required before the item can be client-visible or released to a broker.",
     inputSchema: z.object({
@@ -1619,7 +1611,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       clientVisible: omittable(z.boolean()).describe(
         "true requires clientFileId",
       ),
-      notes: omittable(z.string().max(20_000)),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -1633,9 +1624,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add ${input.purpose} ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_file_item: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Update a procurement file requirement or link. Null removes the linked outreach, shared client file, or notes without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file.",
+      "Update a procurement file requirement or link. Null removes the linked outreach or shared client file without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file. Keep file notes in private.md or public.md.",
     inputSchema: z
       .object({
         procurementFileItemId,
@@ -1652,7 +1643,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         clientVisible: omittable(z.boolean()).describe(
           "true requires an effective clientFileId",
         ),
-        notes: clearable(z.string().max(20_000)),
       })
       .refine(
         (input) =>
@@ -1711,7 +1701,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   create_client_organization: defineOperatorTool({
     version: 2,
     description:
-      "Create one standalone client organization without provisioning users. Use the returned exact organization ID to create its procurement request. Exact-name duplicates are rejected.",
+      "Create one standalone client without users. Use the operating/DBA name; an explicit Legal Name DBA Trading Name is normalized and the legal name retained. Public company research is always queued, even without a website; read get_organization for its result before claiming enrichment is complete. Exact-name duplicates are rejected.",
     inputSchema: z.object({
       name: z.string().min(1).max(200),
       website: omittable(optionalHttpUrl.max(500)).describe(
@@ -1728,9 +1718,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create standalone client ${JSON.stringify(input.name)}`,
   }),
   update_organization_profile: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Update selected editable profile fields for one exact organization. Only supplied fields change.",
+      "Update the full editable client profile. Only supplied fields change. Legal entities replace the list: preserve supported existing entries. Insurance profile fields merge with existing overrides; empty strings clear text. Keep detailed narrative in the company wiki. Public identity edits schedule research.",
     inputSchema: z
       .object({
         orgId: organizationId,
@@ -1738,15 +1728,27 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         website: clearable(optionalHttpUrl.max(500)).describe(
           "Omit to preserve the saved website. Pass null only when the operator explicitly requested or evidence supports clearing it.",
         ),
-        industry: clearable(z.string().max(200)),
-        industryVertical: clearable(z.string().max(200)),
+        industry: clearable(z.enum(INDUSTRIES.map((item) => item.value))),
+        industryVertical: clearable(z.string().max(200)).describe(
+          "Exact vertical value belonging to the selected industry: " +
+            INDUSTRIES.map(
+              (item) =>
+                `${item.value}: ${item.verticals.map((vertical) => vertical.value).join(", ")}`,
+            ).join("; "),
+        ),
+        relatedLegalEntities: omittable(
+          z.array(relatedLegalEntitySchema).max(100),
+        ),
+        insuranceProfile: omittable(insuranceProfilePatchSchema),
       })
       .refine(
         (input) =>
           input.name !== undefined ||
           input.website !== undefined ||
           input.industry !== undefined ||
-          input.industryVertical !== undefined,
+          input.industryVertical !== undefined ||
+          input.relatedLegalEntities !== undefined ||
+          input.insuranceProfile !== undefined,
         "At least one profile field is required",
       ),
     capability: "operator.organizations.write",
@@ -1756,6 +1758,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => {
       const fields = [
+        input.relatedLegalEntities !== undefined
+          ? `legal entities=${JSON.stringify(input.relatedLegalEntities)}`
+          : null,
+        input.insuranceProfile !== undefined
+          ? `insurance profile=${JSON.stringify(input.insuranceProfile)}`
+          : null,
         input.name !== undefined ? `name=${JSON.stringify(input.name)}` : null,
         input.website !== undefined
           ? `website=${JSON.stringify(input.website)}`
@@ -1769,6 +1777,18 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ].filter(Boolean);
       return `Update organization ${input.orgId}: ${fields.join(", ")}`;
     },
+  }),
+  research_client: defineOperatorTool({
+    version: 1,
+    description:
+      "Research an exact client's public identity, official website, industry and vertical, and enrich its company Markdown with supported facts. Schedules durable research; read get_organization for completed, partial or failed outcomes. Never claim a queued task is complete.",
+    inputSchema: z.object({ orgId: organizationId }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({ kind: "organization", id: input.orgId }),
+    summarize: (input) => `Research and enrich client ${input.orgId}`,
   }),
   set_organization_status: defineOperatorTool({
     version: 1,
@@ -1808,16 +1828,16 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `${input.enabled ? "Enable" : "Disable"} ${input.flagId} for organization ${input.orgId}`,
   }),
   clear_all_agent_memory: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Schedule a global purge of organization memory and raw conversation memory. This is owner-only and destructive.",
+      "Schedule a global purge of all company wiki documents. This is owner-only and destructive; conversation history is preserved.",
     inputSchema: z.object({}),
     capability: "operator.platform.destructive",
     effect: "destructive",
     requiredRole: "owner",
     confirmation: "exact",
     target: () => ({ kind: "platform", id: "agent-memory" }),
-    summarize: () => "Clear all organization and raw conversation memory",
+    summarize: () => "Clear all company wiki documents",
   }),
 } as const;
 

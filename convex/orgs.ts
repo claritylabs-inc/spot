@@ -1,3 +1,5 @@
+import { clientIdentity, clientClassificationPatch } from "./lib/clientProfile";
+import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import {
   query,
@@ -448,8 +450,10 @@ export const createClientOrg = mutation({
       throw new Error("User already belongs to an organization");
     }
 
+    const identity = clientIdentity(args.name);
+    if (!identity.name) throw new Error("Organization name is required");
     const orgId = await ctx.db.insert("organizations", {
-      name: args.name,
+      ...identity,
       type: "client",
       primaryInsuranceContactId: userId,
       ...(args.website && { website: args.website }),
@@ -461,6 +465,7 @@ export const createClientOrg = mutation({
       role: "admin",
     });
 
+    await scheduleCompanyResearch(ctx, orgId);
     return orgId;
   },
 });
@@ -469,13 +474,13 @@ export const updateOrg = mutation({
   args: {
     name: v.optional(v.string()),
     website: v.optional(v.string()),
-    context: v.optional(v.string()),
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
     relatedLegalEntities: v.optional(
       v.array(
         v.object({
           legalName: v.string(),
+          source: v.optional(v.literal("extraction")),
           relationship: v.optional(
             v.union(
               v.literal("current"),
@@ -490,7 +495,6 @@ export const updateOrg = mutation({
           incorporationNumber: v.optional(v.string()),
           taxId: v.optional(v.string()),
           jurisdiction: v.optional(v.string()),
-          notes: v.optional(v.string()),
         }),
       ),
     ),
@@ -510,7 +514,13 @@ export const updateOrg = mutation({
       assertExternalBrokerIdentity(organization);
       assertExternalBrokerIdentity({ ...organization, ...args });
     }
-    await ctx.db.patch(orgId, args);
+    if (!organization) throw new Error("Organization not found");
+    const identity = (args.name !== undefined || args.relatedLegalEntities !== undefined) && organization.type !== "broker"
+      ? clientIdentity(args.name ?? organization.name, args.relatedLegalEntities ?? organization.relatedLegalEntities)
+      : {};
+    if ("name" in identity && !identity.name) throw new Error("Organization name is required");
+    await ctx.db.patch(orgId, { ...args, ...identity, ...clientClassificationPatch(organization, args) });
+    if (args.name !== undefined || args.website !== undefined || args.relatedLegalEntities !== undefined || args.industry !== undefined || args.industryVertical !== undefined) await scheduleCompanyResearch(ctx, orgId);
   },
 });
 
@@ -629,9 +639,7 @@ export const updateOrganizationProfile = mutation({
     const operationsDescription = profileInput.operationsDescription.trim();
     const storedProfile = {
       mailingAddress: normalizedProfileAddress(profileInput.mailingAddress),
-      ...(profileInput.entityType
-        ? { entityType: profileInput.entityType }
-        : {}),
+      entityType: profileInput.entityType,
       fein,
       businessNumber,
       operationsDescription,
@@ -1392,7 +1400,6 @@ export const setIconInternal = internalMutation({
 export const updateProfileInternal = internalMutation({
   args: {
     orgId: v.id("organizations"),
-    context: v.optional(v.string()),
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
   },
