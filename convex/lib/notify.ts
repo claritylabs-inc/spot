@@ -36,15 +36,22 @@ export interface NotifyArgs {
 }
 
 export const notifyPolicyExtractionReviewInternal = internalMutation({
-  args: { policyId: v.id("policies"), questionCount: v.number() },
+  args: {
+    policyId: v.id("policies"),
+    questionCount: v.number(),
+    workspaceScanImportId: v.optional(v.id("operatorWorkspaceScanImports")),
+  },
   handler: async (ctx, args): Promise<boolean> => {
     const policy = await ctx.db.get(args.policyId);
     if (!policy || args.questionCount < 1) return false;
-    const scanImport = await ctx.db
-      .query("operatorWorkspaceScanImports")
-      .withIndex("policy", (q) => q.eq("policyId", args.policyId))
-      .first();
-    if (scanImport) return false;
+    if (args.workspaceScanImportId) {
+      const scanImport = await ctx.db.get(args.workspaceScanImportId);
+      if (!scanImport || scanImport.policyId !== args.policyId)
+        throw new Error(
+          "Scheduled extraction origin does not match this policy",
+        );
+      return false;
+    }
     const label =
       policy.policyNumber && policy.policyNumber !== "Unknown"
         ? `policy ${policy.policyNumber}`
