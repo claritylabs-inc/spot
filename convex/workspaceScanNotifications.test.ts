@@ -137,3 +137,30 @@ test("scheduled policy extraction stays in portal while interactive extraction r
     { type: "incomplete_extraction", actionPayload: { policyId: ids.scanned } },
   ]);
 });
+
+test("full manual re-extraction clears scheduled origin while recovery retains its invocation", async () => {
+  const { policyExtractionRetrySource } =
+    await import("./actions/policyExtraction");
+  const sourceId = "fixture-org";
+  const existingState = {
+    sourceKind: "upload" as const,
+    orgId: sourceId,
+    userId: "operator",
+    fileId: "fixture-file",
+    workspaceScanImportId:
+      "fixture-import" as import("./_generated/dataModel").Id<"operatorWorkspaceScanImports">,
+  };
+  for (const mode of ["resume", "restart"] as const) {
+    expect(
+      policyExtractionRetrySource({ mode, policy: {}, existingState })
+        .workspaceScanImportId,
+    ).toBe(existingState.workspaceScanImportId);
+  }
+  expect(
+    policyExtractionRetrySource({
+      mode: "full",
+      policy: { orgId: sourceId },
+      existingState,
+    }).workspaceScanImportId,
+  ).toBeUndefined();
+});
