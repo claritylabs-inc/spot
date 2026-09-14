@@ -2,10 +2,13 @@
 
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Copy, ExternalLink, Loader2 } from "lucide-react";
+import { Copy, Download, ExternalLink, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { parseMarkdownDocument } from "@/convex/lib/markdownDocument";
+import {
+  MAX_MARKDOWN_BYTES,
+  parseMarkdownDocument,
+} from "@/convex/lib/markdownDocument";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { ProseMarkdown } from "@/components/prose-markdown";
@@ -157,6 +160,9 @@ function LoadedPacketEditor({
       ]),
     );
   const [drafts, setDrafts] = useState(latestDrafts);
+  const fileInputs = useRef<
+    Partial<Record<(typeof PACKET_FILES)[number], HTMLInputElement | null>>
+  >({});
   const revisions = useRef(
     Object.fromEntries(
       documents.map((document) => [document.filename, document.revision]),
@@ -227,6 +233,63 @@ function LoadedPacketEditor({
         </TabsList>
         {PACKET_FILES.map((filename) => (
           <TabsContent key={filename} value={filename} className="pt-3">
+            <div className="mb-3 flex justify-end gap-2">
+              <input
+                ref={(input) => {
+                  fileInputs.current[filename] = input;
+                }}
+                type="file"
+                accept=".md,text/markdown"
+                aria-label={`Import ${filename}`}
+                className="sr-only"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  if (
+                    !file.name.toLowerCase().endsWith(".md") ||
+                    file.size > MAX_MARKDOWN_BYTES
+                  ) {
+                    toast.error("Choose a .md file under 512 KiB");
+                    event.target.value = "";
+                    return;
+                  }
+                  try {
+                    const markdown = await file.text();
+                    parseMarkdownDocument(markdown);
+                    setDrafts((current) => ({
+                      ...current,
+                      [filename]: markdown,
+                    }));
+                  } catch (error) {
+                    toast.error(
+                      getUserFacingErrorMessage(
+                        error,
+                        "Could not read this Markdown file",
+                      ),
+                    );
+                  }
+                  event.target.value = "";
+                }}
+              />
+              <PillButton
+                type="button"
+                size="compact"
+                variant="secondary"
+                onClick={() => fileInputs.current[filename]?.click()}
+              >
+                <Upload className="size-3.5" />
+                Import
+              </PillButton>
+              <PillButton
+                size="compact"
+                variant="secondary"
+                href={`data:text/markdown;charset=utf-8,${encodeURIComponent(drafts[filename])}`}
+                download={filename}
+              >
+                <Download className="size-3.5" />
+                Download
+              </PillButton>
+            </div>
             <Textarea
               aria-label={filename}
               value={drafts[filename]}

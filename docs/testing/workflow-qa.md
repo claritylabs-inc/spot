@@ -34,10 +34,10 @@ and concise labels. Explicit creation and consequential actions remain explicit.
 | CERT | Operator/client / Certificates | Open generation sidebar, choose policy and holder, inspect requirements/gaps, generate synthetic PDF locally when prerequisites permit, download/history; never claim unmet requirements satisfied. |
 | COMPLIANCE | Operator/client / Compliance | Add synthetic requirement, edit limits/line, inspect matched evidence, unmet/expiring state and certificate path, archive; ensure scope is retained. |
 | FILE | Operator/client / Files | Upload synthetic PDF, inspect progress toast, rename/share in sidebar, download without navigation, archive/restore; client sees only allowed files, switching rows never leaks drafts. |
-| WIKI | Operator/client / Company wiki | Open sections, edit allowed prose, close/reload, preserve text during live source updates; client admin rights and read-only impersonation hold. |
-| REQUEST | Operator/client / Requests | Create synthetic request, edit narrative/status in sidebar, verify client allowlisted view, archive if supported; operator-private market/proposal data never appears for client or broker. |
-| PACKET | Operator / Request packet | Edit multiple sections, immediate close/reopen, concurrent stale edit retains draft, change audience, generate/replace shared snapshot; public page excludes private sections and old link is revoked. |
-| PROPOSAL | Operator / Proposals | Choose branded broker, edit request-specific contacts/log, upload multiple/revised PDFs, reject invalid files, inspect PDFs/Terms tabs, review gap and stale revision; no selection/binding during QA. |
+| WIKI | Operator/client / Company wiki | Open the Markdown document, import/edit/download allowed prose, close/reload, preserve text during live source updates; client admin rights and read-only impersonation hold. |
+| REQUEST | Operator/client / Requests | Create a synthetic request, edit shared details/status, verify the client allowlisted view, archive if supported; `private.md`, proposals, and market activity never appear for client or broker. |
+| PACKET | Operator / Request packet | Import/edit/download `private.md` and `public.md`, immediate close/reopen, concurrent stale edit retains draft, verify filename-fixed readership, generate/replace shared snapshot; public page excludes `private.md` and old link is revoked. |
+| PROPOSAL | Operator / Proposals | Choose branded broker, edit request-specific contacts, upload multiple/revised PDFs, reject invalid files, inspect PDFs/Terms tabs, review gap and stale packet revision; no selection/binding during QA. |
 | EMAIL | Operator / Request correspondence | Inspect forwarding address, imported synthetic email and attachment, file to correct broker/request; ambiguity requires explicit selection and replay cannot duplicate records. |
 | CONNECT | Client / Vendors and Clients | Inspect empty/populated lists, create local synthetic connection request, view/revoke pending request, inspect shared policy access; exercise invalid public request token. |
 | ORG | Client / Settings organization | Edit profile/company facts, verify autosave and required-field errors; branding and access stay standalone. |
@@ -72,9 +72,9 @@ baseline evidence, not a substitute for this run's regression checks.
 | GWORKSPACE | Passed exercised dev DWD and local paths | Rendered native-local operator setup, authorization, validation, manual/Directory persistence, disabled and incomplete-credential behavior, compact settings rendering, live delegated Directory verification, bounded mailbox listing/search/thread reads, current-context reasoning, and five protected originals passed. The actual registered model followed short continuations and attachment references. Cross-channel registry, replay, revocation, and protected-original boundaries also passed focused automated coverage. User-visible desktop Chrome was not run because this cloud workspace exposes no desktop/browser control. |
 | PUBLIC | Passed exercised public paths | Invalid/revoked links and missing/unknown OAuth clients fail safely; routing-weather report responsive. Valid packet snapshot download, immutability and private-file exclusion passed. |
 | CLIENT, COMPLIANCE | Passed exercised edits | Synthetic operator client/supplier creation, client search, website/name autosave and restoration passed. Manual requirement/source autosave, invalid-draft recovery, accurate evidence gap, disabled certificate generation and archive cleanup passed. Operator policy upload/retry is recorded in POLICY. |
-| REQUEST | Partial | Client seeded packet exposes allowed narrative/sections/files without private proposal/market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
+| REQUEST | Partial | Client seeded packet exposes `public.md` and allowed files without `private.md`, proposals, or market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
 | AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits and survives reload; cancellation, archive/restore and mobile rendering passed. A synthetic PDF can be staged/removed/restaged, read accurately, reopened from history and previewed after reload. |
-| PACKET, PROPOSAL, EMAIL | Passed exercised local flows | Section autosave, immutable/revoked snapshots, public download/privacy, proposal gap/staleness, two-PDF extraction/review and email replay/classification/revision/download passed. Concurrency/failed-switch safeguards covered by focused tests; advanced edges listed below. |
+| PACKET, PROPOSAL, EMAIL | Passed exercised local flows | Packet-file autosave, immutable/revoked snapshots, public download/privacy, proposal gap/staleness, two-PDF extraction/review and email replay/classification/revision/download passed. Concurrency/failed-switch safeguards covered by focused tests; advanced edges listed below. |
 | LEADS | Passed synthetic populated lifecycle | Keyboard detail opening, stored lead facts/conversation, delete cancellation, confirmed deletion and mobile rendering passed. Internal fixture creation does not prove live public-demo ingress. |
 | NOTIFICATIONS | Passed local tray workflow | Empty baseline and two synthetic user-scoped items; opening a thread marks one read, mark-all clears the badge, both read states persist after reload. No outbound deliveries. |
 
@@ -290,7 +290,7 @@ explicitly creates a revision with the exact superseded proposal ID; selected
 proposals remain protected. Redundant classification/reconciliation headings
 are removed, with decision-relevant ambiguity and revision information retained.
 
-The packet pass verified two-section persistence, immutable old snapshots,
+The packet pass verified `private.md` and `public.md` persistence, immutable old snapshots,
 revoked rotated links, anonymous PDF downloads and private-file exclusion.
 Original packet text was restored. Two synthetic proposal PDFs completed real
 local extraction and review; insufficient evidence remains unverified and no
@@ -536,3 +536,16 @@ Changed-file ESLint, `npx tsc --noEmit`, and `git diff --check` passed. No unit
 tests were added for copy/navigation presentation, per the testing guide. No
 backend authorization or invitation delivery behavior changed. No invitations
 were sent during retesting.
+
+### Frontend Markdown narrowing verification (2026-09-14)
+
+Headed local Chrome passed the seeded operator packet workflow for the exact
+`private.md` and `public.md` files, including Markdown import, autosave/reopen,
+download naming, responsive layout, dark theme, and fixture cleanup. The seeded
+client request exposed shared details without private filenames, proposals,
+market activity, or visibility controls, and its creation drawer used
+plain-language request copy. Mailbox copy used company-wiki terminology and the
+manual compliance drawer omitted the retired “Internal notes” wording. The local
+fixture had no requirement-source row, so the renamed source Notes field was not
+browser-reachable; OAuth coverage was limited to invalid-client rejection, with
+no external connection or grant attempted.

@@ -126,11 +126,11 @@ export function automationSummary(account: ConnectedEmailAccountRow) {
   const enabled = [
     automation.policyImports ? "policies" : null,
     automation.requirementImports ? "requirements" : null,
-    automation.companyMemory ? "company context" : null,
+    automation.companyMemory ? "company wiki" : null,
   ].filter(Boolean);
 
   if (enabled.length === 0) return "Monitoring off";
-  if (enabled.length === 3) return "Policies, requirements, and company context";
+  if (enabled.length === 3) return "Policies, requirements, and company wiki";
   return enabled.join(" and ");
 }
 
@@ -198,8 +198,8 @@ export function AutomationToggleRows({
     },
     {
       key: "companyMemory",
-      title: "Company context",
-      description: "Learn durable company facts for advice and servicing.",
+      title: "Company wiki",
+      description: "Add durable company facts to the company wiki.",
     },
   ];
 
