@@ -161,6 +161,7 @@ const isoCalendarDate = z.iso
   .date()
   .describe("Calendar date in YYYY-MM-DD format");
 const procurementOutreachStatus = z.enum([
+  "observed",
   "request_sent",
   "can_handle",
   "cannot_handle",
@@ -1531,7 +1532,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_broker_outreach: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
       "Add a real broker-network organization to an exact procurement request with a selected contact, workflow status, and optional Markdown log.",
     inputSchema: z.object({
@@ -1555,7 +1556,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add broker ${input.brokerOrgId} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_broker_outreach: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
       "Update supplied broker outreach identity, exact workflow status, or its single Markdown log. File quote documents as private proposals.",
     inputSchema: z

@@ -5,11 +5,50 @@ export const scanActivityStatus = v.union(
   v.literal("needs_attention"),
   v.literal("failed"),
 );
+export const scanInsuredAddressValidator = v.object({
+  street1: v.string(),
+  city: v.string(),
+  state: v.string(),
+  zip: v.string(),
+});
 export const scanReconciliationTables = {
+  operatorWorkspaceScanFindingSources: defineTable({
+    findingId: v.id("operatorWorkspaceScanFindings"),
+    sourceId: v.id("operatorGoogleWorkspaceScanSources"),
+    excerpt: v.string(),
+  })
+    .index("finding", ["findingId"])
+    .index("source", ["sourceId"])
+    .index("pair", ["findingId", "sourceId"]),
+  operatorWorkspaceScanInventories: defineTable({
+    sourceId: v.id("operatorGoogleWorkspaceScanSources"),
+    operationKey: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    complete: v.boolean(),
+    startedAt: v.number(),
+    organizationIds: v.array(v.id("organizations")),
+    requestIds: v.array(v.id("procurementRequests")),
+    orgId: v.optional(v.id("organizations")),
+  }).index("operation", ["sourceId", "operationKey"]),
+  operatorWorkspaceScanContexts: defineTable({
+    sourceId: v.id("operatorGoogleWorkspaceScanSources"),
+    body: v.string(),
+    participants: v.array(v.string()),
+    messages: v.array(
+      v.object({
+        messageId: v.string(),
+        sentAt: v.string(),
+        excerpt: v.string(),
+      }),
+    ),
+    createdAt: v.number(),
+  }).index("source", ["sourceId"]),
   operatorWorkspaceScanImports: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     attachmentId: v.string(),
-    clientOrgId: v.id("organizations"),
+    clientOrgId: v.optional(v.id("organizations")),
+    insuredName: v.optional(v.string()),
+    insuredAddress: v.optional(scanInsuredAddressValidator),
     file: v.object({
       fileId: v.id("_storage"),
       fileName: v.string(),
