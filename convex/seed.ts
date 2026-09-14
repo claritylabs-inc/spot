@@ -587,7 +587,6 @@ export const insertLocalFixture = internalMutation({
       userId: clientUserId,
       uploadedBySide: "operator" as const,
       uploadedByUserId: operatorUserId,
-      uploadedByBrokerOrgId: undefined,
       pipelineStatus: "complete" as const,
       extractionDataStage: "final" as const,
       extractionDataStageUpdatedAt: now,

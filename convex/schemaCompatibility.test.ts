@@ -58,7 +58,6 @@ describe("deployed schema compatibility", () => {
       "member",
       "ignore",
     ]);
-    expectOptionalKind("policies", ["analysis"], "any");
     expectOptionalKind("threads", ["deliveryContactKey"], "string");
 
     const legacyRoute = fieldValidator(

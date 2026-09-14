@@ -16,7 +16,6 @@ const TABLES: TableNames[] = [
   "organizations",
   "orgMemberships",
   "brokerModelSettings",
-  // Legacy, until migrations:runCompanyWikiLegacyPurge ships.
   "orgInvitations",
   "connectedOrgRelationships",
   "connectedOrgInvitations",
