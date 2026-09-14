@@ -14,6 +14,11 @@ type EmailSection = {
   body: string;
 };
 
+function cleanEmailText(text: string) {
+  // Embedded attachment placeholders otherwise appear as boxed “OBJ” glyphs.
+  return text.replace(/\uFFFC/g, "").trim();
+}
+
 function unquote(text: string) {
   return text.replace(/^\s*> ?/gm, "").trim();
 }
@@ -29,6 +34,7 @@ function quotedSection(text: string): EmailSection {
 
 // Older operator messages only stored the combined plain-text email.
 function legacyEmail(content: string) {
+  content = cleanEmailText(content);
   const subjectLine = content.match(/^Subject: ([^\n]*)\n*/);
   const text = subjectLine ? content.slice(subjectLine[0].length) : content;
   const boundary =
@@ -96,7 +102,9 @@ export function OperatorEmailMessage({
   }
   if (email?.quotedText) sections.push(quotedSection(email.quotedText));
   const subject = email?.subject ?? legacy?.subject;
-  const currentText = email?.currentText ?? legacy?.currentText;
+  const currentText = cleanEmailText(
+    email?.currentText ?? legacy?.currentText ?? "",
+  );
 
   return (
     <div className="min-w-0 space-y-3">
@@ -150,7 +158,7 @@ export function OperatorEmailMessage({
               breaks
               components={{ img: ({ alt }) => <span>{alt}</span> }}
             >
-              {section.body}
+              {cleanEmailText(section.body)}
             </ProseMarkdown>
           </OperationalPanelBody>
         </OperationalPanel>
