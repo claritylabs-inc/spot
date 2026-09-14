@@ -726,6 +726,7 @@ export async function createProcurementRequestByOperator(
   const requestId = await ctx.db.insert("procurementRequests", {
     clientOrgId: args.clientOrgId,
     title: requiredText(args.title, "Title", 200),
+    normalizedTitle: requiredText(args.title, "Title", 200).toLowerCase().replace(/\s+/g," "),
     narrative,
     targetEffectiveDate: optionalDate(args.targetEffectiveDate),
     status:
@@ -833,8 +834,10 @@ export async function updateProcurementRequestByOperator(
     updatedByUserId: args.operatorUserId,
     updatedAt: dayjs().valueOf(),
   };
-  if (args.title !== undefined)
+  if (args.title !== undefined) {
     patch.title = requiredText(args.title, "Title", 200);
+    patch.normalizedTitle = patch.title.toLowerCase().replace(/\s+/g," ");
+  }
   if (args.narrative !== undefined) {
     patch.narrative = requiredText(args.narrative, "Client request");
   }
