@@ -178,6 +178,7 @@ export async function commitValidatedOperatorPolicyImport(
     mode: "combined" | "separate";
     mergedFileId?: Id<"_storage">;
     mergedFileName?: string;
+    workspaceScanImportId?: Id<"operatorWorkspaceScanImports">;
   },
 ) {
   const files = args.files;
@@ -272,6 +273,7 @@ export async function commitValidatedOperatorPolicyImport(
         policyFileId,
         orgId: args.orgId,
         userId: args.operatorUserId,
+        workspaceScanImportId: args.workspaceScanImportId,
       },
     );
     results.push({ policyId, fileName, status: "queued" });

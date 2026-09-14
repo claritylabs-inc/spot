@@ -70,7 +70,7 @@ test("scheduled policy extraction stays in portal while interactive extraction r
       nextAttemptAt: 0,
       attempts: 0,
     });
-    await ctx.db.insert("operatorWorkspaceScanImports", {
+    const importId = await ctx.db.insert("operatorWorkspaceScanImports", {
       sourceId,
       attachmentId: "part:1",
       clientOrgId: orgId,
@@ -84,12 +84,27 @@ test("scheduled policy extraction stays in portal while interactive extraction r
       policyId: scanned,
       createdAt: 1,
     });
-    return { scanned, interactive };
+    await ctx.db.insert("operatorWorkspaceScanImports", {
+      sourceId,
+      attachmentId: "part:2",
+      clientOrgId: orgId,
+      file: {
+        fileId,
+        fileName: "duplicate.pdf",
+        fileSha256: "b".repeat(64),
+        size: 17,
+      },
+      boundPolicy: true,
+      policyId: interactive,
+      createdAt: 1,
+    });
+    return { scanned, interactive, importId };
   });
   expect(
     await t.mutation(internal.lib.notify.notifyPolicyExtractionReviewInternal, {
       policyId: ids.scanned,
       questionCount: 2,
+      workspaceScanImportId: ids.importId,
     }),
   ).toBe(false);
   await t.run(async (ctx) => {
@@ -105,11 +120,20 @@ test("scheduled policy extraction stays in portal while interactive extraction r
     }),
   ).toBe(true);
   expect(
-    await t.run((ctx) => ctx.db.query("notifications").collect()),
-  ).toMatchObject([
+    await t.mutation(internal.lib.notify.notifyPolicyExtractionReviewInternal, {
+      policyId: ids.scanned,
+      questionCount: 1,
+    }),
+  ).toBe(true);
+  const notifications = await t.run((ctx) =>
+    ctx.db.query("notifications").collect(),
+  );
+  expect(notifications).toHaveLength(2);
+  expect(notifications).toMatchObject([
     {
       type: "incomplete_extraction",
       actionPayload: { policyId: ids.interactive },
     },
+    { type: "incomplete_extraction", actionPayload: { policyId: ids.scanned } },
   ]);
 });
