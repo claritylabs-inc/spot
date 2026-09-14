@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import type { PaginationResult } from "convex/server";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
@@ -137,15 +138,16 @@ test("review candidates paginate beyond 100 with exact organization ownership an
     const found: string[] = [];
     let cursor: string | null = null;
     for (;;) {
-      const page = await operator.query(
-        api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
-        {
-          activityId: ids.activityId,
-          kind,
-          selectedOrgId: ids.orgId,
-          paginationOpts: { numItems: 50, cursor },
-        },
-      );
+      const page: PaginationResult<{ id: string; label: string }> =
+        await operator.query(
+          api.operatorGoogleWorkspaceScanActivity.listActivityCandidates,
+          {
+            activityId: ids.activityId,
+            kind,
+            selectedOrgId: ids.orgId,
+            paginationOpts: { numItems: 50, cursor },
+          },
+        );
       expect(page.page.length).toBeLessThanOrEqual(50);
       found.push(...page.page.map((row) => row.id));
       if (page.isDone) break;
