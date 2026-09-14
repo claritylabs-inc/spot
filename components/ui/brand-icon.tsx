@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { typeStyle } from "@/lib/typography";
 
 const DEFAULT_IMAGE_BACKGROUND = "#FFFFFF";
 const SAMPLE_SIZE = 48;
@@ -130,13 +130,11 @@ type BrandIconProps = {
 
 export function BrandIcon({
   src,
-  name,
   alt = "",
   size = "md",
   className,
   imageClassName,
 }: BrandIconProps) {
-  const initial = name?.trim().charAt(0).toUpperCase();
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const [sampledBackground, setSampledBackground] = useState<{
     src: string;
@@ -165,9 +163,11 @@ export function BrandIcon({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-md bg-transparent text-foreground",
+        "inline-flex shrink-0 items-center justify-center rounded-md",
         sizeClasses[size],
-        showImage ? "overflow-hidden" : "border border-border-emphasized",
+        showImage
+          ? "overflow-hidden"
+          : "bg-muted text-muted-foreground ring-1 ring-inset ring-border-subtle",
         className,
       )}
       style={showImage ? { backgroundColor: imageBackgroundColor } : undefined}
@@ -185,9 +185,15 @@ export function BrandIcon({
             if (src) setFailedSrc(src);
           }}
         />
-      ) : initial ? (
-        <span className={`${typeStyle("caption.medium")}`}>{initial}</span>
-      ) : null}
+      ) : (
+        <Building2
+          className="h-2/3 w-2/3"
+          strokeWidth={1.75}
+          role={alt ? "img" : undefined}
+          aria-label={alt || undefined}
+          aria-hidden={!alt}
+        />
+      )}
     </span>
   );
 }
