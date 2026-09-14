@@ -6,12 +6,7 @@ import { PACKET_SECTIONS, defaultPacketSection } from "./procurementPacket";
 export const NARRATIVE_SECTION_KEY = "intake_narrative";
 
 export function requestNarrative(request: Doc<"procurementRequests">) {
-  return (
-    request.narrative ??
-    request.originalNarrative ??
-    request.requestSummary ??
-    ""
-  );
+  return request.narrative;
 }
 
 export async function seedNarrativePacketSection(

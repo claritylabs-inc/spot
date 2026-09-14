@@ -28,7 +28,8 @@ import {
 import {
   assertCustomerUser,
   isBootstrapOperatorEmail,
-  normalizeOperatorEmail,
+  bootstrapOperatorUser,
+  operatorEmailAliases,
   requireOperator,
   requireOperatorForUser,
   writeOperatorAudit,
@@ -320,21 +321,6 @@ async function policyWithOperatorCoverageContext(
   };
 }
 
-function operatorOwnerEmails() {
-  return new Set(
-    (process.env.OPERATOR_OWNER_EMAILS ?? "")
-      .split(/[,\s]+/)
-      .map((email) => normalizeOperatorEmail(email))
-      .filter(Boolean),
-  );
-}
-
-function roleForBootstrapEmail(email: string): "operator" | "owner" {
-  const owners = operatorOwnerEmails();
-  if (owners.has(email)) return "owner";
-  return "operator";
-}
-
 async function getOrgAdmin(ctx: QueryCtx, orgId: Id<"organizations">) {
   const memberships = await ctx.db
     .query("orgMemberships")
@@ -351,59 +337,7 @@ export const bootstrapViewer = mutation({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
-    const user = await ctx.db.get(userId);
-    const email = normalizeOperatorEmail(user?.email);
-    if (!user || !email) {
-      throwUserFacingError(
-        userFacingErrorCodes.operatorRequired,
-        "This account is not authorized for Spot operator access.",
-      );
-    }
-
-    const memberships = await ctx.db
-      .query("orgMemberships")
-      .withIndex("user", (q) => q.eq("userId", userId))
-      .first();
-    if (memberships) {
-      throwUserFacingError(
-        userFacingErrorCodes.operatorRequired,
-        "Customer organization accounts cannot be converted into operator accounts.",
-      );
-    }
-
-    const profiles = await ctx.db
-      .query("operatorProfiles")
-      .withIndex("user", (q) => q.eq("userId", userId))
-      .take(2);
-    if (profiles.length) {
-      const profile = profiles[0];
-      if (
-        profiles.length !== 1 || user.accountKind !== "operator" ||
-        user.isAnonymous || user.serviceAccountKind ||
-        profile.status !== "active" || normalizeOperatorEmail(profile.email) !== email
-      ) {
-        throwUserFacingError(userFacingErrorCodes.operatorRequired);
-      }
-      // Login acknowledges existing access; allowlists cannot change its role
-      // or restore a disabled profile.
-      return { ok: true, role: profile.role };
-    }
-    if (user.accountKind === "operator" || user.accountKind === "customer" ||
-        user.isAnonymous || user.serviceAccountKind || !isBootstrapOperatorEmail(email)) {
-      throwUserFacingError(userFacingErrorCodes.operatorRequired);
-    }
-    const now = dayjs().valueOf();
-    const role = roleForBootstrapEmail(email);
-    await ctx.db.patch(userId, { accountKind: "operator", onboardingComplete: true });
-    await ctx.db.insert("operatorProfiles", {
-      userId, email, role, status: "active", createdAt: now, updatedAt: now,
-    });
-    await writeOperatorAudit(ctx, {
-      operatorUserId: userId,
-      type: "operator_bootstrap",
-      summary: `Operator account bootstrapped for ${email}`,
-    });
-    return { ok: true, role };
+    return bootstrapOperatorUser(ctx, userId);
   },
 });
 
@@ -420,11 +354,15 @@ export const current = query({
     const targetOrg = activeImpersonation
       ? await ctx.db.get(activeImpersonation.targetOrgId)
       : null;
+    const loginEmails = operatorEmailAliases(operator.user.email);
     return {
       user: {
         _id: operator.user._id,
         name: operator.user.name,
         email: operator.user.email,
+        loginEmails: loginEmails.length
+          ? loginEmails
+          : [operator.user.email].filter((email): email is string => !!email),
         phone: operator.user.phone,
       },
       profile: operator.profile,

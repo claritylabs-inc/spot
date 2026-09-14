@@ -23,14 +23,17 @@ import {
 } from "./lib/operatorIdentity";
 import { canAccessThread } from "./lib/threadAccess";
 import {
+  agentAddressAliases,
+  canonicalAgentAddress,
+  canonicalAgentDomain,
+  DEFAULT_AGENT_DOMAIN,
+} from "./lib/agentEmailDomains";
+import {
   emailContentValidator,
   pendingEmailAttachmentKindValidator,
   threadMessageKindValidator,
 } from "./lib/threadMessageValidators";
 
-// Note: mutations/queries don't have process.env
-// The domain is stored on the org via setAgentDomain action, or passed by the client
-const FALLBACK_AGENT_DOMAIN = "spot.insure";
 const EMAIL_MODE_VALIDATOR = v.union(
   v.literal("direct"),
   v.literal("cc"),
@@ -109,7 +112,7 @@ function shortId(): string {
 
 function createThreadEmail(
   agentHandle: string | undefined,
-  domain = FALLBACK_AGENT_DOMAIN,
+  domain = DEFAULT_AGENT_DOMAIN,
 ) {
   return agentHandle ? `${agentHandle}+${shortId()}@${domain}` : undefined;
 }
@@ -184,20 +187,26 @@ async function deriveImessageGroupDisplayTitle(
     : undefined;
 }
 
-async function withImessageGroupDisplayTitle(
+async function withThreadDisplayFields(
   ctx: QueryCtx,
   thread: Doc<"threads">,
 ): Promise<Doc<"threads">> {
   const title = await deriveImessageGroupDisplayTitle(ctx, thread);
-  return title ? { ...thread, title } : thread;
+  return {
+    ...thread,
+    ...(title ? { title } : {}),
+    ...(thread.threadEmail
+      ? { threadEmail: canonicalAgentAddress(thread.threadEmail) }
+      : {}),
+  };
 }
 
-async function withImessageGroupDisplayTitles(
+async function withThreadDisplayFieldsForList(
   ctx: QueryCtx,
   threads: Array<Doc<"threads">>,
 ): Promise<Array<Doc<"threads">>> {
   return Promise.all(
-    threads.map((thread) => withImessageGroupDisplayTitle(ctx, thread)),
+    threads.map((thread) => withThreadDisplayFields(ctx, thread)),
   );
 }
 
@@ -266,12 +275,12 @@ export const list = query({
       canCurrentOrgUserAccessThread({ userId, orgId, thread }),
     );
     if (args.archived) {
-      return withImessageGroupDisplayTitles(
+      return withThreadDisplayFieldsForList(
         ctx,
         visible.filter((t) => !!t.archivedAt),
       );
     }
-    return withImessageGroupDisplayTitles(
+    return withThreadDisplayFieldsForList(
       ctx,
       visible.filter((t) => !t.archivedAt),
     );
@@ -287,7 +296,7 @@ export const get = query({
     const thread = await ctx.db.get(args.id);
     if (!thread || !canCurrentOrgUserAccessThread({ userId, orgId, thread }))
       return null;
-    return withImessageGroupDisplayTitle(ctx, thread);
+    return withThreadDisplayFields(ctx, thread);
   },
 });
 
@@ -340,7 +349,7 @@ export const create = mutation({
       }
     }
     const now = dayjs().valueOf();
-    const domain = args.agentDomain || FALLBACK_AGENT_DOMAIN;
+    const domain = canonicalAgentDomain(args.agentDomain);
 
     // Look up the org's agent handle to build the thread-specific email
     const org = await ctx.db.get(orgId);
@@ -1091,7 +1100,7 @@ export const listByOrg = internalQuery({
           }),
         )
       : threads;
-    return withImessageGroupDisplayTitles(ctx, visible);
+    return withThreadDisplayFieldsForList(ctx, visible);
   },
 });
 
@@ -1278,10 +1287,18 @@ export const insertUserMessageInternal = internalMutation({
 export const findByEmail = internalQuery({
   args: { threadEmail: v.string() },
   handler: async (ctx, args) => {
-    return ctx.db
-      .query("threads")
-      .withIndex("email", (q) => q.eq("threadEmail", args.threadEmail))
-      .first();
+    let match: Doc<"threads"> | null = null;
+    for (const address of agentAddressAliases(args.threadEmail)) {
+      const threads = await ctx.db
+        .query("threads")
+        .withIndex("email", (q) => q.eq("threadEmail", address))
+        .take(2);
+      if (threads.length > 1 || (match && threads.length > 0)) {
+        throw new Error("Thread reply address is ambiguous.");
+      }
+      if (threads.length === 1) match = threads[0];
+    }
+    return match;
   },
 });
 
@@ -1607,7 +1624,7 @@ export const findOrCreateForEmail = internalMutation({
       }
     }
 
-    const domain = args.agentDomain || FALLBACK_AGENT_DOMAIN;
+    const domain = canonicalAgentDomain(args.agentDomain);
 
     // Look up agent handle for thread email
     const org = await ctx.db.get(args.orgId);

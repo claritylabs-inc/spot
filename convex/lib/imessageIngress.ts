@@ -7,7 +7,6 @@ import type { ActionCtx } from "../_generated/server";
 import {
   MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
   MAX_AGENT_ATTACHMENT_BYTES,
-  MAX_AGENT_ATTACHMENT_FILES,
   normalizeAgentAttachmentFilename,
 } from "./agentAttachmentLimits";
 import { normalizeImessageAddress } from "./imessageGroupResolution";
@@ -184,12 +183,6 @@ export async function storeImessageAttachments(
   ctx: { storage: Pick<ActionCtx["storage"], "store" | "delete"> },
   attachments: RawImessageAttachment[] | undefined,
 ): Promise<StoredImessageAttachmentRecord[]> {
-  if ((attachments?.length ?? 0) > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new Error(
-      `iMessage messages may include at most ${MAX_AGENT_ATTACHMENT_FILES} attachments`,
-    );
-  }
-
   const prepared: Array<{
     attachment: RawImessageAttachment;
     filename: string;

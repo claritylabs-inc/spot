@@ -17,10 +17,7 @@ import { getAuthSiteUrl, getClientPortalUrl } from "./lib/domains";
 import { spotIconResponse } from "./lib/brandIcon";
 import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
 import { getEmailDeliveryMode } from "./lib/resend";
-import {
-  MAX_AGENT_ATTACHMENT_FILES,
-  MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS,
-} from "./lib/agentAttachmentLimits";
+import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
 import { buildEmailDraftTextSummary } from "./lib/emailDraftSummary";
 import { ORG_WIKI_SECTION_KEYS, isOrgWikiSectionKey } from "./lib/orgWiki";
 import { canAccessThread } from "./lib/threadAccess";
@@ -997,14 +994,6 @@ http.route({
       return jsonResponse(
         { error: "Operator iMessage supports direct conversations only" },
         400,
-      );
-    }
-    if ((body.attachments?.length ?? 0) > MAX_AGENT_ATTACHMENT_FILES) {
-      return jsonResponse(
-        {
-          error: `Operator iMessage supports at most ${MAX_AGENT_ATTACHMENT_FILES} attachments`,
-        },
-        413,
       );
     }
     const encodedAttachmentChars = (body.attachments ?? []).reduce(

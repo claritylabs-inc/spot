@@ -782,6 +782,18 @@ export default defineSchema({
     .index("nonce", ["nonce"])
     .index("expiration", ["expiresAt"]),
 
+  operatorEmailIdentities: defineTable({
+    email: v.string(),
+    userId: v.id("users"),
+  })
+    .index("email", ["email"])
+    .index("email_user", ["email", "userId"]),
+
+  operatorEmailIdentityBackfill: defineTable({
+    key: v.literal("legacy"),
+    completedAt: v.number(),
+  }).index("key", ["key"]),
+
   operatorProfiles: defineTable({
     userId: v.id("users"),
     email: v.string(),
@@ -2929,14 +2941,7 @@ export default defineSchema({
     clientOrgId: v.id("organizations"),
     title: v.string(),
     normalizedTitle: v.optional(v.string()),
-    // The single intake narrative. Widening phase: optional until
-    // `migrations:runProcurementNarrativeBackfill` completes, then required.
-    narrative: v.optional(v.string()),
-    // Legacy intake prose superseded by `narrative`. `requirements` never fed
-    // the packet and duplicated `requestSummary` on every client-created row.
-    requestSummary: v.optional(v.string()),
-    requirements: v.optional(v.string()),
-    originalNarrative: v.optional(v.string()),
+    narrative: v.string(),
     targetEffectiveDate: v.optional(v.string()),
     status: v.union(
       v.literal("draft"),
@@ -2947,23 +2952,8 @@ export default defineSchema({
       v.literal("binding"),
       v.literal("completed"),
       v.literal("cancelled"),
-      // Retired by `migrations:migrateProcurementRequestStatuses`, which maps
-      // quote_review/client_decision to proposal_review, accepted to binding,
-      // and closed to completed. Readable only until that migration is
-      // confirmed on every deployment; never writable.
-      v.literal("quote_review"),
-      v.literal("client_decision"),
-      v.literal("accepted"),
-      v.literal("closed"),
     ),
     clientVisible: v.optional(v.boolean()),
-    // Write-only legacy fields: nothing has ever read either one. Purged by
-    // `migrations:runProcurementNarrativeBackfill`, dropped in the narrowing
-    // release.
-    createdBySide: v.optional(
-      v.union(v.literal("operator"), v.literal("client")),
-    ),
-    sharedAt: v.optional(v.number()),
     requirementRevision: v.optional(v.number()),
     specificationRevision: v.optional(v.number()),
     // Monotonic revision of all client/broker-visible packet content.
@@ -4933,6 +4923,35 @@ export default defineSchema({
     ])
     .index("client_status", ["clientOrgId", "status"]),
 
+  operatorEmailReceipts: defineTable({
+    providerId: v.string(),
+    messageId: v.string(),
+    operatorUserId: v.id("users"),
+    sender: v.string(),
+    subject: v.string(),
+    threadId: v.id("operatorAgentThreads"),
+    runId: v.id("operatorAgentRuns"),
+    createdAt: v.number(),
+  })
+    .index("provider", ["providerId"])
+    .index("sender_message", ["operatorUserId", "messageId"]),
+
+  operatorEmailDeliveries: defineTable({
+    receiptId: v.id("operatorEmailReceipts"),
+    phase: v.string(),
+    text: v.string(),
+    attempts: v.number(),
+    leaseUntil: v.number(),
+    messageId: v.string(),
+    status: v.union(
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("failed"),
+    ),
+    createdAt: v.number(),
+    sentAt: v.optional(v.number()),
+  }).index("receipt_phase", ["receiptId", "phase"]),
+
   operatorAgentThreads: defineTable({
     ownerUserId: v.id("users"),
     visibility: v.union(v.literal("private"), v.literal("shared")),
@@ -4940,6 +4959,7 @@ export default defineSchema({
       v.literal("chat"),
       v.literal("slack"),
       v.literal("imessage"),
+      v.literal("email"),
       v.literal("mcp"),
     ),
     conversationKey: v.optional(v.string()),
@@ -4973,6 +4993,7 @@ export default defineSchema({
       v.literal("chat"),
       v.literal("slack"),
       v.literal("imessage"),
+      v.literal("email"),
       v.literal("mcp"),
     ),
     role: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
@@ -5116,6 +5137,7 @@ export default defineSchema({
         v.literal("chat"),
         v.literal("slack"),
         v.literal("imessage"),
+        v.literal("email"),
         v.literal("mcp"),
       ),
     ),

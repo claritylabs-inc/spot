@@ -17,7 +17,6 @@ import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerpri
 import {
   MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
   MAX_AGENT_ATTACHMENT_BYTES,
-  MAX_AGENT_ATTACHMENT_FILES,
   normalizeAgentAttachmentContentType,
   normalizeAgentAttachmentFilename,
 } from "./lib/agentAttachmentLimits";
@@ -118,6 +117,7 @@ const operatorChannelValidator = v.union(
   v.literal("chat"),
   v.literal("slack"),
   v.literal("imessage"),
+  v.literal("email"),
   v.literal("mcp"),
 );
 
@@ -156,7 +156,7 @@ const MAX_OPERATOR_MESSAGE_CHARS = 20_000;
 const MAX_OPERATOR_CONVERSATION_KEY_CHARS = 500;
 const MAX_OPERATOR_DEDUPE_KEY_CHARS = 500;
 
-type OperatorChannel = "chat" | "slack" | "imessage" | "mcp";
+type OperatorChannel = "chat" | "slack" | "imessage" | "email" | "mcp";
 
 type OperatorConfirmationDisplayState =
   | "pending"
@@ -675,11 +675,6 @@ async function validateOperatorAttachments(
   options: { requireUploadIntent?: boolean } = {},
 ): Promise<OperatorAttachment[] | undefined> {
   if (!attachments?.length) return undefined;
-  if (attachments.length > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new Error(
-      `Operator messages support at most ${MAX_AGENT_ATTACHMENT_FILES} files`,
-    );
-  }
 
   const seen = new Set<string>();
   const normalized: OperatorAttachment[] = [];
@@ -752,10 +747,7 @@ async function attachGeneratedOperatorArtifacts(
 ) {
   if (!args.attachments?.length) return undefined;
   const normalized: OperatorAttachment[] = [];
-  for (const attachment of args.attachments.slice(
-    0,
-    MAX_AGENT_ATTACHMENT_FILES,
-  )) {
+  for (const attachment of args.attachments) {
     const metadata = await ctx.db.system.get("_storage", attachment.fileId);
     if (!metadata) continue;
     const value = {
@@ -1248,7 +1240,7 @@ async function invalidatePendingOperatorConfirmations(
   );
 }
 
-async function enqueueOperatorMessage(
+export async function enqueueOperatorMessage(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
@@ -2815,7 +2807,7 @@ async function executeToolDomain(
 }
 
 function operatorCertificateSource(channel: OperatorChannel) {
-  if (channel === "slack" || channel === "imessage" || channel === "mcp") {
+  if (channel === "slack" || channel === "imessage" || channel === "email" || channel === "mcp") {
     return channel;
   }
   return "agent" as const;
@@ -3440,7 +3432,7 @@ export const discardUploads = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     let discarded = 0;
-    for (const upload of args.uploads.slice(0, 10)) {
+    for (const upload of args.uploads) {
       const intent = await ctx.db.get(upload.uploadIntentId);
       if (!intent || intent.operatorUserId !== operator.userId) {
         continue;
@@ -3494,7 +3486,7 @@ export const deleteUnreferencedAttachmentsInternal = internalMutation({
   args: { fileIds: v.array(v.id("_storage")) },
   handler: async (ctx, args) => {
     let deleted = 0;
-    for (const fileId of args.fileIds.slice(0, MAX_AGENT_ATTACHMENT_FILES)) {
+    for (const fileId of args.fileIds) {
       const reference = await ctx.db
         .query("operatorAgentAttachments")
         .withIndex("file", (index) => index.eq("fileId", fileId))
@@ -4301,17 +4293,17 @@ export const getPendingConfirmationInternal = internalQuery({
 
 const channelThreadArgs = {
   operatorUserId: v.id("users"),
-  channel: v.union(v.literal("slack"), v.literal("imessage"), v.literal("mcp")),
+  channel: v.union(v.literal("slack"), v.literal("imessage"), v.literal("email"), v.literal("mcp")),
   conversationKey: v.string(),
   title: v.optional(v.string()),
   shared: v.optional(v.boolean()),
 };
 
-async function createOrGetChannelThread(
+export async function createOrGetChannelThread(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
-    channel: "slack" | "imessage" | "mcp";
+    channel: "slack" | "imessage" | "email" | "mcp";
     conversationKey: string;
     title?: string;
     shared?: boolean;

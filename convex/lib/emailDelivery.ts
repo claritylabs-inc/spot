@@ -5,8 +5,11 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { markdownToHtml, stripMarkdown } from "./aiUtils";
 import { parseEmailPayloadRecord } from "./emailPayloadFields";
+import { extractEmailAddress } from "./emailAddress";
 import {
+  getAgentDomain,
   getEmailDeliveryMode,
+  getLegacyAgentDomains,
   sendResendEmail,
   type ResendPayload,
   type ResendResult,
@@ -112,6 +115,24 @@ export function buildPendingEmailResendPayload(
   headers["Message-ID"] = options.outboundMessageId;
 
   const replyTo = pending.replyTo ?? stringField(legacy.reply_to);
+  const retiredDomains = getLegacyAgentDomains();
+  const senderAddresses = [
+    from,
+    replyTo,
+    ...Object.entries(headers)
+      .filter(([name]) => ["from", "reply-to", "sender"].includes(name.toLowerCase()))
+      .map(([, value]) => value),
+  ];
+  if (
+    senderAddresses.some((value) => {
+      const domain = extractEmailAddress(value)?.split("@")[1];
+      return domain && retiredDomains.includes(domain);
+    })
+  ) {
+    throw new Error(
+      `This draft uses a retired Spot email address. Regenerate the draft with an @${getAgentDomain()} sender and reply address, then review it before sending.`,
+    );
+  }
   const payload: ResendPayload = {
     from,
     to: pending.recipientEmail,

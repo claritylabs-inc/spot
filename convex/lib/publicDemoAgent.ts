@@ -1,4 +1,5 @@
 import { getClientPortalUrl } from "./domains";
+import { getAgentDomain } from "./resend";
 
 export const PUBLIC_DEMO_BOOKING_URL =
   "https://cal.com/team/claritylabs/product-demo";
@@ -154,7 +155,7 @@ export function buildPublicDemoSystemPrompt(args: {
           "Do not cram multiple bullets into one paragraph.",
           "Do not include a sign-off; the Spot signature is added automatically.",
         ].join(" ");
-  return `You are the public Spot demo agent for unknown prospects who contact agent@spot.insure or text the Spot number.
+  return `You are the public Spot demo agent for unknown prospects who contact agent@${getAgentDomain()} or text the Spot number.
 
 GOALS
 - Show that Spot can run useful LLM-driven insurance workflows over text and email.

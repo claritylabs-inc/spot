@@ -29,6 +29,7 @@ const operatorChannelValidator = v.union(
   v.literal("chat"),
   v.literal("slack"),
   v.literal("imessage"),
+  v.literal("email"),
   v.literal("mcp"),
 );
 

@@ -1,6 +1,7 @@
 "use node";
-// convex/actions/sendNotificationEmail.ts
+
 import dayjs from "dayjs";
+import { canonicalAgentAddress } from "../lib/agentEmailDomains";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -150,7 +151,9 @@ function trustedThreadReplyAddress(
   const at = address.lastIndexOf("@");
   if (at <= 0 || at === address.length - 1) return undefined;
   const domain = address.slice(at + 1).toLowerCase();
-  return getAgentDomains().includes(domain) ? address : undefined;
+  return getAgentDomains().includes(domain)
+    ? canonicalAgentAddress(address)
+    : undefined;
 }
 
 function buildCtaUrl(

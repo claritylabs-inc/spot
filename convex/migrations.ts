@@ -1,4 +1,5 @@
 import { Migrations } from "@convex-dev/migrations";
+import { internalMutation, internalQuery } from "./_generated/server";
 import dayjs from "dayjs";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
@@ -11,12 +12,92 @@ import {
   applyCarrierIdentityEnrichment,
   readCarrierIdentity,
 } from "./lib/carrierIdentity";
-import {
-  requestNarrative,
-  seedNarrativePacketSection,
-} from "./lib/procurementNarrative";
+import { reserveLegacyOperatorEmailIdentity } from "./lib/operatorIdentity";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
+
+export const backfillOperatorUserEmailIdentities = migrations.define({
+  table: "users",
+  batchSize: 100,
+  migrateOne: async (ctx, user) => {
+    await reserveLegacyOperatorEmailIdentity(ctx, user.email, user._id);
+  },
+});
+
+export const backfillOperatorProfileEmailIdentities = migrations.define({
+  table: "operatorProfiles",
+  batchSize: 100,
+  migrateOne: async (ctx, profile) => {
+    await reserveLegacyOperatorEmailIdentity(
+      ctx,
+      profile.email,
+      profile.userId,
+    );
+  },
+});
+
+export const backfillOperatorAuthEmailIdentities = migrations.define({
+  table: "authAccounts",
+  batchSize: 100,
+  migrateOne: async (ctx, account) => {
+    if (account.provider === "resend-otp") {
+      await reserveLegacyOperatorEmailIdentity(
+        ctx,
+        account.providerAccountId,
+        account.userId,
+      );
+    }
+  },
+});
+
+const operatorIdentityMigrations = [
+  internal.migrations.backfillOperatorUserEmailIdentities,
+  internal.migrations.backfillOperatorProfileEmailIdentities,
+  internal.migrations.backfillOperatorAuthEmailIdentities,
+];
+
+export const runOperatorEmailIdentityBackfill = migrations.runner(
+  operatorIdentityMigrations,
+);
+
+export const operatorEmailIdentityBackfillStatus = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const statuses = await migrations.getStatus(ctx, {
+      migrations: operatorIdentityMigrations,
+    });
+    const ready = await ctx.db
+      .query("operatorEmailIdentityBackfill")
+      .withIndex("key", (q) => q.eq("key", "legacy"))
+      .unique();
+    return { ready: !!ready, statuses };
+  },
+});
+
+export const finishOperatorEmailIdentityBackfill = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const statuses = await migrations.getStatus(ctx, {
+      migrations: operatorIdentityMigrations,
+    });
+    if (statuses.length !== 3 || statuses.some((status) => !status.isDone)) {
+      throw new Error(
+        "Complete all operator email identity migrations before enabling alias login.",
+      );
+    }
+    const existing = await ctx.db
+      .query("operatorEmailIdentityBackfill")
+      .withIndex("key", (q) => q.eq("key", "legacy"))
+      .unique();
+    if (!existing) {
+      await ctx.db.insert("operatorEmailIdentityBackfill", {
+        key: "legacy",
+        completedAt: dayjs().valueOf(),
+      });
+    }
+    return { ready: true };
+  },
+});
 
 export const backfillDeclarationFacts = migrations.define({
   table: "policies",
@@ -161,69 +242,6 @@ export const backfillSlackActorSpotIdentity = migrations.define({
           : actor.classification,
       spotUserId: actor.spotUserId ?? actor.glassUserId,
       glassUserId: undefined,
-    });
-  },
-});
-
-export const migrateProcurementRequestStatuses = migrations.define({
-  table: "procurementRequests",
-  batchSize: 50,
-  migrateOne: async (ctx, request) => {
-    const mapped =
-      request.status === "quote_review" || request.status === "client_decision"
-        ? ("proposal_review" as const)
-        : request.status === "accepted"
-          ? ("binding" as const)
-          : request.status === "closed"
-            ? ("completed" as const)
-            : request.status;
-    const patch: Record<string, unknown> = {};
-    if (mapped !== request.status) patch.status = mapped;
-    if (request.requirementRevision === undefined)
-      patch.requirementRevision = 0;
-    if (request.specificationRevision === undefined)
-      patch.specificationRevision = 0;
-    if (request.clientVisible === undefined) patch.clientVisible = false;
-    if (Object.keys(patch).length) await ctx.db.patch(request._id, patch);
-  },
-});
-
-// Prefer the prior original narrative, then the request summary. The legacy
-// requirements field is a fallback because it may contain operator-authored
-// prose rather than the client's words.
-export const backfillProcurementNarrative = migrations.define({
-  table: "procurementRequests",
-  batchSize: 50,
-  migrateOne: async (ctx, request) => {
-    const patch: Record<string, unknown> = {};
-    if (request.narrative === undefined) {
-      const narrative =
-        request.originalNarrative?.trim() ||
-        request.requestSummary?.trim() ||
-        request.requirements?.trim() ||
-        request.title;
-      patch.narrative = narrative;
-    }
-    if (request.requestSummary !== undefined) patch.requestSummary = undefined;
-    if (request.requirements !== undefined) patch.requirements = undefined;
-    if (request.originalNarrative !== undefined)
-      patch.originalNarrative = undefined;
-    if (request.createdBySide !== undefined) patch.createdBySide = undefined;
-    if (request.sharedAt !== undefined) patch.sharedAt = undefined;
-    if (Object.keys(patch).length) await ctx.db.patch(request._id, patch);
-  },
-});
-
-export const seedProcurementNarrativeSections = migrations.define({
-  table: "procurementRequests",
-  batchSize: 25,
-  migrateOne: async (ctx, request) => {
-    await seedNarrativePacketSection(ctx, {
-      requestId: request._id,
-      clientOrgId: request.clientOrgId,
-      narrative: requestNarrative(request),
-      userId: request.createdByUserId,
-      source: "manual",
     });
   },
 });
@@ -438,7 +456,6 @@ export const runSlackActorSpotIdentityBackfill = migrations.runner([
 ]);
 
 export const runProcurementDomainBackfill = migrations.runner([
-  internal.migrations.migrateProcurementRequestStatuses,
   internal.migrations.migrateProcurementOutreaches,
 ]);
 
@@ -460,14 +477,6 @@ export const runProposalReviewPacketBackfill = migrations.runner([
   internal.migrations.clearLegacyProposalReviews,
 ]);
 
-// Run before the release that drops `requestSummary`, `requirements`,
-// `originalNarrative`, `createdBySide`, and `sharedAt` from the schema and
-// makes `narrative` required.
-export const runProcurementNarrativeBackfill = migrations.runner([
-  internal.migrations.backfillProcurementNarrative,
-  internal.migrations.seedProcurementNarrativeSections,
-]);
-
 // Run only after procurementMigration.auditLegacyNarrowing reports safe=true.
 export const runProcurementLegacyPurge = migrations.runner([
   internal.migrations.purgeBrokerClientAssignments,
@@ -477,7 +486,6 @@ export const runProcurementLegacyPurge = migrations.runner([
   internal.migrations.purgePolicyDeliverySettings,
   internal.migrations.purgeBrokerBranding,
 ]);
-
 
 // Run before the release that drops `orgMemory`, `procurementMemory`,
 // `connectedEmailAutomationItems.memoryIds`, and

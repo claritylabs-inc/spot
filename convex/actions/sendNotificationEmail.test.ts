@@ -217,7 +217,7 @@ describe("sendNotificationEmail", () => {
     await t.action(sendFn, { notificationId: notifId });
 
     const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(callBody.reply_to).toBe("agent+renewal@spot.insure");
+    expect(callBody.reply_to).toBe("agent+renewal@agent.spot.insure");
 
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();

@@ -1,5 +1,4 @@
 import {
-  MAX_AGENT_ATTACHMENT_FILES,
   MAX_OPERATOR_MCP_INLINE_AGGREGATE_BYTES,
   MAX_OPERATOR_MCP_INLINE_ATTACHMENT_BYTES,
   normalizeAgentAttachmentContentType,
@@ -50,11 +49,6 @@ export function decodeOperatorMcpAttachments(
 ): DecodedOperatorMcpAttachment[] {
   if (input === undefined || input === null) return [];
   if (!Array.isArray(input)) throw new Error("attachments must be an array");
-  if (input.length > MAX_AGENT_ATTACHMENT_FILES) {
-    throw new Error(
-      `Operator tasks support at most ${MAX_AGENT_ATTACHMENT_FILES} files`,
-    );
-  }
 
   const decoded: DecodedOperatorMcpAttachment[] = [];
   let aggregateSize = 0;

@@ -50,13 +50,11 @@ import {
   procurementFileStatusLabel,
   procurementOutreachStatusLabel,
   procurementRequestStatusLabel,
-  writableProcurementRequestStatus,
   type ProcurementEmailDrawerHandle,
   type ProcurementFilePurpose,
   type ProcurementFileStatus,
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
-  type StoredProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
@@ -127,7 +125,7 @@ type RequestSummary = {
   title: string;
   narrative: string;
   targetEffectiveDate?: string;
-  status: StoredProcurementRequestStatus;
+  status: ProcurementRequestStatus;
   replacingPolicyId?: Id<"policies">;
   resultingPolicyId?: Id<"policies">;
   forwardingAddress: string;
@@ -560,7 +558,7 @@ function RequestEditor({
     request.targetEffectiveDate ?? "",
   );
   const [status, setStatus] = useState<ProcurementRequestStatus>(
-    writableProcurementRequestStatus(request.status),
+    request.status,
   );
   const [replacingPolicyId, setReplacingPolicyId] = useState(
     request.replacingPolicyId ?? NONE,

@@ -4,6 +4,7 @@ import { buildOtpEmail } from "./lib/emailTemplate";
 import { getBrandingContext } from "./lib/branding";
 import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
+import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 
 const sendVerificationRequest = async function (this: unknown, ...args: any[]) {
   const [{ identifier: email, token }] = args as [
@@ -37,4 +38,5 @@ const ResendOTP = Email({
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [ResendOTP],
+  callbacks: { createOrUpdateUser: createOrUpdateEmailUser },
 });

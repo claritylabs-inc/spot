@@ -346,6 +346,12 @@ export const checkHandleAvailability = query({
   args: { handle: v.string(), excludeOrgId: v.optional(v.id("organizations")) },
   handler: async (ctx, args) => {
     const normalized = args.handle.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    if (normalized === "operator")
+      return {
+        available: false,
+        normalized,
+        reason: "This address is reserved for the operator agent",
+      };
     if (normalized.length < 3 || normalized.length > 30) {
       return {
         available: false,
