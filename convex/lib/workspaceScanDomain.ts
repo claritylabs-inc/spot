@@ -10,6 +10,7 @@ import {
   updateProcurementRequestByOperator,
 } from "../procurementRequests";
 import { writeWorkspaceScanCompanyFacts } from "../orgWiki";
+import { createStandaloneClientOrganizationByOperator } from "../operator";
 import { requireOperatorForUser } from "./operatorIdentity";
 import {
   ScanAttention,
@@ -221,14 +222,11 @@ export async function writeScanDomain(
               source: "workspace_scan",
             })
           ).brokerOrgId
-        : await ctx.db.insert("organizations", {
+        : await createStandaloneClientOrganizationByOperator(ctx, {
+            operatorUserId,
             name: op.identity.name,
-            type: "client",
             website: op.website ?? undefined,
-            onboardingComplete: true,
             operatorStatus: "live",
-            emailVerification: "strict",
-            allowedEmails: [],
           });
     await ctx.db.patch(orgId, {
       mailingAddress: op.identity.address,
