@@ -23,12 +23,14 @@ export type GoogleWorkspaceScanConfig = {
   authorizationRevision: number;
   authorizingOperatorId: Id<"users"> | null;
   pausedReason: string | null;
+  authorizingOperatorLabel?: string | null;
 };
 export type GoogleWorkspaceScanCoverage = {
   windowStartAt: number | null;
   discoveredMailboxes: number;
   completedMailboxes: number;
   failedMailboxes: number;
+  failedSources?: number;
   collectedMessages: number;
   pendingSources: number;
   reconciledSources: number;
@@ -49,6 +51,7 @@ export type GoogleWorkspaceScanStatus = {
   lastSuccessAt: number | null;
 };
 export type GoogleWorkspaceScanSettingsInput = {
+  expectedAuthorizationRevision?: number;
   enabled: boolean;
   intervalMinutes: GoogleWorkspaceScanInterval;
   /** Omission preserves the current sponsor; first enable uses the caller. */
@@ -83,6 +86,7 @@ export type GoogleWorkspaceScanSourceEvidence = {
   inReplyTo: string | null;
   references: string | null;
   contentFingerprint: string;
+  bodyFingerprint: string;
   attachments: OperatorGoogleWorkspaceThreadAttachment[];
   bodyPartCount: number;
   bodyComplete: boolean;
@@ -138,3 +142,13 @@ export type GoogleWorkspaceScanActivityActionResult = {
   status: "resolved" | "dismissed" | "retrying" | "corrected" | "conflict";
   message: string;
 };
+
+export async function googleWorkspaceScanBodyFingerprint(body: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+export async function googleWorkspaceScanContentFingerprint(evidence: Pick<GoogleWorkspaceScanSourceEvidence, "from" | "to" | "cc" | "sentAt" | "subject" | "internetMessageId" | "inReplyTo" | "references" | "attachments">, body: string): Promise<string> {
+  return googleWorkspaceScanBodyFingerprint(JSON.stringify({from:evidence.from,to:evidence.to,cc:evidence.cc,sentAt:evidence.sentAt,subject:evidence.subject,
+    internetMessageId:evidence.internetMessageId,inReplyTo:evidence.inReplyTo,references:evidence.references,body,
+    attachments:evidence.attachments.map(item=>({filename:item.filename,size:item.size,contentType:item.contentType}))}));
+}

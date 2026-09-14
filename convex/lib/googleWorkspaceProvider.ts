@@ -41,6 +41,7 @@ export type GoogleWorkspaceMessage = {
   id: string;
   threadId: string;
   internalDate: string | null;
+  labelIds?: string[];
   snippet: string | null;
   payload: GoogleWorkspaceMessagePart | null;
 };
@@ -91,8 +92,13 @@ export type GoogleWorkspaceProvider = {
   }): Promise<{ data: string; size: number }>;
 };
 
+export type GoogleWorkspaceScanProvider = GoogleWorkspaceProvider & {
+  getHistoryCheckpoint(mailbox: string): Promise<string>;
+  listHistory(args: {mailbox: string; startHistoryId: string; pageToken?: string; maxResults: number}): Promise<{messages: Array<{id: string; threadId: string}>; nextPageToken: string | null; historyId: string}>;
+};
+
 export class GoogleWorkspaceProviderError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly status: number | null = null) {
     super(message);
     this.name = "GoogleWorkspaceProviderError";
   }
@@ -133,6 +139,7 @@ function normalizedMessage(
     id: message.id,
     threadId: message.threadId,
     internalDate: message.internalDate ?? null,
+    labelIds: message.labelIds ?? [],
     snippet: message.snippet ?? null,
     payload: normalizedPart(message.payload),
   };
@@ -209,7 +216,7 @@ export function createGoogleWorkspaceProvider(
     gmail: readonly string[];
     directory: readonly string[];
   },
-): GoogleWorkspaceProvider {
+): GoogleWorkspaceScanProvider {
   const gmailClients = new Map<string, gmail_v1.Gmail>();
   const directoryClients = new Map<string, admin_directory_v1.Admin>();
   const gmailFor = (mailbox: string) => {
@@ -236,11 +243,29 @@ export function createGoogleWorkspaceProvider(
     try {
       return await operation();
     } catch (error) {
-      throw new GoogleWorkspaceProviderError(sanitizeGoogleWorkspaceError(error));
+      throw new GoogleWorkspaceProviderError(sanitizeGoogleWorkspaceError(error), googleWorkspaceErrorStatus(error));
     }
   };
 
   return {
+    async getHistoryCheckpoint(mailbox) {
+      const response = await request(() => gmailFor(mailbox).users.getProfile({userId: "me"}, GOOGLE_REQUEST_OPTIONS));
+      if (!response.data.historyId) throw new Error("Google Workspace returned no history checkpoint.");
+      return response.data.historyId;
+    },
+    async listHistory({mailbox, startHistoryId, pageToken, maxResults}) {
+      const response = await request(() => gmailFor(mailbox).users.history.list({userId: "me", startHistoryId, pageToken, maxResults}, GOOGLE_REQUEST_OPTIONS));
+      if (!response.data.historyId) throw new Error("Google Workspace returned no history checkpoint.");
+      const messages = new Map<string, {id: string; threadId: string}>();
+      for (const entry of response.data.history ?? []) {
+        // Label transitions include a draft becoming sent and mail leaving spam.
+        for (const message of [...(entry.messagesAdded ?? []).map(item => item.message), ...(entry.labelsAdded ?? []).map(item => item.message), ...(entry.labelsRemoved ?? []).map(item => item.message)]) {
+          if (message?.id && message.threadId) messages.set(message.id, {id: message.id, threadId: message.threadId});
+        }
+      }
+      return {messages: [...messages.values()], nextPageToken: response.data.nextPageToken ?? null, historyId: response.data.historyId};
+    },
+
     async listDirectoryUsers({ subject, pageToken, maxResults, signal }) {
       const response = await request(() =>
         directoryFor(subject).users.list(
@@ -362,6 +387,13 @@ export function createGoogleWorkspaceProvider(
       return { data: response.data.data, size: response.data.size ?? 0 };
     },
   };
+}
+
+export function googleWorkspaceErrorStatus(error: unknown): number | null {
+  if (error instanceof GoogleWorkspaceProviderError) return error.status;
+  if (!error || typeof error !== "object") return null;
+  const record = error as {code?: unknown; response?: {status?: unknown}};
+  return typeof record.response?.status === "number" ? record.response.status : typeof record.code === "number" ? record.code : null;
 }
 
 export function sanitizeGoogleWorkspaceError(error: unknown): string {
