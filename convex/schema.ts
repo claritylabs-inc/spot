@@ -3889,8 +3889,6 @@ export default defineSchema({
     orgId: v.id("organizations"),
     title: v.string(),
     threadEmail: v.optional(v.string()),
-    // Legacy delivery lookup key; current routing does not read or write it.
-    deliveryContactKey: v.optional(v.string()),
     createdBy: v.id("users"),
     clientMutationId: v.optional(v.string()),
     lastMessageAt: v.number(),
