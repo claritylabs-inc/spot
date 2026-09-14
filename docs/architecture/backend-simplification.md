@@ -310,3 +310,10 @@ Every deletion uses audit -> widen/canonical writer -> bounded resumable migrati
 
 Recommended first implementation batch is canonical email preview/delivery resolution, followed by notification validator consolidation. The migration-only retired conversation store and established legacy gates can run as a separate deployment lane once actual target audit is available. Avoid a simultaneous all-channel table rewrite.
 
+
+
+### Ownership migration follow-up
+
+The first widening release is PR #346 (`515265cd`); production release run `34901426209` passed. The production audit (`34902173672`) found zero ownership blockers and zero rows in all eight inventory-only retired tables.
+
+Shared development has a client that retains its retired broker association and a policy already owned by that client with historical broker-upload metadata. Those pointers are removable without changing ownership. The follow-up records their prior values in the existing operator audit ledger and clears only the unused references after backup. It retains the historical uploader side and user because the policy UI routinely displays that provenance. Broker-owned or unresolved policies still require evidence-based reconciliation; the migration never assigns a replacement owner.
