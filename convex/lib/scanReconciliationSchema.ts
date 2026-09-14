@@ -19,7 +19,9 @@ export const scanReconciliationTables = {
     boundPolicy: v.boolean(),
     policyId: v.optional(v.id("policies")),
     createdAt: v.number(),
-  }).index("attachment", ["sourceId", "attachmentId"]),
+  })
+    .index("attachment", ["sourceId", "attachmentId"])
+    .index("policy", ["policyId"]),
   operatorWorkspaceScanFindings: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     operationKey: v.string(),
