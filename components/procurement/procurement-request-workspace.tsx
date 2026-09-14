@@ -91,7 +91,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
@@ -119,11 +118,12 @@ type ClientFileOption = {
 };
 
 type RequestSummary = {
-  completionOutcome?: React.ComponentProps<typeof RequestCompletionOutcome>["outcome"];
+  completionOutcome?: React.ComponentProps<
+    typeof RequestCompletionOutcome
+  >["outcome"];
   _id: Id<"procurementRequests">;
   clientOrgId: Id<"organizations">;
   title: string;
-  narrative: string;
   targetEffectiveDate?: string;
   status: ProcurementRequestStatus;
   replacingPolicyId?: Id<"policies">;
@@ -146,7 +146,6 @@ type Outreach = {
   contactEmail?: string;
   contactPhone?: string;
   status: ProcurementOutreachStatus;
-  log: string;
   updatedAt: number;
 };
 
@@ -160,7 +159,6 @@ type ProcurementFileItem = {
   status: ProcurementFileStatus;
   brokerRelease?: "hidden" | "listed" | "attached";
   clientVisible?: boolean;
-  notes?: string;
   updatedAt: number;
   clientFile: ClientFileOption | null;
 };
@@ -553,7 +551,6 @@ function RequestEditor({
 }) {
   const updateRequest = useMutation(api.procurementRequests.update);
   const [title, setTitle] = useState(request.title);
-  const [narrative, setNarrative] = useState(request.narrative);
   const [targetEffectiveDate, setTargetEffectiveDate] = useState(
     request.targetEffectiveDate ?? "",
   );
@@ -577,7 +574,6 @@ function RequestEditor({
 
   const values = {
     title,
-    narrative,
     targetEffectiveDate,
     status,
     replacingPolicyId,
@@ -587,15 +583,11 @@ function RequestEditor({
   const autoSave = useLocalFirstAutoSave({
     mutationName: "procurementRequests.update",
     args: values,
-    canSave: !!title.trim() && !!narrative.trim(),
+    canSave: !!title.trim(),
     flush: async (next) => {
       await updateRequest({
         requestId: request._id,
         title: next.title !== saved.current.title ? next.title : undefined,
-        narrative:
-          next.narrative !== saved.current.narrative
-            ? next.narrative
-            : undefined,
         targetEffectiveDate:
           next.targetEffectiveDate !== saved.current.targetEffectiveDate
             ? next.targetEffectiveDate || null
@@ -644,18 +636,7 @@ function RequestEditor({
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            What the client asked for
-          </span>
-          <Textarea
-            value={narrative}
-            onChange={(event) => setNarrative(event.target.value)}
-            className="min-h-36"
-          />
-        </label>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="block space-y-1.5">
             <span
@@ -777,13 +758,11 @@ export function OutreachEditor({
   );
   const [statusDraft, setStatus] = useState<ProcurementOutreachStatus>();
   const status = statusDraft ?? currentOutreach?.status ?? "request_sent";
-  const [log, setLog] = useState(outreach?.log ?? "");
   const savedValues = useRef({
     brokerOrgId,
     contactName,
     contactEmail,
     contactPhone,
-    log,
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -833,7 +812,6 @@ export function OutreachEditor({
       contactName,
       contactEmail,
       contactPhone,
-      log,
       statusDraft,
     },
     enabled: !readOnly,
@@ -869,14 +847,12 @@ export function OutreachEditor({
           next.contactPhone !== previous.contactPhone
             ? next.contactPhone || null
             : undefined,
-        log: next.log !== previous.log ? next.log || null : undefined,
       });
       savedValues.current = {
         brokerOrgId: next.brokerOrgId,
         contactName: next.contactName,
         contactEmail: next.contactEmail,
         contactPhone: next.contactPhone,
-        log: next.log,
       };
     },
     onFlushed: (_, next) =>
@@ -900,14 +876,12 @@ export function OutreachEditor({
         contactEmail: contactEmail || undefined,
         contactPhone: contactPhone || undefined,
         status,
-        log: log || undefined,
       });
       savedValues.current = {
         brokerOrgId,
         contactName,
         contactEmail,
         contactPhone,
-        log,
       };
       setOutreachId(created.outreachId);
       setStatus(undefined);
@@ -1211,19 +1185,6 @@ export function OutreachEditor({
                 </SelectContent>
               </Select>
             </label>
-            <label className="block space-y-1.5">
-              <span
-                className={`text-muted-foreground ${typeStyle("label.field")}`}
-              >
-                Log
-              </span>
-              <Textarea
-                value={log}
-                onChange={(event) => setLog(event.target.value)}
-                className="min-h-64"
-                placeholder="Add outreach updates in Markdown"
-              />
-            </label>
           </fieldset>
         ) : null}
       </div>
@@ -1262,7 +1223,6 @@ function ProcurementFileEditor({
   const [clientFileId, setClientFileId] = useState(
     fileItem?.clientFileId ?? NONE,
   );
-  const [notes, setNotes] = useState(fileItem?.notes ?? "");
   const [brokerRelease, setBrokerRelease] = useState<
     "hidden" | "listed" | "attached"
   >(fileItem?.brokerRelease ?? "hidden");
@@ -1279,7 +1239,6 @@ function ProcurementFileEditor({
     clientFileId,
     brokerRelease,
     clientVisible,
-    notes,
   };
   const saved = useRef(values);
   const autoSave = useLocalFirstAutoSave({
@@ -1323,7 +1282,6 @@ function ProcurementFileEditor({
           next.clientVisible !== previous.clientVisible
             ? next.clientVisible
             : undefined,
-        notes: next.notes !== previous.notes ? next.notes || null : undefined,
       });
       saved.current = next;
     },
@@ -1350,7 +1308,6 @@ function ProcurementFileEditor({
             : (clientFileId as Id<"clientFiles">),
         brokerRelease,
         clientVisible,
-        notes: notes || undefined,
       });
       toast.success("File request added");
       onClose();
@@ -1577,18 +1534,6 @@ function ProcurementFileEditor({
                 label: file.name,
               })),
             ]}
-          />
-        </label>
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Notes
-          </span>
-          <Textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            className="min-h-24"
           />
         </label>
       </fieldset>
@@ -2080,7 +2025,9 @@ export function ProcurementRequestWorkspace({
               label="Current stage"
               value={<RequestStatusTag status={details.request.status} />}
             />
-            <RequestCompletionOutcome outcome={details.request.completionOutcome} />
+            <RequestCompletionOutcome
+              outcome={details.request.completionOutcome}
+            />
             <OperationalLabelValueRow
               label="Proposals"
               value={`${details.request.brokerCount} brokers · ${activeProposals.length} proposals`}
@@ -2094,26 +2041,11 @@ export function ProcurementRequestWorkspace({
             />
             <OperationalLabelValueRow label="Next" value={nextActions[0]} />
           </OperationalLabelValueList>
-          <OperationalLabelValueList>
-            <OperationalLabelValueRow
-              label="What the client asked for"
-              layout="stacked"
-              value={
-                <span className="whitespace-pre-wrap">
-                  {details.request.narrative}
-                </span>
-              }
-            />
-          </OperationalLabelValueList>
         </div>
       ) : null}
 
       {view === "packet" ? (
-        <PacketWorkspace
-          key={requestId}
-          requestId={requestId}
-          readOnly={readOnly}
-        />
+        <PacketWorkspace key={requestId} requestId={requestId} />
       ) : null}
 
       {view === "proposals" ? (

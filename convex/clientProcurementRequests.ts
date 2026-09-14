@@ -16,10 +16,7 @@ import {
   normalizeClientFileSha256,
 } from "./lib/clientFiles";
 import { createProcurementInboxToken } from "./lib/procurement";
-import {
-  requestNarrative,
-  seedRequestIntake,
-} from "./lib/procurementNarrative";
+import { seedRequestIntake } from "./lib/procurementNarrative";
 import { assemblePacketMarkdown } from "./lib/procurementPacket";
 
 async function createUniqueInboxToken(ctx: MutationCtx) {
@@ -113,7 +110,6 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
   return {
     _id: request._id,
     title: request.title,
-    narrative: await requestNarrative(ctx, request),
     completionOutcome: request.completionOutcome,
     packet: {
       markdown: assemblePacketMarkdown(packetSections, { audience: "client" }),

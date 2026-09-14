@@ -1,5 +1,5 @@
-import { requestNarrative } from "./procurementNarrative";
-import { readOutreachLog } from "./outreachLog";
+import { requestPacketText } from "./procurementNarrative";
+import { appendPrivatePacketNote, readPacketDocument } from "./packetDocuments";
 import { getMarkdownDocument } from "../markdownDocuments";
 import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -32,7 +32,7 @@ export type ScanSelection = {
   requestIds?: Id<"procurementRequests">[];
 };
 export type ScanTarget = {
-  outreachLogDocument: Doc<"markdownDocuments"> | null;
+  privateDocument: Doc<"markdownDocuments"> | null;
   org: Doc<"organizations"> | null;
   request: Doc<"procurementRequests"> | null;
   record:
@@ -194,7 +194,7 @@ export async function resolveScanTarget(
       org: null,
       request: null,
       record: null,
-      outreachLogDocument: null,
+      privateDocument: null,
     };
   let request: Doc<"procurementRequests"> | null = null;
   if ("request" in operation) {
@@ -239,9 +239,7 @@ export async function resolveScanTarget(
       await Promise.all(
         candidates.map(async (candidate) => ({
           request: candidate,
-          narrative: await requestNarrative(ctx, candidate, {
-            includePrivate: true,
-          }),
+          narrative: await requestPacketText(ctx, candidate),
         })),
       )
     )
@@ -262,7 +260,7 @@ export async function resolveScanTarget(
     if (
       request &&
       !normalizedIdentity(
-        `${request.title} ${await requestNarrative(ctx, request, { includePrivate: true })}`,
+        `${request.title} ${await requestPacketText(ctx, request)}`,
       ).includes(normalizedIdentity(operation.request.coverage))
     )
       throw new ScanAttention(
@@ -276,7 +274,7 @@ export async function resolveScanTarget(
       );
   }
   let record: ScanTarget["record"] = request ?? org;
-  let outreachLogDocument: Doc<"markdownDocuments"> | null = null;
+  let privateDocument: Doc<"markdownDocuments"> | null = null;
   if (operation.kind === "company_facts")
     record = await getMarkdownDocument(ctx, {
       orgId: org._id,
@@ -301,14 +299,20 @@ export async function resolveScanTarget(
         "Several market records match this request and broker",
       );
     record = rows[0] ?? null;
-    if (rows[0])
-      outreachLogDocument = await getMarkdownDocument(ctx, {
-        orgId: org._id,
-        outreachId: rows[0]._id,
-        kind: "outreach_log",
-      });
+    privateDocument = await getMarkdownDocument(ctx, {
+      orgId: org._id,
+      requestId: request._id,
+      kind: "packet",
+      filename: "private.md",
+    });
+    if (privateDocument)
+      privateDocument = {
+        ...privateDocument,
+        markdown: (await readPacketDocument(ctx, request, "private.md"))
+          .markdown,
+      };
   }
-  return { org, request, record, outreachLogDocument };
+  return { org, request, record, privateDocument };
 }
 
 export async function assertScanChronology(
@@ -503,23 +507,16 @@ export async function writeScanDomain(
       );
     const previous =
       target.record && "brokerName" in target.record ? target.record : null;
+    await appendPrivatePacketNote(ctx, target.request, broker.name, op.log);
     if (previous) {
       await assertScanChronology(ctx, previous, effectiveAt);
-      if (target.outreachLogDocument)
-        await assertScanChronology(
-          ctx,
-          target.outreachLogDocument,
-          effectiveAt,
-        );
-      await updateProcurementOutreachByOperator(ctx, {
-        operatorUserId,
-        outreachId: previous._id,
-        log: [await readOutreachLog(ctx, previous), op.log]
-          .filter(Boolean)
-          .join("\n\n"),
-        status: op.observedStatus ?? undefined,
-        source: "workspace_scan",
-      });
+      if (op.observedStatus)
+        await updateProcurementOutreachByOperator(ctx, {
+          operatorUserId,
+          outreachId: previous._id,
+          status: op.observedStatus ?? undefined,
+          source: "workspace_scan",
+        });
       return {
         table: "procurementBrokerOutreaches" as const,
         id: previous._id,
@@ -531,7 +528,6 @@ export async function writeScanDomain(
       requestId: target.request._id,
       brokerOrgId: broker._id,
       status: op.observedStatus ?? "observed",
-      log: op.log,
       source: "workspace_scan",
     });
     return {

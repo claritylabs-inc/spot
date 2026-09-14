@@ -2355,8 +2355,6 @@ async function executeToolDomain(
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
       title: typeof input.title === "string" ? input.title : undefined,
-      narrative:
-        typeof input.narrative === "string" ? input.narrative : undefined,
       targetEffectiveDate:
         input.targetEffectiveDate === null
           ? null
@@ -2595,7 +2593,6 @@ async function executeToolDomain(
       contactEmail: normalizedOptionalText(input.contactEmail),
       contactPhone: normalizedOptionalText(input.contactPhone),
       status: procurementOutreachStatus(input.status),
-      log: normalizedOptionalText(input.log),
       source: "agent",
     });
   }
@@ -2623,7 +2620,6 @@ async function executeToolDomain(
           ? null
           : normalizedOptionalText(input.contactPhone),
       status: procurementOutreachStatus(input.status),
-      log: input.log === null ? null : normalizedOptionalText(input.log),
       source: "agent",
     });
   }
@@ -2646,7 +2642,6 @@ async function executeToolDomain(
         typeof input.clientVisible === "boolean"
           ? input.clientVisible
           : undefined,
-      notes: normalizedOptionalText(input.notes),
       source: "agent",
     });
   }
@@ -2681,7 +2676,6 @@ async function executeToolDomain(
         typeof input.clientVisible === "boolean"
           ? input.clientVisible
           : undefined,
-      notes: input.notes === null ? null : normalizedOptionalText(input.notes),
       source: "agent",
     });
   }

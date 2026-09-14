@@ -1,15 +1,14 @@
-/// <reference types="vite/client" />
 import { saveMarkdownDocument } from "./markdownDocuments";
-import { manualWikiDocument } from "./lib/orgWikiDocument";
+import { requestPacketText } from "./lib/procurementNarrative";
 import {
-  requestNarrative,
-  saveRequestNarrative,
-} from "./lib/procurementNarrative";
-import { readOutreachLog } from "./lib/outreachLog";
+  readPacketProjection,
+  readPacketDocument,
+} from "./lib/packetDocuments";
 import {
   googleWorkspaceScanBodyFingerprint,
   googleWorkspaceScanContentFingerprint,
 } from "./lib/googleWorkspaceScan";
+/// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import dayjs from "dayjs";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
@@ -82,26 +81,6 @@ const operation: ScanOperation = {
   excerpt: body,
   explanation: "Client reported completed external purchase.",
 };
-async function insertRequest(
-  ctx: import("./_generated/server").MutationCtx,
-  data: Omit<
-    import("./_generated/dataModel").Doc<"procurementRequests">,
-    "_id" | "_creationTime"
-  > & { narrative: string },
-) {
-  const { narrative, ...fields } = data;
-  const requestId = await ctx.db.insert("procurementRequests", fields);
-  await saveMarkdownDocument(ctx, {
-    orgId: fields.clientOrgId,
-    requestId,
-    kind: "packet",
-    filename: "request-intake.md",
-    expectedRevision: 0,
-    markdown: `---\nvisibility: shared\n---\n${narrative}`,
-  });
-  return requestId;
-}
-
 async function fixture() {
   const t = convexTest(schema, modules);
   const revision = (await googleWorkspaceCredentialEnvelope()).revision!;
@@ -218,7 +197,7 @@ async function fixture() {
       primaryContactEmail: "client@cove.test",
       operatorStatus: "live",
     });
-    const requestId = await insertRequest(ctx, {
+    const requestId = await ctx.db.insert("procurementRequests", {
       clientOrgId: orgId,
       title: "Auto",
       narrative: "Original Auto request",
@@ -239,39 +218,6 @@ async function fixture() {
   };
   return { t, ...ids, args };
 }
-test("matches coverage held only in canonical intake for a generically named request", async () => {
-  const f = await fixture();
-  await f.t.run(async (ctx) => {
-    await ctx.db.patch(f.requestId, { title: "Annual renewal" });
-    await saveMarkdownDocument(ctx, {
-      orgId: f.orgId,
-      requestId: f.requestId,
-      kind: "packet",
-      filename: "request-intake.md",
-      expectedRevision: 1,
-      markdown: "---\nvisibility: private\n---\nAuto coverage requested",
-    });
-  });
-  const args = {
-    ...f.args,
-    operationJson: JSON.stringify({
-      ...operation,
-      request: { title: "Annual renewal", coverage: "Auto" },
-    }),
-  };
-  const prepared = await f.t.query(
-    internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
-    args,
-  );
-  await f.t.mutation(
-    internal.operatorGoogleWorkspaceReconciliation.applyInternal,
-    { ...args, snapshot: prepared.snapshot },
-  );
-  expect((await f.t.run((ctx) => ctx.db.get(f.requestId)))?.status).toBe(
-    "completed",
-  );
-});
-
 test("atomically completes the exact request, preserves client/narrative/visibility, and deduplicates retry", async () => {
   const f = await fixture();
   const prepared = await f.t.query(
@@ -289,6 +235,7 @@ test("atomically completes the exact request, preserves client/narrative/visibil
   await f.t.run(async (ctx) => {
     expect(await ctx.db.get(f.requestId)).toMatchObject({
       status: "completed",
+      narrative: "Original Auto request",
       clientVisible: true,
       completionOutcome: { kind: "placed_elsewhere", provider: "GEICO" },
     });
@@ -333,13 +280,7 @@ test("rejects concurrent manual changes and paused standing authorization withou
     f.args,
   );
   await f.t.run((ctx) =>
-    (async () =>
-      saveRequestNarrative(
-        ctx,
-        (await ctx.db.get(f.requestId))!,
-        "Auto changed manually",
-        { includePrivate: true },
-      ))(),
+    ctx.db.patch(f.requestId, { narrative: "Auto changed manually" }),
   );
   await expect(
     f.t.mutation(internal.operatorGoogleWorkspaceReconciliation.applyInternal, {
@@ -443,7 +384,7 @@ test("reviewing a candidate organization loads only its request options without 
       type: "client",
       primaryContactEmail: "other@cove.test",
     });
-    const requestId = await insertRequest(ctx, {
+    const requestId = await ctx.db.insert("procurementRequests", {
       clientOrgId: orgId,
       title: "Auto",
       narrative: "Other client's auto request",
@@ -770,7 +711,7 @@ test("creates standalone clients and client-visible requests without grants or s
       .withIndex("organization", (q) => q.eq("clientOrgId", client._id))
       .collect();
     expect(requests).toHaveLength(1);
-    expect(await requestNarrative(ctx, requests[0])).toBe(
+    expect(await requestPacketText(ctx, requests[0])).toContain(
       "Cyber insurance requested",
     );
     expect(requests[0]).toMatchObject({
@@ -836,18 +777,19 @@ test("automatically creates one prospect broker without users, invitations or in
 });
 test("wiki facts retain unrelated manual bullets and correction restores removed outcome fields", async () => {
   const f = await fixture();
-  await f.t.run(async (ctx) => {
-    const document = await saveMarkdownDocument(ctx, {
+  await f.t.run((ctx) =>
+    ctx.db.insert("orgWikiSections", {
       orgId: f.orgId,
-      kind: "company_wiki",
-      filename: "company-wiki.md",
-      markdown: manualWikiDocument(
-        "## Operations\n\n- Cove builds software.\n- Cove has 5 employees.",
-      ),
-      expectedRevision: 0,
-    });
-    await ctx.db.patch(document._id, { updatedAt: 1 });
-  });
+      key: "operations",
+      heading: "Operations",
+      body: "- Cove builds software.\n- Cove has 5 employees.",
+      order: 1,
+      source: "manual",
+      manuallyEditedAt: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
   const text = "Cove has 10 employees.";
   await replaceEvidence(
     f,
@@ -1206,10 +1148,19 @@ test("broker decline and later quote update one private market record without fa
   );
   expect(rows).toHaveLength(1);
   expect(rows[0].status).toBe("quote_received");
-  const log = await f.t.run((ctx) => readOutreachLog(ctx, rows[0]));
+  const log = await f.t.run(
+    async (ctx) =>
+      (
+        await readPacketProjection(
+          ctx,
+          (await ctx.db.get(rows[0].requestId))!,
+          "operator",
+        )
+      ).markdown,
+  );
   expect(log).toContain("declined");
   expect(log).toContain("provided a quote");
-  expect(rows[0]).not.toHaveProperty("packetSnapshot");
+  expect(rows[0].packetSnapshot).toBeUndefined();
   const brokerActivity = await f.t
     .withIdentity({ subject: `${f.userId}|session` })
     .query(api.operatorGoogleWorkspaceScanActivity.listActivity, {
@@ -1257,7 +1208,7 @@ test("same contact and address under a legal-name variant requires attention ins
 test("reviewed identity selection cannot redirect an Auto purchase to another coverage request", async () => {
   const f = await fixture();
   const cyberId = await f.t.run((ctx) =>
-    insertRequest(ctx, {
+    ctx.db.insert("procurementRequests", {
       clientOrgId: f.orgId,
       title: "Cyber",
       narrative: "Cyber liability",
@@ -1793,7 +1744,7 @@ test("overlapping fact proposals require attention before any batch changes appl
   await f.t.run(async (ctx) => {
     expect((await ctx.db.get(f.sourceId))?.status).toBe("needs_attention");
     expect((await ctx.db.get(f.requestId))?.status).toBe("marketing");
-    expect((await readOrgWiki(ctx, f.orgId)).body).toBe("");
+    expect(await ctx.db.query("orgWikiSections").collect()).toEqual([]);
     expect(
       await ctx.db.query("operatorWorkspaceScanChanges").collect(),
     ).toEqual([]);
@@ -2273,6 +2224,41 @@ test("withdrawal of one state cannot authorize removal of an explicitly retained
       ?.writingStates,
   ).toEqual(["CA"]);
 });
+test("matches coverage held only in canonical intake for a generically named request", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.requestId, {
+      title: "Annual renewal",
+      narrative: undefined,
+    });
+    await saveMarkdownDocument(ctx, {
+      orgId: f.orgId,
+      requestId: f.requestId,
+      kind: "packet",
+      filename: "private.md",
+      expectedRevision: 0,
+      markdown: "---\nvisibility: private\n---\nAuto coverage requested",
+    });
+  });
+  const args = {
+    ...f.args,
+    operationJson: JSON.stringify({
+      ...operation,
+      request: { title: "Annual renewal", coverage: "Auto" },
+    }),
+  };
+  const prepared = await f.t.query(
+    internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
+    args,
+  );
+  await f.t.mutation(
+    internal.operatorGoogleWorkspaceReconciliation.applyInternal,
+    { ...args, snapshot: prepared.snapshot },
+  );
+  expect((await f.t.run((ctx) => ctx.db.get(f.requestId)))?.status).toBe(
+    "completed",
+  );
+});
 
 test.each(["correct", "before_apply", "before_correction"] as const)(
   "market log and status correction handles %s without losing manual Markdown",
@@ -2297,15 +2283,27 @@ test.each(["correct", "before_apply", "before_correction"] as const)(
       });
       const original = await saveMarkdownDocument(ctx, {
         orgId: f.orgId,
-        outreachId,
-        kind: "outreach_log",
-        filename: "market-log.md",
+        requestId: f.requestId,
+        kind: "packet",
+        filename: "private.md",
         expectedRevision: 0,
         markdown:
           "---\nvisibility: private\nreviewedBy: operator\n---\nOriginal private market notes",
       });
       await ctx.db.patch(original._id, { updatedAt: 1 });
-      return { outreachId, original };
+      return {
+        outreachId,
+        original: {
+          ...original,
+          markdown: (
+            await readPacketDocument(
+              ctx,
+              (await ctx.db.get(f.requestId))!,
+              "private.md",
+            )
+          ).markdown,
+        },
+      };
     });
     f.evidence.to.push("broker@montgomery.test");
     const text = "Montgomery provided a quote for Cove Auto coverage.";
@@ -2329,9 +2327,9 @@ test.each(["correct", "before_apply", "before_correction"] as const)(
       f.t.run((ctx) =>
         saveMarkdownDocument(ctx, {
           orgId: f.orgId,
-          outreachId,
-          kind: "outreach_log",
-          filename: "market-log.md",
+          requestId: f.requestId,
+          kind: "packet",
+          filename: "private.md",
           expectedRevision,
           markdown:
             "---\nvisibility: private\nreviewedBy: operator\n---\nLater manual notes",
@@ -2383,36 +2381,3 @@ test.each(["correct", "before_apply", "before_correction"] as const)(
     }
   },
 );
-
-test("historical wiki correction points to the current file without resolving a retired table", async () => {
-  const f = await fixture();
-  const prepared = await f.t.query(
-    internal.operatorGoogleWorkspaceReconciliation.prepareInternal,
-    f.args,
-  );
-  const applied = await f.t.mutation(
-    internal.operatorGoogleWorkspaceReconciliation.applyInternal,
-    { ...f.args, snapshot: prepared.snapshot },
-  );
-  await f.t.run(async (ctx) => {
-    const change = await ctx.db
-      .query("operatorWorkspaceScanChanges")
-      .withIndex("finding", (q) => q.eq("findingId", applied.findingId))
-      .unique();
-    await ctx.db.patch(change!._id, {
-      table: "orgWikiSections",
-      entityId: "retired-historical-id",
-    });
-  });
-  const before = await f.t.run((ctx) => ctx.db.get(f.requestId));
-  const result = await f.t
-    .withIdentity({ subject: `${f.userId}|session` })
-    .mutation(api.operatorGoogleWorkspaceScanActivity.correctActivity, {
-      activityId: applied.findingId,
-    });
-  expect(result).toMatchObject({
-    status: "conflict",
-    message: expect.stringContaining("current company Markdown file"),
-  });
-  expect(await f.t.run((ctx) => ctx.db.get(f.requestId))).toEqual(before);
-});

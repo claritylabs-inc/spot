@@ -1,5 +1,5 @@
 import { getMarkdownDocument } from "./markdownDocuments";
-import { requestNarrative } from "./lib/procurementNarrative";
+import { requestPacketText } from "./lib/procurementNarrative";
 import { readOrgWiki } from "./orgWiki";
 import { indexPolicyUploadFingerprintPage } from "./lib/policyImportDedup";
 import { scanInsuredAddressValidator } from "./lib/scanReconciliationSchema";
@@ -517,25 +517,22 @@ export const applyInternal = internalMutation({
       ) {
         const document = await getMarkdownDocument(ctx, {
           orgId: record.clientOrgId,
-          outreachId: ctx.db.normalizeId(
-            "procurementBrokerOutreaches",
-            result.id,
-          )!,
-          kind: "outreach_log",
+          requestId: target.request!._id,
+          kind: "packet",
+          filename: "private.md",
         });
         if (
           document &&
-          JSON.stringify(document) !==
-            JSON.stringify(target.outreachLogDocument)
+          JSON.stringify(document) !== JSON.stringify(target.privateDocument)
         )
           await ctx.db.insert("operatorWorkspaceScanChanges", {
             findingId,
             entityId: document._id,
             table: "markdownDocuments",
-            beforeJson: JSON.stringify(target.outreachLogDocument),
+            beforeJson: JSON.stringify(target.privateDocument),
             afterJson: JSON.stringify(document),
             fields: ["markdown", "revision"],
-            created: !target.outreachLogDocument,
+            created: !target.privateDocument,
             effectiveAt,
             appliedAt: dayjs().valueOf(),
           });
@@ -879,9 +876,7 @@ export const getKnownContextInternal = internalQuery({
                     .take(50)
                 ).map(async (r) => ({
                   title: r.title,
-                  narrative: await requestNarrative(ctx, r, {
-                    includePrivate: true,
-                  }),
+                  narrative: await requestPacketText(ctx, r),
                   status: r.status,
                   targetEffectiveDate: r.targetEffectiveDate,
                 })),

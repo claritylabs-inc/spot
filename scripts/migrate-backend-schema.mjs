@@ -130,6 +130,10 @@ function auditAll() {
     throw new Error("Wiki verification omitted completion status");
   for (const table of procurementTables)
     pages("procurementMarkdownMigration:auditPage", { table });
+  log(
+    "retired procurement Markdown documents",
+    run("procurementMarkdownMigration:verifyRetiredDocuments"),
+  );
   for (const target of certificateTables)
     pages("certificateNotesMigration:verifyPage", { target });
   for (const target of policyTables)
@@ -213,6 +217,17 @@ try {
         "remaining",
       );
     }
+    const retiredDocuments = run(
+      "procurementMarkdownMigration:verifyRetiredDocuments",
+    );
+    log(
+      "retired procurement Markdown documents after migration",
+      retiredDocuments,
+    );
+    if (retiredDocuments.complete !== true)
+      throw new Error(
+        "Retired procurement Markdown documents remain; reconcile their owners before narrowing",
+      );
     for (const target of certificateTables) {
       pages("certificateNotesMigration:migratePage", { target, dryRun: false });
       requireZero(

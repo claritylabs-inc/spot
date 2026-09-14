@@ -8,6 +8,8 @@ import {
 import {
   readPacketDocument,
   readPacketProjection,
+  migratePacketDocuments,
+  packetFileVisibility,
 } from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { v } from "convex/values";
@@ -95,18 +97,24 @@ export async function updatePacketDocumentByOperator(
       "The packet changed while you were editing. Reload it before saving.",
     );
   const parsed = parseMarkdownDocument(args.markdown);
-  const visibility = parseDocumentVisibility(args.markdown, "private");
+  const visibility = packetFileVisibility(args.filename);
+  if (parseDocumentVisibility(args.markdown, visibility) !== visibility)
+    throw new Error(`${args.filename} must use visibility: ${visibility}`);
   const markdown = stringifyMarkdownDocument(
     { ...parsed.frontmatter, visibility },
     parsed.body,
   );
+  // Materialize and retire the legacy source in this same transaction before
+  // applying an intentional edit, so the later backfill cannot resurrect it.
+  await migratePacketDocuments(ctx, request._id);
+  const canonical = await readPacketDocument(ctx, request, args.filename);
   const document = await saveMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
     kind: "packet",
     filename: args.filename,
     markdown,
-    expectedRevision: args.expectedRevision,
+    expectedRevision: canonical.revision,
   });
   const changed = previous.markdown !== markdown;
   if (changed && (visibility === "shared" || previous.visibility === "shared"))
@@ -143,6 +151,8 @@ export async function upsertPacketSectionByOperator(
     body: string;
     heading?: string;
     audience?: PacketAudience;
+    source?: Doc<"procurementPacketSections">["source"];
+    sourceRefs?: string[];
   },
 ) {
   await directOperator(ctx, args.operatorUserId);
@@ -151,8 +161,7 @@ export async function upsertPacketSectionByOperator(
   const visibility = args.audience ?? canonical.defaultAudience;
   if (canonical.sensitive && visibility !== "operator")
     throw new Error("Sensitive packet content requires operator visibility");
-  const filename =
-    visibility === "operator" ? "operator-packet.md" : "submission-packet.md";
+  const filename = visibility === "operator" ? "private.md" : "public.md";
   const previous = await readPacketDocument(ctx, request, filename);
   const parsed = parseMarkdownDocument(previous.markdown);
   return await updatePacketDocumentByOperator(ctx, {

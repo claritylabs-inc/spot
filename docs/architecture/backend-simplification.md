@@ -4,17 +4,19 @@ Status: implementation authorized; audited against 4f83f618 on 2026-09-14. Relea
 
 ## Accepted scope update
 
-The operator refined the rule during implementation: retain fields required by routine reads or executable logic; delete unused fields; move all other mutable narrative into Markdown. This applies across the entire platform. Standard `.md` documents with YAML front matter replace section-row storage, including company wikis and named procurement packet files. This supersedes the section-based recommendations in the historical audit below.
+The operator refined the rule during implementation: retain fields required by routine reads or executable logic; delete unused fields; move mutable narrative into standard Markdown with YAML front matter. This applies across the platform. The latest procurement decision is exactly two files per request: `private.md` and `public.md`. This supersedes both section-row storage and the intermediate design with arbitrary packet files and separate intake, outreach-log, and file-note documents.
 
-Implemented widening changes also cover request intake, outreach logs, procurement file notes, requirement/holder notes and certificate review/delivery notes. Standard YAML is parsed safely with the `yaml` package; no custom file format or fixed section schema is required for authored content. The canonical text lives in Convex for transactional querying, with ordinary `.md` import/export. Indexed owner/kind/revision fields bind the document to its resource and protect concurrent edits. A single `visibility: private | shared` front-matter value controls readership within that resource; it cannot grant cross-organization access or editing authority. Packet files may have ordinary names and do not require separate audience-specific models. Notes use the same permission rule. Existing issued snapshots remain immutable. Request intake is a single named packet file, not a separate private record copied into shared content.
+`private.md` holds internal work, broker observations, follow-ups, and file-handling notes. `public.md` holds shared submission material and initial request narrative by default; explicitly private operator intake belongs in `private.md`. Their YAML visibility is `private` and `shared`, respectively. Authors choose ordinary headings and metadata freely; there is no required section schema or nested metadata model. Public means accessible through authorized request access or an issued packet link, not publication to the anonymous internet. Operators read both files; tenant/broker sharing excludes private content.
+
+The canonical text lives in `markdownDocuments` for transactional persistence, with ordinary `.md` import/export and expected-revision checks. Indexed ownership, workflow state, approvals, source references, and values required for routine decisions remain structured. Company wikis and compliance/certificate notes use the same Markdown primitive under their own resource ownership. Existing issued packet/certificate snapshots and original source evidence remain immutable.
 
 ## Execution record
 
-- Audited the full backend and implemented canonical client identity, mandatory source-cited research, standard Markdown files, simple front-matter visibility, and bounded legacy cleanup.
-- Local widening deployment succeeded. The migration exported a database/file-storage backup, converted the seeded wiki and packet records, and reached zero residuals across every verification page.
-- A full second local migration reached the same zero residuals with no changed, updated, or deleted records.
-- The combined suite passed 650 tests before the final single-file intake privacy regression was added. Focused browser checks covered wiki edit/autosave, Markdown import/download, and mobile layouts. Final commit validation and production results follow when completed.
-- Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending.
+- Audited the full backend and implemented canonical client identity, mandatory source-cited research, standard Markdown storage, and bounded legacy cleanup.
+- The preceding widening implementation passed local deployment, a database/file-storage backup and migration, all-page zero-residual verification, and an idempotent second migration.
+- That preceding implementation passed 651 tests, lint, production and worker builds, router-contract checks, and focused wiki browser checks. These results predate the latest two-file procurement decision and do not validate its final implementation.
+- The two-file API, UI, agent-tool, and migration changes are being implemented. Combined tests, local migration/idempotency checks, and browser verification must run again against the final change.
+- Production widening, production audit/migration, verified schema narrowing, and final release checks remain pending. No production completion is claimed here.
 
 ## Outcome
 
@@ -47,7 +49,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 - Add client identity normalization, complete tool profile support, classification validation and durable research workflow.
 - Fix email preview to use the same canonical send envelope as actual delivery, including deliberate removal of CC/BCC. Preserve old rendered snapshots and legacy fallback while stored data remains mixed.
-- Stop duplicate outreach contact and obsolete packet snapshot writes. Remove unused legacy intake/reconciliation APIs after caller proof.
+- Consolidate request prose into private.md/public.md; route all request, outreach, file, scan, and agent prose writes through those two files. Stop separate intake/log/file-note writes and duplicate outreach contact/obsolete packet snapshots.
 - Remove unused policy reconciliation state and compatibility source-chunk DB persistence; keep raw spans, nodes, vector document chunks and worker wire/manifest contracts.
 - Simplify certificate workflow settings to the actual per-client renewal toggle; widen obsolete required settings before stopping writes.
 - Stop obsolete conversation-vector storage/API references; preserve actual thread history and wiki.
@@ -59,7 +61,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 - Deploy A through the normal main release workflow. Record exact commit, Convex target, Railway readiness and Vercel result.
 - Export/retain a database backup before destructive cleanup; report counts, conflicts and legacy-only payloads without printing confidential content.
 - Run new fixed-scope migration pages and existing applicable wiki/provider-key/COI/Slack/procurement gates. Require complete cursors, zero residual fields/rows and no unresolved blockers before narrowing.
-- Preserve old artifacts, private evidence, and uncertain client identities. Legacy request documents/activities, policy update history and old certificate links require explicit mapping of any material content; a missing active writer is not permission to lose it.
+- Merge legacy packet/intake/log/file-note content into the correct request file without changing its audience or issued snapshots. Preserve unique historical prose and source references; require verified conversion before deleting obsolete rows. Inventory unused history stores, archive material records losslessly where needed, then remove the dead stores. Keep uncertain client identities unresolved.
 - Re-run pages to prove idempotency. Verify source removal/retry, manual edit preservation, exact approvals and legacy transport compatibility on bounded fixtures.
 
 ### C. Narrow verified obsolete schema
@@ -178,7 +180,7 @@ Read-only repository audit. No target database row counts or migration execution
 - `migrations:runCompanyWikiLegacyPurge` (`:495`) backfills missing fact sections, unsets connectedEmailAutomationItems.memoryIds and companyInformationExtractions.procurementFacts, then deletes orgMemory/procurementMemory. This is an existing gate, not a novel finding.
 - `migrations:runProposalReviewPacketBackfill` only removes unconfirmable pre-packet reviews; extend cleanup + stop writers before revision-field narrowing.
 - `migrations:runLegacyCoiAttachmentAuthorizationCleanup` (`:444`) + `pendingEmails:verifyLegacyCoiAttachmentAuthorizationCleanup` gates removal of allowMultipleCoiAttachments. Preserve exact coiBatchAuthorization fingerprint binding.
-- No existing dedicated migration migrates legacy procurementRequestDocuments, material procurementRequestActivities, or drafts/specifications to packet sections. Must inventory and explicitly map; never automatically confirm extracted obligations or widen visibility.
+- At audit time, no dedicated migration preserved legacy procurementRequestDocuments, material procurementRequestActivities, or drafts/specifications in the request’s Markdown files. Must inventory and explicitly map; never automatically confirm extracted obligations or widen visibility.
 
 ## Table coverage: keep/change rationale
 
@@ -196,7 +198,7 @@ Read-only repository audit. No target database row counts or migration execution
 | procurementSmsEvents (3042) | Keep provider receipt/delivery ledger separate from customer channels. Provider event/message IDs serve different dedupe identities. |
 | procurementRequirementDrafts (3074) | Retire legacy callable intake path only after preserving drafts/evidence without confirming them. |
 | procurementRequestRequirements (3096) | Retire compatibility links after packet migration/review binding. Do not delete canonical insuranceRequirements shared with compliance. |
-| procurementSpecifications (3107) | Move request-only fact prose to appropriate packet sections; currently still callable writer, so stop/redirect writer first. |
+| procurementSpecifications (3107) | Move request-only fact prose to private.md/public.md according to existing audience; currently still callable writer, so stop/redirect writer first. |
 | procurementRequestActivities (3124) | Existing orphan store; migrate material messages/status evidence to canonical audit/correspondence, preserve client visibility, then drop. |
 | procurementRequestDocuments (3142) | Existing orphan store; canonical clientFiles + associations. Preserve blobs/visibility before removal. |
 | procurementPacketSections (3161) | Keep ordered markdown, audience ladder, proposed edits and source references. Proposals/manual ownership are workflow state, not redundant copies. |

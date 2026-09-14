@@ -63,12 +63,13 @@ type PolicyOption = {
 type ProcurementRequestRow = {
   _id: Id<"procurementRequests">;
   title: string;
-  narrative: string;
   status: ProcurementRequestStatus;
   targetEffectiveDate?: string;
   forwardingAddress: string;
   replacingPolicy: { label: string } | null;
-  completionOutcome?: React.ComponentProps<typeof RequestCompletionOutcome>["outcome"];
+  completionOutcome?: React.ComponentProps<
+    typeof RequestCompletionOutcome
+  >["outcome"];
   resultingPolicy: { label: string } | null;
   brokerCount: number;
   quoteCount: number;
@@ -139,14 +140,6 @@ function ProcurementRequestPreview({
           />
         </OperationalLabelValueList>
 
-        <OperationalLabelValueList title="Client brief">
-          <OperationalLabelValueRow
-            label="Request"
-            value={request.narrative}
-            layout="stacked"
-          />
-        </OperationalLabelValueList>
-
         <OperationalLabelValueList title="Forwarding email">
           <OperationalLabelValueRow
             label="Address"
@@ -195,7 +188,7 @@ function NewProcurementRequestDrawer({
 
   async function create() {
     if (!title.trim() || !narrative.trim()) {
-      toast.error("Enter a title and what the client asked for");
+      toast.error("Enter a title and content for public.md");
       return;
     }
     setSaving(true);
@@ -262,14 +255,14 @@ function NewProcurementRequestDrawer({
           <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            What the client asked for
+            public.md
           </span>
           <Textarea
             value={narrative}
             onChange={(event) => setNarrative(event.target.value)}
             className="min-h-32"
             maxLength={20_000}
-            placeholder="The client’s goals, coverage needs, timing, and constraints in their own terms. This starts the packet; refine it there."
+            placeholder="The client’s goals, coverage needs, timing, and constraints."
           />
         </label>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

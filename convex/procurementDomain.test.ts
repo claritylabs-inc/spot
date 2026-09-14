@@ -17,7 +17,6 @@ import {
 import { upsertPacketSectionByOperator } from "./procurementPacket";
 import schema from "./schema";
 import { stringifyMarkdownDocument } from "./lib/markdownDocument";
-import { readOutreachLog } from "./lib/outreachLog";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -154,9 +153,9 @@ describe("procurement domain boundaries", () => {
     });
     const edits = {
       requestId,
-      filename: "request-intake.md",
+      filename: "public.md",
       expectedRevision: initial.documents.find(
-        (document) => document.filename === "request-intake.md",
+        (document) => document.filename === "public.md",
       )!.revision,
       markdown: stringifyMarkdownDocument(
         { title: "Packet" },
@@ -206,7 +205,7 @@ describe("procurement domain boundaries", () => {
     const client = await f.client.query(api.clientProcurementRequests.get, {
       requestId,
     });
-    expect(client.narrative).toBe("");
+    expect(client).not.toHaveProperty("narrative");
     expect(JSON.stringify(client)).not.toContain("Private negotiation facts");
     expect(JSON.stringify(client)).not.toContain("Private metadata");
     const broker = await f.operator.query(api.procurementPacket.preview, {
@@ -228,38 +227,17 @@ describe("procurement domain boundaries", () => {
     const operator = await f.operator.query(api.procurementPacket.get, {
       requestId,
     });
-    expect(operator.documents).toHaveLength(1);
-    expect(operator.documents[0].filename).toBe("request-intake.md");
+    expect(operator.documents).toHaveLength(2);
+    expect(operator.documents[0].filename).toBe("private.md");
     expect(operator.markdown).toContain("Private negotiation facts");
     await expect(
       f.client.mutation(api.procurementPacket.updateDocument, {
         requestId,
-        filename: "request-intake.md",
+        filename: "private.md",
         expectedRevision: operator.documents[0].revision,
         markdown: "Client cannot replace private intake",
       }),
     ).rejects.toThrow();
-  });
-
-  test("rejects oversized outreach logs without losing existing content", async () => {
-    const f = await fixture();
-    const { requestId } = await createRequest(f, "Long outreach log");
-    const { outreachId } = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
-      {
-        requestId,
-        brokerOrgId: f.brokerOrgId,
-        log: "Keep this log",
-      },
-    );
-    const before = await f.t.run((ctx) => ctx.db.get(outreachId));
-    await expect(
-      f.operator.mutation(api.procurementRequests.updateOutreach, {
-        outreachId,
-        log: "x".repeat(20_001),
-      }),
-    ).rejects.toThrow("Log must be");
-    expect(await f.t.run((ctx) => ctx.db.get(outreachId))).toEqual(before);
   });
 
   test("automatically creates one shared packet link for every new request", async () => {
@@ -287,27 +265,6 @@ describe("procurement domain boundaries", () => {
         }),
       ]);
     }
-  });
-
-  test("edits the canonical outreach Markdown log", async () => {
-    const f = await fixture();
-    const { requestId } = await createRequest(f, "Broker log");
-    const { outreachId } = await f.operator.mutation(
-      api.procurementRequests.createOutreach,
-      {
-        requestId,
-        brokerOrgId: f.brokerOrgId,
-        log: "Initial contact sent.",
-      },
-    );
-    await f.operator.mutation(api.procurementRequests.updateOutreach, {
-      outreachId,
-      log: "- Followed up with underwriting.",
-    });
-    const stored = await f.t.run((ctx) => ctx.db.get(outreachId));
-    expect(await f.t.run((ctx) => readOutreachLog(ctx, stored!))).toBe(
-      "- Followed up with underwriting.",
-    );
   });
 
   test("stores client request uploads as canonical artifacts without activity rows", async () => {
@@ -688,7 +645,6 @@ describe("procurement domain boundaries", () => {
     expect(dto).toMatchObject({
       title: "Property renewal",
       status: "submitted",
-      narrative: "We need property coverage",
     });
     expect(dto).not.toHaveProperty("proposals");
     expect(dto).not.toHaveProperty("outreaches");

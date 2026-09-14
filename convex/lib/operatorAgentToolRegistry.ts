@@ -677,7 +677,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   lookup_procurement_packet: defineOperatorTool({
     version: 2,
     description:
-      "Read the named Markdown files for a procurement request, including their front-matter visibility and revisions. Use preview_broker_packet to inspect shared content.",
+      "Read private.md and public.md for a procurement request, including their revisions. All request prose lives in these two files. Use preview_broker_packet to inspect public.md and released attachments.",
     inputSchema: z.object({
       procurementRequestId,
     }),
@@ -725,16 +725,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `List broker packet links for request ${input.procurementRequestId}`,
   }),
   update_procurement_packet: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Create or replace a named packet .md file. Set visibility: private or shared in YAML front matter; shared files are visible identically to clients and brokers. Read lookup_procurement_packet first and preserve existing content. expectedRevision is 0 for a new filename and the read revision for edits.",
+      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, broker outreach history, and follow-ups in these files.",
     inputSchema: z.object({
       procurementRequestId,
-      filename: z
-        .string()
-        .min(4)
-        .max(120)
-        .regex(/^[^/\\]+\.md$/i),
+      filename: z.enum(["private.md", "public.md"]),
       markdown: z.string().max(524288),
       expectedRevision: z.number().int().min(0),
     }),
@@ -752,7 +748,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   list_procurement_requests: defineOperatorTool({
     version: 1,
     description:
-      "List new-policy procurement requests for one exact client organization, including the intake narrative, request-specific forwarding addresses, policy links, broker progress, files, and imported-email counts.",
+      "List new-policy procurement requests for one exact client organization, including request-specific forwarding addresses, policy links, broker progress, files, and imported-email counts.",
     inputSchema: z.object({
       orgId: organizationId,
       query: omittable(z.string().max(200)),
@@ -1159,7 +1155,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     // Invalidates pending confirmations created against the retired fields.
     version: 5,
     description:
-      "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
+      "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and initializes public.md, or private.md when its front matter explicitly sets visibility: private. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
     inputSchema: z.object({
       orgId: organizationId,
       title: z.string().min(1).max(200),
@@ -1193,14 +1189,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     },
   }),
   update_procurement_request: defineOperatorTool({
-    version: 4,
+    version: 5,
     description:
-      "Update supplied fields on one exact procurement request. Null clears an effective date or policy link; omitted fields stay unchanged.",
+      "Update supplied workflow fields on one exact procurement request. Edit prose through update_procurement_packet in private.md or public.md. Null clears an effective date or policy link; omitted fields stay unchanged.",
     inputSchema: z
       .object({
         procurementRequestId,
         title: omittable(z.string().min(1).max(200)),
-        narrative: omittable(z.string().min(1).max(20_000)),
         targetEffectiveDate: clearable(isoCalendarDate).describe(
           "Omit to preserve the saved date. Pass null only to deliberately clear it.",
         ),
@@ -1537,9 +1532,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_broker_outreach: defineOperatorTool({
-    version: 4,
+    version: 5,
     description:
-      "Add an external broker-network organization to an exact procurement request with a selected contact, workflow status, and optional Markdown log. Spot-owned acquisition organizations and contact domains are ineligible.",
+      "Add an external broker-network organization to an exact procurement request with a selected contact and workflow status. Keep outreach notes in the request’s private.md. Spot-owned acquisition organizations and contact domains are ineligible.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgId: organizationId,
@@ -1547,7 +1542,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       contactEmail: omittable(emailAddress),
       contactPhone: omittable(z.string().max(100)),
       status: omittable(procurementOutreachStatus),
-      log: omittable(z.string().max(20_000)),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -1561,9 +1555,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add broker ${input.brokerOrgId} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_broker_outreach: defineOperatorTool({
-    version: 4,
+    version: 5,
     description:
-      "Update supplied external broker outreach identity, exact workflow status, or its single Markdown log. Spot-owned acquisition organizations and contact domains are ineligible. File quote documents as private proposals.",
+      "Update supplied external broker outreach identity or workflow status. Keep outreach notes in the request’s private.md. Spot-owned acquisition organizations and contact domains are ineligible. File quote documents as private proposals.",
     inputSchema: z
       .object({
         procurementOutreachId,
@@ -1574,7 +1568,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         ),
         contactPhone: clearable(z.string().max(100)),
         status: omittable(procurementOutreachStatus),
-        log: clearable(z.string().max(20_000)),
       })
       .refine(
         (input) =>
@@ -1600,7 +1593,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_file_item: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
       "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional for a hidden requested document, but is required before the item can be client-visible or released to a broker.",
     inputSchema: z.object({
@@ -1618,7 +1611,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       clientVisible: omittable(z.boolean()).describe(
         "true requires clientFileId",
       ),
-      notes: omittable(z.string().max(20_000)),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -1632,9 +1624,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add ${input.purpose} ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_file_item: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Update a procurement file requirement or link. Null removes the linked outreach, shared client file, or notes without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file.",
+      "Update a procurement file requirement or link. Null removes the linked outreach or shared client file without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file. Keep file notes in private.md or public.md.",
     inputSchema: z
       .object({
         procurementFileItemId,
@@ -1651,7 +1643,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         clientVisible: omittable(z.boolean()).describe(
           "true requires an effective clientFileId",
         ),
-        notes: clearable(z.string().max(20_000)),
       })
       .refine(
         (input) =>

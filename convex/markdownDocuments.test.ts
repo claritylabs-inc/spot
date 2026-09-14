@@ -94,3 +94,64 @@ test("Markdown saves reject stale revisions and cross-organization document look
     ),
   ).rejects.toThrow(/scope/);
 });
+
+test("request files have fixed names and cannot change readership through front matter", async () => {
+  const t = convexTest(schema, modules);
+  const scope = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Client",
+      type: "client",
+    });
+    const userId = await ctx.db.insert("users", { name: "Operator" });
+    const requestId = await ctx.db.insert("procurementRequests", {
+      clientOrgId: orgId,
+      title: "Renewal",
+      status: "draft",
+      inboxToken: "fixed-files-test",
+      createdByUserId: userId,
+      updatedByUserId: userId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return { orgId, requestId, kind: "packet" as const };
+  });
+  for (const [filename, visibility] of [
+    ["private.md", "private"],
+    ["public.md", "shared"],
+  ]) {
+    const saved = await t.run((ctx) =>
+      saveMarkdownDocument(ctx, {
+        ...scope,
+        filename,
+        markdown: "Original notes",
+        expectedRevision: 0,
+      }),
+    );
+    expect(parseMarkdownDocument(saved.markdown).frontmatter.visibility).toBe(
+      visibility,
+    );
+    await expect(
+      t.run((ctx) =>
+        saveMarkdownDocument(ctx, {
+          ...scope,
+          filename,
+          markdown: stringifyMarkdownDocument(
+            { visibility: visibility === "private" ? "shared" : "private" },
+            "Moved notes",
+          ),
+          expectedRevision: saved.revision,
+        }),
+      ),
+    ).rejects.toThrow(/must have visibility/);
+  }
+  await expect(
+    t.run((ctx) =>
+      saveMarkdownDocument(ctx, {
+        ...scope,
+        filename: "market-log.md",
+        markdown: "Extra notes",
+        expectedRevision: 0,
+      }),
+    ),
+  ).rejects.toThrow(/only private.md and public.md/);
+});
