@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { makeFunctionReference } from "convex/server";
 import type { Id } from "../_generated/dataModel";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { googleWorkspaceCredentialEnvelope } from "./googleWorkspaceCredentials";
@@ -26,4 +27,21 @@ export async function assertGoogleWorkspaceScanSourceLease(ctx: QueryCtx | Mutat
   const mailbox = await ctx.db.get(source.mailboxId);
   if (!mailbox || mailbox.authorizationRevision !== live.config.authorizationRevision || mailbox.runId !== live.config.currentRunId) throw new Error("Workspace mailbox authorization is no longer current.");
   return { ...live, source };
+}
+
+/** Called only from operator activity mutations; rebinds preserved work to the verified current roster. */
+export async function retryGoogleWorkspaceScanSource(ctx: MutationCtx, args: {sourceId: Id<"operatorGoogleWorkspaceScanSources">}) {
+  const {config} = await requireLiveScan(ctx);
+  const source = await ctx.db.get(args.sourceId);
+  const mailbox = source ? await ctx.db.get(source.mailboxId) : null;
+  const run = config.currentRunId ? await ctx.db.get(config.currentRunId) : null;
+  if (!source || !mailbox || !run?.directoryComplete || mailbox.runId !== run._id || mailbox.authorizationRevision !== config.authorizationRevision) throw new Error("Wait for Directory refresh to verify this source mailbox before retrying.");
+  if (source.leaseToken && (source.leaseUntil ?? 0) > dayjs().valueOf()) throw new Error("This source is already being processed.");
+  const terminal = ["completed", "failed", "needs_attention", "excluded"].includes(source.status);
+  const sameRun = source.runId === run._id;
+  await ctx.db.patch(source._id, {runId:run._id, authorizationRevision:config.authorizationRevision, status:"ready", leaseToken:undefined,leaseUntil:undefined,nextAttemptAt:dayjs().valueOf(),attempts:0,error:undefined});
+  await ctx.db.patch(run._id,{phase:run.completedMailboxes === run.discoveredMailboxes ? "reconciliation" : "collection",finishedAt:undefined,
+    pendingSources:run.pendingSources + (terminal || !sameRun ? 1 : 0),
+    reconciledSources:Math.max(0,run.reconciledSources - (sameRun && terminal && source.status !== "excluded" ? 1 : 0))});
+  await ctx.scheduler.runAfter(0,makeFunctionReference<"mutation",Record<string,never>,null>("operatorGoogleWorkspaceScan:dispatchInternal"),{});
 }
