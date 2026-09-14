@@ -120,7 +120,6 @@ export type GoogleWorkspaceScanActivity = {
     href: string;
   }>;
   importState?: "queued" | "extracting" | "complete" | "error";
-  candidates?: { organizations: Array<{id: Id<"organizations">; label: string}>; requests: Array<{id: Id<"procurementRequests">; label: string}> };
   availableActions: Array<"resolve" | "dismiss" | "retry" | "correct">;
 };
 export type GoogleWorkspaceScanActivityResolution = {
