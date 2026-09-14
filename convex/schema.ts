@@ -1,3 +1,4 @@
+import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
@@ -456,6 +457,7 @@ const policyDeliveryRuleFiltersValidator = v.object({
 });
 
 export default defineSchema({
+  ...googleWorkspaceScanTables,
   ...authTables,
 
   // Override default users table with custom profile fields
