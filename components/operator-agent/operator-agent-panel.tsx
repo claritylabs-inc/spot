@@ -28,6 +28,7 @@ import {
 } from "@/components/spot-prompt-input";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
+import { OperationalPanel } from "@/components/ui/operational-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -122,6 +123,7 @@ function ConfirmationArtifact({
   busy: boolean;
   onDecision: (decision: "approve" | "reject") => void;
 }) {
+  const [title, ...details] = confirmation.title.split("\n");
   const presentation = (() => {
     switch (confirmation.state) {
       case "approved":
@@ -145,13 +147,30 @@ function ConfirmationArtifact({
   })();
 
   return (
-    <div className="border-l-2 border-border-emphasized pl-3">
-      <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
-      <p className={cn("mt-2 text-foreground", typeStyle("body.medium"))}>
-        {confirmation.title}
-      </p>
+    <OperationalPanel as="div" className="flex min-w-0 flex-wrap items-end gap-4 p-4">
+      <div className="min-w-0 flex-1 basis-80">
+        <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+        <p
+          className={cn(
+            "mt-2 break-words text-foreground",
+            typeStyle(details.length ? "body.medium" : "body.default"),
+          )}
+        >
+          {title}
+        </p>
+        {details.length ? (
+          <p
+            className={cn(
+              "mt-2 whitespace-pre-line break-words text-foreground",
+              typeStyle("body.default"),
+            )}
+          >
+            {details.join("\n")}
+          </p>
+        ) : null}
+      </div>
       {confirmation.state === "pending" && confirmation.actionable ? (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <PillButton
             size="compact"
             variant="secondary"
@@ -171,7 +190,7 @@ function ConfirmationArtifact({
           </PillButton>
         </div>
       ) : null}
-    </div>
+    </OperationalPanel>
   );
 }
 
