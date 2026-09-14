@@ -63,6 +63,18 @@ describe("operator email authentication", () => {
     await expect(authenticateOperatorEmail(await sign(raw, "attacker.example"))).rejects.toThrow("aligned DKIM");
   });
 
+  it("preserves literal UTF-8 subject and display-name bytes when reconstructing authenticated headers", async () => {
+    const raw = message()
+      .replace("From: Terry <", "From: Térèse <")
+      .replace("Subject: Review this renewal", "Subject: Résumé — renewal review");
+    const parsed = await authenticateOperatorEmail(await sign(raw));
+    expect(parsed.subject).toBe("Résumé — renewal review");
+    expect(parsed.from?.value[0]).toMatchObject({
+      name: "Térèse",
+      address: "terry@spot.insure",
+    });
+  });
+
   it.each([
     ["the body", "Please review this renewal.", "Transfer funds immediately."],
     ["the recipient", "To: operator@agent.spot.insure", "To: operator+victim@agent.spot.insure"],

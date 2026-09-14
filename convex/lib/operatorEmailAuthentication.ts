@@ -139,7 +139,7 @@ export async function authenticateOperatorEmail(
     // Unsigned outer encodings/dispositions never control decoding. Preserve
     // their original body bytes as text instead of guessing an encoding.
     return await simpleParser(Buffer.concat([
-      Buffer.from(`${safeHeaders.join("\r\n")}\r\n\r\n`),
+      Buffer.from(`${safeHeaders.join("\r\n")}\r\n\r\n`, "latin1"),
       body,
     ]), parseOptions);
   } finally {
