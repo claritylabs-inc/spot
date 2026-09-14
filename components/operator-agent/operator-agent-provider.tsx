@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { useSpotSync } from "@/lib/sync/spot-sync";
 
@@ -28,7 +28,7 @@ const OperatorAgentContext = createContext<OperatorAgentContextValue | null>(
   null,
 );
 
-function storageKey(userId: string, name: "open" | "thread") {
+function storageKey(userId: string, name: "open") {
   return `spot:operator-agent:${userId}:${name}`;
 }
 
@@ -37,10 +37,9 @@ function readStoredState(userId: string) {
     const storedOpen = localStorage.getItem(storageKey(userId, "open"));
     return {
       open: storedOpen === null ? true : storedOpen === "true",
-      threadId: localStorage.getItem(storageKey(userId, "thread")) || null,
     };
   } catch {
-    return { open: true, threadId: null };
+    return { open: true };
   }
 }
 
@@ -50,14 +49,40 @@ export function OperatorAgentProvider({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { scope } = useSpotSync();
+  const requestedThreadId = searchParams.get("agentThread");
+
+  return (
+    <OperatorAgentPageProvider
+      key={`${scope.userId}:${pathname}:${requestedThreadId ?? ""}`}
+      pathname={pathname}
+      userId={scope.userId ?? null}
+      requestedThreadId={requestedThreadId}
+    >
+      {children}
+    </OperatorAgentPageProvider>
+  );
+}
+
+function OperatorAgentPageProvider({
+  children,
+  pathname,
+  userId,
+  requestedThreadId,
+}: {
+  children: React.ReactNode;
+  pathname: string;
+  userId: string | null;
+  requestedThreadId: string | null;
+}) {
   const enabled =
     pathname.startsWith("/operator") &&
     !pathname.startsWith("/operator/login") &&
     !pathname.startsWith("/operator/threads");
   const [open, setOpen] = useState(true);
   const [activeThreadIdState, setActiveThreadIdState] = useState<string | null>(
-    null,
+    requestedThreadId,
   );
   const [detachedPageContextKey, setDetachedPageContextKey] = useState<
     string | null
@@ -65,40 +90,25 @@ export function OperatorAgentProvider({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      if (!scope.userId) {
+      if (!userId) {
         setOpen(true);
-        setActiveThreadIdState(null);
         return;
       }
-      const stored = readStoredState(scope.userId);
-      setOpen(stored.open);
-      setActiveThreadIdState(stored.threadId);
+      const stored = readStoredState(userId);
+      setOpen(requestedThreadId ? true : stored.open);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [scope.userId]);
+  }, [userId, requestedThreadId]);
 
   const persistOpen = useCallback(
     (next: boolean) => {
       setOpen(next);
-      if (!scope.userId) return;
+      if (!userId) return;
       try {
-        localStorage.setItem(storageKey(scope.userId, "open"), String(next));
+        localStorage.setItem(storageKey(userId, "open"), String(next));
       } catch {}
     },
-    [scope.userId],
-  );
-
-  const setActiveThreadId = useCallback(
-    (threadId: string | null) => {
-      setActiveThreadIdState(threadId);
-      if (!scope.userId) return;
-      try {
-        const key = storageKey(scope.userId, "thread");
-        if (threadId) localStorage.setItem(key, threadId);
-        else localStorage.removeItem(key);
-      } catch {}
-    },
-    [scope.userId],
+    [userId],
   );
 
   const value = useMemo<OperatorAgentContextValue>(
@@ -110,8 +120,14 @@ export function OperatorAgentProvider({
       attachPageContext: () => setDetachedPageContextKey(null),
       close: () => persistOpen(false),
       detachPageContext: setDetachedPageContextKey,
-      setActiveThreadId,
-      toggle: () => persistOpen(!open),
+      setActiveThreadId: setActiveThreadIdState,
+      toggle: () => {
+        if (!open) {
+          setActiveThreadIdState(null);
+          setDetachedPageContextKey(null);
+        }
+        persistOpen(!open);
+      },
     }),
     [
       activeThreadIdState,
@@ -119,7 +135,6 @@ export function OperatorAgentProvider({
       enabled,
       open,
       persistOpen,
-      setActiveThreadId,
     ],
   );
 

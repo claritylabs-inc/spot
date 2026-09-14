@@ -6,6 +6,7 @@ export interface PageContext {
   pageType: string;
   entityId?: string;
   summary?: string;
+  href?: string;
 }
 
 interface PageContextValue {

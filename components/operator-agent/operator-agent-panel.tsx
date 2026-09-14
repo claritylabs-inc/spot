@@ -12,7 +12,7 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useStickToBottom } from "use-stick-to-bottom";
 
@@ -611,6 +611,7 @@ export function OperatorAgentPanel({
 }) {
   const controller = useOptionalOperatorAgent();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { context: registeredPageContext } = usePageContext();
   const promptRef = useRef<SpotPromptInputHandle>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -649,8 +650,14 @@ export function OperatorAgentPanel({
     () => operatorPageContextFromPathname(pathname),
     [pathname],
   );
-  const currentPageContext =
-    variant === "rail" ? (registeredPageContext ?? fallbackPageContext) : null;
+  const currentPageContext = useMemo(() => {
+    const context = registeredPageContext ?? fallbackPageContext;
+    if (variant !== "rail" || !context) return null;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("agentThread");
+    const query = params.toString();
+    return { ...context, href: `${pathname}${query ? `?${query}` : ""}` };
+  }, [fallbackPageContext, pathname, registeredPageContext, searchParams, variant]);
   const recentContextThreads = useMemo(
     () =>
       currentPageContext
@@ -684,17 +691,6 @@ export function OperatorAgentPanel({
     displayedPageContext ? { pageContext: displayedPageContext } : {},
   );
   const running = detail.activeRun || submitting;
-
-  useEffect(() => {
-    if (
-      threadId ||
-      !controller ||
-      controller.activeThreadId ||
-      threads.length === 0
-    )
-      return;
-    controller.setActiveThreadId(threads[0].id);
-  }, [controller, threadId, threads]);
 
   const startNewThread = useCallback(async () => {
     if (!controller) throw new Error("Operator agent is unavailable");
@@ -900,7 +896,7 @@ export function OperatorAgentPanel({
                   )}
                 >
                   <span className="truncate">
-                    {activeThread?.title ?? "Operator agent"}
+                    {activeThread?.title ?? "New thread"}
                   </span>
                   <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
                 </button>

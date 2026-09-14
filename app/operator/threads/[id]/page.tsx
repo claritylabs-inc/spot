@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Plus } from "lucide-react";
+import { PanelsTopLeft, Plus } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -11,6 +11,7 @@ import { AppShell } from "@/components/app-shell";
 import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
 import { useOptionalOperatorAgent } from "@/components/operator-agent/operator-agent-provider";
 import { OperatorThreadChannelIcon } from "@/components/operator-agent/operator-thread-channel";
+import { operatorThreadContextHref } from "@/components/operator-agent/operator-page-context";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   normalizeOperatorAgentThread,
@@ -26,11 +27,10 @@ export default function OperatorThreadPage() {
     () => normalizeOperatorAgentThread(rawThread),
     [rawThread],
   );
+  const contextHref = detail.thread
+    ? operatorThreadContextHref(detail.thread)
+    : null;
   const createThread = useMutation(operatorAgentApi.createThread);
-
-  useEffect(() => {
-    controller?.setActiveThreadId(id);
-  }, [controller, id]);
 
   async function startThread() {
     try {
@@ -60,10 +60,22 @@ export default function OperatorThreadPage() {
         )
       }
       actions={
-        <PillButton type="button" onClick={() => void startThread()}>
-          <Plus className="size-4" />
-          New thread
-        </PillButton>
+        <>
+          {contextHref ? (
+            <PillButton
+              variant="secondary"
+              href={contextHref}
+              expandLabel
+              label="Open with context"
+            >
+              <PanelsTopLeft className="size-4" />
+            </PillButton>
+          ) : null}
+          <PillButton type="button" onClick={() => void startThread()}>
+            <Plus className="size-4" />
+            New thread
+          </PillButton>
+        </>
       }
       customSidebar={({ collapsed, onToggleCollapse }) => (
         <OperatorSidebar

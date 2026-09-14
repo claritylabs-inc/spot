@@ -9,6 +9,7 @@ import {
   Loader2,
   MessageSquare,
   Maximize2,
+  PanelsTopLeft,
   Plus,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -25,6 +26,7 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { OperationalPanel } from "@/components/ui/operational-panel";
+import { operatorThreadContextHref } from "@/components/operator-agent/operator-page-context";
 import { PillButton } from "@/components/ui/pill-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -62,6 +64,7 @@ export default function OperatorThreadsPage() {
     () => normalizeOperatorAgentThread(selectedRaw).thread,
     [selectedRaw],
   );
+  const contextHref = selected ? operatorThreadContextHref(selected) : null;
   const intents = useQuery(operatorAgentApi.listIntents, {});
   const threads = useMemo(
     () => normalizeOperatorAgentThreads(rawThreads),
@@ -154,6 +157,12 @@ export default function OperatorThreadsPage() {
                   <Maximize2 className="size-3.5" />
                   Open conversation
                 </PillButton>
+                {contextHref ? (
+                  <PillButton variant="secondary" href={contextHref}>
+                    <PanelsTopLeft className="size-3.5" />
+                    Open with context
+                  </PillButton>
+                ) : null}
                 <PillButton
                   variant={selected.archivedAt ? "secondary" : "destructive"}
                   disabled={updatingThreadId !== null}

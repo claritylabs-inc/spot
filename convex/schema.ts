@@ -4287,6 +4287,7 @@ export default defineSchema({
         pageType: v.string(),
         entityId: v.optional(v.string()),
         summary: v.optional(v.string()),
+        href: v.optional(v.string()),
       }),
     ),
     lastMessageAt: v.number(),

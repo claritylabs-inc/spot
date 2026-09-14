@@ -144,6 +144,7 @@ const pageContextValidator = v.object({
   pageType: v.string(),
   entityId: v.optional(v.string()),
   summary: v.optional(v.string()),
+  href: v.optional(v.string()),
 });
 
 const operatorToolExecutionArgs = {
@@ -840,13 +841,14 @@ function normalizedOptionalText(value: unknown) {
 
 function normalizeOperatorPageContext(
   context:
-    | { pageType: string; entityId?: string; summary?: string }
+    | { pageType: string; entityId?: string; summary?: string; href?: string }
     | undefined,
 ) {
   if (!context) return undefined;
   const pageType = context.pageType.trim();
   const entityId = context.entityId?.trim() || undefined;
   const summary = context.summary?.trim() || undefined;
+  const href = context.href?.trim() || undefined;
   if (!pageType || pageType.length > 100) {
     throw new Error("Operator page type must be 1–100 characters");
   }
@@ -856,10 +858,14 @@ function normalizeOperatorPageContext(
   if (summary && summary.length > 500) {
     throw new Error("Operator page summary must be at most 500 characters");
   }
+  if (href && href.length > 2000) {
+    throw new Error("Operator page URL must be at most 2000 characters");
+  }
   return {
     pageType,
     ...(entityId ? { entityId } : {}),
     ...(summary ? { summary } : {}),
+    ...(href ? { href } : {}),
   };
 }
 
@@ -1148,6 +1154,7 @@ async function insertOperatorThread(
       pageType: string;
       entityId?: string;
       summary?: string;
+      href?: string;
     };
     conversationKey?: string;
     visibility?: "private" | "shared";
@@ -1260,6 +1267,7 @@ export async function enqueueOperatorMessage(
       pageType: string;
       entityId?: string;
       summary?: string;
+      href?: string;
     };
     slackThreadContext?: SlackThreadContextSnapshot;
     toolArtifacts?: Array<{ type: string; data: unknown }>;
@@ -3350,6 +3358,32 @@ export const getThread = query({
       operator.userId,
       { allowShared: true },
     );
+    let initialContext = thread.initialContext;
+    if (initialContext?.entityId && !initialContext.href) {
+      let href: string | undefined;
+      if (initialContext.pageType === "procurement_request") {
+        const requestId = ctx.db.normalizeId(
+          "procurementRequests",
+          initialContext.entityId,
+        );
+        const request = requestId
+          ? await ctx.db.get("procurementRequests", requestId)
+          : null;
+        if (request) {
+          href = `/operator/clients/${request.clientOrgId}/procurement/${request._id}`;
+        }
+      } else if (initialContext.pageType === "policy") {
+        const policyId = ctx.db.normalizeId(
+          "policies",
+          initialContext.entityId,
+        );
+        const policy = policyId ? await ctx.db.get("policies", policyId) : null;
+        if (policy) {
+          href = `/operator/clients/${policy.orgId}/policies/${policy._id}`;
+        }
+      }
+      if (href) initialContext = { ...initialContext, href };
+    }
     const [messages, runs, confirmations] = await Promise.all([
       ctx.db
         .query("operatorAgentMessages")
@@ -3375,7 +3409,7 @@ export const getThread = query({
       runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
     const visibleMessageIds = new Set(messages.map((message) => message._id));
     return {
-      thread,
+      thread: { ...thread, initialContext },
       messages: messages.map((message) => ({
         ...message,
         toolCalls: message.toolCalls?.map((call) => ({
