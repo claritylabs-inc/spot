@@ -753,7 +753,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       orgId: organizationId,
       query: omittable(z.string().max(200)),
       status: omittable(procurementRequestStatus),
-      completionOutcome: omittable(completionOutcomeSchema),
       limit: omittable(z.number().int().min(1).max(100)),
     }),
     capability: "operator.procurement.read",
@@ -1163,6 +1162,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       narrative: z.string().min(1).max(20_000),
       targetEffectiveDate: omittable(isoCalendarDate),
       status: omittable(procurementRequestStatus),
+      completionOutcome: omittable(completionOutcomeSchema),
       clientVisible: omittable(z.boolean()),
       replacingPolicyId: omittable(policyId).describe(
         "Exact existing policy ID returned by a policy read tool. Omit it or send null for a new purchase or when no policy is being replaced; never use an organization ID.",

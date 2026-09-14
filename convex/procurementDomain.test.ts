@@ -1651,6 +1651,69 @@ describe("procurement domain boundaries", () => {
     );
   });
 
+  test("creates a completed outside purchase only after its registered exact confirmation", async () => {
+    const f = await fixture();
+    const threadId = await f.t.mutation(
+      internal.operatorAgent.createOrGetChannelThreadInternal,
+      {
+        operatorUserId: f.operatorUserId,
+        channel: "mcp",
+        conversationKey: "mcp:create-completed-procurement-request",
+      },
+    );
+    const completionOutcome = {
+      kind: "placed_elsewhere" as const,
+      provider: "GEICO",
+      purchaseDate: "2026-09-12",
+    };
+    const invoke = () =>
+      f.t.action(internal.operatorAgent.invokeRegisteredToolInternal, {
+        operatorUserId: f.operatorUserId,
+        threadId,
+        channel: "mcp",
+        toolName: "create_procurement_request",
+        input: {
+          orgId: f.clientOrgId,
+          title: "Completed auto purchase",
+          narrative: "Client bought auto insurance from GEICO.",
+          completionOutcome,
+        },
+        idempotencyKey: "create-completed-procurement-request-once",
+      });
+    const requested = await invoke();
+    if (
+      requested.outcome.status !== "confirmation_required" ||
+      !requested.outcome.confirmationId
+    )
+      throw new Error("Expected exact procurement-creation confirmation");
+    expect(
+      await f.t.run((ctx) => ctx.db.query("procurementRequests").collect()),
+    ).toEqual([]);
+
+    await expect(
+      f.t.mutation(internal.operatorAgent.confirmActionInternal, {
+        operatorUserId: f.operatorUserId,
+        threadId,
+        confirmationId: requested.outcome.confirmationId,
+        decision: "approve",
+        channel: "mcp",
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(await invoke()).toMatchObject({
+      outcome: { status: "succeeded", idempotent: true },
+    });
+    const requests = await f.t.run((ctx) =>
+      ctx.db.query("procurementRequests").collect(),
+    );
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      clientOrgId: f.clientOrgId,
+      status: "completed",
+      completionOutcome,
+    });
+    expect(requests[0].resultingPolicyId).toBeUndefined();
+  });
+
   test("approves a month-old standalone client proposal through the exact-confirmed shared registry", async () => {
     vi.useFakeTimers();
     const f = await fixture();

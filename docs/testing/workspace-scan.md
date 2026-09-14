@@ -95,3 +95,17 @@ a route present in the successful production build. Restarting Next with only
 its stale `.next/dev` cache moved aside restored the route; the identical browser
 workflow then passed. No application code, auth state or database reset was
 needed. This was an environment recovery, not a passed assertion before retry.
+
+## PR review follow-up — September 14, 2026
+
+Review added mailbox authorization revalidation after Directory verification,
+rejection of overlapping operation keys before applying a generated batch, and
+the missing reported-purchase input on the registered request-creation tool.
+Regressions cover pause during each mailbox phase, an unapplied overlapping
+batch that becomes Needs attention, and exact-confirmed creation with idempotent
+replay. After merging the current `main`, the full suite passed 136 files and
+558 tests; the final tool-input fix then passed all 29 procurement domain tests.
+TypeScript, repository-wide ESLint, the production build, and diff checks also
+passed on the combined branch.
+The broker UI fixes and their visible desktop acceptance are recorded in
+`workflow-qa.md`. Live scheduled Gmail-to-extraction acceptance remains untested.
