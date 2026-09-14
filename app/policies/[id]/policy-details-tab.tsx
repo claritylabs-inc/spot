@@ -10,6 +10,8 @@ import { policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import type { Id } from "@/convex/_generated/dataModel";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
 import type { CarrierIdentity } from "@/convex/lib/carrierIdentity";
+import { isNonInsuranceDocument } from "@/convex/lib/policyDocumentGate";
+import { typeStyle } from "@/lib/typography";
 
 import { PolicySummary } from "./policy-summary";
 import { PolicyPartiesPanel } from "./policy-parties-panel";
@@ -37,6 +39,8 @@ export function PolicyDetailsTab({
     isRenewal?: boolean;
     programName?: string;
     productIdentity?: unknown;
+    pipelineStatus?: string;
+    pipelineError?: string;
   };
   fileUrl?: string | null;
   canEdit?: boolean;
@@ -47,6 +51,20 @@ export function PolicyDetailsTab({
     policy.extractionDataStage === "preview" &&
     policy.pipelineStatus !== "complete";
   const partyContext = resolvePolicyPartyContext(policy);
+
+  if (
+    policy.pipelineStatus === "error" &&
+    isNonInsuranceDocument(policy.pipelineError)
+  ) {
+    return (
+      <OperationalPanel className="p-5">
+        <StatusTag tone="warning">Not a policy</StatusTag>
+        <p className={`mt-3 text-muted-foreground ${typeStyle("body.default")}`}>
+          {policy.pipelineError}
+        </p>
+      </OperationalPanel>
+    );
+  }
 
   return (
     <FadeIn when={true} staggerIndex={1} duration={0.5}>
@@ -81,6 +99,10 @@ export function PolicyDetailsTab({
         operationsDescription={partyContext.operationsDescription}
         isRenewal={policy.isRenewal}
         pdfUrl={fileUrl ?? undefined}
+        isExtracting={
+          !policy.deletedAt &&
+          (policy.pipelineStatus === "idle" || policy.pipelineStatus === "running")
+        }
         onEdit={canEdit && onEdit ? () => onEdit("overview") : undefined}
       />
       <PolicyPartiesPanel

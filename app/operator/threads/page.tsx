@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
   Archive,
   ArchiveRestore,
+  ArrowUpRight,
   Loader2,
   MessageSquare,
   Maximize2,
@@ -203,29 +204,10 @@ export default function OperatorThreadsPage() {
             )
           }
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <TabsList variant="pill">
-              <TabsTrigger value="active">Active</TabsTrigger>
-              <TabsTrigger value="archived">Archived</TabsTrigger>
-            </TabsList>
-            <div className="flex flex-wrap gap-2 sm:ml-auto">
-              {intents?.map((intent) => (
-                <PillButton
-                  key={intent.id}
-                  type="button"
-                  size="compact"
-                  variant="secondary"
-                  disabled={launchingIntentId !== null}
-                  onClick={() => void launchIntent(intent.id)}
-                >
-                  {launchingIntentId === intent.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : null}
-                  {intent.label}
-                </PillButton>
-              ))}
-            </div>
-          </div>
+          <TabsList variant="pill">
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="archived">Archived</TabsTrigger>
+          </TabsList>
         </Tabs>
 
         {rawThreads === undefined ? (
@@ -318,6 +300,40 @@ export default function OperatorThreadsPage() {
             </Table>
           </OperationalPanel>
         )}
+        {intents && intents.length > 0 ? (
+          <section aria-labelledby="suggested-prompts-heading" className="pt-2">
+            <h2
+              id="suggested-prompts-heading"
+              className={`mb-2 text-muted-foreground ${typeStyle("caption.medium")}`}
+            >
+              Suggested prompts
+            </h2>
+            <div className="grid gap-x-6 sm:grid-cols-2">
+              {intents.map((intent) => (
+                <button
+                  key={intent.id}
+                  type="button"
+                  disabled={launchingIntentId !== null}
+                  onClick={() => void launchIntent(intent.id)}
+                  className={`flex w-full items-center justify-between gap-3 border-b border-border py-3 text-left text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 ${typeStyle("caption.medium")}`}
+                >
+                  <span>{intent.label}</span>
+                  {launchingIntentId === intent.id ? (
+                    <Loader2
+                      className="size-3.5 shrink-0 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <ArrowUpRight
+                      className="size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </AppShell>
   );

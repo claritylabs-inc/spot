@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -208,6 +208,56 @@ function ConfirmationArtifact({
   );
 }
 
+function isAutoApproved(confirmation: OperatorAgentConfirmation) {
+  return (
+    confirmation.state === "approved" &&
+    confirmation.approvalMode === "automatic"
+  );
+}
+
+function ConfirmationArtifacts({
+  confirmations,
+  renderConfirmation,
+}: {
+  confirmations: OperatorAgentConfirmation[];
+  renderConfirmation: (confirmation: OperatorAgentConfirmation) => ReactNode;
+}) {
+  const groups: OperatorAgentConfirmation[][] = [];
+  for (const confirmation of confirmations) {
+    const previous = groups.at(-1);
+    if (
+      isAutoApproved(confirmation) &&
+      previous &&
+      isAutoApproved(previous[0])
+    ) {
+      previous.push(confirmation);
+    } else {
+      groups.push([confirmation]);
+    }
+  }
+
+  return groups.map((group) =>
+    isAutoApproved(group[0]) ? (
+      <details key={group[0].id} className="group/approvals min-w-0">
+        <summary
+          className={cn(
+            "flex w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden",
+            typeStyle("caption.default"),
+          )}
+        >
+          <ChevronRight className="size-4 shrink-0 group-open/approvals:rotate-90" />
+          <span>
+            {group.length} {group.length === 1 ? "task" : "tasks"} auto-approved
+          </span>
+        </summary>
+        <div className="space-y-4">{group.map(renderConfirmation)}</div>
+      </details>
+    ) : (
+      <Fragment key={group[0].id}>{renderConfirmation(group[0])}</Fragment>
+    ),
+  );
+}
+
 function EmptyThread({
   intents,
   launchingIntentId,
@@ -361,25 +411,27 @@ function OperatorMessageRow({
             {formatDisplayDateTime(message.createdAt)}
           </span>
         </div>
-        <ThreadMessageBubble
-          role="user"
-          channel={bubbleChannel}
-          isOwnMessage
-          isError={message.status === "error"}
-        >
-          {content ? (
-            message.channel === "email" ? (
-              <OperatorEmailMessage message={message} />
-            ) : message.channel === "slack" ? (
-              <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
-                {content}
-              </ProseMarkdown>
-            ) : (
-              <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
-            )
-          ) : null}
-          {attachments}
-        </ThreadMessageBubble>
+        {message.channel === "email" && content ? (
+          <OperatorEmailMessage message={message} attachments={attachments} />
+        ) : (
+          <ThreadMessageBubble
+            role="user"
+            channel={bubbleChannel}
+            isOwnMessage
+            isError={message.status === "error"}
+          >
+            {content ? (
+              message.channel === "slack" ? (
+                <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
+                  {content}
+                </ProseMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
+              )
+            ) : null}
+            {attachments}
+          </ThreadMessageBubble>
+        )}
       </div>
     </div>
   );
@@ -496,27 +548,42 @@ function OperatorConversation({
                       }
                     />
                   )}
-                  {confirmations.map((confirmation) => (
-                    <div key={confirmation.id} className="w-full">
-                      <ConfirmationArtifact
-                        confirmation={confirmation}
-                        busy={confirmationBusyId === confirmation.id}
-                        onDecision={(decision) =>
-                          onDecision(confirmation, decision)
-                        }
-                      />
-                      {message.isDirectToolRequest ? (
-                        <div className="mt-2">
-                          <OperatorToolActivity
-                            request={message}
-                            response={response}
-                            awaitingApproval={confirmation.state === "pending"}
-                            detailsOnly
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
+                  <ConfirmationArtifacts
+                    confirmations={confirmations}
+                    renderConfirmation={(confirmation) => (
+                      <div key={confirmation.id} className="w-full">
+                        <ConfirmationArtifact
+                          confirmation={confirmation}
+                          busy={confirmationBusyId === confirmation.id}
+                          onDecision={(decision) =>
+                            onDecision(confirmation, decision)
+                          }
+                        />
+                        {message.isDirectToolRequest &&
+                        !isAutoApproved(confirmation) ? (
+                          <div className="mt-2">
+                            <OperatorToolActivity
+                              request={message}
+                              response={response}
+                              awaitingApproval={
+                                confirmation.state === "pending"
+                              }
+                              detailsOnly
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  />
+                  {message.isDirectToolRequest &&
+                  confirmations.some(isAutoApproved) ? (
+                    <OperatorToolActivity
+                      request={message}
+                      response={response}
+                      awaitingApproval={false}
+                      detailsOnly
+                    />
+                  ) : null}
                 </Fragment>
               );
             })

@@ -14,6 +14,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { isNonInsuranceDocument } from "@/convex/lib/policyDocumentGate";
 
 type RetryMode = "resume" | "restart";
 
@@ -69,10 +70,6 @@ function isFinalStatus(status?: string | null, stage?: string | null) {
 
 function isPreviewStatus(status?: string | null, stage?: string | null) {
   return stage === "preview" && status !== "complete";
-}
-
-function isNonInsuranceDocument(error?: string | null) {
-  return error?.startsWith("This document is not a bound insurance policy");
 }
 
 function showExtractionStatusToast({
