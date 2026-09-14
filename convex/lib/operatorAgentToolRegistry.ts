@@ -1,3 +1,4 @@
+import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 
 import { ORG_WIKI_SECTION_KEYS } from "./orgWiki";
@@ -751,6 +752,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       orgId: organizationId,
       query: omittable(z.string().max(200)),
       status: omittable(procurementRequestStatus),
+      completionOutcome: omittable(completionOutcomeSchema),
       limit: omittable(z.number().int().min(1).max(100)),
     }),
     capability: "operator.procurement.read",
@@ -1151,7 +1153,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_procurement_request: defineOperatorTool({
     // Invalidates pending confirmations created against the retired fields.
-    version: 4,
+    version: 5,
     description:
       "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and seeds the packet's client-narrative section. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
     inputSchema: z.object({
@@ -1186,7 +1188,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     },
   }),
   update_procurement_request: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
       "Update supplied fields on one exact procurement request. Null clears an effective date or policy link; omitted fields stay unchanged.",
     inputSchema: z
@@ -1198,6 +1200,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
           "Omit to preserve the saved date. Pass null only to deliberately clear it.",
         ),
         status: omittable(procurementRequestStatus),
+        completionOutcome: clearable(completionOutcomeSchema),
         clientVisible: omittable(z.boolean()),
         replacingPolicyId: clearable(policyId),
         resultingPolicyId: clearable(policyId),
