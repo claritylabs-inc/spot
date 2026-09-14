@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { ThreadMessageBubble } from "@/components/agent-thread/message-bubble";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import {
   OperationalPanel,
@@ -76,8 +78,10 @@ function legacyEmail(content: string) {
 
 export function OperatorEmailMessage({
   message,
+  attachments,
 }: {
-  message: Pick<OperatorAgentMessage, "content" | "emailContent">;
+  message: Pick<OperatorAgentMessage, "content" | "emailContent" | "status">;
+  attachments?: ReactNode;
 }) {
   const email = message.emailContent;
   const legacy = email ? null : legacyEmail(message.content);
@@ -108,16 +112,26 @@ export function OperatorEmailMessage({
 
   return (
     <div className="min-w-0 space-y-3">
-      {subject ? (
-        <p
-          className={`wrap-anywhere text-muted-foreground ${typeStyle("caption.medium")}`}
-        >
-          {subject}
-        </p>
-      ) : null}
-      {currentText ? (
-        <p className="whitespace-pre-wrap wrap-anywhere">{currentText}</p>
-      ) : null}
+      <ThreadMessageBubble
+        role="user"
+        channel="email"
+        isOwnMessage
+        isError={message.status === "error"}
+      >
+        <div className="min-w-0 space-y-3">
+          {subject ? (
+            <p
+              className={`wrap-anywhere text-muted-foreground ${typeStyle("caption.medium")}`}
+            >
+              {subject}
+            </p>
+          ) : null}
+          {currentText ? (
+            <p className="whitespace-pre-wrap wrap-anywhere">{currentText}</p>
+          ) : null}
+        </div>
+        {attachments}
+      </ThreadMessageBubble>
       {sections.map((section, index) => (
         <OperationalPanel
           key={index}

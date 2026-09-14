@@ -411,25 +411,27 @@ function OperatorMessageRow({
             {formatDisplayDateTime(message.createdAt)}
           </span>
         </div>
-        <ThreadMessageBubble
-          role="user"
-          channel={bubbleChannel}
-          isOwnMessage
-          isError={message.status === "error"}
-        >
-          {content ? (
-            message.channel === "email" ? (
-              <OperatorEmailMessage message={message} />
-            ) : message.channel === "slack" ? (
-              <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
-                {content}
-              </ProseMarkdown>
-            ) : (
-              <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
-            )
-          ) : null}
-          {attachments}
-        </ThreadMessageBubble>
+        {message.channel === "email" && content ? (
+          <OperatorEmailMessage message={message} attachments={attachments} />
+        ) : (
+          <ThreadMessageBubble
+            role="user"
+            channel={bubbleChannel}
+            isOwnMessage
+            isError={message.status === "error"}
+          >
+            {content ? (
+              message.channel === "slack" ? (
+                <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
+                  {content}
+                </ProseMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
+              )
+            ) : null}
+            {attachments}
+          </ThreadMessageBubble>
+        )}
       </div>
     </div>
   );
