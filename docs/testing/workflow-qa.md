@@ -427,3 +427,14 @@ focused runtime/auth/replay/checkpoint regressions, application build and
 TypeScript, changed-source ESLint, diff checks, and native-local Convex codegen,
 typecheck, and deployment. Those full checks were not redundantly rerun in this
 workspace.
+
+
+## Scheduled Workspace integration acceptance
+
+The [scheduled reconciliation ledger](workspace-scan.md) records collection,
+authorization, domain/import and UI evidence for the integrated feature. Final
+headless checks used captured local OTPs in isolated operator/client profiles:
+disabled defaults, keyboard activity and provenance, reported external purchase,
+conditional correction and later-change conflict, and client-safe mobile outcome.
+Fixtures were cleaned or restored. Visible desktop and live provider-to-extraction
+browser execution were not run; synthetic action tests cover that backend flow.
