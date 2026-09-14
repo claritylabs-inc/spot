@@ -1141,7 +1141,6 @@ export function OutreachEditor({
                       <OrgBrandIcon
                         name={broker.name}
                         iconUrl={broker.iconUrl}
-                        website={broker.website}
                         size="xs"
                       />
                     ),

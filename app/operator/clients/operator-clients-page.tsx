@@ -270,7 +270,6 @@ export default function OperatorClientsScreen() {
             <OrgBrandIcon
               name={selected.name}
               iconUrl={selected.iconUrl}
-              website={selected.website}
               size="lg"
             />
             <div className="min-w-0">
@@ -445,7 +444,6 @@ export default function OperatorClientsScreen() {
                         <OrgBrandIcon
                           name={client.name}
                           iconUrl={client.iconUrl}
-                          website={client.website}
                           size="md"
                         />
                         <p

@@ -212,7 +212,6 @@ export default function OperatorBrokersPage() {
                         <OrgBrandIcon
                           name={row.broker.name}
                           iconUrl={row.broker.iconUrl}
-                          website={row.broker.website}
                           size="md"
                         />
                         <div className="min-w-0">
