@@ -168,6 +168,7 @@ export interface PolicySummaryProps {
   summary?: string;
   isRenewal?: boolean;
   pdfUrl?: string | null;
+  isExtracting: boolean;
   onEdit?: () => void;
 }
 
@@ -189,6 +190,7 @@ export function PolicySummary({
   summary: _summary,
   isRenewal,
   pdfUrl,
+  isExtracting,
   onEdit,
 }: PolicySummaryProps) {
   const realPolicyNumber = realText(policyNumber);
@@ -332,7 +334,13 @@ export function PolicySummary({
           <div className="min-w-0 flex-1">
             {!hasExtractedDetails ? (
               <div className="p-5">
-                <ExtractionPendingDetails />
+                {isExtracting ? (
+                  <ExtractionPendingDetails />
+                ) : (
+                  <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+                    No policy details were extracted.
+                  </p>
+                )}
               </div>
             ) : null}
 

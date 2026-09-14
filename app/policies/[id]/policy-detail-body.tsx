@@ -74,6 +74,7 @@ import type { PipelineStatus, LogEntry } from "@claritylabs/cl-pipelines";
 import { PolicyDetailSkeleton } from "./policy-detail-skeleton";
 import { PolicyExtractionBanner } from "@/components/shared/extraction-banner";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
+import { isNonInsuranceDocument } from "@/convex/lib/policyDocumentGate";
 import { typeStyle } from "@/lib/typography";
 import {
   OperatorPolicyExtractionPanel,
@@ -510,6 +511,19 @@ export function PolicyDetailBody({
     operatorMode ||
     (viewerOrg?.org as { type?: "broker" } | undefined)?.type === "broker";
   const pipelineStatus = p.pipelineStatus as PipelineStatus | undefined;
+  const isRejectedDocument =
+    pipelineStatus === "error" &&
+    isNonInsuranceDocument(p.pipelineError as string | undefined);
+  const breadcrumbLabel =
+    (!isRejectedDocument &&
+      [displayName, policyNumber]
+        .filter(
+          (value) => value &&
+            !/^(unknown|extracting\.{0,3}|not applicable|n\/a)$/i.test(value.trim()),
+        )
+        .join(" ")) ||
+    (p.fileName as string | undefined) ||
+    "Uploaded document";
   const extractionDataStage = policyDataStage(p);
   const isPolicyFinal =
     pipelineStatus === "complete" && extractionDataStage === "final";
@@ -534,11 +548,14 @@ export function PolicyDetailBody({
   const hasExtractionReviews = reviewQuestions.length > 0;
   const visibleActiveTab =
     activeTab === "extraction" ||
-    (activeTab === "extraction-history" && !operatorMode)
+    (activeTab === "extraction-history" && !operatorMode) ||
+    (isRejectedDocument &&
+      (activeTab === "coverages" ||
+        activeTab === "certificates" ||
+        activeTab === "review")) ||
+    (activeTab === "review" && !hasExtractionReviews)
       ? "details"
-      : activeTab === "review" && !hasExtractionReviews
-        ? "details"
-        : activeTab;
+      : activeTab;
   const selectedCertificateForPanel =
     visibleActiveTab === "certificates" &&
     selectedCertificate?.policyId === policy?._id
@@ -729,7 +746,7 @@ export function PolicyDetailBody({
     onBreadcrumb(
       <span className="inline-flex min-w-0 items-center gap-2">
         <span className="truncate">
-          {displayName} {policyNumber}
+          {breadcrumbLabel}
         </span>
         {operatorMode && Boolean(p.isDemo) ? (
           <Badge variant="ghost" className="shrink-0 text-muted-foreground">
@@ -739,7 +756,7 @@ export function PolicyDetailBody({
       </span>,
     );
     return () => onBreadcrumb(null);
-  }, [onBreadcrumb, operatorMode, p.isDemo, policy, displayName, policyNumber]);
+  }, [onBreadcrumb, operatorMode, p.isDemo, policy, breadcrumbLabel]);
 
   const handleArchive = async () => {
     if (!policy) return;
@@ -1047,7 +1064,9 @@ export function PolicyDetailBody({
             <p
               className={`flex-1 text-muted-foreground ${typeStyle("body.default")}`}
             >
-              This policy is archived and excluded from active Spot workflows.
+              {isRejectedDocument
+                ? "This document is archived and excluded from active Spot workflows."
+                : "This policy is archived and excluded from active Spot workflows."}
             </p>
             {!readOnly ? (
               <PillButton
@@ -1152,11 +1171,15 @@ export function PolicyDetailBody({
           {(
             [
               { id: "details" as const, label: "Details" },
-              { id: "coverages" as const, label: "Coverages" },
-              ...(hasExtractionReviews
+              ...(!isRejectedDocument
+                ? [{ id: "coverages" as const, label: "Coverages" }]
+                : []),
+              ...(hasExtractionReviews && !isRejectedDocument
                 ? [{ id: "review" as const, label: "Review" }]
                 : []),
-              { id: "certificates" as const, label: "Certificates" },
+              ...(!isRejectedDocument
+                ? [{ id: "certificates" as const, label: "Certificates" }]
+                : []),
               ...(operatorMode
                 ? [
                     {
