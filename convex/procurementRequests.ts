@@ -68,6 +68,7 @@ const requestStatusValidator = v.union(
 );
 
 const outreachStatusValidator = v.union(
+  v.literal("observed"),
   v.literal("request_sent"),
   v.literal("can_handle"),
   v.literal("cannot_handle"),
@@ -927,7 +928,7 @@ export async function createProcurementOutreachByOperator(
     contactPhone?: string;
     status?: OutreachStatus;
     log?: string;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -950,7 +951,7 @@ export async function createProcurementOutreachByOperator(
     email: optionalEmail(args.contactEmail),
     phone: optionalText(args.contactPhone, 100),
   };
-  const sent = (args.status ?? "request_sent") === "request_sent";
+  const sent = args.source !== "workspace_scan" && (args.status ?? "request_sent") === "request_sent";
   const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
     requestId: request._id,
     clientOrgId: request.clientOrgId,
@@ -1023,7 +1024,7 @@ export async function updateProcurementOutreachByOperator(
     contactPhone?: string | null;
     status?: OutreachStatus;
     log?: string | null;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -1155,7 +1156,7 @@ export async function createProcurementFileItemByOperator(
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     notes?: string;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -1262,7 +1263,7 @@ export async function updateProcurementFileItemByOperator(
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     notes?: string | null;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -1646,7 +1647,7 @@ export async function updateProcurementEmailThreadByOperator(
     emailThreadId: Id<"procurementEmailThreads">;
     category?: ProcurementEmailCategory;
     requestId?: Id<"procurementRequests">;
-    source: "operator" | "agent";
+    source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);

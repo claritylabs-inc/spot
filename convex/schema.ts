@@ -622,6 +622,9 @@ export default defineSchema({
     ),
     agentDisplayName: v.optional(v.string()),
   })
+    .index("scan_contact", ["primaryContactEmail"])
+    .index("scan_address", ["mailingAddress.street1", "mailingAddress.zip"])
+    .index("name", ["name"])
     .index("handle", ["agentHandle"])
     .index("type", ["type"])
     .index("broker", ["brokerOrgId"])
@@ -2967,6 +2970,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("title", ["clientOrgId", "title"])
     .index("organization", ["clientOrgId", "updatedAt"])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"]),
@@ -2980,6 +2984,7 @@ export default defineSchema({
     contactEmail: v.optional(v.string()),
     contactPhone: v.optional(v.string()),
     status: v.union(
+      v.literal("observed"),
       v.literal("request_sent"),
       v.literal("can_handle"),
       v.literal("cannot_handle"),
@@ -3021,6 +3026,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("request_broker", ["requestId", "brokerOrgId"])
     .index("request", ["requestId", "updatedAt"])
     .index("organization", ["clientOrgId", "updatedAt"])
     .index("broker", ["brokerOrgId", "updatedAt"]),

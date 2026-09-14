@@ -33,7 +33,18 @@ async function activityDto(
   selectedOrgId?: Id<"organizations">,
 ): Promise<GoogleWorkspaceScanActivity> {
   const source = await ctx.db.get(finding.sourceId);
-  const evidence = source?.evidence;
+  const sourceLinks = await ctx.db
+    .query("operatorWorkspaceScanFindingSources")
+    .withIndex("finding", (q) => q.eq("findingId", finding._id))
+    .take(50);
+  const provenance = await Promise.all(
+    sourceLinks.map(async (link) => ({
+      source: await ctx.db.get(link.sourceId),
+      excerpt: link.excerpt,
+    })),
+  );
+  if (!provenance.length && source)
+    provenance.push({ source, excerpt: finding.excerpt });
   const changes = await ctx.db
     .query("operatorWorkspaceScanChanges")
     .withIndex("finding", (q) => q.eq("findingId", finding._id))
@@ -78,20 +89,22 @@ async function activityDto(
         after: after[field] === undefined ? null : JSON.stringify(after[field]),
       }));
     }),
-    sources: evidence
-      ? [
-          {
-            sourceId: finding.sourceId,
-            mailbox: evidence.mailbox,
-            messageId: evidence.messageId,
-            threadId: evidence.threadId,
-            subject: evidence.subject,
-            sentAt: evidence.sentAt,
-            excerpt: finding.excerpt,
-            href: `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(evidence.mailbox)}#all/${encodeURIComponent(evidence.threadId)}`,
-          },
-        ]
-      : [],
+    sources: provenance.flatMap(({ source, excerpt }) =>
+      source?.evidence
+        ? [
+            {
+              sourceId: source._id,
+              mailbox: source.mailbox,
+              messageId: source.messageId,
+              threadId: source.threadId,
+              subject: source.evidence.subject,
+              sentAt: source.evidence.sentAt,
+              excerpt,
+              href: `https://mail.google.com/mail/u/?authuser=${encodeURIComponent(source.mailbox)}#all/${encodeURIComponent(source.threadId)}`,
+            },
+          ]
+        : [],
+    ),
     availableActions,
     importState,
   };
@@ -437,6 +450,13 @@ export const correctActivity = mutation({
       const patch = Object.fromEntries(
         change.fields.map((field) => [field, before[field]]),
       );
+      const current = await ctx.db.get(id);
+      if (current && "updatedAt" in current)
+        patch.updatedAt = dayjs().valueOf();
+      if (current && "updatedByUserId" in current)
+        patch.updatedByUserId = operator.userId;
+      if (change.table === "orgWikiSections")
+        patch.manuallyEditedAt = dayjs().valueOf();
       await ctx.db.patch(id, patch);
       await ctx.db.patch(change._id, { correctedAt: dayjs().valueOf() });
     }
