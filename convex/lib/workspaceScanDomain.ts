@@ -149,25 +149,9 @@ export async function resolveScanOrganization(
     );
   const matches: Doc<"organizations">[] = [];
   for (const org of sameName) {
-    const memberships = await ctx.db
-      .query("orgMemberships")
-      .withIndex("organization", (q) => q.eq("orgId", org._id))
-      .take(101);
-    if (memberships.length > 100)
-      throw new ScanAttention(
-        "Organization membership inventory requires exact operator selection",
-      );
-    const users = await Promise.all(
-      memberships.map((m) => ctx.db.get(m.userId)),
-    );
-    const emailMatches = [
-      org.primaryContactEmail,
-      ...users.map((u) => u?.email),
-    ].some(
-      (e) =>
-        e &&
-        normalizedIdentity(e) === normalizedIdentity(identity.contactEmail),
-    );
+    const emailMatches =
+      normalizedIdentity(org.primaryContactEmail ?? "") === contactEmail ||
+      memberOrgs.some((memberOrg) => memberOrg._id === org._id);
     const address = identity.address;
     const addressMatches =
       address &&
@@ -211,6 +195,18 @@ export async function resolveScanTarget(
       throw new ScanAttention(
         "Several requests have this exact title; choose one explicitly",
       );
+    const normalizedRequests = await ctx.db
+      .query("procurementRequests")
+      .withIndex("normalized_title", (q) =>
+        q
+          .eq("clientOrgId", org._id)
+          .eq("normalizedTitle", normalizedIdentity(operation.request.title)),
+      )
+      .take(21);
+    if (normalizedRequests.length > 20)
+      throw new ScanAttention(
+        "Several requests have this title; choose one explicitly",
+      );
     const discoveredRequests = (
       await Promise.all(
         (selection.requestIds ?? []).map((id) => ctx.db.get(id)),
@@ -220,7 +216,10 @@ export async function resolveScanTarget(
     );
     const matches = [
       ...new Map(
-        [...requests, ...discoveredRequests].map((r) => [r._id, r]),
+        [...requests, ...normalizedRequests, ...discoveredRequests].map((r) => [
+          r._id,
+          r,
+        ]),
       ).values(),
     ].filter(
       (r) =>
@@ -427,8 +426,32 @@ export async function writeScanDomain(
     await updateBrokerProfileByOperator(ctx, {
       operatorUserId,
       brokerOrgId: org._id,
-      writingStates: op.writingStates,
-      lineOfBusinessCodes: op.lineOfBusinessCodes,
+      writingStates: [
+        ...new Set([
+          ...(target.record && "writingStates" in target.record
+            ? target.record.writingStates
+            : []),
+          ...op.writingStates,
+        ]),
+      ].filter(
+        (code) =>
+          !op.removeWritingStates
+            .map((value) => value.toUpperCase())
+            .includes(code.toUpperCase()),
+      ),
+      lineOfBusinessCodes: [
+        ...new Set([
+          ...(target.record && "lineOfBusinessCodes" in target.record
+            ? target.record.lineOfBusinessCodes
+            : []),
+          ...op.lineOfBusinessCodes,
+        ]),
+      ].filter(
+        (code) =>
+          !op.removeLineOfBusinessCodes
+            .map((value) => value.toUpperCase())
+            .includes(code.toUpperCase()),
+      ),
     });
     const profile = await ctx.db
       .query("brokerProfiles")

@@ -1,3 +1,4 @@
+import { findIndexedPolicyDuplicate } from "./lib/policyImportDedup";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -224,8 +225,10 @@ export async function commitValidatedOperatorPolicyImport(
       ? (args.mergedFileName ?? "combined-policy.pdf")
       : group[0].fileName;
     const hashes = group.map((file) => file.fileSha256);
-    let duplicate: Id<"policies"> | undefined;
-    for await (const policy of ctx.db
+    const indexed = await findIndexedPolicyDuplicate(ctx, args.orgId, hashes);
+    if (args.workspaceScanImportId && !indexed.complete) throw new Error("Policy content discovery is incomplete");
+    let duplicate: Id<"policies"> | undefined = indexed.policyId ?? undefined;
+    if (!indexed.complete) for await (const policy of ctx.db
       .query("policies")
       .withIndex("organization", (q) => q.eq("orgId", args.orgId))) {
       if (

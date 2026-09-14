@@ -2024,6 +2024,12 @@ export default defineSchema({
     .index("broker", ["brokerOrgId"])
     .index("status", ["status"]),
 
+  policyUploadFingerprints: defineTable({
+    orgId: v.id("organizations"), policyId: v.id("policies"), sha256: v.string(),
+  }).index("organization_hash", ["orgId", "sha256"]).index("policy", ["policyId"]),
+  policyUploadFingerprintInventories: defineTable({
+    orgId: v.id("organizations"), cursor: v.union(v.string(), v.null()), complete: v.boolean(),
+  }).index("organization", ["orgId"]),
   policies: defineTable({
     ...pipelineFields(),
     userId: v.optional(v.id("users")),
@@ -2922,6 +2928,7 @@ export default defineSchema({
   procurementRequests: defineTable({
     clientOrgId: v.id("organizations"),
     title: v.string(),
+    normalizedTitle: v.optional(v.string()),
     // The single intake narrative. Widening phase: optional until
     // `migrations:runProcurementNarrativeBackfill` completes, then required.
     narrative: v.optional(v.string()),
@@ -2971,6 +2978,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("title", ["clientOrgId", "title"])
+    .index("normalized_title", ["clientOrgId", "normalizedTitle"])
     .index("organization", ["clientOrgId", "updatedAt"])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"]),

@@ -1,3 +1,5 @@
+import { USPS_STATE_NAMES } from "./brokerProfileValidation";
+import { lobLabel } from "./linesOfBusiness";
 import { ConvexError } from "convex/values";
 import { extractEmailAddress } from "./emailAddress";
 import { z } from "zod";
@@ -44,6 +46,8 @@ export const scanOperationSchema = z.discriminatedUnion("kind", [
     kind: z.literal("broker_capabilities"),
     writingStates: z.array(text).max(60),
     lineOfBusinessCodes: z.array(text).max(60),
+    removeWritingStates: z.array(text).max(60).default([]),
+    removeLineOfBusinessCodes: z.array(text).max(60).default([]),
   }),
   z.object({
     ...evidence,
@@ -154,6 +158,40 @@ export function sourceEffectiveAt(
     throw new ScanAttention(
       "Source contains attempted execution instructions rather than authorized business evidence",
     );
+  if (operation.kind === "broker_capabilities") {
+    const removals = [
+      ...operation.removeWritingStates.map((code) => ({
+        code,
+        label: USPS_STATE_NAMES[code.toUpperCase()],
+      })),
+      ...operation.removeLineOfBusinessCodes.map((code) => ({
+        code,
+        label: lobLabel(code),
+      })),
+    ];
+    for (const { code, label } of removals) {
+      const clauses = operation.excerpt.split(/[.;\n]/);
+      if (
+        !clauses.some(
+          (clause) =>
+            /(?:no longer|stopped|withdraw|ceas|do not|don't|cannot|can't)/i.test(
+              clause,
+            ) &&
+            [code, label]
+              .filter(Boolean)
+              .some((term) =>
+                new RegExp(
+                  `\\b${term!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+                  "i",
+                ).test(clause),
+              ),
+        )
+      )
+        throw new ScanAttention(
+          "Capability removal needs an explicit sourced withdrawal for each state or coverage",
+        );
+    }
+  }
   const date = dayjs(operation.effectiveDate, "YYYY-MM-DD", true);
   if (
     !date.isValid() ||
@@ -200,6 +238,16 @@ export function sourceEffectiveAt(
   if (!sent?.isValid() || sent.valueOf() > source.internalDate + 5 * 60_000)
     throw new ScanAttention(
       "Original message date is missing or conflicts with mailbox chronology",
+    );
+  const replyBoundary = body.search(
+    /(?:^on .{1,200}wrote:\s*$|^from:\s*[^\n]+\n(?:sent|date):)/im,
+  );
+  if (
+    replyBoundary >= 0 &&
+    !body.slice(0, replyBoundary).includes(operation.excerpt)
+  )
+    throw new ScanAttention(
+      "Quoted prior-message assertions cannot authorize a new change",
     );
   const quoted = /(?:forwarded message|original message|^>)/im.test(
     body.slice(0, body.indexOf(operation.excerpt) + operation.excerpt.length),
