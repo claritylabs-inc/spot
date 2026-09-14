@@ -2,11 +2,11 @@
 
 Status: the primary simplification shipped in [PR 350](https://github.com/claritylabs-inc/spot/pull/350), with [production release 34907480974](https://github.com/claritylabs-inc/spot/actions/runs/34907480974) successful and the exact `c6e0215a` frontend serving `app.spot.insure`. Shared-dev has the same tracked code and passed its health readback. The user authorized continued investigation and fixes for the remaining findings below. Historical-data recovery remains cancelled under the accepted legacy data loss.
 
-## Remaining simplification pass
+## Final storage cleanup
 
-The follow-up uses the same rule: retain routine structured data, remove unused state, and put mutable narrative in the existing Markdown owner. These are implementation tasks, not reasons to revisit completed migrations.
+The follow-up uses the same rule: retain routine structured data, remove unused state, and put mutable narrative in the existing Markdown owner. The compatibility implementation is merged in [PR 352](https://github.com/claritylabs-inc/spot/pull/352). The final schema removes its verified legacy fields and temporary migration code after the production cleanup gate succeeds.
 
-| Owner | Remaining change | Completion evidence |
+| Owner | Current contract | Verification |
 | --- | --- | --- |
 | Pending email drafts | Stop storing serialized provider JSON beside typed delivery fields; make the browser card, preview, and send use the same effective draft. | Existing pending approvals retain the same effective content; recipient clears, attachments, and thread headers survive backfill; focused delivery/approval tests pass. |
 | Slack inbound events | Store one attachment array, preserving distinct files when old transports supply both shapes. Remove unused event metadata after checking all writers. | Transport tests, bounded backfill, and zero residual legacy fields on production/shared-dev. |
@@ -15,9 +15,9 @@ The follow-up uses the same rule: retain routine structured data, remove unused 
 | Company research | Live router-backed creation without a website completed with an official site, classification, and cited wiki facts. Identity changes retract old evidence; verified refreshes replace superseded facts and suggestions; transient failures preserve prior evidence. | Isolated local acceptance preserved manual prose; 24 adjacent tests passed, including regressions that failed on the previous release. |
 | Browser workflows | Native operator/client OAuth consent, token rotation/revocation, compliance source Notes persistence, and company-wiki import passed in headed local Chrome. Failed packet saves now block sidebar replacement until save or explicit discard. | [Workflow ledger](../testing/workflow-qa.md) records the actors, assertions, and cleanup. The packet replacement regression failed without its guard and passed with it; the revision-conflict path also passed in the browser. |
 
-Release the compatibility changes first, audit and migrate only the named fields through the existing migrations component, then remove obsolete fields and temporary migration code in a second release. The main release workflow remains responsible for Convex, worker compatibility, and frontend promotion. Do not upload database exports, credentials, or private file backups to the public repository.
+PR 352 deploys canonical writers and audits and migrates only the named fields through the existing migrations component. The final narrowing removes the legacy email JSON, Slack attachment/actor aliases, unused settings and policy-change references, notification expiry and retired variants, and all completed cleanup APIs, runners and release hooks. Old signed Slack controls retain their authorization semantics at the input boundary. Ongoing operator identity, declaration-fact and carrier-identity migrations retain their owners. The main release workflow remains responsible for Convex, worker compatibility, and frontend promotion. Do not upload database exports, credentials, or private file backups to the public repository.
 
-Shared-dev accepted the typed schemas and compatibility release. Its cleanup converted one pending draft and cleared two unused thread references; all nine table audits then reported zero changes and zero blockers. The draft conversion preserves its effective delivery payload and confirmation fingerprint. The first integrated test pass completed 654 tests in 147 files; final combined checks and production release results belong to the follow-up PR.
+Shared-dev accepted the typed schemas and compatibility release. Its cleanup converted one pending draft and cleared two unused thread references; all nine table audits then reported zero changes and zero blockers. The draft conversion preserves its effective delivery payload and confirmation fingerprint. PR 352 passed 658 tests in 147 files, root/Convex type checks, lint and build. Its production migration and the final narrowing release are tracked by their exact main-commit release workflows.
 
 ## Accepted scope update
 
@@ -42,8 +42,9 @@ The canonical text lives in `markdownDocuments` for transactional persistence, w
 The narrowing release removes the verified retired schema and compatibility
 writers, including all eight empty inventory-only tables. It also removes the
 one-off migration workflow, runner, and temporary recovery APIs. Ongoing
-operator-email identity, declaration-fact, carrier-identity, and live Slack
-compatibility migrations retain their existing owners. The normal main release
+operator-email identity, declaration-fact and carrier-identity migrations retain
+their existing owners. Completed Slack compatibility migrations are removed in
+the final storage cleanup. The normal main release
 workflow enforces Convex deployment, exact-commit worker readiness, compatibility
 checks, and the Vercel production-alias gate.
 

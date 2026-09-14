@@ -1,7 +1,7 @@
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
-import { storedNotificationTypeValidator, notificationActionTypeValidator, notificationActionPayloadValidator, notificationSourceRefValidator } from "./lib/notificationTypes";
+import { activeNotificationTypeValidator, notificationActionTypeValidator, notificationActionPayloadValidator, notificationSourceRefValidator } from "./lib/notificationTypes";
 import { proposalReviewFindingValidator } from "./lib/proposalReview";
 import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
 import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
@@ -537,15 +537,6 @@ export default defineSchema({
     emailVerification: v.optional(
       v.union(v.literal("strict"), v.literal("domain"), v.literal("open")),
     ),
-    // Legacy certificate/email settings retained only so deployed rows remain
-    // valid during the widening release. Runtime code does not read them.
-    coiHandling: v.optional(
-      v.union(v.literal("broker"), v.literal("member"), v.literal("ignore")),
-    ),
-    autoGenerateCoi: v.optional(v.boolean()),
-    autoSendEmails: v.optional(v.boolean()),
-    policyChangeRequestsEnabled: v.optional(v.boolean()),
-    certificateChangeRequestsEnabled: v.optional(v.boolean()),
     // Agent
     agentHandle: v.optional(v.string()),
     // Primary insurance contact for the org
@@ -991,9 +982,6 @@ export default defineSchema({
         extraction_quality: v.optional(modelRouteValidator),
         extraction_form_inventory: v.optional(modelRouteValidator),
         extraction_coverage_cleanup: v.optional(modelRouteValidator),
-        // Legacy route key retained only for stored settings compatibility.
-        // Runtime resolution never selects this retired task.
-        extraction_visual_table_repair: v.optional(modelRouteValidator),
         fallback: v.optional(modelRouteValidator),
       }),
     ),
@@ -2779,8 +2767,7 @@ export default defineSchema({
     clientOrgId: v.id("organizations"),
     extractionFingerprint: v.string(),
     // Reviews bind to the broker-visible packet the proposal answered, so a
-    // packet edit invalidates them. Widening phase: optional until
-    // `migrations:runProposalReviewPacketBackfill` completes.
+    // packet edit invalidates them.
     packetRevision: v.number(),
     modelConclusion: v.union(
       v.literal("meets_requirements"),
@@ -3306,8 +3293,6 @@ export default defineSchema({
     ),
     status: v.union(
       v.literal("held"),
-      // Legacy status retained only for stored request holds.
-      v.literal("policy_change_opened"),
       v.literal("broker_handoff_offered"),
       v.literal("resolved"),
       v.literal("cancelled"),
@@ -3322,8 +3307,6 @@ export default defineSchema({
     requiredChanges: v.array(v.string()),
     evidence: v.optional(v.any()),
     emailDraft: v.optional(certificateEmailDraftValidator),
-    // Legacy link to the retired policy-change table; runtime leaves it unset.
-    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
     pendingEmailId: v.optional(v.id("pendingEmails")),
     createdByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
@@ -3339,7 +3322,7 @@ export default defineSchema({
   notifications: defineTable({
     orgId: v.id("organizations"),
     userId: v.optional(v.id("users")), // null = org-wide
-    type: storedNotificationTypeValidator,
+    type: activeNotificationTypeValidator,
     title: v.string(),
     body: v.string(),
     severity: v.union(
@@ -3357,7 +3340,6 @@ export default defineSchema({
     actionPayload: v.optional(notificationActionPayloadValidator),
     sourceRef: v.optional(notificationSourceRefValidator),
     createdAt: v.number(),
-    expiresAt: v.optional(v.number()), // auto-dismiss after this date
     // Cross-org context
     relatedOrgId: v.optional(v.id("organizations")),
     // Coalesce fields
@@ -3817,8 +3799,6 @@ export default defineSchema({
     agentRunStartedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     pendingEmailId: v.optional(v.id("pendingEmails")),
-    // Legacy link to the retired policy-change table; runtime leaves it unset.
-    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
   })
     .index("thread", ["threadId"])
     .index("organization_mutation", ["orgId", "clientMutationId"])
@@ -4556,15 +4536,11 @@ export default defineSchema({
     kind: v.union(
       v.literal("policy"),
       v.literal("certificate"),
-      // Legacy links remain schema-compatible but are not minted by runtime.
-      v.literal("policy_change"),
     ),
     policyId: v.optional(v.id("policies")),
     certificateId: v.optional(v.id("certificates")),
     policyCertificateId: v.optional(v.id("policyCertificates")),
     certificateVersionId: v.optional(v.id("certificateVersions")),
-    // Legacy link to the retired policy-change table; runtime leaves it unset.
-    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
     label: v.optional(v.string()),
     sourceThreadId: v.optional(v.id("threads")),
     sourceThreadMessageId: v.optional(v.id("threadMessages")),
@@ -4669,8 +4645,6 @@ export default defineSchema({
     // For updating the chat message after send
     chatMessageId: v.optional(v.id("threadMessages")),
     threadMessageId: v.optional(v.id("threadMessages")),
-    // Legacy link to the retired policy-change table; runtime leaves it unset.
-    policyChangeCaseId: v.optional(v.id("policyChangeCases")),
     // Metadata for the sent email record
     recipientEmail: v.string(),
     ccAddresses: v.optional(v.array(v.string())),
