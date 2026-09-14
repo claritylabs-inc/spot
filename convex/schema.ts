@@ -149,36 +149,6 @@ const publicDemoCtaStatusValidator = v.union(
   v.literal("signup_link_sent"),
 );
 
-const policyDeliveryChannelValidator = v.union(
-  v.literal("email"),
-  v.literal("imessage"),
-  v.literal("slack"),
-);
-
-const policyDeliveryActionValidator = v.union(
-  v.literal("auto_send"),
-  v.literal("broker_review"),
-  v.literal("service_review"),
-  v.literal("do_not_send"),
-);
-
-const policyDeliveryStatusValidator = v.union(
-  v.literal("queued"),
-  v.literal("review_required"),
-  v.literal("sending"),
-  v.literal("sent"),
-  v.literal("partially_sent"),
-  v.literal("blocked"),
-  v.literal("failed"),
-  v.literal("suppressed"),
-  v.literal("cancelled"),
-);
-
-const policyDeliverySourceKindValidator = v.union(
-  v.literal("policy"),
-  v.literal("endorsement"),
-);
-
 const certificateSourceValidator = v.union(
   v.literal("policy_page"),
   v.literal("chat"),
@@ -456,13 +426,6 @@ const certificateHolderRelationshipKindValidator = v.union(
   v.literal("allowed_holder"),
 );
 
-const policyDeliveryRuleFiltersValidator = v.object({
-  carriers: v.optional(v.array(v.string())),
-  securities: v.optional(v.array(v.string())),
-  underwriters: v.optional(v.array(v.string())),
-  linesOfBusiness: v.optional(v.array(v.string())),
-});
-
 export default defineSchema({
   ...googleWorkspaceScanTables,
   ...scanReconciliationTables,
@@ -542,7 +505,7 @@ export default defineSchema({
     profileFactsUpdatedAt: v.optional(v.number()),
     profileOverrides: v.optional(organizationProfileOverridesValidator),
     profileOverridesUpdatedAt: v.optional(v.number()),
-    profileOverridesUpdatedByUserId: v.optional(v.id("users")), // joint ventures, affiliates, partners
+    profileOverridesUpdatedByUserId: v.optional(v.id("users")),
     relatedLegalEntities: v.optional(
       v.array(
         v.object({
@@ -2615,7 +2578,7 @@ export default defineSchema({
       v.literal("renewal"),
       v.literal("certificate"),
       v.literal("unknown"),
-    ), // Raw per-file extraction result (InsuranceDocument)
+    ),
     pageCount: v.optional(v.number()),
     createdAt: v.number(),
     orgId: v.id("organizations"),

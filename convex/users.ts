@@ -658,7 +658,6 @@ export const resetAccount = mutation({
       await ctx.db.patch(orgId, {
         name: "My Organization",
         website: undefined,
-        context: undefined,
         industry: undefined,
         industryVertical: undefined,
         agentHandle: undefined,

@@ -29,7 +29,7 @@ describe("organization profile source ownership", () => {
       const actorUserId = await ctx.db.insert("users", { name: "Operator" });
       const orgId = await ctx.db.insert("organizations", {
         name: "Acme Holdings LLC", type: "client",
-        relatedLegalEntities: [{ legalName: "Trusted Partner", relationship: "affiliate", notes: "Manually confirmed" }],
+        relatedLegalEntities: [{ legalName: "Trusted Partner", relationship: "affiliate" }],
       });
       const extractionId = await ctx.db.insert("companyInformationExtractions", {
         orgId, actorUserId, sourceKind: "client_file", sourceRef: "client_file:fixture",
@@ -42,7 +42,7 @@ describe("organization profile source ownership", () => {
     const imported = await t.run((ctx) => ctx.db.get(orgId));
     expect(imported).toMatchObject({ name: "Acme" });
     expect(imported?.relatedLegalEntities).toEqual([
-      { legalName: "Trusted Partner", relationship: "affiliate", notes: "Manually confirmed" },
+      { legalName: "Trusted Partner", relationship: "affiliate" },
       { legalName: "Acme Holdings LLC", relationship: "current", source: "extraction" },
       { legalName: "Acme Tenant LLC", relationship: "other", source: "extraction" },
     ]);
@@ -52,7 +52,7 @@ describe("organization profile source ownership", () => {
       await ctx.db.patch(orgId, {
         relatedLegalEntities: org?.relatedLegalEntities?.map((entity) =>
           entity.legalName === "Acme Holdings LLC"
-            ? { ...entity, source: undefined, notes: "Confirmed by operator" }
+            ? { ...entity, source: undefined }
             : entity,
         ),
       });
@@ -62,8 +62,8 @@ describe("organization profile source ownership", () => {
     const retracted = await t.run((ctx) => ctx.db.get(orgId));
     expect(retracted?.profileFacts).toBeUndefined();
     expect(retracted?.relatedLegalEntities).toEqual([
-      { legalName: "Trusted Partner", relationship: "affiliate", notes: "Manually confirmed" },
-      { legalName: "Acme Holdings LLC", relationship: "current", notes: "Confirmed by operator" },
+      { legalName: "Trusted Partner", relationship: "affiliate" },
+      { legalName: "Acme Holdings LLC", relationship: "current" },
     ]);
   });
 

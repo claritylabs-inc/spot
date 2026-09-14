@@ -355,7 +355,6 @@ export function assertCanArchivePolicy(
   access: OrgAccess,
   policy: {
     uploadedBySide?: string;
-    uploadedByBrokerOrgId?: Id<"organizations">;
   },
 ): void {
   void policy;
