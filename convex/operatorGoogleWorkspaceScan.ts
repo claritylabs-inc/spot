@@ -162,3 +162,14 @@ export const dispatchInternal = internalMutation({args: {}, handler: async (ctx)
   }
   return null;
 }});
+
+export const getSourceContextInternal = internalQuery({args: {sourceId: v.id("operatorGoogleWorkspaceScanSources"), leaseToken: v.string()}, handler: (ctx, args) => assertGoogleWorkspaceScanSourceLease(ctx, args)});
+
+export const pruneSourcePartsInternal = internalMutation({args:{sourceId:v.id("operatorGoogleWorkspaceScanSources")},handler:async(ctx,args)=>{
+  const source = await ctx.db.get(args.sourceId);
+  if (source?.status !== "completed") return null;
+  const parts = await ctx.db.query("operatorGoogleWorkspaceScanSourceParts").withIndex("source_ordinal",q=>q.eq("sourceId",args.sourceId)).take(8);
+  for (const part of parts) await ctx.db.delete(part._id);
+  if (parts.length === 8) await ctx.scheduler.runAfter(0,makeFunctionReference<"mutation",{sourceId:Id<"operatorGoogleWorkspaceScanSources">},null>("operatorGoogleWorkspaceScan:pruneSourcePartsInternal"),args);
+  return null;
+}});
