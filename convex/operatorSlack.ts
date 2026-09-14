@@ -6,6 +6,8 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import { requireOperatorForUser } from "./lib/operatorIdentity";
+import type { OperatorSlackConfirmationResolution } from "./lib/slackBlocks";
 import {
   getOperatorSlackConfig,
   operatorSlackConversationKey,
@@ -162,16 +164,81 @@ export const authorizeConfirmationInteraction = internalQuery({
       runId: run._id,
       summary: confirmation.payload.summary,
       destructive: confirmation.payload.effect === "destructive",
-      unavailableReason:
-        confirmation.status === "expired"
-          ? ("expired" as const)
-          : confirmation.status !== "pending" ||
-              run.status !== "waiting_confirmation" ||
-              run.cancellationRequestedAt ||
-              run.checkpoint?.pendingConfirmationId !== confirmation._id
-            ? ("inactive" as const)
-            : undefined,
     };
+  },
+});
+
+export const getConfirmationResolution = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    confirmationId: v.id("operatorAgentConfirmations"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<OperatorSlackConfirmationResolution | null> => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const confirmation = await ctx.db.get(args.confirmationId);
+    if (
+      !confirmation ||
+      confirmation.operatorUserId !== args.operatorUserId ||
+      confirmation.threadId !== args.threadId
+    ) {
+      throw new Error("Operator confirmation not found");
+    }
+    const run = await ctx.db.get(confirmation.payload.runId);
+    if (
+      !run ||
+      run.operatorUserId !== args.operatorUserId ||
+      run.threadId !== args.threadId
+    ) {
+      throw new Error("Operator agent run not found");
+    }
+
+    // Resolve this exact action before looking at the whole task: a later step
+    // failing must not relabel an earlier successful approval as failed.
+    const audit = await ctx.db
+      .query("agentActionAuditEvents")
+      .withIndex("idempotency", (q) =>
+        q.eq("operatorUserId", args.operatorUserId)
+          .eq("idempotencyKey", confirmation.payload.idempotencyKey),
+      )
+      .unique();
+    if (
+      audit?.operatorConfirmationId === confirmation._id &&
+      audit.runId === run._id
+    ) {
+      if (audit.status === "failed") {
+        return { decision: "failed", error: audit.error };
+      }
+      if (audit.status === "succeeded") return { decision: "approve" };
+    }
+    if (confirmation.status === "completed") return { decision: "approve" };
+    if (confirmation.status === "expired") return { decision: "expired" };
+    if (confirmation.invalidationReason === "rejected_by_operator") {
+      return { decision: "reject" };
+    }
+    if (
+      confirmation.invalidationReason === "superseded" ||
+      run.lastError === "superseded"
+    ) {
+      return { decision: "superseded" };
+    }
+    if (run.status === "cancelled" || run.cancellationRequestedAt) {
+      return { decision: "cancelled" };
+    }
+    if (run.status === "failed") {
+      return { decision: "failed", error: run.lastError };
+    }
+    if (
+      confirmation.status === "pending" &&
+      run.status === "waiting_confirmation" &&
+      run.checkpoint?.pendingConfirmationId === confirmation._id
+    ) {
+      return null;
+    }
+    return { decision: "inactive" };
   },
 });
 
