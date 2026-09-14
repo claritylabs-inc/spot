@@ -115,6 +115,7 @@ export const getStatus = query({
         enabled: config?.enabled ?? false,
         intervalMinutes: config?.intervalMinutes ?? 60,
         authorizationRevision: config?.authorizationRevision ?? 0,
+        settingsUpdatedAt: config?.updatedAt ?? 0,
         authorizingOperatorId: config?.authorizingOperatorId ?? null,
         pausedReason: config?.pausedReason ?? null,
         authorizingOperatorLabel: sponsor?.name ?? sponsor?.email ?? null,
@@ -147,6 +148,7 @@ export const getStatus = query({
 export const updateSettings = mutation({
   args: {
     expectedAuthorizationRevision: v.optional(v.number()),
+    expectedSettingsUpdatedAt: v.optional(v.number()),
     enabled: v.boolean(),
     intervalMinutes: scanIntervalValidator,
     authorizingOperatorId: v.optional(v.id("users")),
@@ -154,6 +156,13 @@ export const updateSettings = mutation({
   handler: async (ctx, args) => {
     const operator = await requireWriter(ctx);
     const existing = await scanConfig(ctx);
+    if (
+      args.expectedSettingsUpdatedAt !== undefined &&
+      args.expectedSettingsUpdatedAt !== (existing?.updatedAt ?? 0)
+    )
+      throw new Error(
+        "Scan settings changed. Reload and review the current schedule before saving.",
+      );
     if (
       args.expectedAuthorizationRevision !== undefined &&
       args.expectedAuthorizationRevision !==
@@ -192,7 +201,7 @@ export const updateSettings = mutation({
       throw new Error(
         "Enable Directory access with valid Workspace credentials before enabling scanning.",
       );
-    const now = dayjs().valueOf();
+    const now = Math.max(dayjs().valueOf(), (existing?.updatedAt ?? 0) + 1);
     const changed =
       !existing ||
       existing.enabled !== args.enabled ||
@@ -326,6 +335,11 @@ async function claimSource(
   }
   const leaseToken = crypto.randomUUID();
   const patch = {
+    originalContentFingerprint:
+      source.originalContentFingerprint ??
+      (source.evidence?.bodyComplete
+        ? source.evidence.contentFingerprint
+        : undefined),
     status: collecting ? ("collecting" as const) : ("running" as const),
     active: true,
     leaseToken,
@@ -499,6 +513,7 @@ export const dispatchInternal = internalMutation({
         )
         .take(capacity);
       for (const source of sources) {
+        if (source.active && (source.leaseUntil ?? 0) > now) continue;
         await ctx.db.patch(source._id, {
           active: true,
           leaseToken: undefined,
@@ -963,6 +978,11 @@ export const finishCollectionInternal = internalMutation({
       hasError: !!args.evidence && !args.evidence.bodyComplete,
       status: args.excluded ? "excluded" : "ready",
       evidence: args.excluded ? source.evidence : args.evidence,
+      originalContentFingerprint:
+        source.originalContentFingerprint ??
+        (args.evidence?.bodyComplete
+          ? args.evidence.contentFingerprint
+          : undefined),
       collectedAt: dayjs().valueOf(),
       active: false,
       leaseToken: undefined,
@@ -974,15 +994,16 @@ export const finishCollectionInternal = internalMutation({
           : undefined,
     });
     if (args.excluded) {
-      if (!source.evidence) await ctx.scheduler.runAfter(
-        0,
-        makeFunctionReference<
-          "mutation",
-          { sourceId: Id<"operatorGoogleWorkspaceScanSources"> },
-          null
-        >("operatorGoogleWorkspaceScan:pruneSourcePartsInternal"),
-        { sourceId: source._id },
-      );
+      if (!source.evidence)
+        await ctx.scheduler.runAfter(
+          0,
+          makeFunctionReference<
+            "mutation",
+            { sourceId: Id<"operatorGoogleWorkspaceScanSources"> },
+            null
+          >("operatorGoogleWorkspaceScan:pruneSourcePartsInternal"),
+          { sourceId: source._id },
+        );
       const run = await ctx.db.get(source.runId);
       if (run)
         await ctx.db.patch(run._id, {
