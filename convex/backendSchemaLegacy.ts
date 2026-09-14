@@ -155,6 +155,7 @@ export const clearCompatibilityPage = internalMutation({
       v.literal("connectedEmailAutomationItems"),
       v.literal("pendingEmails"),
       v.literal("globalModelSettings"),
+      v.literal("threads"),
     ),
     cursor: v.union(v.string(), v.null()),
     dryRun: v.optional(v.boolean()),
@@ -168,6 +169,7 @@ export const clearCompatibilityPage = internalMutation({
     let changed = 0;
     for (const row of page.page) {
       const patch: Record<string, unknown> = {};
+      if ("deliveryContactKey" in row) patch.deliveryContactKey = undefined;
       for (const field of [
         "providerKeys",
         "procurementFacts",
