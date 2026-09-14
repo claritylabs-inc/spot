@@ -197,7 +197,7 @@ export function EmailConnectionsSection() {
     <OperationalPanel>
       <OperationalPanelHeader
         title="Connected mailboxes"
-        description="Spot can import policies, track insurance requirements, and learn company context from connected mailboxes."
+        description="Spot can import policies and requirements, and add company facts to the wiki from connected mailboxes."
         className="px-5 py-3.5"
       />
       {connectedEmailAccounts === undefined ? (

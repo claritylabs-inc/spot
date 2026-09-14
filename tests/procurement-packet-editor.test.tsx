@@ -209,3 +209,62 @@ test("successive packet autosaves use the acknowledged revision without closing 
     container.remove();
   }
 });
+
+test("imports a Markdown file into the selected packet document", async () => {
+  const requestId = "request" as Id<"procurementRequests">;
+  mocks.query.mockReturnValue({
+    documents: [
+      {
+        filename: "private.md",
+        markdown: "---\nvisibility: private\n---\nOriginal",
+        revision: 2,
+      },
+    ],
+  });
+  mocks.save.mockResolvedValue({ revision: 3 });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const store = createSyncStore({
+    scope: { appId: "packet-import" },
+    persistence: "memory",
+  });
+  try {
+    await act(async () =>
+      root.render(
+        <SyncProvider store={store}>
+          <PacketEditor requestId={requestId} onClose={vi.fn()} />
+        </SyncProvider>,
+      ),
+    );
+    const fileInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Import private.md"]',
+    )!;
+    const markdown = "---\nvisibility: private\n---\n# Imported details";
+    Object.defineProperty(fileInput, "files", {
+      configurable: true,
+      value: [new File([markdown], "private.md", { type: "text/markdown" })],
+    });
+    await act(async () => {
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(
+      container.querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label="private.md"]',
+      )?.value,
+    ).toBe(markdown);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.save).toHaveBeenCalledWith({
+      requestId,
+      filename: "private.md",
+      expectedRevision: 2,
+      markdown,
+    });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
