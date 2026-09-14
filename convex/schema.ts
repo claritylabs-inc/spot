@@ -1737,30 +1737,6 @@ export default defineSchema({
       "checkedBy",
       "checkedAt",
     ]),
-  clientInvitations: defineTable({
-    brokerOrgId: v.id("organizations"),
-    clientOrgName: v.optional(v.string()),
-    primaryContactEmail: v.optional(v.string()),
-    primaryContactName: v.optional(v.string()),
-    prefillPassport: v.optional(v.any()),
-    invitedBy: v.id("users"),
-    inviteTokenHash: v.string(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("expired"),
-      v.literal("revoked"),
-    ),
-    clientOrgId: v.optional(v.id("organizations")),
-    expiresAt: v.optional(v.number()),
-    createdAt: v.number(),
-    otpCode: v.optional(v.string()),
-    otpCodeExpiresAt: v.optional(v.number()),
-  })
-    .index("token", ["inviteTokenHash"])
-    .index("broker", ["brokerOrgId"])
-    .index("status", ["status"]),
-
   policyUploadFingerprints: defineTable({
     orgId: v.id("organizations"), policyId: v.id("policies"), sha256: v.string(),
   }).index("organization_hash", ["orgId", "sha256"]).index("policy", ["policyId"]),
@@ -2739,90 +2715,6 @@ export default defineSchema({
     .index("provider_message", ["providerMessageId", "receivedAt"])
     .index("counterparty", ["counterpartyPhone", "receivedAt"]),
 
-  procurementRequirementDrafts: defineTable({
-    requestId: v.id("procurementRequests"),
-    clientOrgId: v.id("organizations"),
-    proposedRequirement: v.any(),
-    matchingRequirementId: v.optional(v.id("insuranceRequirements")),
-    status: v.union(
-      v.literal("draft"),
-      v.literal("confirmed"),
-      v.literal("discarded"),
-    ),
-    confirmedRequirementId: v.optional(v.id("insuranceRequirements")),
-    sourceExcerpt: v.optional(v.string()),
-    sourcePageStart: v.optional(v.number()),
-    sourcePageEnd: v.optional(v.number()),
-    createdByUserId: v.id("users"),
-    confirmedByUserId: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("request", ["requestId", "createdAt"])
-    .index("status", ["requestId", "status"]),
-
-  procurementRequestRequirements: defineTable({
-    requestId: v.id("procurementRequests"),
-    clientOrgId: v.id("organizations"),
-    requirementId: v.id("insuranceRequirements"),
-    addedByUserId: v.id("users"),
-    createdAt: v.number(),
-  })
-    .index("request", ["requestId", "createdAt"])
-    .index("requirement", ["requirementId", "requestId"])
-    .index("request_requirement", ["requestId", "requirementId"]),
-
-  procurementSpecifications: defineTable({
-    requestId: v.id("procurementRequests"),
-    clientOrgId: v.id("organizations"),
-    key: v.string(),
-    label: v.string(),
-    value: v.string(),
-    sourceExcerpt: v.optional(v.string()),
-    sourcePageStart: v.optional(v.number()),
-    sourcePageEnd: v.optional(v.number()),
-    createdByUserId: v.id("users"),
-    updatedByUserId: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("request", ["requestId", "updatedAt"])
-    .index("request_key", ["requestId", "key"]),
-
-  procurementRequestActivities: defineTable({
-    requestId: v.id("procurementRequests"),
-    clientOrgId: v.id("organizations"),
-    authorUserId: v.id("users"),
-    authorSide: v.union(v.literal("operator"), v.literal("client")),
-    kind: v.union(
-      v.literal("message"),
-      v.literal("document"),
-      v.literal("status"),
-    ),
-    body: v.optional(v.string()),
-    documentId: v.optional(v.id("procurementRequestDocuments")),
-    clientVisible: v.boolean(),
-    createdAt: v.number(),
-  })
-    .index("request", ["requestId", "createdAt"])
-    .index("client_visible", ["requestId", "clientVisible", "createdAt"]),
-
-  procurementRequestDocuments: defineTable({
-    requestId: v.id("procurementRequests"),
-    clientOrgId: v.id("organizations"),
-    fileId: v.id("_storage"),
-    name: v.string(),
-    contentType: v.string(),
-    size: v.number(),
-    clientVisible: v.boolean(),
-    uploadedByUserId: v.id("users"),
-    uploadedBySide: v.union(v.literal("operator"), v.literal("client")),
-    createdAt: v.number(),
-  })
-    .index("request", ["requestId", "createdAt"])
-    .index("client_visible", ["requestId", "clientVisible", "createdAt"])
-    .index("storage", ["fileId"]),
-
   procurementPacketLinks: defineTable({
     requestId: v.id("procurementRequests"),
     clientOrgId: v.id("organizations"),
@@ -3579,33 +3471,6 @@ export default defineSchema({
     .index("user_organization", ["userId", "orgId"])
     .index("preference_scope", ["userId", "orgId", "type", "channel"]),
 
-  // ── Broker Activity ──
-
-  brokerActivity: defineTable({
-    brokerOrgId: v.id("organizations"),
-    clientOrgId: v.id("organizations"),
-    type: v.union(
-      v.literal("invitation_accepted"),
-      v.literal("onboarding_completed"),
-      v.literal("document_uploaded"),
-      v.literal("policy_uploaded"),
-      v.literal("policy_extraction_completed"),
-      v.literal("notification_fired"),
-    ),
-    actorUserId: v.optional(v.id("users")),
-    actorSide: v.union(
-      v.literal("broker"),
-      v.literal("client"),
-      v.literal("system"),
-    ),
-    payload: v.optional(v.any()),
-    summary: v.string(),
-    createdAt: v.number(),
-  })
-    .index("broker_created", ["brokerOrgId", "createdAt"])
-    .index("broker_client", ["brokerOrgId", "clientOrgId", "createdAt"])
-    .index("client_created", ["clientOrgId", "createdAt"]),
-
   // ── Vector Search (cl-sdk 0.5.0+) ──
 
   // Document chunks for semantic search over extracted bound policy content
@@ -3688,33 +3553,6 @@ export default defineSchema({
     .index("node", ["nodeId"])
     .index("policy_node", ["policyId", "nodeId"])
     .index("policy_parent", ["policyId", "parentNodeId"]),
-
-  policyUpdateRuns: defineTable({
-    orgId: v.id("organizations"),
-    policyId: v.id("policies"),
-    // Legacy link to the retired policy-change table; runtime leaves it unset.
-    caseId: v.optional(v.id("policyChangeCases")),
-    sourcePolicyFileIds: v.optional(v.array(v.id("policyFiles"))),
-    sourceFileIds: v.optional(v.array(v.id("_storage"))),
-    updateMode: v.union(v.literal("append_to_existing")),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("complete"),
-      v.literal("needs_review"),
-      v.literal("error"),
-    ),
-    beforeSnapshot: v.optional(v.any()),
-    afterSnapshot: v.optional(v.any()),
-    fieldDiffs: v.optional(v.array(v.any())),
-    summary: v.optional(v.string()),
-    error: v.optional(v.string()),
-    createdByUserId: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("organization", ["orgId"])
-    .index("policy", ["policyId"])
-    .index("status", ["status"]),
 
   policyDeclarationFacts: defineTable({
     orgId: v.id("organizations"),

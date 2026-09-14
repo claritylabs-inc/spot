@@ -802,7 +802,6 @@ test("automatically creates one prospect broker without users, invitations or in
     expect(await ctx.db.query("users").collect()).toHaveLength(1);
     expect(await ctx.db.query("orgMemberships").collect()).toEqual([]);
     expect(await ctx.db.query("orgInvitations").collect()).toEqual([]);
-    expect(await ctx.db.query("clientInvitations").collect()).toEqual([]);
     expect(await ctx.db.system.query("_scheduled_functions").collect()).toEqual(
       [],
     );
