@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -27,13 +26,10 @@ export default function OperatorClientWikiPage() {
   const current = useCachedOperatorCurrent();
   const clients = useCachedOperatorClients();
   const client = clients?.find((row) => row._id === clientOrgId) ?? null;
-  const [workspaceActions, setWorkspaceActions] = useState<ReactNode>(null);
-  const [rightPanel, setRightPanel] = useState<ReactNode>(null);
   const activeImpersonation = current?.activeImpersonation ?? null;
 
   return (
     <AppShell
-      actions={workspaceActions}
       breadcrumbDetail={
         <span className="flex min-w-0 items-center gap-1.5">
           <Link
@@ -51,7 +47,6 @@ export default function OperatorClientWikiPage() {
           <span className="truncate">Company wiki</span>
         </span>
       }
-      rightPanel={rightPanel}
       customSidebar={({ collapsed, onToggleCollapse }) => (
         <OperatorClientSidebar
           collapsed={collapsed}
@@ -95,8 +90,6 @@ export default function OperatorClientWikiPage() {
             clientOrgId={clientOrgId as Id<"organizations">}
             operator
             readOnly={Boolean(activeImpersonation)}
-            onActions={setWorkspaceActions}
-            onRightPanel={setRightPanel}
           />
         </main>
       )}

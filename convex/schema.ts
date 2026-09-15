@@ -2654,6 +2654,7 @@ export default defineSchema({
     // The optional outreach remains only for legacy recipient-scoped links.
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     tokenHash: v.string(),
+    token: v.optional(v.string()),
     recipientLabel: v.string(),
     recipientEmail: v.optional(v.string()),
     expiresAt: v.optional(v.number()),

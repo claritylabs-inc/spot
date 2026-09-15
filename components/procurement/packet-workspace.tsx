@@ -1,8 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Copy, Download, ExternalLink, Loader2, Upload } from "lucide-react";
+import {
+  Copy,
+  Download,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -11,7 +24,6 @@ import {
 } from "@/convex/lib/markdownDocument";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { ProseMarkdown } from "@/components/prose-markdown";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
@@ -20,18 +32,28 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";
-import { useRightPanelCloseGuard } from "@/lib/use-guarded-right-panel";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export function PacketLinkDrawer({
-  url,
+  requestId,
   onClose,
+  beforeRegenerate,
 }: {
-  url: string;
+  requestId: Id<"procurementRequests">;
   onClose: () => void;
+  beforeRegenerate: () => Promise<boolean>;
 }) {
+  const links = useQuery(api.procurementPacket.listLinks, { requestId });
+  const mintLink = useMutation(api.procurementPacket.mintLink);
+  const rotateLink = useMutation(api.procurementPacket.rotateLink);
+  const activeLink = links?.find(
+    (link) => link.outreachId === null && link.state === "active",
+  );
+  const url = activeLink?.url;
+  const [regenerating, setRegenerating] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   async function copy() {
+    if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
       setCopyFailed(false);
@@ -40,64 +62,117 @@ export function PacketLinkDrawer({
       setCopyFailed(true);
     }
   }
+  async function regenerate() {
+    setRegenerating(true);
+    try {
+      if (!(await beforeRegenerate())) return;
+      if (activeLink) await rotateLink({ linkId: activeLink.linkId });
+      else await mintLink({ requestId });
+      setCopyFailed(false);
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(
+          error,
+          "Could not regenerate the packet link",
+        ),
+      );
+    } finally {
+      setRegenerating(false);
+    }
+  }
   return (
     <SettingsDrawer
       open
       onOpenChange={(open) => !open && onClose()}
-      title="Share packet"
+      title="Share link"
       footer={
-        <PillButton type="button" onClick={() => void copy()}>
-          <Copy className="size-3.5" />
-          Copy link
-        </PillButton>
+        <>
+          <PillButton
+            type="button"
+            variant="secondary"
+            disabled={regenerating || links === undefined}
+            onClick={() => void regenerate()}
+          >
+            {regenerating ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            {activeLink ? "Regenerate link" : "Create link"}
+          </PillButton>
+          {url ? (
+            <PillButton type="button" onClick={() => void copy()}>
+              <Copy className="size-3.5" />
+              Copy link
+            </PillButton>
+          ) : null}
+        </>
       }
     >
       <div className="space-y-4">
-        <label className="block space-y-1.5">
-          <span className={`text-muted-foreground ${typeStyle("label.field")}`}>
-            Packet link
-          </span>
-          <Input
-            readOnly
-            value={url}
-            onFocus={(event) => event.currentTarget.select()}
-          />
-        </label>
-        {copyFailed ? (
-          <p
-            role="status"
-            className={`text-muted-foreground ${typeStyle("body.default")}`}
-          >
-            Select the link above and copy it manually.
+        {links === undefined ? (
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        ) : url ? (
+          <>
+            <Input
+              aria-label="Packet link"
+              readOnly
+              value={url}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            {copyFailed ? (
+              <p
+                role="status"
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
+                Select the link above and copy it manually.
+              </p>
+            ) : null}
+            <PillButton
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              variant="secondary"
+            >
+              <ExternalLink className="size-3.5" />
+              Preview shared packet
+            </PillButton>
+          </>
+        ) : (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            {activeLink
+              ? "The existing link is still valid, but its URL was not saved. Regenerate it to get a copyable link."
+              : "Create a link to share this packet."}
+          </p>
+        )}
+        {activeLink ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            {activeLink.stale
+              ? "The shared snapshot has older content. Regenerate the link to include the latest saved changes."
+              : "This link shares the saved packet snapshot and released files."}{" "}
+            Regenerating replaces the existing link.
           </p>
         ) : null}
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          This link shares the saved packet and released files with all brokers.
-          It replaces the previous shared link.
-        </p>
-        <PillButton
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          variant="secondary"
-        >
-          <ExternalLink className="size-3.5" />
-          Preview shared packet
-        </PillButton>
       </div>
     </SettingsDrawer>
   );
 }
 
-const PACKET_FILES = ["private.md", "public.md"] as const;
+type PacketFilename = "private.md" | "public.md";
+export type PacketEditorHandle = { save: () => Promise<boolean> };
+type PacketWorkspaceProps = {
+  requestId: Id<"procurementRequests">;
+  filename: PacketFilename;
+  readOnly?: boolean;
+  ref?: Ref<PacketEditorHandle>;
+};
 
 export function PacketWorkspace({
   requestId,
   filename,
-}: {
-  requestId: Id<"procurementRequests">;
-  filename: (typeof PACKET_FILES)[number];
-}) {
+  readOnly = false,
+  ref,
+}: PacketWorkspaceProps) {
   const packet = useQuery(api.procurementPacket.get, { requestId });
   if (!packet)
     return (
@@ -109,158 +184,89 @@ export function PacketWorkspace({
     (document) => document.filename === filename,
   );
   return (
-    <ProseMarkdown gfm>
-      {document
-        ? markdownBody(document.markdown) || "No content yet."
-        : "No content yet."}
-    </ProseMarkdown>
+    <LoadedPacketEditor
+      key={`${requestId}:${filename}`}
+      ref={ref}
+      requestId={requestId}
+      filename={filename}
+      readOnly={readOnly}
+      document={
+        document ?? {
+          markdown: `---\nvisibility: ${filename === "public.md" ? "shared" : "private"}\n---\n`,
+          revision: 0,
+        }
+      }
+    />
   );
 }
-
-function markdownBody(markdown: string) {
-  return parseMarkdownDocument(markdown).body;
-}
-
-type EditablePacketDocument = {
-  filename: string;
-  markdown: string;
-  revision: number;
-};
 
 function LoadedPacketEditor({
   requestId,
-  documents,
   filename,
-  onClose,
-}: {
-  requestId: Id<"procurementRequests">;
-  documents: EditablePacketDocument[];
-  filename: (typeof PACKET_FILES)[number];
-  onClose: () => void;
+  readOnly,
+  ref,
+  document,
+}: PacketWorkspaceProps & {
+  document: { markdown: string; revision: number };
 }) {
   const updateDocument = useMutation(api.procurementPacket.updateDocument);
-  const latestDrafts = () =>
-    Object.fromEntries(
-      PACKET_FILES.map((filename) => [
-        filename,
-        documents.find((document) => document.filename === filename)
-          ?.markdown ??
-          `---\nvisibility: ${filename === "public.md" ? "shared" : "private"}\n---\n`,
-      ]),
-    );
-  const [drafts, setDrafts] = useState(latestDrafts);
-  const fileInputs = useRef<
-    Partial<Record<(typeof PACKET_FILES)[number], HTMLInputElement | null>>
-  >({});
-  const revisions = useRef(
-    Object.fromEntries(
-      documents.map((document) => [document.filename, document.revision]),
-    ),
-  );
-  const saved = useRef(drafts);
+  const [draft, setDraft] = useState(document.markdown);
+  const saved = useRef(document.markdown);
+  const revision = useRef(document.revision);
+  const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (document.revision > revision.current && draft === saved.current) {
+      saved.current = document.markdown;
+      revision.current = document.revision;
+      setDraft(document.markdown);
+    }
+  }, [document.markdown, document.revision, draft]);
   const autoSave = useLocalFirstAutoSave({
     mutationName: "procurementPacket.updateDocument",
-    args: drafts,
-    flush: async (next) => {
-      for (const filename of PACKET_FILES) {
-        const markdown = next[filename];
-        if (markdown === saved.current[filename]) continue;
-        const result = await updateDocument({
-          requestId,
-          filename,
-          markdown,
-          expectedRevision: revisions.current[filename] ?? 0,
-        });
-        revisions.current[filename] = result.revision;
-        saved.current = { ...saved.current, [filename]: markdown };
-      }
+    args: draft,
+    enabled: !readOnly,
+    flush: async (markdown) => {
+      if (markdown === saved.current) return;
+      const result = await updateDocument({
+        requestId,
+        filename,
+        markdown,
+        expectedRevision: revision.current,
+      });
+      revision.current = result.revision;
+      saved.current = markdown;
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the packet"),
   });
-  useRightPanelCloseGuard(autoSave.saveNow);
+  useImperativeHandle(
+    ref,
+    () => ({ save: readOnly ? async () => true : autoSave.saveNow }),
+    [autoSave.saveNow, readOnly],
+  );
   return (
-    <SettingsDrawer
-      open
-      onOpenChange={(open) => {
-        if (!open)
-          void autoSave.saveNow().then((saved) => {
-            if (saved) onClose();
-          });
-      }}
-      title={filename === "public.md" ? "Edit shared" : "Edit notes"}
-      contentClassName="min-h-0 flex-1"
-      footer={
-        <>
-          <PillButton
-            type="button"
-            variant="secondary"
-            onClick={() => fileInputs.current[filename]?.click()}
-          >
-            <Upload className="size-3.5" />
-            Import
-          </PillButton>
-          <PillButton
-            variant="secondary"
-            href={`data:text/markdown;charset=utf-8,${encodeURIComponent(drafts[filename])}`}
-            download={filename}
-          >
-            <Download className="size-3.5" />
-            Download
-          </PillButton>
-        </>
-      }
-      actions={
-        <div className="flex items-center gap-2">
-          <AutoSaveStatus status={autoSave.status} />
-          {autoSave.status === "error" ? (
-            <PillButton
-              variant="destructive"
-              onClick={() => {
-                const latest = latestDrafts();
-                revisions.current = Object.fromEntries(
-                  documents.map((document) => [
-                    document.filename,
-                    document.revision,
-                  ]),
-                );
-                saved.current = latest;
-                setDrafts(latest);
-              }}
-            >
-              Discard edits
-            </PillButton>
-          ) : null}
-        </div>
-      }
-    >
+    <>
+      <AutoSaveStatus status={autoSave.status} />
       <input
-        ref={(input) => {
-          fileInputs.current[filename] = input;
-        }}
+        ref={fileInput}
         type="file"
         accept=".md,text/markdown"
         aria-label={`Import ${filename}`}
         className="sr-only"
+        disabled={readOnly}
         onChange={async (event) => {
           const input = event.currentTarget;
           const file = input.files?.[0];
           if (!file) return;
-          if (
-            !file.name.toLowerCase().endsWith(".md") ||
-            file.size > MAX_MARKDOWN_BYTES
-          ) {
-            toast.error("Choose a .md file under 512 KiB");
-            input.value = "";
-            return;
-          }
           try {
+            if (
+              !file.name.toLowerCase().endsWith(".md") ||
+              file.size > MAX_MARKDOWN_BYTES
+            )
+              throw new Error("Choose a .md file under 512 KiB");
             const markdown = await file.text();
             parseMarkdownDocument(markdown);
-            setDrafts((current) => ({
-              ...current,
-              [filename]: markdown,
-            }));
+            setDraft(markdown);
           } catch (error) {
             toast.error(
               getUserFacingErrorMessage(
@@ -274,47 +280,53 @@ function LoadedPacketEditor({
       />
       <MarkdownEditor
         label={filename}
-        value={drafts[filename]}
-        onChange={(markdown) =>
-          setDrafts((current) => ({
-            ...current,
-            [filename]: markdown,
-          }))
+        value={draft}
+        onChange={setDraft}
+        readOnly={readOnly}
+        defaultMode="preview"
+        footer={
+          <>
+            {autoSave.status === "error" ? (
+              <>
+                <PillButton
+                  variant="destructive"
+                  onClick={() => {
+                    revision.current = document.revision;
+                    saved.current = document.markdown;
+                    setDraft(document.markdown);
+                  }}
+                >
+                  Discard edits
+                </PillButton>
+                <PillButton
+                  variant="secondary"
+                  onClick={() => void autoSave.saveNow()}
+                >
+                  Retry save
+                </PillButton>
+              </>
+            ) : null}
+            {!readOnly ? (
+              <PillButton
+                type="button"
+                variant="secondary"
+                onClick={() => fileInput.current?.click()}
+              >
+                <Upload className="size-3.5" />
+                Import
+              </PillButton>
+            ) : null}
+            <PillButton
+              variant="secondary"
+              href={`data:text/markdown;charset=utf-8,${encodeURIComponent(draft)}`}
+              download={filename}
+            >
+              <Download className="size-3.5" />
+              Download
+            </PillButton>
+          </>
         }
       />
-    </SettingsDrawer>
-  );
-}
-
-export function PacketEditor({
-  requestId,
-  filename,
-  onClose,
-}: {
-  requestId: Id<"procurementRequests">;
-  filename: (typeof PACKET_FILES)[number];
-  onClose: () => void;
-}) {
-  const packet = useQuery(api.procurementPacket.get, { requestId });
-  if (!packet)
-    return (
-      <SettingsDrawer
-        open
-        onOpenChange={(open) => !open && onClose()}
-        title={filename === "public.md" ? "Edit shared" : "Edit notes"}
-      >
-        <div className="flex h-40 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        </div>
-      </SettingsDrawer>
-    );
-  return (
-    <LoadedPacketEditor
-      key={`${requestId}:${filename}`}
-      requestId={requestId}
-      filename={filename}
-      documents={packet.documents}
-      onClose={onClose}
-    />
+    </>
   );
 }

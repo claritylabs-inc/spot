@@ -23,7 +23,7 @@ import {
   Mail,
   Pencil,
   Plus,
-  RefreshCw,
+  Link,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -35,7 +35,7 @@ import {
 import { usePdf } from "@/components/pdf-context";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import {
-  PacketEditor,
+  type PacketEditorHandle,
   PacketLinkDrawer,
   PacketWorkspace,
 } from "@/components/procurement/packet-workspace";
@@ -1601,11 +1601,20 @@ export function ProcurementRequestWorkspace({
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
-  const packetLinks = useQuery(api.procurementPacket.listLinks, { requestId });
-  const mintPacketLink = useMutation(api.procurementPacket.mintLink);
-  const rotatePacketLink = useMutation(api.procurementPacket.rotateLink);
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
-  const [regeneratingPacketLink, setRegeneratingPacketLink] = useState(false);
+  const packetEditorRef = useRef<PacketEditorHandle>(null);
+  const latestTabChange = useRef(0);
+  const changeView = async (nextView: string) => {
+    const change = ++latestTabChange.current;
+    if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
+    if (change !== latestTabChange.current) return;
+    router.push(
+      nextView === "notes"
+        ? `${basePath}/${requestId}`
+        : `${basePath}/${requestId}?view=${nextView}`,
+    );
+  };
   const { openWithUrl, closePdf } = usePdf();
 
   const details = result as RequestDetails | null | undefined;
@@ -1647,17 +1656,20 @@ export function ProcurementRequestWorkspace({
     requestId,
   ]);
 
-  const openPacketEditor = useCallback(() => {
+  const openPacketLink = useCallback(async () => {
+    if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
     closePdf();
     onRightPanel(
-      <PacketEditor
-        key={`${requestId}:${view}`}
+      <PacketLinkDrawer
         requestId={requestId}
-        filename={view === "shared" ? "public.md" : "private.md"}
         onClose={closeRightPanel}
+        beforeRegenerate={() =>
+          packetEditorRef.current?.save() ?? Promise.resolve(true)
+        }
       />,
     );
-  }, [closePdf, closeRightPanel, onRightPanel, requestId, view]);
+  }, [closePdf, closeRightPanel, onRightPanel, requestId]);
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach) => {
@@ -1770,39 +1782,6 @@ export function ProcurementRequestWorkspace({
     [closePdf, closeRightPanel, onRightPanel, readOnly, requestOptions],
   );
 
-  const regeneratePacketLink = useCallback(async () => {
-    const activeLink = packetLinks?.find(
-      (link) => link.outreachId === null && link.state === "active",
-    );
-    setRegeneratingPacketLink(true);
-    try {
-      const result = activeLink
-        ? await rotatePacketLink({ linkId: activeLink.linkId })
-        : await mintPacketLink({ requestId });
-      closePdf();
-      onRightPanel(
-        <PacketLinkDrawer url={result.url} onClose={closeRightPanel} />,
-      );
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(
-          error,
-          "Could not regenerate the packet link",
-        ),
-      );
-    } finally {
-      setRegeneratingPacketLink(false);
-    }
-  }, [
-    closePdf,
-    closeRightPanel,
-    mintPacketLink,
-    onRightPanel,
-    packetLinks,
-    requestId,
-    rotatePacketLink,
-  ]);
-
   useEffect(() => {
     if (readOnly) {
       onActions?.(null);
@@ -1810,46 +1789,16 @@ export function ProcurementRequestWorkspace({
     }
 
     const actions =
-      view === "notes" || view === "shared" ? (
-        <>
-          <PillButton
-            type="button"
-            variant="secondary"
-            disabled={regeneratingPacketLink || packetLinks === undefined}
-            onClick={() => void regeneratePacketLink()}
-          >
-            {regeneratingPacketLink ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
-            Regenerate link
-          </PillButton>
-          <PillButton type="button" onClick={openPacketEditor}>
-            <Pencil className="size-3.5" />
-            {view === "shared" ? "Edit shared" : "Edit notes"}
-          </PillButton>
-        </>
+      view === "shared" ? (
+        <PillButton type="button" onClick={() => void openPacketLink()}>
+          <Link className="size-3.5" />
+          Share link
+        </PillButton>
       ) : view === "proposals" ? (
-        <>
-          <PillButton
-            type="button"
-            variant="secondary"
-            disabled={regeneratingPacketLink || packetLinks === undefined}
-            onClick={() => void regeneratePacketLink()}
-          >
-            {regeneratingPacketLink ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
-            Regenerate link
-          </PillButton>
-          <PillButton type="button" onClick={() => openOutreachEditor()}>
-            <Plus className="size-3.5" />
-            Add broker
-          </PillButton>
-        </>
+        <PillButton type="button" onClick={() => openOutreachEditor()}>
+          <Plus className="size-3.5" />
+          Add broker
+        </PillButton>
       ) : view === "files" ? (
         <>
           <PillButton
@@ -1869,14 +1818,16 @@ export function ProcurementRequestWorkspace({
 
     onActions?.(
       <>
-        <PillButton
-          type="button"
-          variant="secondary"
-          onClick={openRequestEditor}
-        >
-          <Pencil className="size-3.5" />
-          Edit request
-        </PillButton>
+        {view !== "shared" ? (
+          <PillButton
+            type="button"
+            variant="secondary"
+            onClick={openRequestEditor}
+          >
+            <Pencil className="size-3.5" />
+            Edit request
+          </PillButton>
+        ) : null}
         {actions}
       </>,
     );
@@ -1885,13 +1836,10 @@ export function ProcurementRequestWorkspace({
     onActions,
     openFileEditor,
     openOutreachEditor,
-    openPacketEditor,
+    openPacketLink,
     openRequestEditor,
     openUpload,
-    packetLinks,
     readOnly,
-    regeneratePacketLink,
-    regeneratingPacketLink,
     view,
   ]);
 
@@ -1940,72 +1888,13 @@ export function ProcurementRequestWorkspace({
     (proposal) =>
       proposal.status !== "archived" && proposal.status !== "withdrawn",
   );
-  const blockers = [
-    ...(details.outreaches.length === 0
-      ? ["No broker outreach has been added"]
-      : []),
-    ...(details.request.outstandingFileCount
-      ? [
-          `${details.request.outstandingFileCount} requested file${details.request.outstandingFileCount === 1 ? " is" : "s are"} outstanding`,
-        ]
-      : []),
-    ...(activeProposals.filter(
-      (proposal) =>
-        proposal.extraction.latest?.stuck ||
-        proposal.extraction.latest?.status === "failed",
-    ).length
-      ? ["Proposal extraction needs attention"]
-      : []),
-  ];
-  const nextActions = blockers.length
-    ? blockers
-    : activeProposals.some((proposal) => proposal.status === "review_ready")
-      ? ["Review extracted proposals against the broker packet"]
-      : details.outreaches.some(
-            (outreach) => outreach.status === "quote_received",
-          ) && activeProposals.length === 0
-        ? ["File received quote documents as proposals"]
-        : [
-            "Continue broker follow-up and import replies at the forwarding address",
-          ];
-  const requestPath = `${basePath}/${requestId}`;
 
   return (
     <div className="space-y-5">
-      <div className="space-y-4">
-        <OperationalLabelValueList>
-          <OperationalLabelValueRow
-            label="Current stage"
-            value={<RequestStatusTag status={details.request.status} />}
-          />
-          <RequestCompletionOutcome
-            outcome={details.request.completionOutcome}
-          />
-          <OperationalLabelValueRow
-            label="Proposals"
-            value={`${details.request.brokerCount} broker${details.request.brokerCount === 1 ? "" : "s"} · ${activeProposals.length} proposal${activeProposals.length === 1 ? "" : "s"}`}
-          />
-          <OperationalLabelValueRow
-            label="Target effective date"
-            value={formatDisplayDate(
-              details.request.targetEffectiveDate,
-              "Not set",
-            )}
-          />
-          <OperationalLabelValueRow label="Next" value={nextActions[0]} />
-        </OperationalLabelValueList>
-      </div>
-
       <div className="overflow-x-auto">
         <Tabs
           value={view}
-          onValueChange={(nextView) =>
-            router.push(
-              nextView === "notes"
-                ? requestPath
-                : `${requestPath}?view=${nextView}`,
-            )
-          }
+          onValueChange={(nextView) => void changeView(nextView)}
         >
           <TabsList variant="pill" aria-label="Procurement request view">
             <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -2032,9 +1921,30 @@ export function ProcurementRequestWorkspace({
         </Tabs>
       </div>
 
+      {view === "notes" ? (
+        <OperationalLabelValueList>
+          <OperationalLabelValueRow
+            label="Current stage"
+            value={<RequestStatusTag status={details.request.status} />}
+          />
+          <RequestCompletionOutcome
+            outcome={details.request.completionOutcome}
+          />
+          <OperationalLabelValueRow
+            label="Target effective date"
+            value={formatDisplayDate(
+              details.request.targetEffectiveDate,
+              "Not set",
+            )}
+          />
+        </OperationalLabelValueList>
+      ) : null}
+
       {view === "notes" || view === "shared" ? (
         <PacketWorkspace
           key={requestId}
+          ref={packetEditorRef}
+          readOnly={readOnly}
           requestId={requestId}
           filename={view === "shared" ? "public.md" : "private.md"}
         />

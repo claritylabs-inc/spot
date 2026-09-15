@@ -23,7 +23,6 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
-import { useGuardedRightPanel } from "@/lib/use-guarded-right-panel";
 import { OperatorClientSidebar } from "../../operator-client-sidebar";
 
 export default function OperatorProcurementRequestPage() {
@@ -39,7 +38,7 @@ export default function OperatorProcurementRequestPage() {
   });
   const client = clients?.find((row) => row._id === clientOrgId) ?? null;
   const [workspaceActions, setWorkspaceActions] = useState<ReactNode>(null);
-  const { rightPanel, setRightPanel } = useGuardedRightPanel();
+  const [rightPanel, setRightPanel] = useState<ReactNode>(null);
   const activeImpersonation = current?.activeImpersonation ?? null;
   const basePath = `/operator/clients/${clientOrgId}/procurement`;
   const title = request?.request.title ?? "Procurement request";
