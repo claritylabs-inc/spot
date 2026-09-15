@@ -70,28 +70,6 @@ export const OUTREACH_STATUS_OPTIONS = [
 export type ProcurementOutreachStatus =
   (typeof OUTREACH_STATUS_OPTIONS)[number]["value"];
 
-export const FILE_PURPOSE_OPTIONS = [
-  { value: "requirements", label: "Requirements" },
-  { value: "application", label: "Application" },
-  { value: "requested_document", label: "Broker-requested document" },
-  { value: "quote", label: "Quote" },
-  { value: "correspondence", label: "Email correspondence" },
-  { value: "other", label: "Other" },
-] as const;
-
-export type ProcurementFilePurpose =
-  (typeof FILE_PURPOSE_OPTIONS)[number]["value"];
-
-export const FILE_STATUS_OPTIONS = [
-  { value: "requested", label: "Requested" },
-  { value: "available", label: "Available" },
-  { value: "sent", label: "Sent" },
-  { value: "received", label: "Received" },
-] as const;
-
-export type ProcurementFileStatus =
-  (typeof FILE_STATUS_OPTIONS)[number]["value"];
-
 export const EMAIL_CATEGORY_OPTIONS = [
   { value: "broker", label: "Broker" },
   { value: "client", label: "Client" },
@@ -158,14 +136,6 @@ export function procurementOutreachStatusLabel(value: string) {
 
 export function procurementEmailCategoryLabel(value: string) {
   return optionForValue(EMAIL_CATEGORY_OPTIONS, value)?.label ?? value;
-}
-
-export function procurementFilePurposeLabel(value: string) {
-  return optionForValue(FILE_PURPOSE_OPTIONS, value)?.label ?? value;
-}
-
-export function procurementFileStatusLabel(value: string) {
-  return optionForValue(FILE_STATUS_OPTIONS, value)?.label ?? value;
 }
 
 type ProcurementRequestOption = {

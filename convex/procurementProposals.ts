@@ -391,7 +391,7 @@ async function resolveDocumentSource(
       throw new Error("Procurement file item does not belong to this request");
     if (!item.clientFileId)
       throw new Error(
-        `Procurement file item ${item._id} (${item.label}) has no file yet; it is still ${item.status}`,
+        `Procurement file item ${item._id} (${item.label}) has no uploaded file yet`,
       );
     return fromClientFile(item.clientFileId);
   }
@@ -454,15 +454,12 @@ async function resolveDocumentSource(
   };
 }
 
-/** A filed quote shows up in the request's packet files as a received quote
- * for that broker. Quotes never feed the company wiki, so this bypasses the
- * company-information scheduling used for client material. */
+/** Quote uploads skip company-information scheduling. */
 async function ensureQuoteFileItem(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
     request: Doc<"procurementRequests">;
-    outreachId: Id<"procurementBrokerOutreaches">;
     document: ResolvedDocument;
   },
 ) {
@@ -471,21 +468,13 @@ async function ensureQuoteFileItem(
     .query("procurementFileItems")
     .withIndex("file", (q) => q.eq("clientFileId", args.document.clientFileId))
     .collect();
-  const existing = linked.find(
-    (item) =>
-      item.requestId === args.request._id &&
-      item.outreachId === args.outreachId &&
-      item.purpose === "quote",
-  );
+  const existing = linked.find((item) => item.requestId === args.request._id);
   if (existing) return existing._id;
   return await ctx.db.insert("procurementFileItems", {
     requestId: args.request._id,
     clientOrgId: args.request.clientOrgId,
-    outreachId: args.outreachId,
     clientFileId: args.document.clientFileId,
-    purpose: "quote",
     label: args.document.fileName,
-    status: "received",
     brokerRelease: "hidden",
     clientVisible: false,
     createdByUserId: args.operatorUserId,
@@ -733,7 +722,6 @@ export async function fileProcurementProposalByOperator(
     const fileItemId = await ensureQuoteFileItem(ctx, {
       operatorUserId: args.operatorUserId,
       request,
-      outreachId: outreach._id,
       document: item,
     });
     const present = existingDocuments.find(

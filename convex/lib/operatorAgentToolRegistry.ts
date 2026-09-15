@@ -167,20 +167,6 @@ const procurementOutreachStatus = z.enum([
   "quote_accepted",
   "quote_rejected",
 ]);
-const procurementFilePurpose = z.enum([
-  "requirements",
-  "application",
-  "requested_document",
-  "quote",
-  "correspondence",
-  "other",
-]);
-const procurementFileStatus = z.enum([
-  "requested",
-  "available",
-  "sent",
-  "received",
-]);
 const procurementFileBrokerRelease = z.enum(["hidden", "listed", "attached"]);
 const procurementEmailCategory = z.enum([
   "broker",
@@ -1593,23 +1579,20 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_file_item: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
-      "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional for a hidden requested document, but is required before the item can be client-visible or released to a broker.",
+      "Add a procurement file or outstanding file request with a label and client/broker visibility. Link an existing client file when available; visibility can be set before upload. Keep file notes in private.md or public.md.",
     inputSchema: z.object({
       procurementRequestId,
-      procurementOutreachId: omittable(procurementOutreachId),
       clientFileId: omittable(clientFileId).describe(
-        "Exact saved client file. Required when clientVisible is true or brokerRelease is listed or attached.",
+        "Optional underlying saved file; omit for an outstanding file request.",
       ),
-      purpose: procurementFilePurpose,
       label: z.string().min(1).max(300),
-      status: omittable(procurementFileStatus),
       brokerRelease: omittable(procurementFileBrokerRelease).describe(
-        "listed or attached requires clientFileId; hidden may track a file that has not arrived",
+        "Broker visibility; an available file is included in the next packet snapshot.",
       ),
       clientVisible: omittable(z.boolean()).describe(
-        "true requires clientFileId",
+        "Visibility to the client when the file is available.",
       ),
     }),
     capability: "operator.procurement.write",
@@ -1621,27 +1604,24 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Add ${input.purpose} ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
+      `Add ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_file_item: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
-      "Update a procurement file requirement or link. Null removes the linked outreach or shared client file without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file. Keep file notes in private.md or public.md.",
+      "Update a procurement file label, client/broker visibility, or underlying file link. Null clears the file link without deleting the stored file. Visibility can be set before upload. Keep file notes in private.md or public.md.",
     inputSchema: z
       .object({
         procurementFileItemId,
-        procurementOutreachId: clearable(procurementOutreachId),
         clientFileId: clearable(clientFileId).describe(
-          "Omit to preserve the link. Null removes it only when the item will remain hidden from clients and brokers.",
+          "Omit to preserve the underlying file; null clears the link.",
         ),
-        purpose: omittable(procurementFilePurpose),
         label: omittable(z.string().min(1).max(300)),
-        status: omittable(procurementFileStatus),
         brokerRelease: omittable(procurementFileBrokerRelease).describe(
-          "listed or attached requires an effective clientFileId",
+          "Broker visibility; an available file is included in the next packet snapshot.",
         ),
         clientVisible: omittable(z.boolean()).describe(
-          "true requires an effective clientFileId",
+          "Visibility to the client when the file is available.",
         ),
       })
       .refine(

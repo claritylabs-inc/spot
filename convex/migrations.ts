@@ -16,6 +16,34 @@ import { reserveLegacyOperatorEmailIdentity } from "./lib/operatorIdentity";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
 
+export const simplifyProcurementFiles = migrations.define({
+  table: "procurementFileItems",
+  batchSize: 100,
+  migrateOne: async (ctx, item) => {
+    // Removing a broker-specific scope must never grant access to every broker.
+    if (
+      item.outreachId &&
+      item.brokerRelease &&
+      item.brokerRelease !== "hidden"
+    ) {
+      const request = await ctx.db.get(item.requestId);
+      if (request) {
+        await ctx.db.patch(request._id, {
+          packetRevision: (request.packetRevision ?? 0) + 1,
+          updatedAt: dayjs().valueOf(),
+        });
+      }
+    }
+    return {
+      purpose: undefined,
+      status: undefined,
+      outreachId: undefined,
+      brokerReleaseProposed: undefined,
+      ...(item.outreachId ? { brokerRelease: "hidden" as const } : {}),
+    };
+  },
+});
+
 export const backfillOperatorUserEmailIdentities = migrations.define({
   table: "users",
   batchSize: 100,

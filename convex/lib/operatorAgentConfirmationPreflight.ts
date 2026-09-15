@@ -719,17 +719,6 @@ async function preflightProcurementFileCreate(
     ctx,
     input.procurementRequestId,
   );
-  if (input.procurementOutreachId != null) {
-    const outreach = await requireDocument(
-      ctx,
-      "procurementBrokerOutreaches",
-      input.procurementOutreachId,
-      "Broker outreach",
-    );
-    if (outreach.requestId !== request._id) {
-      throw new Error("Broker outreach does not belong to this request");
-    }
-  }
   if (input.clientFileId != null) {
     const file = await requireDocument(
       ctx,
@@ -754,17 +743,6 @@ async function preflightProcurementFileUpdate(
     "Procurement file item",
   );
   const request = await requireProcurementRequest(ctx, item.requestId);
-  if (input.procurementOutreachId != null) {
-    const outreach = await requireDocument(
-      ctx,
-      "procurementBrokerOutreaches",
-      input.procurementOutreachId,
-      "Broker outreach",
-    );
-    if (outreach.requestId !== request._id) {
-      throw new Error("Broker outreach does not belong to this request");
-    }
-  }
   if (input.clientFileId != null) {
     const file = await requireDocument(
       ctx,

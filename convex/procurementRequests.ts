@@ -80,22 +80,6 @@ const outreachStatusValidator = v.union(
   v.literal("quote_rejected"),
 );
 
-const filePurposeValidator = v.union(
-  v.literal("requirements"),
-  v.literal("application"),
-  v.literal("requested_document"),
-  v.literal("quote"),
-  v.literal("correspondence"),
-  v.literal("other"),
-);
-
-const fileStatusValidator = v.union(
-  v.literal("requested"),
-  v.literal("available"),
-  v.literal("sent"),
-  v.literal("received"),
-);
-
 const releaseValidator = v.union(
   v.literal("hidden"),
   v.literal("listed"),
@@ -113,8 +97,6 @@ const emailCategoryValidator = v.union(
 type Ctx = QueryCtx | MutationCtx;
 type RequestStatus = Doc<"procurementRequests">["status"];
 type OutreachStatus = Doc<"procurementBrokerOutreaches">["status"];
-type FilePurpose = Doc<"procurementFileItems">["purpose"];
-type FileStatus = Doc<"procurementFileItems">["status"];
 
 export function writableProcurementRequestStatus(
   value: unknown,
@@ -303,8 +285,7 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
         outreach.status,
       ),
     ).length,
-    outstandingFileCount: files.filter((file) => file.status === "requested")
-      .length,
+    outstandingFileCount: files.filter((file) => !file.clientFileId).length,
     emailThreadCount: emails.filter(activeEmailThread).length,
   };
 }
@@ -328,7 +309,6 @@ function buildRequestTimeline(args: {
   fileItems: Array<{
     _id: Id<"procurementFileItems">;
     label: string;
-    status: string;
     updatedAt: number;
     clientFile: { uploadedBySide?: string } | null;
   }>;
@@ -359,12 +339,11 @@ function buildRequestTimeline(args: {
     ...args.fileItems.map((item) => ({
       key: `file:${item._id}`,
       kind: "file" as const,
-      summary:
-        item.status === "requested"
-          ? `Requested ${item.label}`
-          : item.clientFile?.uploadedBySide === "client"
-            ? `Client provided ${item.label}`
-            : `${item.label} ${readable(item.status)}`,
+      summary: !item.clientFile
+        ? `Requested ${item.label}`
+        : item.clientFile?.uploadedBySide === "client"
+          ? `Client provided ${item.label}`
+          : `Updated ${item.label}`,
       createdAt: item.updatedAt,
     })),
     ...args.outreaches.map((outreach) => ({
@@ -439,7 +418,16 @@ export async function getProcurementRequestDetails(
         ? await ctx.db.get(item.clientFileId)
         : null;
       return {
-        ...item,
+        _id: item._id,
+        requestId: item.requestId,
+        clientOrgId: item.clientOrgId,
+        clientFileId: item.clientFileId,
+        sourceEmailMessageId: item.sourceEmailMessageId,
+        label: item.label,
+        brokerRelease: item.outreachId ? "hidden" : item.brokerRelease,
+        clientVisible: item.clientVisible,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
         clientFile: file
           ? {
               _id: file._id,
@@ -1040,11 +1028,8 @@ export async function createProcurementFileItemByOperator(
   args: {
     operatorUserId: Id<"users">;
     requestId: Id<"procurementRequests">;
-    outreachId?: Id<"procurementBrokerOutreaches">;
     clientFileId?: Id<"clientFiles">;
-    purpose: FilePurpose;
     label: string;
-    status?: FileStatus;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     source: "operator" | "agent" | "workspace_scan";
@@ -1052,12 +1037,6 @@ export async function createProcurementFileItemByOperator(
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await requireRequest(ctx, args.requestId);
-  if (args.outreachId) {
-    const outreach = await ctx.db.get(args.outreachId);
-    if (!outreach || outreach.requestId !== request._id) {
-      throw new Error("Broker outreach does not belong to this request");
-    }
-  }
   if (args.clientFileId) {
     const file = await ctx.db.get(args.clientFileId);
     if (
@@ -1066,27 +1045,18 @@ export async function createProcurementFileItemByOperator(
       file.deletedAt ||
       file.orgId !== request.clientOrgId
     ) {
-      throw new Error("Client file does not belong to this request's client");
+      throw new NoWriteInputError(
+        "invalid_client_file",
+        "Client file is unavailable or belongs to another client",
+      );
     }
   }
-  if (
-    (args.clientVisible ||
-      (args.brokerRelease && args.brokerRelease !== "hidden")) &&
-    !args.clientFileId
-  )
-    throw new NoWriteInputError(
-      "missing_client_file",
-      "A visible procurement item must reference a client file",
-    );
   const now = dayjs().valueOf();
   const fileItemId = await ctx.db.insert("procurementFileItems", {
     requestId: request._id,
     clientOrgId: request.clientOrgId,
-    outreachId: args.outreachId,
     clientFileId: args.clientFileId,
-    purpose: args.purpose,
     label: requiredText(args.label, "File label", 300),
-    status: args.status ?? (args.clientFileId ? "available" : "requested"),
     brokerRelease: args.brokerRelease ?? "hidden",
     clientVisible: args.clientVisible ?? false,
     createdByUserId: args.operatorUserId,
@@ -1121,11 +1091,8 @@ export async function createProcurementFileItemByOperator(
 export const createFileItem = mutation({
   args: {
     requestId: v.id("procurementRequests"),
-    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     clientFileId: v.optional(v.id("clientFiles")),
-    purpose: filePurposeValidator,
     label: v.string(),
-    status: v.optional(fileStatusValidator),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
   },
@@ -1144,11 +1111,8 @@ export async function updateProcurementFileItemByOperator(
   args: {
     operatorUserId: Id<"users">;
     fileItemId: Id<"procurementFileItems">;
-    outreachId?: Id<"procurementBrokerOutreaches"> | null;
     clientFileId?: Id<"clientFiles"> | null;
-    purpose?: FilePurpose;
     label?: string;
-    status?: FileStatus;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     source: "operator" | "agent" | "workspace_scan";
@@ -1162,15 +1126,6 @@ export async function updateProcurementFileItemByOperator(
     updatedByUserId: args.operatorUserId,
     updatedAt: dayjs().valueOf(),
   };
-  if (args.outreachId !== undefined) {
-    if (args.outreachId) {
-      const outreach = await ctx.db.get(args.outreachId);
-      if (!outreach || outreach.requestId !== request._id) {
-        throw new Error("Broker outreach does not belong to this request");
-      }
-    }
-    patch.outreachId = args.outreachId ?? undefined;
-  }
   if (args.clientFileId !== undefined) {
     if (args.clientFileId) {
       const file = await ctx.db.get(args.clientFileId);
@@ -1180,43 +1135,38 @@ export async function updateProcurementFileItemByOperator(
         file.deletedAt ||
         file.orgId !== request.clientOrgId
       ) {
-        throw new Error("Client file does not belong to this request's client");
+        throw new NoWriteInputError(
+          "invalid_client_file",
+          "Client file is unavailable or belongs to another client",
+        );
       }
     }
     patch.clientFileId = args.clientFileId ?? undefined;
   }
-  if (args.purpose !== undefined) patch.purpose = args.purpose;
   if (args.label !== undefined)
     patch.label = requiredText(args.label, "File label", 300);
-  if (args.status !== undefined) patch.status = args.status;
   if (args.brokerRelease !== undefined)
     patch.brokerRelease = args.brokerRelease;
   if (args.clientVisible !== undefined)
     patch.clientVisible = args.clientVisible;
-  const effectiveClientFileId =
-    args.clientFileId === undefined
-      ? item.clientFileId
-      : (args.clientFileId ?? undefined);
   const effectiveBrokerRelease =
     args.brokerRelease ?? item.brokerRelease ?? "hidden";
-  const effectiveClientVisible =
-    args.clientVisible ?? item.clientVisible ?? false;
-  if (
-    (effectiveClientVisible || effectiveBrokerRelease !== "hidden") &&
-    !effectiveClientFileId
-  )
-    throw new NoWriteInputError(
-      "missing_client_file",
-      "A visible procurement item must reference a client file",
-    );
   const fields = Object.keys(patch).filter(
     (field) => !["updatedAt", "updatedByUserId"].includes(field),
   );
   if (fields.length === 0) throw new Error("No file fields changed");
-  await ctx.db.patch(item._id, patch);
+  await ctx.db.patch(item._id, {
+    ...patch,
+    purpose: undefined,
+    status: undefined,
+    brokerReleaseProposed: undefined,
+    ...(args.brokerRelease !== undefined ? { outreachId: undefined } : {}),
+  });
   const brokerProjectionChanged =
-    (args.brokerRelease !== undefined &&
-      args.brokerRelease !== (item.brokerRelease ?? "hidden")) ||
+    effectiveBrokerRelease !== (item.brokerRelease ?? "hidden") ||
+    (Boolean(item.outreachId) &&
+      args.brokerRelease !== undefined &&
+      effectiveBrokerRelease !== "hidden") ||
     (effectiveBrokerRelease !== "hidden" &&
       ((args.clientFileId !== undefined &&
         args.clientFileId !== item.clientFileId) ||
@@ -1255,13 +1205,8 @@ export async function updateProcurementFileItemByOperator(
 export const updateFileItem = mutation({
   args: {
     fileItemId: v.id("procurementFileItems"),
-    outreachId: v.optional(
-      v.union(v.id("procurementBrokerOutreaches"), v.null()),
-    ),
     clientFileId: v.optional(v.union(v.id("clientFiles"), v.null())),
-    purpose: v.optional(filePurposeValidator),
     label: v.optional(v.string()),
-    status: v.optional(fileStatusValidator),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
   },
@@ -1908,9 +1853,7 @@ export const ingestEmailInternal = internalMutation({
         clientOrgId: addressedRequest.clientOrgId,
         clientFileId,
         sourceEmailMessageId: emailMessageId,
-        purpose: "correspondence",
         label: file.name,
-        status: "received",
         createdAt: now,
         updatedAt: now,
       });

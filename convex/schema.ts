@@ -2956,20 +2956,25 @@ export default defineSchema({
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     clientFileId: v.optional(v.id("clientFiles")),
     sourceEmailMessageId: v.optional(v.id("procurementEmailMessages")),
-    purpose: v.union(
-      v.literal("requirements"),
-      v.literal("application"),
-      v.literal("requested_document"),
-      v.literal("quote"),
-      v.literal("correspondence"),
-      v.literal("other"),
+    // Retired fields remain optional until simplifyProcurementFiles has run.
+    purpose: v.optional(
+      v.union(
+        v.literal("requirements"),
+        v.literal("application"),
+        v.literal("requested_document"),
+        v.literal("quote"),
+        v.literal("correspondence"),
+        v.literal("other"),
+      ),
     ),
     label: v.string(),
-    status: v.union(
-      v.literal("requested"),
-      v.literal("available"),
-      v.literal("sent"),
-      v.literal("received"),
+    status: v.optional(
+      v.union(
+        v.literal("requested"),
+        v.literal("available"),
+        v.literal("sent"),
+        v.literal("received"),
+      ),
     ),
     brokerRelease: v.optional(
       v.union(v.literal("hidden"), v.literal("listed"), v.literal("attached")),
@@ -2984,7 +2989,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("request", ["requestId", "updatedAt"])
-    .index("outreach", ["outreachId", "updatedAt"])
     .index("file", ["clientFileId", "updatedAt"])
     .index("email", ["sourceEmailMessageId"])
     .index("release", ["requestId", "brokerRelease", "updatedAt"]),
