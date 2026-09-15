@@ -1647,10 +1647,11 @@ export function ProcurementRequestWorkspace({
           <PillButton
             type="button"
             variant="secondary"
+            expandLabel
+            label="Add file request"
             onClick={() => openFileEditor()}
           >
             <Plus className="size-3.5" />
-            Add file request
           </PillButton>
           <PillButton type="button" onClick={() => openUpload()}>
             <Upload className="size-3.5" />
@@ -1665,10 +1666,11 @@ export function ProcurementRequestWorkspace({
           <PillButton
             type="button"
             variant="secondary"
+            expandLabel
+            label="Edit request"
             onClick={openRequestEditor}
           >
             <Pencil className="size-3.5" />
-            Edit request
           </PillButton>
         ) : null}
         {actions}

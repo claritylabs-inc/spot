@@ -49,7 +49,6 @@ import {
   useCachedAgentTargets,
   useThreadCacheActions,
 } from "@/lib/sync/spot-cached-queries";
-import { Button } from "@/components/ui/button";
 import { MessageMetaTag } from "@/components/ui/message-meta-tag";
 import { PillButton } from "@/components/ui/pill-button";
 import { StatusTag } from "@/components/ui/status-tag";
@@ -366,17 +365,16 @@ function ThreadAttachmentList({
               />
             </span>
           ))}
-          <Button
+          <PillButton
             type="button"
             variant="ghost"
-            size="sm"
+            size="small"
             onClick={handleDownloadAll}
             disabled={!urls?.length || isDownloadingAll}
-            className={`h-6 shrink-0 gap-1.5 rounded-full px-2 text-muted-foreground/60 hover:bg-foreground/3 hover:text-foreground ${typeStyle("label.tag")}`}
           >
             <Download className="h-3.5 w-3.5" />
             {isDownloadingAll ? "Preparing..." : "Download all"}
-          </Button>
+          </PillButton>
         </div>
       ) : null}
     </>
@@ -701,7 +699,7 @@ function MessageFooterActions({
       selectedMailboxIndex === index && selectedMailboxEmailIndex === emailIndex;
     return (
       <PillButton
-        size="compact"
+        size="small"
         variant="secondary"
         label={`Review ${email.subject}`}
         title={email.subject}
@@ -709,7 +707,7 @@ function MessageFooterActions({
           if (!messageId) return;
           onOpenMailboxArtifact?.({ messageId, index, emailIndex });
         }}
-        className={`h-6 max-w-64 px-2 ${
+        className={`max-w-64 ${
           isSelected
             ? "border-border-focus bg-foreground/[0.04] text-foreground/75"
             : "text-muted-foreground/60"
@@ -824,17 +822,16 @@ function MessageFooterActions({
               />
             </span>
           ))}
-          <Button
+          <PillButton
             type="button"
             variant="ghost"
-            size="sm"
+            size="small"
             onClick={handleDownloadAttachments}
             disabled={!attachmentUrls?.length || isDownloadingAttachments}
-            className={`h-6 shrink-0 gap-1.5 rounded-full px-2 text-muted-foreground/60 hover:bg-foreground/3 hover:text-foreground ${typeStyle("label.tag")}`}
           >
             <Download className="h-3.5 w-3.5" />
             {isDownloadingAttachments ? "Preparing..." : "Download all"}
-          </Button>
+          </PillButton>
         </div>
       ) : null}
     </div>
@@ -1500,7 +1497,7 @@ function CancelButton({
   if (!show) return null;
 
   return (
-    <button
+    <PillButton
       type="button"
       disabled={cancelling}
       onClick={async () => {
@@ -1513,10 +1510,11 @@ function CancelButton({
           setCancelling(false);
         }
       }}
-      className={`inline-flex h-5 items-center gap-1.5 text-muted-foreground/35 transition-colors hover:text-muted-foreground/60 disabled:opacity-50 ${typeStyle("control.buttonCompact")}`}
+      variant="ghost"
+      size="small"
     >
       {cancelling ? "Cancelling..." : "Cancel"}
-    </button>
+    </PillButton>
   );
 }
 
@@ -1527,22 +1525,23 @@ function CopyMessageButton({ content }: { content: string }) {
   if (!content?.trim()) return null;
 
   return (
-    <button
+    <PillButton
       type="button"
       onClick={async () => {
         await navigator.clipboard.writeText(content);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground/40 transition-colors hover:border-input hover:bg-foreground/[0.03] hover:text-foreground/70"
-      title="Copy response"
+      variant="icon"
+      size="small"
+      label="Copy response"
     >
       {copied ? (
         <Check className="w-3 h-3 text-emerald-500" />
       ) : (
         <Copy className="w-3 h-3" />
       )}
-    </button>
+    </PillButton>
   );
 }
 
@@ -1555,7 +1554,7 @@ function TryAgainMessageButton({
   const [retrying, setRetrying] = useState(false);
 
   return (
-    <button
+    <PillButton
       type="button"
       disabled={retrying}
       onClick={async () => {
@@ -1568,11 +1567,12 @@ function TryAgainMessageButton({
           setRetrying(false);
         }
       }}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground/40 transition-colors hover:border-input hover:bg-foreground/[0.03] hover:text-foreground/70 disabled:opacity-50"
-      title="Try again"
+      variant="icon"
+      size="small"
+      label="Try again"
     >
       <RotateCcw className={`h-3 w-3 ${retrying ? "animate-spin" : ""}`} />
-    </button>
+    </PillButton>
   );
 }
 
@@ -1582,7 +1582,7 @@ function RetryButton({ messageId }: { messageId: string }) {
   const [retrying, setRetrying] = useState(false);
 
   return (
-    <button
+    <PillButton
       type="button"
       disabled={retrying}
       onClick={async () => {
@@ -1595,11 +1595,13 @@ function RetryButton({ messageId }: { messageId: string }) {
           setRetrying(false);
         }
       }}
-      className={`inline-flex items-center gap-1.5 mt-2 ml-9.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors disabled:opacity-50 ${typeStyle("control.buttonCompact")}`}
+      variant="ghost"
+      size="small"
+      className="mt-2 ml-9.5"
     >
       <RotateCcw className={`w-3 h-3 ${retrying ? "animate-spin" : ""}`} />
       {retrying ? "Retrying..." : "Retry response"}
-    </button>
+    </PillButton>
   );
 }
 
@@ -1654,15 +1656,16 @@ function QueuedThreadMessage({
       >
         {sending ? "Sending" : "Send now"}
       </PillButton>
-      <button
+      <PillButton
         type="button"
         onClick={onCancel}
         disabled={sending}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground/35 transition-colors hover:bg-foreground/[0.04] hover:text-foreground/65 disabled:opacity-50"
-        aria-label="Remove queued message"
+        variant="icon"
+        size="compact"
+        label="Remove queued message"
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </PillButton>
     </div>
   );
 }

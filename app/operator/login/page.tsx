@@ -103,7 +103,7 @@ export default function OperatorLoginPage() {
               />
             </div>
             {error ? <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{error}</p> : null}
-            <PillButton type="submit" disabled={loading || !email} className={`justify-center ${typeStyle("control.button")}`}>
+            <PillButton type="submit" disabled={loading || !email} className="justify-center">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? "Sending code..." : "Continue"}
               {!loading ? <ArrowRight className="h-4 w-4" /> : null}
@@ -127,7 +127,7 @@ export default function OperatorLoginPage() {
               </p>
             </div>
             {error ? <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{error}</p> : null}
-            <PillButton type="submit" disabled={loading || code.length < 6} className={`justify-center ${typeStyle("control.button")}`}>
+            <PillButton type="submit" disabled={loading || code.length < 6} className="justify-center">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? "Verifying..." : "Verify and continue"}
               {!loading ? <ArrowRight className="h-4 w-4" /> : null}

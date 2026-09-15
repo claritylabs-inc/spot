@@ -20,7 +20,7 @@ type PillButtonVariant =
   | "ghost"
   | "icon"
   | "iconLabel";
-type PillButtonSize = "default" | "compact";
+type PillButtonSize = "default" | "compact" | "small" | "large";
 
 type PillButtonContentProps =
   | {
@@ -45,6 +45,7 @@ type PillButtonContentProps =
 type CommonPillButtonProps = PillButtonContentProps & {
   variant?: PillButtonVariant;
   size?: PillButtonSize;
+  roomyOnMobile?: boolean;
 };
 
 type PillButtonButtonProps = CommonPillButtonProps &
@@ -130,20 +131,28 @@ const variantConfig: Record<PillButtonVariant, VariantConfig> = {
 };
 
 const sizeClasses: Record<PillButtonSize, string> = {
+  small: `h-6 px-2 gap-1.5 ${typeStyle("control.buttonCompact")}`,
   default: `h-8 px-5 gap-2 ${typeStyle("control.buttonCompact")}`,
   compact: `h-7 px-3 gap-1.5 ${typeStyle("control.buttonCompact")}`,
+  large: `h-12 px-5 gap-2 ${typeStyle("control.button")}`,
 };
 
 const iconSizeClasses: Record<PillButtonSize, string> = {
+  small: "h-6 w-6 p-0",
   default: "h-8 w-8 p-0",
   compact: "h-7 w-7 p-0",
+  large: "h-12 w-12 p-0",
 };
 
 const expandableIconSizeClasses: Record<PillButtonSize, string> = {
+  small:
+    "h-6 min-w-6 overflow-hidden px-1 focus-visible:px-2 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-2 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
   default:
     "h-8 min-w-8 overflow-hidden px-2 focus-visible:px-5 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-5 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
   compact:
     "h-7 min-w-7 overflow-hidden px-[7px] focus-visible:px-3 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-3 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
+  large:
+    "h-12 min-w-12 overflow-hidden px-4 focus-visible:px-5 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-5 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
 };
 
 const expandingLabelClasses =
@@ -157,6 +166,7 @@ const PillButton = forwardRef<
     {
       variant = "primary",
       size: requestedSize,
+      roomyOnMobile = false,
       iconOnly = false,
       expandLabel = false,
       label,
@@ -204,7 +214,7 @@ const PillButton = forwardRef<
     const classes = cn(
       "inline-flex shrink-0 items-center justify-center rounded-full outline-none duration-150 ease-out select-none focus-visible:ring-2 focus-visible:ring-border-emphasized disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed [&_svg]:shrink-0 [&_svg]:text-current",
       isExpandableIcon
-        ? `group/pill transition-[padding,background-color,border-color,color,opacity] duration-[180ms] [transition-timing-function:cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-colors ${typeStyle("control.buttonCompact")}`
+        ? `group/pill transition-[padding,background-color,border-color,color,opacity] duration-[180ms] [transition-timing-function:cubic-bezier(0.33,1,0.68,1)] motion-reduce:transition-colors ${typeStyle(size === "large" ? "control.button" : "control.buttonCompact")}`
         : "transition-colors",
       config.classes,
       isExpandableIcon
@@ -212,6 +222,8 @@ const PillButton = forwardRef<
         : isIcon
           ? iconSizeClasses[size]
           : sizeClasses[size],
+      roomyOnMobile && !inheritedSize &&
+        (isIcon ? "max-sm:h-9 max-sm:w-9" : "max-sm:h-9 max-sm:px-4"),
       className,
     );
 

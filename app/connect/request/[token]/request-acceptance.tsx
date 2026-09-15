@@ -237,7 +237,7 @@ export default function VendorRequestAcceptance({ token }: { token: string }) {
               />
             </div>
             {error ? <p className={`px-1 py-1 text-muted-foreground ${typeStyle("body.default")}`}>{error}</p> : null}
-            <PillButton type="submit" disabled={loading || !email.trim()} className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}>
+            <PillButton type="submit" disabled={loading || !email.trim()} className="w-full justify-center shadow-none sm:w-auto">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? "Sending code..." : "Continue"}
               {!loading ? <ArrowRight className="h-4 w-4" /> : null}
@@ -250,7 +250,7 @@ export default function VendorRequestAcceptance({ token }: { token: string }) {
               <OtpField id="connected-org-verification-code" value={code} onValueChange={setCode} autoFocus required />
             </div>
             {error ? <p className={`px-1 py-1 text-muted-foreground ${typeStyle("body.default")}`}>{error}</p> : null}
-            <PillButton type="submit" disabled={loading || code.length < 6} className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}>
+            <PillButton type="submit" disabled={loading || code.length < 6} className="w-full justify-center shadow-none sm:w-auto">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? "Accepting..." : "Accept invite"}
             </PillButton>

@@ -17,6 +17,7 @@ import {
   useCachedNotifications,
   useNotificationCacheActions,
 } from "@/lib/sync/spot-cached-queries";
+import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 
 dayjs.extend(relativeTime);
@@ -282,7 +283,7 @@ export function NotificationsPanel({
       {/* Footer */}
       {activeTab === "unread" && unreadCount > 0 && (
         <div className="px-3 py-2 border-t border-border">
-          <button
+          <PillButton
             type="button"
             onClick={() => {
               if (visibleUnreadNotifications) {
@@ -290,10 +291,11 @@ export function NotificationsPanel({
               }
               void markAllRead({ orgId });
             }}
-            className={`text-muted-foreground/50 hover:text-foreground transition-colors ${typeStyle("control.buttonCompact")}`}
+            variant="ghost"
+            size="small"
           >
             Mark all as read
-          </button>
+          </PillButton>
         </div>
       )}
     </div>

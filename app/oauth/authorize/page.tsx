@@ -221,7 +221,8 @@ export default function OAuthAuthorizePage() {
               <PillButton
                 type="submit"
                 disabled={sendingCode || !email}
-                className={`h-12 w-full justify-center shadow-none ${typeStyle("control.button")}`}
+                className="w-full"
+                size="large"
               >
                 {sendingCode ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -268,7 +269,8 @@ export default function OAuthAuthorizePage() {
                 <PillButton
                   type="submit"
                   disabled={verifying || code.length < 6}
-                  className={`h-12 w-full justify-center shadow-none ${typeStyle("control.button")}`}
+                  className="w-full"
+                  size="large"
                 >
                   {verifying ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -284,7 +286,8 @@ export default function OAuthAuthorizePage() {
                     setCode("");
                     setError("");
                   }}
-                  className={`h-12 w-full justify-center shadow-none ${typeStyle("control.button")}`}
+                  className="w-full"
+                  size="large"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   Use a different email
@@ -442,7 +445,8 @@ export default function OAuthAuthorizePage() {
                 type="button"
                 onClick={handleAllow}
                 disabled={authorizing}
-                className={`h-12 w-full justify-center shadow-none ${typeStyle("control.button")}`}
+                className="w-full"
+                size="large"
               >
                 {authorizing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -454,7 +458,8 @@ export default function OAuthAuthorizePage() {
                 variant="secondary"
                 onClick={handleDeny}
                 disabled={authorizing}
-                className={`h-12 w-full justify-center shadow-none ${typeStyle("control.button")}`}
+                className="w-full"
+                size="large"
               >
                 Deny
               </PillButton>

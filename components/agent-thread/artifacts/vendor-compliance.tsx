@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { AlertTriangle, Check, Clock, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PillButton } from "@/components/ui/pill-button";
@@ -180,12 +179,13 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
                   </p>
                 </div>
                 {row.vendorOrgId ? (
-                  <Link
+                  <PillButton
                     href={`/connect/vendors/${row.vendorOrgId}/policies`}
-                    className={`shrink-0 rounded-full border border-input px-2.5 py-1 text-muted-foreground transition-colors hover:border-border-hover hover:text-foreground ${typeStyle("label.tag")}`}
+                    variant="secondary"
+                    size="small"
                   >
                     View vendor
-                  </Link>
+                  </PillButton>
                 ) : null}
               </div>
             </div>
@@ -321,7 +321,12 @@ export function VendorComplianceSidebar({
             {rows.length} vendor{rows.length === 1 ? "" : "s"}
           </Badge>
         </div>
-        <PillButton size="compact" variant="icon" onClick={onClose} label="Close vendor compliance checks">
+        <PillButton
+          size="compact"
+          variant="icon"
+          onClick={onClose}
+          label="Close vendor compliance checks"
+        >
           <X className="h-4 w-4" />
         </PillButton>
       </div>
