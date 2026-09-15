@@ -132,13 +132,13 @@ const variantConfig: Record<PillButtonVariant, VariantConfig> = {
 
 const sizeClasses: Record<PillButtonSize, string> = {
   default: `h-8 px-5 gap-2 ${typeStyle("control.buttonCompact")}`,
-  compact: `h-7 px-3 gap-1.5 ${typeStyle("control.buttonCompact")}`,
+  compact: `h-7 px-4 gap-1.5 ${typeStyle("control.buttonCompact")}`,
   large: `h-12 px-5 gap-2 ${typeStyle("control.button")}`,
 };
 
 const iconSizeClasses: Record<PillButtonSize, string> = {
   default: "h-8 w-8 p-0",
-  compact: "h-7 w-7 p-0",
+  compact: "h-7 w-10 p-0",
   large: "h-12 w-12 p-0",
 };
 
@@ -146,7 +146,7 @@ const expandableIconSizeClasses: Record<PillButtonSize, string> = {
   default:
     "h-8 min-w-8 overflow-hidden px-2 focus-visible:px-5 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-5 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
   compact:
-    "h-7 min-w-7 overflow-hidden px-[7px] focus-visible:px-3 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-3 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
+    "h-7 min-w-10 overflow-hidden px-3 focus-visible:px-4 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-4 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
   large:
     "h-12 min-w-12 overflow-hidden px-4 focus-visible:px-5 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-5 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
 };

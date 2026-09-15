@@ -47,7 +47,7 @@ export const typographyRoles = {
   "control.button":
     "font-sans text-base font-medium leading-normal tracking-normal normal-case not-italic normal-nums",
   "control.buttonCompact":
-    "font-sans text-label font-medium leading-none tracking-normal normal-case not-italic normal-nums",
+    "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
   "control.input":
     "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-base file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
   "control.tab":
