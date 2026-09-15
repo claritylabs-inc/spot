@@ -17,6 +17,23 @@ where relevant. Tables contain data and sidebar navigation; record actions and
 uploads belong in sidebars. Use organization icons in selectors, toast progress,
 and concise labels. Explicit creation and consequential actions remain explicit.
 
+## Inline Markdown card follow-up — September 15, 2026
+
+The real-component fixture in `.context/request-tabs-browser/inline-editor.mjs`
+passed in headless local Chrome: Notes has only Edit request, Shared has only
+Share link, and the main card switches between Preview and Write. A revision
+conflict preserves the draft while opening request settings and prevents a tab
+change until discard; successful tab changes save only the selected file.
+Opening the link sidebar reads the existing URL without rotation; its footer
+explicitly regenerates it. Desktop/mobile light/dark modes have no overflow.
+Company wiki inline editing, autosave and preview passed in the same fixture.
+Requirement-note editors retain existing autosave/permission coverage through
+focused tests; their full record workflow was not browser-retested in this pass.
+Backend tests verify unchanged rows on link reads, token exclusion from model,
+client and public projections, operator-only retrieval, rotation invalidation,
+and legacy/revoked/expired behavior. The fixture uses synthetic data and does not
+establish authenticated production workflow coverage.
+
 ## Scripted user outcomes
 
 | ID | Actor / entrypoint | Steps and desired behavior |

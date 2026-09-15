@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
@@ -12,6 +12,7 @@ import { ProseMarkdown } from "@/components/prose-markdown";
 import { PillButton } from "@/components/ui/pill-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseMarkdownDocument } from "@/convex/lib/markdownDocument";
+import { cn } from "@/lib/utils";
 import { editableMirrorTypographyStyle, typeStyle } from "@/lib/typography";
 
 const editorTheme = EditorView.theme({
@@ -25,8 +26,8 @@ const editorTheme = EditorView.theme({
     overflow: "auto",
     ...editableMirrorTypographyStyle,
   },
-  ".cm-content": { padding: "12px 0", caretColor: "var(--foreground)" },
-  ".cm-line": { padding: "0 12px" },
+  ".cm-content": { padding: "24px 0", caretColor: "var(--foreground)" },
+  ".cm-line": { padding: "0 24px" },
   ".cm-cursor": { borderLeftColor: "var(--foreground)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     {
@@ -97,13 +98,24 @@ export function MarkdownEditor({
   value,
   onChange,
   label,
+  defaultMode = "write",
+  readOnly = false,
+  footer,
+  toolbarActions,
+  className,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
+  defaultMode?: "write" | "preview";
+  readOnly?: boolean;
+  footer?: ReactNode;
+  toolbarActions?: ReactNode;
+  className?: string;
 }) {
   const editor = useRef<ReactCodeMirrorRef>(null);
-  const [mode, setMode] = useState("write");
+  const [requestedMode, setMode] = useState<string>(defaultMode);
+  const mode = readOnly ? "preview" : requestedMode;
   const extensions = useMemo(
     () => [
       yamlFrontmatter({ content: markdown() }),
@@ -152,43 +164,60 @@ export function MarkdownEditor({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border focus-within:border-ring">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border p-2">
-        <Tabs value={mode} onValueChange={(value) => setMode(String(value))}>
-          <TabsList variant="pill" aria-label="Markdown editor mode">
-            <TabsTrigger value="write">Write</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div
-          className="flex items-center gap-1"
-          role="group"
-          aria-label="Markdown formatting"
-        >
-          {formats.map((item) => (
-            <PillButton
-              key={item.label}
-              type="button"
-              variant="ghost"
-              size="compact"
-              iconOnly
-              label={item.label}
-              title={item.label}
-              disabled={mode !== "write"}
-              onClick={() => format(item)}
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card focus-within:border-ring",
+        className,
+      )}
+    >
+      {!readOnly || toolbarActions ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border p-2">
+          {!readOnly ? (
+            <Tabs
+              value={mode}
+              onValueChange={(value) => setMode(String(value))}
             >
-              <item.icon className="size-3.5" />
-            </PillButton>
-          ))}
+              <TabsList variant="pill" aria-label="Markdown editor mode">
+                <TabsTrigger value="preview">Preview</TabsTrigger>
+                <TabsTrigger value="write">Write</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          ) : null}
+          {mode === "write" ? (
+            <div
+              className="flex items-center gap-1"
+              role="group"
+              aria-label="Markdown formatting"
+            >
+              {formats.map((item) => (
+                <PillButton
+                  key={item.label}
+                  type="button"
+                  variant="ghost"
+                  size="compact"
+                  iconOnly
+                  label={item.label}
+                  title={item.label}
+                  disabled={mode !== "write"}
+                  onClick={() => format(item)}
+                >
+                  <item.icon className="size-3.5" />
+                </PillButton>
+              ))}
+            </div>
+          ) : null}
+          {toolbarActions}
         </div>
-      </div>
+      ) : null}
       <div className={mode === "write" ? "min-h-0 flex-1" : "hidden"}>
         <CodeMirror
           ref={editor}
           value={value}
           onChange={onChange}
+          editable={!readOnly}
           extensions={extensions}
           height="100%"
+          minHeight="24rem"
           theme="none"
           indentWithTab={false}
           basicSetup={{
@@ -204,7 +233,7 @@ export function MarkdownEditor({
         <div
           role="region"
           aria-label={`${label} preview`}
-          className="min-h-0 flex-1 overflow-auto p-4"
+          className="min-h-0 flex-1 overflow-auto p-6"
         >
           {previewError ? (
             <p role="alert" className={typeStyle("body.default")}>
@@ -213,6 +242,11 @@ export function MarkdownEditor({
           ) : (
             <ProseMarkdown gfm>{preview || "No content yet."}</ProseMarkdown>
           )}
+        </div>
+      ) : null}
+      {footer ? (
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4">
+          {footer}
         </div>
       ) : null}
     </div>

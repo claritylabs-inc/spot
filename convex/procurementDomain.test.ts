@@ -16,6 +16,7 @@ import {
 } from "./lib/procurementCapabilities";
 import schema from "./schema";
 import { stringifyMarkdownDocument } from "./lib/markdownDocument";
+import { listPacketLinksForOperator } from "./procurementPacket";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -282,6 +283,142 @@ describe("procurement domain boundaries", () => {
           state: "active",
         }),
       ]);
+    }
+  });
+
+  test("reopens the same packet URL in the operator portal without changing its snapshot or exposing it to model tools", async () => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Reopen packet");
+    await f.operator.mutation(api.procurementRequests.update, {
+      requestId,
+      clientVisible: true,
+    });
+    const issued = await f.operator.mutation(api.procurementPacket.mintLink, {
+      requestId,
+    });
+    const before = await f.t.run((ctx) =>
+      ctx.db.query("procurementPacketLinks").collect(),
+    );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const links = await f.operator.query(api.procurementPacket.listLinks, {
+        requestId,
+      });
+      expect(links.find((link) => link.linkId === issued.id)).toMatchObject({
+        url: issued.url,
+        state: "active",
+      });
+    }
+    expect(
+      await f.t.run((ctx) => ctx.db.query("procurementPacketLinks").collect()),
+    ).toEqual(before);
+    const modelLinks = await f.t.run((ctx) =>
+      listPacketLinksForOperator(ctx, requestId),
+    );
+    expect(modelLinks).toHaveLength(before.length);
+    for (const link of modelLinks) {
+      expect(link).not.toHaveProperty("url");
+      expect(link).not.toHaveProperty("token");
+      expect(link).not.toHaveProperty("tokenHash");
+    }
+    const publicPacket = await f.t.query(api.procurementPacket.getByToken, {
+      token: issued.token,
+    });
+    expect(publicPacket?.state).toBe("ready");
+    expect(publicPacket).not.toHaveProperty("token");
+    expect(publicPacket).not.toHaveProperty("tokenHash");
+    expect(publicPacket).not.toHaveProperty("url");
+    const clientRequest = await f.client.query(
+      api.clientProcurementRequests.get,
+      {
+        requestId,
+      },
+    );
+    expect(JSON.stringify(clientRequest)).not.toContain(issued.token);
+  });
+
+  test("returns no URL for legacy or inactive links and only explicit rotation replaces the token", async () => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Existing packet links");
+    const issued = await f.operator.mutation(api.procurementPacket.mintLink, {
+      requestId,
+    });
+    await f.t.run((ctx) => ctx.db.patch(issued.id, { token: undefined }));
+    const legacyLinks = await f.operator.query(
+      api.procurementPacket.listLinks,
+      {
+        requestId,
+      },
+    );
+    expect(legacyLinks.find((link) => link.linkId === issued.id)).toMatchObject(
+      {
+        url: null,
+        state: "active",
+      },
+    );
+    await expect(
+      f.t.query(api.procurementPacket.getByToken, {
+        token: issued.token,
+      }),
+    ).resolves.toMatchObject({ state: "ready" });
+    const rotated = await f.operator.mutation(
+      api.procurementPacket.rotateLink,
+      {
+        linkId: issued.id,
+      },
+    );
+    expect(rotated.url).not.toBe(issued.url);
+    await expect(
+      f.t.query(api.procurementPacket.getByToken, {
+        token: issued.token,
+      }),
+    ).resolves.toBeNull();
+    const currentLinks = await f.operator.query(
+      api.procurementPacket.listLinks,
+      {
+        requestId,
+      },
+    );
+    expect(
+      currentLinks.find((link) => link.linkId === issued.id),
+    ).toMatchObject({
+      url: null,
+      state: "revoked",
+    });
+    expect(
+      currentLinks.find((link) => link.linkId === rotated.id),
+    ).toMatchObject({
+      url: rotated.url,
+      state: "active",
+    });
+    await f.t.run((ctx) =>
+      ctx.db.patch(rotated.id, {
+        expiresAt: dayjs().subtract(1, "minute").valueOf(),
+      }),
+    );
+    const expiredLinks = await f.operator.query(
+      api.procurementPacket.listLinks,
+      {
+        requestId,
+      },
+    );
+    expect(
+      expiredLinks.find((link) => link.linkId === rotated.id),
+    ).toMatchObject({
+      url: null,
+      state: "expired",
+    });
+  });
+
+  test("denies packet URL lookup to clients, brokers, and anonymous callers", async () => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Private URL lookup");
+    await f.operator.mutation(api.procurementPacket.mintLink, { requestId });
+    for (const caller of [f.client, f.broker, f.t]) {
+      await expect(
+        caller.query(api.procurementPacket.listLinks, {
+          requestId,
+        }),
+      ).rejects.toThrow();
     }
   });
 

@@ -266,6 +266,7 @@ export const preview = query({
 export async function listPacketLinksForOperator(
   ctx: QueryCtx | MutationCtx,
   requestId: Id<"procurementRequests">,
+  includeUrl = false,
 ) {
   const request = await requestForOperator(ctx, requestId);
   const links = await ctx.db
@@ -279,8 +280,17 @@ export async function listPacketLinksForOperator(
       const outreach = link.outreachId
         ? await ctx.db.get(link.outreachId)
         : null;
+      const status = packetLinkStatus(link, request.packetRevision ?? 0, now);
       return {
         linkId: link._id,
+        ...(includeUrl
+          ? {
+              url:
+                status.state === "active" && link.token
+                  ? `${getClientPortalUrl()}/share/packet/${link.token}`
+                  : null,
+            }
+          : {}),
         outreachId: link.outreachId ?? null,
         brokerName: outreach?.brokerName ?? "All brokers",
         recipientLabel: link.recipientLabel,
@@ -304,7 +314,7 @@ export async function listPacketLinksForOperator(
         lastViewedAt: link.lastViewedAt ?? null,
         viewCount: link.viewCount,
         createdAt: link.createdAt,
-        ...packetLinkStatus(link, request.packetRevision ?? 0, now),
+        ...status,
       };
     }),
   );
@@ -314,7 +324,7 @@ export const listLinks = query({
   args: { requestId: v.id("procurementRequests") },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    return await listPacketLinksForOperator(ctx, args.requestId);
+    return await listPacketLinksForOperator(ctx, args.requestId, true);
   },
 });
 
@@ -430,6 +440,7 @@ async function createPacketLink(
     clientOrgId: request.clientOrgId,
     outreachId: outreach?._id,
     tokenHash: await hashMagicLinkToken(token),
+    token,
     recipientLabel:
       args.recipientLabel?.trim() || outreach?.brokerName || "All brokers",
     recipientEmail: args.recipientEmail?.trim().toLowerCase(),

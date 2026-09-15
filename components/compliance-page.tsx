@@ -33,6 +33,7 @@ import {
 import { FileDropZone } from "@/components/ui/file-drop";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
+import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import {
   OperationalPanel,
   OperationalSkeletonList,
@@ -1599,7 +1600,16 @@ function SourceDrawer({
           <div className="space-y-3">
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={dealName} onChange={(event) => setDealName(event.target.value)} disabled={!canManage} placeholder="Office lease, Series B financing, client engagement" /></label>
             <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={dealType} onChange={(event) => setDealType(event.target.value)} disabled={!canManage} placeholder="Lease, investment, contract" /></label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Notes<Textarea value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} disabled={!canManage} rows={4} /></label>
+            <div className="space-y-2">
+              <p className={`text-muted-foreground ${typeStyle("label.field")}`}>Notes</p>
+              <MarkdownEditor
+                value={internalNotes}
+                onChange={setInternalNotes}
+                label="Requirement source notes"
+                defaultMode="preview"
+                readOnly={!canManage}
+                      />
+            </div>
             {hasHolderDetails && !holderName.trim() ? (
               <p className={`text-destructive ${typeStyle("caption.default")}`}>
                 Certificate holder name is required.
@@ -2449,7 +2459,15 @@ function ComplianceWorkspace({
               </div>
               <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={sourceDealName} onChange={(event) => setSourceDealName(event.target.value)} placeholder="Office lease, financing, or client engagement" /></label>
               <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={sourceDealType} onChange={(event) => setSourceDealType(event.target.value)} placeholder="Lease, investment, contract" /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Notes<Textarea value={sourceInternalNotes} onChange={(event) => setSourceInternalNotes(event.target.value)} rows={3} /></label>
+              <div className="space-y-2">
+                <p className={`text-muted-foreground ${typeStyle("label.field")}`}>Notes</p>
+                <MarkdownEditor
+                  value={sourceInternalNotes}
+                  onChange={setSourceInternalNotes}
+                  label="New requirement source notes"
+                  readOnly={importing}
+                          />
+              </div>
             </div>
           </FormSection>
         ) : null}
