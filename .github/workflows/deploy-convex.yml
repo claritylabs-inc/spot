@@ -18,6 +18,15 @@ concurrency:
 jobs:
   validate-root:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - lint
+          - test
+          - typecheck-next
+          - typecheck-convex
+          - build
     steps:
       - uses: actions/checkout@v7
 
@@ -33,6 +42,7 @@ jobs:
         run: npm ci --no-audit --no-fund --loglevel=error
 
       - name: Install iMessage worker test dependencies
+        if: matrix.check == 'test'
         working-directory: imessage-worker
         run: npm ci --include=dev --no-audit --no-fund --loglevel=error
 
@@ -40,18 +50,23 @@ jobs:
         run: npm run check:shared-package-versions
 
       - name: Lint
+        if: matrix.check == 'lint'
         run: npm run lint
 
       - name: Test
+        if: matrix.check == 'test'
         run: npm test
 
       - name: Typecheck Next.js
+        if: matrix.check == 'typecheck-next'
         run: npx tsc --noEmit --incremental false
 
       - name: Typecheck Convex
+        if: matrix.check == 'typecheck-convex'
         run: npx convex typecheck
 
       - name: Build
+        if: matrix.check == 'build'
         run: npm run build
 
   validate-workers:

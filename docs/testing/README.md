@@ -6,9 +6,9 @@ Spot uses automated tests to protect consequential, durable behavior. The goal i
 
 The root `npm test` command includes the iMessage worker tests, which use the
 installed Spectrum providers. Run `npm ci` and `npm --prefix imessage-worker ci`
-before testing a fresh checkout. Both the CI root job and release root validation
-install these dependencies; installs in the separate worker jobs are not shared
-with the root jobs.
+before testing a fresh checkout. Both the CI root job and the release
+`validate-root (test)` job install these dependencies; installs in the separate
+worker jobs are not shared with the root jobs.
 
 ## The decision rule
 
