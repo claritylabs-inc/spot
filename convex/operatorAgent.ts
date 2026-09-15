@@ -2610,9 +2610,7 @@ async function executeToolDomain(
     return await createProcurementFileItemByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
-      clientFileId: input.clientFileId
-        ? normalizeClientFileId(ctx, input.clientFileId)
-        : undefined,
+      clientFileId: normalizeClientFileId(ctx, input.clientFileId),
       label: typeof input.label === "string" ? input.label : "",
       brokerRelease: procurementFileBrokerRelease(input.brokerRelease),
       clientVisible:
@@ -2631,11 +2629,9 @@ async function executeToolDomain(
         input.procurementFileItemId,
       ),
       clientFileId:
-        input.clientFileId === null
-          ? null
-          : input.clientFileId
-            ? normalizeClientFileId(ctx, input.clientFileId)
-            : undefined,
+        input.clientFileId !== undefined
+          ? normalizeClientFileId(ctx, input.clientFileId)
+          : undefined,
       label: typeof input.label === "string" ? input.label : undefined,
       brokerRelease: procurementFileBrokerRelease(input.brokerRelease),
       clientVisible:

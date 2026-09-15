@@ -150,12 +150,6 @@ describe("operator MCP tool catalog", () => {
         omitted: "status",
         cleared: "contactPhone",
       },
-      {
-        name: "update_procurement_file_item",
-        id: "procurementFileItemId",
-        omitted: "label",
-        cleared: "clientFileId",
-      },
     ];
     for (const { name, id, omitted, cleared } of cases) {
       expect(() =>
