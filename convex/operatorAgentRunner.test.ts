@@ -234,8 +234,30 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
       createdAt: now,
       updatedAt: now,
     });
-    await seedRequestIntake(ctx, { requestId: procurementRequestId, clientOrgId: clientOrgId, userId: operatorUserId, narrative: "Test the operator runner's safe correction path.", source: "operator_agent" });
-    return { operatorUserId, procurementRequestId };
+    await seedRequestIntake(ctx, {
+      requestId: procurementRequestId,
+      clientOrgId: clientOrgId,
+      userId: operatorUserId,
+      narrative: "Test the operator runner's safe correction path.",
+      source: "operator_agent",
+    });
+    const fileId = await ctx.storage.store(new Blob(["application"]));
+    const clientFileId = await ctx.db.insert("clientFiles", {
+      orgId: clientOrgId,
+      fileId,
+      name: "Application.pdf",
+      originalName: "Application.pdf",
+      contentType: "application/pdf",
+      size: 11,
+      clientVisible: false,
+      uploadedByUserId: operatorUserId,
+      uploadedBySide: "operator",
+      nameSource: "original",
+      nameStatus: "ready",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { operatorUserId, procurementRequestId, clientFileId };
   });
   const threadId = await t.mutation(
     internal.operatorAgent.createOrGetChannelThreadInternal,
@@ -247,11 +269,15 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
   );
   const invalidInput = {
     procurementRequestId: ids.procurementRequestId,
-    purpose: "application" as const,
+    clientFileId: ids.clientFileId,
     label: "Signed application",
     clientVisible: true,
   };
-  const correctedInput = { ...invalidInput, clientVisible: false };
+  const correctedInput = {
+    procurementRequestId: ids.procurementRequestId,
+    label: "Signed application",
+    clientVisible: true,
+  };
 
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
     const result =
@@ -276,7 +302,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
   });
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
     expect(options.system).toContain(
-      "A visible procurement item must reference a client file",
+      "Client file is unavailable or belongs to another client",
     );
     expect(options.system).toContain('"writeState":"not_started"');
     const result =
@@ -324,6 +350,9 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
   );
   if (!firstConfirmation) throw new Error("Missing first confirmation");
 
+  await t.run((ctx) =>
+    ctx.db.patch(ids.clientFileId, { archivedAt: dayjs().valueOf() }),
+  );
   const firstResolution = await t.mutation(
     internal.operatorAgent.confirmActionInternal,
     {
@@ -338,9 +367,9 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
     status: "queued",
     result: {
       status: "failed",
-      error: "A visible procurement item must reference a client file",
+      error: "Client file is unavailable or belongs to another client",
       failure: {
-        code: "missing_client_file",
+        code: "invalid_client_file",
         phase: "execution",
         recoverable: true,
         writeState: "not_started",
@@ -402,7 +431,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
   expect(items[0]).toMatchObject({
     requestId: ids.procurementRequestId,
     label: "Signed application",
-    clientVisible: false,
+    clientVisible: true,
   });
   const audits = await t.run((ctx) =>
     ctx.db
@@ -414,7 +443,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
   expect(audits.map(({ status }) => status)).toEqual(["failed", "succeeded"]);
   expect(audits[0]).toMatchObject({
     operatorConfirmationId: firstConfirmation._id,
-    error: "A visible procurement item must reference a client file",
+    error: "Client file is unavailable or belongs to another client",
   });
   expect(audits[1]?.operatorConfirmationId).toBe(secondConfirmation._id);
   const finished = await t.query(

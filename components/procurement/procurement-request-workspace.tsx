@@ -41,20 +41,14 @@ import {
 } from "@/components/procurement/packet-workspace";
 import {
   EmailCategoryBadge,
-  FILE_PURPOSE_OPTIONS,
-  FILE_STATUS_OPTIONS,
   OUTREACH_STATUS_OPTIONS,
   OutreachStatusTag,
   ProcurementEmailDrawer,
   RequestStatusTag,
   REQUEST_STATUS_OPTIONS,
-  procurementFilePurposeLabel,
-  procurementFileStatusLabel,
   procurementOutreachStatusLabel,
   procurementRequestStatusLabel,
   type ProcurementEmailDrawerHandle,
-  type ProcurementFilePurpose,
-  type ProcurementFileStatus,
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
@@ -97,7 +91,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
-import { inferProcurementUploadPurpose } from "@/lib/procurement-files";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -154,12 +147,9 @@ type Outreach = {
 
 type ProcurementFileItem = {
   _id: Id<"procurementFileItems">;
-  outreachId?: Id<"procurementBrokerOutreaches">;
   clientFileId?: Id<"clientFiles">;
   sourceEmailMessageId?: Id<"procurementEmailMessages">;
-  purpose: ProcurementFilePurpose;
   label: string;
-  status: ProcurementFileStatus;
   brokerRelease?: "hidden" | "listed" | "attached";
   clientVisible?: boolean;
   updatedAt: number;
@@ -1188,34 +1178,21 @@ export function OutreachEditor({
 function ProcurementFileEditor({
   requestId,
   fileItem,
-  outreaches,
-  clientFiles,
   onClose,
   onPreview,
+  onUpload,
   readOnly,
 }: {
   requestId: Id<"procurementRequests">;
   fileItem?: ProcurementFileItem;
-  outreaches: Outreach[];
-  clientFiles: ClientFileOption[];
   onClose: () => void;
+  onUpload: () => void;
   onPreview: (file: ClientFileOption) => void;
   readOnly: boolean;
 }) {
-  const brokers = useCachedOperatorBrokers();
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
   const [label, setLabel] = useState(fileItem?.label ?? "");
-  const [purpose, setPurpose] = useState<ProcurementFilePurpose>(
-    fileItem?.purpose ?? "requested_document",
-  );
-  const [status, setStatus] = useState<ProcurementFileStatus>(
-    fileItem?.status ?? "requested",
-  );
-  const [outreachId, setOutreachId] = useState(fileItem?.outreachId ?? NONE);
-  const [clientFileId, setClientFileId] = useState(
-    fileItem?.clientFileId ?? NONE,
-  );
   const [brokerRelease, setBrokerRelease] = useState<
     "hidden" | "listed" | "attached"
   >(fileItem?.brokerRelease ?? "hidden");
@@ -1226,10 +1203,6 @@ function ProcurementFileEditor({
 
   const values = {
     label,
-    purpose,
-    status,
-    outreachId,
-    clientFileId,
     brokerRelease,
     clientVisible,
   };
@@ -1253,20 +1226,6 @@ function ProcurementFileEditor({
       await updateFileItem({
         fileItemId: fileItem._id,
         label: next.label !== previous.label ? next.label : undefined,
-        purpose: next.purpose !== previous.purpose ? next.purpose : undefined,
-        status: next.status !== previous.status ? next.status : undefined,
-        outreachId:
-          next.outreachId !== previous.outreachId
-            ? next.outreachId === NONE
-              ? null
-              : (next.outreachId as Id<"procurementBrokerOutreaches">)
-            : undefined,
-        clientFileId:
-          next.clientFileId !== previous.clientFileId
-            ? next.clientFileId === NONE
-              ? null
-              : (next.clientFileId as Id<"clientFiles">)
-            : undefined,
         brokerRelease:
           next.brokerRelease !== previous.brokerRelease
             ? next.brokerRelease
@@ -1289,16 +1248,6 @@ function ProcurementFileEditor({
       await createFileItem({
         requestId,
         label,
-        purpose,
-        status,
-        outreachId:
-          outreachId === NONE
-            ? undefined
-            : (outreachId as Id<"procurementBrokerOutreaches">),
-        clientFileId:
-          clientFileId === NONE
-            ? undefined
-            : (clientFileId as Id<"clientFiles">),
         brokerRelease,
         clientVisible,
       });
@@ -1351,6 +1300,18 @@ function ProcurementFileEditor({
               />
             </>
           ) : null}
+          {!readOnly && fileItem && !fileItem.clientFile ? (
+            <PillButton
+              onClick={() => {
+                void autoSave.saveNow().then((saved) => {
+                  if (saved) onUpload();
+                });
+              }}
+            >
+              <Upload className="size-3.5" />
+              Upload file
+            </PillButton>
+          ) : null}
           {!readOnly && !fileItem ? (
             <PillButton
               type="button"
@@ -1378,85 +1339,6 @@ function ProcurementFileEditor({
             placeholder="Roof condition report"
           />
         </label>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Purpose
-            </span>
-            <Select
-              value={purpose}
-              onValueChange={(value) =>
-                setPurpose(value as ProcurementFilePurpose)
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue>
-                  {procurementFilePurposeLabel(purpose)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {FILE_PURPOSE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Status
-            </span>
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setStatus(value as ProcurementFileStatus)
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue>{procurementFileStatusLabel(status)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {FILE_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Broker outreach
-          </span>
-          <SearchableSelect
-            value={outreachId}
-            onChange={setOutreachId}
-            options={[
-              { value: NONE, label: "General request file" },
-              ...outreaches.map((outreach) => ({
-                value: outreach._id,
-                label: outreach.brokerName,
-                icon: (
-                  <OrgBrandIcon
-                    name={outreach.brokerName}
-                    {...brokers?.find(
-                      (broker) => broker._id === outreach.brokerOrgId,
-                    )}
-                    size="xs"
-                  />
-                ),
-              })),
-            ]}
-          />
-        </label>
         <div className="space-y-1.5">
           <p className={`text-muted-foreground ${typeStyle("label.field")}`}>
             Sharing
@@ -1469,7 +1351,7 @@ function ProcurementFileEditor({
               <SettingsSwitch
                 label="Client visibility"
                 checked={clientVisible}
-                disabled={readOnly || clientFileId === NONE}
+                disabled={readOnly || saving}
                 onCheckedChange={() => setClientVisible(!clientVisible)}
               />
             </OperationalItem>
@@ -1480,9 +1362,7 @@ function ProcurementFileEditor({
               <SettingsSwitch
                 label="Broker visibility"
                 checked={brokerRelease !== "hidden"}
-                disabled={
-                  readOnly || clientFileId === NONE || outreachId !== NONE
-                }
+                disabled={readOnly || saving}
                 onCheckedChange={() =>
                   setBrokerRelease(
                     brokerRelease === "hidden" ? "attached" : "hidden",
@@ -1491,42 +1371,7 @@ function ProcurementFileEditor({
               />
             </OperationalItem>
           </OperationalPanel>
-          {outreachId !== NONE ? (
-            <p
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Broker-specific files stay out of the shared packet.
-            </p>
-          ) : brokerRelease !== "hidden" ? (
-            <p
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Regenerate the packet link to share visibility changes.
-            </p>
-          ) : null}
         </div>
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Client file
-          </span>
-          <SearchableSelect
-            value={clientFileId}
-            onChange={(value) => {
-              setClientFileId(value);
-              if (value !== NONE && status === "requested")
-                setStatus("available");
-            }}
-            options={[
-              { value: NONE, label: "Not available yet" },
-              ...clientFiles.map((file) => ({
-                value: file._id,
-                label: file.name,
-              })),
-            ]}
-          />
-        </label>
       </fieldset>
     </SettingsDrawer>
   );
@@ -1590,10 +1435,6 @@ export function ProcurementRequestWorkspace({
     orgId: clientOrgId,
     documentType: "policy",
   });
-  const clientFilesResult = useQuery(api.clientFiles.list, {
-    clientOrgId,
-    limit: 250,
-  });
   const requestRows = useQuery(api.procurementRequests.list, {
     clientOrgId,
     limit: 100,
@@ -1601,6 +1442,7 @@ export function ProcurementRequestWorkspace({
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
+  const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
   const changeView = async (nextView: string) => {
@@ -1620,10 +1462,6 @@ export function ProcurementRequestWorkspace({
   const policyOptions = useMemo(
     () => (policies ?? []) as PolicyOption[],
     [policies],
-  );
-  const clientFiles = useMemo(
-    () => (clientFilesResult?.files ?? []) as ClientFileOption[],
-    [clientFilesResult?.files],
   );
   const requestOptions = useMemo(
     () =>
@@ -1687,6 +1525,45 @@ export function ProcurementRequestWorkspace({
     [brokers, closePdf, closeRightPanel, onRightPanel, readOnly, requestId],
   );
 
+  const openUpload = useCallback(
+    (fileItem?: ProcurementFileItem) => {
+      closePdf();
+      onRightPanel(
+        <ClientFileUploadPanel
+          clientOrgId={clientOrgId}
+          policies={(policyRows ?? []) as ClientFilePolicyOption[]}
+          onClose={closeRightPanel}
+          onUploaded={async (uploaded) => {
+            await Promise.all(
+              uploaded.map((file, index) =>
+                fileItem && index === 0
+                  ? updateFileItem({
+                      fileItemId: fileItem._id,
+                      clientFileId: file.clientFileId,
+                    })
+                  : createFileItem({
+                      requestId,
+                      clientFileId: file.clientFileId,
+                      label: file.originalName,
+                    }),
+              ),
+            );
+          }}
+        />,
+      );
+    },
+    [
+      clientOrgId,
+      closePdf,
+      closeRightPanel,
+      createFileItem,
+      updateFileItem,
+      onRightPanel,
+      policyRows,
+      requestId,
+    ],
+  );
+
   const openFileEditor = useCallback(
     (fileItem?: ProcurementFileItem) => {
       if (!details) return;
@@ -1696,8 +1573,7 @@ export function ProcurementRequestWorkspace({
           key={fileItem?._id ?? "new-file"}
           requestId={requestId}
           fileItem={fileItem}
-          outreaches={details?.outreaches ?? []}
-          clientFiles={clientFiles}
+          onUpload={() => openUpload(fileItem)}
           readOnly={readOnly}
           onPreview={(file) => {
             if (!file.url) return;
@@ -1718,48 +1594,16 @@ export function ProcurementRequestWorkspace({
       );
     },
     [
-      clientFiles,
       closePdf,
       closeRightPanel,
       details,
       onRightPanel,
       openWithUrl,
+      openUpload,
       readOnly,
       requestId,
     ],
   );
-
-  const openUpload = useCallback(() => {
-    closePdf();
-    onRightPanel(
-      <ClientFileUploadPanel
-        clientOrgId={clientOrgId}
-        policies={(policyRows ?? []) as ClientFilePolicyOption[]}
-        onClose={closeRightPanel}
-        onUploaded={async (uploaded) => {
-          await Promise.all(
-            uploaded.map((file) =>
-              createFileItem({
-                requestId,
-                clientFileId: file.clientFileId,
-                purpose: inferProcurementUploadPurpose(file.originalName),
-                label: file.originalName,
-                status: "available",
-              }),
-            ),
-          );
-        }}
-      />,
-    );
-  }, [
-    clientOrgId,
-    closePdf,
-    closeRightPanel,
-    createFileItem,
-    onRightPanel,
-    policyRows,
-    requestId,
-  ]);
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
   const openEmail = useCallback(
@@ -1808,7 +1652,7 @@ export function ProcurementRequestWorkspace({
             <Plus className="size-3.5" />
             Add file request
           </PillButton>
-          <PillButton type="button" onClick={openUpload}>
+          <PillButton type="button" onClick={() => openUpload()}>
             <Upload className="size-3.5" />
             Upload files
           </PillButton>
@@ -1852,7 +1696,6 @@ export function ProcurementRequestWorkspace({
     result === undefined ||
     policies === undefined ||
     policyRows === undefined ||
-    clientFilesResult === undefined ||
     requestRows === undefined ||
     brokers === undefined ||
     proposals === undefined
@@ -1880,9 +1723,6 @@ export function ProcurementRequestWorkspace({
     );
   }
 
-  const outreachById = new Map(
-    details.outreaches.map((outreach) => [outreach._id, outreach]),
-  );
   const activeProposals = proposals.filter(
     (proposal) =>
       proposal.status !== "archived" && proposal.status !== "withdrawn",
@@ -2101,10 +1941,7 @@ export function ProcurementRequestWorkspace({
               <TableHeader>
                 <TableRow>
                   <TableHead>File or request</TableHead>
-                  <TableHead>Purpose</TableHead>
-                  <TableHead>Broker</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Access</TableHead>
+                  <TableHead>Visibility</TableHead>
                   <TableHead>Updated</TableHead>
                 </TableRow>
               </TableHeader>
@@ -2153,18 +1990,6 @@ export function ProcurementRequestWorkspace({
                             </span>
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {procurementFilePurposeLabel(item.purpose)}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {item.outreachId
-                          ? (outreachById.get(item.outreachId)?.brokerName ??
-                            "Unknown")
-                          : "General"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {procurementFileStatusLabel(item.status)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {[

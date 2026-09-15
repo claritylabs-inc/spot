@@ -516,31 +516,25 @@ export const insert = internalMutation({
       "Local fixture market log",
       "Illustrative terms received: CAD 51,000 premium. Signed application and loss runs remain outstanding. No live outreach was sent.",
     );
-    for (const [key, purpose, brokerRelease, clientVisible] of [
-      ["profile", "application", "attached", true],
-      ["policy", "other", "hidden", true],
-      ["quote", "quote", "hidden", false],
+    for (const [key, brokerRelease, clientVisible] of [
+      ["profile", "attached", true],
+      ["policy", "hidden", true],
+      ["quote", "hidden", false],
     ] as const) {
       await createProcurementFileItemByOperator(ctx, {
         operatorUserId: args.operatorUserId,
         requestId,
         clientFileId: files.get(key)!,
-        ...(key === "quote" ? { outreachId } : {}),
-        purpose,
         brokerRelease,
         clientVisible,
         label: DOCUMENTS.find((document) => document.key === key)!.name,
-        status: "available",
         source: "operator",
       });
     }
     await createProcurementFileItemByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId,
-      outreachId,
-      purpose: "requested_document",
       label: "Current loss runs",
-      status: "requested",
       brokerRelease: "hidden",
       clientVisible: false,
       source: "operator",

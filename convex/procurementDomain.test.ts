@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
+import migrationsTest from "@convex-dev/migrations/test";
 import dayjs from "dayjs";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -19,6 +20,10 @@ import { stringifyMarkdownDocument } from "./lib/markdownDocument";
 import { listPacketLinksForOperator } from "./procurementPacket";
 
 const modules = import.meta.glob("./**/*.ts");
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -144,6 +149,134 @@ async function createRequest(
   });
 }
 
+test("file visibility can be chosen before upload and updates existing links while enforcing ownership", async () => {
+  const f = await fixture();
+  const request = await createRequest(f, "Visibility fixture");
+  const item = await f.operator.mutation(
+    api.procurementRequests.createFileItem,
+    {
+      requestId: request.requestId,
+      label: "Current loss runs",
+      clientVisible: true,
+      brokerRelease: "attached",
+    },
+  );
+  await f.operator.mutation(api.procurementRequests.updateFileItem, {
+    fileItemId: item.fileItemId,
+    clientVisible: false,
+    brokerRelease: "hidden",
+  });
+  await f.operator.mutation(api.procurementRequests.updateFileItem, {
+    fileItemId: item.fileItemId,
+    clientVisible: true,
+    brokerRelease: "attached",
+  });
+  expect(await f.t.run((ctx) => ctx.db.get(item.fileItemId))).toMatchObject({
+    clientVisible: true,
+    brokerRelease: "attached",
+  });
+  expect(
+    (
+      await f.operator.query(api.procurementPacket.preview, {
+        requestId: request.requestId,
+      })
+    ).files,
+  ).toEqual([]);
+  const link = await f.operator.mutation(api.procurementPacket.mintLink, {
+    requestId: request.requestId,
+  });
+  const clientFileId = await seedProposalFile(f, "loss-runs.pdf");
+  await f.operator.mutation(api.procurementRequests.updateFileItem, {
+    fileItemId: item.fileItemId,
+    clientFileId,
+  });
+  expect(
+    (
+      await f.operator.query(api.procurementPacket.preview, {
+        requestId: request.requestId,
+      })
+    ).files,
+  ).toHaveLength(1);
+  expect(
+    (await f.t.query(api.procurementPacket.getByToken, { token: link.token }))
+      ?.files,
+  ).toHaveLength(1);
+  await expect(
+    f.client.mutation(api.procurementRequests.updateFileItem, {
+      fileItemId: item.fileItemId,
+      brokerRelease: "attached",
+    }),
+  ).rejects.toThrow();
+  await expect(
+    f.broker.mutation(api.procurementRequests.updateFileItem, {
+      fileItemId: item.fileItemId,
+      clientVisible: true,
+    }),
+  ).rejects.toThrow();
+  await f.t.run((ctx) => ctx.db.patch(clientFileId, { orgId: f.brokerOrgId }));
+  await expect(
+    f.operator.mutation(api.procurementRequests.updateFileItem, {
+      fileItemId: item.fileItemId,
+      clientFileId,
+    }),
+  ).rejects.toThrow("belongs to another client");
+});
+
+test("retiring file metadata never expands a broker-specific grant", async () => {
+  const f = await fixture();
+  migrationsTest.register(f.t);
+  const request = await createRequest(f, "Legacy file visibility");
+  const outreach = await f.operator.mutation(
+    api.procurementRequests.createOutreach,
+    {
+      requestId: request.requestId,
+      brokerOrgId: f.brokerOrgId,
+    },
+  );
+  const clientFileId = await seedProposalFile(f);
+  const itemId = await f.t.run((ctx) =>
+    ctx.db.insert("procurementFileItems", {
+      requestId: request.requestId,
+      clientOrgId: f.clientOrgId,
+      clientFileId,
+      outreachId: outreach.outreachId,
+      purpose: "quote",
+      status: "received",
+      label: "Legacy broker file",
+      brokerRelease: "attached",
+      clientVisible: false,
+      createdAt: dayjs().valueOf(),
+      updatedAt: dayjs().valueOf(),
+    }),
+  );
+  await f.t.mutation(internal.migrations.simplifyProcurementFiles, {
+    cursor: null,
+  });
+  const item = await f.t.run((ctx) => ctx.db.get(itemId));
+  expect(item).toMatchObject({ clientFileId, brokerRelease: "hidden" });
+  expect(item).not.toHaveProperty("outreachId");
+  expect(item).not.toHaveProperty("purpose");
+  expect(item).not.toHaveProperty("status");
+  expect(
+    (
+      await f.operator.query(api.procurementPacket.preview, {
+        requestId: request.requestId,
+      })
+    ).files,
+  ).toEqual([]);
+  await f.operator.mutation(api.procurementRequests.updateFileItem, {
+    fileItemId: itemId,
+    brokerRelease: "attached",
+  });
+  expect(
+    (
+      await f.operator.query(api.procurementPacket.preview, {
+        requestId: request.requestId,
+      })
+    ).files,
+  ).toHaveLength(1);
+});
+
 async function replacePublicPacket(
   f: Awaited<ReturnType<typeof fixture>>,
   requestId: Id<"procurementRequests">,
@@ -260,7 +393,6 @@ describe("procurement domain boundaries", () => {
   });
 
   test("automatically creates one shared packet link for every new request", async () => {
-    vi.useFakeTimers();
     const f = await fixture();
     const operatorRequest = await createRequest(f, "Operator placement");
     const clientRequest = await f.client.mutation(
@@ -1312,9 +1444,7 @@ describe("procurement domain boundaries", () => {
       {
         requestId: request.requestId,
         clientFileId,
-        purpose: "application",
         label: "Broker application",
-        status: "available",
       },
     );
     await f.operator.mutation(api.procurementRequests.updateFileItem, {
@@ -1445,6 +1575,29 @@ describe("procurement domain boundaries", () => {
     });
 
     await f.operator.mutation(api.procurementRequests.updateFileItem, {
+      fileItemId: otherFileItemId,
+      brokerRelease: "attached",
+    });
+    expect(
+      (
+        await f.operator.query(api.procurementPacket.preview, {
+          requestId: request.requestId,
+        })
+      ).files.map((file) => file.fileItemId),
+    ).toContain(otherFileItemId);
+    await expect(
+      f.t.query(internal.procurementPacket.getFileByTokenInternal, {
+        token: issued.token,
+        item: otherFileItemId,
+      }),
+    ).resolves.toMatchObject({ name: "Other broker only" });
+
+    await f.operator.mutation(api.procurementRequests.updateFileItem, {
+      fileItemId: otherFileItemId,
+      brokerRelease: "hidden",
+    });
+
+    await f.operator.mutation(api.procurementRequests.updateFileItem, {
       fileItemId: fileItem.fileItemId,
       brokerRelease: "listed",
     });
@@ -1531,23 +1684,20 @@ describe("procurement domain boundaries", () => {
       {
         requestId,
         clientFileId,
-        purpose: "application",
         label: "New application",
-        status: "available",
       },
     );
     const scopedFile = await f.operator.mutation(
       api.procurementRequests.createFileItem,
       {
         requestId,
-        outreachId,
         clientFileId,
-        purpose: "application",
         label: "Broker only",
-        status: "available",
         brokerRelease: "attached",
       },
     );
+    // Only legacy records retain a broker-specific file scope.
+    await f.t.run((ctx) => ctx.db.patch(scopedFile.fileItemId, { outreachId }));
     await replacePublicPacket(f, requestId, "Current shared narrative");
     const packet = await f.operator.query(api.procurementPacket.get, {
       requestId,
@@ -2118,7 +2268,6 @@ describe("procurement domain boundaries", () => {
   });
 
   test("approves a month-old standalone client proposal through the exact-confirmed shared registry", async () => {
-    vi.useFakeTimers();
     const f = await fixture();
     const threadId = await f.t.mutation(
       internal.operatorAgent.createOrGetChannelThreadInternal,
@@ -2271,7 +2420,6 @@ describe("procurement domain boundaries", () => {
   });
 
   test("keeps delayed approvals pending and releases stale approved input with recoverable feedback", async () => {
-    vi.useFakeTimers();
     const f = await fixture();
     const threadId = await f.t.mutation(
       internal.operatorAgent.createOrGetChannelThreadInternal,

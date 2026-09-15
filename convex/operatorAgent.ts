@@ -1019,32 +1019,6 @@ function stringList(value: unknown) {
     : undefined;
 }
 
-function procurementFilePurpose(value: unknown) {
-  switch (value) {
-    case "requirements":
-    case "application":
-    case "requested_document":
-    case "quote":
-    case "correspondence":
-    case "other":
-      return value;
-    default:
-      throw new Error("Invalid procurement file purpose");
-  }
-}
-
-function procurementFileStatus(value: unknown) {
-  switch (value) {
-    case "requested":
-    case "available":
-    case "sent":
-    case "received":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
 function procurementFileBrokerRelease(value: unknown) {
   switch (value) {
     case "hidden":
@@ -2636,15 +2610,10 @@ async function executeToolDomain(
     return await createProcurementFileItemByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
-      outreachId: input.procurementOutreachId
-        ? normalizeProcurementOutreachId(ctx, input.procurementOutreachId)
-        : undefined,
       clientFileId: input.clientFileId
         ? normalizeClientFileId(ctx, input.clientFileId)
         : undefined,
-      purpose: procurementFilePurpose(input.purpose),
       label: typeof input.label === "string" ? input.label : "",
-      status: procurementFileStatus(input.status),
       brokerRelease: procurementFileBrokerRelease(input.brokerRelease),
       clientVisible:
         typeof input.clientVisible === "boolean"
@@ -2661,24 +2630,13 @@ async function executeToolDomain(
         ctx,
         input.procurementFileItemId,
       ),
-      outreachId:
-        input.procurementOutreachId === null
-          ? null
-          : input.procurementOutreachId
-            ? normalizeProcurementOutreachId(ctx, input.procurementOutreachId)
-            : undefined,
       clientFileId:
         input.clientFileId === null
           ? null
           : input.clientFileId
             ? normalizeClientFileId(ctx, input.clientFileId)
             : undefined,
-      purpose:
-        input.purpose === undefined
-          ? undefined
-          : procurementFilePurpose(input.purpose),
       label: typeof input.label === "string" ? input.label : undefined,
-      status: procurementFileStatus(input.status),
       brokerRelease: procurementFileBrokerRelease(input.brokerRelease),
       clientVisible:
         typeof input.clientVisible === "boolean"

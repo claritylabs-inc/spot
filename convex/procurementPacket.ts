@@ -206,7 +206,6 @@ async function brokerPacketProjection(
             name: item.label || file.name,
             contentType: file.contentType,
             size: file.size,
-            purpose: item.purpose,
             release: item.brokerRelease as "listed" | "attached",
           };
         }),
