@@ -7,7 +7,11 @@ Conductor worktree uses native local Convex plus local workers.
 ## Coordinated release readiness
 
 `.github/workflows/deploy-convex.yml` owns readiness for every commit pushed to
-`main`; it is not path-filtered. After validation, the workflow:
+`main`; it is not path-filtered. Root lint, tests, Next.js typechecking, Convex
+typechecking, and the production build run as five parallel `validate-root`
+matrix jobs alongside worker and package validation. Each root job checks shared
+package versions. Deployment requires every validation job to pass. After
+validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
 2. waits for the exact commit's four established Railway contexts
