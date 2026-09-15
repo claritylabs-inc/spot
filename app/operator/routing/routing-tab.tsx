@@ -1123,7 +1123,7 @@ export function RoutingTab({
             ) : (
               <div className="table-scrollbar overflow-x-auto">
                 <table
-                  className={`w-full min-w-[780px] text-left ${typeStyle("body.default")}`}
+                  className={`w-max min-w-full whitespace-nowrap text-left ${typeStyle("body.default")}`}
                 >
                   <thead
                     className={`border-b border-border text-muted-foreground ${typeStyle("label.table")}`}
