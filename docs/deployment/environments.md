@@ -53,6 +53,105 @@ runtimes are not atomic. Keep expand/contract compatibility for destructive
 query-shape changes and version worker protocol changes so the old frontend and
 workers remain compatible while the new backend rolls out.
 
+## Stacked PRs and Vercel builds
+
+Use small, related PRs with a linear dependency chain and merge the reviewed
+stack together. The top branch contains the combined change. Independent work
+can continue as ordinary PRs targeting `main`.
+
+### Branches and previews
+
+`vercel.json` owns automatic Git deployment selection:
+
+| Branch | Vercel behavior |
+| --- | --- |
+| `stack/<topic>/<layer>` | No automatic deployment; CI still runs. |
+| `preview/<topic>` | Preview of the combined stack. |
+| `main` | Production candidate with the existing readiness gate. |
+| Other branches | Existing automatic preview behavior. |
+
+Each branch must contain this configuration before it is pushed. These are
+explicit branch rules, not automatic detection of the top PR. For existing
+branches with other names, add each intermediate branch to
+`git.deploymentEnabled` with `false`; do not rename workspace branches without
+the author's authorization. If adding a layer above the preview branch,
+disable the former preview branch and enable the new top branch before pushing.
+Keep exactly one preview branch enabled for each stack. Remove obsolete exact
+branch rules after the stack lands. Avoid broad `true` patterns overlapping
+`stack/**`: Vercel enables a branch when any matching rule is `true`.
+
+CI runs on PRs regardless of their immediate base branch, and on merge groups.
+New updates cancel superseded CI for the same PR or ref. Every PR still needs
+the required CI checks and reviews. A Vercel preview must not be a required
+merge check for intermediate PRs whose deployments are disabled.
+
+### Create and merge a stack
+
+The official `github/gh-stack` extension is required (`gh extension install
+github/gh-stack` if it is missing). For a new stack, create branches bottom to
+top, making and committing each layer before adding the next:
+
+```bash
+gh stack init --base main stack/example/backend
+# Commit the backend change.
+gh stack add stack/example/api
+# Commit the API change.
+gh stack add preview/example
+# Commit the UI change and validate the combined result.
+gh stack submit
+```
+
+For existing branches that already form a linear dependency chain, adopt them
+with `gh stack init --base main <bottom-branch> <middle-branch> <top-branch>` and
+then `gh stack submit`. Do not use this to combine unrelated branches without
+first resolving their dependencies and validating the combined result.
+
+After updates to lower layers or `main`, run `gh stack sync` and wait for the
+new checks and preview. Once review is complete and the release is authorized:
+
+```bash
+gh stack view
+gh stack merge --squash
+```
+
+Select the entire intended stack in the merge picker. A direct stack merge
+lands the PRs together in one atomic operation. This batches the update to
+`main` and avoids a separate production release for each layer. With a merge
+queue, a sufficiently large stack may be split across consecutive merge groups.
+Monitor the resulting `release-ready-production` check and Vercel production
+deployment as for any release. Stacking does not bypass reviews, required
+checks, or release readiness.
+
+### Build concurrency
+
+The Spot Vercel project uses **Settings → Build and Deployment → On-Demand
+Concurrent Builds → Run up to one build per branch**. Its API setting is
+`resourceConfig.buildQueue.configuration: WAIT_FOR_NAMESPACE_QUEUE`, with
+`resourceConfig.elasticConcurrencyEnabled: true`. This is a project setting,
+not a `vercel.json` property. To restore it with an authenticated Vercel CLI:
+
+```bash
+vercel api /v9/projects/prj_ZegCP8JSt7ePV0qpG7I43l5XydCZ \
+  --scope claritylabs-inc --method PATCH --input - <<'JSON'
+{
+  "resourceConfig": {
+    "elasticConcurrencyEnabled": true,
+    "buildQueue": { "configuration": "WAIT_FOR_NAMESPACE_QUEUE" }
+  }
+}
+JSON
+```
+
+Read the project back and verify those two fields after changing the setting.
+The active build finishes; superseded queued commits are skipped and the newest
+commit builds next. Different branches can still build concurrently. GitHub
+workflow cancellation does not cancel Vercel builds. Keep automatic production
+domain assignment and the `release-ready-production` Deployment Check enabled.
+
+References: [GitHub stack merging](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/merging-stacked-pull-requests),
+[Vercel branch rules](https://vercel.com/docs/project-configuration/git-configuration),
+and [Vercel build concurrency](https://vercel.com/docs/builds/managing-builds).
+
 ## Shared-dev deployment
 
 Shared dev (`acoustic-caiman-755`) is an active integration lane and is not
