@@ -4,7 +4,6 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { markdownToHtml, stripMarkdown } from "./aiUtils";
-import { parseEmailPayloadRecord, readStoredEmailFields } from "./emailPayloadFields";
 import { extractEmailAddress } from "./emailAddress";
 import {
   getAgentDomain,
@@ -81,36 +80,21 @@ export function buildPendingEmailResendPayload(
     threadEmail?: string;
   },
 ): ResendPayload {
-  const legacy = parseEmailPayloadRecord(pending.emailPayload);
-  const legacyHeaders =
-    legacy.headers && typeof legacy.headers === "object"
-      ? (legacy.headers as Record<string, unknown>)
-      : {};
-  const fields = readStoredEmailFields(pending);
-  const from = fields.fromHeader;
+  const from = pending.fromHeader;
   if (!from) {
     throw new Error("Draft is missing sender metadata.");
   }
 
   const headers: Record<string, string> = {};
-  for (const [key, value] of Object.entries(legacyHeaders)) {
-    if (typeof value === "string" && value.trim()) headers[key] = value;
-  }
-  if (fields.inReplyTo) headers["In-Reply-To"] = fields.inReplyTo;
-  if (fields.references ?? fields.inReplyTo) {
-    headers.References = fields.references ?? fields.inReplyTo!;
+  if (pending.inReplyTo) headers["In-Reply-To"] = pending.inReplyTo;
+  if (pending.references ?? pending.inReplyTo) {
+    headers.References = pending.references ?? pending.inReplyTo!;
   }
   headers["Message-ID"] = options.outboundMessageId;
 
-  const replyTo = fields.replyTo;
+  const replyTo = pending.replyTo;
   const retiredDomains = getLegacyAgentDomains();
-  const senderAddresses = [
-    from,
-    replyTo,
-    ...Object.entries(headers)
-      .filter(([name]) => ["from", "reply-to", "sender"].includes(name.toLowerCase()))
-      .map(([, value]) => value),
-  ];
+  const senderAddresses = [from, replyTo];
   if (
     senderAddresses.some((value) => {
       const domain = extractEmailAddress(value)?.split("@")[1];
@@ -125,13 +109,13 @@ export function buildPendingEmailResendPayload(
     from,
     to: pending.recipientEmail,
     subject: pending.subject,
-    text: fields.renderedText ?? stripMarkdown(pending.emailBody),
-    html: fields.renderedHtml,
+    text: pending.renderedText ?? stripMarkdown(pending.emailBody),
+    html: pending.renderedHtml,
     headers,
   };
 
-  if (fields.ccAddresses?.length) payload.cc = fields.ccAddresses;
-  if (fields.bccAddresses?.length) payload.bcc = fields.bccAddresses;
+  if (pending.ccAddresses?.length) payload.cc = pending.ccAddresses;
+  if (pending.bccAddresses?.length) payload.bcc = pending.bccAddresses;
   if (replyTo && replyTo !== options.threadEmail) {
     payload.reply_to = replyTo;
   }

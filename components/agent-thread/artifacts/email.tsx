@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { readStoredEmailFields } from "@/convex/lib/emailPayloadFields";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   StatusTag,
@@ -509,9 +508,8 @@ export function EmailThreadSidebar({
   const isSent = pendingEmail?.status === "sent" || !!message.responseMessageId;
   const isCancelled =
     pendingEmail?.status === "cancelled" || message.status === "cancelled";
-  const draftFields = pendingEmail ? readStoredEmailFields(pendingEmail) : null;
   const fromLine =
-    draftFields?.fromHeader ??
+    pendingEmail?.fromHeader ??
     (message.fromEmail
       ? message.fromName
         ? `${message.fromName} <${message.fromEmail}>`
@@ -521,13 +519,13 @@ export function EmailThreadSidebar({
     ? pendingEmail.recipientEmail
     : formatEmailAddressList(message.toAddresses);
   const ccLine = formatEmailAddressList(
-    pendingEmail ? draftFields?.ccAddresses : message.ccAddresses,
+    pendingEmail ? pendingEmail.ccAddresses : message.ccAddresses,
   );
   const bccLine = formatEmailAddressList(
-    pendingEmail ? draftFields?.bccAddresses : message.bccAddresses,
+    pendingEmail ? pendingEmail.bccAddresses : message.bccAddresses,
   );
-  const previewBody = draftFields?.renderedText ?? pendingEmail?.emailBody ?? message.content;
-  const previewHtml = draftFields?.renderedHtml;
+  const previewBody = pendingEmail?.renderedText ?? pendingEmail?.emailBody ?? message.content;
+  const previewHtml = pendingEmail?.renderedHtml;
   const sentAt = formatDisplayDateTime(message._creationTime);
 
   async function handleSend() {

@@ -7,21 +7,12 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-test("retired notifications stay readable while new unsupported notifications are rejected", async () => {
+test("unsupported notifications are rejected without blocking active notifications", async () => {
   const t = convexTest(schema, modules);
   const orgId = await t.run(async (ctx) => {
     const orgId = await ctx.db.insert("organizations", {
       name: "Cove",
       type: "client",
-    });
-    await ctx.db.insert("notifications", {
-      orgId,
-      type: "policy_change_completed",
-      title: "Historical change",
-      body: "Historical notification remains available",
-      severity: "info",
-      status: "unread",
-      createdAt: 1,
     });
     return orgId;
   });
@@ -51,6 +42,6 @@ test("retired notifications stay readable while new unsupported notifications ar
     orgId,
   });
   expect(notifications.map((notification) => notification.type).sort()).toEqual(
-    ["mailbox_attention", "policy_change_completed"],
+    ["mailbox_attention"],
   );
 });

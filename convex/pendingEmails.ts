@@ -134,7 +134,6 @@ export const updateDraftInternal = internalMutation({
     await invalidateDraftConfirmations(ctx, existing, "draft_content_changed");
     await ctx.db.patch(id, {
       ...patch,
-      emailPayload: undefined,
       ccAddresses: args.ccAddresses,
       bccAddresses: args.bccAddresses,
       fromHeader: args.fromHeader,

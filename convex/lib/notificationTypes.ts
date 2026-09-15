@@ -76,41 +76,11 @@ export const ACTIVE_NOTIFICATION_TYPES = [
   "vendor_policy_expired",
 ] as const;
 
-// Kept out of settings and active notify contracts. The schema still accepts
-// these values so older notification rows remain readable.
-export const RETIRED_NOTIFICATION_TYPES = [
-  "merge_suggestion",
-  "policy_declaration_discrepancy",
-  "coverage_gap",
-  "renewal_reminder",
-  "policy_lapsed",
-  "coverage_limit_concern",
-  "missing_coverage",
-  "carrier_rating_change",
-  "extraction_complete",
-  "extraction_error",
-  "stale_data",
-  "premium_anomaly",
-  "client_document_uploaded",
-  "policy_delivered_by_broker",
-  "policy_change_needs_info",
-  "policy_change_completed",
-] as const;
-
-export const ALL_NOTIFICATION_TYPES = [
-  ...ACTIVE_NOTIFICATION_TYPES,
-  ...RETIRED_NOTIFICATION_TYPES,
-] as const;
-
 export const activeNotificationTypeValidator = v.union(
   ...ACTIVE_NOTIFICATION_TYPES.map((type) => v.literal(type)),
 );
-export const storedNotificationTypeValidator = v.union(
-  ...ALL_NOTIFICATION_TYPES.map((type) => v.literal(type)),
-);
 
 export type NotificationType = (typeof ACTIVE_NOTIFICATION_TYPES)[number];
-export type StoredNotificationType = (typeof ALL_NOTIFICATION_TYPES)[number];
 
 export type NotificationSeverity = "info" | "warning" | "critical";
 
@@ -156,9 +126,7 @@ export function slackNotificationCategory(
   return null;
 }
 
-export const NOTIFICATION_SEVERITY: Record<StoredNotificationType, NotificationSeverity> = {
-  merge_suggestion: "info",
-  policy_declaration_discrepancy: "warning",
+export const NOTIFICATION_SEVERITY: Record<NotificationType, NotificationSeverity> = {
   broker_action: "info",
   incomplete_extraction: "warning",
   mailbox_attention: "warning",
@@ -170,20 +138,6 @@ export const NOTIFICATION_SEVERITY: Record<StoredNotificationType, NotificationS
   vendor_compliance_gap: "warning",
   vendor_policy_expiring: "warning",
   vendor_policy_expired: "critical",
-  coverage_gap: "warning",
-  renewal_reminder: "warning",
-  policy_lapsed: "critical",
-  coverage_limit_concern: "warning",
-  missing_coverage: "warning",
-  carrier_rating_change: "warning",
-  extraction_complete: "info",
-  extraction_error: "warning",
-  stale_data: "info",
-  premium_anomaly: "warning",
-  client_document_uploaded: "info",
-  policy_delivered_by_broker: "info",
-  policy_change_needs_info: "info",
-  policy_change_completed: "info",
 };
 
 /** Active notification types that coalesce. Value is window in ms. */

@@ -13,7 +13,7 @@ export const slackStoredAttachmentValidator = v.object({
   fileId: v.optional(v.id("_storage")),
 });
 
-type SlackAttachment = Infer<typeof slackStoredAttachmentValidator>;
+type SlackAttachment = Infer<typeof slackInboundAttachmentValidator>;
 
 export function slackAttachments(input: {
   attachments?: SlackAttachment[];
@@ -25,16 +25,12 @@ export function slackAttachments(input: {
     ...(input.attachment ? [input.attachment] : []),
   ]) {
     const existing = files.get(file.providerFileId);
-    if (existing?.fileId && file.fileId && existing.fileId !== file.fileId) {
-      throw new Error("Slack attachment has conflicting stored file references");
-    }
     files.set(
       file.providerFileId,
       existing
         ? {
             ...existing,
             size: existing.size ?? file.size,
-            fileId: existing.fileId ?? file.fileId,
           }
         : file,
     );

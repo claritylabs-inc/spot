@@ -1,4 +1,4 @@
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 
 export type SlackBlockActionPayload = {
   type: "block_actions";
@@ -47,13 +47,7 @@ function normalizeInteractionId(value: string): string {
 export function isSlackOperatorClassification(
   classification: Doc<"slackActors">["classification"],
 ): boolean {
-  return classification === "spot_operator" || classification === "glass_operator";
-}
-
-export function slackActorUserId(
-  actor: Pick<Doc<"slackActors">, "spotUserId" | "glassUserId">,
-): Id<"users"> | undefined {
-  return actor.spotUserId ?? actor.glassUserId;
+  return classification === "spot_operator";
 }
 
 export function parseSlackInteraction(rawBody: string): SlackInteractionPayload | null {

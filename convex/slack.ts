@@ -13,10 +13,7 @@ import {
   isSlackBindingReachable,
   isSlackConnectionHealthy,
 } from "./lib/slackAvailability";
-import {
-  isSlackOperatorClassification,
-  slackActorUserId,
-} from "./lib/slackInteractions";
+import { isSlackOperatorClassification } from "./lib/slackInteractions";
 import {
   getOperatorSlackConfig,
   operatorSlackConversationKey,
@@ -92,51 +89,7 @@ export const getActiveConnection = internalQuery({
   },
 });
 
-export const verifyInboundEventMentionsSpotBackfill = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const remaining = await ctx.db
-      .query("slackInboundEvents")
-      .filter((query) =>
-        query.or(
-          query.eq(query.field("mentionsSpot"), undefined),
-          query.neq(query.field("mentionsGlass"), undefined),
-        ),
-      )
-      .first();
-    return {
-      complete: remaining === null,
-      remainingSampleId: remaining?._id,
-    };
-  },
-});
-
-export const verifySlackActorSpotIdentityBackfill = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const remaining = await ctx.db
-      .query("slackActors")
-      .filter((query) =>
-        query.or(
-          query.eq(query.field("classification"), "glass_operator"),
-          query.neq(query.field("glassUserId"), undefined),
-        ),
-      )
-      .first();
-    return {
-      complete: remaining === null,
-      remainingSampleId: remaining?._id,
-    };
-  },
-});
-
 type SlackClassification = Doc<"slackActors">["classification"];
-
-function eventMentionsSpot(
-  event: Pick<Doc<"slackInboundEvents">, "mentionsSpot" | "mentionsGlass">,
-): boolean {
-  return event.mentionsSpot ?? event.mentionsGlass ?? false;
-}
 
 async function hasPendingSlackThreadMention(
   ctx: MutationCtx,
@@ -161,7 +114,7 @@ async function hasPendingSlackThreadMention(
         .take(MAX_BATCH_SIZE),
     ),
   );
-  return pending.some((events) => events.some(eventMentionsSpot));
+  return pending.some((events) => events.some((event) => event.mentionsSpot));
 }
 
 async function hasActiveOperatorSlackThread(
@@ -240,12 +193,9 @@ async function resolveActor(
     classification === "customer_member" &&
     !event.senderEmail &&
     existing &&
-    slackActorUserId(existing)
+    existing.spotUserId
   ) {
-    const existingSpotUserId = slackActorUserId(existing);
-    if (!existingSpotUserId) {
-      throw new Error("Slack actor user identity could not be resolved");
-    }
+    const existingSpotUserId = existing.spotUserId;
     const membership = await ctx.db
       .query("orgMemberships")
       .withIndex("organization_user", (q) =>
@@ -563,7 +513,6 @@ async function scrubDeletedSlackMessage(
   for (const sourceEvent of sourceEvents) {
     await ctx.db.patch(sourceEvent._id, {
       content: "",
-      attachment: undefined,
       attachments: undefined,
       updatedAt: args.now,
     });
@@ -806,7 +755,7 @@ export const attachInboundFile = internalMutation({
   handler: async (ctx, args) => {
     const event = await ctx.db.get(args.eventId);
     if (!event) throw new Error("Slack event is no longer available");
-    const attachments = slackAttachments(event);
+    const attachments = event.attachments ?? [];
     const target = attachments.find(
       (file) => file.providerFileId === args.providerFileId,
     );
@@ -833,7 +782,6 @@ export const attachInboundFile = internalMutation({
       );
     }
     await ctx.db.patch(event._id, {
-      attachment: undefined,
       attachments: attachments.map((attachment) =>
         attachment.providerFileId === args.providerFileId
           ? { ...attachment, fileId: args.fileId, size: fileSize }
@@ -865,7 +813,7 @@ export const enrichInboundActor = internalMutation({
       ...(args.senderEmail ? { senderEmail: args.senderEmail } : {}),
       senderIsBot: args.senderIsBot,
       mentionsSpot:
-        eventMentionsSpot(event) ||
+        event.mentionsSpot ||
         Boolean(
           args.installationBotUserId &&
           event.content.includes(`<@${args.installationBotUserId}>`),
@@ -900,7 +848,6 @@ export const authorizeBatch = internalMutation({
         await ctx.db.patch(event._id, {
           status: "ignored",
           content: "",
-          attachment: undefined,
           attachments: undefined,
           updatedAt: now,
         });
@@ -914,7 +861,6 @@ export const authorizeBatch = internalMutation({
         await ctx.db.patch(event._id, {
           status: "ignored",
           content: "",
-          attachment: undefined,
           attachments: undefined,
           updatedAt: now,
         });
@@ -965,7 +911,6 @@ export const prepareBatch = internalMutation({
         await ctx.db.patch(event._id, {
           status: "ignored",
           content: "",
-          attachment: undefined,
           attachments: undefined,
           updatedAt: now,
         });
@@ -1028,7 +973,7 @@ export const prepareBatch = internalMutation({
 
       const authorizedCustomer = actor.classification === "customer_member";
       const operator = isSlackOperatorClassification(actor.classification);
-      const actorUserId = slackActorUserId(actor);
+      const actorUserId = actor.spotUserId;
       const isDirectMessage = event.isDirectMessage === true;
       const mentionedBotUserId =
         event.mentionedBotUserId ?? connection.botUserId;
@@ -1036,7 +981,7 @@ export const prepareBatch = internalMutation({
         ? authorizedCustomer
         : event.isPrimaryChannel
           ? true
-          : eventMentionsSpot(event) || existingThread?.slackState === "active";
+          : event.mentionsSpot || existingThread?.slackState === "active";
       if (!shouldRecord) {
         await ctx.db.patch(event._id, { status: "ignored", updatedAt: now });
         continue;
@@ -1099,7 +1044,7 @@ export const prepareBatch = internalMutation({
               ? "active"
               : (actor.classification === "customer_member" ||
                     (!event.isPrimaryChannel && operator)) &&
-                  eventMentionsSpot(event)
+                  event.mentionsSpot
                 ? "active"
                 : "resolved",
         });
@@ -1127,7 +1072,7 @@ export const prepareBatch = internalMutation({
         }
       }
 
-      const inboundAttachments = slackAttachments(event);
+      const inboundAttachments = event.attachments ?? [];
       const attachments = inboundAttachments.flatMap((attachment) =>
         attachment.fileId
           ? [
@@ -1171,13 +1116,13 @@ export const prepareBatch = internalMutation({
         archivedAt: undefined,
       });
 
-      if (operator && (event.isPrimaryChannel || !eventMentionsSpot(event))) {
+      if (operator && (event.isPrimaryChannel || !event.mentionsSpot)) {
         if (trigger) await ctx.db.delete(trigger.agentMessageId);
         trigger = undefined;
         await ctx.db.patch(thread._id, { slackState: "human_paused" });
       } else if (
         authorizedCustomer &&
-        (isDirectMessage || eventMentionsSpot(event)) &&
+        (isDirectMessage || event.mentionsSpot) &&
         isResolveCommand(event.content, mentionedBotUserId)
       ) {
         if (trigger) await ctx.db.delete(trigger.agentMessageId);
@@ -1203,7 +1148,7 @@ export const prepareBatch = internalMutation({
       } else if (
         (authorizedCustomer || operator) &&
         (isDirectMessage ||
-          eventMentionsSpot(event) ||
+          event.mentionsSpot ||
           thread.slackState === "active")
       ) {
         await ctx.db.patch(thread._id, { slackState: "active" });
