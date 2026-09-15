@@ -114,7 +114,11 @@ directly at a callsite.
   Do not force casing onto authored content. Default prose distinguishes h1, h2, and h3
   at 24, 20, and 18 px, with deeper headings at body size; compact quoted
   text retains body-sized headings. `ProseMarkdown` owns section spacing and
-  wrapping table cells, with horizontal scrolling for wide comparisons.
+  wrapping table cells, with horizontal scrolling for wide comparisons. Surfaces
+  that need uniform card headings can pass `headingRole="heading.section"` to
+  `ProseMarkdown`; authored HTML levels and anchors remain intact. The renderer
+  marks these headings with `data-prose-heading`, excluding them from default
+  prose heading sizes so the selected role owns their complete typography.
 - Mapbox, editable mirrored text, and scaled text marks use the named adapters
   exported by the owner because their renderers cannot consume ordinary role
   classes. Do not recreate those inline objects.
