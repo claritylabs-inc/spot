@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Markdown, { type Components } from "react-markdown";
+import Markdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
@@ -74,6 +74,8 @@ export type ProseMarkdownProps = {
   confidenceFullView?: boolean;
   /** Extra react-markdown component overrides */
   components?: Components;
+  /** Optional transforms of the rendered document, such as packet section cards. */
+  rehypePlugins?: Options["rehypePlugins"];
 };
 
 /** Tailwind tint per confidence level — kept subtle so prose stays readable. */
@@ -177,6 +179,7 @@ export function ProseMarkdown({
   flagConfidence = false,
   confidenceFullView = false,
   components,
+  rehypePlugins,
 }: ProseMarkdownProps) {
   const source = useMemo(
     () =>
@@ -207,7 +210,11 @@ export function ProseMarkdown({
         className,
       )}
     >
-      <Markdown remarkPlugins={plugins} components={mergedComponents}>
+      <Markdown
+        remarkPlugins={plugins}
+        rehypePlugins={rehypePlugins}
+        components={mergedComponents}
+      >
         {source}
       </Markdown>
     </div>

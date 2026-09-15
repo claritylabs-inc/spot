@@ -70,6 +70,8 @@ Request tabs share one row: Notes (private.md), Shared (public.md), and the requ
 
 `convex/lib/clientProfile.ts` owns explicit DBA normalization and client classification validation; `orgProfileFacts.ts` owns extracted legal-entity provenance and effective overrides. `companyResearch.ts` plus `actions/companyResearch.ts` persist mandatory router-backed public research even without a supplied URL, protect concurrent edits, and expose incomplete outcomes. Reuse these paths for new import surfaces.
 
+Shared broker packets render Markdown in section cards through `ProseMarkdown`’s optional rendered-document transforms. `app/share/packet/[token]/packet-markdown.ts` owns heading anchors and section grouping; `packet-document.tsx` owns the sticky nested outline, mobile section picker, and separate Files destination. Heading levels follow the authored Markdown; all sections render together so cross-section references remain intact. Files retain native `PillButton` downloads through the authorized packet HTTP endpoint. Live content and file authorization continue through the existing packet subscription.
+
 ## Catalog
 
 - `components/ui/text-link.tsx` owns `TextLink`: an underlined text link with a small trailing northeast arrow, muted text, hover emphasis, and visible keyboard focus. Use it for text-only navigation and promotional links, including the shared packet partner link. Internal paths use Next client navigation with full prefetch; external URLs, protocol links, and downloads retain native anchor behavior. Pill-shaped actions continue to use `PillButton`; table record names use `TableNameLink`.
