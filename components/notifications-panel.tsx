@@ -292,7 +292,7 @@ export function NotificationsPanel({
               void markAllRead({ orgId });
             }}
             variant="ghost"
-            size="small"
+            size="compact"
           >
             Mark all as read
           </PillButton>
