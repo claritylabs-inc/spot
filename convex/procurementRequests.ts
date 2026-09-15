@@ -247,7 +247,7 @@ function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
-  const [replacingPolicy, resultingPolicy, outreaches, files, emails] =
+  const [replacingPolicy, resultingPolicy, outreaches, emails] =
     await Promise.all([
       requirePolicyForRequest(
         ctx,
@@ -262,10 +262,6 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
       ),
       ctx.db
         .query("procurementBrokerOutreaches")
-        .withIndex("request", (index) => index.eq("requestId", request._id))
-        .collect(),
-      ctx.db
-        .query("procurementFileItems")
         .withIndex("request", (index) => index.eq("requestId", request._id))
         .collect(),
       ctx.db
@@ -285,7 +281,6 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
         outreach.status,
       ),
     ).length,
-    outstandingFileCount: files.filter((file) => !file.clientFileId).length,
     emailThreadCount: emails.filter(activeEmailThread).length,
   };
 }
@@ -339,9 +334,8 @@ function buildRequestTimeline(args: {
     ...args.fileItems.map((item) => ({
       key: `file:${item._id}`,
       kind: "file" as const,
-      summary: !item.clientFile
-        ? `Requested ${item.label}`
-        : item.clientFile?.uploadedBySide === "client"
+      summary:
+        item.clientFile?.uploadedBySide === "client"
           ? `Client provided ${item.label}`
           : `Updated ${item.label}`,
       createdAt: item.updatedAt,
@@ -413,38 +407,40 @@ export async function getProcurementRequestDetails(
       .take(250),
   ]);
   const files = await Promise.all(
-    fileItems.map(async (item) => {
-      const file = item.clientFileId
-        ? await ctx.db.get(item.clientFileId)
-        : null;
-      return {
-        _id: item._id,
-        requestId: item.requestId,
-        clientOrgId: item.clientOrgId,
-        clientFileId: item.clientFileId,
-        sourceEmailMessageId: item.sourceEmailMessageId,
-        label: item.label,
-        brokerRelease: item.outreachId ? "hidden" : item.brokerRelease,
-        clientVisible: item.clientVisible,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-        clientFile: file
-          ? {
-              _id: file._id,
-              clientFileId: file._id,
-              name: file.name,
-              originalName: file.originalName,
-              contentType: file.contentType,
-              size: file.size,
-              clientVisible: file.clientVisible,
-              policyId: file.policyId,
-              uploadedBySide: file.uploadedBySide,
-              nameStatus: file.nameStatus,
-              url: await ctx.storage.getUrl(file.fileId),
-            }
-          : null,
-      };
-    }),
+    fileItems
+      .filter((item) => item.clientFileId)
+      .map(async (item) => {
+        const file = item.clientFileId
+          ? await ctx.db.get(item.clientFileId)
+          : null;
+        return {
+          _id: item._id,
+          requestId: item.requestId,
+          clientOrgId: item.clientOrgId,
+          clientFileId: item.clientFileId,
+          sourceEmailMessageId: item.sourceEmailMessageId,
+          label: item.label,
+          brokerRelease: item.outreachId ? "hidden" : item.brokerRelease,
+          clientVisible: item.clientVisible,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+          clientFile: file
+            ? {
+                _id: file._id,
+                clientFileId: file._id,
+                name: file.name,
+                originalName: file.originalName,
+                contentType: file.contentType,
+                size: file.size,
+                clientVisible: file.clientVisible,
+                policyId: file.policyId,
+                uploadedBySide: file.uploadedBySide,
+                nameStatus: file.nameStatus,
+                url: await ctx.storage.getUrl(file.fileId),
+              }
+            : null,
+        };
+      }),
   );
   const legacyAuditEvents = legacyOperatorAudits
     .filter((event) => {
@@ -1028,7 +1024,7 @@ export async function createProcurementFileItemByOperator(
   args: {
     operatorUserId: Id<"users">;
     requestId: Id<"procurementRequests">;
-    clientFileId?: Id<"clientFiles">;
+    clientFileId: Id<"clientFiles">;
     label: string;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
@@ -1037,19 +1033,17 @@ export async function createProcurementFileItemByOperator(
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await requireRequest(ctx, args.requestId);
-  if (args.clientFileId) {
-    const file = await ctx.db.get(args.clientFileId);
-    if (
-      !file ||
-      file.archivedAt ||
-      file.deletedAt ||
-      file.orgId !== request.clientOrgId
-    ) {
-      throw new NoWriteInputError(
-        "invalid_client_file",
-        "Client file is unavailable or belongs to another client",
-      );
-    }
+  const file = await ctx.db.get(args.clientFileId);
+  if (
+    !file ||
+    file.archivedAt ||
+    file.deletedAt ||
+    file.orgId !== request.clientOrgId
+  ) {
+    throw new NoWriteInputError(
+      "invalid_client_file",
+      "Client file is unavailable or belongs to another client",
+    );
   }
   const now = dayjs().valueOf();
   const fileItemId = await ctx.db.insert("procurementFileItems", {
@@ -1064,9 +1058,7 @@ export async function createProcurementFileItemByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  if (args.clientFileId) {
-    await scheduleClientFileCompanyInformation(ctx, args.clientFileId);
-  }
+  await scheduleClientFileCompanyInformation(ctx, args.clientFileId);
   if (args.brokerRelease && args.brokerRelease !== "hidden")
     await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
@@ -1091,7 +1083,7 @@ export async function createProcurementFileItemByOperator(
 export const createFileItem = mutation({
   args: {
     requestId: v.id("procurementRequests"),
-    clientFileId: v.optional(v.id("clientFiles")),
+    clientFileId: v.id("clientFiles"),
     label: v.string(),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
@@ -1111,7 +1103,7 @@ export async function updateProcurementFileItemByOperator(
   args: {
     operatorUserId: Id<"users">;
     fileItemId: Id<"procurementFileItems">;
-    clientFileId?: Id<"clientFiles"> | null;
+    clientFileId?: Id<"clientFiles">;
     label?: string;
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
@@ -1127,21 +1119,19 @@ export async function updateProcurementFileItemByOperator(
     updatedAt: dayjs().valueOf(),
   };
   if (args.clientFileId !== undefined) {
-    if (args.clientFileId) {
-      const file = await ctx.db.get(args.clientFileId);
-      if (
-        !file ||
-        file.archivedAt ||
-        file.deletedAt ||
-        file.orgId !== request.clientOrgId
-      ) {
-        throw new NoWriteInputError(
-          "invalid_client_file",
-          "Client file is unavailable or belongs to another client",
-        );
-      }
+    const file = await ctx.db.get(args.clientFileId);
+    if (
+      !file ||
+      file.archivedAt ||
+      file.deletedAt ||
+      file.orgId !== request.clientOrgId
+    ) {
+      throw new NoWriteInputError(
+        "invalid_client_file",
+        "Client file is unavailable or belongs to another client",
+      );
     }
-    patch.clientFileId = args.clientFileId ?? undefined;
+    patch.clientFileId = args.clientFileId;
   }
   if (args.label !== undefined)
     patch.label = requiredText(args.label, "File label", 300);
@@ -1205,7 +1195,7 @@ export async function updateProcurementFileItemByOperator(
 export const updateFileItem = mutation({
   args: {
     fileItemId: v.id("procurementFileItems"),
-    clientFileId: v.optional(v.union(v.id("clientFiles"), v.null())),
+    clientFileId: v.optional(v.id("clientFiles")),
     label: v.optional(v.string()),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),

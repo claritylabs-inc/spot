@@ -1579,13 +1579,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_file_item: defineOperatorTool({
-    version: 5,
+    version: 6,
     description:
-      "Add a procurement file or outstanding file request with a label and client/broker visibility. Link an existing client file when available; visibility can be set before upload. Released files and visibility changes immediately update existing packet links within their audience. Keep file notes in private.md or public.md.",
+      "Add an existing uploaded client file to a procurement request with a label and client/broker visibility. Released files and visibility changes immediately update existing packet links within their audience. Keep file notes in private.md or public.md.",
     inputSchema: z.object({
       procurementRequestId,
-      clientFileId: omittable(clientFileId).describe(
-        "Optional underlying saved file; omit for an outstanding file request.",
+      clientFileId: clientFileId.describe(
+        "Required underlying uploaded client file.",
       ),
       label: z.string().min(1).max(300),
       brokerRelease: omittable(procurementFileBrokerRelease).describe(
@@ -1607,15 +1607,17 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_file_item: defineOperatorTool({
-    version: 5,
+    version: 6,
     description:
-      "Update a procurement file label, client/broker visibility, or underlying file link. Null clears the file link without deleting the stored file. Visibility can be set before upload. Released files and visibility changes immediately update existing packet links within their audience. Keep file notes in private.md or public.md.",
+      "Update a procurement file label, client/broker visibility, or underlying file link. The underlying file can be replaced but cannot be cleared. Released files and visibility changes immediately update existing packet links within their audience. Keep file notes in private.md or public.md.",
     inputSchema: z
       .object({
         procurementFileItemId,
-        clientFileId: clearable(clientFileId).describe(
-          "Omit to preserve the underlying file; null clears the link.",
-        ),
+        clientFileId: clientFileId
+          .optional()
+          .describe(
+            "Omit to preserve the underlying file, or provide an uploaded replacement.",
+          ),
         label: omittable(z.string().min(1).max(300)),
         brokerRelease: omittable(procurementFileBrokerRelease).describe(
           "Broker visibility; an available file immediately appears on existing packet links within their audience.",

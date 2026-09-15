@@ -531,14 +531,6 @@ export const insert = internalMutation({
         source: "operator",
       });
     }
-    await createProcurementFileItemByOperator(ctx, {
-      operatorUserId: args.operatorUserId,
-      requestId,
-      label: "Current loss runs",
-      brokerRelease: "hidden",
-      clientVisible: false,
-      source: "operator",
-    });
     const quote = await ctx.db.get(files.get("quote")!);
     if (!quote?.sha256) throw new Error("Missing stored quote");
     const proposalId = await ctx.db.insert("procurementProposals", {

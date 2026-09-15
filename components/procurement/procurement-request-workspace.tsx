@@ -30,7 +30,6 @@ import { toast } from "sonner";
 
 import {
   ClientFileUploadPanel,
-  type ClientFilePolicyOption,
 } from "@/components/client-files/client-files-workspace";
 import { usePdf } from "@/components/pdf-context";
 import { ProseMarkdown } from "@/components/prose-markdown";
@@ -127,7 +126,6 @@ type RequestSummary = {
   forwardingAddress: string;
   brokerCount: number;
   quoteCount: number;
-  outstandingFileCount: number;
   emailThreadCount: number;
   replacingPolicy: { policyId: Id<"policies">; label: string } | null;
   resultingPolicy: { policyId: Id<"policies">; label: string } | null;
@@ -1176,30 +1174,24 @@ export function OutreachEditor({
 }
 
 function ProcurementFileEditor({
-  requestId,
   fileItem,
   onClose,
   onPreview,
-  onUpload,
   readOnly,
 }: {
-  requestId: Id<"procurementRequests">;
-  fileItem?: ProcurementFileItem;
+  fileItem: ProcurementFileItem;
   onClose: () => void;
-  onUpload: () => void;
   onPreview: (file: ClientFileOption) => void;
   readOnly: boolean;
 }) {
-  const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
-  const [label, setLabel] = useState(fileItem?.label ?? "");
+  const [label, setLabel] = useState(fileItem.label);
   const [brokerRelease, setBrokerRelease] = useState<
     "hidden" | "listed" | "attached"
-  >(fileItem?.brokerRelease ?? "hidden");
+  >(fileItem.brokerRelease ?? "hidden");
   const [clientVisible, setClientVisible] = useState(
-    fileItem?.clientVisible ?? false,
+    fileItem.clientVisible ?? false,
   );
-  const [saving, setSaving] = useState(false);
 
   const values = {
     label,
@@ -1211,9 +1203,8 @@ function ProcurementFileEditor({
     mutationName: "procurementRequests.updateFileItem",
     args: values,
     enabled: !readOnly,
-    canSave: !!fileItem && !!label.trim(),
+    canSave: !!label.trim(),
     flush: async (next) => {
-      if (!fileItem) return;
       const previous = saved.current;
       if (
         Object.keys(previous).every(
@@ -1241,43 +1232,22 @@ function ProcurementFileEditor({
       getUserFacingErrorMessage(error, "Could not update the file"),
   });
 
-  async function addFile() {
-    if (readOnly || saving || !label.trim()) return;
-    setSaving(true);
-    try {
-      await createFileItem({
-        requestId,
-        label,
-        brokerRelease,
-        clientVisible,
-      });
-      toast.success("File request added");
-      onClose();
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not add file request"),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <SettingsDrawer
       open
       onOpenChange={(open) => {
-        if (!open && !saving) {
-          if (!fileItem || readOnly) onClose();
+        if (!open) {
+          if (readOnly) onClose();
           else
             void autoSave.saveNow().then((saved) => {
               if (saved) onClose();
             });
         }
       }}
-      title={fileItem ? "Edit procurement file" : "Add file request"}
+      title="Edit procurement file"
       footer={
         <>
-          {fileItem?.clientFile?.url ? (
+          {fileItem.clientFile?.url ? (
             <>
               {/pdf|image/.test(fileItem.clientFile.contentType) ||
               /\.(pdf|avif|gif|jpe?g|png|webp)$/i.test(
@@ -1300,33 +1270,11 @@ function ProcurementFileEditor({
               />
             </>
           ) : null}
-          {!readOnly && fileItem && !fileItem.clientFile ? (
-            <PillButton
-              onClick={() => {
-                void autoSave.saveNow().then((saved) => {
-                  if (saved) onUpload();
-                });
-              }}
-            >
-              <Upload className="size-3.5" />
-              Upload file
-            </PillButton>
-          ) : null}
-          {!readOnly && !fileItem ? (
-            <PillButton
-              type="button"
-              onClick={addFile}
-              disabled={saving || !label.trim()}
-            >
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Add file request
-            </PillButton>
-          ) : null}
         </>
       }
     >
-      <AutoSaveStatus status={fileItem ? autoSave.status : "saved"} />
-      <fieldset disabled={readOnly || saving} className="min-w-0 space-y-5">
+      <AutoSaveStatus status={autoSave.status} />
+      <fieldset disabled={readOnly} className="min-w-0 space-y-5">
         <label className="block space-y-1.5">
           <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -1351,7 +1299,7 @@ function ProcurementFileEditor({
               <SettingsSwitch
                 label="Client visibility"
                 checked={clientVisible}
-                disabled={readOnly || saving}
+                disabled={readOnly}
                 onCheckedChange={() => setClientVisible(!clientVisible)}
               />
             </OperationalItem>
@@ -1362,7 +1310,7 @@ function ProcurementFileEditor({
               <SettingsSwitch
                 label="Broker visibility"
                 checked={brokerRelease !== "hidden"}
-                disabled={readOnly || saving}
+                disabled={readOnly}
                 onCheckedChange={() =>
                   setBrokerRelease(
                     brokerRelease === "hidden" ? "attached" : "hidden",
@@ -1442,7 +1390,6 @@ export function ProcurementRequestWorkspace({
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
-  const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
   const changeView = async (nextView: string) => {
@@ -1525,55 +1472,45 @@ export function ProcurementRequestWorkspace({
     [brokers, closePdf, closeRightPanel, onRightPanel, readOnly, requestId],
   );
 
-  const openUpload = useCallback(
-    (fileItem?: ProcurementFileItem) => {
-      closePdf();
-      onRightPanel(
-        <ClientFileUploadPanel
-          clientOrgId={clientOrgId}
-          policies={(policyRows ?? []) as ClientFilePolicyOption[]}
-          onClose={closeRightPanel}
-          onUploaded={async (uploaded) => {
-            await Promise.all(
-              uploaded.map((file, index) =>
-                fileItem && index === 0
-                  ? updateFileItem({
-                      fileItemId: fileItem._id,
-                      clientFileId: file.clientFileId,
-                    })
-                  : createFileItem({
-                      requestId,
-                      clientFileId: file.clientFileId,
-                      label: file.originalName,
-                    }),
-              ),
-            );
-          }}
-        />,
-      );
-    },
-    [
-      clientOrgId,
-      closePdf,
-      closeRightPanel,
-      createFileItem,
-      updateFileItem,
-      onRightPanel,
-      policyRows,
-      requestId,
-    ],
-  );
+  const openUpload = useCallback(() => {
+    closePdf();
+    onRightPanel(
+      <ClientFileUploadPanel
+        clientOrgId={clientOrgId}
+        showBrokerVisibility
+        onClose={closeRightPanel}
+        onUploaded={async (uploaded, visibility) => {
+          await Promise.all(
+            uploaded.map((file) =>
+              createFileItem({
+                requestId,
+                clientFileId: file.clientFileId,
+                label: file.originalName,
+                clientVisible: visibility.clientVisible,
+                brokerRelease: visibility.brokerVisible ? "attached" : "hidden",
+              }),
+            ),
+          );
+        }}
+      />,
+    );
+  }, [
+    clientOrgId,
+    closePdf,
+    closeRightPanel,
+    createFileItem,
+    onRightPanel,
+    requestId,
+  ]);
 
   const openFileEditor = useCallback(
-    (fileItem?: ProcurementFileItem) => {
+    (fileItem: ProcurementFileItem) => {
       if (!details) return;
       closePdf();
       onRightPanel(
         <ProcurementFileEditor
-          key={fileItem?._id ?? "new-file"}
-          requestId={requestId}
+          key={fileItem._id}
           fileItem={fileItem}
-          onUpload={() => openUpload(fileItem)}
           readOnly={readOnly}
           onPreview={(file) => {
             if (!file.url) return;
@@ -1593,16 +1530,7 @@ export function ProcurementRequestWorkspace({
         />,
       );
     },
-    [
-      closePdf,
-      closeRightPanel,
-      details,
-      onRightPanel,
-      openWithUrl,
-      openUpload,
-      readOnly,
-      requestId,
-    ],
+    [closePdf, closeRightPanel, details, onRightPanel, openWithUrl, readOnly],
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
@@ -1643,20 +1571,10 @@ export function ProcurementRequestWorkspace({
           Add broker
         </PillButton>
       ) : view === "files" ? (
-        <>
-          <PillButton
-            type="button"
-            variant="secondary"
-            onClick={() => openFileEditor()}
-          >
-            <Plus className="size-3.5" />
-            Add file request
-          </PillButton>
-          <PillButton type="button" onClick={() => openUpload()}>
-            <Upload className="size-3.5" />
-            Upload files
-          </PillButton>
-        </>
+        <PillButton type="button" onClick={() => openUpload()}>
+          <Upload className="size-3.5" />
+          Upload files
+        </PillButton>
       ) : null;
 
     onActions?.(
@@ -1677,7 +1595,6 @@ export function ProcurementRequestWorkspace({
     return () => onActions?.(null);
   }, [
     onActions,
-    openFileEditor,
     openOutreachEditor,
     openPacketLink,
     openRequestEditor,
@@ -1933,14 +1850,14 @@ export function ProcurementRequestWorkspace({
         details.files.length === 0 ? (
           <EmptyStateCard
             title="No procurement files yet"
-            description="Upload client material or add a request for a document that still needs to be collected."
+            description="Upload files to include in this procurement request."
           />
         ) : (
           <OperationalPanel as="section">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>File or request</TableHead>
+                  <TableHead>File</TableHead>
                   <TableHead>Visibility</TableHead>
                   <TableHead>Updated</TableHead>
                 </TableRow>

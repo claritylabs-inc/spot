@@ -23,7 +23,10 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { FileDropZone } from "@/components/ui/file-drop";
 import { Input } from "@/components/ui/input";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import {
+  OperationalItem,
+  OperationalPanel,
+} from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -358,18 +361,19 @@ function ClientFileEditor({
 
 export function ClientFileUploadPanel({
   clientOrgId,
-  policies,
+  showBrokerVisibility = false,
   onClose,
   onUploaded,
 }: {
   clientOrgId: Id<"organizations">;
-  policies: ClientFilePolicyOption[];
+  showBrokerVisibility?: boolean;
   onClose: () => void;
   onUploaded?: (
     files: Array<{
       clientFileId: Id<"clientFiles">;
       originalName: string;
     }>,
+    visibility: { clientVisible: boolean; brokerVisible: boolean },
   ) => void | Promise<void>;
 }) {
   const generateUploadUrl = useMutation(api.clientFiles.generateUploadUrl);
@@ -378,7 +382,7 @@ export function ClientFileUploadPanel({
   const [files, setFiles] = useState<File[]>([]);
   const [hint, setHint] = useState("");
   const [clientVisible, setClientVisible] = useState(false);
-  const [policyId, setPolicyId] = useState<string>(NO_POLICY);
+  const [brokerVisible, setBrokerVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const addFiles = useCallback((selected: File[]) => {
@@ -438,8 +442,6 @@ export function ClientFileUploadPanel({
             originalName: file.name,
             contentType,
             clientVisible,
-            policyId:
-              policyId === NO_POLICY ? undefined : (policyId as Id<"policies">),
             hint: hint.trim() || undefined,
           });
           uploaded.push({
@@ -457,7 +459,7 @@ export function ClientFileUploadPanel({
           id: toastId,
         });
       }
-      await onUploaded?.(uploaded);
+      await onUploaded?.(uploaded, { clientVisible, brokerVisible });
       toast.success(
         `${files.length} ${files.length === 1 ? "file" : "files"} uploaded. Names will update automatically.`,
         { id: toastId },
@@ -564,38 +566,30 @@ export function ClientFileUploadPanel({
           </span>
         </label>
 
-        <div className="space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Associated policy
-          </span>
-          <PolicySelect
-            value={policyId}
-            policies={policies}
-            onValueChange={setPolicyId}
-            className="w-full"
-          />
-        </div>
-
-        <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
-          <div>
-            <p className={`text-foreground ${typeStyle("body.medium")}`}>
-              Visible to client
-            </p>
-            <p
-              className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
-            >
-              Files are private to operators by default.
-            </p>
-          </div>
-          <SettingsSwitch
-            checked={clientVisible}
-            onCheckedChange={() => setClientVisible((value) => !value)}
-            label="Visible to client"
-            disabled={uploading}
-          />
-        </div>
+        <OperationalPanel aria-label="File sharing">
+          <OperationalItem className="flex items-center justify-between gap-4">
+            <span className={typeStyle("body.default")}>Client visibility</span>
+            <SettingsSwitch
+              checked={clientVisible}
+              onCheckedChange={() => setClientVisible((value) => !value)}
+              label="Client visibility"
+              disabled={uploading}
+            />
+          </OperationalItem>
+          {showBrokerVisibility ? (
+            <OperationalItem className="flex items-center justify-between gap-4">
+              <span className={typeStyle("body.default")}>
+                Broker visibility
+              </span>
+              <SettingsSwitch
+                checked={brokerVisible}
+                onCheckedChange={() => setBrokerVisible((value) => !value)}
+                label="Broker visibility"
+                disabled={uploading}
+              />
+            </OperationalItem>
+          ) : null}
+        </OperationalPanel>
       </div>
     </SettingsDrawer>
   );
@@ -638,11 +632,10 @@ export function ClientFilesWorkspace({
     onRightPanel(
       <ClientFileUploadPanel
         clientOrgId={clientOrgId}
-        policies={policies}
         onClose={closeRightPanel}
       />,
     );
-  }, [clientOrgId, closePdf, closeRightPanel, onRightPanel, policies]);
+  }, [clientOrgId, closePdf, closeRightPanel, onRightPanel]);
 
   useEffect(() => {
     onActions?.(

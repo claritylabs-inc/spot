@@ -257,7 +257,27 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
       createdAt: now,
       updatedAt: now,
     });
-    return { operatorUserId, procurementRequestId, clientFileId };
+    const replacementClientFileId = await ctx.db.insert("clientFiles", {
+      orgId: clientOrgId,
+      fileId,
+      name: "Replacement application.pdf",
+      originalName: "Replacement application.pdf",
+      contentType: "application/pdf",
+      size: 11,
+      clientVisible: false,
+      uploadedByUserId: operatorUserId,
+      uploadedBySide: "operator",
+      nameSource: "original",
+      nameStatus: "ready",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return {
+      operatorUserId,
+      procurementRequestId,
+      clientFileId,
+      replacementClientFileId,
+    };
   });
   const threadId = await t.mutation(
     internal.operatorAgent.createOrGetChannelThreadInternal,
@@ -275,6 +295,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
   };
   const correctedInput = {
     procurementRequestId: ids.procurementRequestId,
+    clientFileId: ids.replacementClientFileId,
     label: "Signed application",
     clientVisible: true,
   };

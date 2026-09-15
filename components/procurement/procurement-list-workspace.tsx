@@ -74,7 +74,6 @@ type ProcurementRequestRow = {
   resultingPolicy: { label: string } | null;
   brokerCount: number;
   quoteCount: number;
-  outstandingFileCount: number;
   emailThreadCount: number;
   updatedAt: number;
 };
@@ -132,8 +131,8 @@ function ProcurementRequestPreview({
             value={`${request.brokerCount} ${request.brokerCount === 1 ? "broker" : "brokers"} · ${request.quoteCount} ${request.quoteCount === 1 ? "quote" : "quotes"}`}
           />
           <OperationalLabelValueRow
-            label="Follow-up"
-            value={`${request.outstandingFileCount} ${request.outstandingFileCount === 1 ? "file" : "files"} outstanding · ${request.emailThreadCount} email ${request.emailThreadCount === 1 ? "thread" : "threads"}`}
+            label="Email"
+            value={`${request.emailThreadCount} ${request.emailThreadCount === 1 ? "thread" : "threads"}`}
           />
           <OperationalLabelValueRow
             label="Updated"

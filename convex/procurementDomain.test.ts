@@ -149,14 +149,16 @@ async function createRequest(
   });
 }
 
-test("file visibility can be chosen before upload and updates existing links while enforcing ownership", async () => {
+test("uploaded file visibility updates existing links while enforcing ownership", async () => {
   const f = await fixture();
   const request = await createRequest(f, "Visibility fixture");
+  const clientFileId = await seedProposalFile(f, "loss-runs.pdf");
   const item = await f.operator.mutation(
     api.procurementRequests.createFileItem,
     {
       requestId: request.requestId,
       label: "Current loss runs",
+      clientFileId,
       clientVisible: true,
       brokerRelease: "attached",
     },
@@ -181,14 +183,13 @@ test("file visibility can be chosen before upload and updates existing links whi
         requestId: request.requestId,
       })
     ).files,
-  ).toEqual([]);
+  ).toHaveLength(1);
   const link = await f.operator.mutation(api.procurementPacket.mintLink, {
     requestId: request.requestId,
   });
-  const clientFileId = await seedProposalFile(f, "loss-runs.pdf");
   await f.operator.mutation(api.procurementRequests.updateFileItem, {
     fileItemId: item.fileItemId,
-    clientFileId,
+    label: "Updated loss runs",
   });
   expect(
     (
@@ -200,7 +201,7 @@ test("file visibility can be chosen before upload and updates existing links whi
   expect(
     (await f.t.query(api.procurementPacket.getByToken, { token: link.token }))
       ?.files,
-  ).toHaveLength(1);
+  ).toEqual([expect.objectContaining({ name: "Updated loss runs" })]);
   await expect(
     f.client.mutation(api.procurementRequests.updateFileItem, {
       fileItemId: item.fileItemId,

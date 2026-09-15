@@ -719,16 +719,14 @@ async function preflightProcurementFileCreate(
     ctx,
     input.procurementRequestId,
   );
-  if (input.clientFileId != null) {
-    const file = await requireDocument(
-      ctx,
-      "clientFiles",
-      input.clientFileId,
-      "Client file",
-    );
-    if (file.orgId !== request.clientOrgId) {
-      throw new Error("Client file does not belong to this request's client");
-    }
+  const file = await requireDocument(
+    ctx,
+    "clientFiles",
+    input.clientFileId,
+    "Client file",
+  );
+  if (file.orgId !== request.clientOrgId) {
+    throw new Error("Client file does not belong to this request's client");
   }
 }
 
