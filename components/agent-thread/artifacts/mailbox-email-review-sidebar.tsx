@@ -138,19 +138,17 @@ function MailboxAddressDisclosure({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <PillButton
+          <button
             type="button"
-            size="compact"
-            variant="ghost"
             className={cn(
-              `group/address relative h-auto min-h-6 min-w-0 max-w-[calc(100%-0.875rem)] shrink-0 justify-start gap-0 px-1.5 py-0.5 text-left whitespace-normal text-foreground hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.07] ${typeStyle("control.button")}`,
+              `group/address relative inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-border-emphasized h-auto min-h-6 min-w-0 max-w-[calc(100%-0.875rem)] shrink-0 justify-start gap-0 px-1.5 py-0.5 text-left whitespace-normal text-foreground hover:bg-foreground/[0.06] data-popup-open:bg-foreground/[0.07] ${typeStyle("control.button")}`,
               alignStart && "-ml-1.5",
             )}
             aria-label={`Show email address for ${name}`}
           >
             <span className="min-w-0 break-words [overflow-wrap:anywhere]">{name}</span>
             <ChevronDown className="pointer-events-none absolute left-full ml-0.5 h-3 w-3 opacity-0 transition-opacity duration-150 group-hover/address:opacity-55 group-focus-visible/address:opacity-55 group-data-[popup-open]/address:opacity-55 [@media(hover:none)]:opacity-45" />
-          </PillButton>
+          </button>
         }
       />
       <DropdownMenuContent
@@ -434,7 +432,12 @@ export function MailboxEmailReviewSidebar({
         <h2 className={`min-w-0 truncate text-foreground ${typeStyle("heading.micro")}`}>
           {liveEmail?.subject ?? email.subject}
         </h2>
-        <PillButton size="compact" variant="icon" onClick={onClose} label="Close email review">
+        <PillButton
+          size="compact"
+          variant="icon"
+          onClick={onClose}
+          label="Close email review"
+        >
           <X className="h-4 w-4" />
         </PillButton>
       </div>

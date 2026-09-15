@@ -267,7 +267,8 @@ Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save
   triggers, and non-destructive navigation—not for a locally styled action.
 - A region should have one visually primary action. Additional actions are
   secondary, ghost, or placed in an overflow menu.
-- App top bars give every `PillButton` the compact size and use only primary or
+- App top bars give every `PillButton` the 24px `small` size, including the
+  operator-agent toggle, and use only primary or
   secondary treatments. Order secondary utility, view, recovery, and reversible
   archive actions before at most one create or generate primary action at the
   right edge. Primary actions keep both their icon and short label visible.
@@ -276,6 +277,12 @@ Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save
   reveal the label on keyboard focus and fine-pointer hover, remain compact on
   coarse pointers, and respect reduced-motion preferences. Do not use this
   expanding treatment for dense close, remove, or structural controls.
+- Button height, padding, and typography come from `PillButton`: `small` (24px),
+  `compact` (28px), `default` (32px), and `large` (48px). Use `roomyOnMobile`
+  for 36px mobile composer controls. Do not override sizing or typography at
+  action callsites; `spot/no-pill-button-size-overrides` enforces direct class
+  overrides in ESLint. Layout width and placement can remain local. Structural
+  address/menu triggers and inline reference chips keep their own controls.
 - Use `Input`, `Textarea`, `Select`, and the shared field primitives. The
   default field height is `h-9`; compact fields must come from a supported
   primitive size rather than a local height override.

@@ -3,9 +3,10 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import spotTypographyPlugin from "./eslint-rules/no-untyped-typography.mjs";
 import spotSelectPlugin from "./eslint-rules/require-select-value-label.mjs";
+import spotPillButtonPlugin from "./eslint-rules/no-pill-button-size-overrides.mjs";
 
 const spotPlugin = {
-  rules: { ...spotTypographyPlugin.rules, ...spotSelectPlugin.rules },
+  rules: { ...spotTypographyPlugin.rules, ...spotSelectPlugin.rules, ...spotPillButtonPlugin.rules },
 };
 
 const eslintConfig = defineConfig([
@@ -52,6 +53,7 @@ const eslintConfig = defineConfig([
     rules: {
       "spot/no-untyped-typography": "error",
       "spot/require-select-value-label": "error",
+      "spot/no-pill-button-size-overrides": "error",
     },
   },
   // Convex functions deal with dynamic data: cl-sdk discriminated unions,

@@ -56,9 +56,10 @@ export function TokenListField({
             variant="destructive"
             iconOnly
             label={`Remove ${item}`}
-            className="-mr-1 size-5"
+            className="-mr-1"
             disabled={disabled}
             onClick={() => onChange(value.filter((entry) => entry !== item))}
+            size="small"
           >
             <X className="size-3" />
           </PillButton>

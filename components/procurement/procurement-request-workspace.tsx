@@ -1583,10 +1583,11 @@ export function ProcurementRequestWorkspace({
           <PillButton
             type="button"
             variant="secondary"
+            expandLabel
+            label="Edit request"
             onClick={openRequestEditor}
           >
             <Pencil className="size-3.5" />
-            Edit request
           </PillButton>
         ) : null}
         {actions}

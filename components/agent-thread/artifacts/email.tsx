@@ -270,7 +270,6 @@ export function EmailSummaryCard({
             type="button"
             size="compact"
             variant="secondary"
-            className={`${typeStyle("control.button")}`}
             onClick={(event) => {
               event.stopPropagation();
               onOpen?.(message);
@@ -283,7 +282,6 @@ export function EmailSummaryCard({
               type="button"
               size="compact"
               variant="primary"
-              className={`${typeStyle("control.button")}`}
               onClick={handleQuickSend}
               disabled={isSending}
             >
@@ -300,7 +298,6 @@ export function EmailSummaryCard({
               type="button"
               size="compact"
               variant="primary"
-              className={`${typeStyle("control.button")}`}
               onClick={handleRestore}
               disabled={isRestoring}
             >
@@ -425,7 +422,6 @@ export function EmailStackCard({
             type="button"
             size="compact"
             variant="primary"
-            className={`${typeStyle("control.button")}`}
             onClick={handleSendAll}
             disabled={isSendingAll}
           >

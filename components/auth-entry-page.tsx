@@ -127,7 +127,7 @@ export function AuthEntryPage({
 
             {error && <p className={`px-1 py-1 text-muted-foreground ${typeStyle("body.default")}`}>{error}</p>}
 
-            <PillButton type="submit" disabled={loading || !email} className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}>
+            <PillButton type="submit" disabled={loading || !email} className="w-full justify-center shadow-none sm:w-auto">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? "Sending code..." : "Continue"}
               {!loading ? <ArrowRight className="h-4 w-4" /> : null}
@@ -162,7 +162,7 @@ export function AuthEntryPage({
               <PillButton
                 type="submit"
                 disabled={loading || code.length < 6}
-                className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}
+                className="w-full justify-center shadow-none sm:w-auto"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {loading ? "Verifying..." : "Verify and continue"}

@@ -1228,7 +1228,7 @@ export function RequirementEditForm({
                     const next = limitDrafts.filter((item) => item.id !== draft.id);
                     setLimitDrafts(next);
                   }}
-                  aria-label="Remove limit"
+                  label="Remove limit"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </PillButton>

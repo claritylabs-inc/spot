@@ -84,8 +84,7 @@ function AttachmentActionButtons() {
         size="compact"
         variant="icon"
         onClick={handleAttach}
-        title="Add photos or files"
-        aria-label="Add photos or files"
+        label="Add photos or files"
       >
         <Paperclip className="h-3.5 w-3.5" />
       </PillButton>
@@ -525,7 +524,7 @@ function PreparedInputActions({
     >
       <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {actions.map((action) => (
-          <button
+          <PillButton
             key={action.id}
             type="button"
             aria-label={action.label}
@@ -535,11 +534,12 @@ function PreparedInputActions({
               event.preventDefault();
               action.onSelect();
             }}
-            className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-input bg-card px-2.5 text-muted-foreground/70 transition-colors duration-0 ease-linear hover:border-border-hover hover:bg-foreground/[0.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-border-emphasized ${typeStyle("label.tag")}`}
+            variant="secondary"
+            size="compact"
           >
             {action.icon}
             <span className="hidden sm:inline">{action.label}</span>
-          </button>
+          </PillButton>
         ))}
       </div>
     </div>
@@ -1409,11 +1409,7 @@ export const SpotPromptInput = forwardRef<
                   type="button"
                   size="compact"
                   onClick={handleStopClick}
-                  className={
-                    roomyOnMobile
-                      ? `h-9 px-4 sm:h-7 sm:px-3 ${typeStyle("control.buttonCompact")}`
-                      : undefined
-                  }
+                  roomyOnMobile={roomyOnMobile}
                 >
                   <Square
                     className={
@@ -1429,11 +1425,7 @@ export const SpotPromptInput = forwardRef<
                   type="submit"
                   size="compact"
                   disabled={disabled || isGenerating}
-                  className={
-                    roomyOnMobile
-                      ? `h-9 px-4 sm:h-7 sm:px-3 ${typeStyle("control.buttonCompact")}`
-                      : undefined
-                  }
+                  roomyOnMobile={roomyOnMobile}
                 >
                   {status === "submitted" ? (
                     <>

@@ -134,13 +134,14 @@ function Shell({
               <div className="flex items-center gap-3">
                 <span className="hidden sm:inline">{email}</span>
                 {onLogout ? (
-                  <button
+                  <PillButton
                     type="button"
                     onClick={() => void onLogout()}
-                    className={`text-foreground transition hover:opacity-70 ${typeStyle("control.button")}`}
+                    variant="ghost"
+                    size="small"
                   >
                     Log out
-                  </button>
+                  </PillButton>
                 ) : null}
               </div>
             ) : null}
@@ -473,7 +474,7 @@ export default function ClientOnboardingSetupPage() {
             <PillButton
               type="submit"
               disabled={!canContinueStep0 || submitting}
-              className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}
+              className="w-full justify-center shadow-none sm:w-auto"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Continue
@@ -538,7 +539,7 @@ export default function ClientOnboardingSetupPage() {
             <PillButton
               type="submit"
               disabled={!canContinueStep1 || submitting}
-              className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}
+              className="w-full justify-center shadow-none sm:w-auto"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Continue
@@ -639,7 +640,7 @@ export default function ClientOnboardingSetupPage() {
               type="button"
               onClick={handleFinish}
               disabled={submitting}
-              className={`w-full justify-center shadow-none sm:w-auto ${typeStyle("control.button")}`}
+              className="w-full justify-center shadow-none sm:w-auto"
             >
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
