@@ -24,6 +24,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableNameLink,
 } from "@/components/ui/table";
 import { ArchiveRestore, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -520,11 +521,12 @@ export function ManagedClientPolicyWorkspace({
                     className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     <TableCell className="px-4">
-                      <p
-                        className={`truncate text-foreground ${typeStyle("body.medium")}`}
+                      <TableNameLink
+                        href={`${basePath}/${policy._id}`}
+                        className="truncate"
                       >
                         {carrier}
-                      </p>
+                      </TableNameLink>
                     </TableCell>
                     <TableCell className="max-w-44 truncate text-muted-foreground">
                       {policyNumber}

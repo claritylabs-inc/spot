@@ -36,6 +36,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableNameLink,
 } from "@/components/ui/table";
 import {
   normalizeOperatorAgentThread,
@@ -277,11 +278,12 @@ export default function OperatorThreadsPage() {
                       className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       <TableCell>
-                        <p
-                          className={`truncate text-foreground ${typeStyle("body.medium")}`}
+                        <TableNameLink
+                          href={`/operator/threads/${thread.id}`}
+                          className="truncate"
                         >
                           {thread.title}
-                        </p>
+                        </TableNameLink>
                         <p
                           className={`truncate text-muted-foreground sm:hidden ${typeStyle("caption.default")}`}
                         >

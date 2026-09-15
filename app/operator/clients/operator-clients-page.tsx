@@ -23,6 +23,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableNameLink,
 } from "@/components/ui/table";
 import { Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -446,11 +447,12 @@ export default function OperatorClientsScreen() {
                           iconUrl={client.iconUrl}
                           size="md"
                         />
-                        <p
-                          className={`truncate text-foreground ${typeStyle("body.medium")}`}
+                        <TableNameLink
+                          href={`/operator/clients/${client._id}`}
+                          className="truncate"
                         >
                           {client.name}
-                        </p>
+                        </TableNameLink>
                       </div>
                     </TableCell>
                     <TableCell className="max-w-56 truncate text-muted-foreground">

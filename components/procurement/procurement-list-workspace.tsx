@@ -44,6 +44,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableNameLink,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
@@ -449,9 +450,11 @@ export function ProcurementListWorkspace({
               }`}
             >
               <TableCell className="min-w-64 whitespace-normal">
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                <TableNameLink
+                  href={`${basePath}/${request._id}`}
+                >
                   {request.title}
-                </p>
+                </TableNameLink>
               </TableCell>
               <TableCell>
                 <RequestStatusTag status={request.status} />
