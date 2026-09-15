@@ -138,7 +138,7 @@ function Shell({
                     type="button"
                     onClick={() => void onLogout()}
                     variant="ghost"
-                    size="small"
+                    size="compact"
                   >
                     Log out
                   </PillButton>

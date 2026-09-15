@@ -59,7 +59,7 @@ export function TokenListField({
             className="-mr-1"
             disabled={disabled}
             onClick={() => onChange(value.filter((entry) => entry !== item))}
-            size="small"
+            size="compact"
           >
             <X className="size-3" />
           </PillButton>
