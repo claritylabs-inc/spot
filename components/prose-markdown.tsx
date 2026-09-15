@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { createElement, useMemo } from "react";
 import Markdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -11,7 +11,7 @@ import {
   CONFIDENCE_LEVEL_META,
   type ConfidenceLevel,
 } from "@/lib/confidence";
-import { typeStyle } from "@/lib/typography";
+import { typeStyle, type TypographyRole } from "@/lib/typography";
 
 /**
  * Shared base styles for markdown-rendered content.
@@ -59,6 +59,8 @@ export type ProseMarkdownProps = {
   sourceFormat?: "markdown" | "slack-mrkdwn";
   /** Use compact spacing for quoted/reply content */
   compact?: boolean;
+  /** Apply a shared heading role while preserving authored heading levels. */
+  headingRole?: Extract<TypographyRole, `heading.${string}`>;
   /** Enable GFM tables (default: false) */
   gfm?: boolean;
   /** Convert soft line-breaks to <br> (default: false) */
@@ -146,17 +148,36 @@ const defaultGfmComponents: Components = {
   ),
 };
 
+function makeHeadingComponents(
+  role: NonNullable<ProseMarkdownProps["headingRole"]>,
+): Components {
+  const components: Components = {};
+  for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6"] as const) {
+    components[tag] = ({ node, className, ...props }) => {
+      void node;
+      return createElement(tag, {
+        ...props,
+        "data-prose-heading": "",
+        className: cn(typeStyle(role), className),
+      });
+    };
+  }
+  return components;
+}
+
 function useMarkdownComponents({
   components,
   confidenceFullView,
   flagConfidence,
   gfm,
+  headingRole,
 }: Pick<
   ProseMarkdownProps,
-  "components" | "confidenceFullView" | "flagConfidence" | "gfm"
+  "components" | "confidenceFullView" | "flagConfidence" | "gfm" | "headingRole"
 >) {
   return useMemo(
     () => ({
+      ...(headingRole ? makeHeadingComponents(headingRole) : null),
       ...(gfm ? defaultGfmComponents : null),
       ...(flagConfidence
         ? confidenceFullView
@@ -165,7 +186,7 @@ function useMarkdownComponents({
         : null),
       ...components,
     }),
-    [components, confidenceFullView, flagConfidence, gfm],
+    [components, confidenceFullView, flagConfidence, gfm, headingRole],
   );
 }
 
@@ -174,6 +195,7 @@ export function ProseMarkdown({
   className,
   sourceFormat = "markdown",
   compact = false,
+  headingRole,
   gfm = false,
   breaks = false,
   flagConfidence = false,
@@ -200,6 +222,7 @@ export function ProseMarkdown({
     confidenceFullView,
     flagConfidence,
     gfm,
+    headingRole,
   });
 
   return (

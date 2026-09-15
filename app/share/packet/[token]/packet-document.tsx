@@ -8,10 +8,23 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import type { Components } from "react-markdown";
-import { ArrowUpRight, Download, FileText } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  ChevronUp,
+  Download,
+  FileText,
+  ListTree,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { PillButton } from "@/components/ui/pill-button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { SpotWordmark } from "@/components/ui/spot-wordmark";
 import { TextLink } from "@/components/ui/text-link";
@@ -111,6 +124,72 @@ function HeadingOutline({
   );
 }
 
+function SectionMenuItem({
+  id,
+  label,
+  active,
+  navigate,
+  primary = false,
+}: {
+  id: string;
+  label: string;
+  active: string;
+  navigate: Navigate;
+  primary?: boolean;
+}) {
+  return (
+    <DropdownMenuItem
+      onClick={() => navigate(id)}
+      aria-current={id === active ? "location" : undefined}
+      className="min-h-11 shrink-0 gap-3 px-3"
+    >
+      <span
+        className={cn(
+          "min-w-0 flex-1",
+          typeStyle(primary ? "body.medium" : "body.default"),
+        )}
+      >
+        {label}
+      </span>
+      {id === active && (
+        <Check aria-label="Current section" className="size-4" />
+      )}
+    </DropdownMenuItem>
+  );
+}
+
+function HeadingMenu({
+  headings,
+  active,
+  navigate,
+}: {
+  headings: PacketHeading[];
+  active: string;
+  navigate: Navigate;
+}) {
+  return (
+    <div className="pl-4" role="presentation">
+      {headings.map((heading) => (
+        <div key={heading.id} role="presentation">
+          <SectionMenuItem
+            id={heading.id}
+            label={heading.label}
+            active={active}
+            navigate={navigate}
+          />
+          {heading.children.length > 0 && (
+            <HeadingMenu
+              headings={heading.children}
+              active={active}
+              navigate={navigate}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
   const packetMarkdown = useMemo(
     () => preparePacketMarkdown(view.markdown),
@@ -125,6 +204,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
   const hasFiles = view.files.length > 0;
   const firstDestination = hasContact ? "contact-spot" : "packet-details";
   const [active, setActive] = useState(firstDestination);
+  const menuDestination = useRef<string | null>(null);
   const contentRef = useRef<HTMLElement>(null);
   const restoredHash = useRef(false);
   const arrival = useRef<HTMLElement | null>(null);
@@ -144,6 +224,10 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
       section,
       target: target === section.firstElementChild ? section : target,
     };
+  }
+
+  function navigateFromMenu(id: string) {
+    menuDestination.current = id;
   }
 
   function navigate(id: string) {
@@ -313,31 +397,80 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
           </nav>
           <nav
             aria-label="Jump to packet section"
-            className="fixed right-6 bottom-[max(1rem,env(safe-area-inset-bottom))] left-6 z-10 lg:hidden print:hidden"
+            className="fixed right-6 bottom-[max(1rem,env(safe-area-inset-bottom))] left-6 z-10 rounded-full bg-background shadow-sm lg:hidden print:hidden"
           >
-            <select
-              aria-label="Jump to section"
-              value={current}
-              onChange={(event) => navigate(event.target.value)}
-              className={`w-full min-w-0 rounded-full border border-border-emphasized bg-background px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus ${typeStyle("control.input")}`}
+            <DropdownMenu
+              modal={false}
+              onOpenChange={(open) => {
+                if (open) menuDestination.current = null;
+              }}
+              onOpenChangeComplete={(open) => {
+                if (!open && menuDestination.current)
+                  navigate(menuDestination.current);
+              }}
             >
-              {hasContact && <option value="contact-spot">Contact Spot</option>}
-              <option value="packet-details">Packet details</option>
-              {packetMarkdown.headings.length > 0 && (
-                <optgroup label="Packet details">
-                  {packetMarkdown.headings.map((heading) => (
-                    <option key={heading.id} value={heading.id}>
-                      {`${"\u00a0".repeat(Math.max(0, heading.depth - 1) * 2)}${heading.label}`}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {hasFiles && (
-                <option value="packet-files">
-                  Files ({view.files.length})
-                </option>
-              )}
-            </select>
+              <DropdownMenuTrigger
+                aria-label="Jump to section"
+                render={
+                  <PillButton
+                    size="large"
+                    variant="secondary"
+                    className="w-full"
+                  />
+                }
+              >
+                <ListTree aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {current === "contact-spot"
+                    ? "Contact Spot"
+                    : current === "packet-files"
+                      ? "Files"
+                      : (packetMarkdown.headings.find(
+                          (heading) => heading.id === current,
+                        )?.label ?? "Packet details")}
+                </span>
+                <ChevronUp aria-hidden="true" className="size-4 shrink-0" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                sideOffset={8}
+                className="flex max-h-[min(60dvh,var(--available-height))] flex-col overflow-y-hidden"
+                finalFocus={() => (menuDestination.current ? false : true)}
+              >
+                {hasContact && (
+                  <SectionMenuItem
+                    id="contact-spot"
+                    label="Contact Spot"
+                    active={current}
+                    primary
+                    navigate={navigateFromMenu}
+                  />
+                )}
+                <SectionMenuItem
+                  id="packet-details"
+                  label="Packet details"
+                  active={current}
+                  primary
+                  navigate={navigateFromMenu}
+                />
+                <div className="min-h-0 overflow-y-auto">
+                  <HeadingMenu
+                    headings={packetMarkdown.outline}
+                    active={current}
+                    navigate={navigateFromMenu}
+                  />
+                </div>
+                {hasFiles && (
+                  <SectionMenuItem
+                    id="packet-files"
+                    label={`Files (${view.files.length})`}
+                    active={current}
+                    primary
+                    navigate={navigateFromMenu}
+                  />
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
         </aside>
         <main ref={contentRef} className="min-w-0 space-y-6 print:mt-6">
@@ -390,6 +523,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
             {view.markdown.trim() ? (
               <ProseMarkdown
                 gfm
+                headingRole="heading.section"
                 rehypePlugins={plugins}
                 components={markdownComponents}
                 className="space-y-5 [&>section>:first-child]:mt-0 [&>section>:last-child]:mb-0 print:space-y-8"
