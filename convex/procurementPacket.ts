@@ -20,6 +20,8 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { procurementForwardingAddress } from "./lib/procurement";
+import { getAgentDomain } from "./lib/resend";
 import { getClientPortalUrl } from "./lib/domains";
 import {
   createMagicLinkToken,
@@ -766,6 +768,10 @@ export const getByToken = query({
     return {
       state: "ready" as const,
       recipientLabel: link.recipientLabel,
+      contactEmail: procurementForwardingAddress(
+        request.inboxToken,
+        getAgentDomain(),
+      ),
       expiresAt: link.expiresAt,
       markdown: current.markdown,
       files: current.files.map((file) => {
