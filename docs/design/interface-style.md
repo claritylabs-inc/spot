@@ -278,7 +278,10 @@ Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save
   coarse pointers, and respect reduced-motion preferences. Do not use this
   expanding treatment for dense close, remove, or structural controls.
 - Button height, padding, and typography come from `PillButton`: `compact` (28px),
-  `default` (32px), and `large` (48px). Use `roomyOnMobile`
+  `default` (32px), and `large` (48px). Compact labeled buttons use 16px horizontal
+  padding; icon-only and collapsed expanding buttons have a 40px width or minimum
+  width. `control.buttonCompact` uses a 16px line height so the label aligns with
+  its icon without vertical offsets. Use `roomyOnMobile`
   for 36px mobile composer controls. Do not override sizing or typography at
   action callsites; `spot/no-pill-button-size-overrides` enforces direct class
   overrides in ESLint. Layout width and placement can remain local. Structural
