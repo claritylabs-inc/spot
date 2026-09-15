@@ -158,7 +158,7 @@ export function AppTopBar({
       </div>
 
       {/* Presence + actions */}
-      <PillButtonSizeProvider size="compact">
+      <PillButtonSizeProvider size="small">
         <div
           className="flex shrink-0 items-center gap-2"
           data-slot="app-top-bar-actions"

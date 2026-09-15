@@ -652,11 +652,6 @@ export function CertificateDetailPanel({
                 variant={actionPresentation === "labels" ? "secondary" : "icon"}
                 size="compact"
                 label="Reissue"
-                className={
-                  actionPresentation === "icons"
-                    ? "!h-7 !min-h-7 !w-7 !p-0"
-                    : undefined
-                }
                 onClick={() => onReissue(row)}
                 disabled={reissuing}
               >
@@ -676,15 +671,12 @@ export function CertificateDetailPanel({
                 variant={actionPresentation === "labels" ? "secondary" : "icon"}
                 size="compact"
                 label="Edit"
-                className={
-                  actionPresentation === "icons"
-                    ? "!h-7 !min-h-7 !w-7 !p-0"
-                    : undefined
+                onClick={() =>
+                  setHolderEdit({
+                    certificateId: row._id,
+                    draft: certificateHolderDraft(row.holder),
+                  })
                 }
-                onClick={() => setHolderEdit({
-                  certificateId: row._id,
-                  draft: certificateHolderDraft(row.holder),
-                })}
                 disabled={reissuing || archiving || unarchiving}
               >
                 {actionPresentation === "icons" ? (

@@ -622,7 +622,7 @@ export function MailboxSettingsDrawer({
         ) : canManageMailbox ? (
           <>
             <PillButton
-              variant="secondary"
+              variant="destructive"
               disabled={savingSettings || scanning}
               onClick={() => setConfirmDisconnect(true)}
             >
