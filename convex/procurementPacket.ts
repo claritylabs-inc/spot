@@ -45,11 +45,7 @@ const audienceValidator = v.union(
 );
 
 function packetLinkStatus(
-  link: Pick<
-    Doc<"procurementPacketLinks">,
-    "revokedAt" | "expiresAt" | "packetRevisionAtIssue"
-  >,
-  packetRevision: number,
+  link: Pick<Doc<"procurementPacketLinks">, "revokedAt" | "expiresAt">,
   now: number,
 ) {
   return {
@@ -58,7 +54,6 @@ function packetLinkStatus(
       : link.expiresAt !== undefined && link.expiresAt <= now
         ? ("expired" as const)
         : ("active" as const),
-    stale: link.packetRevisionAtIssue !== packetRevision,
   };
 }
 
@@ -275,12 +270,30 @@ export async function listPacketLinksForOperator(
     .order("desc")
     .collect();
   const now = dayjs().valueOf();
+  const projections = new Map<
+    string,
+    ReturnType<typeof brokerPacketProjection>
+  >();
   return await Promise.all(
     links.map(async (link) => {
       const outreach = link.outreachId
         ? await ctx.db.get(link.outreachId)
         : null;
-      const status = packetLinkStatus(link, request.packetRevision ?? 0, now);
+      const status = packetLinkStatus(link, now);
+      const scope = link.outreachId ?? "request";
+      if (
+        !projections.has(scope) &&
+        (!link.outreachId || outreach?.requestId === request._id)
+      ) {
+        projections.set(
+          scope,
+          brokerPacketProjection(ctx, {
+            requestId,
+            outreachId: link.outreachId,
+          }),
+        );
+      }
+      const current = await projections.get(scope);
       return {
         linkId: link._id,
         ...(includeUrl
@@ -298,16 +311,17 @@ export async function listPacketLinksForOperator(
         expiresAt: link.expiresAt,
         revokedAt: link.revokedAt ?? null,
         packetRevisionAtIssue: link.packetRevisionAtIssue,
-        sectionCount: link.sectionSnapshot?.length ?? null,
-        fileCount:
-          link.artifactSnapshot?.length ??
-          link.includedFileItemIds?.length ??
-          null,
+        sectionCount: current?.sections.length ?? 0,
+        fileCount: current?.files.length ?? 0,
         includedFileItemIds:
-          link.artifactSnapshot?.map((file) => file.fileItemId) ??
-          link.includedFileItemIds ??
-          null,
-        includedArtifacts: link.artifactSnapshot ?? null,
+          current?.files.map((file) => file.fileItemId) ?? [],
+        includedArtifacts:
+          current?.files.map((file) => ({
+            fileItemId: file.fileItemId,
+            clientFileId: file.clientFileId,
+            name: file.name,
+            release: file.release,
+          })) ?? [],
         deliveryStatus: link.deliveryStatus ?? "not_sent",
         deliveryError: link.deliveryError ?? null,
         sentAt: link.sentAt ?? null,
@@ -714,106 +728,59 @@ export const recordDeliveryInternal = internalMutation({
   },
 });
 
+async function packetAccessByToken(ctx: QueryCtx, token: string) {
+  if (!token) return null;
+  const hash = await hashMagicLinkToken(token);
+  const link = await ctx.db
+    .query("procurementPacketLinks")
+    .withIndex("token", (q) => q.eq("tokenHash", hash))
+    .unique();
+  if (
+    !link ||
+    link.revokedAt ||
+    (link.expiresAt !== undefined && link.expiresAt <= dayjs().valueOf())
+  )
+    return null;
+  const request = await ctx.db.get(link.requestId);
+  const outreach = link.outreachId ? await ctx.db.get(link.outreachId) : null;
+  if (
+    !request ||
+    request.clientOrgId !== link.clientOrgId ||
+    (link.outreachId && (!outreach || outreach.requestId !== request._id))
+  )
+    return null;
+  return { link, request };
+}
+
 export const getByToken = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     const token = args.token.trim();
-    if (!token) return null;
-    const hash = await hashMagicLinkToken(token);
-    const link = await ctx.db
-      .query("procurementPacketLinks")
-      .withIndex("token", (q) => q.eq("tokenHash", hash))
-      .unique();
-    const now = dayjs().valueOf();
-    if (
-      !link ||
-      link.revokedAt ||
-      (link.expiresAt !== undefined && link.expiresAt <= now)
-    )
-      return null;
-    const request = await ctx.db.get(link.requestId);
-    const outreach = link.outreachId ? await ctx.db.get(link.outreachId) : null;
-    if (
-      !request ||
-      (link.outreachId && (!outreach || outreach.requestId !== request._id))
-    )
-      return null;
-    const current = await readPacketProjection(ctx, request, "client");
-    const visible = link.sectionSnapshot ?? current.sections;
-    const fileItems = await ctx.db
-      .query("procurementFileItems")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect();
-    const currentItems = new Map(
-      fileItems.map((item) => [String(item._id), item] as const),
-    );
-    const artifactSnapshot =
-      link.artifactSnapshot ??
-      fileItems
-        .filter(
-          (item) =>
-            (!link.includedFileItemIds ||
-              link.includedFileItemIds.includes(item._id)) &&
-            (!item.outreachId ||
-              (link.outreachId !== undefined &&
-                item.outreachId === link.outreachId)) &&
-            item.clientFileId &&
-            (item.brokerRelease === "listed" ||
-              item.brokerRelease === "attached"),
-        )
-        .map((item) => ({
-          fileItemId: item._id,
-          clientFileId: item.clientFileId!,
-          name: item.label,
-          release: item.brokerRelease as "listed" | "attached",
-        }));
-    const files = (
-      await Promise.all(
-        artifactSnapshot.map(async (snapshot) => {
-          const item = currentItems.get(String(snapshot.fileItemId));
-          if (
-            !item ||
-            item.requestId !== request._id ||
-            (item.outreachId && item.outreachId !== link.outreachId) ||
-            (item.brokerRelease !== "listed" &&
-              item.brokerRelease !== "attached")
-          )
-            return null;
-          const file = await ctx.db.get(snapshot.clientFileId);
-          if (
-            !file ||
-            file.orgId !== link.clientOrgId ||
-            file.deletedAt ||
-            file.archivedAt
-          )
-            return null;
-          const release: "listed" | "attached" =
-            snapshot.release === "attached" && item.brokerRelease === "attached"
-              ? "attached"
-              : "listed";
-          const siteUrl =
-            process.env.CONVEX_SITE_URL?.trim() || getClientPortalUrl();
-          const downloadUrl = new URL("/packet-file", siteUrl);
-          downloadUrl.searchParams.set("token", token);
-          downloadUrl.searchParams.set("item", snapshot.fileItemId);
-          return {
-            _id: snapshot.fileItemId,
-            name: snapshot.name,
-            brokerRelease: release,
-            downloadUrl: release === "attached" ? downloadUrl.toString() : null,
-          };
-        }),
-      )
-    ).filter((file): file is NonNullable<typeof file> => file !== null);
+    const access = await packetAccessByToken(ctx, token);
+    if (!access) return null;
+    const { link, request } = access;
+    const current = await brokerPacketProjection(ctx, {
+      requestId: request._id,
+      outreachId: link.outreachId,
+    });
+    const siteUrl = process.env.CONVEX_SITE_URL?.trim() || getClientPortalUrl();
     return {
       state: "ready" as const,
       recipientLabel: link.recipientLabel,
       expiresAt: link.expiresAt,
-      markdown: assemblePacketMarkdown(
-        visible.map((section) => ({ ...section, audience: "broker" })),
-        { audience: "broker" },
-      ),
-      files,
+      markdown: current.markdown,
+      files: current.files.map((file) => {
+        const downloadUrl = new URL("/packet-file", siteUrl);
+        downloadUrl.searchParams.set("token", token);
+        downloadUrl.searchParams.set("item", file.fileItemId);
+        return {
+          _id: file.fileItemId,
+          name: file.name,
+          brokerRelease: file.release,
+          downloadUrl:
+            file.release === "attached" ? downloadUrl.toString() : null,
+        };
+      }),
     };
   },
 });
@@ -821,40 +788,21 @@ export const getByToken = query({
 export const getFileByTokenInternal = internalQuery({
   args: { token: v.string(), item: v.string() },
   handler: async (ctx, args) => {
-    const hash = await hashMagicLinkToken(args.token.trim());
-    const link = await ctx.db
-      .query("procurementPacketLinks")
-      .withIndex("token", (q) => q.eq("tokenHash", hash))
-      .unique();
-    const now = dayjs().valueOf();
-    if (
-      !link ||
-      link.revokedAt ||
-      (link.expiresAt !== undefined && link.expiresAt <= now)
-    )
-      return null;
+    const access = await packetAccessByToken(ctx, args.token.trim());
+    if (!access) return null;
+    const { link } = access;
     const itemId = ctx.db.normalizeId("procurementFileItems", args.item);
     if (!itemId) return null;
     const item = await ctx.db.get(itemId);
-    const snapshot = link.artifactSnapshot?.find(
-      (candidate) => candidate.fileItemId === itemId,
-    );
     if (
       !item ||
       item.requestId !== link.requestId ||
       (item.outreachId && item.outreachId !== link.outreachId) ||
-      (link.artifactSnapshot && !snapshot) ||
-      (!link.artifactSnapshot &&
-        link.includedFileItemIds &&
-        !link.includedFileItemIds.includes(item._id)) ||
       item.brokerRelease !== "attached" ||
-      (snapshot && snapshot.release !== "attached") ||
-      (!snapshot && !item.clientFileId)
+      !item.clientFileId
     )
       return null;
-    const clientFileId = snapshot?.clientFileId ?? item.clientFileId;
-    if (!clientFileId) return null;
-    const file = await ctx.db.get(clientFileId);
+    const file = await ctx.db.get(item.clientFileId);
     if (
       !file ||
       file.orgId !== link.clientOrgId ||
@@ -865,7 +813,7 @@ export const getFileByTokenInternal = internalQuery({
     return {
       fileId: file.fileId,
       contentType: file.contentType,
-      name: snapshot?.name ?? item.label,
+      name: item.label || file.name,
     };
   },
 });

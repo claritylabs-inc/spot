@@ -147,10 +147,8 @@ export function PacketLinkDrawer({
         )}
         {activeLink ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            {activeLink.stale
-              ? "The shared snapshot has older content. Regenerate the link to include the latest saved changes."
-              : "This link shares the saved packet snapshot and released files."}{" "}
-            Regenerating replaces the existing link.
+            Saved changes and file visibility updates appear automatically on this
+            link. Regenerating replaces the existing link.
           </p>
         ) : null}
       </div>

@@ -709,9 +709,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Preview the shared broker packet for request ${input.procurementRequestId}`,
   }),
   list_broker_packet_links: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "List broker packet magic links for one procurement request, including recipient, snapshot counts, expiry, revocation, delivery, staleness, and view activity. Link secrets are never returned after creation.",
+      "List broker packet magic links for one procurement request, including recipient, current shared content/file counts, issuance revision, expiry, revocation, delivery, and view activity. Link secrets are never returned after creation.",
     inputSchema: z.object({ procurementRequestId }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -725,9 +725,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `List broker packet links for request ${input.procurementRequestId}`,
   }),
   update_procurement_packet: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, broker outreach history, and follow-ups in these files. Use descriptive Markdown headings with a logical hierarchy; avoid adjacent headings that repeat the same topic. Use GFM tables for comparable coverage terms, locations, quotes, or status items, lists for independent facts or next steps, and short paragraphs for context. Choose structure to fit the content, preserve sourced facts and manual prose, and do not impose fixed sections.",
+      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, broker outreach history, and follow-ups in these files. Saving public.md immediately updates every active packet link. Use descriptive Markdown headings with a logical hierarchy; avoid adjacent headings that repeat the same topic. Use GFM tables for comparable coverage terms, locations, quotes, or status items, lists for independent facts or next steps, and short paragraphs for context. Choose structure to fit the content, preserve sourced facts and manual prose, and do not impose fixed sections.",
     inputSchema: z.object({
       procurementRequestId,
       filename: z.enum(["private.md", "public.md"]),
@@ -1367,9 +1367,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Generate a packet review for procurement proposal ${input.procurementProposalId}`,
   }),
   create_broker_packet_link: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
-      "Create the single revocable link for an immutable snapshot of the shared broker-market packet. It stays available until revoked or replaced unless expiresInDays is specified. The URL is shown only once.",
+      "Create the single revocable link to the live shared broker-market packet. Saved public.md and file visibility changes update existing links immediately. It stays available until revoked or replaced unless expiresInDays is specified. The URL is shown only once.",
     inputSchema: z.object({
       procurementRequestId,
       expiresInDays: omittable(z.number().int().min(1)),
@@ -1386,9 +1386,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create the shared broker packet link for request ${input.procurementRequestId}`,
   }),
   rotate_broker_packet_link: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Revoke one broker packet magic link and create a replacement snapshot-bound link. It stays available until revoked or replaced unless expiresInDays is specified. The new URL is shown only once and is not emailed.",
+      "Revoke one broker packet magic link and create a replacement link to current shared content and released files. Content updates appear automatically without rotation. It stays available until revoked or replaced unless expiresInDays is specified. The new URL is shown only once and is not emailed.",
     inputSchema: z.object({
       procurementPacketLinkId,
       expiresInDays: omittable(z.number().int().min(1)),
@@ -1593,9 +1593,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   create_procurement_file_item: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
-      "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional for a hidden requested document, but is required before the item can be client-visible or released to a broker.",
+      "Track an application, outstanding broker-requested document, quote, requirements file, or other procurement file. A client file ID is optional for a hidden requested document, but is required before the item can be client-visible or released to a broker. Released files immediately appear on existing packet links within their audience.",
     inputSchema: z.object({
       procurementRequestId,
       procurementOutreachId: omittable(procurementOutreachId),
@@ -1624,9 +1624,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Add ${input.purpose} ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
   update_procurement_file_item: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
-      "Update a procurement file requirement or link. Null removes the linked outreach or shared client file without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file. Keep file notes in private.md or public.md.",
+      "Update a procurement file requirement or link. Null removes the linked outreach or shared client file without deleting the underlying client file. An item cannot remain client-visible or broker-released without a linked client file. Keep file notes in private.md or public.md. Released files and visibility changes immediately update existing packet links within their audience.",
     inputSchema: z
       .object({
         procurementFileItemId,
