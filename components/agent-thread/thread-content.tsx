@@ -368,7 +368,7 @@ function ThreadAttachmentList({
           <PillButton
             type="button"
             variant="ghost"
-            size="small"
+            size="compact"
             onClick={handleDownloadAll}
             disabled={!urls?.length || isDownloadingAll}
           >
@@ -699,7 +699,7 @@ function MessageFooterActions({
       selectedMailboxIndex === index && selectedMailboxEmailIndex === emailIndex;
     return (
       <PillButton
-        size="small"
+        size="compact"
         variant="secondary"
         label={`Review ${email.subject}`}
         title={email.subject}
@@ -825,7 +825,7 @@ function MessageFooterActions({
           <PillButton
             type="button"
             variant="ghost"
-            size="small"
+            size="compact"
             onClick={handleDownloadAttachments}
             disabled={!attachmentUrls?.length || isDownloadingAttachments}
           >
@@ -1511,7 +1511,7 @@ function CancelButton({
         }
       }}
       variant="ghost"
-      size="small"
+      size="compact"
     >
       {cancelling ? "Cancelling..." : "Cancel"}
     </PillButton>
@@ -1533,7 +1533,7 @@ function CopyMessageButton({ content }: { content: string }) {
         setTimeout(() => setCopied(false), 1500);
       }}
       variant="icon"
-      size="small"
+      size="compact"
       label="Copy response"
     >
       {copied ? (
@@ -1568,7 +1568,7 @@ function TryAgainMessageButton({
         }
       }}
       variant="icon"
-      size="small"
+      size="compact"
       label="Try again"
     >
       <RotateCcw className={`h-3 w-3 ${retrying ? "animate-spin" : ""}`} />
@@ -1596,7 +1596,7 @@ function RetryButton({ messageId }: { messageId: string }) {
         }
       }}
       variant="ghost"
-      size="small"
+      size="compact"
       className="mt-2 ml-9.5"
     >
       <RotateCcw className={`w-3 h-3 ${retrying ? "animate-spin" : ""}`} />

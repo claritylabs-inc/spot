@@ -182,7 +182,7 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
                   <PillButton
                     href={`/connect/vendors/${row.vendorOrgId}/policies`}
                     variant="secondary"
-                    size="small"
+                    size="compact"
                   >
                     View vendor
                   </PillButton>
