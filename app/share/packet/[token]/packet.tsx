@@ -7,6 +7,7 @@ import { Download, FileText } from "lucide-react";
 import { SpotWordmark } from "@/components/ui/spot-wordmark";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { PillButton } from "@/components/ui/pill-button";
+import { TextLink } from "@/components/ui/text-link";
 import type { PacketView } from "./view";
 import { formatDisplayDateTimeUtc } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
@@ -52,14 +53,9 @@ export function Packet({
     <main className="mx-auto max-w-4xl px-6 py-8 print:max-w-none">
       <header className="border-b border-border pb-6">
         <SpotWordmark />
-        <p
-          className={`mt-6 text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          Prepared for {view.recipientLabel}
-        </p>
         {view.expiresAt !== undefined && (
           <p
-            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+            className={`mt-6 text-muted-foreground ${typeStyle("caption.default")}`}
           >
             Available until {formatDisplayDateTimeUtc(view.expiresAt)}
           </p>
@@ -105,12 +101,20 @@ export function Packet({
           </div>
         </section>
       ) : null}
-      <p
-        className={`mt-12 border-t border-border pt-4 text-muted-foreground ${typeStyle("caption.default")}`}
-      >
-        This submission is confidential and watermarked for{" "}
-        {view.recipientLabel}.
-      </p>
+      <footer className="mt-12 space-y-4 border-t border-border pt-6">
+        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+          Spot helps businesses manage their insurance and works with brokers to
+          find coverage. We organize company information, prepare submissions, and
+          coordinate questions and next steps between businesses and their brokers.
+        </p>
+        <TextLink
+          href="https://spot.insure/partners/brokers"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Become a partner
+        </TextLink>
+      </footer>
     </main>
   );
 }

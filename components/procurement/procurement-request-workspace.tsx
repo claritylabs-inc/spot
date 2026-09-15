@@ -62,6 +62,7 @@ import { FileDropZone } from "@/components/ui/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Input } from "@/components/ui/input";
 import {
+  OperationalItem,
   OperationalLabelValueList,
   OperationalLabelValueRow,
   OperationalPanel,
@@ -1342,43 +1343,34 @@ function ProcurementFileEditor({
           <p className={`text-muted-foreground ${typeStyle("label.field")}`}>
             Sharing
           </p>
-          <Table aria-label="File sharing">
-            <TableBody>
-              <TableRow>
-                <TableCell>Client visibility</TableCell>
-                <TableCell className="text-right">
-                  <SettingsSwitch
-                    label="Client visibility"
-                    checked={clientVisible}
-                    disabled={readOnly || saving}
-                    onCheckedChange={() => setClientVisible(!clientVisible)}
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Broker visibility</TableCell>
-                <TableCell className="text-right">
-                  <SettingsSwitch
-                    label="Broker visibility"
-                    checked={brokerRelease !== "hidden"}
-                    disabled={readOnly || saving}
-                    onCheckedChange={() =>
-                      setBrokerRelease(
-                        brokerRelease === "hidden" ? "attached" : "hidden",
-                      )
-                    }
-                  />
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-          {brokerRelease !== "hidden" ? (
-            <p
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Regenerate the packet link to share visibility changes.
-            </p>
-          ) : null}
+          <OperationalPanel aria-label="File sharing">
+            <OperationalItem className="flex items-center justify-between gap-4">
+              <span className={typeStyle("body.default")}>
+                Client visibility
+              </span>
+              <SettingsSwitch
+                label="Client visibility"
+                checked={clientVisible}
+                disabled={readOnly || saving}
+                onCheckedChange={() => setClientVisible(!clientVisible)}
+              />
+            </OperationalItem>
+            <OperationalItem className="flex items-center justify-between gap-4">
+              <span className={typeStyle("body.default")}>
+                Broker visibility
+              </span>
+              <SettingsSwitch
+                label="Broker visibility"
+                checked={brokerRelease !== "hidden"}
+                disabled={readOnly || saving}
+                onCheckedChange={() =>
+                  setBrokerRelease(
+                    brokerRelease === "hidden" ? "attached" : "hidden",
+                  )
+                }
+              />
+            </OperationalItem>
+          </OperationalPanel>
         </div>
       </fieldset>
     </SettingsDrawer>

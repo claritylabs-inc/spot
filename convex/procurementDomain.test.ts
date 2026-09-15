@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import migrationsTest from "@convex-dev/migrations/test";
 import dayjs from "dayjs";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -20,6 +20,10 @@ import { stringifyMarkdownDocument } from "./lib/markdownDocument";
 import { listPacketLinksForOperator } from "./procurementPacket";
 
 const modules = import.meta.glob("./**/*.ts");
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -145,8 +149,7 @@ async function createRequest(
   });
 }
 
-test("file visibility can be chosen before upload and still enforces ownership and packet snapshots", async () => {
-  vi.useFakeTimers();
+test("file visibility can be chosen before upload and updates existing links while enforcing ownership", async () => {
   const f = await fixture();
   const request = await createRequest(f, "Visibility fixture");
   const item = await f.operator.mutation(
@@ -197,7 +200,7 @@ test("file visibility can be chosen before upload and still enforces ownership a
   expect(
     (await f.t.query(api.procurementPacket.getByToken, { token: link.token }))
       ?.files,
-  ).toEqual([]);
+  ).toHaveLength(1);
   await expect(
     f.client.mutation(api.procurementRequests.updateFileItem, {
       fileItemId: item.fileItemId,
@@ -220,7 +223,6 @@ test("file visibility can be chosen before upload and still enforces ownership a
 });
 
 test("retiring file metadata never expands a broker-specific grant", async () => {
-  vi.useFakeTimers();
   const f = await fixture();
   migrationsTest.register(f.t);
   const request = await createRequest(f, "Legacy file visibility");
@@ -391,7 +393,6 @@ describe("procurement domain boundaries", () => {
   });
 
   test("automatically creates one shared packet link for every new request", async () => {
-    vi.useFakeTimers();
     const f = await fixture();
     const operatorRequest = await createRequest(f, "Operator placement");
     const clientRequest = await f.client.mutation(
@@ -417,7 +418,7 @@ describe("procurement domain boundaries", () => {
     }
   });
 
-  test("reopens the same packet URL in the operator portal without changing its snapshot or exposing it to model tools", async () => {
+  test("reopens the same packet URL in the operator portal without changing its issuance record or exposing it to model tools", async () => {
     const f = await fixture();
     const { requestId } = await createRequest(f, "Reopen packet");
     await f.operator.mutation(api.procurementRequests.update, {
@@ -1345,7 +1346,7 @@ describe("procurement domain boundaries", () => {
     ).toMatchObject({ primaryInsuranceContactId: f.clientUserId });
   });
 
-  test("issues immutable broker snapshots and revokes packet and file access", async () => {
+  test("updates issued broker links live and revokes packet and file access", async () => {
     const f = await fixture();
     const brokerOrgId = await f.t.run((ctx) =>
       ctx.db.insert("organizations", {
@@ -1505,10 +1506,8 @@ describe("procurement domain boundaries", () => {
         token: issued.token,
       }),
     ).not.toBeNull();
-    const { originalFileId, replacementClientFileId } = await f.t.run(
+    const { replacementFileId, replacementClientFileId } = await f.t.run(
       async (ctx) => {
-        const original = await ctx.db.get(clientFileId);
-        if (!original) throw new Error("Expected original client file");
         const now = dayjs().valueOf();
         const replacementFileId = await ctx.storage.store(
           new Blob(["replacement"], { type: "application/pdf" }),
@@ -1528,7 +1527,7 @@ describe("procurement domain boundaries", () => {
           createdAt: now,
           updatedAt: now,
         });
-        return { originalFileId: original.fileId, replacementClientFileId };
+        return { replacementFileId, replacementClientFileId };
       },
     );
 
@@ -1550,13 +1549,13 @@ describe("procurement domain boundaries", () => {
       files: [
         expect.objectContaining({
           _id: fileItem.fileItemId,
-          name: "Broker application",
+          name: "Replacement application",
           brokerRelease: "attached",
         }),
       ],
     });
-    expect(publicView?.markdown).toContain("Original broker submission");
-    expect(publicView?.markdown).not.toContain("Updated after issue");
+    expect(publicView?.markdown).not.toContain("Original broker submission");
+    expect(publicView?.markdown).toContain("Updated after issue");
     expect(publicView?.files).toHaveLength(1);
     expect(publicView?.files[0]?.downloadUrl).toContain("packet-file");
     await expect(
@@ -1571,8 +1570,8 @@ describe("procurement domain boundaries", () => {
         item: fileItem.fileItemId,
       }),
     ).resolves.toMatchObject({
-      fileId: originalFileId,
-      name: "Broker application",
+      fileId: replacementFileId,
+      name: "Replacement application",
     });
 
     await f.operator.mutation(api.procurementRequests.updateFileItem, {
@@ -1580,16 +1579,23 @@ describe("procurement domain boundaries", () => {
       brokerRelease: "attached",
     });
     expect(
-      (await f.operator.query(api.procurementPacket.preview, {
-        requestId: request.requestId,
-      })).files.map((file) => file.fileItemId),
+      (
+        await f.operator.query(api.procurementPacket.preview, {
+          requestId: request.requestId,
+        })
+      ).files.map((file) => file.fileItemId),
     ).toContain(otherFileItemId);
     await expect(
       f.t.query(internal.procurementPacket.getFileByTokenInternal, {
         token: issued.token,
         item: otherFileItemId,
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ name: "Other broker only" });
+
+    await f.operator.mutation(api.procurementRequests.updateFileItem, {
+      fileItemId: otherFileItemId,
+      brokerRelease: "hidden",
+    });
 
     await f.operator.mutation(api.procurementRequests.updateFileItem, {
       fileItemId: fileItem.fileItemId,
@@ -1599,7 +1605,7 @@ describe("procurement domain boundaries", () => {
       token: issued.token,
     });
     expect(narrowedView?.files[0]).toMatchObject({
-      name: "Broker application",
+      name: "Replacement application",
       brokerRelease: "listed",
       downloadUrl: null,
     });
@@ -1627,17 +1633,192 @@ describe("procurement domain boundaries", () => {
     await expect(
       f.t.query(api.procurementPacket.getByToken, { token: issued.token }),
     ).resolves.toBeNull();
+    await expect(
+      f.t.query(internal.procurementPacket.getFileByTokenInternal, {
+        token: issued.token,
+        item: fileItem.fileItemId,
+      }),
+    ).resolves.toBeNull();
     const links = await f.operator.query(api.procurementPacket.listLinks, {
       requestId: request.requestId,
     });
     expect(links[0]).toMatchObject({
       linkId: issued.id,
       state: "revoked",
-      stale: true,
       sectionCount: expect.any(Number),
       fileCount: 1,
       viewCount: 1,
     });
+  });
+
+  test("all existing links follow new files and visibility within their audience", async () => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Live packet files");
+    const { outreachId } = await f.operator.mutation(
+      api.procurementRequests.createOutreach,
+      { requestId, brokerOrgId: f.brokerOrgId },
+    );
+    const shared = await f.operator.mutation(api.procurementPacket.mintLink, {
+      requestId,
+    });
+    const scoped = await f.t.mutation(
+      internal.procurementPacket.mintLinkInternal,
+      {
+        operatorUserId: f.operatorUserId,
+        requestId,
+        outreachId,
+      },
+    );
+    // Legacy hash-only links and their issuance allowlists must also stay live.
+    await f.t.run((ctx) =>
+      ctx.db.patch(scoped.id, {
+        token: undefined,
+        artifactSnapshot: undefined,
+        includedFileItemIds: [],
+      }),
+    );
+    const issuance = await f.t.run((ctx) => ctx.db.get(shared.id));
+    const clientFileId = await seedProposalFile(f, "New application.pdf");
+    const { fileItemId } = await f.operator.mutation(
+      api.procurementRequests.createFileItem,
+      {
+        requestId,
+        clientFileId,
+        label: "New application",
+      },
+    );
+    const scopedFile = await f.operator.mutation(
+      api.procurementRequests.createFileItem,
+      {
+        requestId,
+        clientFileId,
+        label: "Broker only",
+        brokerRelease: "attached",
+      },
+    );
+    // Only legacy records retain a broker-specific file scope.
+    await f.t.run((ctx) => ctx.db.patch(scopedFile.fileItemId, { outreachId }));
+    await replacePublicPacket(f, requestId, "Current shared narrative");
+    const packet = await f.operator.query(api.procurementPacket.get, {
+      requestId,
+    });
+    await f.operator.mutation(api.procurementPacket.updateDocument, {
+      requestId,
+      filename: "private.md",
+      expectedRevision: packet.documents.find(
+        (doc) => doc.filename === "private.md",
+      )!.revision,
+      markdown: "Private negotiation",
+    });
+    for (const brokerRelease of [
+      "hidden",
+      "listed",
+      "attached",
+      "hidden",
+      "attached",
+    ] as const) {
+      await f.operator.mutation(api.procurementRequests.updateFileItem, {
+        fileItemId,
+        brokerRelease,
+      });
+      for (const link of [shared, scoped]) {
+        const view = await f.t.query(api.procurementPacket.getByToken, {
+          token: link.token,
+        });
+        expect(view?.markdown).toContain("Current shared narrative");
+        expect(view?.markdown).not.toContain("Private negotiation");
+        const file = view?.files.find((file) => file._id === fileItemId);
+        if (brokerRelease === "hidden") expect(file).toBeUndefined();
+        else {
+          expect(file?.brokerRelease).toBe(brokerRelease);
+          if (brokerRelease === "attached")
+            expect(file?.downloadUrl).toContain("packet-file");
+          else expect(file?.downloadUrl).toBeNull();
+        }
+        const download = await f.t.query(
+          internal.procurementPacket.getFileByTokenInternal,
+          {
+            token: link.token,
+            item: fileItemId,
+          },
+        );
+        if (brokerRelease === "attached")
+          expect(download?.name).toBe("New application");
+        else expect(download).toBeNull();
+        const brokerFile = view?.files.find(
+          (file) => file._id === scopedFile.fileItemId,
+        );
+        const brokerDownload = await f.t.query(
+          internal.procurementPacket.getFileByTokenInternal,
+          {
+            token: link.token,
+            item: scopedFile.fileItemId,
+          },
+        );
+        if (link === scoped) {
+          expect(brokerFile?.name).toBe("Broker only");
+          expect(brokerDownload?.name).toBe("Broker only");
+        } else {
+          expect(brokerFile).toBeUndefined();
+          expect(brokerDownload).toBeNull();
+        }
+      }
+    }
+    const links = await f.operator.query(api.procurementPacket.listLinks, {
+      requestId,
+    });
+    expect(links.find((link) => link.linkId === shared.id)).toMatchObject({
+      url: shared.url,
+      fileCount: 1,
+      includedFileItemIds: [fileItemId],
+    });
+    expect(links.find((link) => link.linkId === scoped.id)?.fileCount).toBe(2);
+    expect(await f.t.run((ctx) => ctx.db.get(shared.id))).toEqual(issuance);
+
+    for (const lifecycle of ["archivedAt", "deletedAt"] as const) {
+      await f.t.run((ctx) =>
+        ctx.db.patch(clientFileId, {
+          archivedAt: undefined,
+          deletedAt: undefined,
+          [lifecycle]: dayjs().valueOf(),
+        }),
+      );
+      for (const link of [shared, scoped]) {
+        expect(
+          (
+            await f.t.query(api.procurementPacket.getByToken, {
+              token: link.token,
+            })
+          )?.files,
+        ).toEqual([]);
+        expect(
+          await f.t.query(internal.procurementPacket.getFileByTokenInternal, {
+            token: link.token,
+            item: fileItemId,
+          }),
+        ).toBeNull();
+      }
+    }
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(clientFileId, {
+        archivedAt: undefined,
+        deletedAt: undefined,
+      });
+      await ctx.db.patch(scoped.id, {
+        expiresAt: dayjs().subtract(1, "minute").valueOf(),
+      });
+    });
+    expect(
+      await f.t.query(api.procurementPacket.getByToken, {
+        token: scoped.token,
+      }),
+    ).toBeNull();
+    expect(
+      await f.t.query(internal.procurementPacket.getFileByTokenInternal, {
+        token: scoped.token,
+        item: fileItemId,
+      }),
+    ).toBeNull();
   });
 
   test("reuses one canonical client file for identical forwarded attachments", async () => {
@@ -2087,7 +2268,6 @@ describe("procurement domain boundaries", () => {
   });
 
   test("approves a month-old standalone client proposal through the exact-confirmed shared registry", async () => {
-    vi.useFakeTimers();
     const f = await fixture();
     const threadId = await f.t.mutation(
       internal.operatorAgent.createOrGetChannelThreadInternal,
@@ -2240,7 +2420,6 @@ describe("procurement domain boundaries", () => {
   });
 
   test("keeps delayed approvals pending and releases stale approved input with recoverable feedback", async () => {
-    vi.useFakeTimers();
     const f = await fixture();
     const threadId = await f.t.mutation(
       internal.operatorAgent.createOrGetChannelThreadInternal,

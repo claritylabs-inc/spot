@@ -253,10 +253,14 @@ wrapping, and truncation local.
 
 ## Actions and controls
 
-Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement files have a label and independent Client visibility and Broker visibility switches. Both switches work before upload. Uploads link the underlying stored file automatically; purpose, status, broker outreach, and a client-file selector are not editable fields. Broker visibility includes an available attachment in the next shared packet snapshot. `components/ui/file-download-button.tsx` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
+Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement files have a label and independent Client visibility and Broker visibility switches in an `OperationalPanel` with divided `OperationalItem` rows. Both switches work before upload. Uploads link the underlying stored file automatically; purpose, status, broker outreach, and a client-file selector are not editable fields. Broker visibility immediately includes an available attachment on existing shared packet links. Legacy outreach-bound files retain their scoped access until migration or an explicit broker visibility edit. `components/ui/file-download-button.tsx` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
 
-- Use `PillButton` for product actions, including primary, secondary,
+- Use `PillButton` for pill-shaped product actions, including primary, secondary,
   destructive, footer, link, download, and icon-only actions.
+- Use `TextLink` from `components/ui/text-link.tsx` for text-only navigation and
+  promotional links: an underlined label and small trailing northeast arrow,
+  with no button border, background, or padding. The primitive owns muted text,
+  hover emphasis, and keyboard focus. Table record names retain `TableNameLink`.
 - Use `variant="destructive"` for every destructive action. An icon-only
   destructive action must also provide `iconOnly` and a nonempty `label`.
 - Raw buttons are for structural controls such as row targets, tabs, menu
