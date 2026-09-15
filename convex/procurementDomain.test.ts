@@ -149,6 +149,52 @@ async function createRequest(
   });
 }
 
+test("packet contact email belongs to the authorized request and disappears when access ends", async () => {
+  const f = await fixture();
+  const first = await createRequest(f, "First contact");
+  const second = await createRequest(f, "Second contact");
+  const firstLink = await f.operator.mutation(api.procurementPacket.mintLink, {
+    requestId: first.requestId,
+  });
+  const secondLink = await f.operator.mutation(api.procurementPacket.mintLink, {
+    requestId: second.requestId,
+  });
+  const firstDetails = await f.operator.query(api.procurementRequests.get, {
+    requestId: first.requestId,
+  });
+  const firstPacket = await f.t.query(api.procurementPacket.getByToken, {
+    token: firstLink.token,
+  });
+  const secondPacket = await f.t.query(api.procurementPacket.getByToken, {
+    token: secondLink.token,
+  });
+  expect(firstPacket?.contactEmail).toBe(
+    firstDetails.request.forwardingAddress,
+  );
+  expect(firstPacket?.contactEmail).not.toBe(secondPacket?.contactEmail);
+  expect(
+    await f.t.query(api.procurementPacket.getByToken, { token: "invalid" }),
+  ).toBeNull();
+  await f.operator.mutation(api.procurementPacket.revokeLink, {
+    linkId: firstLink.id,
+  });
+  expect(
+    await f.t.query(api.procurementPacket.getByToken, {
+      token: firstLink.token,
+    }),
+  ).toBeNull();
+  await f.t.run((ctx) =>
+    ctx.db.patch(secondLink.id, {
+      expiresAt: dayjs().subtract(1, "minute").valueOf(),
+    }),
+  );
+  expect(
+    await f.t.query(api.procurementPacket.getByToken, {
+      token: secondLink.token,
+    }),
+  ).toBeNull();
+});
+
 test("uploaded file visibility updates existing links while enforcing ownership", async () => {
   const f = await fixture();
   const request = await createRequest(f, "Visibility fixture");

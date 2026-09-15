@@ -68,7 +68,6 @@ export function preparePacketMarkdown(markdown: string) {
           if (node.type !== "element") continue;
           if (/^h[1-6]$/.test(node.tagName)) {
             node.properties.id = headingIds.get(node.position?.start.offset);
-            node.properties.tabIndex = -1;
           }
           addAnchors(node.children);
         }
