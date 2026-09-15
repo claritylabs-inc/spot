@@ -42,7 +42,10 @@ subtitle. Persistent status tags belong in the overview or active-tab body.
   and prioritize records. When selecting a row can open a right-side preview,
   move summaries, identifiers, secondary counts, links, and other record
   details into that panel instead of packing them into table cells.
-- Table rows display data and open a sidebar, with keyboard navigation. Never
+- Table rows display data and open a sidebar, with keyboard navigation. When a
+  record has a full detail page, its name uses `TableNameLink`: hover underlines
+  the text, clicking the name opens the page directly, and clicking elsewhere
+  opens the sidebar. Preserve native link keyboard and new-tab behavior. Never
   place action buttons, action menus, edit controls, or dropzones in rows.
   Editing and uploads live in the sidebar; record actions live in its footer.
 - Omit sidebar headings when filenames or controls already identify the

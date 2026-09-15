@@ -25,7 +25,10 @@ deleted after use or by bounded cleanup.
 ## Rule
 
 All tables keep action buttons, action menus, edit controls, and dropzones out
-of rows. Rows display data and open a keyboard-accessible sidebar. Editing and
+of rows. Rows display data and open a keyboard-accessible sidebar. For records with a full
+detail page, use `TableNameLink` from `components/ui/table.tsx` for the name:
+hover underlines it, activation navigates directly without selecting the row,
+and native keyboard/new-tab behavior is preserved. Editing and
 uploads belong in the sidebar; record actions belong in its footer. Avoid
 redundant sidebar section titles. Upload/extraction progress uses toasts.
 Broker/client selectors use `OrgBrandIcon` through `SearchableSelect`'s optional

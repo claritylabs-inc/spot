@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 
 import { cn } from "@/lib/utils"
 import { typeStyle } from "@/lib/typography";
@@ -105,6 +106,32 @@ function TableCaption({
   )
 }
 
+function TableNameLink({
+  className,
+  onClick,
+  onKeyDown,
+  ...props
+}: React.ComponentProps<typeof Link>) {
+  return (
+    <Link
+      className={cn(
+        "inline-block max-w-full align-middle text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        typeStyle("body.medium"),
+        className
+      )}
+      {...props}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick?.(event)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") event.stopPropagation()
+        onKeyDown?.(event)
+      }}
+    />
+  )
+}
+
 export {
   Table,
   TableHeader,
@@ -114,4 +141,5 @@ export {
   TableRow,
   TableCell,
   TableCaption,
+  TableNameLink,
 }
