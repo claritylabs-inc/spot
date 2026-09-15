@@ -24,9 +24,13 @@ only. Filenames and visibility must agree. Front matter cannot change the
 owning organization/request or grant editing authority.
 
 Updating `public.md` advances the request’s packet revision. Existing packet
-links retain immutable issued text/artifact snapshots until revoked or
-replaced; editing a file does not rewrite historical issuance. Released
-artifacts still require their current release state and file lifecycle checks.
+links immediately show current saved public.md and current released artifacts,
+including files added or replaced after issuance. The page subscribes to these
+reads, so open pages update without regeneration. Request-wide links exclude
+outreach-bound files; outreach links retain their own audience. Listing and
+download access both enforce current visibility, ownership, archive/delete,
+revocation, and expiry checks. Stored issuance snapshots remain unchanged as
+historical evidence. Regeneration rotates access, not content.
 Source PDFs and other uploaded artifacts remain files in their own right; the
 two-file rule governs editable procurement prose.
 
@@ -43,7 +47,7 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | `procurementRequests` | Request identity, workflow, effective date, packet revision, policy links, inbox routing and audit stamps. |
 | `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s `private.md`. |
 | `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing `clientFileId` means an outstanding request. |
-| `procurementPacketLinks` | Token hash, recipient, revocation/expiry and immutable issued text/artifact snapshots. |
+| `procurementPacketLinks` | Token hash, recipient, revocation/expiry and historical issuance snapshots; valid links read live shared content and artifacts. |
 | `procurementPacketViews` | Token-validated access audit without raw magic-link tokens. |
 | `procurementProposals` | Operator-private offer, selection/archive state and extraction identity. |
 | `procurementProposalDocuments` | Source/evidence manifest linking canonical client files; legacy duplicate storage metadata remains until separately audited. |

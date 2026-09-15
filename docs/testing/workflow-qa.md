@@ -1,5 +1,11 @@
 # Platform workflow QA
 
+Current packet-link contract: active links now serve live saved shared content
+and released files. Snapshot/immutability passes below are historical and do
+not establish browser coverage for this behavior. Live additions, visibility
+changes, and open-page updates need a new browser pass; backend regression
+coverage is in `convex/procurementDomain.test.ts`.
+
 Follow `.agents/skills/cl-workflow-qa/SKILL.md`. This guide captures the user's
 cloud-Chrome method and September 8, 2026 feedback. Scripts below specify desired
 behavior before execution. Evidence lives in `.context/qa/platform/`.
@@ -53,7 +59,7 @@ establish authenticated production workflow coverage.
 | FILE | Operator/client / Files | Upload synthetic PDF, inspect progress toast, rename/share in sidebar, download without navigation, archive/restore; client sees only allowed files, switching rows never leaks drafts. |
 | WIKI | Operator/client / Company wiki | Open the Markdown document, import/edit/download allowed prose, close/reload, preserve text during live source updates; client admin rights and read-only impersonation hold. |
 | REQUEST | Operator/client / Requests | Create a synthetic request, edit shared details/status, verify the client allowlisted view, archive if supported; `private.md`, proposals, and market activity never appear for client or broker. |
-| PACKET | Operator / Request packet | Import/edit/download `private.md` and `public.md`, immediate close/reopen, concurrent stale edit retains draft, verify filename-fixed readership, generate/replace shared snapshot; public page excludes `private.md` and old link is revoked. |
+| PACKET | Operator / Request packet | Import/edit/download `private.md` and `public.md`, immediate close/reopen, concurrent stale edit retains draft, verify filename-fixed readership, verify existing links update after shared edits, file additions and visibility changes; public page excludes `private.md`; explicit link replacement revokes the old URL. |
 | PROPOSAL | Operator / Proposals | Choose branded broker, edit request-specific contacts, upload multiple/revised PDFs, reject invalid files, inspect PDFs/Terms tabs, review gap and stale packet revision; no selection/binding during QA. |
 | EMAIL | Operator / Request correspondence | Inspect forwarding address, imported synthetic email and attachment, file to correct broker/request; ambiguity requires explicit selection and replay cannot duplicate records. |
 | CONNECT | Client / Vendors and Clients | Inspect empty/populated lists, create local synthetic connection request, view/revoke pending request, inspect shared policy access; exercise invalid public request token. |
