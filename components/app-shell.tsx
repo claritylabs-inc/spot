@@ -227,6 +227,7 @@ function ShellContent({
       variant="primary"
       size="compact"
       iconOnly
+      className="size-6"
       label={
         operatorAgent.open ? "Minimize operator agent" : "Open operator agent"
       }
