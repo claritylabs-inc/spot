@@ -4,6 +4,18 @@
 production, shared cloud dev is the deployed integration lane, and each
 Conductor worktree uses native local Convex plus local workers.
 
+## Company detail removal
+
+The company detail forms and runtime fields are retired. After deploying this
+version, run `npx convex run migrations:removeStructuredCompanyDetails '{}'`
+on the release target and monitor the migrations component until both
+`removeCompanyDetails` and `removeCompanyExtractionProfiles` are complete.
+The user accepted deletion of these beta values: the cleanup does not copy them
+to Markdown. It preserves existing wiki documents, source documents, policy
+facts, and issued snapshots. Add `--prod` only for the production rollout.
+The optional legacy schema fields support this deletion; narrow them after
+completion has been verified on all deployed targets.
+
 ## Coordinated release readiness
 
 `.github/workflows/deploy-convex.yml` owns readiness for every commit pushed to

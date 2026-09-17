@@ -63,7 +63,7 @@ establish authenticated production workflow coverage.
 | PROPOSAL | Operator / Proposals | Choose branded broker, edit request-specific contacts, upload multiple/revised PDFs, reject invalid files, inspect PDFs/Terms tabs, review gap and stale packet revision; no selection/binding during QA. |
 | EMAIL | Operator / Request correspondence | Inspect forwarding address, imported synthetic email and attachment, file to correct broker/request; ambiguity requires explicit selection and replay cannot duplicate records. |
 | CONNECT | Client / Vendors and Clients | Inspect empty/populated lists, create local synthetic connection request, view/revoke pending request, inspect shared policy access; exercise invalid public request token. |
-| ORG | Client / Settings organization | Edit profile/company facts, verify autosave and required-field errors; branding and access stay standalone. |
+| ORG | Client / Settings organization | Edit name/website and company Markdown, verify autosave and required-field errors; branding and access stay standalone. |
 | SETTINGS | Client / Agent and workflow settings | Exercise each visible tab, wiki/channels/behavior, certificate settings, notifications and beta flags; persist reversible local toggles and restore. |
 | NOTIFICATIONS | Client / Notification tray | Inspect empty/populated tray, open a scoped record link, mark individual/all items read, reload and verify persisted state; synthetic local items only. |
 | INTEGRATE | Client / Mailboxes and integrations | Open create/detail panels, validate missing/invalid input, inspect disconnect/recovery and OAuth denial; mark external authentication untested without a disposable account. |

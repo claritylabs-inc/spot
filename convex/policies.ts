@@ -35,7 +35,6 @@ import {
   parseExtractedNumber,
 } from "./lib/valueNormalization";
 import { toLobCodes } from "./lib/linesOfBusiness";
-import { syncOrgProfileFromDeclarationFacts } from "./lib/orgProfileFacts";
 import {
   readCarrierIdentity,
   type CarrierIdentity,
@@ -75,7 +74,6 @@ type PolicyPipelineLogEntry = {
 async function deactivatePolicyDeclarationFacts(
   ctx: MutationCtx,
   policyId: DataModelId<"policies">,
-  orgId?: DataModelId<"organizations">,
 ) {
   const facts = await ctx.db
     .query("policyDeclarationFacts")
@@ -86,15 +84,11 @@ async function deactivatePolicyDeclarationFacts(
   for (const fact of facts) {
     await ctx.db.patch(fact._id, { active: false });
   }
-  if (orgId) {
-    await syncOrgProfileFromDeclarationFacts(ctx, orgId);
-  }
 }
 
 async function reactivatePolicyDeclarationFacts(
   ctx: MutationCtx,
   policyId: DataModelId<"policies">,
-  orgId: DataModelId<"organizations">,
 ) {
   const facts = await ctx.db
     .query("policyDeclarationFacts")
@@ -111,7 +105,6 @@ async function reactivatePolicyDeclarationFacts(
   )) {
     await ctx.db.patch(fact._id, { active: true });
   }
-  await syncOrgProfileFromDeclarationFacts(ctx, orgId);
 }
 
 const PIPELINE_LOG_LIMIT = 500;
@@ -2427,7 +2420,7 @@ export const archive = mutation({
     await assertImpersonatedSetupWrite(ctx, policy.orgId);
     if (policy.deletedAt) return;
     await ctx.db.patch(args.id, { deletedAt: dayjs().valueOf() });
-    await deactivatePolicyDeclarationFacts(ctx, args.id, policy.orgId);
+    await deactivatePolicyDeclarationFacts(ctx, args.id);
     await ctx.db.insert("policyAuditLog", {
       policyId: args.id,
       userId: access.userId,
@@ -2876,9 +2869,8 @@ export const failPreviewExtractionInternal = internalMutation({
 export const softDeleteInternal = internalMutation({
   args: { id: v.id("policies") },
   handler: async (ctx, args) => {
-    const policy = await ctx.db.get(args.id);
     await ctx.db.patch(args.id, { deletedAt: dayjs().valueOf() });
-    await deactivatePolicyDeclarationFacts(ctx, args.id, policy?.orgId);
+    await deactivatePolicyDeclarationFacts(ctx, args.id);
   },
 });
 
@@ -2927,7 +2919,7 @@ export const restore = mutation({
     await assertImpersonatedSetupWrite(ctx, policy.orgId);
     if (!policy.deletedAt) return;
     await ctx.db.patch(args.id, { deletedAt: undefined });
-    await reactivatePolicyDeclarationFacts(ctx, args.id, policy.orgId);
+    await reactivatePolicyDeclarationFacts(ctx, args.id);
     await ctx.db.insert("policyAuditLog", {
       policyId: args.id,
       userId: access.userId,
@@ -3430,7 +3422,7 @@ async function archiveRejectedPolicyDocument(
   if (!policy || policy.deletedAt) return;
   await ctx.db.patch(policyId, { deletedAt: nowMs() });
   if (policy.orgId) {
-    await deactivatePolicyDeclarationFacts(ctx, policyId, policy.orgId);
+    await deactivatePolicyDeclarationFacts(ctx, policyId);
   }
   const auditUserId =
     userId ?? String(policy.userId ?? policy.uploadedByUserId ?? "");

@@ -1,4 +1,4 @@
-import { clientIdentity, clientIdentityMatches, clientClassificationPatch } from "./lib/clientProfile";
+import { clientIdentity, clientIdentityMatches } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
@@ -55,25 +55,6 @@ const operatorClientUserValidator = v.object({
   name: v.optional(v.string()),
   phone: v.optional(v.string()),
   role: orgRoleValidator,
-});
-const relatedLegalEntityValidator = v.object({
-  legalName: v.string(),
-  source: v.optional(v.literal("extraction")),
-  relationship: v.optional(
-    v.union(
-      v.literal("current"),
-      v.literal("fka"),
-      v.literal("dba"),
-      v.literal("subsidiary"),
-      v.literal("parent"),
-      v.literal("affiliate"),
-      v.literal("other"),
-    ),
-  ),
-  incorporationNumber: v.optional(v.string()),
-  taxId: v.optional(v.string()),
-  jurisdiction: v.optional(v.string()),
-  notes: v.optional(v.string()),
 });
 const extractionTraceStatusValidator = v.union(
   v.literal("running"),
@@ -1293,22 +1274,13 @@ export const updateClientSettings = mutation({
     clientOrgId: v.id("organizations"),
     name: v.optional(v.string()),
     website: v.optional(v.string()),
-    industry: v.optional(v.string()),
-    industryVertical: v.optional(v.string()),
-    relatedLegalEntities: v.optional(v.array(relatedLegalEntityValidator)),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.type !== "client")
       throw new Error("Client not found");
-    const identity =
-      args.name !== undefined || args.relatedLegalEntities !== undefined
-        ? clientIdentity(
-            args.name ?? client.name,
-            args.relatedLegalEntities ?? client.relatedLegalEntities,
-          )
-        : null;
+    const identity = args.name !== undefined ? clientIdentity(args.name) : null;
     const name = identity?.name ?? client.name;
     if (!name) throw new Error("Organization name is required");
 
@@ -1317,7 +1289,6 @@ export const updateClientSettings = mutation({
       ...(args.website !== undefined
         ? { website: args.website.trim() || undefined }
         : {}),
-      ...clientClassificationPatch(client, args),
     };
 
     await ctx.db.patch(args.clientOrgId, patch);
@@ -1718,10 +1689,17 @@ export async function createStandaloneClientOrganizationByOperator(
   await assertNoOperatorImpersonation(ctx, args.operatorUserId);
   const identity = clientIdentity(args.name);
   if (!identity.name) throw new Error("Client name is required");
-  const existingClients = await ctx.db.query("organizations")
-    .withIndex("type", (q) => q.eq("type", "client")).collect();
-  const duplicate = existingClients.find((client) => clientIdentityMatches(client, args.name));
-  if (duplicate) throw new Error(`Client ${duplicate.name} already exists as ${duplicate._id}`);
+  const existingClients = await ctx.db
+    .query("organizations")
+    .withIndex("type", (q) => q.eq("type", "client"))
+    .collect();
+  const duplicate = existingClients.find((client) =>
+    clientIdentityMatches(client, args.name),
+  );
+  if (duplicate)
+    throw new Error(
+      `Client ${duplicate.name} already exists as ${duplicate._id}`,
+    );
   const orgId = await ctx.db.insert("organizations", {
     ...identity,
     type: "client",
@@ -1815,11 +1793,14 @@ export const createSoloClientInternal = internalMutation({
     }
     const primaryAdmin = users.find((user) => user.role === "admin");
 
-    const clientOrgId = await createStandaloneClientOrganizationByOperator(ctx, {
-      operatorUserId: args.operatorUserId,
-      name: args.client.name,
-      website: args.client.website,
-    });
+    const clientOrgId = await createStandaloneClientOrganizationByOperator(
+      ctx,
+      {
+        operatorUserId: args.operatorUserId,
+        name: args.client.name,
+        website: args.client.website,
+      },
+    );
     await ctx.db.patch(clientOrgId, {
       allowedEmails: users.map((user) => user.email),
       primaryInsuranceContactId: primaryAdmin?.userId,

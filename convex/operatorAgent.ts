@@ -1,11 +1,4 @@
-import {
-  clientIdentity,
-  insuranceProfilePatchSchema,
-  relatedLegalEntitySchema,
-  clientClassificationPatch,
-  mergeInsuranceProfilePatch,
-} from "./lib/clientProfile";
-import { resolveEffectiveOrganizationProfile } from "./lib/orgProfileFacts";
+import { clientIdentity } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
@@ -1612,10 +1605,6 @@ async function executeToolDomain(
       status: organization.operatorStatus ?? "live",
       slug: organization.slug,
       website: organization.website,
-      industry: organization.industry,
-      industryVertical: organization.industryVertical,
-      relatedLegalEntities: organization.relatedLegalEntities ?? [],
-      insuranceProfile: resolveEffectiveOrganizationProfile(organization),
       companyResearch: organization.companyResearch ?? null,
       ...(organization.type === "broker"
         ? { companyWiki: await readOrgWiki(ctx, orgId) }
@@ -2713,60 +2702,15 @@ async function executeToolDomain(
     const organization = await ctx.db.get(orgId);
     if (!organization) throw new Error("Organization not found");
     const patch: Partial<Doc<"organizations">> = {};
-    if (input.name != null || input.relatedLegalEntities !== undefined) {
-      if (
-        organization.type === "broker" &&
-        input.relatedLegalEntities !== undefined
-      )
-        throw new Error("Legal entities are client profile fields");
-      const identity = clientIdentity(
-        input.name == null ? organization.name : String(input.name),
-        input.relatedLegalEntities === undefined
-          ? organization.relatedLegalEntities
-          : relatedLegalEntitySchema.array().parse(input.relatedLegalEntities),
-      );
+    if (input.name != null) {
+      const identity = clientIdentity(String(input.name));
       if (!identity.name) throw new Error("Organization name is required");
-      patch.name =
-        organization.type === "broker"
-          ? String(input.name ?? organization.name).trim()
-          : identity.name;
-      if (organization.type !== "broker")
-        patch.relatedLegalEntities = identity.relatedLegalEntities;
+      patch.name = identity.name;
     }
     if ("website" in input)
       patch.website = normalizedOptionalText(input.website);
-    Object.assign(
-      patch,
-      clientClassificationPatch(organization, {
-        industry:
-          input.industry === undefined
-            ? undefined
-            : (normalizedOptionalText(input.industry) ?? null),
-        industryVertical:
-          input.industryVertical === undefined
-            ? undefined
-            : (normalizedOptionalText(input.industryVertical) ?? null),
-      }),
-    );
-    if (input.insuranceProfile !== undefined) {
-      if ((organization.type ?? "client") !== "client")
-        throw new Error("Insurance profile is available for clients only");
-      patch.profileOverrides = mergeInsuranceProfilePatch(
-        organization.profileOverrides,
-        resolveEffectiveOrganizationProfile(organization).mailingAddress,
-        insuranceProfilePatchSchema.parse(input.insuranceProfile),
-      );
-      patch.profileOverridesUpdatedAt = dayjs().valueOf();
-      patch.profileOverridesUpdatedByUserId = args.operatorUserId;
-    }
     await ctx.db.patch(orgId, patch);
-    if (
-      input.name != null ||
-      input.website !== undefined ||
-      input.relatedLegalEntities !== undefined ||
-      input.industry !== undefined ||
-      input.industryVertical !== undefined
-    )
+    if (input.name != null || input.website !== undefined)
       await scheduleCompanyResearch(ctx, orgId);
     await writeOperatorAudit(ctx, {
       operatorUserId: args.operatorUserId,

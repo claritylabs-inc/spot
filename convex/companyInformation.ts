@@ -12,10 +12,8 @@ import {
 import {
   COMPANY_INFORMATION_EXTRACTION_VERSION,
   companyInformationOrganizationFactValidator,
-  companyInformationProfileValidator,
   type CompanyInformationExtraction,
 } from "./lib/companyInformationExtraction";
-import { syncOrgProfileFromDeclarationFacts } from "./lib/orgProfileFacts";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
 
 const EXTRACTION_LEASE_MS = 2 * 60 * 1_000;
@@ -189,16 +187,21 @@ async function reconcileCompanyInformation(
   await reconcileExtractedCompanyFacts(ctx, {
     orgId,
     source: "extraction",
-    facts: [...(org?.companyResearch?.facts ?? []).map((fact) => ({ ...fact, content: `${fact.content} [Source](${fact.sourceRef})` })), ...applied.flatMap((row) =>
-      (row.organizationFacts ?? []).map((fact) => ({
-        // Rows stored before the wiki gained sections held one flat fact list.
-        key: fact.section ?? "profile",
-        sourceRef: row.sourceRef,
-        content: fact.content,
+    facts: [
+      ...(org?.companyResearch?.facts ?? []).map((fact) => ({
+        ...fact,
+        content: `${fact.content} [Source](${fact.sourceRef})`,
       })),
-    )],
+      ...applied.flatMap((row) =>
+        (row.organizationFacts ?? []).map((fact) => ({
+          // Rows stored before the wiki gained sections held one flat fact list.
+          key: fact.section ?? "profile",
+          sourceRef: row.sourceRef,
+          content: fact.content,
+        })),
+      ),
+    ],
   });
-  await syncOrgProfileFromDeclarationFacts(ctx, orgId);
 }
 
 async function removeExtraction(
@@ -348,7 +351,7 @@ async function completeSource(
   }
   const now = dayjs().valueOf();
   await ctx.db.patch(row._id, {
-    profile: args.extraction.profile,
+    profile: undefined,
     organizationFacts: args.extraction.organizationFacts,
     appliedFingerprint: args.sourceFingerprint,
     status: "completed",
@@ -365,7 +368,6 @@ export const completeClientFileInternal = internalMutation({
   args: {
     clientFileId: v.id("clientFiles"),
     sourceFingerprint: v.string(),
-    profile: companyInformationProfileValidator,
     organizationFacts: v.array(companyInformationOrganizationFactValidator),
   },
   handler: async (ctx, args) =>
@@ -374,7 +376,6 @@ export const completeClientFileInternal = internalMutation({
       clientFileId: args.clientFileId,
       sourceFingerprint: args.sourceFingerprint,
       extraction: {
-        profile: args.profile,
         organizationFacts: args.organizationFacts,
       },
     }),
@@ -384,7 +385,6 @@ export const completeEmailThreadInternal = internalMutation({
   args: {
     emailThreadId: v.id("procurementEmailThreads"),
     sourceFingerprint: v.string(),
-    profile: companyInformationProfileValidator,
     organizationFacts: v.array(companyInformationOrganizationFactValidator),
   },
   handler: async (ctx, args) =>
@@ -393,7 +393,6 @@ export const completeEmailThreadInternal = internalMutation({
       emailThreadId: args.emailThreadId,
       sourceFingerprint: args.sourceFingerprint,
       extraction: {
-        profile: args.profile,
         organizationFacts: args.organizationFacts,
       },
     }),

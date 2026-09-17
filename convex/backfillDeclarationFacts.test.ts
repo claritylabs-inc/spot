@@ -1,16 +1,11 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import schema from "./schema";
 import { backfillBatchInternal } from "./backfillDeclarationFacts";
-import { syncOrgProfileFromDeclarationFacts } from "./lib/orgProfileFacts";
 
 const modules = import.meta.glob("./**/*.ts");
 const backfillBatchInternalFn = backfillBatchInternal as any;
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe("declaration fact backfill", () => {
   test("rebuilds stored final policies without extraction and is idempotent", async () => {
@@ -76,20 +71,12 @@ describe("declaration fact backfill", () => {
     expect(first).toMatchObject({ eligible: 2, unchanged: 0, isDone: true });
     expect(first.inserted).toBeGreaterThan(0);
     const profileAfterFirstRun = await t.run(async (ctx) => ctx.db.get(orgId));
-    expect(profileAfterFirstRun).toMatchObject({
-      profileFacts: {
-        namedInsured: { value: "Acme Incorporated" },
-        mailingAddress: { value: { street1: "1 Main St" } },
-        operationsDescription: { value: "Software implementation services." },
-      },
-    });
-
-    const factCount = (await t.run(async (ctx) => ctx.db.query("policyDeclarationFacts").collect())).length;
-    vi.useFakeTimers();
-    vi.setSystemTime((profileAfterFirstRun?.profileFactsUpdatedAt ?? 0) + 1_000);
-    await expect(
-      t.run(async (ctx) => syncOrgProfileFromDeclarationFacts(ctx, orgId)),
-    ).resolves.toEqual({ updated: false, reason: "unchanged" });
+    expect(profileAfterFirstRun).not.toHaveProperty("profileFacts");
+    const facts = await t.run(async (ctx) => ctx.db.query("policyDeclarationFacts").collect());
+    expect(facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldGroup: "operations_description", displayValue: "Software implementation services." }),
+    ]));
+    const factCount = facts.length;
     await expect(t.mutation(backfillBatchInternalFn, { dryRun: false, batchSize: 10 })).resolves.toMatchObject({
       eligible: 2,
       inserted: 0,

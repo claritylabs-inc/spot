@@ -2,16 +2,14 @@
 
 import { useSyncStore } from "@claritylabs/cl-sync";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { Globe2, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { INDUSTRIES } from "@/convex/lib/industries";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Globe2, Loader2 } from "lucide-react";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -25,15 +23,7 @@ import {
   patchCachedViewerOrg,
   useCachedViewerOrg,
 } from "@/lib/sync/spot-cached-queries";
-import {
-  AutoSaveStatus,
-  combineAutoSaveStatuses,
-} from "@/components/ui/auto-save-status";
-import type { AutoSaveStatus as AutoSaveStatusValue } from "@/lib/sync/use-local-first-auto-save";
-import {
-  OrganizationInsuranceProfile,
-  type OrganizationInsuranceProfileRecord,
-} from "@/components/settings/organization-insurance-profile";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { typeStyle } from "@/lib/typography";
 
 export function OrganizationSection() {
@@ -48,36 +38,11 @@ export function OrganizationSection() {
   const draft = useLiveRecordDraft(org?._id ?? "loading", {
     name: org?.name ?? "",
     website: org?.website ?? "",
-    industry: org?.industry ?? "",
-    industryVertical: org?.industryVertical ?? "",
-    relatedLegalEntities: org?.relatedLegalEntities ?? [],
   });
-  const { name, website, industry, industryVertical, relatedLegalEntities } =
-    draft.value;
+  const { name, website } = draft.value;
   const setName = draft.field("name");
   const setWebsite = draft.field("website");
-  const setIndustry = draft.field("industry");
-  const setIndustryVertical = draft.field("industryVertical");
-  const setRelatedLegalEntities = draft.field("relatedLegalEntities");
   const settingsHydrated = Boolean(org);
-  const [profileAutoSaveStatus, setProfileAutoSaveStatus] =
-    useState<AutoSaveStatusValue>("saved");
-  const [profileCanReset, setProfileCanReset] = useState(false);
-  const [restoringProfile, setRestoringProfile] = useState(false);
-  const profileResetRef = useRef<(() => Promise<void>) | null>(null);
-  const handleProfileAutoSaveChange = useCallback(
-    (status: AutoSaveStatusValue) => {
-      setProfileAutoSaveStatus(status);
-    },
-    [],
-  );
-  const handleProfileResetActionChange = useCallback(
-    (resetToExtracted: (() => Promise<void>) | null) => {
-      profileResetRef.current = resetToExtracted;
-      setProfileCanReset(Boolean(resetToExtracted));
-    },
-    [],
-  );
   const [extracting, setExtracting] = useState(false);
 
   const { setActions } = useSettingsActions();
@@ -85,16 +50,6 @@ export function OrganizationSection() {
   const orgSettingsArgs = {
     ...draft.patch,
     ...(draft.patch.name !== undefined ? { name: name.trim() } : {}),
-    ...(draft.patch.relatedLegalEntities !== undefined
-      ? {
-          relatedLegalEntities: relatedLegalEntities
-            .map((entity) => ({
-              ...entity,
-              legalName: entity.legalName.trim(),
-            }))
-            .filter((entity) => entity.legalName),
-        }
-      : {}),
   };
   const orgAutoSave = useLocalFirstAutoSave({
     mutationName: "settings.organization.updateOrg",
@@ -102,9 +57,7 @@ export function OrganizationSection() {
     valueKey: String(draft.revision),
     resetKey: org?._id ?? "loading",
     enabled: settingsHydrated,
-    canSave:
-      Boolean(name.trim()) &&
-      relatedLegalEntities.every((entity) => entity.legalName.trim()),
+    canSave: Boolean(name.trim()),
     autoSave: false,
     applyLocal: (store, args) => patchCachedViewerOrg(store, args.patch),
     flush: async ({ patch, revision }) => {
@@ -115,51 +68,10 @@ export function OrganizationSection() {
   });
   const saveOrgSettingsNow = orgAutoSave.saveNow;
 
-  const saveOrgSettingsAfterChange = useCallback(() => {
-    requestAnimationFrame(() => {
-      void saveOrgSettingsNow();
-    });
-  }, [saveOrgSettingsNow]);
-
-  const organizationSaveStatus = combineAutoSaveStatuses(
-    orgAutoSave.status,
-    profileAutoSaveStatus,
-  );
-
-  const handleUseExtracted = useCallback(async () => {
-    const resetToExtracted = profileResetRef.current;
-    if (!resetToExtracted) return;
-    setRestoringProfile(true);
-    try {
-      await resetToExtracted();
-    } catch {
-      toast.error("Extracted profile could not be restored");
-    } finally {
-      setRestoringProfile(false);
-    }
-  }, []);
-
   useEffect(() => {
     setActions(
       <>
-        <AutoSaveStatus status={organizationSaveStatus} />
-        {profileCanReset ? (
-          <PillButton
-            type="button"
-            variant="secondary"
-            size="compact"
-            label={restoringProfile ? "Restoring…" : "Use extracted"}
-            expandLabel
-            onClick={() => void handleUseExtracted()}
-            disabled={restoringProfile || profileAutoSaveStatus === "saving"}
-          >
-            {restoringProfile ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RotateCcw className="size-3.5" />
-            )}
-          </PillButton>
-        ) : null}
+        <AutoSaveStatus status={orgAutoSave.status} />
         <PillButton
           variant="secondary"
           size="compact"
@@ -179,13 +91,9 @@ export function OrganizationSection() {
     return () => setActions(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    organizationSaveStatus,
+    orgAutoSave.status,
     extracting,
     org?.type,
-    handleUseExtracted,
-    profileAutoSaveStatus,
-    profileCanReset,
-    restoringProfile,
     website,
   ]);
 
@@ -204,28 +112,6 @@ export function OrganizationSection() {
     } finally {
       setExtracting(false);
     }
-  }
-
-  function updateRelatedLegalEntity(
-    index: number,
-    patch: Partial<(typeof relatedLegalEntities)[number]>,
-  ) {
-    setRelatedLegalEntities((current) =>
-      current.map((entity, entityIndex) =>
-        entityIndex === index ? { ...entity, ...patch, source: undefined } : entity,
-      ),
-    );
-  }
-
-  function addRelatedLegalEntity() {
-    setRelatedLegalEntities((current) => [...current, { legalName: "" }]);
-  }
-
-  function removeRelatedLegalEntity(index: number) {
-    setRelatedLegalEntities((current) =>
-      current.filter((_, entityIndex) => entityIndex !== index),
-    );
-    saveOrgSettingsAfterChange();
   }
 
   if (orgData === undefined) {
@@ -294,118 +180,6 @@ export function OrganizationSection() {
                 />
               </div>
 
-              <div className="space-y-3 rounded-lg border border-border bg-popover px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <label
-                      className={`text-muted-foreground block ${typeStyle("label.field")}`}
-                    >
-                      Legal names and related entities
-                    </label>
-                  </div>
-                  <PillButton
-                    type="button"
-                    size="compact"
-                    variant="secondary"
-                    onClick={addRelatedLegalEntity}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add
-                  </PillButton>
-                </div>
-                {relatedLegalEntities.length === 0 ? (
-                  <p
-                    className={`text-muted-foreground/70 ${typeStyle("body.default")}`}
-                  >
-                    No related legal entities listed.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {relatedLegalEntities.map((entity, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={entity.legalName}
-                          onChange={(event) =>
-                            updateRelatedLegalEntity(index, {
-                              legalName: event.target.value,
-                            })
-                          }
-                          onBlur={() => void saveOrgSettingsNow()}
-                          placeholder="Alternate legal name, DBA, FKA, parent, subsidiary, or affiliate"
-                          className={`h-9 min-w-0 flex-1 rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
-                        />
-                        <PillButton
-                          type="button"
-                          variant="destructive"
-                          iconOnly
-                          label="Remove legal entity"
-                          onClick={() => removeRelatedLegalEntity(index)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </PillButton>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    className={`text-muted-foreground block mb-1.5 ${typeStyle("label.field")}`}
-                  >
-                    Industry
-                  </label>
-                  <SearchableSelect
-                    options={INDUSTRIES.map((ind) => ({
-                      value: ind.value,
-                      label: ind.label,
-                    }))}
-                    value={industry}
-                    onChange={(v) => {
-                      setIndustry(v);
-                      setIndustryVertical("");
-                      saveOrgSettingsAfterChange();
-                    }}
-                    placeholder="Select industry..."
-                  />
-                </div>
-                <div>
-                  <label
-                    className={`text-muted-foreground block mb-1.5 ${typeStyle("label.field")}`}
-                  >
-                    Vertical
-                  </label>
-                  <SearchableSelect
-                    options={
-                      INDUSTRIES.find(
-                        (i) => i.value === industry,
-                      )?.verticals.map((v) => ({
-                        value: v.value,
-                        label: v.label,
-                      })) ?? []
-                    }
-                    value={industryVertical}
-                    onChange={(value) => {
-                      setIndustryVertical(value);
-                      saveOrgSettingsAfterChange();
-                    }}
-                    placeholder="Select vertical..."
-                    disabled={!industry}
-                  />
-                </div>
-              </div>
-
-              {org ? (
-                <OrganizationInsuranceProfile
-                  key={String(org._id)}
-                  org={org as unknown as OrganizationInsuranceProfileRecord}
-                  disabled={orgData.membership.role !== "admin"}
-                  onAutoSaveChange={handleProfileAutoSaveChange}
-                  onResetActionChange={handleProfileResetActionChange}
-                />
-              ) : null}
             </OperationalPanelBody>
           </OperationalPanel>
 

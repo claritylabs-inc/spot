@@ -1,4 +1,4 @@
-import { clientIdentity, clientClassificationPatch } from "./lib/clientProfile";
+import { clientIdentity } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import {
@@ -41,8 +41,6 @@ import {
   assertFeatureFlagAllowedForOrg,
   setFeatureFlagPatch,
 } from "./lib/featureFlags";
-import { resolveEffectiveOrganizationProfile } from "./lib/orgProfileFacts";
-import { IRS_ENTITY_TYPES } from "./lib/entityTypes";
 import {
   throwUserFacingError,
   userFacingErrorCodes,
@@ -474,30 +472,6 @@ export const updateOrg = mutation({
   args: {
     name: v.optional(v.string()),
     website: v.optional(v.string()),
-    industry: v.optional(v.string()),
-    industryVertical: v.optional(v.string()),
-    relatedLegalEntities: v.optional(
-      v.array(
-        v.object({
-          legalName: v.string(),
-          source: v.optional(v.literal("extraction")),
-          relationship: v.optional(
-            v.union(
-              v.literal("current"),
-              v.literal("fka"),
-              v.literal("dba"),
-              v.literal("subsidiary"),
-              v.literal("parent"),
-              v.literal("affiliate"),
-              v.literal("other"),
-            ),
-          ),
-          incorporationNumber: v.optional(v.string()),
-          taxId: v.optional(v.string()),
-          jurisdiction: v.optional(v.string()),
-        }),
-      ),
-    ),
     chatEmailNotifications: v.optional(v.boolean()),
     bccRequesterOnAgentEmails: v.optional(v.boolean()),
     emailSendDelay: v.optional(v.number()),
@@ -515,163 +489,15 @@ export const updateOrg = mutation({
       assertExternalBrokerIdentity({ ...organization, ...args });
     }
     if (!organization) throw new Error("Organization not found");
-    const identity = (args.name !== undefined || args.relatedLegalEntities !== undefined) && organization.type !== "broker"
-      ? clientIdentity(args.name ?? organization.name, args.relatedLegalEntities ?? organization.relatedLegalEntities)
-      : {};
-    if ("name" in identity && !identity.name) throw new Error("Organization name is required");
-    await ctx.db.patch(orgId, { ...args, ...identity, ...clientClassificationPatch(organization, args) });
-    if (args.name !== undefined || args.website !== undefined || args.relatedLegalEntities !== undefined || args.industry !== undefined || args.industryVertical !== undefined) await scheduleCompanyResearch(ctx, orgId);
-  },
-});
-
-const editableOrganizationAddressValidator = v.object({
-  street1: v.optional(v.string()),
-  street2: v.optional(v.string()),
-  city: v.optional(v.string()),
-  state: v.optional(v.string()),
-  zip: v.optional(v.string()),
-  country: v.optional(v.string()),
-  formatted: v.optional(v.string()),
-});
-
-const irsEntityTypeValueValidator = v.union(
-  v.literal("sole_proprietorship"),
-  v.literal("partnership"),
-  v.literal("corporation"),
-  v.literal("s_corporation"),
-  v.literal("limited_liability_company"),
-  v.literal("trust_estate"),
-  v.literal("tax_exempt_organization"),
-  v.literal("government_entity"),
-  v.literal("other"),
-);
-
-const editableOrganizationProfileValidator = v.object({
-  mailingAddress: v.optional(editableOrganizationAddressValidator),
-  entityType: v.optional(v.union(irsEntityTypeValueValidator, v.literal(""))),
-  fein: v.optional(v.string()),
-  businessNumber: v.optional(v.string()),
-  operationsDescription: v.optional(v.string()),
-});
-
-function normalizedProfileString(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function normalizedFein(value: string) {
-  const compact = value.replace(/[^0-9]/g, "");
-  if (!compact) return "";
-  if (compact.length !== 9) throw new Error("FEIN must contain 9 digits");
-  return `${compact.slice(0, 2)}-${compact.slice(2)}`;
-}
-
-function normalizedBusinessNumber(value: string) {
-  const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!compact) return "";
-  if (!/^\d{9}(?:[A-Z]{2}\d{4})?$/.test(compact)) {
-    throw new Error(
-      "Business number must be 9 digits, optionally followed by a program account",
-    );
-  }
-  return compact;
-}
-
-function normalizedProfileAddress(address: {
-  street1?: string;
-  street2?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  country?: string;
-  formatted?: string;
-}) {
-  return Object.fromEntries(
-    Object.entries(address)
-      .map(([key, value]) => [key, normalizedProfileString(value ?? "")])
-      .filter(([, value]) => value),
-  );
-}
-
-export const updateOrganizationProfile = mutation({
-  args: {
-    operatorClientOrgId: v.optional(v.id("organizations")),
-    profile: v.union(editableOrganizationProfileValidator, v.null()),
-  },
-  handler: async (ctx, args) => {
-    const access = await getTeamAdminWriteAccess(ctx, args.operatorClientOrgId);
-    const { orgId, userId, org } = access;
-    if ((org.type ?? "client") !== "client") {
-      throw new Error(
-        "Organization insurance profiles are available for clients only",
-      );
-    }
-    if (args.profile === null) {
-      await ctx.db.patch(orgId, {
-        profileOverrides: undefined,
-        profileOverridesUpdatedAt: undefined,
-        profileOverridesUpdatedByUserId: undefined,
-      });
-      await writeTeamSupportAudit(ctx, access, {
-        summary: `Restored the extracted organization profile for ${org.name}`,
-      });
-      const refreshed = await ctx.db.get(orgId);
-      return refreshed
-        ? resolveEffectiveOrganizationProfile(
-            refreshed as unknown as Record<string, unknown>,
-          )
-        : null;
-    }
-
-    const profileInput = args.profile;
-    if (
-      profileInput.entityType &&
-      !IRS_ENTITY_TYPES.some(
-        (option) => option.value === profileInput.entityType,
-      )
-    ) {
-      throw new Error("Select a standard IRS entity type");
-    }
-
-    const storedProfile = {
-      ...org.profileOverrides,
-      ...(profileInput.mailingAddress !== undefined
-        ? {
-            mailingAddress: normalizedProfileAddress(
-              profileInput.mailingAddress,
-            ),
-          }
-        : {}),
-      ...(profileInput.entityType !== undefined
-        ? { entityType: profileInput.entityType }
-        : {}),
-      ...(profileInput.fein !== undefined
-        ? { fein: normalizedFein(profileInput.fein) }
-        : {}),
-      ...(profileInput.businessNumber !== undefined
-        ? {
-            businessNumber: normalizedBusinessNumber(
-              profileInput.businessNumber,
-            ),
-          }
-        : {}),
-      ...(profileInput.operationsDescription !== undefined
-        ? {
-            operationsDescription: profileInput.operationsDescription.trim(),
-          }
-        : {}),
-    };
-    await ctx.db.patch(orgId, {
-      profileOverrides: storedProfile,
-      profileOverridesUpdatedAt: dayjs().valueOf(),
-      profileOverridesUpdatedByUserId: userId,
-    });
-    await writeTeamSupportAudit(ctx, access, {
-      summary: `Updated the organization profile for ${org.name}`,
-    });
-    return resolveEffectiveOrganizationProfile({
-      ...org,
-      profileOverrides: storedProfile,
-    });
+    const identity =
+      args.name !== undefined && organization.type !== "broker"
+        ? clientIdentity(args.name)
+        : {};
+    if ("name" in identity && !identity.name)
+      throw new Error("Organization name is required");
+    await ctx.db.patch(orgId, { ...args, ...identity });
+    if (args.name !== undefined || args.website !== undefined)
+      await scheduleCompanyResearch(ctx, orgId);
   },
 });
 
@@ -1410,18 +1236,6 @@ export const setIconInternal = internalMutation({
       await ctx.storage.delete(org.iconStorageId).catch(() => {});
     }
     await ctx.db.patch(args.orgId, { iconStorageId: args.iconStorageId });
-  },
-});
-
-export const updateProfileInternal = internalMutation({
-  args: {
-    orgId: v.id("organizations"),
-    industry: v.optional(v.string()),
-    industryVertical: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { orgId, ...patch } = args;
-    await ctx.db.patch(orgId, patch);
   },
 });
 

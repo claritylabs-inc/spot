@@ -1,10 +1,8 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
 import { extractDeclarationFactsFromPolicy } from "./lib/declarationFacts";
-import { syncOrgProfileFromDeclarationFacts } from "./lib/orgProfileFacts";
 
 export function effectiveExtractionDataStage(policy: {
   extractionDataStage?: "placeholder" | "preview" | "final";
@@ -34,7 +32,6 @@ export const backfillBatchInternal = internalMutation({
     let inserted = 0;
     let deactivated = 0;
     let unchanged = 0;
-    const affectedOrgIds = new Set<Id<"organizations">>();
 
     for (const policy of page.page) {
       if (!policy.orgId || effectiveExtractionDataStage(policy) !== "final") continue;
@@ -47,15 +44,10 @@ export const backfillBatchInternal = internalMutation({
         }
         continue;
       }
-      const result = await replacePolicyDeclarationFacts(ctx, policy._id, undefined, false);
-      affectedOrgIds.add(policy.orgId);
+      const result = await replacePolicyDeclarationFacts(ctx, policy._id);
       inserted += result.inserted;
       deactivated += result.deactivated;
       if (result.unchanged) unchanged += 1;
-    }
-
-    for (const orgId of affectedOrgIds) {
-      await syncOrgProfileFromDeclarationFacts(ctx, orgId);
     }
 
     if (!page.isDone && args.continueAutomatically) {

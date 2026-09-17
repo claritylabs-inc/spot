@@ -76,8 +76,7 @@ test("intake searches public identity and adds cited facts without replacing man
     .mockResolvedValueOnce({
       output: {
         identityConfirmed: true,
-        industry: null,
-        industryVertical: null,
+
         facts: [
           {
             key: "operations",
@@ -96,14 +95,14 @@ test("intake searches public identity and adds cited facts without replacing man
   await t.action(run, { orgId });
   expect(runWebRetrieval).toHaveBeenCalledTimes(2);
   const searchInput = vi.mocked(runWebRetrieval).mock.calls[0][2];
-  expect(searchInput.query).toContain("Cove Software Inc.");
+  expect(searchInput.query).toContain("Cove");
   expect(JSON.stringify(searchInput)).not.toContain("PRIVATE-TAX-ID");
   await t.run(async (ctx) => {
     const org = await ctx.db.get(orgId);
     expect(org?.website).toBe("https://cove.example/");
     expect(org?.companyResearch).toMatchObject({
-      status: "partial",
-      unresolvedFields: ["industry", "industryVertical"],
+      status: "completed",
+      unresolvedFields: [],
     });
     const wiki = await readOrgWiki(ctx, orgId);
     expect(readMarkdownHeading(wiki.body, "Operations")).toBe(original);
@@ -146,8 +145,7 @@ test("research accepts root and www variants across discovery, retrieval and com
     .mockResolvedValueOnce({
       output: {
         identityConfirmed: true,
-        industry: null,
-        industryVertical: null,
+
         facts: [
           {
             key: "operations",
@@ -169,7 +167,7 @@ test("research accepts root and www variants across discovery, retrieval and com
     const org = await ctx.db.get(orgId);
     expect(org?.website).toBe("https://cove.example/");
     expect(org?.companyResearch).toMatchObject({
-      status: "partial",
+      status: "completed",
       sourceUrls: ["https://www.cove.example/about"],
       facts: [
         {
@@ -177,7 +175,7 @@ test("research accepts root and www variants across discovery, retrieval and com
           sourceRef: "https://www.cove.example/about",
         },
       ],
-      unresolvedFields: ["industry", "industryVertical"],
+      unresolvedFields: [],
     });
   });
 });
@@ -209,13 +207,7 @@ test("research rejects non-www subdomains as different sites", async () => {
       status: "partial",
       sourceUrls: [],
       facts: [],
-      unresolvedFields: [
-        "website",
-        "industry",
-        "industryVertical",
-        "publicIdentity",
-        "companyFacts",
-      ],
+      unresolvedFields: ["website", "publicIdentity", "companyFacts"],
     });
   });
 });
@@ -262,8 +254,7 @@ test("an identity change retracts prior research evidence before the next run", 
     leaseId: first.leaseId,
     fingerprint: first.fingerprint,
     website: "https://cove.example/",
-    industry: "agriculture",
-    industryVertical: "crop_farming",
+
     sourceUrls: [oldFact.sourceRef],
     facts: [oldFact],
   });
@@ -312,8 +303,7 @@ test("a verified refresh replaces retracted facts and sources", async () => {
     leaseId: first.leaseId,
     fingerprint: first.fingerprint,
     website: "https://cove.example/",
-    industry: "agriculture",
-    industryVertical: "crop_farming",
+
     sourceUrls: [oldFact.sourceRef],
     facts: [oldFact],
   });
@@ -337,8 +327,7 @@ test("a verified refresh replaces retracted facts and sources", async () => {
     leaseId: second.leaseId,
     fingerprint: second.fingerprint,
     website: "https://www.cove.example/",
-    industry: "agriculture",
-    industryVertical: "crop_farming",
+
     sourceUrls: [currentFact.sourceRef],
     facts: [currentFact],
   });
@@ -379,8 +368,7 @@ test("a verified refresh retracts stale suggestions without changing manual pros
     leaseId: first.leaseId,
     fingerprint: first.fingerprint,
     website: "https://cove.example/",
-    industry: "agriculture",
-    industryVertical: "crop_farming",
+
     sourceUrls: [oldFact.sourceRef],
     facts: [oldFact],
   });
@@ -430,7 +418,7 @@ test("provider failures stop after three attempts and do not claim successful en
     expect((await ctx.db.get(orgId))?.companyResearch).toMatchObject({
       status: "failed",
       attempts: 3,
-      unresolvedFields: ["website", "industry", "industryVertical"],
+      unresolvedFields: ["website"],
     });
   });
 });
@@ -507,13 +495,7 @@ test("research requests report existing work honestly and require direct client 
     (await t.run((ctx) => ctx.db.get(orgId)))?.companyResearch,
   ).toMatchObject({
     status: "partial",
-    unresolvedFields: [
-      "website",
-      "industry",
-      "industryVertical",
-      "publicIdentity",
-      "companyFacts",
-    ],
+    unresolvedFields: ["website", "publicIdentity", "companyFacts"],
   });
   expect(await t.mutation(request, { orgId })).toEqual({
     success: true,
@@ -530,8 +512,6 @@ test("a populated profile without supported company facts is still incomplete re
   await t.run(async (ctx) => {
     await ctx.db.patch(orgId, {
       website: "https://cove.example/",
-      industry: "agriculture",
-      industryVertical: "crop_farming",
     });
     await scheduleCompanyResearch(ctx, orgId);
   });
@@ -561,8 +541,7 @@ test("later incomplete research preserves accumulated verified wiki facts", asyn
     leaseId: first.leaseId,
     fingerprint: first.fingerprint,
     website: "https://cove.example/",
-    industry: "agriculture",
-    industryVertical: "crop_farming",
+
     sourceUrls: [firstFact.sourceRef],
     facts: [firstFact],
   });

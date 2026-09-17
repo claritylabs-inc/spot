@@ -56,20 +56,18 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 ## Client information contract
 
-- `name` is the operating/DBA display name when explicitly supported. `Bonds Forever DBA Shastha Foods` becomes `Shastha Foods`, with `Bonds Forever` retained as a current legal entity. Do not invent suffixes, silently choose among multiple DBAs, or infer a subsidiary from an additional named insured.
-- `relatedLegalEntities` holds legal names and evidenced relationship types, jurisdiction and identifiers. Preserve existing list entries and operator corrections. The UI must expose the relationship instead of presenting every entry as an unlabeled name.
-- Keep website, validated industry/vertical, mailing address, entity type, FEIN/business number, and a concise operations description structured. The operations summary has real certificate consumers in `policyPartyContext.ts`; it cannot simply disappear into markdown.
-- Detailed operations, products, locations, ownership narrative, dated revenue/headcount, preferences and stable company context belong in the company Markdown file. Preserve source references and human markdown. Policy terms, private market activity, delivery state and access controls remain in their owning tables.
-- The former organization context fields and legal-entity notes are removed from structured storage. Their retained narrative lives in the company Markdown file; runtime consumers use the current profile/wiki contracts.
-- Company-file profile facts must contribute to legal entities as well as policy-derived facts. Source retraction must not erase human edits or facts still supported elsewhere. Keep extracted evidence distinct from effective editable values.
-- Operator tools expose the full effective client profile and legal entities, with omission preserving current values and explicit clearing honored. Validate industry membership and vertical pairing at the server boundary, not only in selects.
+- Organizations retain name, website, research state, and operational access/workflow fields. Company details—including legal names and relationships, industry, addresses, entity type, tax identifiers and operations—belong in company Markdown.
+- COIs and policy tools use policy evidence and policy-specific overrides for insured identity, address and operations. Company details never supply policy fallbacks.
+- Company-file extraction contributes source-owned prose. Preserve existing wiki text and source evidence; never infer subsidiaries from additional named insureds.
+- `update_organization_profile` edits only name and website. Company details use the existing whole-document wiki tools and approval boundary.
+- The user accepted deletion of old structured company values without a Markdown move. `migrations:removeStructuredCompanyDetails` clears the optional legacy fields. Narrow the compatibility schema only after the deletion has completed on deployed targets. This code change does not imply a production migration.
 
 ## Enforced intake research
 
 1. Normalize explicit identity and resolve existing clients before creating duplicates.
-2. Persist a research task as part of client creation, including operator, scan and ordinary onboarding entrypoints. Missing URL must not skip research. Document/email company-information completion can schedule research when the public identity or missing classification warrants it.
+2. Persist a research task as part of client creation, including operator, scan and ordinary onboarding entrypoints. Missing URL must not skip research. Document/email company-information completion can schedule research when the public identity or missing website warrants it.
 3. Search public identity terms through the existing router-owned retrieval primitive; identify the official site, then retrieve it. Never send private documents, tax identifiers or private emails as search terms. Retrieved content is untrusted evidence.
-4. Apply only supported public website/classification and durable wiki facts. Preserve saved/manual values; conflicting or ambiguous identities remain unresolved. An unavailable website, research failure, or no reliable match is a persisted outcome, not an invented value.
+4. Apply only supported public website and durable wiki facts. Preserve saved/manual values; conflicting or ambiguous identities remain unresolved. An unavailable website, research failure, or no reliable match is a persisted outcome, not an invented value.
 5. Use fingerprint-bound completion to reject stale callbacks, bounded abandoned-job retries, and idempotent scheduling. Store source URLs and unresolved field outcomes. Do not create age-based expiry for human review.
 6. Agents receive one shared destination/research policy and read current profile/wiki plus research status before claiming completion. Profile changes and wiki changes retain the existing exact approval boundary; the global Approve all setting retains its current semantics.
 
@@ -111,7 +109,7 @@ The audit covers 153 tables declared directly in schema.ts, the 12 local Workspa
 
 ## Validation and completion
 
-Use focused behavioral tests for identity splitting and legal entity preservation; classification pairs; explicit clears and concurrent edits; mandatory research without a URL; identity ambiguity/provider failure/stale callbacks; wiki markdown preservation and source ownership; preview/send equality; duplicate snapshot removal; bounded migration cursor/resume/idempotency; certificate renewal setting behavior; and tenant/operator authorization. Extend existing suites rather than snapshotting source or prompts.
+Use focused behavioral tests for policy-only certificate details; company-field deletion preserving wiki text; explicit clears and concurrent edits; mandatory research without a URL; identity ambiguity/provider failure/stale callbacks; wiki markdown preservation and source ownership; preview/send equality; duplicate snapshot removal; bounded migration cursor/resume/idempotency; certificate renewal setting behavior; and tenant/operator authorization. Extend existing suites rather than snapshotting source or prompts.
 
 Run Node 24, generated API/codegen, Next and Convex type checks, lint, root tests, build and worker/package checks required by `.github/workflows/deploy-convex.yml`. Review the complete diff for dead abstractions, casts and reader-facing copy before merging. Production is complete only after Convex deployment, exact-commit Railway deploy/no-op contexts, live compatibility audit, `release-ready-production`, and frontend availability. No live customer email/Slack/iMessage sends are needed for validation.
 

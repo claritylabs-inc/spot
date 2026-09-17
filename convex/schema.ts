@@ -491,6 +491,7 @@ export default defineSchema({
     website: v.optional(v.string()),
     companyResearch: v.optional(companyResearchValidator),
     smokeMarker: v.optional(v.string()),
+    // Legacy company facts: accepted for the deletion migration only; no active writers.
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
     mailingAddress: v.optional(orgMailingAddressValidator),
@@ -585,7 +586,6 @@ export default defineSchema({
     agentDisplayName: v.optional(v.string()),
   })
     .index("scan_contact", ["primaryContactEmail"])
-    .index("scan_address", ["mailingAddress.street1", "mailingAddress.zip"])
     .index("name", ["name"])
     .index("handle", ["agentHandle"])
     .index("type", ["type"])

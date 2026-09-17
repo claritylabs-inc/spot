@@ -28,6 +28,7 @@ import {
 } from "./lib/googleWorkspaceReconciliation";
 import {
   resolveScanOrganization,
+  scanOrganizationAddressEvidence,
   resolveScanTarget,
   writeScanDomain,
 } from "./lib/workspaceScanDomain";
@@ -134,19 +135,13 @@ async function assertPdfTarget(
   org: Doc<"organizations">,
 ) {
   const staged = await ctx.db.get(importId);
+  const addressEvidence = staged?.insuredAddress
+    ? await scanOrganizationAddressEvidence(ctx, org, staged.insuredAddress)
+    : null;
   if (
     !staged?.insuredName ||
     normalizedIdentity(staged.insuredName) !== normalizedIdentity(org.name) ||
-    (staged.insuredAddress &&
-      org.mailingAddress &&
-      Object.entries(staged.insuredAddress).some(
-        ([key, value]) =>
-          normalizedIdentity(value) !==
-          normalizedIdentity(
-            org.mailingAddress?.[key as keyof typeof staged.insuredAddress] ??
-              "",
-          ),
-      ))
+    (addressEvidence?.hasEvidence && !addressEvidence.matches)
   )
     throw new ScanAttention(
       "Original PDF insured does not match the current selected client",
@@ -853,7 +848,6 @@ export const getKnownContextInternal = internalQuery({
         id: org._id,
         name: org.name,
         type: org.type,
-        address: org.mailingAddress,
         contactEmail: org.primaryContactEmail,
         brokerProfile:
           org.type === "broker"
