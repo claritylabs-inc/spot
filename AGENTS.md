@@ -901,3 +901,11 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 - `OperatorAgentProvider` and `OperatorAgentPanel` start a fresh thread when the page agent panel opens or moves to another page; they never restore a persisted selection or automatically select recent history. Existing threads remain selectable explicitly. `operator-page-context.tsx` builds internal **Open with context** links from the Threads sidebar and full conversation page, using `agentThread` to select that exact conversation in the destination panel. Operator thread `initialContext.href` retains the starting page and tab as navigation metadata only; it grants no access. Older entity contexts resolve to supported client pages, with `operatorAgent.getThread` resolving procurement and policy ownership for their destination paths. Threads without a supported context omit the action.
 
 `components/ui/tag-remove-button.tsx` owns the small neutral × control for removable tags in broker token fields, prompt references, composer attachments, and operator page context. It provides an accessible name, keyboard focus, and disabled styling. Inline tag removal uses this native button, not `PillButton`, and is exempt from the destructive pill action rule. Record deletion and standalone actions retain `PillButton`.
+
+Operator agent replies use a quiet footer with collapsed automatic approvals on
+the left and Copy/Rerun icons on the right, styled like sender metadata.
+Pending approvals remain visible. The portal-only `operatorAgent.rerunTurn`
+starts a new chat turn from a finished, non-direct-tool run owned by the current
+operator, preserving original input, attachments, history, and prior-work context.
+The separate error-context option adds the saved failure and last tool name.
+Reruns reject active threads and never reuse approval records or execution state.

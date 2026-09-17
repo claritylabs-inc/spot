@@ -20,7 +20,7 @@ type PillButtonVariant =
   | "ghost"
   | "icon"
   | "iconLabel";
-type PillButtonSize = "default" | "compact" | "large";
+type PillButtonSize = "small" | "default" | "compact" | "large";
 
 type PillButtonContentProps =
   | {
@@ -131,18 +131,22 @@ const variantConfig: Record<PillButtonVariant, VariantConfig> = {
 };
 
 const sizeClasses: Record<PillButtonSize, string> = {
+  small: `h-6 px-2 gap-1 ${typeStyle("control.buttonCompact")}`,
   default: `h-8 px-5 gap-2 ${typeStyle("control.buttonCompact")}`,
   compact: `h-7 px-4 gap-1.5 ${typeStyle("control.buttonCompact")}`,
   large: `h-12 px-5 gap-2 ${typeStyle("control.button")}`,
 };
 
 const iconSizeClasses: Record<PillButtonSize, string> = {
+  small: "h-6 w-8 p-0",
   default: "h-8 w-8 p-0",
   compact: "h-7 w-10 p-0",
   large: "h-12 w-12 p-0",
 };
 
 const expandableIconSizeClasses: Record<PillButtonSize, string> = {
+  small:
+    "h-6 min-w-8 overflow-hidden px-2 focus-visible:px-3 [@media(hover:hover)_and_(pointer:fine)]:hover:px-3",
   default:
     "h-8 min-w-8 overflow-hidden px-2 focus-visible:px-5 focus-visible:duration-[280ms] [@media(hover:hover)_and_(pointer:fine)]:hover:px-5 [@media(hover:hover)_and_(pointer:fine)]:hover:duration-[280ms]",
   compact:
@@ -218,7 +222,8 @@ const PillButton = forwardRef<
         : isIcon
           ? iconSizeClasses[size]
           : sizeClasses[size],
-      roomyOnMobile && !inheritedSize &&
+      roomyOnMobile &&
+        !inheritedSize &&
         (isIcon ? "max-sm:h-9 max-sm:w-9" : "max-sm:h-9 max-sm:px-4"),
       className,
     );

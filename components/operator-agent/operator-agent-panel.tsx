@@ -13,7 +13,14 @@ import {
 } from "react";
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import {
+  Check,
+  Copy,
+  RotateCcw,
+  ChevronDown,
+  ChevronRight,
+  Plus,
+} from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -257,6 +264,128 @@ function ConfirmationArtifacts({
     ) : (
       <Fragment key={group[0].id}>{renderConfirmation(group[0])}</Fragment>
     ),
+  );
+}
+
+function OperatorMessageFooter({
+  message,
+  confirmations,
+  activeRun,
+  renderConfirmation,
+}: {
+  message: OperatorAgentMessage;
+  confirmations: OperatorAgentConfirmation[];
+  activeRun: boolean;
+  renderConfirmation: (confirmation: OperatorAgentConfirmation) => ReactNode;
+}) {
+  const rerunTurn = useMutation(operatorAgentApi.rerunTurn);
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const approved = confirmations.filter(isAutoApproved);
+  const disabled = busy || activeRun;
+  async function rerun(includeErrorContext: boolean) {
+    if (!message.rerun || pending.current || activeRun) return;
+    pending.current = true;
+    setBusy(true);
+    try {
+      await rerunTurn({ runId: message.rerun.runId, includeErrorContext });
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Could not rerun the turn"));
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+  const controlClass = "text-muted-foreground/50 hover:text-muted-foreground";
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          {approved.length > 0 ? (
+            <PillButton
+              variant="ghost"
+              size="small"
+              className={controlClass}
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              <ChevronRight className={cn("size-3", expanded && "rotate-90")} />
+              {approved.length} auto-approved
+            </PillButton>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1">
+          {message.content.trim() ? (
+            <PillButton
+              variant="icon"
+              size="small"
+              iconOnly
+              label={copied ? "Copied" : "Copy response"}
+              className={controlClass}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(message.content);
+                  setCopied(true);
+                } catch {
+                  toast.error("Could not copy response");
+                }
+              }}
+              onBlur={() => setCopied(false)}
+            >
+              {copied ? (
+                <Check className="size-3.5" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </PillButton>
+          ) : null}
+          {message.rerun ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={disabled}
+                render={
+                  <PillButton
+                    variant="icon"
+                    size="small"
+                    iconOnly
+                    label="Rerun options"
+                    disabled={disabled}
+                    className={controlClass}
+                  />
+                }
+              >
+                {busy ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <RotateCcw className="size-3.5" />
+                )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  disabled={disabled}
+                  onClick={() => void rerun(false)}
+                >
+                  Rerun
+                </DropdownMenuItem>
+                {message.rerun.withErrorContext ? (
+                  <DropdownMenuItem
+                    disabled={disabled}
+                    onClick={() => void rerun(true)}
+                  >
+                    Rerun with error context
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+      </div>
+      {expanded ? (
+        <div className="space-y-4">{approved.map(renderConfirmation)}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -550,8 +679,35 @@ function OperatorConversation({
                       }
                     />
                   )}
+                  {message.role === "assistant" &&
+                  message.status !== "processing" &&
+                  !message.isDirectToolRequest ? (
+                    <OperatorMessageFooter
+                      message={message}
+                      confirmations={confirmations}
+                      activeRun={detail.activeRun}
+                      renderConfirmation={(confirmation) => (
+                        <ConfirmationArtifact
+                          key={confirmation.id}
+                          confirmation={confirmation}
+                          busy={confirmationBusyId === confirmation.id}
+                          onDecision={(decision) =>
+                            onDecision(confirmation, decision)
+                          }
+                        />
+                      )}
+                    />
+                  ) : null}
                   <ConfirmationArtifacts
-                    confirmations={confirmations}
+                    confirmations={
+                      message.role === "assistant" &&
+                      message.status !== "processing" &&
+                      !message.isDirectToolRequest
+                        ? confirmations.filter(
+                            (confirmation) => !isAutoApproved(confirmation),
+                          )
+                        : confirmations
+                    }
                     renderConfirmation={(confirmation) => (
                       <div key={confirmation.id} className="w-full">
                         <ConfirmationArtifact
@@ -659,7 +815,13 @@ export function OperatorAgentPanel({
     params.delete("agentThread");
     const query = params.toString();
     return { ...context, href: `${pathname}${query ? `?${query}` : ""}` };
-  }, [fallbackPageContext, pathname, registeredPageContext, searchParams, variant]);
+  }, [
+    fallbackPageContext,
+    pathname,
+    registeredPageContext,
+    searchParams,
+    variant,
+  ]);
   const recentContextThreads = useMemo(
     () =>
       currentPageContext
