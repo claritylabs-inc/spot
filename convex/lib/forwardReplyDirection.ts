@@ -1,6 +1,12 @@
 "use node";
 
 import { z } from "zod";
+import { decideWithFallback } from "./decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "./domainDecisionQuestions";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { generateObjectForOrg } from "./models";
@@ -15,6 +21,54 @@ const ForwardReplyDecisionSchema = z.object({
 });
 
 export async function decideForwardReplyDirection(
+  ctx: ActionCtx,
+  args: {
+    orgId: Id<"organizations">;
+    currentText: string;
+    forwarderEmail: string;
+    parsedOriginalSender?: string;
+  },
+): Promise<ForwardReplyDirection | undefined> {
+  if (!args.parsedOriginalSender) return undefined;
+  const decision = await decideWithFallback<ForwardReplyDirection | null>({
+    ctx,
+    orgId: args.orgId,
+    family: "intent.forward_direction",
+    state: decisionState(args),
+    questions: {
+      target: choiceQuestion(
+        "Who does the forwarding user's current unquoted text explicitly direct Spot to answer?",
+        {
+          original_sender: {
+            meaning:
+              "Affirmative explicit reply/respond direction to the exact parsedOriginalSender, with no negation or ambiguity.",
+            address: args.parsedOriginalSender,
+          },
+          forwarder:
+            "No explicit direction to answer the original sender; forwarding, review requests and quoted headers do not authorize redirecting a reply.",
+        },
+      ),
+    },
+    accept: (answers) => {
+      const choice = acceptedChoice(answers.target, [
+        "original_sender",
+        "forwarder",
+      ]);
+      if (!choice) return undefined;
+      return choice.value === "original_sender"
+        ? {
+            target: "original_sender",
+            originalSender: args.parsedOriginalSender!.trim().toLowerCase(),
+          }
+        : null;
+    },
+    fallback: async () =>
+      (await reasonForwardReplyDirection(ctx, args)) ?? null,
+  });
+  return decision ?? undefined;
+}
+
+async function reasonForwardReplyDirection(
   ctx: ActionCtx,
   args: {
     orgId: Id<"organizations">;

@@ -6,6 +6,8 @@ import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { generateObjectForOrg } from "./models";
 import { normalizeExtractedString } from "./valueNormalization";
+import { decideWithFallback, decisionPolicyFromEnvironment } from "./decisions";
+import { prepareFieldReviewQuestions } from "./extractionFieldQuestions";
 
 type SourceLike = {
   id?: string;
@@ -698,13 +700,9 @@ ${JSON.stringify(evidence, null, 2)}`,
   };
 }
 
-export async function reviewExtractionFields(
+async function reviewExtractionFieldsWithReasoning(
   options: FieldReviewOptions,
 ): Promise<FieldReviewApplication> {
-  if (reviewMode() === "skip") {
-    return { document: options.document, applied: [], skipped: [], reviewedFieldCount: 0 };
-  }
-
   const reviews: ReviewResult[] = [];
   for (const group of FIELD_REVIEW_GROUPS) {
     try {
@@ -744,4 +742,64 @@ export async function reviewExtractionFields(
     );
   }
   return applied;
+}
+
+export async function reviewExtractionFields(
+  options: FieldReviewOptions,
+): Promise<FieldReviewApplication> {
+  if (reviewMode() === "skip") {
+    return {
+      document: options.document,
+      applied: [],
+      skipped: [],
+      reviewedFieldCount: 0,
+    };
+  }
+  const fallback = () => reviewExtractionFieldsWithReasoning(options);
+  const policy = decisionPolicyFromEnvironment();
+  const rule = policy.families?.["extraction.field_review"];
+  const mode = rule?.mode ?? policy.mode;
+  if (
+    mode === "legacy" ||
+    (mode === "active" && (!rule?.evaluationId || rule.threshold === undefined))
+  )
+    return fallback();
+  const groups = FIELD_REVIEW_GROUPS.filter((group) => {
+    const evidence = selectEvidenceForFieldGroup({ ...options, group });
+    // Financial and minimum-premium reconciliation also run in auto mode.
+    return group.id === "financial_terms"
+      ? financialEvidence(options.document, options.sourceSpans).length > 0
+      : shouldReviewGroup(options.document, group, evidence.length);
+  });
+  const plan = prepareFieldReviewQuestions({ ...options, groups });
+  if (!plan) return fallback();
+  return decideWithFallback({
+    ctx: options.ctx,
+    orgId: options.orgId,
+    family: "extraction.field_review",
+    state: plan.state,
+    questions: plan.questions,
+    requiredQuestionIds: plan.requiredQuestionIds,
+    accept: (answers) => {
+      const changes = plan.accept(answers);
+      if (!changes) return undefined;
+      const reviews: ReviewResult[] = groups.map((group) => ({
+        groupId: group.id,
+        reviewedFields: group.fields,
+        corrections: changes
+          .filter((change) => group.fields.includes(change.field))
+          .map((change) => ({
+            field: change.field,
+            value: change.value,
+            // This existing enum enables the apply guard only after the shared
+            // family threshold, raw .99 evidence floors and citation checks pass.
+            confidence: "high" as const,
+            evidenceQuote: change.evidenceQuote,
+            reason: `Selected explicit source evidence ${change.sourceId}.`,
+          })),
+      }));
+      return applyFieldReviewResults(options.document, reviews);
+    },
+    fallback,
+  });
 }

@@ -98,7 +98,8 @@ answers consumed by the selected branch.
 | Evidence review | `certificates.evidence_support`, `compliance.requirement_evidence`, `proposal.requirement_review` |
 | Retrieval and security | `retrieval.passage_ranking`, `security.prompt_injection` |
 | Policy intake | PDF reasoning retained; no active replacement |
-| Shared extraction SDK | `extraction.cleanup`, `extraction.recovery_regions`, `extraction.verify` |
+| Shared extraction SDK | `extraction.cleanup`, `extraction.recovery_regions`, `extraction.audit` |
+| Spot field correction | `extraction.field_review` |
 
 SDK query and application coordinators also expose their own gates, documented
 in the SDK's `DECISIONS.md`. Spot does not currently call those coordinators;
@@ -123,3 +124,75 @@ keeps its original meaning.
 The shared cascade imports `@claritylabs/cl-sdk/decisions`, whose published
 browser bundle contains only the dependency-free decision core. Convex shared
 modules must use this entry rather than the Node-oriented SDK root.
+
+## Bidirectional extraction audit
+
+`extraction.audit` replaces the earlier pre-cleanup `extraction.verify` pass.
+It requires its own evaluation; the old family's settings do not activate it.
+After extraction, cleanup, and recovery, the SDK checks meaningful scalar facts
+in the document and operational profile against source evidence, and checks
+every supplied source unit for facts missing from that projection. Support,
+contradiction, representability, and omission questions share bounded requests.
+Independent batches run with bounded concurrency; speculative questions only
+affect acceptance when their branch is consumed. Repairs require a fresh audit.
+Facts without their own citations remain explicitly uncited and require review
+against the complete supplied text. Invalid citation IDs cannot use this path;
+partial context remains unresolved. Audit receipts do not invent citations.
+
+Traversal counts are code-owned. Oversized or unreadable units, normalization
+gaps, missing evidence, unresolved cross-section context, exhausted budgets,
+and uncertain answers cannot count as verified. The report describes only
+provided source text; visual completeness is always `not_assessed`.
+
+Spot threads the worker report and original input spans through completion.
+`convex/lib/extractionEvidenceAudit.ts` validates exact source/result bindings,
+policy/evaluation versions, and the acceptance threshold before reuse. Changes
+from Spot normalization or postprocessing require a final-snapshot audit through
+the published SDK `/extraction-audit` entry. It does not replay extraction or
+business tools. The existing private `source_bundle` artifact stores the bounded
+report and its exact audited snapshot. Logs contain status and counts, not facts.
+
+A qualified active audit that remains unresolved, or lacks original input spans,
+blocks the completion preflight after the diagnostic is saved. Legacy and shadow
+retain their existing completion behavior. A successful text audit never bypasses
+the structural evidence ledger, current run/lease checks, section artifacts, or
+`promoteCompletedExtractionInternal`, the sole final-stage writer. Manual values
+and deterministic policy projections remain owned by their existing code. The
+original run and lease are pinned before asynchronous review and carried through
+artifact storage, logs, cleanup, and promotion; those mutations reject rollover
+atomically rather than adopting a replacement run.
+
+`extraction.field_review` batches Spot's existing field and financial-role review
+judgments over the same supplied document. Accepted changes still pass the
+registered-field application and numeric/date checks. Unsupported candidates,
+contradictions, missing context, or exceeded bounds retain the original reasoning
+review; clipped snippets cannot establish completeness. An absent optional field
+can remain absent only after a separate judgment finds no source-backed value or
+row to add. This branch never clears an existing value. The local .99 evidence
+floor is conservative configuration, not a calibrated quality result. Citation
+metadata remains unchanged; supplied span IDs are checked, while node IDs remain
+opaque without a source tree. Substantive values must still be literal candidates.
+For example, joined coverage `originalContent` that does not occur literally in
+the supplied text retains reasoning. Fixture acceptance does not establish how
+often real documents qualify.
+
+## Related judgments still using reasoning
+
+These are candidates for separate migrations, not active decision families or
+measured savings. Existing certificate, compliance-review, proposal, memory-fact,
+mailbox, identity-selection, and retrieval gates are already wired above.
+
+| Existing owner | Candidate judgment | Retained boundary |
+| --- | --- | --- |
+| `actions/policyExtraction.ts`, additional-insured augmentation | Explicit automatic/scheduled/endorsement-required status and relationships between known clauses | Novel entity/clause discovery, complete endorsement evidence, issuance and authorization |
+| `actions/complianceRequirements.ts` | Requirement/holder support, entity scope, conditions and omitted obligations | Untruncated source coverage, units, normalization and import authority |
+| `actions/companyInformationExtraction.ts` | Structured profile facts belong to the exact insured entity and current source | Manual overrides, source retraction, rich-input interpretation; existing memory gates cover narrative facts only |
+| `actions/extractSupplementary.ts` | Supplementary fact support, same-scope duplication, contradiction and omitted source facts | Novel discovery, original source hashes, authorized writes and indexing |
+
+Company industry and vertical also share known evidence and taxonomy branches;
+they can be speculatively batched while consuming only the selected industry's
+vertical. Known-record prioritization and reconciliation relevance can share
+their unchanged candidate context. Combining transport must preserve each
+family's independent threshold and evaluation. Retrieval that supplies new
+evidence and extraction that produces new candidate facts remain real
+dependencies and cannot be replaced by speculative answers about unseen data.

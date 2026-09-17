@@ -32,6 +32,16 @@ credentials. Tool decisions prepare real AI SDK steps and retain all existing
 registry and approval checks. See `docs/deployment/typed-decisions.md` for
 rollout controls and acceptance evidence.
 
+Extraction evidence judgments reuse the SDK `/extraction-audit` entry and
+`convex/lib/extractionEvidenceAudit.ts`; do not build a second traversal or
+promotion authority. Bind reports to exact source and final document/profile
+snapshots, preserve original input spans, and re-audit changed projections.
+Unresolved qualified active audits block completion preflight after their
+diagnostic is saved in the existing source bundle. Text audit success never
+establishes complete visual evidence. Field corrections reuse the existing
+`extractionFieldReview.ts` application boundary and its independently gated
+batched decision path.
+
 ## Rule
 
 All tables keep action buttons, action menus, edit controls, and dropzones out

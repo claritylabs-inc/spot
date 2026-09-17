@@ -1,6 +1,13 @@
 "use node";
 
 import { z } from "zod";
+import { boundedToolDispatch } from "./boundedToolDispatch";
+import { decideWithFallback } from "./decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "./domainDecisionQuestions";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import {
@@ -139,6 +146,41 @@ async function synthesizeCompletedToolResults(
 }
 
 async function requiresPolicyEvidence(ctx: ActionCtx, args: RunAgentTurnArgs) {
+  return decideWithFallback({
+    ctx,
+    orgId: args.orgId,
+    family: "intent.policy_evidence",
+    state: decisionState({
+      currentMessage: args.messageText,
+      recentConversation: args.recentConversationContext,
+      currentAttachments: args.currentAttachmentNames,
+    }),
+    questions: {
+      need: choiceQuestion(
+        "Does answering the current message require the organization's actual private policy facts? Use recent conversation only to resolve follow-ups.",
+        {
+          required:
+            "An informational answer needs actual coverage, limits, dates, carriers, insured parties, wording, exclusions, or comparisons. Mixed generic and actual-policy questions need evidence.",
+          not_required:
+            "General explanations, greetings, capability questions, answers fully contained in current attachments, or action workflows with their own evidence gates.",
+        },
+      ),
+    },
+    accept: (answers) => {
+      const selected = acceptedChoice(answers.need, [
+        "required",
+        "not_required",
+      ]);
+      return selected ? selected.value === "required" : undefined;
+    },
+    fallback: () => requiresPolicyEvidenceWithReasoning(ctx, args),
+  });
+}
+
+async function requiresPolicyEvidenceWithReasoning(
+  ctx: ActionCtx,
+  args: RunAgentTurnArgs,
+) {
   try {
     const result = await generateObjectForOrg(
       ctx,
@@ -177,7 +219,19 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
     ctx,
     args.orgId,
     args.task,
-    args.options,
+    {
+      ...args.options,
+      ...boundedToolDispatch({
+        ctx,
+        orgId: args.orgId,
+        tools: args.options.tools,
+        system: args.options.system,
+        abortSignal: args.options.abortSignal,
+        prepareStep: args.options.prepareStep,
+        toolChoice: args.options.toolChoice,
+        activeTools: args.options.activeTools,
+      }),
+    },
     args.run,
   );
   const audit = filterAudit(collectToolAudit(result), args.auditExcludedTools);
@@ -222,7 +276,12 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
         tools: recoveryTools,
         prepareStep: ({ stepNumber }) =>
           stepNumber === 0
-            ? { toolChoice: { type: "tool" as const, toolName: firstEvidenceTool } }
+            ? {
+                toolChoice: {
+                  type: "tool" as const,
+                  toolName: firstEvidenceTool,
+                },
+              }
             : undefined,
       },
       {

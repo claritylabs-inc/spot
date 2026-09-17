@@ -2454,6 +2454,8 @@ async function completeJob(
     sourceTree: resultSourceTree,
     operationalProfile: result.operationalProfile,
     coverageRecovery: result.coverageRecovery,
+    evidenceAudit: result.evidenceAudit,
+    originalSourceSpans: rawSourceSpans,
     warnings: result.warnings ?? [],
     tokenUsage: result.tokenUsage,
     performanceReport: result.performanceReport
