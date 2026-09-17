@@ -66,6 +66,11 @@ import {
   type SourceSpanLike,
 } from "../lib/sourceTree";
 import { z } from "zod";
+import {
+  additionalInsuredEligibilitySchema,
+  decideAdditionalInsuredEligibility,
+  type AdditionalInsuredEligibility,
+} from "../lib/additionalInsuredDecisions";
 
 const CANCELLED_BY_USER = "Cancelled by user";
 const ADVANCE_LEASE_MS = 2 * 60 * 1000;
@@ -1050,50 +1055,6 @@ const extractionGateSchema = z.object({
 
 type ExtractionGateDecision = z.infer<typeof extractionGateSchema>;
 
-const additionalInsuredEligibilityTermSchema = z.object({
-  category: z.string(),
-  condition: z.string(),
-  summary: z.string(),
-  sourceNodeIds: z.array(z.string()),
-  sourceSpanIds: z.array(z.string()),
-});
-
-const scheduledAdditionalInsuredSchema = z.object({
-  name: z.string(),
-  scope: z.string(),
-  endorsementTitle: z.string().nullable(),
-  sourceNodeIds: z.array(z.string()),
-  sourceSpanIds: z.array(z.string()),
-});
-
-const namedAdditionalInsuredSchema = z.object({
-  name: z.string(),
-  status: z.enum([
-    "scheduled_by_endorsement",
-    "automatic_class",
-    "review_required",
-  ]),
-  scope: z.string(),
-  endorsementTitle: z.string().nullable(),
-  sourceNodeIds: z.array(z.string()),
-  sourceSpanIds: z.array(z.string()),
-});
-
-const additionalInsuredEligibilitySchema = z.object({
-  withoutEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(12),
-  requiresEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(12),
-  reviewRequired: z.array(additionalInsuredEligibilityTermSchema).max(8),
-  scheduledAdditionalInsureds: z
-    .array(scheduledAdditionalInsuredSchema)
-    .max(40),
-  additionalInsureds: z.array(namedAdditionalInsuredSchema).max(60),
-  overallSummary: z.string(),
-});
-
-type AdditionalInsuredEligibility = z.infer<
-  typeof additionalInsuredEligibilitySchema
->;
-
 type OperationalProfileWithEligibility = PolicyOperationalProfile & {
   additionalInsuredEligibility?: AdditionalInsuredEligibility;
   additionalInsureds?: AdditionalInsuredEligibility["additionalInsureds"];
@@ -1321,19 +1282,18 @@ function validateAdditionalInsuredEligibility(
   };
 }
 
-async function extractAdditionalInsuredEligibility(params: {
+export async function extractAdditionalInsuredEligibility(params: {
   ctx: ActionCtx;
   orgId: Id<"organizations">;
   traceId?: string;
   policyId: string;
   sourceTree: DocumentSourceNode[];
+  sourceSpans?: SourceSpanLike[];
+  abortSignal?: AbortSignal;
   profile: PolicyOperationalProfile;
   log?: (message: string, level?: PipelineLogLevel) => Promise<void>;
 }): Promise<PolicyOperationalProfile> {
-  const excerpt = additionalInsuredEligibilityExcerpt(params.sourceTree);
-  if (excerpt.count === 0) {
-    return params.profile;
-  }
+  params.abortSignal?.throwIfAborted();
   const generateEligibilityObject = makeGenerateObject("extraction", {
     ctx: params.ctx,
     orgId: params.orgId,
@@ -1341,10 +1301,16 @@ async function extractAdditionalInsuredEligibility(params: {
     tracePolicyId: params.policyId,
   });
   try {
-    const result = await generateEligibilityObject({
-      schema: additionalInsuredEligibilitySchema,
-      maxTokens: 2200,
-      system: `You extract additional-insured certificate eligibility from insurance policy source nodes.
+    const result = await decideAdditionalInsuredEligibility({
+      ...params,
+      fallback: async () => {
+        params.abortSignal?.throwIfAborted();
+        const excerpt = additionalInsuredEligibilityExcerpt(params.sourceTree);
+        if (excerpt.count === 0) return undefined;
+        const result = await generateEligibilityObject({
+          schema: additionalInsuredEligibilitySchema,
+          maxTokens: 2200,
+          system: `You extract additional-insured certificate eligibility from insurance policy source nodes.
 
 Rules:
 - Separate classes that can be treated as additional insureds without a new endorsement from classes that require a scheduled/additional endorsement.
@@ -1356,7 +1322,7 @@ Rules:
 - Do not decide whether a specific certificate holder qualifies unless the wording identifies that class.
 - Use only sourceNodeIds supplied in the evidence. Do not invent IDs.
 - Keep categories short and operational, suitable for COI gating.`,
-      prompt: `Extract additional insured eligibility from these source nodes.
+          prompt: `Extract additional insured eligibility from these source nodes.
 
 Return:
 - withoutEndorsement: each automatic class and its conditions.
@@ -1368,9 +1334,15 @@ Return:
 
 Evidence:
 ${excerpt.text}`,
+        });
+        params.abortSignal?.throwIfAborted();
+        return result.object as AdditionalInsuredEligibility;
+      },
     });
+    params.abortSignal?.throwIfAborted();
+    if (!result) return params.profile;
     const eligibility = validateAdditionalInsuredEligibility(
-      result.object as AdditionalInsuredEligibility,
+      result,
       params.sourceTree,
     );
     if (
@@ -1392,6 +1364,7 @@ ${excerpt.text}`,
       additionalInsureds: eligibility.additionalInsureds,
     } as OperationalProfileWithEligibility;
   } catch (error) {
+    params.abortSignal?.throwIfAborted();
     await params.log?.(
       `Additional insured eligibility extraction skipped: ${error instanceof Error ? error.message : String(error)}`,
       "warn",
@@ -1960,6 +1933,7 @@ export function makePhases(
         traceId: state.traceId,
         policyId,
         sourceTree: sourceNodes,
+        sourceSpans: canonicalSpans,
         profile: normalizedOperationalProfile,
         log: async (message, level) => {
           await pCtx.log(message, level);
