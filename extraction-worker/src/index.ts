@@ -1,3 +1,4 @@
+import extractionDecisionPolicy from "./decisionPolicy.json" with { type: "json" };
 import dayjs from "dayjs";
 import { createRequire } from "module";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
@@ -7,7 +8,6 @@ import { makeFunctionReference } from "convex/server";
 import {
   ACORD_LOB_CODES,
   createExtractor,
-  parseDecisionPolicy,
   resolveAcordCoverageCode,
   stableHash,
   toLobCodes,
@@ -531,15 +531,6 @@ const CL_ROUTER_TIMEOUT_MS = readBoundedIntEnv(
 const CL_ROUTER_TENANT_ID = requiredEnv("CL_ROUTER_TENANT_ID").trim();
 if (CL_ROUTER_TENANT_ID !== "glass") {
   throw new Error("CL_ROUTER_TENANT_ID must be glass");
-}
-function workerDecisionPolicy() {
-  try {
-    return parseDecisionPolicy(
-      JSON.parse(process.env.SPOT_DECISION_POLICY ?? '{"mode":"legacy"}'),
-    );
-  } catch {
-    return { mode: "legacy" as const };
-  }
 }
 
 const clRouter = createClRouterClient({
@@ -1547,7 +1538,7 @@ function buildWorkerExtractor(opts: {
         });
         return response;
       },
-      decisionPolicy: workerDecisionPolicy(),
+      decisionPolicy: { ...extractionDecisionPolicy, mode: "active" },
       onDecision: (event) => {
         const { response, ...outcome } = event;
         console.info(

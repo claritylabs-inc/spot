@@ -2,6 +2,8 @@
 
 This reference lists the tools that Spot exposes to its operator agent, tenant-facing conversational agent, internal agent subagents, and OAuth MCP clients. It describes the current executable catalogs; it does not include deterministic controls, ordinary Convex functions, REST routes, or browser actions that are not model-callable or MCP-callable tools.
 
+Company-profile and wiki updates are intentional tool writes: operator `update_organization_profile` and `update_client_wiki` retain their existing authorization and exact approval; tenant `save_note` requires an explicit user request to add or remember a fact. Uploading a file, receiving procurement email or scanning a connected mailbox no longer starts general company-information extraction. Historical contributions and policy-derived profiles remain. No agent tool was added or removed for this change. The operator portal standalone supplementary-facts rerun is retired; existing facts remain searchable.
+
 ## Operator approval policy
 
 Operator Settings (`/operator/settings`) owns one global **Approve all** switch,
@@ -22,20 +24,20 @@ manual mode; the global switch can satisfy that gate automatically.
 
 ## Bounded decision dispatch
 
-Policy extraction can run a separately qualified batched evidence audit after
+Policy extraction runs a batched evidence audit after
 cleanup and recovery. It verifies provided text in both directions and retains
-the exact audited snapshot in existing private artifacts. Unresolved active
+the exact audited snapshot in existing private artifacts. Unresolved
 audits block completion preflight; source coverage, leases, authorization, and
 the existing promotion mutation remain authoritative. Visual completeness is
 not inferred. No audit or field-review tool is added to the model-callable
 catalog, and none of these judgments grants permission to issue or send.
 
-The optional typed decision layer can select an available tool and bounded
+The typed decision layer runs by default and can select an available tool and bounded
 arguments before a real AI SDK step. It uses the same operator and tenant
 catalogs listed here, and grants no additional tools or authority. Execution
 still validates arguments and runs the existing preflight, approval,
 idempotency, cancellation, and audit paths. Ambiguous selections, free-form
-arguments, and unqualified decision families retain reasoning dispatch. The
+arguments, and unsupported evidence retain reasoning dispatch. The
 operator's selected reasoning model remains pinned. No decision endpoint is
 exposed as a new operator or tenant MCP tool.
 
@@ -241,7 +243,7 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `lookup_vendor_policies`         | List policies for a connected vendor.                                              | All channels.                                                                   |
 | `lookup_vendor_compliance`       | Retrieve requirement-by-requirement vendor compliance.                             | All channels.                                                                   |
 | `lookup_policy_section`          | Search source-native policy hierarchy and exact PDF evidence.                      | All channels; final policies only.                                              |
-| `save_note`                      | Add an explicit stable company fact to the shared company Markdown file.                     | All channels; write permission required.                                        |
+| `save_note`                      | Add an explicit stable company fact to the shared company Markdown file.                     | All channels; explicit user request and write permission required.                                        |
 | `attach_policy_document`         | Attach the original full policy PDF to the response.                               | All channels; final readable policy and stored PDF required.                    |
 | `confirm_policy_fact`            | Confirm a source-backed policy fact and optionally patch allowed top-level fields. | All channels; final writable policy and exact source spans required.            |
 | `generate_coi`                   | Generate or reuse certificates from a policy or requirements source.               | All channels; write permission and final supporting policies required.          |

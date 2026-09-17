@@ -433,7 +433,6 @@ export const connect = action({
       v.object({
         policyImports: v.boolean(),
         requirementImports: v.boolean(),
-        companyMemory: v.boolean(),
       }),
     ),
   },

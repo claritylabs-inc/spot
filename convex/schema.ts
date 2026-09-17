@@ -127,7 +127,7 @@ const notificationChannelValidator = v.union(
 const connectedEmailAutomationValidator = v.object({
   policyImports: v.boolean(),
   requirementImports: v.boolean(),
-  companyMemory: v.boolean(),
+  companyMemory: v.optional(v.boolean()),
 });
 
 const publicDemoChannelValidator = v.union(

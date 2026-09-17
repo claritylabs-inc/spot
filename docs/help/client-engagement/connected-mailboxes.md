@@ -27,7 +27,7 @@ ask the tenant administrator or Spot support about the available integration.
 5. Choose who can use the live connection:
    - **Just me**; or
    - **Everyone in the organization**.
-6. Review the three proactive-monitoring choices.
+6. Review the two proactive-monitoring choices.
 7. Save and wait for the connection test to succeed.
 
 Only an administrator can make a mailbox available to the whole organization.
@@ -42,24 +42,26 @@ Mailbox scope and imported workspace data are intentionally different:
   mailbox.
 - **Everyone in the organization** lets organization members use the live
   mailbox through Spot, subject to their normal workspace permissions.
-- A policy, requirement, attachment, or company fact imported from either kind
+- A policy, requirement, or attachment imported from either kind
   of mailbox becomes workspace data visible to the organization.
 
 Do not import an item if it should remain only in the personal mailbox.
 
 ## Proactive monitoring
 
-New connections offer three monitoring categories and enable them by default:
+New connections offer two monitoring categories and enable them by default:
 
 | Category                   | What Spot looks for                                            |
 | -------------------------- | --------------------------------------------------------------- |
 | **Policy documents**       | Insurance policies and supporting documents suitable for import |
 | **Insurance requirements** | Requests from clients, lenders, landlords, and investors        |
-| **Company context**        | Durable company facts useful for advice and servicing           |
 
 The scanner keeps cursor and outcome metadata and saves only selected first-class
 artifacts. Raw mailbox bodies remain in the mailbox unless a user asks Spot to
-read them live or an attachment or fact is deliberately imported.
+read them live or an attachment is deliberately imported.
+
+Mailbox monitoring does not add company facts to the profile or wiki. Ask Spot
+explicitly to add or remember a specific detail when you want it saved.
 
 Older connections may show **Alerts only** or **Monitoring off** until an owner
 reviews and saves their automation settings.

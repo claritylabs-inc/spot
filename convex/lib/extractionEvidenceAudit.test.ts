@@ -20,7 +20,7 @@ vi.mock("@claritylabs/cl-sdk/extraction-audit", () => ({
   validateExtractionAuditBinding: mocks.binding,
 }));
 vi.mock("./decisions", () => ({
-  decisionPolicyFromEnvironment: mocks.policy,
+  decisionPolicy: mocks.policy,
   logDecisionEvent: vi.fn(),
 }));
 vi.mock("./sdkCallbacks", () => ({ makeDecide: () => mocks.decide }));
@@ -89,33 +89,15 @@ test("raising the acceptance threshold cannot inherit a previous pass", async ()
   expect(mocks.audit).toHaveBeenCalledOnce();
 });
 
-test("legacy and unqualified active modes preserve the existing completion path", async () => {
-  for (const mode of ["legacy", "active"]) {
-    mocks.policy.mockReturnValue({ mode });
-    const result = await resolveExtractionEvidenceAudit(args);
-    expect(result).toEqual({ required: false });
-    expect(() => requireResolvedExtractionAudit(result)).not.toThrow();
-  }
-  expect(mocks.audit).not.toHaveBeenCalled();
-});
-
-test("unresolved qualified active evidence blocks promotion while shadow cannot block it", async () => {
-  const unresolved = { ...report, status: "unresolved" };
-  const active = await resolveExtractionEvidenceAudit({
+test("unresolved evidence always blocks promotion", async () => {
+  const result = await resolveExtractionEvidenceAudit({
     ...args,
-    previous: unresolved,
+    previous: { ...report, status: "unresolved" },
   });
-  expect(() => requireResolvedExtractionAudit(active)).toThrow(
+  expect(result.required).toBe(true);
+  expect(() => requireResolvedExtractionAudit(result)).toThrow(
     "requires review",
   );
-  mocks.policy.mockReturnValue({ ...policy, mode: "shadow" });
-  mocks.audit.mockResolvedValue({
-    ...binding,
-    audit: { ...unresolved, status: "shadow" },
-  });
-  const shadow = await resolveExtractionEvidenceAudit(args);
-  expect(shadow.required).toBe(false);
-  expect(() => requireResolvedExtractionAudit(shadow)).not.toThrow();
 });
 
 test("cancellation prevents a new audit and malformed reports never authorize promotion", async () => {
@@ -134,17 +116,11 @@ test("cancellation prevents a new audit and malformed reports never authorize pr
   );
 });
 
-test("a shadow audit failure cannot change completion behavior", async () => {
-  mocks.policy.mockReturnValue({ ...policy, mode: "shadow" });
+test("audit failure cannot silently bypass verification", async () => {
   mocks.audit.mockRejectedValue(new Error("audit unavailable"));
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  try {
-    expect(
-      await resolveExtractionEvidenceAudit({ ...args, previous: undefined }),
-    ).toEqual({ required: false });
-  } finally {
-    warn.mockRestore();
-  }
+  await expect(
+    resolveExtractionEvidenceAudit({ ...args, previous: undefined }),
+  ).rejects.toThrow("audit unavailable");
 });
 
 test("a text pass cannot promote when the original input units are unavailable", async () => {

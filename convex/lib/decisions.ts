@@ -1,7 +1,6 @@
 "use node";
 
 import {
-  parseDecisionPolicy,
   runDecision,
   type DecisionEvent,
   type DecisionPolicy,
@@ -15,6 +14,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { ClRouterTraceMetadata } from "./clRouterClient";
 import { makeDecide } from "./sdkCallbacks";
+import extractionPolicy from "../../extraction-worker/src/decisionPolicy.json";
 
 export type {
   DecisionAnswer,
@@ -23,17 +23,27 @@ export type {
   JsonValue,
 } from "@claritylabs/cl-router-policy";
 
-export function decisionPolicyFromEnvironment(
-  environment: Readonly<Record<string, string | undefined>> = process.env,
-): DecisionPolicy {
-  const configured = environment.SPOT_DECISION_POLICY;
-  if (!configured) return { mode: "legacy" };
-  try {
-    return parseDecisionPolicy(JSON.parse(configured));
-  } catch {
-    // Invalid rollout configuration must preserve the established reasoning path.
-    return { mode: "legacy" };
-  }
+/** Fixed SDK compatibility settings, not rollout controls or evaluation evidence. */
+export function decisionPolicy(family?: string): DecisionPolicy {
+  return {
+    ...extractionPolicy,
+    mode: "active",
+    families: {
+      ...extractionPolicy.families,
+      ...(family
+        ? {
+            [family]: Object.prototype.hasOwnProperty.call(
+              extractionPolicy.families,
+              family,
+            )
+              ? extractionPolicy.families[
+                  family as keyof typeof extractionPolicy.families
+                ]
+              : extractionPolicy.families["extraction.cleanup"],
+          }
+        : {}),
+    },
+  };
 }
 
 export async function decideWithFallback<T>(options: {
@@ -72,7 +82,7 @@ export async function decideWithFallback<T>(options: {
           ...(options.trace?.channel ? { channel: options.trace.channel } : {}),
         },
       }),
-    policy: decisionPolicyFromEnvironment(),
+    policy: decisionPolicy(options.family),
     family: options.family,
     state: options.state,
     questions: options.questions,

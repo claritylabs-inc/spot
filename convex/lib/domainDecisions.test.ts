@@ -16,7 +16,6 @@ import { decideCertificateEvidence } from "./certificateDecisions";
 import { decideProposalReview } from "./proposalDecisions";
 import { decideMailboxBatch } from "./mailboxDecisions";
 import {
-  hasDurableCompanyFacts,
   reviewCompanyFacts,
 } from "./companyMemoryDecisions";
 
@@ -296,7 +295,6 @@ test("multi-PDF policy packages require reasoning rather than guessed grouping",
         automation: {
           policyImports: true,
           requirementImports: false,
-          companyMemory: false,
         },
         alertOnly: false,
       },
@@ -342,15 +340,7 @@ test("memory judgments preserve narrative provenance and escalate uncertain supp
       facts,
     ),
   ).toEqual([]);
-  mock.answers = { presence: choice("no") };
-  expect(
-    await hasDurableCompanyFacts(
-      ctx,
-      orgId,
-      "Acme",
-      "Please send a certificate",
-    ),
-  ).toBe(false);
+
 });
 
 test("only selected branches gate mailbox, memory and dispatch confidence", async () => {
@@ -365,7 +355,6 @@ test("only selected branches gate mailbox, memory and dispatch confidence", asyn
       automation: {
         policyImports: true,
         requirementImports: true,
-        companyMemory: true,
       },
       alertOnly: false,
     },

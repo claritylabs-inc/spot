@@ -184,32 +184,13 @@ test("copies an exact source candidate and uses existing date normalization", as
 });
 
 test.each(["legacy", "shadow", "active-without-family"])(
-  "%s retains original reasoning",
+  "%s cannot disable field decisions",
   async (mode) => {
-    configure(
-      mode === "active-without-family" ? "active" : mode,
-      mode !== "active-without-family",
-    );
-    mocks.generate.mockResolvedValue({
-      output: {
-        corrections: [
-          {
-            field: "policyNumber",
-            valueString: "Reasoned P-123",
-            valueNumber: null,
-            valueBoolean: null,
-            valueRows: null,
-            confidence: "high",
-            reason: "Original reasoning",
-            evidenceQuote: "Policy number: P-123",
-          },
-        ],
-      },
-    });
+    configure(mode === "active-without-family" ? "active" : mode, false);
     const result = await reviewExtractionFields(options());
-    expect(result.document.policyNumber).toBe("Reasoned P-123");
-    expect(mocks.generate).toHaveBeenCalledOnce();
-    expect(mocks.decide).toHaveBeenCalledTimes(mode === "shadow" ? 1 : 0);
+    expect(result.document).toEqual(identity);
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.decide).toHaveBeenCalledOnce();
   },
 );
 
@@ -349,7 +330,9 @@ test("a populated full declarations fixture accepts all 23 fields in one bounded
   mocks.decide.mockImplementation(async (request: Request) =>
     respond(request, moneyAnswers(request)),
   );
-  const result = await reviewExtractionFields(options(fullDocument, fullSources));
+  const result = await reviewExtractionFields(
+    options(fullDocument, fullSources),
+  );
   expect(mocks.decide).toHaveBeenCalledOnce();
   expect(mocks.generate).not.toHaveBeenCalled();
   expect(result.reviewedFieldCount).toBe(23);
@@ -362,8 +345,9 @@ test("a populated full declarations fixture accepts all 23 fields in one bounded
   const candidates = (request.state as unknown as State).candidates;
   expect(candidates).toHaveLength(40);
   expect(Object.keys(request.questions)).toHaveLength(110);
-  expect(Object.keys(request.questions).filter((id) => id.startsWith("select_")))
-    .toHaveLength(23);
+  expect(
+    Object.keys(request.questions).filter((id) => id.startsWith("select_")),
+  ).toHaveLength(23);
   expect(Buffer.byteLength(JSON.stringify(request))).toBeLessThan(256_000);
   expect(request.questions.select_policyNumber).toBeDefined();
   expect(request.questions.select_paymentPlan).toBeDefined();
@@ -376,7 +360,10 @@ function absentAnswers(request: Request) {
     if (id.startsWith("omission_")) {
       const field = id.slice("omission_".length);
       answers[id] = { type: "noul", noul: 0 };
-      answers[`select_${field}`] = choice(request.questions[`select_${field}`], "keep_absent");
+      answers[`select_${field}`] = choice(
+        request.questions[`select_${field}`],
+        "keep_absent",
+      );
       // Unused current-value support must not prevent a supported absence.
       answers[`support_${field}`] = { type: "noul", noul: 0.5 };
     } else if (id.startsWith("role_")) {
@@ -390,12 +377,14 @@ function absentAnswers(request: Request) {
 // originalContent is deliberately retained as substantive context, not skipped.
 const provenanceDocument = {
   ...fullDocument,
-  coverages: [{
-    name: "Professional liability",
-    originalContent: "Professional liability",
-    sourceSpanIds: [coverageSource.id],
-    documentNodeId: "coverage-node",
-  }],
+  coverages: [
+    {
+      name: "Professional liability",
+      originalContent: "Professional liability",
+      sourceSpanIds: [coverageSource.id],
+      documentNodeId: "coverage-node",
+    },
+  ],
   premiumBreakdown: financial.premiumBreakdown.map((row) => ({
     ...row,
     sourceSpanIds: [financialSource.id],
@@ -409,27 +398,49 @@ const provenanceDocument = {
 };
 
 test("materialized provenance-bearing rows keep citations intact in the all-groups batch", async () => {
-  mocks.decide.mockImplementation(async (request: Request) => respond(request, moneyAnswers(request)));
-  const result = await reviewExtractionFields(options(provenanceDocument, fullSources));
+  mocks.decide.mockImplementation(async (request: Request) =>
+    respond(request, moneyAnswers(request)),
+  );
+  const result = await reviewExtractionFields(
+    options(provenanceDocument, fullSources),
+  );
   expect(mocks.decide).toHaveBeenCalledOnce();
   expect(mocks.generate).not.toHaveBeenCalled();
   expect(result.reviewedFieldCount).toBe(23);
   const request = mocks.decide.mock.calls[0][0] as Request;
-  for (const field of ["coverages", "premiumBreakdown", "taxesAndFees"] as const) {
+  for (const field of [
+    "coverages",
+    "premiumBreakdown",
+    "taxesAndFees",
+  ] as const) {
     expect(result.document[field]).toEqual(provenanceDocument[field]);
-    expect((request.state as unknown as { current: Record<string, unknown> }).current[field])
-      .toEqual(provenanceDocument[field]);
+    expect(
+      (request.state as unknown as { current: Record<string, unknown> })
+        .current[field],
+    ).toEqual(provenanceDocument[field]);
   }
-  expect(request.state).toHaveProperty("provenanceScope", expect.stringContaining("node validity is not assessed"));
+  expect(request.state).toHaveProperty(
+    "provenanceScope",
+    expect.stringContaining("node validity is not assessed"),
+  );
 });
 
-test.each(["missing_span", "malformed_spans", "malformed_node", "unknown_code", "unknown_role", "unknown_value", "compound_original_content"])(
+test.each([
+  "missing_span",
+  "malformed_spans",
+  "malformed_node",
+  "unknown_code",
+  "unknown_role",
+  "unknown_value",
+  "compound_original_content",
+])(
   "%s in a materialized row retains reasoning instead of ignoring semantic content",
   async (condition) => {
     const row: Record<string, unknown> = { ...provenanceDocument.coverages[0] };
     if (condition === "missing_span") row.sourceSpanIds = ["not-supplied"];
     if (condition === "malformed_spans") row.sourceSpanIds = coverageSource.id;
-    if (condition === "malformed_node") row.documentNodeId = { name: "not-an-id" };
+    if (condition === "malformed_node")
+      row.documentNodeId = { name: "not-an-id" };
     if (condition === "unknown_code") row.coverageCode = "UNSUPPORTED_CODE";
     if (condition === "unknown_role") row.role = "excluded";
     if (condition === "unknown_value") row.limit = "$9,000,000";
@@ -461,21 +472,33 @@ const ordinarySources = [
 ];
 
 test("ordinary full declarations with absent optional terms uses one all-groups decision", async () => {
-  mocks.decide.mockImplementation(async (request: Request) => respond(request, absentAnswers(request)));
-  const result = await reviewExtractionFields(options(ordinaryDocument, ordinarySources));
+  mocks.decide.mockImplementation(async (request: Request) =>
+    respond(request, absentAnswers(request)),
+  );
+  const result = await reviewExtractionFields(
+    options(ordinaryDocument, ordinarySources),
+  );
   expect(mocks.decide).toHaveBeenCalledOnce();
   expect(mocks.generate).not.toHaveBeenCalled();
   expect(result.reviewedFieldCount).toBe(23);
   expect(result.document).toEqual(ordinaryDocument);
   expect(result.applied).toEqual([]);
   const request = mocks.decide.mock.calls[0][0] as Request;
-  expect(Object.keys(request.questions).filter((id) => id.startsWith("omission_"))).toHaveLength(7);
+  expect(
+    Object.keys(request.questions).filter((id) => id.startsWith("omission_")),
+  ).toHaveLength(7);
   expect((request.state as unknown as State).candidates).toHaveLength(30);
   expect(Object.keys(request.questions)).toHaveLength(107);
   expect(Object.keys(request.questions).length).toBeLessThanOrEqual(128);
 });
 
-test.each(["premiumBreakdown", "taxesAndFees", "paymentPlan", "minimumPremium", "depositPremium"])(
+test.each([
+  "premiumBreakdown",
+  "taxesAndFees",
+  "paymentPlan",
+  "minimumPremium",
+  "depositPremium",
+])(
   "an omitted source-supported %s value/row sends the full batch to reasoning",
   async (field) => {
     const document: Record<string, unknown> = { ...fullDocument };
@@ -495,20 +518,32 @@ test.each(["premiumBreakdown", "taxesAndFees", "paymentPlan", "minimumPremium", 
   },
 );
 
-test.each(["uncertain_omission", "missing_context", "invented_absence", "partial_money", "shadow"])(
+test.each([
+  "uncertain_omission",
+  "missing_context",
+  "invented_absence",
+  "partial_money",
+])(
   "%s cannot turn supported absence into an unchecked change",
   async (condition) => {
     const document: Record<string, unknown> = { ...ordinaryDocument };
     if (condition === "partial_money") document.depositPremiumAmount = 12_000;
-    if (condition === "shadow") configure("shadow");
     mocks.decide.mockImplementation(async (request: Request) => {
       const answers = absentAnswers(request);
-      if (condition === "uncertain_omission") answers.omission_taxesAndFees = { type: "noul", noul: 0.5 };
-      if (condition === "missing_context") answers.context = { type: "noul", noul: 0 };
-      if (condition === "invented_absence") answers.select_premium = choice(request.questions.select_premium, "keep_absent");
+      if (condition === "uncertain_omission")
+        answers.omission_taxesAndFees = { type: "noul", noul: 0.5 };
+      if (condition === "missing_context")
+        answers.context = { type: "noul", noul: 0 };
+      if (condition === "invented_absence")
+        answers.select_premium = choice(
+          request.questions.select_premium,
+          "keep_absent",
+        );
       return respond(request, answers);
     });
-    const result = await reviewExtractionFields(options(document, ordinarySources));
+    const result = await reviewExtractionFields(
+      options(document, ordinarySources),
+    );
     expect(mocks.decide).toHaveBeenCalledOnce();
     expect(mocks.generate).toHaveBeenCalledTimes(5);
     expect(result.document).toEqual(document);
@@ -762,7 +797,7 @@ test("source instructions cannot expand the allowed corrections", async () => {
   expect(mocks.generate).toHaveBeenCalledOnce();
 });
 
-test("explicit abstention and shadow provider failure preserve authoritative reasoning output", async () => {
+test("explicit abstention and provider failure preserve authoritative reasoning output", async () => {
   mocks.decide.mockImplementation(async (request: Request) => {
     const answers = answersFor(request);
     answers.select_policyNumber = choice(

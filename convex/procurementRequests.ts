@@ -46,10 +46,6 @@ import {
   throwUserFacingError,
   userFacingErrorCodes,
 } from "./lib/userFacingErrors";
-import {
-  scheduleClientFileCompanyInformation,
-  scheduleEmailThreadCompanyInformation,
-} from "./companyInformation";
 
 const MAX_REQUESTS = 100;
 const MAX_EMAIL_THREADS = 200;
@@ -1058,7 +1054,6 @@ export async function createProcurementFileItemByOperator(
     createdAt: now,
     updatedAt: now,
   });
-  await scheduleClientFileCompanyInformation(ctx, args.clientFileId);
   if (args.brokerRelease && args.brokerRelease !== "hidden")
     await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
@@ -1167,15 +1162,6 @@ export async function updateProcurementFileItemByOperator(
       updatedByUserId: args.operatorUserId,
       updatedAt: dayjs().valueOf(),
     });
-  if (args.clientFileId !== undefined) {
-    for (const clientFileId of new Set(
-      [item.clientFileId, args.clientFileId ?? undefined].filter(
-        (id): id is Id<"clientFiles"> => Boolean(id),
-      ),
-    )) {
-      await scheduleClientFileCompanyInformation(ctx, clientFileId);
-    }
-  }
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1513,7 +1499,6 @@ export async function updateProcurementEmailThreadByOperator(
       .query("procurementEmailMessages")
       .withIndex("thread", (index) => index.eq("threadId", thread._id))
       .collect();
-    const movedClientFileIds = new Set<Id<"clientFiles">>();
     for (const message of messages) {
       const fileItems = await ctx.db
         .query("procurementFileItems")
@@ -1522,9 +1507,6 @@ export async function updateProcurementEmailThreadByOperator(
         )
         .collect();
       for (const fileItem of fileItems) {
-        if (fileItem.clientFileId) {
-          movedClientFileIds.add(fileItem.clientFileId);
-        }
         await ctx.db.patch(fileItem._id, {
           requestId: nextRequest._id,
           updatedByUserId: args.operatorUserId,
@@ -1532,16 +1514,10 @@ export async function updateProcurementEmailThreadByOperator(
         });
       }
     }
-    for (const clientFileId of movedClientFileIds) {
-      await scheduleClientFileCompanyInformation(ctx, clientFileId);
-    }
   }
   const fields = Object.keys(patch).filter((field) => field !== "updatedAt");
   if (fields.length === 0) throw new Error("No email thread fields changed");
   await ctx.db.patch(thread._id, patch);
-  if (patch.requestId) {
-    await scheduleEmailThreadCompanyInformation(ctx, thread._id);
-  }
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1575,17 +1551,6 @@ export const updateEmailThread = mutation({
     });
   },
 });
-
-async function emailThreadClientFileIds(
-  ctx: QueryCtx | MutationCtx,
-  emailThreadId: Id<"procurementEmailThreads">,
-) {
-  const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (index) => index.eq("threadId", emailThreadId))
-    .collect();
-  return [...new Set(messages.flatMap((message) => message.clientFileIds))];
-}
 
 export const resolveInboxInternal = internalQuery({
   args: { inboxToken: v.string() },
@@ -1750,9 +1715,6 @@ export const ingestEmailInternal = internalMutation({
       operatorEmails,
     });
     const now = dayjs().valueOf();
-    const restoredClientFileIds = thread?.archivedAt
-      ? await emailThreadClientFileIds(ctx, thread._id)
-      : [];
     let threadId: Id<"procurementEmailThreads">;
     if (thread) {
       threadId = thread._id;
@@ -1807,7 +1769,6 @@ export const ingestEmailInternal = internalMutation({
         expectedUpdatedAt: stored.expectedUpdatedAt,
         hint: boundedClientFileHint(args.subject),
       });
-      await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
     }
     const clientFileIds: Id<"clientFiles">[] = storedClientFiles.map(
       (stored) => stored.clientFileId,
@@ -1847,10 +1808,6 @@ export const ingestEmailInternal = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
-    }
-    await scheduleEmailThreadCompanyInformation(ctx, threadId);
-    for (const clientFileId of restoredClientFileIds) {
-      await scheduleClientFileCompanyInformation(ctx, clientFileId);
     }
     return {
       duplicate: false as const,

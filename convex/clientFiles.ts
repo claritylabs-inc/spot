@@ -33,10 +33,7 @@ import {
   requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
-import {
-  removeClientFileCompanyInformation,
-  scheduleClientFileCompanyInformation,
-} from "./companyInformation";
+import { removeClientFileCompanyInformation } from "./companyInformation";
 
 const CLIENT_FILE_UPLOAD_TTL_MS = 30 * 60 * 1_000;
 const MAX_CLIENT_FILE_BYTES = 50 * 1024 * 1024;
@@ -403,7 +400,6 @@ export const registerUpload = mutation({
       expectedUpdatedAt: now,
       hint: boundedClientFileHint(args.hint),
     });
-    await scheduleClientFileCompanyInformation(ctx, clientFileId);
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "setup_write",
@@ -486,8 +482,6 @@ export const setArchived = mutation({
     });
     if (args.archived) {
       await removeClientFileCompanyInformation(ctx, file._id);
-    } else {
-      await scheduleClientFileCompanyInformation(ctx, file._id);
     }
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,

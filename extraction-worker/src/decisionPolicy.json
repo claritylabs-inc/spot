@@ -1,0 +1,18 @@
+{
+  "mode": "active",
+  "policyVersion": "spot-always-on-v1",
+  "families": {
+    "extraction.cleanup": {
+      "threshold": 0.95,
+      "evaluationId": "not-evaluated:spot-always-on-v1"
+    },
+    "extraction.recovery_regions": {
+      "threshold": 0.95,
+      "evaluationId": "not-evaluated:spot-always-on-v1"
+    },
+    "extraction.audit": {
+      "threshold": 0.99,
+      "evaluationId": "not-evaluated:spot-always-on-v1"
+    }
+  }
+}

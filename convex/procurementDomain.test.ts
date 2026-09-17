@@ -1990,6 +1990,12 @@ describe("procurement domain boundaries", () => {
       },
     );
     if (imported.duplicate) throw new Error("Expected email import");
+    const scheduled = await f.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(scheduled.some((job) => job.name.includes("companyInformation"))).toBe(false);
+    expect(await f.t.run((ctx) => ctx.db.query("companyInformationExtractions").collect())).toEqual([]);
+
     const emailThreadId = imported.threadId as Id<"procurementEmailThreads">;
     const [quoteFileId, signatureFileId] = imported.clientFileIds;
 

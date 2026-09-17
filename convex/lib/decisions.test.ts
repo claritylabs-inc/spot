@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { decideWithFallback, decisionPolicyFromEnvironment } from "./decisions";
+import { decideWithFallback, decisionPolicy } from "./decisions";
 
 const { decide } = vi.hoisted(() => ({ decide: vi.fn() }));
 vi.mock("./sdkCallbacks", () => ({ makeDecide: () => decide }));
@@ -39,41 +39,33 @@ afterEach(() => {
 });
 
 describe("Spot decision execution", () => {
-  test("invalid configuration preserves reasoning and does not contact the router", async () => {
-    vi.stubEnv("SPOT_DECISION_POLICY", '{"mode":"typo"}');
-    expect(decisionPolicyFromEnvironment()).toEqual({ mode: "legacy" });
-    const fallback = vi.fn(async () => "reasoning");
-    expect(
-      await decideWithFallback({
-        family: "test_support",
-        state: "evidence",
-        questions,
-        accept: () => "decision",
-        fallback,
-      }),
-    ).toBe("reasoning");
-    expect(decide).not.toHaveBeenCalled();
-    expect(fallback).toHaveBeenCalledOnce();
-  });
-
-  test("shadow never executes the proposed result and sends only defined lineage", async () => {
-    configure("shadow");
-    decide.mockResolvedValue(response);
-    const accept = vi.fn(() => "decision");
-    const fallback = vi.fn(async () => "reasoning");
-    expect(
-      await decideWithFallback({
-        family: "test_support",
-        state: { evidence: [true, 2, null] },
-        questions,
-        accept,
-        fallback,
-      }),
-    ).toBe("reasoning");
-    expect(fallback).toHaveBeenCalledOnce();
-    expect(accept).not.toHaveBeenCalled();
-    expect(decide.mock.calls[0][0].trace).toEqual({});
-  });
+  test.each([
+    undefined,
+    '{"mode":"legacy"}',
+    '{"mode":"shadow"}',
+    '{"mode":"active"}',
+    "{invalid",
+  ])(
+    "decisions run without activation configuration, ignoring retired value %s",
+    async (configured) => {
+      vi.stubEnv("SPOT_DECISION_POLICY", configured);
+      decide.mockResolvedValue(response);
+      const fallback = vi.fn(async () => "reasoning");
+      expect(decisionPolicy("test_support").mode).toBe("active");
+      expect(
+        await decideWithFallback({
+          family: "test_support",
+          state: "evidence",
+          questions,
+          accept: () => "decision",
+          fallback,
+        }),
+      ).toBe("decision");
+      expect(decide).toHaveBeenCalledOnce();
+      expect(fallback).not.toHaveBeenCalled();
+      expect(decide.mock.calls[0][0].trace).toEqual({});
+    },
+  );
 
   test("a domain evidence rejection falls back despite a high probability", async () => {
     configure("active");
@@ -136,3 +128,35 @@ test("consumed branch confidence does not waive full answer validation", async (
   expect(await decideWithFallback(options)).toBe("reasoning");
   expect(fallback).toHaveBeenCalledOnce();
 });
+
+// Exercise the installed SDK, not just the compatibility object's shape.
+test.each([
+  "extraction.cleanup",
+  "extraction.recovery_regions",
+  "extraction.audit",
+])(
+  "shared worker/Convex settings execute SDK family %s without environment setup",
+  async (family) => {
+    const { runDecision } = await import("@claritylabs/cl-sdk/decisions");
+    const transport = vi.fn(async () => ({
+      ...response,
+      answers: { support: { type: "noul" as const, noul: 0.99 } },
+      contractVersion: 1 as const,
+      cost: { status: "unpriced" as const, costNanoUsd: null },
+    }));
+    const fallback = vi.fn(async () => "reasoning");
+    expect(
+      await runDecision({
+        decide: transport,
+        policy: decisionPolicy(),
+        family,
+        state: "source",
+        questions,
+        accept: () => "decision",
+        fallback,
+      }),
+    ).toBe("decision");
+    expect(transport).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+  },
+);

@@ -6,7 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { generateObjectForOrg } from "./models";
 import { normalizeExtractedString } from "./valueNormalization";
-import { decideWithFallback, decisionPolicyFromEnvironment } from "./decisions";
+import { decideWithFallback } from "./decisions";
 import { prepareFieldReviewQuestions } from "./extractionFieldQuestions";
 
 type SourceLike = {
@@ -756,14 +756,6 @@ export async function reviewExtractionFields(
     };
   }
   const fallback = () => reviewExtractionFieldsWithReasoning(options);
-  const policy = decisionPolicyFromEnvironment();
-  const rule = policy.families?.["extraction.field_review"];
-  const mode = rule?.mode ?? policy.mode;
-  if (
-    mode === "legacy" ||
-    (mode === "active" && (!rule?.evaluationId || rule.threshold === undefined))
-  )
-    return fallback();
   const groups = FIELD_REVIEW_GROUPS.filter((group) => {
     const evidence = selectEvidenceForFieldGroup({ ...options, group });
     // Financial and minimum-premium reconciliation also run in auto mode.

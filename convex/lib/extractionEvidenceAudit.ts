@@ -9,7 +9,7 @@ import {
 } from "@claritylabs/cl-sdk/extraction-audit";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { decisionPolicyFromEnvironment, logDecisionEvent } from "./decisions";
+import { decisionPolicy, logDecisionEvent } from "./decisions";
 import { makeDecide } from "./sdkCallbacks";
 
 /** Audit the final action-side snapshot; an upstream judgment cannot follow changed facts. */
@@ -25,15 +25,9 @@ export async function resolveExtractionEvidenceAudit(args: {
   snapshot?: ExtractionAuditBinding;
   required: boolean;
 }> {
-  const policy = decisionPolicyFromEnvironment();
+  const policy = decisionPolicy();
   const family = policy.families?.["extraction.audit"];
-  const mode = family?.mode ?? policy.mode;
-  const qualified = Boolean(
-    family?.evaluationId && family.threshold && family.threshold > 0.5,
-  );
-  const required = mode === "active" && qualified;
-  if (mode === "legacy" || (mode === "active" && !qualified))
-    return { required: false };
+  const required = true;
 
   const checkCancellation = async () => {
     if (await args.shouldCancel?.()) throw new Error("Cancelled by user");
@@ -54,10 +48,8 @@ export async function resolveExtractionEvidenceAudit(args: {
         previous.policyVersion === policy.policyVersion &&
         previous.evaluationId === family?.evaluationId &&
         previous.acceptanceThreshold === family?.threshold &&
-        (mode === "shadow"
-          ? previous.status === "shadow"
-          : previous.status === "verified_text" ||
-            previous.status === "unresolved")
+        (previous.status === "verified_text" ||
+          previous.status === "unresolved")
       )
         return { report: previous, snapshot: args.binding, required };
     }
@@ -90,9 +82,7 @@ export async function resolveExtractionEvidenceAudit(args: {
     };
   } catch (error) {
     await checkCancellation();
-    if (mode !== "shadow") throw error;
-    console.warn("[decision] extraction.audit shadow unavailable");
-    return { required: false };
+    throw error;
   }
 }
 

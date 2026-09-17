@@ -84,7 +84,6 @@ type ExtractionTraceEvent = NonNullable<ExtractionTraceDetail>["events"][number]
 type OperatorExtractionOperation =
   | "full"
   | "coverage"
-  | "supplementary"
   | "search";
 
 export type OperatorPolicyInspection = {
@@ -306,13 +305,6 @@ function ExtractionOverview({
               pending={activeOperation === "coverage"}
               disabled={targetedBlocked}
               onRun={() => onOperation("coverage")}
-            />
-            <OperationRow
-              title="Supplementary facts"
-              actionLabel="Rerun facts"
-              pending={activeOperation === "supplementary"}
-              disabled={targetedBlocked}
-              onRun={() => onOperation("supplementary")}
             />
             <OperationRow
               title="Search index"
@@ -1391,9 +1383,6 @@ export function OperatorPolicyExtractionPanel({
   const [confirmFullExtraction, setConfirmFullExtraction] = useState(false);
   const rerunExtraction = useAction(api.operator.rerunExtraction);
   const recoverCoverages = useAction(api.operator.backfillCoverageRecovery);
-  const rerunSupplementary = useAction(
-    api.operator.rerunSupplementaryExtraction,
-  );
   const rebuildSearchIndex = useAction(api.operator.rebuildPolicySearchIndex);
   const stopExtraction = useMutation(api.operator.stopExtraction);
 
@@ -1417,14 +1406,6 @@ export function OperatorPolicyExtractionPanel({
             );
           }
           toast.success("Coverage recovery complete");
-        } else if (operation === "supplementary") {
-          const result = await rerunSupplementary({ policyId: policy._id });
-          const facts = recordValue(result)?.facts;
-          toast.success(
-            typeof facts === "number"
-              ? `Supplementary extraction complete · ${facts} facts`
-              : "Supplementary extraction complete",
-          );
         } else {
           const result = await rebuildSearchIndex({ policyId: policy._id });
           const row = recordValue(result);
@@ -1442,7 +1423,7 @@ export function OperatorPolicyExtractionPanel({
       } finally {
         setActiveOperation(null);
       }
-    }, [policy._id, rebuildSearchIndex, recoverCoverages, rerunSupplementary],
+    }, [policy._id, rebuildSearchIndex, recoverCoverages],
   );
 
   const confirmFullRerun = useCallback(async () => {

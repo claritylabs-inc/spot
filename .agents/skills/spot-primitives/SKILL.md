@@ -22,25 +22,33 @@ Generated worker assets above the safe inline
 envelope use the short-lived Spot-owned, lease-bound staging primitive and are
 deleted after use or by bounded cleanup.
 
-Typed decisions reuse `convex/lib/decisions.ts` for per-family policy and
+Typed decisions reuse `convex/lib/decisions.ts` for active decision execution and
 reasoning fallback, and `makeDecide` from `sdkCallbacks.ts` for SDK callbacks.
+Additional-insured interpretation uses `extraction.additional_insured`: literal
+evidence discovery precedes batched classification and support checks, with the
+existing eligibility validator and reasoning fallback. Requirement imports use
+`requirements.import_verification` on the normalized persistence projection;
+unresolved results get one repair and re-verification, then stop before
+writes if unresolved. Neither decision grants visual completeness.
+
 Structured questions cross only the authenticated cl-router `/v1/decide`
 boundary. Use the SDK's dependency-free `@claritylabs/cl-sdk/decisions`
 `runDecision` cascade; do not duplicate
 confidence validation, manufacture fallback probabilities, or add provider
 credentials. Tool decisions prepare real AI SDK steps and retain all existing
 registry and approval checks. See `docs/deployment/typed-decisions.md` for
-rollout controls and acceptance evidence.
+execution behavior and evidence checks.
 
 Extraction evidence judgments reuse the SDK `/extraction-audit` entry and
 `convex/lib/extractionEvidenceAudit.ts`; do not build a second traversal or
 promotion authority. Bind reports to exact source and final document/profile
 snapshots, preserve original input spans, and re-audit changed projections.
-Unresolved qualified active audits block completion preflight after their
+Unresolved audits block completion preflight after their
 diagnostic is saved in the existing source bundle. Text audit success never
 establishes complete visual evidence. Field corrections reuse the existing
-`extractionFieldReview.ts` application boundary and its independently gated
-batched decision path.
+`extractionFieldReview.ts` application boundary and its batched decision path.
+
+Company-information capture from arbitrary uploads, procurement email and connected-mailbox scans is retired. Keep existing source contributions and policy-derived profiles; new general company details are explicit profile/wiki tool edits. The standalone supplementary backfill and rerun are retired; existing facts and normal policy extraction/search remain.
 
 ## Rule
 
@@ -211,7 +219,7 @@ Certificate holder edits in the shared detail drawer target the selected certifi
 - Slack lifecycle and health primitives: `convex/slackLifecycle.ts` owns the durable lifecycle ledger, ordered installation/channel transitions, retained previous channel IDs, and provider-failure evidence; `convex/actions/slackReconciliation.ts` owns periodic token-safe installation and channel verification; `convex/lib/slackAvailability.ts` is the shared outbound health gate. Preserve bindings, canonical records, preferences, and delivery evidence across degradation. Reinstall must retain the same workspace, and replacement Slack Connect bindings require an audited operator rebind rather than name matching.
 - Slack rich-response primitives: `convex/slackPresentation.ts`, `convex/actions/slackPresentation.ts`, `convex/lib/slackBlocks.ts`, and `convex/lib/slackInteractions.ts` own model-selected reaction-first processing acknowledgement, one completed emoji-free Block Kit answer, policy/certificate/email-draft cards, feedback, tenant-bound actions, and automatic classic Block Kit fallback. The worker adds `eyes` as the immediate default, `choose_slack_reaction` lets the Slack model replace it with one context-appropriate built-in reaction before other tools, and cleanup removes the selected reaction on success or failure. Keep the reaction presentation-only and out of visible completed-work traces; never post or stream progress narration. Rich responses are the default and do not add a feature flag. Never render model reasoning or raw tool input/output; keep every action signature-verified, bound to the exact tenant/team/channel/message, actor-authorized, and idempotently recorded.
 - Thread-linked mailbox review passes the automation item identity to the shared IMAP reader. If a persisted folder UID is stale, `convex/lib/imapMailbox.ts` resolves the stored RFC Message-ID through the provider-listed all-mail or archive folder, returns a current transient email reference for follow-up actions, and surfaces an explicit unavailable state when no live copy remains.
-- Company wiki: `convex/orgWiki.ts`, `convex/lib/orgWiki.ts`, `convex/lib/orgWikiPolicy.ts`, `convex/lib/orgWikiExtraction.ts`, `convex/companyInformation.ts`, and `convex/lib/agentPrompts.ts` own the organization’s standard Markdown document and source contributions. Agents read the whole document. Settings gives direct members read access and direct admins whole-document writes; the operator wiki page is read-only during impersonation. Both surfaces use the inline Markdown preview/editor card. Tenant MCP revalidates exact-organization membership and direct-admin plus write scope; operator writes use the existing exact-confirmed registry contract. Automated contributions preserve arbitrary manual prose and propose conflicting changes for review. Policy facts remain in typed policy/source tables.
+- Company wiki: `convex/orgWiki.ts`, `convex/lib/orgWiki.ts`, `convex/lib/orgWikiPolicy.ts`, `convex/companyInformation.ts`, and `convex/lib/agentPrompts.ts` own the organization’s standard Markdown document and source contributions. Agents read the whole document. Settings gives direct members read access and direct admins whole-document writes; the operator wiki page is read-only during impersonation. Both surfaces use the inline Markdown preview/editor card. Tenant MCP revalidates exact-organization membership and direct-admin plus write scope; operator writes use the existing exact-confirmed registry contract. Automated contributions preserve arbitrary manual prose and propose conflicting changes for review. Policy facts remain in typed policy/source tables.
 - Tenant OAuth MCP: the typed `MCP_TOOLS` catalog in `convex/http.ts` is the single source for tenant tool effects and annotations, and dispatch derives its write-scope gate from the same entry. Read-only `ask_spot` and `ask_glass` calls must pass `canWrite: false` through both the shared client executor and mailbox coordinator so nested write/import/save/invite tools are absent, not merely expected to fail later.
 - Public APIs and integrations: `convex/lib/apiAuth.ts`, `convex/lib/apiDto.ts`, `convex/lib/apiError.ts`, and the Convex REST/MCP HTTP handlers. MCP authentication is OAuth-only; local clients use `mcp-remote` against the remote endpoint.
 - Workers/deploy: `.github/workflows/deploy-convex.yml` owns release readiness for every production commit, `scripts/wait-for-railway-statuses.mjs` owns the exact-commit four-service Railway barrier, and `extraction-worker/`, `imessage-worker/`, `slack-worker/`, `mailbox-scan-worker/`, `config/deployments.json`, Railway health/env docs in `AGENTS.md`, and `npm run check:shared-package-versions` own the runtime contract. Vercel production promotion requires the unique `release-ready-production` GitHub Deployment Check. Railway Git autodeploy plus every service watch path must remain enabled so each commit reports a deploy or no-op status; do not combine this barrier with Railway Wait for CI. The production compatibility audit runs after Convex and Railway are ready; `.github/workflows/agent-safeguards.yml` exposes the same audit only on manual dispatch. Extraction jobs and authenticated conversions run only in Railway's persistent `dev` and `production` environments; retired, ephemeral, or unknown environments are health-only and expose that mode on `/health`.

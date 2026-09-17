@@ -14,13 +14,11 @@ import type {
 
 const categories = {
   ignore:
-    "Unrelated marketing, scheduling, receipt or no durable insurance action.",
+    "Unrelated marketing, scheduling, receipt, company-profile updates without an insurance action, or no durable insurance action.",
   policy_document:
     "Explicit bound policy, declarations, binder or endorsement PDF; never quote, application, invoice, claim or standalone certificate.",
   insurance_requirements:
     "A lease, contract, lender/investor request or vendor standard imposing insurance obligations.",
-  company_context:
-    "Explicit durable facts about the mailbox owner's company, excluding policy facts and one-off transactions.",
   multiple:
     "Several enabled categories are present; needs package interpretation.",
   review_needed:
@@ -40,6 +38,7 @@ export async function decideMailboxBatch(
   policy: { automation: ConnectedEmailAutomation; alertOnly: boolean },
   messages: Message[],
   fallback: () => Promise<{ decisions: MailboxAutomationDecision[] }>,
+  abortSignal?: AbortSignal,
 ) {
   const questions: Record<string, DecisionQuestion> = {};
   for (const [index, message] of messages.entries()) {
@@ -94,6 +93,7 @@ export async function decideMailboxBatch(
     ctx,
     orgId,
     family: "mailbox.classification",
+    abortSignal,
     state: decisionState({ policy, messages }),
     questions,
     fallback,
@@ -136,14 +136,13 @@ export async function decideMailboxBatch(
           includeEmailBodyAsRequirements: false,
           requirementSourceType: null,
           requirementScope: null,
-          extractCompanyMemory: classification === "company_context",
           attentionTitle:
             classification === "review_needed"
               ? "Review insurance email"
               : null,
           attentionBody:
             classification === "review_needed"
-              ? "The message needs review before importing documents or updating company information."
+              ? "The message needs review before importing documents."
               : null,
         };
         if (
