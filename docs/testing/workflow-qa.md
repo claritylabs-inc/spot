@@ -597,3 +597,14 @@ It now uses the shared compact Import action, validates the Markdown document,
 and clears rejected selections so the same file can be retried. Browser import,
 autosave/reopen, reload, and fixture restoration passed at narrow dark width.
 Ignored evidence is under `.context/qa/oauth-compliance-evidence/`.
+
+## Web streaming preferences — September 17, 2026
+
+Headless cloud Chrome with fresh captured local OTP sign-ins passed operator and
+client profile checks: independently toggle Stream responses and Show thinking,
+use the keyboard, reload to verify persistence, inspect desktop light and 390px
+mobile dark layouts, then restore defaults. The operator agent panel was minimized
+before testing the mobile profile. Evidence and scripts are in
+`.context/qa/streaming/`. This VM has no visible desktop. Live provider-to-browser
+streaming, inline approvals, and completion cards were not exercised by this
+profile check; durable callback ordering and cancellation have backend coverage.
