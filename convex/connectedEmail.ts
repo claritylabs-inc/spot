@@ -5,7 +5,7 @@ import { internalMutation, internalQuery, mutation, query } from "./_generated/s
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getOrgAccess } from "./lib/access";
-import { resolveMailboxAutomationPolicy } from "./lib/mailboxAutomation";
+import { effectiveConnectedEmailAutomation, resolveMailboxAutomationPolicy } from "./lib/mailboxAutomation";
 import { assertImpersonatedSetupWrite } from "./lib/operatorIdentity";
 import {
   throwUserFacingError,
@@ -15,7 +15,6 @@ import {
 const automationValidator = v.object({
   policyImports: v.boolean(),
   requirementImports: v.boolean(),
-  companyMemory: v.boolean(),
 });
 
 type ConnectedEmailScanState = Doc<"connectedEmailScanStates"> | null;
@@ -35,7 +34,9 @@ function publicAccount(
     port: account.port,
     secure: account.secure,
     username: account.username,
-    automation: account.automation,
+    automation: account.automation === undefined
+      ? undefined
+      : effectiveConnectedEmailAutomation(account.automation),
     automationConfigured: account.automation !== undefined,
     status: account.status,
     lastError: account.lastError,

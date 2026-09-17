@@ -486,8 +486,7 @@ export function MailboxSettingsDrawer({
   const settingsChanged =
     scope !== account.scope ||
     automation.policyImports !== initialAutomation.policyImports ||
-    automation.requirementImports !== initialAutomation.requirementImports ||
-    automation.companyMemory !== initialAutomation.companyMemory;
+    automation.requirementImports !== initialAutomation.requirementImports;
   const needsConfiguration = !configurationSaved;
   const error = account.lastScanError ?? account.lastError;
   const healthy = account.status === "active" && !error;

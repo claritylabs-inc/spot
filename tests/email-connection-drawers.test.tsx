@@ -5,11 +5,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Id } from "../convex/_generated/dataModel";
-import type { ConnectedEmailAccountRow } from "../components/settings/email-connection-ui";
+import { AUTOMATION_ENABLED, AUTOMATION_DISABLED, automationSummary, configuredAutomation, type ConnectedEmailAccountRow } from "../components/settings/email-connection-ui";
 import { MailboxSettingsDrawer } from "../components/settings/email-connection-drawers";
 
 const mocks = vi.hoisted(() => ({
   mutation: vi.fn(),
+  autoSave: vi.fn(),
   saveNow: vi.fn(),
   scanMailboxRange: vi.fn(),
   toastError: vi.fn(),
@@ -31,40 +32,15 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/lib/sync/use-local-first-auto-save", () => ({
-  useLocalFirstAutoSave: () => ({
+  useLocalFirstAutoSave: (options: unknown) => {
+    mocks.autoSave(options);
+    return ({
     saveNow: mocks.saveNow,
     saving: false,
     status: "saving",
-  }),
+  });
+  },
 }));
-
-vi.mock("@/components/settings/email-connection-ui", () => {
-  const disabledAutomation = {
-    policyImports: false,
-    requirementImports: false,
-    companyMemory: false,
-  };
-
-  return {
-    AUTOMATION_ENABLED: {
-      policyImports: true,
-      requirementImports: true,
-      companyMemory: true,
-    },
-    AutomationToggleRows: () => null,
-    EmailScopeSelect: () => null,
-    GoogleLogo: () => null,
-    MicrosoftLogo: () => null,
-    configuredAutomation: (account: {
-      automation?: typeof disabledAutomation;
-      automationConfigured?: boolean;
-    }) =>
-      account.automationConfigured
-        ? (account.automation ?? disabledAutomation)
-        : disabledAutomation,
-    formatMailboxActivity: () => "Not yet",
-  };
-});
 
 vi.mock("@/components/settings/settings-drawer", () => ({
   SettingsDrawer: ({
@@ -126,7 +102,6 @@ const ACCOUNT: ConnectedEmailAccountRow = {
   automation: {
     policyImports: true,
     requirementImports: true,
-    companyMemory: true,
   },
   automationConfigured: true,
   createdAt: 1,
@@ -272,4 +247,23 @@ describe("MailboxSettingsDrawer manual scan", () => {
     ).toBe(false);
   });
 
+});
+
+
+it("offers and saves only policy and requirement controls, including stale legacy input", async () => {
+  expect(AUTOMATION_ENABLED).toEqual({ policyImports: true, requirementImports: true });
+  expect(AUTOMATION_DISABLED).toEqual({ policyImports: false, requirementImports: false });
+  const legacy = { ...ACCOUNT, automation: { ...AUTOMATION_DISABLED, companyMemory: true } };
+  expect(configuredAutomation(legacy)).toEqual(AUTOMATION_DISABLED);
+  expect(automationSummary(legacy)).toBe("Monitoring off");
+  const container = await mountDrawer();
+  expect(container.querySelectorAll('[role="switch"]')).toHaveLength(2);
+  expect(container.textContent).not.toContain("Company wiki");
+  await act(async () => {
+    (container.querySelector('[aria-label="Monitor policy documents"]') as HTMLButtonElement).click();
+  });
+  const options = mocks.autoSave.mock.lastCall?.[0];
+  expect(options.args.automation).toEqual({ policyImports: false, requirementImports: true });
+  await options.flush(options.args);
+  expect(mocks.mutation).toHaveBeenCalledWith({ accountId: ACCOUNT._id, scope: "user", automation: { policyImports: false, requirementImports: true } });
 });
