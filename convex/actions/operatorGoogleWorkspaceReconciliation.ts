@@ -1,6 +1,12 @@
 "use node";
 import { v } from "convex/values";
 import { z } from "zod";
+import { decideWithFallback } from "../lib/decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "../lib/domainDecisionQuestions";
 import dayjs from "dayjs";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
@@ -292,7 +298,9 @@ export const reconcileSource = internalAction({
         throw new ScanAttention(
           "Source PDFs exceed bounded document analysis limits",
         );
-      const attachmentEvidence = [];
+      const attachmentEvidence: Array<
+        Awaited<ReturnType<typeof inspectPolicyAttachment>>
+      > = [];
       for (const pdf of pdfs)
         attachmentEvidence.push(
           await inspectPolicyAttachment(ctx, lease, pdf.attachmentId),
@@ -301,30 +309,102 @@ export const reconcileSource = internalAction({
         internal.operatorGoogleWorkspaceReconciliation.getKnownContextInternal,
         lease,
       );
-      const generated = await generateObjectForPublicTask(ctx, "analysis", {
-        schema: scanExtractionSchema,
-        system: evidenceInstruction,
-        prompt: JSON.stringify({
+      const prioritizedRecords =
+        knownRecords.length < 2
+          ? knownRecords
+          : await decideWithFallback({
+              ctx,
+              family: "mailbox.known_record_matching",
+              state: decisionState({
+                currentAssertion: evidence.source.evidence,
+                body: evidence.body,
+                parentContext: evidence.context ?? null,
+              }),
+              questions: {
+                record: choiceQuestion(
+                  "Which known organization is the subject of the current assertion? Require legal identity plus independent participant/address evidence; never use name or domain similarity alone. This only orders research context and grants no authority.",
+                  Object.fromEntries(
+                    knownRecords.map((record) => [
+                      String(record.id),
+                      { candidate: decisionState(record) },
+                    ]),
+                  ),
+                ),
+              },
+              accept: (answers) => {
+                const selected = acceptedChoice(
+                  answers.record,
+                  knownRecords.map((record) => String(record.id)),
+                );
+                if (!selected) return undefined;
+                return [
+                  ...knownRecords.filter(
+                    (record) => String(record.id) === selected.value,
+                  ),
+                  ...knownRecords.filter(
+                    (record) => String(record.id) !== selected.value,
+                  ),
+                ];
+              },
+              fallback: async () => knownRecords,
+            });
+      const generated = await decideWithFallback<
+        z.infer<typeof scanExtractionSchema>
+      >({
+        ctx,
+        family: "mailbox.reconciliation_relevance",
+        state: decisionState({
           currentAssertion: evidence.source.evidence,
           body: evidence.body,
           parentContext: evidence.context ?? null,
-          knownRecords,
-          attachmentEvidence: attachmentEvidence.map((pdf) =>
-            pdf
-              ? {
-                  attachmentId: pdf.attachmentId,
-                  insuredName: pdf.insuredName,
-                  insuredAddress: pdf.insuredAddress,
-                  boundPolicy: pdf.boundPolicy,
-                }
-              : null,
-          ),
+          attachmentEvidence,
+          knownRecords: prioritizedRecords,
         }),
-        maxOutputTokens: 10000,
-        abortSignal: AbortSignal.timeout(90000),
+        questions: {
+          relevance: choiceQuestion(
+            "Does the current assertion contain any new sourced company facts, broker capabilities, request/market activity, completed purchase or bound policy evidence needing reconciliation? Older quoted purchases are context only. Abstain when any attachment or source context is unavailable.",
+            {
+              relevant:
+                "At least one current business assertion could need extraction or operator attention.",
+              irrelevant:
+                "Complete source contains no new relevant assertion, contradiction, attachment or unresolved context.",
+            },
+          ),
+        },
+        accept: (answers) =>
+          acceptedChoice(answers.relevance, ["irrelevant"]) &&
+          evidence.source.evidence?.bodyComplete &&
+          attachmentEvidence.length === 0
+            ? { operations: [], attention: [] }
+            : undefined,
+        fallback: async () =>
+          (
+            await generateObjectForPublicTask(ctx, "analysis", {
+              schema: scanExtractionSchema,
+              system: evidenceInstruction,
+              prompt: JSON.stringify({
+                currentAssertion: evidence.source.evidence,
+                body: evidence.body,
+                parentContext: evidence.context ?? null,
+                knownRecords: prioritizedRecords,
+                attachmentEvidence: attachmentEvidence.map((pdf) =>
+                  pdf
+                    ? {
+                        attachmentId: pdf.attachmentId,
+                        insuredName: pdf.insuredName,
+                        insuredAddress: pdf.insuredAddress,
+                        boundPolicy: pdf.boundPolicy,
+                      }
+                    : null,
+                ),
+              }),
+              maxOutputTokens: 10000,
+              abortSignal: AbortSignal.timeout(90000),
+            })
+          ).object,
       });
       const operationKeys = new Set<string>();
-      for (const operation of generated.object.operations) {
+      for (const operation of generated.operations) {
         const key = await scanOperationKey(
           JSON.stringify(operation),
           evidence.source,
@@ -335,7 +415,7 @@ export const reconcileSource = internalAction({
           );
         operationKeys.add(key);
       }
-      for (const attention of generated.object.attention) {
+      for (const attention of generated.attention) {
         hadFinding = true;
         status = "needs_attention";
         await ctx.runMutation(
@@ -350,7 +430,7 @@ export const reconcileSource = internalAction({
           },
         );
       }
-      for (const operation of generated.object.operations) {
+      for (const operation of generated.operations) {
         const operationJson = JSON.stringify(operation);
         try {
           let complete = false;

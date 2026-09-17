@@ -13,6 +13,7 @@ const SOURCE_PATH = `${CONTRACT_DIR}/source.json`;
 const REQUIRED_OPERATION_KEYS = [
   "get /health",
   "post /v1/generate",
+  "post /v1/decide",
   "post /v1/generate/stream",
   "post /v1/embed",
   "post /v1/transcribe",
@@ -27,6 +28,8 @@ const REQUIRED_OPERATION_KEYS = [
 ];
 const REQUIRED_FIXTURE_SCHEMAS = [
   "GenerateRequest",
+  "DecideRequest",
+  "DecideResponse",
   "GenerateResponse",
   "StreamEvent",
   "EmbedRequest",

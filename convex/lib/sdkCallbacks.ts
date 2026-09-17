@@ -27,6 +27,7 @@ import {
 } from "./modelCatalog";
 import { applyCarrierIdentityGuidance } from "./extractionPromptGuidance";
 import type {
+  Decide,
   GenerateText,
   GenerateObject,
   EmbedText,
@@ -47,6 +48,7 @@ import {
   MAX_CL_ROUTER_ASSET_COUNT,
   MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
+  clRouterDecide,
   clRouterEmbed,
   clRouterGenerate,
   type ClRouterGenerateResponse,
@@ -1100,3 +1102,42 @@ export function makeEmbedText(
 
 /** Embedding dimensions — must match the vector index in schema.ts. */
 export const EMBEDDING_DIMENSIONS = 1536;
+
+export function makeDecide(routing?: ModelRoutingContext): Decide {
+  return async ({ signal, ...request }) => {
+    const startedAt = nowMs();
+    const response = await clRouterDecide(
+      {
+        ...request,
+        ...(routing?.orgId ? { orgId: routing.orgId } : {}),
+        trace: {
+          ...(routing?.traceId ? { traceId: routing.traceId } : {}),
+          ...request.trace,
+        },
+      },
+      { abortSignal: signal },
+    );
+    await recordModelTrace(routing, {
+      label: "Evaluate bounded decision",
+      task: "classification",
+      taskKind: request.task,
+      transport: "cl-router",
+      durationMs: nowMs() - startedAt,
+      usage: response.usage,
+      routerRequestId: response.requestId,
+      costUsd:
+        response.cost.costNanoUsd === null
+          ? null
+          : response.cost.costNanoUsd / 1_000_000_000,
+      costStatus: response.cost.status,
+      routingDecision: "typed_decision",
+      status: "complete",
+      details: {
+        model: response.model,
+        contractVersion: response.contractVersion,
+        ...(response.parentRequestId ? { parentRequestId: response.parentRequestId } : {}),
+      },
+    });
+    return response;
+  };
+}

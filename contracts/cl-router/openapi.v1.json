@@ -33,6 +33,158 @@
         }
       }
     },
+    "/v1/decide": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecideResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/selection": {
+      "post": {
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionControlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionControlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Legacy Fastify admin validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyValidationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUnavailableResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/capabilities": {
       "get": {
         "security": [
@@ -81,28 +233,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -172,28 +304,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -263,28 +375,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -354,28 +446,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -485,28 +557,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -577,28 +629,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -668,28 +700,8 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
             "content": {
               "application/json": {
                 "schema": {
@@ -769,32 +781,12 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Router unavailable",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -870,32 +862,12 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Router unavailable",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -961,32 +933,12 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Router unavailable",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -1072,32 +1024,12 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Router unavailable",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -1193,32 +1125,12 @@
               }
             }
           },
-          "502": {
-            "description": "Candidates exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "Router unavailable",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          },
-          "504": {
-            "description": "Execution budget exhausted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
                 }
               }
             }
@@ -2153,6 +2065,38 @@
             "type": "string",
             "const": "router"
           },
+          "decisions": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "configured": {
+                "type": "boolean"
+              },
+              "selectorVersion": {
+                "type": "string"
+              },
+              "modes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "legacy",
+                    "jev_shadow",
+                    "jev_active"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "model",
+              "configured",
+              "selectorVersion",
+              "modes"
+            ],
+            "additionalProperties": false
+          },
           "providers": {
             "type": "array",
             "items": {
@@ -2423,6 +2367,120 @@
           "routing": {
             "type": "object",
             "properties": {
+              "selection": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "legacy",
+                      "jev_shadow",
+                      "jev_active"
+                    ]
+                  },
+                  "selectorVersion": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "bypass",
+                      "default",
+                      "accepted"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "type": "number"
+                  },
+                  "costNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "proposedRoute": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "generationAttemptsCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "totalCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "estimatedInputTokens": {
+                    "type": "number"
+                  },
+                  "estimatedOutputTokens": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedFallbackCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "selectorVersion",
+                  "outcome",
+                  "reason",
+                  "durationMs",
+                  "costNanoUsd",
+                  "estimatedInputTokens",
+                  "estimatedOutputTokens",
+                  "expectedFallbackCostNanoUsd"
+                ],
+                "additionalProperties": false
+              },
               "decision": {
                 "type": "string"
               },
@@ -3375,6 +3433,120 @@
           "routing": {
             "type": "object",
             "properties": {
+              "selection": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "legacy",
+                      "jev_shadow",
+                      "jev_active"
+                    ]
+                  },
+                  "selectorVersion": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "bypass",
+                      "default",
+                      "accepted"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "type": "number"
+                  },
+                  "costNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "proposedRoute": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "generationAttemptsCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "totalCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "estimatedInputTokens": {
+                    "type": "number"
+                  },
+                  "estimatedOutputTokens": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedFallbackCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "selectorVersion",
+                  "outcome",
+                  "reason",
+                  "durationMs",
+                  "costNanoUsd",
+                  "estimatedInputTokens",
+                  "estimatedOutputTokens",
+                  "expectedFallbackCostNanoUsd"
+                ],
+                "additionalProperties": false
+              },
               "decision": {
                 "type": "string"
               },
@@ -4006,6 +4178,210 @@
           }
         }
       },
+      "SelectionControlRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "taskFamily": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedHeadId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "selection": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "legacy",
+                  "jev_shadow",
+                  "jev_active"
+                ]
+              },
+              "evaluation": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "taskFamily": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "risk": {
+                    "type": "string",
+                    "enum": [
+                      "reversible",
+                      "consequential"
+                    ]
+                  },
+                  "heldOutSamples": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "accuracyDelta": {
+                    "type": "number",
+                    "minimum": -1,
+                    "maximum": 1
+                  },
+                  "threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "candidates": {
+                    "minItems": 1,
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "model": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "strengths": {
+                          "minItems": 1,
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 512
+                          }
+                        },
+                        "limitations": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 512
+                          }
+                        },
+                        "supportsTools": {
+                          "type": "boolean"
+                        },
+                        "supportsStructuredOutput": {
+                          "type": "boolean"
+                        },
+                        "quality": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "qualitySamples": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "latencyMs": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model",
+                        "strengths",
+                        "limitations",
+                        "supportsTools",
+                        "supportsStructuredOutput",
+                        "quality",
+                        "qualitySamples",
+                        "latencyMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "taskFamily",
+                  "risk",
+                  "heldOutSamples",
+                  "accuracyDelta",
+                  "threshold",
+                  "candidates"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "version",
+              "mode"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "tenantId",
+          "expectedHeadId",
+          "reason",
+          "selection"
+        ],
+        "additionalProperties": false
+      },
+      "SelectionControlResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false
+      },
       "StreamEvent": {
         "oneOf": [
           {
@@ -4151,6 +4527,120 @@
               "routing": {
                 "type": "object",
                 "properties": {
+                  "selection": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "legacy",
+                          "jev_shadow",
+                          "jev_active"
+                        ]
+                      },
+                      "selectorVersion": {
+                        "type": "string"
+                      },
+                      "outcome": {
+                        "type": "string",
+                        "enum": [
+                          "bypass",
+                          "default",
+                          "accepted"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "durationMs": {
+                        "type": "number"
+                      },
+                      "costNanoUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "proposedRoute": {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "provider",
+                          "model"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "generationAttemptsCostNanoUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "totalCostNanoUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "estimatedInputTokens": {
+                        "type": "number"
+                      },
+                      "estimatedOutputTokens": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "expectedFallbackCostNanoUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "selectorVersion",
+                      "outcome",
+                      "reason",
+                      "durationMs",
+                      "costNanoUsd",
+                      "estimatedInputTokens",
+                      "estimatedOutputTokens",
+                      "expectedFallbackCostNanoUsd"
+                    ],
+                    "additionalProperties": false
+                  },
                   "decision": {
                     "type": "string"
                   },
@@ -4685,6 +5175,120 @@
           "routing": {
             "type": "object",
             "properties": {
+              "selection": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "legacy",
+                      "jev_shadow",
+                      "jev_active"
+                    ]
+                  },
+                  "selectorVersion": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "bypass",
+                      "default",
+                      "accepted"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "type": "number"
+                  },
+                  "costNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "proposedRoute": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "generationAttemptsCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "totalCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "estimatedInputTokens": {
+                    "type": "number"
+                  },
+                  "estimatedOutputTokens": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedFallbackCostNanoUsd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "selectorVersion",
+                  "outcome",
+                  "reason",
+                  "durationMs",
+                  "costNanoUsd",
+                  "estimatedInputTokens",
+                  "estimatedOutputTokens",
+                  "expectedFallbackCostNanoUsd"
+                ],
+                "additionalProperties": false
+              },
               "decision": {
                 "type": "string"
               },
@@ -4836,6 +5440,404 @@
         },
         "required": [
           "error"
+        ],
+        "additionalProperties": false
+      },
+      "DecisionJson": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecisionJson"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DecisionJson"
+            }
+          }
+        ]
+      },
+      "DecisionEntry": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecisionJson"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DecisionJson"
+            }
+          }
+        ]
+      },
+      "DecisionQuestion": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "choice"
+              },
+              "instructions": {
+                "$ref": "#/components/schemas/DecisionEntry"
+              },
+              "criteria": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/DecisionEntry"
+                },
+                "minProperties": 2,
+                "maxProperties": 128
+              }
+            },
+            "required": [
+              "type",
+              "instructions",
+              "criteria"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "score"
+              },
+              "instructions": {
+                "$ref": "#/components/schemas/DecisionEntry"
+              },
+              "criteria": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DecisionEntry"
+                },
+                "minItems": 2,
+                "maxItems": 128
+              }
+            },
+            "required": [
+              "type",
+              "instructions",
+              "criteria"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "noul"
+              },
+              "instructions": {
+                "$ref": "#/components/schemas/DecisionEntry"
+              },
+              "criteria": {
+                "type": "object",
+                "properties": {
+                  "true": {
+                    "$ref": "#/components/schemas/DecisionEntry"
+                  },
+                  "false": {
+                    "$ref": "#/components/schemas/DecisionEntry"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "instructions"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "DecisionAnswer": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "choice"
+              },
+              "choice": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "minProperties": 2
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "type",
+              "choice",
+              "probabilities",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "score"
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0
+              },
+              "legend": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/DecisionEntry"
+                }
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "minProperties": 2
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "type",
+              "score",
+              "legend",
+              "probabilities",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "noul"
+              },
+              "noul": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "type",
+              "noul"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "DecideRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "state": {
+            "$ref": "#/components/schemas/DecisionEntry"
+          },
+          "questions": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DecisionQuestion"
+            },
+            "minProperties": 1,
+            "maxProperties": 128
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 900000
+          },
+          "parentRequestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "trace": {
+            "type": "object",
+            "properties": {
+              "traceId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "parentRequestId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "channel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "tenantId",
+          "state",
+          "questions"
+        ],
+        "additionalProperties": false
+      },
+      "DecideResponse": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "const": 1
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "parentRequestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "model": {
+            "const": "jev-1.13.0"
+          },
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DecisionAnswer"
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "outputTokens": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens"
+            ],
+            "additionalProperties": false
+          },
+          "cost": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "const": "priced"
+                  },
+                  "costNanoUsd": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "status",
+                  "costNanoUsd"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "const": "unpriced"
+                  },
+                  "costNanoUsd": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "status",
+                  "costNanoUsd"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "contractVersion",
+          "requestId",
+          "model",
+          "answers",
+          "usage",
+          "cost",
+          "durationMs"
         ],
         "additionalProperties": false
       }

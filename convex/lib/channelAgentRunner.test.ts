@@ -105,3 +105,19 @@ test("policy recovery never replays a turn that already used a write tool", asyn
   expect(lookup).not.toHaveBeenCalled();
   expect(result.text).not.toBe("Message sent.");
 });
+
+test("caller tool restrictions reach bounded dispatch without forcing another step", async () => {
+  mocks.classify.mockResolvedValue({ object: { requiresPolicyEvidence: false, confidence: 1 } });
+  mocks.generate.mockImplementation(async (_ctx, _org, _task, options) => {
+    expect(options.toolChoice).toBe("none");
+    expect(options.activeTools).toEqual([]);
+    expect(await options.prepareStep({ messages: [{ role: "user", content: "Hello" }], steps: [], stepNumber: 0 })).toBeUndefined();
+    return { text: "Hello", toolCalls: [], toolResults: [] };
+  });
+  const result = await runAgentTurn({} as ActionCtx, {
+    orgId: "org" as Id<"organizations">, task: "chat", messageText: "Hello",
+    options: { system: "Answer", tools: { lookup_policy: { inputSchema: z.object({}), execute: vi.fn() } }, toolChoice: "none", activeTools: [] },
+    run: { taskKind: "query_reason", sessionKey: "restricted", trace: { traceId: "restricted", label: "test", phase: "query_reason", channel: "web" } },
+  });
+  expect(result.text).toBe("Hello");
+});

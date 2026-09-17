@@ -12,6 +12,13 @@ import {
 } from "@claritylabs/cl-pipelines/convex";
 import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
 import { buildExtractor, runCoverageRecovery } from "../lib/extraction";
+import { decisionPolicyFromEnvironment, logDecisionEvent } from "../lib/decisions";
+import { decidePolicyDocumentIntake, policyDocumentClassificationSchema } from "../lib/policyDocumentDecisions";
+import {
+  resolveExtractionEvidenceAudit,
+  requireResolvedExtractionAudit,
+} from "../lib/extractionEvidenceAudit";
+import type { ExtractionAuditBinding } from "@claritylabs/cl-sdk/extraction-audit";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
 import {
   preparePdfTextWithParserFallback,
@@ -21,6 +28,7 @@ import {
 import type { ExtractionResult, PipelineCheckpoint } from "../lib/extraction";
 import type { ExtractOptions } from "../lib/extraction";
 import {
+  makeDecide,
   makeEmbedTexts,
   makeGenerateObject,
   type EmbedTexts,
@@ -293,6 +301,8 @@ type ExternalCompletionPayload = {
   tokenUsage?: unknown;
   performanceReport?: unknown;
   coverageRecovery?: unknown;
+  evidenceAudit?: unknown;
+  originalSourceSpans?: unknown[];
 };
 
 type CoverageRecoveryDiagnosticsLike = {
@@ -733,6 +743,7 @@ async function storeJsonArtifact(
     | "section_result",
   value: unknown,
   metadata?: {
+    expectedRun?: { runId: Id<"policyExtractionRuns">; leaseId: string };
     sourceFingerprint?: string;
     extractorVersion?: string;
     sectionId?: string;
@@ -746,14 +757,18 @@ async function storeJsonArtifact(
     type: "application/json",
   });
   const storageId = String(await ctx.storage.store(blob));
-  const artifactId = String(
-    await ctx.runMutation(internal.policies.pipelineSaveArtifact, {
+  let artifactId: string;
+  try {
+    artifactId = String(await ctx.runMutation(internal.policies.pipelineSaveArtifact, {
       jobId,
       kind,
       storageId: storageId as Id<"_storage">,
       ...metadata,
-    }),
-  );
+    }));
+  } catch (error) {
+    await ctx.storage.delete(storageId as Id<"_storage">).catch(() => {});
+    throw error;
+  }
   return {
     artifactId,
     storageId,
@@ -789,16 +804,49 @@ async function getLatestArtifactStorageId(
   return artifact?.storageId ? String(artifact.storageId) : undefined;
 }
 
+type PromotionContext = {
+  runId: Id<"policyExtractionRuns">;
+  leaseId: string;
+  promotedAt?: number;
+  promotionGateDecision?: {
+    allowed: boolean;
+    reasons: string[];
+    mode: "shadow" | "enforce";
+    sourceFingerprint?: string;
+    evidenceLedgerHash?: string;
+    manifestHash?: string;
+  };
+};
+
+async function pinPromotionContext(ctx: ActionCtx, policyId: string, leaseId: string | undefined) {
+  const context = await ctx.runQuery(internal.policies.pipelineGetPromotionContext, {
+    jobId: policyId,
+  }) as PromotionContext | null;
+  if (!leaseId || !context || context.leaseId !== leaseId) {
+    throw new Error("Extraction promotion lost its original run or lease");
+  }
+  return context;
+}
+
+async function promotionContextIsCurrent(ctx: ActionCtx, policyId: string, expected: PromotionContext) {
+  const current = await ctx.runQuery(internal.policies.pipelineGetPromotionContext, {
+    jobId: policyId,
+  });
+  return current?.runId === expected.runId && current.leaseId === expected.leaseId;
+}
+
 async function persistEvidenceAndPromote(
   ctx: ActionCtx,
   args: {
     policyId: string;
+    promotionContext: PromotionContext;
     sourceSpans: SourceSpanLike[];
     sourceNodes: DocumentSourceNode[];
     fields: Record<string, unknown>;
     protocolVersion?: "source-tree-v1" | "source-tree-v2";
     extractorVersion?: string;
     sections?: ExtractionCompletionManifest["sections"];
+    evidenceAudit?: Awaited<ReturnType<typeof resolveExtractionEvidenceAudit>>;
   },
 ) {
   const extractorVersion =
@@ -824,25 +872,7 @@ async function persistEvidenceAndPromote(
     sourceCoverageMap,
     sections: args.sections,
   });
-  const promotionContext = (await ctx.runQuery(
-    (internal as any).policies.pipelineGetPromotionContext,
-    { jobId: args.policyId },
-  )) as {
-    runId: Id<"policyExtractionRuns">;
-    leaseId: string;
-    promotedAt?: number;
-    promotionGateDecision?: {
-      allowed: boolean;
-      reasons: string[];
-      mode: "shadow" | "enforce";
-      sourceFingerprint?: string;
-      evidenceLedgerHash?: string;
-      manifestHash?: string;
-    };
-  } | null;
-  if (!promotionContext) {
-    throw new Error("Extraction promotion lost its current run or lease");
-  }
+  const promotionContext = args.promotionContext;
   if (promotionContext.promotedAt) {
     const existing = promotionContext.promotionGateDecision;
     if (
@@ -866,8 +896,11 @@ async function persistEvidenceAndPromote(
       sourceTree: args.sourceNodes,
       evidenceLedger: ledger,
       completionManifest: manifest,
+      evidenceAudit: args.evidenceAudit?.report,
+      evidenceAuditSnapshot: args.evidenceAudit?.snapshot,
     },
     {
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       sourceFingerprint: ledger.sourceFingerprint,
       extractorVersion,
       metadata: {
@@ -875,9 +908,26 @@ async function persistEvidenceAndPromote(
         evidenceLedgerHash: ledger.ledgerHash,
         manifestHash: manifest.manifestHash,
         protocolVersion: manifest.protocolVersion,
+        ...(args.evidenceAudit?.report
+          ? { evidenceAuditStatus: args.evidenceAudit.report.status }
+          : {}),
       },
     },
   );
+  if (args.evidenceAudit?.report) {
+    const audit = args.evidenceAudit.report;
+    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
+      jobId: args.policyId,
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
+      timestamp: nowMs(),
+      message: `Source-text audit ${audit.status}: ${audit.forward.verified}/${audit.forward.total} facts, ${audit.reverse.verified}/${audit.reverse.total} source units; visual completeness not assessed`,
+      phase: "extract",
+      level: audit.status === "unresolved" ? "warn" : "info",
+    });
+  }
+  // Persist the bounded diagnostic before enforcing its preflight. The existing
+  // promotion mutation still independently validates structural source evidence.
+  if (args.evidenceAudit) requireResolvedExtractionAudit(args.evidenceAudit);
   const result = (await ctx.runMutation(
     (internal as any).policies.promoteCompletedExtractionInternal,
     {
@@ -901,6 +951,7 @@ async function persistEvidenceAndPromote(
   if (!result.decision.allowed) {
     await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
       jobId: args.policyId,
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       timestamp: nowMs(),
       message: `Extraction promotion ${result.decision.mode === "enforce" ? "blocked" : "shadow violation"}: ${result.decision.reasons.join("; ")}`,
       phase: "extract",
@@ -910,6 +961,7 @@ async function persistEvidenceAndPromote(
   if (!result.promoted) {
     await ctx.runMutation(internal.policies.pipelineClearArtifacts, {
       jobId: args.policyId,
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       kind: "external_completion_payload",
     });
     throw new Error(
@@ -990,13 +1042,7 @@ function stripLease(
 
 const extractionGateSchema = z.object({
   shouldExtract: z.boolean(),
-  classification: z.enum([
-    "bound_policy_document",
-    "specimen_policy_document",
-    "insurance_related_but_not_bound_policy",
-    "non_insurance",
-    "unknown",
-  ]),
+  classification: policyDocumentClassificationSchema,
   confidence: z.number().min(0).max(1),
   reason: z.string(),
   detectedTitle: z.string().nullable(),
@@ -1414,28 +1460,31 @@ async function classifyInsuranceExtractability(params: {
     tracePolicyId: params.policyId,
   });
   const excerpt = buildDocumentGateExcerpt(params.sourceSpans);
-  const result = await generateGateObject({
-    schema: extractionGateSchema,
-    maxTokens: 600,
-    system: `You are a strict intake gate for Spot post-binding insurance extraction.
+  const fallback = async (): Promise<ExtractionGateDecision> => {
+    const result = await generateGateObject({
+      schema: extractionGateSchema,
+      maxTokens: 600,
+      system: `You are a strict intake gate for Spot post-binding insurance extraction.
 
 Decide whether an uploaded PDF should be processed by a bound-policy extractor. Allow extraction when the document is clearly an already-bound insurance policy, binder, declarations page, renewal policy, insurance schedule, policy wording, endorsement, or post-binding supplement that contains bound policy terms.
 
 Also allow a document explicitly labeled as a specimen policy, sample policy, or testing-only policy when it represents a policy artifact suitable for extraction testing. Return classification "specimen_policy_document" for those testing fixtures. A disclaimer such as "not an actual policy" or "not evidence of insurance" does not disqualify an otherwise valid specimen policy.
 
 Reject unbound quotes, proposals, submissions, applications, marketing material, invoices, novels, books, textbooks, resumes, generic contracts, unrelated legal documents, and any document that is merely about insurance but is not itself a bound policy artifact. A law-office trust ledger, closing statement, or disbursement statement is not a policy, even when it lists a payment for title insurance or an insurance premium. A payment line is not evidence that the document contains bound policy terms. If uncertain, return classification "unknown" and shouldExtract false only when the document is more likely not extractable than extractable.`,
-    prompt: `Classify this PDF before extraction.
+      prompt: `Classify this PDF before extraction.
 
 Return shouldExtract=true for bound or post-binding insurance policy artifacts and for specimen policy testing fixtures.
 
 Machine-readable excerpts:
 ${excerpt}`,
-    providerOptions: {
-      pdfBytes: params.pdfBytes,
-      mimeType: "application/pdf",
-    },
-  });
-  return result.object as ExtractionGateDecision;
+      providerOptions: {
+        pdfBytes: params.pdfBytes,
+        mimeType: "application/pdf",
+      },
+    });
+    return result.object as ExtractionGateDecision;
+  };
+  return decidePolicyDocumentIntake({ ...params, fallback });
 }
 
 function shouldRejectDocument(decision: ExtractionGateDecision): boolean {
@@ -1575,7 +1624,7 @@ async function advanceLeasedPhase(
   try {
     const result = await phase.run({
       jobId,
-      checkpoint: stripLease(checkpoint),
+      checkpoint,
       log,
       saveState,
     });
@@ -1705,6 +1754,10 @@ export function makePhases(
           error: "extract: missing fileId — load_pdf phase must run first",
         };
       }
+
+      const promotionContext = await pinPromotionContext(
+        convexCtx, pCtx.jobId, (pCtx.checkpoint as LeasedPolicyCheckpoint).lease?.id,
+      );
 
       await pCtx.log("Starting policy extraction…");
 
@@ -1933,7 +1986,7 @@ export function makePhases(
         await pCtx.saveState(promotionState);
       }
 
-      const finalFields = {
+      const finalFields: Record<string, unknown> = {
         fileName: resolvedFileName,
         ...fields,
         ...sourceTreePolicyFields({
@@ -1949,11 +2002,30 @@ export function makePhases(
           ),
         }),
       };
+      const evidenceAudit = await resolveExtractionEvidenceAudit({
+        ctx: convexCtx,
+        orgId: state.orgId as Id<"organizations">,
+        traceId: state.traceId,
+        previous: result.evidenceAudit,
+        binding: {
+          profile: finalFields.operationalProfile as PolicyOperationalProfile,
+          document: doc as ExtractionAuditBinding["document"],
+          sourceTree: sourceNodes,
+          originalSourceSpans: pdfSource.sourceSpans as ExtractionAuditBinding["sourceSpans"],
+          sourceSpans: sourceSpansForSdk(
+            canonicalSpans.map((span) => ({ ...span, text: span.text ?? "" })),
+            policyId,
+          ),
+        },
+        shouldCancel: async () => !(await promotionContextIsCurrent(convexCtx, policyId, promotionContext)),
+      });
       await persistEvidenceAndPromote(convexCtx, {
         policyId,
+        promotionContext,
         sourceSpans: canonicalSpans,
         sourceNodes,
         fields: finalFields,
+        evidenceAudit,
       });
 
       await convexCtx.runMutation((internal as any).policies.updateFiles, {
@@ -2877,6 +2949,7 @@ async function completeExternalExtractFromPayload(
   if (!(await externalCompletionLeaseIsCurrent(ctx, args))) {
     return { ok: false };
   }
+  const promotionContext = await pinPromotionContext(ctx, args.policyId, args.leaseId);
   const state = args.state as PolicyExtractionState;
   const policyId = args.policyId;
   const payload = args.payloadStorageId
@@ -3069,7 +3142,7 @@ async function completeExternalExtractFromPayload(
     return { ok: false };
   }
 
-  const finalFields = {
+  const finalFields: Record<string, unknown> = {
     fileName: resolvedFileName,
     ...fields,
     ...sourceTreePolicyFields({
@@ -3085,14 +3158,33 @@ async function completeExternalExtractFromPayload(
       ),
     }),
   };
+  const evidenceAudit = await resolveExtractionEvidenceAudit({
+    ctx,
+    orgId: state.orgId as Id<"organizations">,
+    traceId: state.traceId,
+    previous: payload?.evidenceAudit,
+    binding: {
+      profile: finalFields.operationalProfile as PolicyOperationalProfile,
+      document: doc as ExtractionAuditBinding["document"],
+      sourceTree: sourceNodes,
+      originalSourceSpans: payload?.originalSourceSpans as ExtractionAuditBinding["sourceSpans"] | undefined,
+      sourceSpans: sourceSpansForSdk(
+        canonicalSpans.map((span) => ({ ...span, text: span.text ?? "" })),
+        policyId,
+      ),
+    },
+    shouldCancel: async () => !(await promotionContextIsCurrent(ctx, policyId, promotionContext)),
+  });
   await persistEvidenceAndPromote(ctx, {
     policyId,
+    promotionContext,
     sourceSpans: canonicalSpans,
     sourceNodes,
     fields: finalFields,
     protocolVersion,
     extractorVersion,
     sections,
+    evidenceAudit,
   });
 
   if (state.fileId) {
@@ -3536,6 +3628,9 @@ export const backfillStoredCoverageRecovery = internalAction({
     );
 
     const recovery = await runCoverageRecovery({
+      decide: makeDecide({ ctx, orgId: policy.orgId, tracePolicyId: args.policyId }),
+      decisionPolicy: decisionPolicyFromEnvironment(),
+      onDecision: logDecisionEvent,
       sourceTree,
       sourceSpans: sdkSourceSpans,
       operationalProfile: primaryProfile,

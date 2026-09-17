@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { decideProposalReview } from "../lib/proposalDecisions";
 import { generateObjectForOrg } from "../lib/models";
 import {
   normalizeProposalReview,
@@ -48,18 +49,28 @@ async function generateReviewForOperator(
   const abortSignal = AbortSignal.timeout(REVIEW_TIMEOUT_MS);
   let generated;
   try {
-    generated = await generateObjectForOrg(ctx, input.clientOrgId, "analysis", {
-      schema: proposalReviewSchema,
+    generated = await decideProposalReview({
+      ctx,
+      orgId: input.clientOrgId,
+      packetMarkdown,
+      proposalMarkdown,
+      sectionKeys: input.sectionKeys,
+      legend: input.evidenceLegend,
       abortSignal,
-      maxOutputTokens: 8_000,
-      system: `You are a careful commercial-insurance proposal reviewer. You are given two markdown documents: the submission packet the broker was sent, and the offer extracted from the proposal they returned. Compare them section by section using only the supplied text. Never invent a carrier term, limit, deductible, premium, condition, exclusion, or page.
+      fallback: async () =>
+        (
+          await generateObjectForOrg(ctx, input.clientOrgId, "analysis", {
+            schema: proposalReviewSchema,
+            abortSignal,
+            maxOutputTokens: 8_000,
+            system: `You are a careful commercial-insurance proposal reviewer. You are given two markdown documents: the submission packet the broker was sent, and the offer extracted from the proposal they returned. Compare them section by section using only the supplied text. Never invent a carrier term, limit, deductible, premium, condition, exclusion, or page.
 
 Return exactly one finding for every packet section, keyed by the section key printed after "## " in the packet. A finding is "meets" only when cited proposal evidence clearly satisfies what the section asks for, "has_gap" when cited evidence clearly conflicts with or falls short of it, and "insufficient_evidence" when the proposal does not establish an answer. A section that asks for nothing verifiable is insufficient_evidence, not meets.
 
 Cite proposal evidence only by the bracketed tags printed in the proposal document, such as E1 or E7. Every "meets" and "has_gap" finding must cite at least one tag. Never write a tag that does not appear in the proposal document.
 
 The overall conclusion is meets_requirements only when every section meets, has_gaps when at least one section has a supported gap, and insufficient_evidence otherwise.`,
-      prompt: `# Submission packet
+            prompt: `# Submission packet
 
 ${packetMarkdown}
 
@@ -68,13 +79,15 @@ ${packetMarkdown}
 ${proposalMarkdown}
 
 Return one finding per packet section, using these exact section keys: ${input.sectionKeys.join(", ")}`,
+          })
+        ).object,
     });
   } catch (error) {
     if (abortSignal.aborted)
       throw new Error("Proposal review took too long. Try again.");
     throw error;
   }
-  const review = normalizeProposalReview(generated.object, {
+  const review = normalizeProposalReview(generated, {
     sectionKeys: input.sectionKeys,
     legend: input.evidenceLegend,
     proposalMarkdown,

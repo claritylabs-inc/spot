@@ -1,3 +1,4 @@
+import { routingSelectionValidator } from "./lib/routingSelectionValidator";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
@@ -54,6 +55,7 @@ const modelRouteValidator = v.object({
 });
 
 const extractionTraceRoutingValidator = v.object({
+  selection: v.optional(routingSelectionValidator),
   decision: v.string(),
   candidatesConsidered: v.array(modelRouteValidator),
   policyVersion: v.union(v.string(), v.null()),

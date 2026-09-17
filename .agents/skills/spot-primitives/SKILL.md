@@ -22,6 +22,26 @@ Generated worker assets above the safe inline
 envelope use the short-lived Spot-owned, lease-bound staging primitive and are
 deleted after use or by bounded cleanup.
 
+Typed decisions reuse `convex/lib/decisions.ts` for per-family policy and
+reasoning fallback, and `makeDecide` from `sdkCallbacks.ts` for SDK callbacks.
+Structured questions cross only the authenticated cl-router `/v1/decide`
+boundary. Use the SDK's dependency-free `@claritylabs/cl-sdk/decisions`
+`runDecision` cascade; do not duplicate
+confidence validation, manufacture fallback probabilities, or add provider
+credentials. Tool decisions prepare real AI SDK steps and retain all existing
+registry and approval checks. See `docs/deployment/typed-decisions.md` for
+rollout controls and acceptance evidence.
+
+Extraction evidence judgments reuse the SDK `/extraction-audit` entry and
+`convex/lib/extractionEvidenceAudit.ts`; do not build a second traversal or
+promotion authority. Bind reports to exact source and final document/profile
+snapshots, preserve original input spans, and re-audit changed projections.
+Unresolved qualified active audits block completion preflight after their
+diagnostic is saved in the existing source bundle. Text audit success never
+establishes complete visual evidence. Field corrections reuse the existing
+`extractionFieldReview.ts` application boundary and its independently gated
+batched decision path.
+
 ## Rule
 
 All tables keep action buttons, action menus, edit controls, and dropzones out

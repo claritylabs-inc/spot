@@ -85,6 +85,54 @@ The tenant MCP catalog contains no broker portfolio or procurement proposal
 tools. When an older paragraph conflicts with this boundary, follow the active
 Convex/UI contracts and the release evidence documented above.
 
+## Current typed decision boundary
+
+`convex/lib/decisions.ts` owns domain decision policy and reasoning fallback;
+`convex/lib/sdkCallbacks.ts` supplies the SDK's optional `Decide` callback.
+Shared Convex code imports the dependency-free `@claritylabs/cl-sdk/decisions`
+entry; the SDK root contains Node-only extraction dependencies.
+Both Convex and the extraction worker send structured questions to the router's
+`/v1/decide` endpoint using the existing router bearer credential and tenant
+`glass`. TypeSafe credentials remain in cl-router. Instructions, option
+criteria, score legends, and state preserve ordinary nested JSON. Choice,
+Score, and Noul answers retain their distinct native probabilities; reasoning
+fallback never manufactures a Jev confidence value.
+
+`SPOT_DECISION_POLICY` is a versioned JSON policy with `legacy`, `shadow`, and
+`active` modes and per-family overrides. Missing or invalid configuration uses
+legacy reasoning. Active families require an explicit evaluated threshold and
+evaluation ID; shadow always executes the established reasoning path. Domain
+acceptance also checks source coverage, identity, contradictions, and allowed
+candidate values. Policy-document intake retains PDF reasoning because
+PDF.js text and normalized operators do not prove complete visual evidence;
+no family configuration can bypass that boundary. Cancellation stops the
+request without starting fallback;
+transient decision failures and uncertainty use the existing reasoning route.
+Rollout and evidence requirements are documented in
+`docs/deployment/typed-decisions.md`.
+
+Final extraction accuracy and omission judgments use the independently gated
+`extraction.audit` family, with batched questions in both source-to-fact and
+fact-to-source directions. Spot's `extractionEvidenceAudit.ts` reuses only an
+exactly bound source/document/profile report under the current threshold and
+evaluation; changed postprocessed snapshots are re-audited. The existing private
+source-bundle artifact retains the report and audited snapshot. Completion pins
+the original run/lease before review; artifact, log, cleanup, and promotion writes
+reject stale ownership atomically. Qualified active
+unresolved audits block completion preflight; shadow and legacy preserve the
+existing behavior. This is a provided-text audit, never visual completeness or
+permission to bypass the deterministic ledger and sole promotion mutation.
+Original input spans survive worker completion so dropped normalization units
+cannot disappear from completeness accounting. `extraction.field_review`
+batches field/financial-role correction judgments while retaining registered
+field, numeric/date, and source-citation checks plus reasoning fallback.
+
+Bounded tool selection prepares a real AI SDK step from the available tool
+catalog. The existing registry, schema validation, preflight, exact approval,
+idempotency, cancellation, and audit paths still execute the tool. The selected
+operator model remains the pinned reasoning backup. No synthetic tool result
+or completed business effect may be replayed to change a model or decision.
+
 ## Current router-owned AI credential boundary
 
 The current implementation also supersedes older model-routing descriptions
