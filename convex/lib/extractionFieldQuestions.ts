@@ -179,9 +179,33 @@ export function prepareFieldReviewQuestions(input: {
       return candidates.some((c) => c.value === value);
     if (Array.isArray(value)) return value.length > 0 && value.every(grounded);
     if (value && typeof value === "object") {
-      const leaves = Object.values(value).filter(
-        (v) => v !== null && v !== undefined,
-      );
+      const row = value as Record<string, unknown>;
+      if (
+        row.sourceSpanIds !== undefined &&
+        (!Array.isArray(row.sourceSpanIds) ||
+          !row.sourceSpanIds.every(
+            (id) =>
+              typeof id === "string" &&
+              sources.some((source) => source.id === id),
+          ))
+      )
+        return false;
+      if (
+        row.documentNodeId !== undefined &&
+        (typeof row.documentNodeId !== "string" || !row.documentNodeId.trim())
+      )
+        return false;
+      // Node IDs are retained opaque references, not evidence of a validated tree.
+      // All other values, including codes, roles and originalContent, remain facts.
+      const leaves = Object.entries(row)
+        .filter(
+          ([key, v]) =>
+            key !== "sourceSpanIds" &&
+            key !== "documentNodeId" &&
+            v !== null &&
+            v !== undefined,
+        )
+        .map(([, v]) => v);
       return leaves.length > 0 && leaves.every(grounded);
     }
     return false;
@@ -220,7 +244,7 @@ export function prepareFieldReviewQuestions(input: {
       > = {};
       if (!missing(input.document[field]) && grounded(input.document[field])) {
         criteria.keep =
-          "Keep the existing value only if every component is explicitly supported, correctly typed/scoped, and no source-backed repair or missing row is needed.";
+          "Keep the existing value only if every substantive component is explicitly supported, correctly typed/scoped, and no source-backed repair or missing row is needed. Citation IDs are references, not literal facts; node validity is not assessed.";
       }
       if (OPTIONAL_FIELDS.has(field) && missing(input.document[field])) {
         criteria.keep_absent =
@@ -264,7 +288,7 @@ export function prepareFieldReviewQuestions(input: {
         type: "noul",
         instructions: {
           question:
-            "Is the CURRENT field value (every component for arrays) explicitly supported by authoritative source text for this exact policy and correctly assigned to this field? Do not answer about another question's selection.",
+            "Is the CURRENT field value (every substantive component for arrays) explicitly supported by authoritative source text for this exact policy and correctly assigned to this field? sourceSpanIds and documentNodeId are citation references, not literal facts or proof; no source tree is supplied and node validity is not assessed. Do not answer about another question's selection.",
           field,
           current: decisionState({ value: input.document[field] ?? null }),
         },
@@ -290,6 +314,8 @@ export function prepareFieldReviewQuestions(input: {
   const state = decisionState({
     sourceScope:
       "All supplied text spans; no assertion of whole-PDF or visual coverage.",
+    provenanceScope:
+      "Provided sourceSpanIds must refer to supplied spans. documentNodeId is preserved as an opaque reference; no source tree is supplied and node validity is not assessed. Citation metadata is not a literal fact or proof of support.",
     sources: sources.map(({ id, text }) => ({ id, text })),
     current: Object.fromEntries(
       fields.map((field) => [field, input.document[field] ?? null]),
