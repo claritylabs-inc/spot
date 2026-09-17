@@ -304,21 +304,7 @@ function OperatorMessageFooter({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div>
-          {approved.length > 0 ? (
-            <PillButton
-              variant="ghost"
-              size="small"
-              className={cn("-ml-2", controlClass)}
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
-            >
-              <ChevronRight className={cn("size-3", expanded && "rotate-90")} />
-              {approved.length} auto-approved
-            </PillButton>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-1">
+        <div className="-ml-2 flex items-center gap-1">
           {message.content.trim() ? (
             <PillButton
               variant="icon"
@@ -364,7 +350,7 @@ function OperatorMessageFooter({
                   <RotateCcw className="size-3.5" />
                 )}
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="start" className="w-56">
                 <DropdownMenuItem
                   disabled={disabled}
                   onClick={() => void rerun(false)}
@@ -383,6 +369,18 @@ function OperatorMessageFooter({
             </DropdownMenu>
           ) : null}
         </div>
+        {approved.length > 0 ? (
+          <PillButton
+            variant="ghost"
+            size="small"
+            className={cn("-mr-2", controlClass)}
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {approved.length} auto-approved
+            <ChevronRight className={cn("size-3", expanded && "rotate-90")} />
+          </PillButton>
+        ) : null}
       </div>
       {expanded ? (
         <div className="space-y-4">{approved.map(renderConfirmation)}</div>
