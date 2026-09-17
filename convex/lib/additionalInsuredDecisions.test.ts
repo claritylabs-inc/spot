@@ -69,7 +69,14 @@ function args() {
     orgId: "org-1" as Id<"organizations">,
     policyId: "policy-1",
     sourceTree: [structuredClone(node)],
-    sourceSpans: [{ id: "span-1", documentId: "policy-1", text: automatic }],
+    sourceSpans: [
+      {
+        id: "span-1",
+        documentId: "policy-1",
+        text: automatic,
+        kind: "pdf_text" as string | undefined,
+      },
+    ],
     profile: { coverageLines: [] } as unknown as PolicyOperationalProfile,
   };
 }
@@ -223,6 +230,7 @@ test("literal discovery precedes batched classification with full unfiltered sou
     id: "span-2",
     documentId: "policy-1",
     text: "Definitions apply throughout the policy.",
+    kind: "pdf_text",
   });
   const result = resultEligibility(
     await extractAdditionalInsuredEligibility(input),
@@ -354,6 +362,7 @@ test.each(["node", "span", "association", "literal", "name", "preclassified"])(
         id: "other-span",
         documentId: "policy-1",
         text: automatic,
+        kind: "pdf_text",
       });
       extracted.items[0].sourceSpanIds = ["other-span"];
     }
@@ -377,6 +386,10 @@ test.each([
   "duplicate",
   "oversized",
   "dangling",
+  "image",
+  "unknown_kind",
+  "missing_kind",
+  "missing_span_parent",
 ])("%s source context bypasses literal discovery", async (failure) => {
   const input = args();
   if (failure === "missing") input.sourceSpans = [];
@@ -387,6 +400,11 @@ test.each([
     input.sourceSpans[0].text += "語".repeat(180_000);
   if (failure === "dangling")
     input.sourceTree[0].sourceSpanIds.push("missing-span");
+  if (failure === "image") input.sourceSpans[0].kind = "pdf_image";
+  if (failure === "unknown_kind") input.sourceSpans[0].kind = "unknown";
+  if (failure === "missing_kind") input.sourceSpans[0].kind = undefined;
+  if (failure === "missing_span_parent")
+    Object.assign(input.sourceSpans[0], { parentSpanId: "missing-span" });
   const result = resultEligibility(
     await extractAdditionalInsuredEligibility(input),
   );
@@ -435,3 +453,79 @@ test.each(["before", "discovery", "decision", "fallback"])(
     expect(decisions()).toHaveLength(stage === "decision" ? 1 : 0);
   },
 );
+
+test("all 63 candidates receive independent support and classification in one bounded request", async () => {
+  const input = args();
+  const named =
+    "Harbor LLC is an additional insured when required by written contract.";
+  input.sourceSpans[0].text = `${automatic} ${named}`;
+  extracted.items = [
+    ...Array.from({ length: 60 }, () => ({
+      ...literal,
+      name: "Harbor LLC",
+      subject: "Harbor LLC",
+      clause: named,
+    })),
+    ...Array.from({ length: 3 }, () => structuredClone(literal)),
+  ];
+  const result = resultEligibility(
+    await extractAdditionalInsuredEligibility(input),
+  );
+  expect(result.additionalInsureds).toHaveLength(60);
+  expect(result.withoutEndorsement).toHaveLength(3);
+  expect(decisions()).toHaveLength(1);
+  expect(Object.keys(decisions()[0].questions!)).toHaveLength(127);
+});
+
+test("a classification request over budget falls back with all context intact", async () => {
+  const input = args();
+  input.sourceSpans[0].text += " context".repeat(52_000);
+  extracted.items = Array.from({ length: 63 }, () => structuredClone(literal));
+  expect(
+    resultEligibility(await extractAdditionalInsuredEligibility(input)),
+  ).toEqual(legacy);
+  expect(generations()).toHaveLength(2);
+  expect(decisions()).toHaveLength(0);
+});
+
+test("uncertain Choice classification cannot bypass the independently evaluated threshold", async () => {
+  alterAnswers = (answers) => {
+    answers.classification_0 = {
+      type: "choice",
+      choice: "automatic",
+      confidence: 0.5,
+      probabilities: {
+        automatic: 0.5,
+        scheduled: 0,
+        endorsement_required: 0.5,
+        review: 0,
+      },
+    };
+  };
+  expect(
+    resultEligibility(await extractAdditionalInsuredEligibility(args())),
+  ).toEqual(legacy);
+  expect(generations()).toHaveLength(2);
+});
+
+test("scheduled wording still passes through the existing deterministic certificate safeguard", async () => {
+  const input = args();
+  const text = "Scheduled Additional Insured must be added by endorsement.";
+  input.sourceSpans[0].text = text;
+  input.sourceTree[0].textExcerpt = text;
+  extracted.items = [
+    {
+      ...literal,
+      subject: "Scheduled Additional Insured",
+      clause: text,
+      conditions: ["must be added by endorsement"],
+    },
+  ];
+  choices = ["automatic"];
+  const result = resultEligibility(
+    await extractAdditionalInsuredEligibility(input),
+  );
+  expect(result.withoutEndorsement).toEqual([]);
+  expect(result.requiresEndorsement).toHaveLength(1);
+  expect(result.requiresEndorsement[0].sourceNodeIds).toEqual(["node-1"]);
+});
