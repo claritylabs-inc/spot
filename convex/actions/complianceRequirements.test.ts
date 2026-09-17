@@ -417,6 +417,93 @@ describe("requirement import source verification through public actions", () => 
     expect((await f.saved()).runs[0].parserBackend).toBe("liteparse");
   });
 
+  test("question partitions each retain the complete source and candidate", async () => {
+    const initial = candidate();
+    initial.requirements = Array.from({ length: 32 }, (_, index) => ({
+      ...requirement,
+      title: `Coverage ${index}`,
+    }));
+    initial.certificateHolders = Array.from({ length: 20 }, (_, index) => ({
+      ...holder,
+      displayName: `Holder ${index}`,
+      sourceExcerpt: `Certificate holder: Holder ${index}.`,
+    }));
+    const fullSource = `${source}\n${initial.certificateHolders.map((row) => row.sourceExcerpt).join("\n")}\n${"Context. ".repeat(12000)}Tail context`;
+    const router = mockRouter({ initial });
+    const f = await fixture();
+    await f.run(fullSource);
+    expect(router.generations).toHaveLength(1);
+    expect(router.decisions).toHaveLength(2);
+    expect(Object.keys(router.decisions[0].questions)).toHaveLength(128);
+    const questionIds = router.decisions.flatMap((request) =>
+      Object.keys(request.questions),
+    );
+    expect(new Set(questionIds).size).toBe(questionIds.length);
+    for (const request of router.decisions) {
+      expect(Object.keys(request.questions).length).toBeLessThanOrEqual(128);
+      expect(request.state).toMatchObject({
+        sourceText: fullSource,
+        candidate: {
+          requirements: expect.arrayContaining([
+            expect.objectContaining({ title: "Coverage 31" }),
+          ]),
+          certificateHolders: expect.arrayContaining([
+            expect.objectContaining({ displayName: "Holder 19" }),
+          ]),
+        },
+      });
+      const state = request.state as { sourceSegments: string[] };
+      expect(state.sourceSegments.join("")).toBe(fullSource);
+    }
+    expect(router.decisions[1].state).toEqual(router.decisions[0].state);
+  });
+
+  test("UTF-8 verification ceiling sends full text to reasoning without oversized decisions", async () => {
+    const fullSource = `${source}\n${"界".repeat(90000)}\nTail context`;
+    const router = mockRouter();
+    const f = await fixture();
+    await expect(f.run(fullSource)).rejects.toThrow(
+      "serialized verification budget",
+    );
+    expect(router.decisions).toHaveLength(0);
+    expect(router.generations).toHaveLength(2);
+    expect(router.generations[1]).toContain("Tail context");
+    expect((await f.saved()).sources).toEqual([]);
+  });
+
+  test.each(["active", "legacy"] as const)(
+    "%s handles unrepresented carrier eligibility without broadening the coverage rule",
+    async (mode) => {
+      configure(mode);
+      const fullSource = `${source} Insurance satisfies this requirement only when issued by an A-rated carrier admitted in the state.`;
+      const router = mockRouter({
+        answer: (id) => ({
+          type: "noul",
+          noul: id === "conditions_0" || id === "omissions_0" ? 0.01 : 0.99,
+        }),
+      });
+      const f = await fixture();
+      if (mode === "active") {
+        await expect(f.run(fullSource)).rejects.toThrow("needs review");
+        expect(router.generations).toHaveLength(2);
+        expect(router.decisions).toHaveLength(2);
+        for (const request of router.decisions) {
+          expect(request.state).toMatchObject({ sourceText: fullSource });
+        }
+        expect(router.generations[1]).toContain("A-rated carrier admitted");
+        expect((await f.saved()).sources).toEqual([]);
+        expect((await f.saved()).requirements).toEqual([]);
+      } else {
+        expect((await f.run(fullSource)).createdCount).toBe(1);
+        expect(router.decisions).toHaveLength(0);
+        expect(router.generations).toHaveLength(1);
+        expect((await f.saved()).requirements[0].limits?.[0].amount).toBe(
+          1000000,
+        );
+      }
+    },
+  );
+
   test("unauthorized callers never reach either model or persistence", async () => {
     const router = mockRouter();
     const f = await fixture("member");
