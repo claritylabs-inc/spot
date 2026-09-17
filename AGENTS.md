@@ -111,6 +111,20 @@ transient decision failures and uncertainty use the existing reasoning route.
 Rollout and evidence requirements are documented in
 `docs/deployment/typed-decisions.md`.
 
+Final extraction accuracy and omission judgments use the independently gated
+`extraction.audit` family, with batched questions in both source-to-fact and
+fact-to-source directions. Spot's `extractionEvidenceAudit.ts` reuses only an
+exactly bound source/document/profile report under the current threshold and
+evaluation; changed postprocessed snapshots are re-audited. The existing private
+source-bundle artifact retains the report and audited snapshot. Qualified active
+unresolved audits block completion preflight; shadow and legacy preserve the
+existing behavior. This is a provided-text audit, never visual completeness or
+permission to bypass the deterministic ledger and sole promotion mutation.
+Original input spans survive worker completion so dropped normalization units
+cannot disappear from completeness accounting. `extraction.field_review`
+batches field/financial-role correction judgments while retaining registered
+field, numeric/date, and source-citation checks plus reasoning fallback.
+
 Bounded tool selection prepares a real AI SDK step from the available tool
 catalog. The existing registry, schema validation, preflight, exact approval,
 idempotency, cancellation, and audit paths still execute the tool. The selected

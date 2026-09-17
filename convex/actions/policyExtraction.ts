@@ -14,6 +14,11 @@ import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
 import { buildExtractor, runCoverageRecovery } from "../lib/extraction";
 import { decisionPolicyFromEnvironment, logDecisionEvent } from "../lib/decisions";
 import { decidePolicyDocumentIntake, policyDocumentClassificationSchema } from "../lib/policyDocumentDecisions";
+import {
+  resolveExtractionEvidenceAudit,
+  requireResolvedExtractionAudit,
+} from "../lib/extractionEvidenceAudit";
+import type { ExtractionAuditBinding } from "@claritylabs/cl-sdk";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
 import {
   preparePdfTextWithParserFallback,
@@ -296,6 +301,8 @@ type ExternalCompletionPayload = {
   tokenUsage?: unknown;
   performanceReport?: unknown;
   coverageRecovery?: unknown;
+  evidenceAudit?: unknown;
+  originalSourceSpans?: unknown[];
 };
 
 type CoverageRecoveryDiagnosticsLike = {
@@ -802,6 +809,7 @@ async function persistEvidenceAndPromote(
     protocolVersion?: "source-tree-v1" | "source-tree-v2";
     extractorVersion?: string;
     sections?: ExtractionCompletionManifest["sections"];
+    evidenceAudit?: Awaited<ReturnType<typeof resolveExtractionEvidenceAudit>>;
   },
 ) {
   const extractorVersion =
@@ -869,6 +877,8 @@ async function persistEvidenceAndPromote(
       sourceTree: args.sourceNodes,
       evidenceLedger: ledger,
       completionManifest: manifest,
+      evidenceAudit: args.evidenceAudit?.report,
+      evidenceAuditSnapshot: args.evidenceAudit?.snapshot,
     },
     {
       sourceFingerprint: ledger.sourceFingerprint,
@@ -878,9 +888,25 @@ async function persistEvidenceAndPromote(
         evidenceLedgerHash: ledger.ledgerHash,
         manifestHash: manifest.manifestHash,
         protocolVersion: manifest.protocolVersion,
+        ...(args.evidenceAudit?.report
+          ? { evidenceAuditStatus: args.evidenceAudit.report.status }
+          : {}),
       },
     },
   );
+  if (args.evidenceAudit?.report) {
+    const audit = args.evidenceAudit.report;
+    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
+      jobId: args.policyId,
+      timestamp: nowMs(),
+      message: `Source-text audit ${audit.status}: ${audit.forward.verified}/${audit.forward.total} facts, ${audit.reverse.verified}/${audit.reverse.total} source units; visual completeness not assessed`,
+      phase: "extract",
+      level: audit.status === "unresolved" ? "warn" : "info",
+    });
+  }
+  // Persist the bounded diagnostic before enforcing its preflight. The existing
+  // promotion mutation still independently validates structural source evidence.
+  if (args.evidenceAudit) requireResolvedExtractionAudit(args.evidenceAudit);
   const result = (await ctx.runMutation(
     (internal as any).policies.promoteCompletedExtractionInternal,
     {
@@ -1949,11 +1975,29 @@ export function makePhases(
           ),
         }),
       };
+      const evidenceAudit = await resolveExtractionEvidenceAudit({
+        ctx: convexCtx,
+        orgId: state.orgId as Id<"organizations">,
+        traceId: state.traceId,
+        previous: result.evidenceAudit,
+        binding: {
+          profile: finalFields.operationalProfile as PolicyOperationalProfile,
+          document: doc as ExtractionAuditBinding["document"],
+          sourceTree: sourceNodes,
+          originalSourceSpans: pdfSource.sourceSpans as ExtractionAuditBinding["sourceSpans"],
+          sourceSpans: sourceSpansForSdk(
+            canonicalSpans.map((span) => ({ ...span, text: span.text ?? "" })),
+            policyId,
+          ),
+        },
+        shouldCancel: () => isExtractionCancelled(convexCtx, policyId),
+      });
       await persistEvidenceAndPromote(convexCtx, {
         policyId,
         sourceSpans: canonicalSpans,
         sourceNodes,
         fields: finalFields,
+        evidenceAudit,
       });
 
       await convexCtx.runMutation((internal as any).policies.updateFiles, {
@@ -3085,6 +3129,23 @@ async function completeExternalExtractFromPayload(
       ),
     }),
   };
+  const evidenceAudit = await resolveExtractionEvidenceAudit({
+    ctx,
+    orgId: state.orgId as Id<"organizations">,
+    traceId: state.traceId,
+    previous: payload?.evidenceAudit,
+    binding: {
+      profile: finalFields.operationalProfile as PolicyOperationalProfile,
+      document: doc as ExtractionAuditBinding["document"],
+      sourceTree: sourceNodes,
+      originalSourceSpans: payload?.originalSourceSpans as ExtractionAuditBinding["sourceSpans"] | undefined,
+      sourceSpans: sourceSpansForSdk(
+        canonicalSpans.map((span) => ({ ...span, text: span.text ?? "" })),
+        policyId,
+      ),
+    },
+    shouldCancel: async () => !(await externalCompletionLeaseIsCurrent(ctx, args)),
+  });
   await persistEvidenceAndPromote(ctx, {
     policyId,
     sourceSpans: canonicalSpans,
@@ -3093,6 +3154,7 @@ async function completeExternalExtractFromPayload(
     protocolVersion,
     extractorVersion,
     sections,
+    evidenceAudit,
   });
 
   if (state.fileId) {
