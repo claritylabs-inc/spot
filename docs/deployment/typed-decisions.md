@@ -169,7 +169,12 @@ contradictions, missing context, or exceeded bounds retain the original reasonin
 review; clipped snippets cannot establish completeness. An absent optional field
 can remain absent only after a separate judgment finds no source-backed value or
 row to add. This branch never clears an existing value. The local .99 evidence
-floor is conservative configuration, not a calibrated quality result.
+floor is conservative configuration, not a calibrated quality result. Citation
+metadata remains unchanged; supplied span IDs are checked, while node IDs remain
+opaque without a source tree. Substantive values must still be literal candidates.
+For example, joined coverage `originalContent` that does not occur literally in
+the supplied text retains reasoning. Fixture acceptance does not establish how
+often real documents qualify.
 
 ## Related judgments still using reasoning
 
