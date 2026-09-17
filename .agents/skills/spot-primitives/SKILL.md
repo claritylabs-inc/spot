@@ -235,6 +235,9 @@ support before enabling the Spot consumer change.
 
 Profile settings store personal `users.streamResponses` (default on) and
 `users.showThinking` (default off). Both operator and client web renderers share
-these preferences. Show thinking displays a collapsible summary of tool activity,
+these preferences. Show thinking displays a collapsed tool-activity disclosure once
+tools are available. Waiting and tool activity share a compact capsule with a slowly
+spinning Spot mark (static with reduced motion); showing activity suppresses the
+separate waiting capsule. The summary shows tool activity,
 not raw reasoning or tool payloads. Approvals and task artifacts remain independent
 of these display preferences. Non-web channel delivery stays terminal-only.
