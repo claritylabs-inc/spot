@@ -19,7 +19,8 @@ export { insuranceDocToPolicy, policyToInsuranceDoc } from "./documentMapping";
 // ── Spot extraction factory ──
 import { createExtractor } from "@claritylabs/cl-sdk";
 import type { LogFn, TokenUsage } from "@claritylabs/cl-sdk";
-import { makeGenerateObject } from "./sdkCallbacks";
+import { makeDecide, makeGenerateObject } from "./sdkCallbacks";
+import { decisionPolicyFromEnvironment, logDecisionEvent } from "./decisions";
 import { modelCapabilitiesForTask } from "./modelCatalog";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -81,6 +82,7 @@ export function buildExtractor(opts?: {
       }
     : undefined;
   const generateObject = makeGenerateObject("extraction", routing);
+  const decide = makeDecide(routing);
   const throwIfCancelled = async () => {
     if (await opts?.shouldCancel?.()) {
       throw new Error("Cancelled by user");
@@ -88,9 +90,19 @@ export function buildExtractor(opts?: {
   };
 
   return createExtractor({
+    decide: async (request) => {
+      await throwIfCancelled();
+      const result = await decide(request);
+      await throwIfCancelled();
+      return result;
+    },
+    decisionPolicy: decisionPolicyFromEnvironment(),
+    onDecision: logDecisionEvent,
     generateObject: async (params) => {
       await throwIfCancelled();
-      const result = await generateObject(enrichProviderOptionsWithPageImages(params, opts?.pageScreenshots));
+      const result = await generateObject(
+        enrichProviderOptionsWithPageImages(params, opts?.pageScreenshots),
+      );
       await throwIfCancelled();
       return result;
     },

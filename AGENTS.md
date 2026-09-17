@@ -85,6 +85,33 @@ The tenant MCP catalog contains no broker portfolio or procurement proposal
 tools. When an older paragraph conflicts with this boundary, follow the active
 Convex/UI contracts and the release evidence documented above.
 
+## Current typed decision boundary
+
+`convex/lib/decisions.ts` owns domain decision policy and reasoning fallback;
+`convex/lib/sdkCallbacks.ts` supplies the SDK's optional `Decide` callback.
+Both Convex and the extraction worker send structured questions to the router's
+`/v1/decide` endpoint using the existing router bearer credential and tenant
+`glass`. TypeSafe credentials remain in cl-router. Instructions, option
+criteria, score legends, and state preserve ordinary nested JSON. Choice,
+Score, and Noul answers retain their distinct native probabilities; reasoning
+fallback never manufactures a Jev confidence value.
+
+`SPOT_DECISION_POLICY` is a versioned JSON policy with `legacy`, `shadow`, and
+`active` modes and per-family overrides. Missing or invalid configuration uses
+legacy reasoning. Active families require an explicit evaluated threshold and
+evaluation ID; shadow always executes the established reasoning path. Domain
+acceptance also checks source coverage, identity, contradictions, and allowed
+candidate values. Cancellation stops the request without starting fallback;
+transient decision failures and uncertainty use the existing reasoning route.
+Rollout and evidence requirements are documented in
+`docs/deployment/typed-decisions.md`.
+
+Bounded tool selection prepares a real AI SDK step from the available tool
+catalog. The existing registry, schema validation, preflight, exact approval,
+idempotency, cancellation, and audit paths still execute the tool. The selected
+operator model remains the pinned reasoning backup. No synthetic tool result
+or completed business effect may be replayed to change a model or decision.
+
 ## Current router-owned AI credential boundary
 
 The current implementation also supersedes older model-routing descriptions

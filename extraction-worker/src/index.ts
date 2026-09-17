@@ -7,6 +7,7 @@ import { makeFunctionReference } from "convex/server";
 import {
   ACORD_LOB_CODES,
   createExtractor,
+  parseDecisionPolicy,
   resolveAcordCoverageCode,
   stableHash,
   toLobCodes,
@@ -531,6 +532,16 @@ const CL_ROUTER_TENANT_ID = requiredEnv("CL_ROUTER_TENANT_ID").trim();
 if (CL_ROUTER_TENANT_ID !== "glass") {
   throw new Error("CL_ROUTER_TENANT_ID must be glass");
 }
+function workerDecisionPolicy() {
+  try {
+    return parseDecisionPolicy(
+      JSON.parse(process.env.SPOT_DECISION_POLICY ?? '{"mode":"legacy"}'),
+    );
+  } catch {
+    return { mode: "legacy" as const };
+  }
+}
+
 const clRouter = createClRouterClient({
   baseUrl: requiredEnv("CL_ROUTER_URL"),
   secret: requiredEnv("CL_ROUTER_SECRET"),
@@ -1508,6 +1519,49 @@ function buildWorkerExtractor(opts: {
   ) as Partial<Record<ModelTaskKind, ModelCapabilities>>;
   return {
     extractor: createExtractor({
+      decide: async ({ signal, ...request }) => {
+        const response = await clRouter.decide(
+          {
+            ...request,
+            orgId: opts.job.state.orgId,
+          },
+          signal,
+        );
+        await recordTraceEvent(opts.job, {
+          kind: "model_call",
+          label: "Evaluate bounded decision",
+          task: "classification",
+          taskKind: request.task,
+          model: response.model,
+          transport: "cl-router",
+          status: "complete",
+          durationMs: response.durationMs,
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+          details: {
+            requestId: response.requestId,
+            ...(response.parentRequestId ? { parentRequestId: response.parentRequestId } : {}),
+            cost: response.cost,
+            contractVersion: response.contractVersion,
+          },
+        });
+        return response;
+      },
+      decisionPolicy: workerDecisionPolicy(),
+      onDecision: (event) => {
+        const { response, ...outcome } = event;
+        console.info(
+          "[decision]",
+          JSON.stringify({
+            ...outcome,
+            requestId: response?.requestId,
+            parentRequestId: response?.parentRequestId,
+            model: response?.model,
+            usage: response?.usage,
+            cost: response?.cost,
+          }),
+        );
+      },
       generateObject,
       log: opts.log,
       onProgress: opts.log,

@@ -205,6 +205,23 @@
           "schema": "AdminScoreResponse"
         }
       ]
+    },
+    {
+      "name": "typed decision",
+      "method": "post",
+      "path": "/v1/decide",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "DecideRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "DecideResponse"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -748,6 +765,112 @@
           }
         }
       ]
+    },
+    {
+      "name": "Spot structured decision request",
+      "schema": "DecideRequest",
+      "value": {
+        "tenantId": "glass",
+        "task": "policy_document_intake",
+        "state": {
+          "text": "This specimen is a demo",
+          "nested": [
+            null,
+            true,
+            3
+          ]
+        },
+        "questions": {
+          "kind": {
+            "type": "choice",
+            "instructions": {
+              "question": "What artifact is explicitly described?"
+            },
+            "criteria": {
+              "specimen": {
+                "definition": "Explicit specimen",
+                "signals": [
+                  null,
+                  true
+                ]
+              },
+              "other": "Other artifact"
+            }
+          },
+          "support": {
+            "type": "noul",
+            "instructions": "Is this explicitly a specimen?"
+          },
+          "strength": {
+            "type": "score",
+            "instructions": "How explicit is this evidence?",
+            "criteria": [
+              {
+                "degree": "absent"
+              },
+              {
+                "degree": "explicit"
+              }
+            ]
+          }
+        },
+        "executionBudgetMs": 1000,
+        "parentRequestId": "parent-1",
+        "trace": {
+          "parentRequestId": "parent-1"
+        }
+      }
+    },
+    {
+      "name": "Spot structured decision response",
+      "schema": "DecideResponse",
+      "value": {
+        "contractVersion": 1,
+        "requestId": "decision-1",
+        "parentRequestId": "parent-1",
+        "model": "jev-1.13.0",
+        "answers": {
+          "kind": {
+            "type": "choice",
+            "choice": "specimen",
+            "probabilities": {
+              "specimen": 0.99,
+              "other": 0.01
+            },
+            "confidence": 0.99
+          },
+          "support": {
+            "type": "noul",
+            "noul": 0.99
+          },
+          "strength": {
+            "type": "score",
+            "score": 0.99,
+            "probabilities": {
+              "0": 0.01,
+              "1": 0.99
+            },
+            "legend": {
+              "0": {
+                "degree": "absent"
+              },
+              "1": {
+                "degree": "explicit"
+              }
+            },
+            "confidence": 0.99
+          }
+        },
+        "usage": {
+          "inputTokens": 100,
+          "outputTokens": 20
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 4200
+        },
+        "durationMs": 125
+      }
     }
   ]
 }

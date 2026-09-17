@@ -1,3 +1,4 @@
+import { routingSelectionValidator } from "./lib/routingSelectionValidator";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -43,6 +44,7 @@ const modelProviderValidator = v.union(
 );
 
 const extractionTraceRoutingValidator = v.object({
+  selection: v.optional(routingSelectionValidator),
   decision: v.string(),
   candidatesConsidered: v.array(v.object({
     provider: modelProviderValidator,

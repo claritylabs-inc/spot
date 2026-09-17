@@ -1,6 +1,15 @@
 "use node";
 
 import {
+  parseRoutingSelectionMetadata,
+  type RoutingSelectionMetadata,
+  validateDecideRequest,
+  validateDecideResponse,
+  type DecideRequest,
+  type DecideResponse,
+} from "@claritylabs/cl-router-policy";
+
+import {
   MODEL_PROVIDERS,
   MODEL_TASKS,
   type ModelProvider,
@@ -47,6 +56,7 @@ export type ClRouterUsage = {
 };
 
 export type ClRouterRoutingMetadata = {
+  selection?: RoutingSelectionMetadata;
   decision: string;
   candidatesConsidered: ModelRoute[];
   policyVersion: string | null;
@@ -644,6 +654,13 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
   ) {
     return null;
   }
+  let selection: RoutingSelectionMetadata | undefined;
+  try {
+    if (value.selection !== undefined)
+      selection = parseRoutingSelectionMetadata(value.selection);
+  } catch {
+    return null;
+  }
   const wouldHaveChosen = value.wouldHaveChosen;
   const wouldHaveChosenDecision =
     isRecord(wouldHaveChosen) && typeof wouldHaveChosen.decision === "string"
@@ -659,6 +676,7 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
     return null;
   }
   return {
+    ...(selection ? { selection } : {}),
     decision: value.decision,
     candidatesConsidered: candidates,
     policyVersion: value.policyVersion,
@@ -1149,6 +1167,25 @@ export async function clRouterGenerateStream(
   })();
 
   return { events, headers: response.headers };
+}
+
+export async function clRouterDecide(
+  request: Omit<DecideRequest, "tenantId">,
+  options: ClRouterClientOptions = {},
+): Promise<DecideResponse> {
+  const validated = validateDecideRequest({
+    ...request,
+    tenantId: CL_ROUTER_TENANT_ID,
+  });
+  const payload = await postJson("/v1/decide", validated, options);
+  try {
+    return validateDecideResponse(payload, validated);
+  } catch {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router decision response is invalid",
+    );
+  }
 }
 
 export async function clRouterGenerate(

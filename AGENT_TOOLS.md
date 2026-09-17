@@ -20,6 +20,17 @@ disabling the switch restores manual approval for new calls. Tenant approvals
 are unchanged. References below to exact confirmation describe the default
 manual mode; the global switch can satisfy that gate automatically.
 
+## Bounded decision dispatch
+
+The optional typed decision layer can select an available tool and bounded
+arguments before a real AI SDK step. It uses the same operator and tenant
+catalogs listed here, and grants no additional tools or authority. Execution
+still validates arguments and runs the existing preflight, approval,
+idempotency, cancellation, and audit paths. Ambiguous selections, free-form
+arguments, and unqualified decision families retain reasoning dispatch. The
+operator's selected reasoning model remains pinned. No decision endpoint is
+exposed as a new operator or tenant MCP tool.
+
 ## Source owners and maintenance
 
 - Operator-agent tools are defined only in `convex/lib/operatorAgentToolRegistry.ts`. `convex/lib/operatorMcpToolCatalog.ts` projects that registry into operator MCP and adds operator-run lifecycle tools.

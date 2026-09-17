@@ -45,6 +45,7 @@
 !/docs/deployment/
 /docs/deployment/*
 !/docs/deployment/environments.md
+!/docs/deployment/typed-decisions.md
 !/docs/deployment/slack.md
 !/docs/deployment/operator-mcp.md
 !/docs/deployment/operator-email.md

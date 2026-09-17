@@ -1,3 +1,11 @@
+import {
+  parseRoutingSelectionMetadata,
+  type RoutingSelectionMetadata,
+  validateDecideRequest,
+  validateDecideResponse,
+  type DecideRequest,
+  type DecideResponse,
+} from "@claritylabs/cl-router-policy";
 import { createHash } from "node:crypto";
 
 export type ClRouterModelRoute = {
@@ -65,6 +73,7 @@ export type ClRouterGenerateRequest = {
 };
 
 export type ClRouterRoutingMetadata = {
+  selection?: RoutingSelectionMetadata;
   decision: string;
   candidatesConsidered: ClRouterModelRoute[];
   policyVersion: string | null;
@@ -94,6 +103,10 @@ export type ClRouterGenerateResponse = {
 };
 
 export type ClRouterClient = {
+  decide(
+    input: Omit<DecideRequest, "tenantId">,
+    signal?: AbortSignal,
+  ): Promise<DecideResponse>;
   generate(input: ClRouterGenerateInput): Promise<ClRouterGenerateResponse>;
 };
 
@@ -287,8 +300,21 @@ function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
       "cl-router returned invalid generate metadata",
     );
   }
+  let selection: RoutingSelectionMetadata | undefined;
+  try {
+    if (routing.selection !== undefined)
+      selection = parseRoutingSelectionMetadata(routing.selection);
+  } catch {
+    throw new ClRouterProtocolError(
+      "cl-router returned invalid selection metadata",
+    );
+  }
   return {
     ...(value as ClRouterGenerateResponse),
+    routing: {
+      ...(routing as ClRouterRoutingMetadata),
+      ...(selection ? { selection } : {}),
+    },
     usage: {
       ...(usage as ClRouterGenerateResponse["usage"]),
       cacheWriteTokens,
@@ -541,6 +567,49 @@ export function createClRouterClient(
   );
 
   return {
+    async decide(input, callerSignal) {
+      const request = validateDecideRequest({ ...input, tenantId: "glass" });
+      const requestBody = JSON.stringify(request);
+      if (Buffer.byteLength(requestBody) > CL_ROUTER_MAX_JSON_BYTES) {
+        throw new ClRouterProtocolError(
+          "cl-router decision request exceeds the JSON limit",
+        );
+      }
+      const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
+      const signal = callerSignal
+        ? AbortSignal.any([callerSignal, timeoutSignal])
+        : timeoutSignal;
+      signal.throwIfAborted();
+      let response: Response;
+      try {
+        response = await fetchImpl(
+          new URL("v1/decide", `${baseUrl.toString().replace(/\/$/, "")}/`),
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${options.secret}`,
+              "content-type": "application/json",
+            },
+            body: requestBody,
+            signal,
+          },
+        );
+      } catch (error) {
+        callerSignal?.throwIfAborted();
+        throw new ClRouterConnectionError(
+          timeoutSignal.aborted ? "timeout" : "connection",
+          error,
+        );
+      }
+      if (!response.ok) throw await httpError(response);
+      try {
+        return validateDecideResponse(await response.json(), request);
+      } catch {
+        throw new ClRouterProtocolError(
+          "cl-router decision response is invalid",
+        );
+      }
+    },
     async generate(input) {
       const signal = AbortSignal.timeout(options.timeoutMs);
       const request = buildClRouterGenerateRequest(input, executionBudgetMs);

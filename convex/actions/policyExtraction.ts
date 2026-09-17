@@ -12,6 +12,8 @@ import {
 } from "@claritylabs/cl-pipelines/convex";
 import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
 import { buildExtractor, runCoverageRecovery } from "../lib/extraction";
+import { decisionPolicyFromEnvironment, logDecisionEvent } from "../lib/decisions";
+import { decidePolicyDocumentIntake, policyDocumentClassificationSchema } from "../lib/policyDocumentDecisions";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
 import {
   preparePdfTextWithParserFallback,
@@ -21,6 +23,7 @@ import {
 import type { ExtractionResult, PipelineCheckpoint } from "../lib/extraction";
 import type { ExtractOptions } from "../lib/extraction";
 import {
+  makeDecide,
   makeEmbedTexts,
   makeGenerateObject,
   type EmbedTexts,
@@ -990,13 +993,7 @@ function stripLease(
 
 const extractionGateSchema = z.object({
   shouldExtract: z.boolean(),
-  classification: z.enum([
-    "bound_policy_document",
-    "specimen_policy_document",
-    "insurance_related_but_not_bound_policy",
-    "non_insurance",
-    "unknown",
-  ]),
+  classification: policyDocumentClassificationSchema,
   confidence: z.number().min(0).max(1),
   reason: z.string(),
   detectedTitle: z.string().nullable(),
@@ -1414,28 +1411,31 @@ async function classifyInsuranceExtractability(params: {
     tracePolicyId: params.policyId,
   });
   const excerpt = buildDocumentGateExcerpt(params.sourceSpans);
-  const result = await generateGateObject({
-    schema: extractionGateSchema,
-    maxTokens: 600,
-    system: `You are a strict intake gate for Spot post-binding insurance extraction.
+  const fallback = async (): Promise<ExtractionGateDecision> => {
+    const result = await generateGateObject({
+      schema: extractionGateSchema,
+      maxTokens: 600,
+      system: `You are a strict intake gate for Spot post-binding insurance extraction.
 
 Decide whether an uploaded PDF should be processed by a bound-policy extractor. Allow extraction when the document is clearly an already-bound insurance policy, binder, declarations page, renewal policy, insurance schedule, policy wording, endorsement, or post-binding supplement that contains bound policy terms.
 
 Also allow a document explicitly labeled as a specimen policy, sample policy, or testing-only policy when it represents a policy artifact suitable for extraction testing. Return classification "specimen_policy_document" for those testing fixtures. A disclaimer such as "not an actual policy" or "not evidence of insurance" does not disqualify an otherwise valid specimen policy.
 
 Reject unbound quotes, proposals, submissions, applications, marketing material, invoices, novels, books, textbooks, resumes, generic contracts, unrelated legal documents, and any document that is merely about insurance but is not itself a bound policy artifact. A law-office trust ledger, closing statement, or disbursement statement is not a policy, even when it lists a payment for title insurance or an insurance premium. A payment line is not evidence that the document contains bound policy terms. If uncertain, return classification "unknown" and shouldExtract false only when the document is more likely not extractable than extractable.`,
-    prompt: `Classify this PDF before extraction.
+      prompt: `Classify this PDF before extraction.
 
 Return shouldExtract=true for bound or post-binding insurance policy artifacts and for specimen policy testing fixtures.
 
 Machine-readable excerpts:
 ${excerpt}`,
-    providerOptions: {
-      pdfBytes: params.pdfBytes,
-      mimeType: "application/pdf",
-    },
-  });
-  return result.object as ExtractionGateDecision;
+      providerOptions: {
+        pdfBytes: params.pdfBytes,
+        mimeType: "application/pdf",
+      },
+    });
+    return result.object as ExtractionGateDecision;
+  };
+  return decidePolicyDocumentIntake({ ...params, fallback });
 }
 
 function shouldRejectDocument(decision: ExtractionGateDecision): boolean {
@@ -3536,6 +3536,9 @@ export const backfillStoredCoverageRecovery = internalAction({
     );
 
     const recovery = await runCoverageRecovery({
+      decide: makeDecide({ ctx, orgId: policy.orgId, tracePolicyId: args.policyId }),
+      decisionPolicy: decisionPolicyFromEnvironment(),
+      onDecision: logDecisionEvent,
       sourceTree,
       sourceSpans: sdkSourceSpans,
       operationalProfile: primaryProfile,
