@@ -4,7 +4,9 @@
     "deploymentEnabled": {
       "stack/**": false,
       "preview/workspace-ui": false,
-      "main": true
+      "main": true,
+      "preview/workspace-chat-ui": false,
+      "preview/operator-mcp-servers": true
     }
   }
 }
