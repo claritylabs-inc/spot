@@ -20,14 +20,20 @@ async function reconcileCompanyInformation(
   await reconcileExtractedCompanyFacts(ctx, {
     orgId,
     source: "extraction",
-    facts: [...(org?.companyResearch?.facts ?? []).map((fact) => ({ ...fact, content: `${fact.content} [Source](${fact.sourceRef})` })), ...applied.flatMap((row) =>
-      (row.organizationFacts ?? []).map((fact) => ({
-        // Rows stored before the wiki gained sections held one flat fact list.
-        key: fact.section ?? "profile",
-        sourceRef: row.sourceRef,
-        content: fact.content,
+    facts: [
+      ...(org?.companyResearch?.facts ?? []).map((fact) => ({
+        ...fact,
+        content: `${fact.content} [Source](${fact.sourceRef})`,
       })),
-    )],
+      ...applied.flatMap((row) =>
+        (row.organizationFacts ?? []).map((fact) => ({
+          // Rows stored before the wiki gained sections held one flat fact list.
+          key: fact.section ?? "profile",
+          sourceRef: row.sourceRef,
+          content: fact.content,
+        })),
+      ),
+    ],
   });
   await syncOrgProfileFromDeclarationFacts(ctx, orgId);
 }
@@ -51,35 +57,4 @@ export async function removeClientFileCompanyInformation(
     .withIndex("file", (index) => index.eq("clientFileId", clientFileId))
     .unique();
   return await removeExtraction(ctx, extraction);
-}
-
-export async function removeEmailThreadCompanyInformation(
-  ctx: MutationCtx,
-  emailThreadId: Id<"procurementEmailThreads">,
-) {
-  const thread = await ctx.db.get(emailThreadId);
-  const extraction = await ctx.db
-    .query("companyInformationExtractions")
-    .withIndex("email", (index) =>
-      index.eq("procurementEmailThreadId", emailThreadId),
-    )
-    .unique();
-  if (extraction) await ctx.db.delete(extraction._id);
-
-  const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (index) => index.eq("threadId", emailThreadId))
-    .collect();
-  for (const clientFileId of new Set(
-    messages.flatMap((message) => message.clientFileIds),
-  )) {
-    const fileExtraction = await ctx.db
-      .query("companyInformationExtractions")
-      .withIndex("file", (index) => index.eq("clientFileId", clientFileId))
-      .unique();
-    if (fileExtraction) await ctx.db.delete(fileExtraction._id);
-  }
-  const orgId = extraction?.orgId ?? thread?.clientOrgId;
-  if (orgId) await reconcileCompanyInformation(ctx, orgId);
-  return Boolean(extraction || messages.length > 0);
 }
