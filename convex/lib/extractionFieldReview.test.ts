@@ -385,6 +385,65 @@ function absentAnswers(request: Request) {
   }
   return answers;
 }
+
+// Row citation keys match cl-sdk 4.7.1 materializeDocument. Coverage's generated
+// originalContent is deliberately retained as substantive context, not skipped.
+const provenanceDocument = {
+  ...fullDocument,
+  coverages: [{
+    name: "Professional liability",
+    originalContent: "Professional liability",
+    sourceSpanIds: [coverageSource.id],
+    documentNodeId: "coverage-node",
+  }],
+  premiumBreakdown: financial.premiumBreakdown.map((row) => ({
+    ...row,
+    sourceSpanIds: [financialSource.id],
+    documentNodeId: "premium-node",
+  })),
+  taxesAndFees: financial.taxesAndFees.map((row) => ({
+    ...row,
+    sourceSpanIds: [financialSource.id],
+    documentNodeId: "tax-node",
+  })),
+};
+
+test("materialized provenance-bearing rows keep citations intact in the all-groups batch", async () => {
+  mocks.decide.mockImplementation(async (request: Request) => respond(request, moneyAnswers(request)));
+  const result = await reviewExtractionFields(options(provenanceDocument, fullSources));
+  expect(mocks.decide).toHaveBeenCalledOnce();
+  expect(mocks.generate).not.toHaveBeenCalled();
+  expect(result.reviewedFieldCount).toBe(23);
+  const request = mocks.decide.mock.calls[0][0] as Request;
+  for (const field of ["coverages", "premiumBreakdown", "taxesAndFees"] as const) {
+    expect(result.document[field]).toEqual(provenanceDocument[field]);
+    expect((request.state as unknown as { current: Record<string, unknown> }).current[field])
+      .toEqual(provenanceDocument[field]);
+  }
+  expect(request.state).toHaveProperty("provenanceScope", expect.stringContaining("node validity is not assessed"));
+});
+
+test.each(["missing_span", "malformed_spans", "malformed_node", "unknown_code", "unknown_role", "unknown_value", "compound_original_content"])(
+  "%s in a materialized row retains reasoning instead of ignoring semantic content",
+  async (condition) => {
+    const row: Record<string, unknown> = { ...provenanceDocument.coverages[0] };
+    if (condition === "missing_span") row.sourceSpanIds = ["not-supplied"];
+    if (condition === "malformed_spans") row.sourceSpanIds = coverageSource.id;
+    if (condition === "malformed_node") row.documentNodeId = { name: "not-an-id" };
+    if (condition === "unknown_code") row.coverageCode = "UNSUPPORTED_CODE";
+    if (condition === "unknown_role") row.role = "excluded";
+    if (condition === "unknown_value") row.limit = "$9,000,000";
+    if (condition === "compound_original_content") {
+      row.limit = "$1,000,000";
+      row.originalContent = "Professional liability | $1,000,000";
+    }
+    const document = { ...provenanceDocument, coverages: [row] };
+    const result = await reviewExtractionFields(options(document, fullSources));
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.generate).toHaveBeenCalledTimes(5);
+    expect(result.document).toEqual(document);
+  },
+);
 const ordinaryDocument = {
   ...identity,
   ...coverage,
