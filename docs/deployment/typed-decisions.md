@@ -157,7 +157,10 @@ blocks the completion preflight after the diagnostic is saved. Legacy and shadow
 retain their existing completion behavior. A successful text audit never bypasses
 the structural evidence ledger, current run/lease checks, section artifacts, or
 `promoteCompletedExtractionInternal`, the sole final-stage writer. Manual values
-and deterministic policy projections remain owned by their existing code.
+and deterministic policy projections remain owned by their existing code. The
+original run and lease are pinned before asynchronous review and carried through
+artifact storage, logs, cleanup, and promotion; those mutations reject rollover
+atomically rather than adopting a replacement run.
 
 `extraction.field_review` batches Spot's existing field and financial-role review
 judgments over the same supplied document. Accepted changes still pass the

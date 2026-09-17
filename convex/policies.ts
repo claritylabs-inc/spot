@@ -439,6 +439,27 @@ async function getPolicyExtractionRun(
     .first();
 }
 
+const expectedExtractionRunValidator = v.object({
+  runId: v.id("policyExtractionRuns"),
+  leaseId: v.string(),
+});
+
+async function requireExpectedExtractionRun(
+  ctx: MutationCtx,
+  policyId: DataModelId<"policies">,
+  expected: { runId: DataModelId<"policyExtractionRuns">; leaseId: string },
+) {
+  const run = await getPolicyExtractionRun(ctx, policyId);
+  const checkpoint = run?.pipelineCheckpoint as
+    | { lease?: { id?: string } }
+    | undefined;
+  if (
+    !run || run._id !== expected.runId || run.pipelineStatus !== "running" ||
+    checkpoint?.lease?.id !== expected.leaseId
+  ) throw new Error("Extraction run or lease is stale");
+  return run;
+}
+
 export async function readPolicyPipelineState(
   ctx: QueryCtx | MutationCtx,
   policyId: DataModelId<"policies">,
@@ -2978,6 +2999,7 @@ export const listForOrg = query({
 export const pipelineSaveArtifact = internalMutation({
   args: {
     jobId: v.string(),
+    expectedRun: v.optional(expectedExtractionRunValidator),
     kind: v.union(
       v.literal("cl_sdk_checkpoint"),
       v.literal("embedding_payload"),
@@ -2995,6 +3017,7 @@ export const pipelineSaveArtifact = internalMutation({
     ctx,
     {
       jobId,
+      expectedRun,
       kind,
       storageId,
       sourceFingerprint,
@@ -3004,7 +3027,9 @@ export const pipelineSaveArtifact = internalMutation({
     },
   ) => {
     const policyId = jobId as DataModelId<"policies">;
-    const run = await ensurePolicyExtractionRun(ctx, policyId);
+    const run = expectedRun
+      ? await requireExpectedExtractionRun(ctx, policyId, expectedRun)
+      : await ensurePolicyExtractionRun(ctx, policyId);
     if (
       (kind === "source_bundle" || kind === "section_result") &&
       (!sourceFingerprint || !extractorVersion)
@@ -3151,6 +3176,7 @@ export const pipelineGetArtifact = internalQuery({
 export const pipelineClearArtifacts = internalMutation({
   args: {
     jobId: v.string(),
+    expectedRun: v.optional(expectedExtractionRunValidator),
     kind: v.optional(
       v.union(
         v.literal("cl_sdk_checkpoint"),
@@ -3161,8 +3187,9 @@ export const pipelineClearArtifacts = internalMutation({
       ),
     ),
   },
-  handler: async (ctx, { jobId, kind }) => {
+  handler: async (ctx, { jobId, expectedRun, kind }) => {
     const policyId = jobId as DataModelId<"policies">;
+    if (expectedRun) await requireExpectedExtractionRun(ctx, policyId, expectedRun);
     await clearPolicyExtractionArtifacts(ctx, policyId, kind);
     if (kind === undefined) {
       await patchPolicyExtractionRun(ctx, policyId, {
@@ -3260,12 +3287,13 @@ export const pipelineSetCheckpoint = internalMutation({
 export const pipelineAppendLog = internalMutation({
   args: {
     jobId: v.string(),
+    expectedRun: v.optional(expectedExtractionRunValidator),
     timestamp: v.number(),
     message: v.string(),
     phase: v.optional(v.string()),
     level: v.optional(v.string()),
   },
-  handler: async (ctx, { jobId, timestamp, message, phase, level }) => {
+  handler: async (ctx, { jobId, expectedRun, timestamp, message, phase, level }) => {
     const entry: PolicyPipelineLogEntry = {
       timestamp,
       message,
@@ -3273,6 +3301,7 @@ export const pipelineAppendLog = internalMutation({
     if (phase !== undefined) entry.phase = phase;
     if (level !== undefined) entry.level = level;
     const policyId = jobId as DataModelId<"policies">;
+    if (expectedRun) await requireExpectedExtractionRun(ctx, policyId, expectedRun);
     await appendPolicyPipelineLog(ctx, policyId, entry);
     await insertPipelineTraceLog(ctx, policyId, entry);
   },

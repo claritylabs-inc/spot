@@ -116,7 +116,9 @@ Final extraction accuracy and omission judgments use the independently gated
 fact-to-source directions. Spot's `extractionEvidenceAudit.ts` reuses only an
 exactly bound source/document/profile report under the current threshold and
 evaluation; changed postprocessed snapshots are re-audited. The existing private
-source-bundle artifact retains the report and audited snapshot. Qualified active
+source-bundle artifact retains the report and audited snapshot. Completion pins
+the original run/lease before review; artifact, log, cleanup, and promotion writes
+reject stale ownership atomically. Qualified active
 unresolved audits block completion preflight; shadow and legacy preserve the
 existing behavior. This is a provided-text audit, never visual completeness or
 permission to bypass the deterministic ledger and sole promotion mutation.

@@ -743,6 +743,7 @@ async function storeJsonArtifact(
     | "section_result",
   value: unknown,
   metadata?: {
+    expectedRun?: { runId: Id<"policyExtractionRuns">; leaseId: string };
     sourceFingerprint?: string;
     extractorVersion?: string;
     sectionId?: string;
@@ -756,14 +757,18 @@ async function storeJsonArtifact(
     type: "application/json",
   });
   const storageId = String(await ctx.storage.store(blob));
-  const artifactId = String(
-    await ctx.runMutation(internal.policies.pipelineSaveArtifact, {
+  let artifactId: string;
+  try {
+    artifactId = String(await ctx.runMutation(internal.policies.pipelineSaveArtifact, {
       jobId,
       kind,
       storageId: storageId as Id<"_storage">,
       ...metadata,
-    }),
-  );
+    }));
+  } catch (error) {
+    await ctx.storage.delete(storageId as Id<"_storage">).catch(() => {});
+    throw error;
+  }
   return {
     artifactId,
     storageId,
@@ -799,10 +804,42 @@ async function getLatestArtifactStorageId(
   return artifact?.storageId ? String(artifact.storageId) : undefined;
 }
 
+type PromotionContext = {
+  runId: Id<"policyExtractionRuns">;
+  leaseId: string;
+  promotedAt?: number;
+  promotionGateDecision?: {
+    allowed: boolean;
+    reasons: string[];
+    mode: "shadow" | "enforce";
+    sourceFingerprint?: string;
+    evidenceLedgerHash?: string;
+    manifestHash?: string;
+  };
+};
+
+async function pinPromotionContext(ctx: ActionCtx, policyId: string, leaseId: string | undefined) {
+  const context = await ctx.runQuery(internal.policies.pipelineGetPromotionContext, {
+    jobId: policyId,
+  }) as PromotionContext | null;
+  if (!leaseId || !context || context.leaseId !== leaseId) {
+    throw new Error("Extraction promotion lost its original run or lease");
+  }
+  return context;
+}
+
+async function promotionContextIsCurrent(ctx: ActionCtx, policyId: string, expected: PromotionContext) {
+  const current = await ctx.runQuery(internal.policies.pipelineGetPromotionContext, {
+    jobId: policyId,
+  });
+  return current?.runId === expected.runId && current.leaseId === expected.leaseId;
+}
+
 async function persistEvidenceAndPromote(
   ctx: ActionCtx,
   args: {
     policyId: string;
+    promotionContext: PromotionContext;
     sourceSpans: SourceSpanLike[];
     sourceNodes: DocumentSourceNode[];
     fields: Record<string, unknown>;
@@ -835,25 +872,7 @@ async function persistEvidenceAndPromote(
     sourceCoverageMap,
     sections: args.sections,
   });
-  const promotionContext = (await ctx.runQuery(
-    (internal as any).policies.pipelineGetPromotionContext,
-    { jobId: args.policyId },
-  )) as {
-    runId: Id<"policyExtractionRuns">;
-    leaseId: string;
-    promotedAt?: number;
-    promotionGateDecision?: {
-      allowed: boolean;
-      reasons: string[];
-      mode: "shadow" | "enforce";
-      sourceFingerprint?: string;
-      evidenceLedgerHash?: string;
-      manifestHash?: string;
-    };
-  } | null;
-  if (!promotionContext) {
-    throw new Error("Extraction promotion lost its current run or lease");
-  }
+  const promotionContext = args.promotionContext;
   if (promotionContext.promotedAt) {
     const existing = promotionContext.promotionGateDecision;
     if (
@@ -881,6 +900,7 @@ async function persistEvidenceAndPromote(
       evidenceAuditSnapshot: args.evidenceAudit?.snapshot,
     },
     {
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       sourceFingerprint: ledger.sourceFingerprint,
       extractorVersion,
       metadata: {
@@ -898,6 +918,7 @@ async function persistEvidenceAndPromote(
     const audit = args.evidenceAudit.report;
     await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
       jobId: args.policyId,
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       timestamp: nowMs(),
       message: `Source-text audit ${audit.status}: ${audit.forward.verified}/${audit.forward.total} facts, ${audit.reverse.verified}/${audit.reverse.total} source units; visual completeness not assessed`,
       phase: "extract",
@@ -930,6 +951,7 @@ async function persistEvidenceAndPromote(
   if (!result.decision.allowed) {
     await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
       jobId: args.policyId,
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       timestamp: nowMs(),
       message: `Extraction promotion ${result.decision.mode === "enforce" ? "blocked" : "shadow violation"}: ${result.decision.reasons.join("; ")}`,
       phase: "extract",
@@ -939,6 +961,7 @@ async function persistEvidenceAndPromote(
   if (!result.promoted) {
     await ctx.runMutation(internal.policies.pipelineClearArtifacts, {
       jobId: args.policyId,
+      expectedRun: { runId: promotionContext.runId, leaseId: promotionContext.leaseId },
       kind: "external_completion_payload",
     });
     throw new Error(
@@ -1601,7 +1624,7 @@ async function advanceLeasedPhase(
   try {
     const result = await phase.run({
       jobId,
-      checkpoint: stripLease(checkpoint),
+      checkpoint,
       log,
       saveState,
     });
@@ -1731,6 +1754,10 @@ export function makePhases(
           error: "extract: missing fileId — load_pdf phase must run first",
         };
       }
+
+      const promotionContext = await pinPromotionContext(
+        convexCtx, pCtx.jobId, (pCtx.checkpoint as LeasedPolicyCheckpoint).lease?.id,
+      );
 
       await pCtx.log("Starting policy extraction…");
 
@@ -1990,10 +2017,11 @@ export function makePhases(
             policyId,
           ),
         },
-        shouldCancel: () => isExtractionCancelled(convexCtx, policyId),
+        shouldCancel: async () => !(await promotionContextIsCurrent(convexCtx, policyId, promotionContext)),
       });
       await persistEvidenceAndPromote(convexCtx, {
         policyId,
+        promotionContext,
         sourceSpans: canonicalSpans,
         sourceNodes,
         fields: finalFields,
@@ -2921,6 +2949,7 @@ async function completeExternalExtractFromPayload(
   if (!(await externalCompletionLeaseIsCurrent(ctx, args))) {
     return { ok: false };
   }
+  const promotionContext = await pinPromotionContext(ctx, args.policyId, args.leaseId);
   const state = args.state as PolicyExtractionState;
   const policyId = args.policyId;
   const payload = args.payloadStorageId
@@ -3144,10 +3173,11 @@ async function completeExternalExtractFromPayload(
         policyId,
       ),
     },
-    shouldCancel: async () => !(await externalCompletionLeaseIsCurrent(ctx, args)),
+    shouldCancel: async () => !(await promotionContextIsCurrent(ctx, policyId, promotionContext)),
   });
   await persistEvidenceAndPromote(ctx, {
     policyId,
+    promotionContext,
     sourceSpans: canonicalSpans,
     sourceNodes,
     fields: finalFields,
