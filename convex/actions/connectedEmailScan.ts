@@ -282,10 +282,9 @@ async function fetchAutomationMessage(
   }
 
   const receivedAtValue = metadata.envelope?.date ?? metadata.internalDate;
-  const receivedAt =
-    receivedAtValue && dayjs(receivedAtValue).isValid()
-      ? dayjs(receivedAtValue).valueOf()
-      : undefined;
+  const receivedAt = receivedAtValue && dayjs(receivedAtValue).isValid()
+    ? dayjs(receivedAtValue).valueOf()
+    : undefined;
   const identity = mailboxMessageIdentity({
     accountId: String(account._id),
     mailbox,
@@ -377,9 +376,8 @@ async function loadAutomationMessages(
           },
       { uid: true },
     );
-    const matchingUids = (
-      Array.isArray(searchResult) ? searchResult : []
-    ).filter((uid) => lastUid === undefined || uid > lastUid);
+    const matchingUids = (Array.isArray(searchResult) ? searchResult : [])
+      .filter((uid) => lastUid === undefined || uid > lastUid);
     const uids = initialScan
       ? matchingUids
           .sort((left, right) => right - left)
@@ -400,10 +398,9 @@ async function loadAutomationMessages(
       ),
       initialScan,
       liveHighWater: Math.max(opened.uidNext - 1, 0),
-      emptyWatermark:
-        uids.length === 0
-          ? Math.max(opened.uidNext - 1, lastUid ?? 0)
-          : lastUid,
+      emptyWatermark: uids.length === 0
+        ? Math.max(opened.uidNext - 1, lastUid ?? 0)
+        : lastUid,
     };
   });
 }
@@ -563,7 +560,9 @@ function sourceNameForMessage(message: AutomationMessage) {
 
 function requirementHolderForMessage(message: AutomationMessage) {
   const displayName = message.fromName || message.fromEmail;
-  return displayName ? { displayName, email: message.fromEmail } : undefined;
+  return displayName
+    ? { displayName, email: message.fromEmail }
+    : undefined;
 }
 
 async function processAutomationDecision(
@@ -665,10 +664,9 @@ async function processAutomationDecision(
                 : undefined,
           },
         );
-        const importedIds =
-          imported.status === "imported"
-            ? imported.imports.flatMap((entry) => entry.requirementIds)
-            : [];
+        const importedIds = imported.status === "imported"
+          ? imported.imports.flatMap((entry) => entry.requirementIds)
+          : [];
         requirementIds.push(...importedIds);
         if (importedIds.length > 0) {
           summaries.push(
@@ -693,9 +691,7 @@ async function processAutomationDecision(
           message.from ? `From: ${message.from}` : undefined,
           "",
           message.textPreview,
-        ]
-          .filter((part): part is string => part !== undefined)
-          .join("\n"),
+        ].filter((part): part is string => part !== undefined).join("\n"),
         itemLimit: 6,
         sourceRef: `connected-email:${message.messageKey}`,
       });
@@ -742,8 +738,7 @@ async function processAutomationDecision(
     policyIds: policyIds.length > 0 ? [...new Set(policyIds)] : undefined,
     requirementIds:
       requirementIds.length > 0 ? [...new Set(requirementIds)] : undefined,
-    wikiSectionKeys:
-      wikiSectionKeys.length > 0 ? [...new Set(wikiSectionKeys)] : undefined,
+    wikiSectionKeys: wikiSectionKeys.length > 0 ? [...new Set(wikiSectionKeys)] : undefined,
     attention,
   };
 }
@@ -840,16 +835,18 @@ async function importedComplianceAttentionAfterBatch(
     },
   );
   return assessments
-    .filter((assessment) =>
-      ["not_met", "expired", "expiring_soon", "unverified"].includes(
-        assessment.status,
-      ),
+    .filter(
+      (assessment) =>
+        ["not_met", "expired", "expiring_soon", "unverified"].includes(
+          assessment.status,
+        ),
     )
     .slice(0, 8)
     .map((assessment) => ({
       kind: "compliance" as const,
       subject: assessment.title,
-      reason: assessment.notes ?? assessment.status.replaceAll("_", " "),
+      reason:
+        assessment.notes ?? assessment.status.replaceAll("_", " "),
     }));
 }
 
@@ -877,12 +874,9 @@ function buildMailboxActivityBody(
     successful.length > 0
       ? `Spot completed ${successful.length} connected-mailbox automation action${successful.length === 1 ? "" : "s"}.`
       : undefined,
-    ...successful
-      .slice(0, 8)
-      .map(
-        (outcome, index) =>
-          `${index + 1}. ${outcome.actionSummary ?? "Mailbox automation completed."}`,
-      ),
+    ...successful.slice(0, 8).map(
+      (outcome, index) => `${index + 1}. ${outcome.actionSummary ?? "Mailbox automation completed."}`,
+    ),
     successful.length > 0 && mailboxAttention.length > 0 ? "" : undefined,
     mailboxAttention.length > 0
       ? `${mailboxAttention.length} email${mailboxAttention.length === 1 ? " needs" : "s need"} review.`
@@ -1112,8 +1106,7 @@ export const scanAccountInternal = internalAction({
         }
 
         const message = entry.message;
-        const decision =
-          decisions.get(message.emailRef) ??
+        const decision = decisions.get(message.emailRef) ??
           defaultAutomationDecision(
             message,
             "review_needed",
@@ -1166,7 +1159,8 @@ export const scanAccountInternal = internalAction({
           await Promise.all(
             outcomes
               .filter(
-                (outcome) => outcome.attention || hasAutomationResult(outcome),
+                (outcome) =>
+                  outcome.attention || hasAutomationResult(outcome),
               )
               .map((outcome) =>
                 ctx.runMutation(automationInternal.attachThreadInternal, {
@@ -1191,10 +1185,9 @@ export const scanAccountInternal = internalAction({
         orgId: account.orgId,
         mailbox: loaded.mailbox,
         uidValidity: loaded.uidValidity,
-        lastUid:
-          loaded.initialScan && !batchBlocked
-            ? loaded.liveHighWater
-            : lastProcessedUid,
+        lastUid: loaded.initialScan && !batchBlocked
+          ? loaded.liveHighWater
+          : lastProcessedUid,
       });
       return {
         status: "scanned",
@@ -1227,11 +1220,7 @@ async function scanAccounts(ctx: ActionCtx, accounts: ConnectedEmailAccount[]) {
     accountId: Id<"connectedEmailAccounts">;
     result: ScanAccountResult;
   }> = [];
-  for (
-    let index = 0;
-    index < accounts.length;
-    index += AUTOMATION_SCAN_CONCURRENCY
-  ) {
+  for (let index = 0; index < accounts.length; index += AUTOMATION_SCAN_CONCURRENCY) {
     const batch = accounts.slice(index, index + AUTOMATION_SCAN_CONCURRENCY);
     const batchResults = await Promise.all(
       batch.map(async (account) => {
@@ -1338,22 +1327,20 @@ export const scanMailboxRange = action({
       entry.message ? [entry.message] : [],
     );
     const unreadableCount = loaded.entries.length - messages.length;
-    const decisions =
-      messages.length > 0
-        ? await classifyAutomationMessages(
-            ctx,
-            account,
-            { automation, alertOnly },
-            messages,
-          )
-        : new Map<string, MailboxAutomationDecision>();
+    const decisions = messages.length > 0
+      ? await classifyAutomationMessages(
+          ctx,
+          account,
+          { automation, alertOnly },
+          messages,
+        )
+      : new Map<string, MailboxAutomationDecision>();
     const requirementActorId = await requirementActorForOrg(ctx, account.orgId);
 
     const outcomes: AutomationOutcome[] = [];
     let alreadyProcessedCount = 0;
     for (const message of messages) {
-      const decision =
-        decisions.get(message.emailRef) ??
+      const decision = decisions.get(message.emailRef) ??
         defaultAutomationDecision(
           message,
           "review_needed",

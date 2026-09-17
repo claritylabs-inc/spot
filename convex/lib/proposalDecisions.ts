@@ -27,7 +27,7 @@ export function decideProposalReview(args: {
   const refs = Object.keys(args.legend).filter((ref) => visible.has(ref));
   if (
     !refs.length ||
-    refs.length > 80 ||
+    2 * refs.length + 1 > 128 ||
     args.sectionKeys.length > 40 ||
     args.packetMarkdown.includes("…truncated…") ||
     args.proposalMarkdown.includes("…truncated…")

@@ -17,15 +17,13 @@ Return a structured decision. Mark legitimate requests safe even when they ask S
 
 const PromptInjectionDecisionSchema = z.object({
   decision: z.enum(["safe", "unsafe"]),
-  category: z
-    .enum([
-      "instruction_override",
-      "role_reassignment",
-      "prompt_exfiltration",
-      "unauthorized_action",
-      "other",
-    ])
-    .optional(),
+  category: z.enum([
+    "instruction_override",
+    "role_reassignment",
+    "prompt_exfiltration",
+    "unauthorized_action",
+    "other",
+  ]).optional(),
 });
 
 type PromptInjectionDecision = z.infer<typeof PromptInjectionDecisionSchema>;

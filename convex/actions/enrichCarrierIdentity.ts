@@ -553,7 +553,10 @@ async function enrichPolicyCarrierIdentity(
       return { success: false as const, reason: "in_progress" };
     }
     const retryDelay = RETRY_DELAYS_MS[attempt - 1];
-    if (failureResult.status === "failed" && retryDelay !== undefined) {
+    if (
+      failureResult.status === "failed" &&
+      retryDelay !== undefined
+    ) {
       await ctx.scheduler.runAfter(
         retryDelay,
         internal.actions.enrichCarrierIdentity.ensureInternal,

@@ -12,8 +12,18 @@ export const ABSTAIN = "__abstain";
 export const EVIDENCE_FLOOR = 0.99;
 export const REVERSIBLE_FLOOR = 0.95;
 
-export function decisionState(value: unknown): JsonValue {
-  return JSON.parse(JSON.stringify(value)) as JsonValue;
+export function decisionState(value: unknown): DecisionEntry {
+  const state: unknown = JSON.parse(JSON.stringify(value));
+  if (
+    state === null ||
+    typeof state === "string" ||
+    typeof state === "object"
+  ) {
+    return state as DecisionEntry;
+  }
+  throw new TypeError(
+    "Decision state must be a string, object, array, or null",
+  );
 }
 
 export function choiceQuestion(

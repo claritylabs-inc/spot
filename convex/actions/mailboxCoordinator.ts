@@ -641,7 +641,7 @@ ${selectedAccountRows.length ? selectedAccountRows.map((account) => `  - ${accou
                 if (selected.value === "yes")
                   selectedAttachments.push(attachment);
               }
-              const emails = [];
+              const emails: Array<Record<string, unknown>> = [];
               for (const [index, email] of evidenceCandidates.entries()) {
                 const selected = acceptedChoice(answers[`email_${index}`], [
                   "yes",
