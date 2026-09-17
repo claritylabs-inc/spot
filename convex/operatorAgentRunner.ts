@@ -7,6 +7,8 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
+import { RouterJobPending } from "./lib/routerJobClient";
+import type { ModelRoute } from "./lib/modelCatalog";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   buildAgentAttachmentParts,
@@ -38,7 +40,7 @@ import {
 } from "./lib/models";
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
-const OPERATOR_AGENT_MAX_STEPS = 25;
+const OPERATOR_AGENT_MAX_STEPS = 1;
 const OPERATOR_RECENT_ATTACHMENT_MESSAGES = 3;
 const OPERATOR_RECENT_ATTACHMENT_FILES = 10;
 const OPERATOR_RECENT_ATTACHMENT_BYTES = MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES;
@@ -174,11 +176,12 @@ export async function buildOperatorHistoryWithAttachments(
 export const run = internalAction({
   args: { runId: v.id("operatorAgentRuns") },
   handler: async (ctx, args): Promise<{ status: string; error?: string }> => {
-    const started: boolean = await ctx.runMutation(
+    const expectedRunnerAttempt: number | null = await ctx.runMutation(
       internal.operatorAgent.markRunStartedInternal,
       { runId: args.runId },
     );
-    if (!started) return { status: "not_started" as const };
+    if (expectedRunnerAttempt === null)
+      return { status: "not_started" as const };
 
     let expectedCheckpointIteration: number | undefined;
     try {
@@ -192,16 +195,49 @@ export const run = internalAction({
       );
       if (!context) throw new Error("Operator agent run not found");
       const { run, thread } = context;
+      if (run.runnerAttempt !== expectedRunnerAttempt)
+        return { status: "superseded" };
       expectedCheckpointIteration = run.checkpoint?.iteration ?? 0;
       const runChannel = operatorChannel(thread.channel);
       const traceChannel = runChannel === "chat" ? "web" : runChannel;
       const selected = selectBoundedAgentHistory(context.messages, {
         currentMessageId: String(run.userMessageId),
       });
-      const messages = await buildOperatorHistoryWithAttachments(
-        ctx,
-        selected.messages,
-      );
+      const continuationBlob = run.modelContinuationStorageId
+        ? await ctx.storage.get(run.modelContinuationStorageId)
+        : null;
+      const continuation = continuationBlob
+        ? (JSON.parse(await continuationBlob.text()) as {
+            messages: ModelMessage[];
+            route: ModelRoute;
+            parentRequestId?: string;
+          })
+        : undefined;
+      if (continuation) {
+        for (const message of continuation.messages) {
+          if (message.role !== "user" || !Array.isArray(message.content))
+            continue;
+          for (const part of message.content) {
+            if (
+              part.type === "file" &&
+              typeof part.data === "string" &&
+              /^https?:\/\//.test(part.data)
+            ) {
+              part.data = new URL(part.data);
+            }
+            if (
+              part.type === "image" &&
+              typeof part.image === "string" &&
+              /^https?:\/\//.test(part.image)
+            ) {
+              part.image = new URL(part.image);
+            }
+          }
+        }
+      }
+      const messages =
+        continuation?.messages ??
+        (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
       const tools: ToolSet = {};
       let pendingConfirmation: { status: string; summary: string } | undefined;
       let toolQueue: Promise<unknown> = Promise.resolve();
@@ -326,10 +362,15 @@ export const run = internalAction({
         },
         {
           taskKind: "operator_agent",
+          durable: {
+            invocationKey: `operator:${String(run._id)}:${expectedCheckpointIteration}`,
+            route: continuation?.route,
+          },
           sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
           trace: {
             traceId: `${String(run._id)}:operator-agent`,
-            parentRequestId: String(run.userMessageId),
+            parentRequestId:
+              continuation?.parentRequestId ?? String(run.userMessageId),
             label: "convex.operatorAgent",
             phase: "query_reason",
             channel: traceChannel,
@@ -337,15 +378,33 @@ export const run = internalAction({
         },
       );
       const audit = collectToolAudit(result);
-      if (
-        !pendingConfirmation &&
-        shouldContinueOperatorRun(result, OPERATOR_AGENT_MAX_STEPS)
-      ) {
+      const shouldContinue = shouldContinueOperatorRun(
+        result,
+        OPERATOR_AGENT_MAX_STEPS,
+      );
+      const modelContinuationStorageId =
+        pendingConfirmation || shouldContinue
+          ? await ctx.storage.store(
+              new Blob(
+                [
+                  JSON.stringify({
+                    messages: [...messages, ...result.response.messages],
+                    route: result.route,
+                    parentRequestId: result.clRouter?.requestId,
+                  }),
+                ],
+                { type: "application/json" },
+              ),
+            )
+          : undefined;
+      if (!pendingConfirmation && shouldContinue) {
         const continuation: { status: string } | null = await ctx.runMutation(
           internal.operatorAgent.continueRunInternal,
           {
             runId: run._id,
             expectedCheckpointIteration,
+            expectedRunnerAttempt,
+            modelContinuationStorageId,
             summary: buildOperatorRunCheckpointSummary({
               previous: run.checkpoint?.summary,
               audit,
@@ -369,6 +428,8 @@ export const run = internalAction({
         {
           runId: run._id,
           expectedCheckpointIteration,
+          expectedRunnerAttempt,
+          ...(pendingConfirmation ? { modelContinuationStorageId } : {}),
           checkpointSummary: buildOperatorRunCheckpointSummary({
             previous: run.checkpoint?.summary,
             audit,
@@ -381,10 +442,19 @@ export const run = internalAction({
       );
       return completion ?? { status: "missing" as const };
     } catch (error) {
+      if (error instanceof RouterJobPending) {
+        await ctx.runMutation(internal.operatorAgent.waitForRouterInternal, {
+          runId: args.runId,
+          expectedCheckpointIteration: expectedCheckpointIteration ?? 0,
+          expectedRunnerAttempt,
+        });
+        return { status: "queued" };
+      }
       const message = error instanceof Error ? error.message : String(error);
       await ctx.runMutation(internal.operatorAgent.failRunInternal, {
         runId: args.runId,
         expectedCheckpointIteration,
+        expectedRunnerAttempt,
         error: message,
       });
       return { status: "failed" as const, error: message };

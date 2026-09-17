@@ -505,3 +505,19 @@ describe("cl-router generation callbacks", () => {
     );
   });
 });
+
+vi.mock("./routerJobClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./routerJobClient")>()),
+  durableRouterClientOptions: () => ({}),
+  executeDurableRouterRequest: async (
+    _ctx: unknown,
+    operation: string,
+    payload: unknown,
+  ) => {
+    const client = await import("./clRouterClient");
+    if (operation !== "generate") throw new Error("Unexpected test operation");
+    return client.clRouterGenerate(
+      payload as Parameters<typeof client.clRouterGenerate>[0],
+    );
+  },
+}));

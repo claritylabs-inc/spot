@@ -78,7 +78,6 @@ function defaultAdapters(): WorkerRouterTransportSmokeAdapters {
   const router = createClRouterClient({
     baseUrl: requiredEnv("CL_ROUTER_URL"),
     secret: requiredEnv("CL_ROUTER_SECRET"),
-    timeoutMs: 180_000,
   });
   const begin = makeFunctionReference<
     "action",

@@ -94,7 +94,10 @@ export type ClRouterGenerateResponse = {
 };
 
 export type ClRouterClient = {
-  generate(input: ClRouterGenerateInput): Promise<ClRouterGenerateResponse>;
+  generate(
+    input: ClRouterGenerateInput,
+    executeJob?: (request: ClRouterGenerateRequest) => Promise<unknown>,
+  ): Promise<ClRouterGenerateResponse>;
 };
 
 export type ClRouterGenerateInput = Omit<
@@ -108,7 +111,6 @@ export type ClRouterGenerateInput = Omit<
 export type ClRouterClientOptions = {
   baseUrl: string;
   secret: string;
-  timeoutMs: number;
   fetch?: typeof fetch;
 };
 
@@ -527,25 +529,17 @@ export function createClRouterClient(
     );
   }
   if (!options.secret.trim()) throw new Error("CL_ROUTER_SECRET is required");
-  if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs <= 0) {
-    throw new Error("CL_ROUTER_TIMEOUT_MS must be a positive integer");
-  }
   const fetchImpl = options.fetch ?? fetch;
   const generateUrl = new URL(
     "v1/generate",
     `${baseUrl.toString().replace(/\/$/, "")}/`,
   );
-  const executionBudgetMs = Math.min(
-    15 * 60_000,
-    Math.max(100, options.timeoutMs - 1_000),
-  );
-
   return {
-    async generate(input) {
-      const signal = AbortSignal.timeout(options.timeoutMs);
-      const request = buildClRouterGenerateRequest(input, executionBudgetMs);
-      assertRouterCanFetchAssets(request, baseUrl);
+    async generate(input, executeJob) {
+      const request = buildClRouterGenerateRequest(input);
+      if (!executeJob) assertRouterCanFetchAssets(request, baseUrl);
       const requestBody = JSON.stringify(request);
+      if (executeJob) return parseGenerateResponse(await executeJob(request));
       let response: Response;
       try {
         response = await fetchImpl(generateUrl, {
@@ -555,13 +549,9 @@ export function createClRouterClient(
             "content-type": "application/json",
           },
           body: requestBody,
-          signal,
         });
       } catch (error) {
-        throw new ClRouterConnectionError(
-          signal.aborted ? "timeout" : "connection",
-          error,
-        );
+        throw new ClRouterConnectionError("connection", error);
       }
       if (!response.ok) throw await httpError(response);
       let body: unknown;

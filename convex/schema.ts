@@ -1,7 +1,12 @@
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
-import { activeNotificationTypeValidator, notificationActionTypeValidator, notificationActionPayloadValidator, notificationSourceRefValidator } from "./lib/notificationTypes";
+import {
+  activeNotificationTypeValidator,
+  notificationActionTypeValidator,
+  notificationActionPayloadValidator,
+  notificationSourceRefValidator,
+} from "./lib/notificationTypes";
 import { proposalReviewFindingValidator } from "./lib/proposalReview";
 import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
 import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
@@ -1670,10 +1675,16 @@ export default defineSchema({
       "checkedAt",
     ]),
   policyUploadFingerprints: defineTable({
-    orgId: v.id("organizations"), policyId: v.id("policies"), sha256: v.string(),
-  }).index("organization_hash", ["orgId", "sha256"]).index("policy", ["policyId"]),
+    orgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    sha256: v.string(),
+  })
+    .index("organization_hash", ["orgId", "sha256"])
+    .index("policy", ["policyId"]),
   policyUploadFingerprintInventories: defineTable({
-    orgId: v.id("organizations"), cursor: v.union(v.string(), v.null()), complete: v.boolean(),
+    orgId: v.id("organizations"),
+    cursor: v.union(v.string(), v.null()),
+    complete: v.boolean(),
   }).index("organization", ["orgId"]),
   policies: defineTable({
     ...pipelineFields(),
@@ -3190,8 +3201,7 @@ export default defineSchema({
     updatedByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index("client", ["clientOrgId"]),
+  }).index("client", ["clientOrgId"]),
 
   certificateWorkflowJobs: defineTable({
     orgId: v.id("organizations"),
@@ -4445,6 +4455,39 @@ export default defineSchema({
     .index("run_created", ["runId", "createdAt"])
     .index("idempotency", ["operatorUserId", "idempotencyKey"]),
 
+  routerJobs: defineTable({
+    invocationKey: v.string(),
+    operation: v.union(
+      v.literal("generate"),
+      v.literal("embed"),
+      v.literal("retrieve"),
+      v.literal("transcribe"),
+    ),
+    fingerprint: v.string(),
+    status: v.union(
+      v.literal("prepared"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    requestToken: v.string(),
+    requestTokenHash: v.string(),
+    resultToken: v.string(),
+    resultTokenHash: v.string(),
+    requestStorageId: v.optional(v.id("_storage")),
+    resultStorageId: v.optional(v.id("_storage")),
+    assetStorageIds: v.optional(v.array(v.id("_storage"))),
+    routerJobId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    terminalAt: v.optional(v.number()),
+  })
+    .index("invocation", ["invocationKey"])
+    .index("request_token", ["requestTokenHash"])
+    .index("result_token", ["resultTokenHash"]),
+
   operatorAgentRuns: defineTable({
     threadId: v.id("operatorAgentThreads"),
     operatorUserId: v.id("users"),
@@ -4472,6 +4515,8 @@ export default defineSchema({
       }),
     ),
     cancellationRequestedAt: v.optional(v.number()),
+    modelContinuationStorageId: v.optional(v.id("_storage")),
+    runnerAttempt: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
@@ -4538,10 +4583,7 @@ export default defineSchema({
   appCardAccessLinks: defineTable({
     orgId: v.id("organizations"),
     tokenHash: v.string(),
-    kind: v.union(
-      v.literal("policy"),
-      v.literal("certificate"),
-    ),
+    kind: v.union(v.literal("policy"), v.literal("certificate")),
     policyId: v.optional(v.id("policies")),
     certificateId: v.optional(v.id("certificates")),
     policyCertificateId: v.optional(v.id("policyCertificates")),

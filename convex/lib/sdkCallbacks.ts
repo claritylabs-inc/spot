@@ -1,5 +1,7 @@
 "use node";
 
+import { durableRouterClientOptions } from "./routerJobClient";
+
 /**
  * Provider-agnostic callback adapters for cl-sdk.
  *
@@ -687,27 +689,32 @@ export function makeGenerateText(
           prompt,
           providerOptions as Record<string, unknown> | undefined,
           async (input): Promise<TextGenerationResult> => {
-            const response = await clRouterGenerate({
-              task: effectiveTask,
-              taskKind,
-              orgId: routing?.orgId ? String(routing.orgId) : undefined,
-              settings,
-              system,
-              ...input,
-              maxTokens: effectiveMaxTokens,
-              sessionKey:
-                routing?.traceId ??
-                (routing?.tracePolicyId
-                  ? String(routing.tracePolicyId)
-                  : undefined),
-              routing: {
-                ...(plan.routeSource === "global"
-                  ? { pin: plan.primaryRoute }
-                  : {}),
-                allowFallback: true,
+            const response = await clRouterGenerate(
+              {
+                task: effectiveTask,
+                taskKind,
+                orgId: routing?.orgId ? String(routing.orgId) : undefined,
+                settings,
+                system,
+                ...input,
+                maxTokens: effectiveMaxTokens,
+                sessionKey:
+                  routing?.traceId ??
+                  (routing?.tracePolicyId
+                    ? String(routing.tracePolicyId)
+                    : undefined),
+                routing: {
+                  ...(plan.routeSource === "global"
+                    ? { pin: plan.primaryRoute }
+                    : {}),
+                  allowFallback: true,
+                },
+                trace: clRouterTrace(routing, label, taskKind, trace),
               },
-              trace: clRouterTrace(routing, label, taskKind, trace),
-            });
+              routing?.ctx
+                ? durableRouterClientOptions(routing.ctx)
+                : undefined,
+            );
             if (typeof response.output !== "string") {
               throw new ClRouterRequestError(
                 "invalid_response",
@@ -858,29 +865,34 @@ export function makeGenerateObject(
           prompt,
           providerOptions as Record<string, unknown> | undefined,
           async (input): Promise<ObjectGenerationResult> => {
-            const response = await clRouterGenerate({
-              task: effectiveTask,
-              taskKind,
-              orgId: routing?.orgId ? String(routing.orgId) : undefined,
-              settings,
-              system,
-              ...input,
-              schema: z.toJSONSchema(schema) as Record<string, unknown>,
-              schemaDialect: "https://json-schema.org/draft/2020-12/schema",
-              maxTokens: effectiveMaxTokens,
-              sessionKey:
-                routing?.traceId ??
-                (routing?.tracePolicyId
-                  ? String(routing.tracePolicyId)
-                  : undefined),
-              routing: {
-                ...(plan.routeSource === "global"
-                  ? { pin: plan.primaryRoute }
-                  : {}),
-                allowFallback: true,
+            const response = await clRouterGenerate(
+              {
+                task: effectiveTask,
+                taskKind,
+                orgId: routing?.orgId ? String(routing.orgId) : undefined,
+                settings,
+                system,
+                ...input,
+                schema: z.toJSONSchema(schema) as Record<string, unknown>,
+                schemaDialect: "https://json-schema.org/draft/2020-12/schema",
+                maxTokens: effectiveMaxTokens,
+                sessionKey:
+                  routing?.traceId ??
+                  (routing?.tracePolicyId
+                    ? String(routing.tracePolicyId)
+                    : undefined),
+                routing: {
+                  ...(plan.routeSource === "global"
+                    ? { pin: plan.primaryRoute }
+                    : {}),
+                  allowFallback: true,
+                },
+                trace: clRouterTrace(routing, label, taskKind, trace),
               },
-              trace: clRouterTrace(routing, label, taskKind, trace),
-            });
+              routing?.ctx
+                ? durableRouterClientOptions(routing.ctx)
+                : undefined,
+            );
             const parsed = schema.safeParse(response.output);
             if (!parsed.success) {
               throw new ClRouterRequestError(
@@ -1051,17 +1063,20 @@ export function makeEmbedTexts(
     const embeddings: number[][] = [];
     for (let offset = 0; offset < texts.length; offset += maxTextsPerRequest) {
       const batchIndex = Math.floor(offset / maxTextsPerRequest) + 1;
-      const response = await clRouterEmbed({
-        orgId,
-        settings,
-        texts: texts.slice(offset, offset + maxTextsPerRequest),
-        dimensions: EMBEDDING_DIMENSIONS,
-        trace: {
-          label: "convex.sdkCallbacks.makeEmbedTexts",
-          batchIndex,
-          batchCount,
+      const response = await clRouterEmbed(
+        {
+          orgId,
+          settings,
+          texts: texts.slice(offset, offset + maxTextsPerRequest),
+          dimensions: EMBEDDING_DIMENSIONS,
+          trace: {
+            label: "convex.sdkCallbacks.makeEmbedTexts",
+            batchIndex,
+            batchCount,
+          },
         },
-      });
+        ctx ? durableRouterClientOptions(ctx) : undefined,
+      );
       embeddings.push(...response.embeddings);
     }
     return embeddings;
@@ -1085,13 +1100,16 @@ export function makeEmbedText(
 
   return async (text: string) => {
     const settings = await getRouterSettings();
-    const response = await clRouterEmbed({
-      orgId,
-      settings,
-      texts: [text],
-      dimensions: EMBEDDING_DIMENSIONS,
-      trace: { label: "convex.sdkCallbacks.makeEmbedText" },
-    });
+    const response = await clRouterEmbed(
+      {
+        orgId,
+        settings,
+        texts: [text],
+        dimensions: EMBEDDING_DIMENSIONS,
+        trace: { label: "convex.sdkCallbacks.makeEmbedText" },
+      },
+      ctx ? durableRouterClientOptions(ctx) : undefined,
+    );
     const embedding = response.embeddings[0];
     if (!embedding) throw new Error("cl-router returned no embedding");
     return embedding;

@@ -44,7 +44,6 @@ describe("Conductor workspace identity", () => {
       }
     }
   });
-
 });
 describe("Conductor local Convex selection", () => {
   const localConfig = {
@@ -54,12 +53,7 @@ describe("Conductor local Convex selection", () => {
 
   it("repairs an existing workspace env file once", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "spot-conductor-"));
-    const configDirectory = path.join(
-      workspace,
-      ".convex",
-      "local",
-      "default",
-    );
+    const configDirectory = path.join(workspace, ".convex", "local", "default");
 
     try {
       mkdirSync(configDirectory, { recursive: true });
@@ -89,12 +83,7 @@ describe("Conductor local Convex selection", () => {
 
   it("recovers the workspace port namespace for standalone helper commands", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "spot-conductor-"));
-    const configDirectory = path.join(
-      workspace,
-      ".convex",
-      "local",
-      "default",
-    );
+    const configDirectory = path.join(workspace, ".convex", "local", "default");
     const previousPort = process.env.CONDUCTOR_PORT;
     delete process.env.CONDUCTOR_PORT;
     try {
@@ -190,14 +179,12 @@ describe("Conductor Convex bootstrap", () => {
         {
           url: " https://router.example.test ",
           secret: " router-secret ",
-          timeoutMs: "60000",
         },
         { required: true },
       ),
     ).toEqual({
       url: "https://router.example.test",
       secret: "router-secret",
-      timeoutMs: "60000",
       tenantId: "glass",
     });
   });

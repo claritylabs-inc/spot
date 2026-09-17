@@ -11,9 +11,6 @@ import {
 // Preserve Spot's original opaque routing key so production policy history,
 // controls, ratings, affinity, and telemetry remain one continuous tenant.
 const CL_ROUTER_TENANT_ID = "glass";
-const DEFAULT_CL_ROUTER_TIMEOUT_MS = 180_000;
-const MIN_CL_ROUTER_TIMEOUT_MS = 30_000;
-const MAX_CL_ROUTER_TIMEOUT_MS = 900_000;
 export const MAX_CL_ROUTER_JSON_REQUEST_BYTES = 4 * 1024 * 1024;
 export const MAX_CL_ROUTER_ASSET_BYTES = 12 * 1024 * 1024;
 export const MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
@@ -136,10 +133,26 @@ export function assertSpotRouterAssetUrl(
         routerIsLoopback = false;
       }
     }
-    if (!routerIsLoopback) {
+    const callbackUrl = clean(environment.SPOT_ROUTER_CALLBACK_URL);
+    let durableCallbackConfigured = false;
+    if (callbackUrl) {
+      try {
+        const callback = new URL(callbackUrl);
+        durableCallbackConfigured =
+          callback.protocol === "https:" &&
+          !callback.username &&
+          !callback.password &&
+          !callback.search &&
+          !callback.hash &&
+          callback.pathname === "/";
+      } catch {
+        /* Invalid callback configuration cannot authorize local snapshots. */
+      }
+    }
+    if (!routerIsLoopback && !durableCallbackConfigured) {
       throw new ClRouterRequestError(
         "configuration",
-        "Loopback router assets require a loopback cl-router deployment",
+        "Loopback assets require a local router or a durable callback tunnel",
       );
     }
   }
@@ -435,23 +448,16 @@ export type ClRouterClientOptions = {
   environment?: ClRouterEnvironment;
   fetch?: typeof fetch;
   abortSignal?: AbortSignal;
+  executeJob?: (
+    operation: "generate" | "embed" | "retrieve" | "transcribe",
+    payload: unknown,
+    abortSignal?: AbortSignal,
+  ) => Promise<unknown>;
 };
 
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed || undefined;
-}
-
-function clRouterTimeoutMs(environment: ClRouterEnvironment): number {
-  const parsed = Number.parseInt(
-    environment.CL_ROUTER_TIMEOUT_MS ?? environment.MODEL_CALL_TIMEOUT_MS ?? "",
-    10,
-  );
-  if (!Number.isFinite(parsed)) return DEFAULT_CL_ROUTER_TIMEOUT_MS;
-  return Math.min(
-    MAX_CL_ROUTER_TIMEOUT_MS,
-    Math.max(MIN_CL_ROUTER_TIMEOUT_MS, parsed),
-  );
 }
 
 function clientConfig(environment: ClRouterEnvironment) {
@@ -487,7 +493,6 @@ function clientConfig(environment: ClRouterEnvironment) {
   return {
     url: url.toString().replace(/\/+$/, ""),
     secret,
-    timeoutMs: clRouterTimeoutMs(environment),
   };
 }
 
@@ -725,11 +730,6 @@ async function clRouterFetch(
   const config = clientConfig(environment);
   const fetchImplementation = options.fetch ?? fetch;
   const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, config.timeoutMs);
   const abortFromCaller = () => controller.abort();
   if (options.abortSignal?.aborted) controller.abort();
   else
@@ -749,16 +749,10 @@ async function clRouterFetch(
       });
     } catch (error) {
       throw new ClRouterRequestError(
-        timedOut
-          ? "timeout"
-          : options.abortSignal?.aborted
-            ? "aborted"
-            : "connection",
-        timedOut
-          ? "cl-router request timed out"
-          : options.abortSignal?.aborted
-            ? "cl-router request aborted"
-            : "cl-router connection failed",
+        options.abortSignal?.aborted ? "aborted" : "connection",
+        options.abortSignal?.aborted
+          ? "cl-router request aborted"
+          : "cl-router connection failed",
         { cause: error },
       );
     }
@@ -773,7 +767,6 @@ async function clRouterFetch(
       );
     }
   } finally {
-    clearTimeout(timer);
     options.abortSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
@@ -785,6 +778,17 @@ async function postJson(
 ): Promise<unknown> {
   validateRouterAssets(body, options.environment ?? process.env);
   const serialized = serializeRouterRequest(body);
+  const operation = path.slice("/v1/".length);
+  if (
+    options.executeJob &&
+    ["generate", "embed", "retrieve", "transcribe"].includes(operation)
+  ) {
+    return options.executeJob(
+      operation as "generate" | "embed" | "retrieve" | "transcribe",
+      body,
+      options.abortSignal,
+    );
+  }
   return clRouterFetch(
     path,
     {
@@ -911,18 +915,6 @@ function requestPayload<
   };
 }
 
-function generateRequestPayload(
-  request: ClRouterGenerateRequest,
-  environment: ClRouterEnvironment,
-): ReturnType<typeof requestPayload<ClRouterGenerateRequest>> {
-  const timeoutMs = clRouterTimeoutMs(environment);
-  return requestPayload({
-    ...request,
-    executionBudgetMs:
-      request.executionBudgetMs ?? Math.max(100, timeoutMs - 1_000),
-  });
-}
-
 function invalidStreamResponse(
   message: string,
   cause?: unknown,
@@ -1035,15 +1027,53 @@ export async function clRouterGenerateStream(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateStreamResponse> {
+  if (options.executeJob) {
+    const response = await clRouterGenerate(request, options);
+    const events = (async function* (): AsyncIterable<ClRouterStreamEvent> {
+      const output = response.output;
+      if (isRecord(output) && Array.isArray(output.toolCalls)) {
+        if (typeof output.text === "string" && output.text) {
+          yield {
+            type: "text-delta",
+            id: response.requestId,
+            delta: output.text,
+          };
+        }
+        for (const call of output.toolCalls) {
+          if (
+            !isRecord(call) ||
+            typeof call.toolCallId !== "string" ||
+            typeof call.toolName !== "string"
+          ) {
+            throw invalidStreamResponse(
+              "cl-router returned an invalid generated tool call",
+            );
+          }
+          yield {
+            type: "tool-call",
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            input: call.input,
+          };
+        }
+      } else {
+        const text =
+          typeof output === "string" ? output : JSON.stringify(output);
+        if (text)
+          yield { type: "text-delta", id: response.requestId, delta: text };
+      }
+      yield {
+        ...response,
+        type: "done",
+        finishReason: response.finishReason ?? "stop",
+      };
+    })();
+    return { events, headers: new Headers() };
+  }
   const environment = options.environment ?? process.env;
   const config = clientConfig(environment);
   const fetchImplementation = options.fetch ?? fetch;
   const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, config.timeoutMs);
   const abortFromCaller = () => controller.abort();
   if (options.abortSignal?.aborted) controller.abort();
   else
@@ -1051,13 +1081,12 @@ export async function clRouterGenerateStream(
       once: true,
     });
   const cleanup = () => {
-    clearTimeout(timer);
     options.abortSignal?.removeEventListener("abort", abortFromCaller);
   };
 
   let response: Response;
   try {
-    const payload = generateRequestPayload(request, environment);
+    const payload = requestPayload(request);
     validateRouterAssets(payload, environment);
     response = await fetchImplementation(`${config.url}/v1/generate/stream`, {
       method: "POST",
@@ -1073,16 +1102,10 @@ export async function clRouterGenerateStream(
     cleanup();
     if (error instanceof ClRouterRequestError) throw error;
     throw new ClRouterRequestError(
-      timedOut
-        ? "timeout"
-        : options.abortSignal?.aborted
-          ? "aborted"
-          : "connection",
-      timedOut
-        ? "cl-router request timed out"
-        : options.abortSignal?.aborted
-          ? "cl-router request aborted"
-          : "cl-router connection failed",
+      options.abortSignal?.aborted ? "aborted" : "connection",
+      options.abortSignal?.aborted
+        ? "cl-router request aborted"
+        : "cl-router connection failed",
       { cause: error },
     );
   }
@@ -1130,16 +1153,10 @@ export async function clRouterGenerateStream(
     } catch (error) {
       if (error instanceof ClRouterRequestError) throw error;
       throw new ClRouterRequestError(
-        timedOut
-          ? "timeout"
-          : options.abortSignal?.aborted
-            ? "aborted"
-            : "connection",
-        timedOut
-          ? "cl-router stream timed out"
-          : options.abortSignal?.aborted
-            ? "cl-router stream aborted"
-            : "cl-router stream connection failed",
+        options.abortSignal?.aborted ? "aborted" : "connection",
+        options.abortSignal?.aborted
+          ? "cl-router stream aborted"
+          : "cl-router stream connection failed",
         { cause: error },
       );
     } finally {
@@ -1157,7 +1174,7 @@ export async function clRouterGenerate(
 ): Promise<ClRouterGenerateResponse> {
   const payload = await postJson(
     "/v1/generate",
-    generateRequestPayload(request, options.environment ?? process.env),
+    requestPayload(request),
     options,
   );
   if (!isRecord(payload)) {

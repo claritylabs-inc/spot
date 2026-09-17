@@ -20,6 +20,15 @@ disabling the switch restores manual approval for new calls. Tenant approvals
 are unchanged. References below to exact confirmation describe the default
 manual mode; the global switch can satisfy that gate automatically.
 
+## Inference execution
+
+Operator tools run between durable router model steps. Pending inference yields
+and resumes the same job; completed tool effects retain their existing idempotency
+keys. Exact messages and the selected model route survive operator continuation.
+Cancellation blocks subsequent tools and revokes the pending inference job.
+Worker-loss outcomes are explicit and never cause automatic tool or model replay.
+These lifecycle controls are internal, not new agent or MCP tools.
+
 ## Source owners and maintenance
 
 - Operator-agent tools are defined only in `convex/lib/operatorAgentToolRegistry.ts`. `convex/lib/operatorMcpToolCatalog.ts` projects that registry into operator MCP and adds operator-run lifecycle tools.

@@ -39,6 +39,66 @@ function responseMetadata() {
   };
 }
 
+test("a long active request has no elapsed-time abort but accepts explicit cancellation", async () => {
+  vi.useFakeTimers();
+  try {
+    const controller = new AbortController();
+    await expect(
+      clRouterGenerate(
+        { task: "chat", prompt: "Think carefully" },
+        {
+          environment,
+          abortSignal: controller.signal,
+          fetch: async (_url, init) => {
+            await vi.advanceTimersByTimeAsync(20 * 60_000);
+            expect(init?.signal?.aborted).toBe(false);
+            controller.abort();
+            expect(init?.signal?.aborted).toBe(true);
+            init?.signal?.throwIfAborted();
+            return Response.json({
+              ...responseMetadata(),
+              output: "unreachable",
+            });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "aborted" });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("stream consumers read the durable result without opening a synchronous stream", async () => {
+  const fetchMock = vi.fn();
+  const executeJob = vi.fn(async () => ({
+    ...responseMetadata(),
+    output: {
+      text: "Found it.",
+      toolCalls: [
+        {
+          toolCallId: "call-1",
+          toolName: "inspect",
+          input: { id: "record-1" },
+        },
+      ],
+    },
+    finishReason: "tool-calls",
+  }));
+  const result = await clRouterGenerateStream(
+    { task: "chat", prompt: "Inspect" },
+    { environment, fetch: fetchMock, executeJob },
+  );
+  const events = [];
+  for await (const event of result.events) events.push(event);
+  expect(events.map((event) => event.type)).toEqual([
+    "text-delta",
+    "tool-call",
+    "done",
+  ]);
+  expect(executeJob).toHaveBeenCalledOnce();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 describe("cl-router requests", () => {
   test("sends only route metadata and preserves router lineage", async () => {
     const fetchMock = vi.fn(async () =>
@@ -269,6 +329,6 @@ describe("Spot router asset URL allowlist", () => {
         SPOT_ENV: "local",
         CL_ROUTER_URL: "https://router.example.test",
       }),
-    ).toThrowError(/loopback cl-router/);
+    ).toThrowError(/local router or a durable callback tunnel/);
   });
 });

@@ -280,7 +280,6 @@ export function resolveConductorClRouterConfig(values, { required }) {
   return {
     url: executionEntries[0][1],
     secret: executionEntries[1][1],
-    timeoutMs: values.timeoutMs?.trim() || "180000",
     tenantId: values.tenantId?.trim() || "glass",
   };
 }
@@ -334,7 +333,8 @@ export function conductorPorts(workspaceRoot = repoRoot) {
 }
 
 export function conductorLocalRuntimeOverrides() {
-  const { web, extraction, imessage, slack, operatorImessage } = conductorPorts();
+  const { web, extraction, imessage, slack, operatorImessage } =
+    conductorPorts();
   const appUrl = `http://localhost:${web}`;
   return {
     APP_SITE_URL: appUrl,
@@ -363,9 +363,12 @@ export function conductorImageTag(workerName, workspacePath = repoRoot) {
 }
 
 export function conductorImageTags(workspacePath = repoRoot) {
-  return ["extraction-worker", "imessage-worker", "slack-worker", "mailbox-scan-worker"].map(
-    (workerName) => conductorImageTag(workerName, workspacePath),
-  );
+  return [
+    "extraction-worker",
+    "imessage-worker",
+    "slack-worker",
+    "mailbox-scan-worker",
+  ].map((workerName) => conductorImageTag(workerName, workspacePath));
 }
 
 export function conductorContainerName(
@@ -543,8 +546,7 @@ export async function listenOnContainerGateway(
     timeoutMs = 30_000,
     retryDelayMs = 250,
     now = () => performance.now(),
-    sleep = (delayMs) =>
-      new Promise((resolve) => setTimeout(resolve, delayMs)),
+    sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
   },
 ) {
   const started = now();

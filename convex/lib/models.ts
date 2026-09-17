@@ -43,6 +43,11 @@ import {
   type ModelTask,
 } from "./modelCatalog";
 import { collectToolAudit, type AgentToolAudit } from "./agentToolAudit";
+import {
+  executeDurableRouterRequest,
+  durableRouterClientOptions,
+  RouterJobPending,
+} from "./routerJobClient";
 
 /** Spot delegates every AI execution to cl-router. */
 
@@ -118,7 +123,6 @@ type AgentModelRouteTelemetry = {
   routeSource?: string;
   transport?: ModelTransport;
 };
-const INTERACTIVE_AGENT_INITIAL_EXECUTION_BUDGET_MS = 60_000;
 class AgentIncompleteOutputError extends Error {
   constructor(readonly finishReason: string | undefined) {
     super(
@@ -130,6 +134,7 @@ class AgentIncompleteOutputError extends Error {
   }
 }
 export type AgentModelRunOptions = {
+  durable?: { invocationKey: string; route?: ModelRoute };
   sessionKey: string;
   taskKind: ModelCallTaskKind;
   trace: {
@@ -208,19 +213,6 @@ function generatedFinishReasonFromResult(result: unknown): string | undefined {
   if (!finalStep || typeof finalStep !== "object") return undefined;
   const finishReason = (finalStep as Record<string, unknown>).finishReason;
   return typeof finishReason === "string" ? finishReason : undefined;
-}
-
-const MODEL_CALL_TIMEOUT_MS = Math.max(
-  30_000,
-  Number.parseInt(process.env.MODEL_CALL_TIMEOUT_MS ?? "180000", 10) || 180_000,
-);
-
-function withModelTimeout<T extends { abortSignal?: AbortSignal }>(
-  options: T,
-): T {
-  return options.abortSignal
-    ? options
-    : { ...options, abortSignal: AbortSignal.timeout(MODEL_CALL_TIMEOUT_MS) };
 }
 
 function clRouterSettingsSnapshot(
@@ -454,13 +446,16 @@ export async function transcribeAudioForOrg(
       sessionKey: `voice:${String(orgId)}:${crypto.randomUUID()}`,
     },
     async (audio) => {
-      const response = await clRouterTranscribe({
-        orgId,
-        settings,
-        audio,
-        prompt: input.prompt,
-        trace: { label: "convex.models.transcribeAudioForOrg" },
-      });
+      const response = await clRouterTranscribe(
+        {
+          orgId,
+          settings,
+          audio,
+          prompt: input.prompt,
+          trace: { label: "convex.models.transcribeAudioForOrg" },
+        },
+        durableRouterClientOptions(ctx),
+      );
       return audioTranscriptionResult(response);
     },
   );
@@ -505,12 +500,15 @@ async function transcribeAudioForGlobalTask(
       sessionKey: `voice:global:${crypto.randomUUID()}`,
     },
     async (audio) => {
-      const response = await clRouterTranscribe({
-        settings,
-        audio,
-        prompt: input.prompt,
-        trace: { label: traceLabel },
-      });
+      const response = await clRouterTranscribe(
+        {
+          settings,
+          audio,
+          prompt: input.prompt,
+          trace: { label: traceLabel },
+        },
+        durableRouterClientOptions(ctx),
+      );
       return audioTranscriptionResult(response);
     },
   );
@@ -928,6 +926,7 @@ function agentLanguageModel(
   run: AgentModelRunOptions,
 ): ResolvedAgentLanguageModel {
   const routerResponses: ClRouterResponseMetadata[] = [];
+  let jobStep = 0;
   return {
     ...resolved,
     model: createClRouterLanguageModel({
@@ -937,6 +936,23 @@ function agentLanguageModel(
       settings,
       sessionKey: run.sessionKey,
       trace: run.trace,
+      client: {
+        executeJob: async (operation, payload, abortSignal) => {
+          const invocationKey =
+            run.durable?.invocationKey ??
+            `agent:${run.trace.traceId}:${run.trace.label}:${run.trace.phase}`;
+          const result = await executeDurableRouterRequest(
+            ctx,
+            operation,
+            payload,
+            `${invocationKey}:${jobStep}`,
+            abortSignal,
+            { wait: run.durable ? "yield" : "poll" },
+          );
+          jobStep += 1;
+          return result;
+        },
+      },
       ...(resolved.routeSource === "global"
         ? { initialRoutePin: resolved.route }
         : {}),
@@ -957,12 +973,6 @@ function agentLanguageModel(
           },
         };
       },
-      ...(run.trace.channel === "mailbox" || run.trace.channel === "public_demo"
-        ? {}
-        : {
-            initialExecutionBudgetMs:
-              INTERACTIVE_AGENT_INITIAL_EXECUTION_BUDGET_MS,
-          }),
       onResponse: async (response, step) => {
         routerResponses.push(response);
         await run.onResponse?.(response, step);
@@ -1227,12 +1237,10 @@ async function generateAgentTextForResolvedModel(
 ): Promise<RoutedGenerateTextResult> {
   const { generateText } = await import("ai");
   const result = withGeneratedText(
-    await generateText(
-      withModelTimeout({
-        ...options,
-        model: resolved.model,
-      } as AiGenerateTextOptions),
-    ),
+    await generateText({
+      ...options,
+      model: resolved.model,
+    } as AiGenerateTextOptions),
     options.output !== undefined,
   );
   const audit = collectToolAudit(result);
@@ -1369,10 +1377,9 @@ export async function getAgentLanguageModelForOperatorTask(
   run: AgentModelRunOptions,
 ): Promise<ResolvedAgentLanguageModel> {
   assertAgentModelRunOptions(run);
-  const route: ModelRoute = await ctx.runQuery(
-    internal.modelSettings.resolveOperatorAgentRoute,
-    {},
-  );
+  const route: ModelRoute =
+    run.durable?.route ??
+    (await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}));
   if (!modelRouteSupportsTask("chat_vision", route)) {
     throw new Error(
       "The manually selected operator-agent model must support image input",
@@ -1427,6 +1434,7 @@ export async function generateAgentTextForOperatorTask(
     );
     return result;
   } catch (error) {
+    if (error instanceof RouterJobPending) throw error;
     await recordAgentRun(
       ctx,
       undefined,
@@ -1486,7 +1494,7 @@ export async function generateTextForOrg(
             : {}),
         },
       },
-      { abortSignal: options.abortSignal },
+      durableRouterClientOptions(ctx, undefined, options.abortSignal),
     ),
   );
 }
@@ -1531,7 +1539,7 @@ export async function generateObjectForOrg<T>(
             : {}),
         },
       },
-      { abortSignal: textOptions.abortSignal },
+      durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
     ),
     schema,
   );
@@ -1572,7 +1580,7 @@ export async function generateTextForPublicTask(
             : {}),
         },
       },
-      { abortSignal: options.abortSignal },
+      durableRouterClientOptions(ctx, undefined, options.abortSignal),
     ),
   );
 }
@@ -1615,7 +1623,7 @@ export async function generateObjectForPublicTask<T>(
             : {}),
         },
       },
-      { abortSignal: textOptions.abortSignal },
+      durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
     ),
     schema,
   );

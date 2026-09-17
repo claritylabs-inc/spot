@@ -209,7 +209,7 @@ test("client authenticates and preserves routing lineage", async () => {
   const client = createClRouterClient({
     baseUrl: "https://router.internal/",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async (_input, init) => {
       request = init;
       return Response.json(responseBody);
@@ -225,7 +225,7 @@ test("client authenticates and preserves routing lineage", async () => {
     new Headers(request?.headers).get("authorization"),
     "Bearer shared-secret",
   );
-  assert.equal(JSON.parse(String(request?.body)).executionBudgetMs, 100);
+  assert.equal(JSON.parse(String(request?.body)).executionBudgetMs, undefined);
   assert.equal(result.requestId, "router-request-1");
   assert.equal(result.model.provider, "fireworks");
   assert.equal(result.routing.policyVersion, "policy-v1");
@@ -236,7 +236,7 @@ test("client permits plaintext only for loopback hosts", async () => {
     const client = createClRouterClient({
       baseUrl: `http://${host}:3000`,
       secret: "shared-secret",
-      timeoutMs: 1000,
+
       fetch: async () => Response.json(responseBody),
     });
     await client.generate({
@@ -252,7 +252,6 @@ test("client permits plaintext only for loopback hosts", async () => {
       createClRouterClient({
         baseUrl: "http://router.internal",
         secret: "shared-secret",
-        timeoutMs: 1000,
       }),
     /must use HTTPS/,
   );
@@ -262,7 +261,7 @@ test("client preserves connection failures without a direct-provider fallback", 
   const disconnected = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async () => {
       throw Object.assign(new TypeError("fetch failed"), {
         code: "ECONNREFUSED",
@@ -286,7 +285,7 @@ test("client rejects an oversized request as a protocol error before fetch", asy
   const client = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async () => {
       fetchCalls += 1;
       return Response.json(responseBody);
@@ -311,7 +310,7 @@ test("client rejects an explicitly empty image before fetch", async () => {
   const client = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async () => {
       fetchCalls += 1;
       return Response.json(responseBody);
@@ -339,7 +338,7 @@ test("client rejects loopback assets before calling a cloud router", async () =>
   const client = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async () => {
       fetchCalls += 1;
       return Response.json(responseBody);
@@ -374,7 +373,7 @@ test("client preserves typed router failure metadata", async () => {
   const client = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async () =>
       Response.json(
         {
@@ -408,7 +407,7 @@ test("invalid 2xx responses fail closed", async () => {
   const client = createClRouterClient({
     baseUrl: "https://router.internal",
     secret: "shared-secret",
-    timeoutMs: 1000,
+
     fetch: async () => Response.json({ output: {} }),
   });
   await assert.rejects(
