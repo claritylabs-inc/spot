@@ -2,6 +2,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { generateAgentTextForOperatorTask } from "./models";
+import {
+  executeDurableRouterRequest,
+  RouterJobPending,
+} from "./routerJobClient";
 
 const selectedRoute = {
   provider: "openai" as const,
@@ -62,14 +66,28 @@ function routerResponse(
 
 describe("operator model execution boundary", () => {
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
-  test("pins every tool-loop step to the selected route with router fallback disabled", async () => {
+  test("completes a pinned tool loop after more than three minutes of tool work", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((delay) => {
+      const controller = new AbortController();
+      setTimeout(
+        () => controller.abort(new DOMException("Timed out", "TimeoutError")),
+        delay,
+      );
+      return controller.signal;
+    });
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
     vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
-    const execute = vi.fn(async ({ id }: { id: string }) => ({ id, ok: true }));
+    const execute = vi.fn(async ({ id }: { id: string }) => {
+      await vi.advanceTimersByTimeAsync(180_001);
+      return { id, ok: true };
+    });
     const fetchMock = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(
@@ -87,9 +105,10 @@ describe("operator model execution boundary", () => {
           "tool-calls",
         ),
       )
-      .mockResolvedValueOnce(
-        routerResponse("router-step-2", "Inspection complete.", "stop"),
-      );
+      .mockImplementationOnce(async (_url, init) => {
+        init?.signal?.throwIfAborted();
+        return routerResponse("router-step-2", "Inspection complete.", "stop");
+      });
     vi.stubGlobal("fetch", fetchMock);
     const ctx = operatorContext();
 
@@ -190,4 +209,34 @@ describe("operator model execution boundary", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+});
+
+vi.mock("./routerJobClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./routerJobClient")>()),
+  durableRouterClientOptions: () => ({}),
+  executeDurableRouterRequest: vi.fn(
+    async (_ctx: unknown, operation: string, payload: unknown) => {
+      const client = await import("./clRouterClient");
+      if (operation !== "generate")
+        throw new Error("Unexpected test operation");
+      return client.clRouterGenerate(
+        payload as Parameters<typeof client.clRouterGenerate>[0],
+      );
+    },
+  ),
+}));
+
+test("pending durable inference survives the SDK boundary without failure telemetry", async () => {
+  const ctx = operatorContext();
+  const pending = new RouterJobPending("operator:run:0:0", "job-1");
+  vi.mocked(executeDurableRouterRequest).mockRejectedValueOnce(pending);
+  await expect(
+    generateAgentTextForOperatorTask(
+      ctx as never,
+      "chat",
+      { prompt: "Continue working" },
+      { ...run, durable: { invocationKey: "operator:run:0" } },
+    ),
+  ).rejects.toBe(pending);
+  expect(ctx.runMutation).not.toHaveBeenCalled();
 });

@@ -1,4 +1,9 @@
 import { httpRouter } from "convex/server";
+import {
+  requestHttp as routerJobRequest,
+  resultHttp as routerJobResult,
+  assetHttp as routerJobAsset,
+} from "./routerJobs";
 import { ConvexError } from "convex/values";
 import dayjs from "dayjs";
 import { httpAction } from "./_generated/server";
@@ -66,8 +71,16 @@ import { decodeOperatorMcpAttachments } from "./lib/operatorMcpAttachments";
 import { buildOperatorMcpToolCatalog } from "./lib/operatorMcpToolCatalog";
 import { observeHttp, provisionHttp } from "./employeeProvisioning";
 const http = httpRouter();
-http.route({ path: "/api/provisioning/v1/operators/observe", method: "POST", handler: observeHttp });
-http.route({ path: "/api/provisioning/v1/operators/provision", method: "POST", handler: provisionHttp });
+http.route({
+  path: "/api/provisioning/v1/operators/observe",
+  method: "POST",
+  handler: observeHttp,
+});
+http.route({
+  path: "/api/provisioning/v1/operators/provision",
+  method: "POST",
+  handler: provisionHttp,
+});
 const internalApi = internal as any;
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -2171,7 +2184,6 @@ http.route({
         _id: org._id,
         name: org.name,
         website: org.website,
-
       });
     } catch (e) {
       if (e instanceof Response) return e;
@@ -2661,8 +2673,16 @@ const MCP_TOOLS: TenantMcpToolCatalogEntry[] = [
   },
   {
     name: "write_company_wiki",
-    description: "Replace the complete company .md document including YAML front matter for the token's organization. Read it first and send its revision. Requires write scope and direct org admin membership.",
-    inputSchema: { type: "object" as const, properties: { markdown: { type: "string" }, expected_revision: { type: "integer", minimum: 0 } }, required: ["markdown", "expected_revision"] },
+    description:
+      "Replace the complete company .md document including YAML front matter for the token's organization. Read it first and send its revision. Requires write scope and direct org admin membership.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        markdown: { type: "string" },
+        expected_revision: { type: "integer", minimum: 0 },
+      },
+      required: ["markdown", "expected_revision"],
+    },
     effect: "write",
   },
   {
@@ -3107,8 +3127,17 @@ async function handleToolCall(
       return mcpTextResult(wiki);
     }
     case "write_company_wiki": {
-      if (typeof args.markdown !== "string" || !Number.isInteger(args.expected_revision)) throw new Error("markdown and expected_revision are required");
-      const wiki = await ctx.runMutation(internal.orgWiki.saveForMcp, { orgId, userId, markdown: args.markdown, expectedRevision: Number(args.expected_revision) });
+      if (
+        typeof args.markdown !== "string" ||
+        !Number.isInteger(args.expected_revision)
+      )
+        throw new Error("markdown and expected_revision are required");
+      const wiki = await ctx.runMutation(internal.orgWiki.saveForMcp, {
+        orgId,
+        userId,
+        markdown: args.markdown,
+        expectedRevision: Number(args.expected_revision),
+      });
       return mcpTextResult(wiki);
     }
     case "list_policies": {
@@ -3424,7 +3453,6 @@ async function handleToolCall(
                 _id: org._id,
                 name: org.name,
                 website: org.website,
-
               },
               null,
               2,
@@ -5068,6 +5096,67 @@ http.route({
   path: "/favicon.ico",
   method: "GET",
   handler: httpAction(async () => spotIconResponse()),
+});
+
+http.route({
+  path: "/router-jobs/worker",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.EXTRACTION_WORKER_SECRET?.trim();
+    if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
+      return new Response(null, { status: 401 });
+    const length = Number(request.headers.get("content-length"));
+    if (
+      !Number.isSafeInteger(length) ||
+      length <= 0 ||
+      length > 4 * 1024 * 1024
+    )
+      return new Response(null, { status: 413 });
+    const bytes = await readRouterAssetBody(request, length);
+    if (!bytes) return new Response(null, { status: 400 });
+    let input: {
+      jobKind: "policy" | "preview" | "proposal";
+      jobId: string;
+      leaseId: string;
+      orgId: Id<"organizations">;
+      invocationKey: string;
+      payload: unknown;
+    };
+    try {
+      input = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      return new Response(null, { status: 400 });
+    }
+    const result = await ctx.runAction(
+      internal.actions.routerJobs.worker,
+      input,
+    );
+    return Response.json(result, {
+      status:
+        "statusCode" in result
+          ? result.statusCode
+          : "pending" in result
+            ? 202
+            : 200,
+      headers: { "cache-control": "no-store" },
+    });
+  }),
+});
+
+http.route({
+  path: "/router-jobs/request",
+  method: "GET",
+  handler: routerJobRequest,
+});
+http.route({
+  path: "/router-jobs/result",
+  method: "POST",
+  handler: routerJobResult,
+});
+http.route({
+  path: "/router-jobs/asset",
+  method: "GET",
+  handler: routerJobAsset,
 });
 
 export default http;

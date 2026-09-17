@@ -139,8 +139,7 @@ function deploymentNameFromSelector(selector) {
 }
 
 function sourceDeploymentKey(sourceDeployment) {
-  const dedicatedKey =
-    process.env.CONDUCTOR_CONVEX_SOURCE_DEPLOY_KEY?.trim();
+  const dedicatedKey = process.env.CONDUCTOR_CONVEX_SOURCE_DEPLOY_KEY?.trim();
   if (dedicatedKey) {
     if (convexDeploymentNameFromDeployKey(dedicatedKey) !== sourceDeployment) {
       throw new Error(
@@ -254,14 +253,16 @@ const configuredTerminalClientPhone = imessageEnv
   .get("IMESSAGE_TERMINAL_CLIENT_PHONE")
   ?.trim();
 const terminalClientPhone =
-  !configuredTerminalClientPhone || configuredTerminalClientPhone === "+15555550102"
+  !configuredTerminalClientPhone ||
+  configuredTerminalClientPhone === "+15555550102"
     ? "+12025550102"
     : configuredTerminalClientPhone;
 const configuredTerminalPublicPhone = imessageEnv
   .get("IMESSAGE_TERMINAL_PUBLIC_PHONE")
   ?.trim();
 const terminalPublicPhone =
-  !configuredTerminalPublicPhone || configuredTerminalPublicPhone === "+15555550999"
+  !configuredTerminalPublicPhone ||
+  configuredTerminalPublicPhone === "+15555550999"
     ? "+12025550199"
     : configuredTerminalPublicPhone;
 for (const [name, value] of [
@@ -272,7 +273,9 @@ for (const [name, value] of [
     throw new Error(`${name} must be an E.164 phone number`);
   }
 }
-if (new Set([terminalPhone, terminalClientPhone, terminalPublicPhone]).size !== 3) {
+if (
+  new Set([terminalPhone, terminalClientPhone, terminalPublicPhone]).size !== 3
+) {
   throw new Error("Spectrum terminal test phone numbers must be unique");
 }
 
@@ -336,7 +339,9 @@ if (createdLocalDeployment) {
   }
   stripCloudConvexSelection();
 } else if (repairLocalConvexSelection()) {
-  console.log("Restored this workspace's local Convex selection in .env.local.");
+  console.log(
+    "Restored this workspace's local Convex selection in .env.local.",
+  );
 }
 
 for (const name of cloudConvexSelectionKeys) delete process.env[name];
@@ -388,13 +393,11 @@ const routerRequired =
 const {
   url: clRouterUrl,
   secret: clRouterSecret,
-  timeoutMs: clRouterTimeoutMs,
   tenantId: clRouterTenantId,
 } = resolveConductorClRouterConfig(
   {
     url: optionalConvexEnv(convex, "CL_ROUTER_URL"),
     secret: optionalConvexEnv(convex, "CL_ROUTER_SECRET"),
-    timeoutMs: optionalConvexEnv(convex, "CL_ROUTER_TIMEOUT_MS"),
     tenantId: optionalConvexEnv(convex, "CL_ROUTER_TENANT_ID"),
   },
   { required: routerRequired },
@@ -513,7 +516,6 @@ writeRuntimeEnv("extraction-worker.env", {
   EXTRACTION_PREVIEW_CONCURRENCY: "2",
   CL_ROUTER_URL: clRouterUrl,
   CL_ROUTER_SECRET: clRouterSecret,
-  CL_ROUTER_TIMEOUT_MS: clRouterTimeoutMs,
   CL_ROUTER_TENANT_ID: clRouterTenantId,
 });
 writeRuntimeEnv("imessage-worker.env", {

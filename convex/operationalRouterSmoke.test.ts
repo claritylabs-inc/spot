@@ -346,6 +346,44 @@ describe("operational router smoke live-path contract", () => {
     let generateCount = 0;
     const fetchMock = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       const url = String(input);
+      if (url.startsWith("http://localhost:3211/")) {
+        const callback = new URL(url);
+        return t.fetch(`${callback.pathname}${callback.search}`, init);
+      }
+      if (url.endsWith("/v1/jobs")) {
+        const submission = JSON.parse(String(init?.body));
+        const requestUrl = new URL(submission.requestUrl);
+        const request = await t.fetch(
+          `${requestUrl.pathname}${requestUrl.search}`,
+        );
+        expect(request.status).toBe(200);
+        const payload = await request.json();
+        const result = await fetchMock(
+          `http://127.0.0.1:8787/v1/${submission.operation}`,
+          {
+            ...init,
+            body: JSON.stringify(payload),
+          },
+        );
+        const jobId = `smoke-job-${requests.length}`;
+        const resultUrl = new URL(submission.resultUrl);
+        const delivered = await t.fetch(
+          `${resultUrl.pathname}${resultUrl.search}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              jobId,
+              idempotencyKey: submission.idempotencyKey,
+              fingerprint: submission.fingerprint,
+              status: "succeeded",
+              result: await result.json(),
+            }),
+          },
+        );
+        expect(delivered.status).toBe(204);
+        return Response.json({ jobId, status: "succeeded" }, { status: 202 });
+      }
       if (!url.startsWith("http://127.0.0.1:8787/v1/")) {
         throw new Error(`Unexpected outbound request: ${url}`);
       }
@@ -551,7 +589,7 @@ describe("operational router smoke live-path contract", () => {
       sizeBytes: OPERATIONAL_ROUTER_SMOKE_AUDIO_MIN_BYTES,
     });
     expect(transcriptionRequest?.body.audio.url).toMatch(
-      /^http:\/\/localhost:3211\/router-assets\?/,
+      /^http:\/\/localhost:3211\/router-jobs\/asset\?/,
     );
 
     const pdfRequest = requests.find(
@@ -574,7 +612,7 @@ describe("operational router smoke live-path contract", () => {
       sizeBytes: OPERATIONAL_ROUTER_SMOKE_PDF_BYTES,
     });
     expect(pdfPart?.source.url).toMatch(
-      /^http:\/\/localhost:3211\/router-assets\?/,
+      /^http:\/\/localhost:3211\/router-jobs\/asset\?/,
     );
 
     const tableCounts = await t.run(async (ctx) => {

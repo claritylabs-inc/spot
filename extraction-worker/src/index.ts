@@ -513,18 +513,6 @@ const LITEPARSE_MAX_PAGES = readOptionalIntEnv("LITEPARSE_MAX_PAGES");
 const LITEPARSE_MAX_FILE_SIZE = readOptionalIntEnv(
   "LITEPARSE_MAX_FILE_SIZE_BYTES",
 );
-const MODEL_CALL_TIMEOUT_MS = readBoundedIntEnv(
-  "MODEL_CALL_TIMEOUT_MS",
-  180_000,
-  30_000,
-  15 * 60_000,
-);
-const CL_ROUTER_TIMEOUT_MS = readBoundedIntEnv(
-  "CL_ROUTER_TIMEOUT_MS",
-  MODEL_CALL_TIMEOUT_MS,
-  5_000,
-  15 * 60_000,
-);
 // Keep the original opaque tenant key so the rebrand does not fork learned
 // routing state from existing production policy history and telemetry.
 const CL_ROUTER_TENANT_ID = requiredEnv("CL_ROUTER_TENANT_ID").trim();
@@ -534,7 +522,6 @@ if (CL_ROUTER_TENANT_ID !== "glass") {
 const clRouter = createClRouterClient({
   baseUrl: requiredEnv("CL_ROUTER_URL"),
   secret: requiredEnv("CL_ROUTER_SECRET"),
-  timeoutMs: CL_ROUTER_TIMEOUT_MS,
 });
 const POLICY_PREVIEW_VERSION = "policy-preview-v2";
 const POLICY_PREVIEW_TEXT_LIMIT = readBoundedIntEnv(
@@ -1329,28 +1316,81 @@ async function generateObjectWithClRouter<T>(opts: {
     baseEnvelopeBytes,
   );
   try {
-    const response = await clRouter.generate({
-      task: opts.route.task,
-      taskKind: opts.taskKind,
-      tenantId: CL_ROUTER_TENANT_ID,
-      orgId: opts.job.state.orgId,
-      settings,
-      system: opts.system,
-      prompt: opts.prompt,
-      schema: opts.schema,
-      maxTokens: opts.maxOutputTokens,
-      sessionKey: opts.job.state.traceId ?? opts.job.policyId,
-      assets: preparedAssets.assets,
-      routing,
-      trace: stripUndefined({
-        traceId: opts.job.state.traceId,
-        label: opts.label,
-        phase: opts.trace?.phase,
+    const response = await clRouter.generate(
+      {
+        task: opts.route.task,
         taskKind: opts.taskKind,
-        policyId: opts.job.policyId,
-        workerId: WORKER_ID,
-      }) as Record<string, unknown>,
-    });
+        tenantId: CL_ROUTER_TENANT_ID,
+        orgId: opts.job.state.orgId,
+        settings,
+        system: opts.system,
+        prompt: opts.prompt,
+        schema: opts.schema,
+        maxTokens: opts.maxOutputTokens,
+        sessionKey: opts.job.state.traceId ?? opts.job.policyId,
+        assets: preparedAssets.assets,
+        routing,
+        trace: stripUndefined({
+          traceId: opts.job.state.traceId,
+          label: opts.label,
+          phase: opts.trace?.phase,
+          taskKind: opts.taskKind,
+          policyId: opts.job.policyId,
+          workerId: WORKER_ID,
+        }) as Record<string, unknown>,
+      },
+      async (payload) => {
+        const invocationKey = stableHash(
+          JSON.stringify({
+            run: opts.job.state.traceId ?? opts.job.leaseId,
+            label: opts.label,
+            prompt: opts.prompt,
+            system: opts.system,
+            schema: opts.schema,
+            route: opts.route,
+            trace: opts.trace,
+          }),
+        );
+        const body = JSON.stringify({
+          ...routerAssetLease(opts.job),
+          invocationKey,
+          payload,
+        });
+        for (;;) {
+          let response: Response;
+          try {
+            response = await fetch(`${CONVEX_SITE_URL}/router-jobs/worker`, {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${SECRET}`,
+                "content-type": "application/json",
+              },
+              body,
+              // Reconnect the control request without cancelling the durable inference.
+              signal: AbortSignal.timeout(10_000),
+            });
+          } catch {
+            await sleep(2_000);
+            continue;
+          }
+          if (
+            response.status === 202 ||
+            response.status === 429 ||
+            response.status >= 500
+          ) {
+            await response.body?.cancel();
+            await sleep(2_000);
+            continue;
+          }
+          if (!response.ok)
+            throw new Error(
+              `Durable router job lookup failed (${response.status})`,
+            );
+          const outcome = (await response.json()) as { result: unknown };
+          return outcome.result;
+        }
+      },
+    );
     const object = opts.validate(response.output);
     const route = clRouterTraceRoute(opts.route.task, response);
     const usage = mapUsage(response.usage);

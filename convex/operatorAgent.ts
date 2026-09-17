@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v, type Infer } from "convex/values";
+import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -1161,8 +1162,16 @@ async function cancelActiveRunsForThread(
   ).flat();
   const now = dayjs().valueOf();
   for (const run of runs) {
+    if (run.modelContinuationStorageId)
+      await ctx.storage.delete(run.modelContinuationStorageId);
+    const invocationKey = `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}:0`;
+    await cancelRouterJobForInvocation(ctx, invocationKey);
+    await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {
+      invocationKey,
+    });
     await ctx.db.patch(run._id, {
       status: "cancelled",
+      modelContinuationStorageId: undefined,
       cancellationRequestedAt: now,
       completedAt: now,
       lastError: reason,
@@ -5182,21 +5191,51 @@ export const getThreadAttachmentInternal = internalQuery({
   },
 });
 
+// Recover only after the ten-minute Node action lifetime has elapsed.
+const OPERATOR_RUNNER_RECOVERY_MS = 11 * 60 * 1000;
+
 export const markRunStartedInternal = internalMutation({
   args: { runId: v.id("operatorAgentRuns") },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<number | null> => {
     const run = await ctx.db.get(args.runId);
-    if (!run || run.status !== "queued" || run.cancellationRequestedAt) {
-      return false;
-    }
+    if (!run || run.status !== "queued" || run.cancellationRequestedAt)
+      return null;
     await requireOperatorForUser(ctx, run.operatorUserId);
     const now = dayjs().valueOf();
+    const runnerAttempt = (run.runnerAttempt ?? 0) + 1;
     await ctx.db.patch(run._id, {
       status: "running",
+      runnerAttempt,
       startedAt: run.startedAt ?? now,
       updatedAt: now,
     });
-    return true;
+    await ctx.scheduler.runAfter(
+      OPERATOR_RUNNER_RECOVERY_MS,
+      internal.operatorAgent.recoverAbandonedRunInternal,
+      { runId: run._id, runnerAttempt },
+    );
+    return runnerAttempt;
+  },
+});
+
+export const recoverAbandonedRunInternal = internalMutation({
+  args: { runId: v.id("operatorAgentRuns"), runnerAttempt: v.number() },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.runnerAttempt
+    )
+      return;
+    await ctx.db.patch(run._id, {
+      status: "queued",
+      updatedAt: dayjs().valueOf(),
+    });
+    await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
+      runId: run._id,
+    });
   },
 });
 
@@ -5463,6 +5502,8 @@ export const executeToolInternal = internalMutation({
 export const completeRunInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.optional(v.number()),
+    modelContinuationStorageId: v.optional(v.id("_storage")),
     expectedCheckpointIteration: v.optional(v.number()),
     checkpointSummary: v.optional(v.string()),
     content: v.string(),
@@ -5478,19 +5519,35 @@ export const completeRunInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
-    if (!run) return null;
+    if (!run) {
+      if (args.modelContinuationStorageId)
+        await ctx.storage.delete(args.modelContinuationStorageId);
+      return null;
+    }
+    const discardContinuation = async () => {
+      if (
+        args.modelContinuationStorageId &&
+        args.modelContinuationStorageId !== run.modelContinuationStorageId
+      )
+        await ctx.storage.delete(args.modelContinuationStorageId);
+    };
     const now = dayjs().valueOf();
     if (run.status === "cancelled" || run.cancellationRequestedAt) {
+      await discardContinuation();
       return { status: "cancelled" as const };
     }
     const waiting = run.status === "waiting_confirmation";
     if (
       (run.status !== "running" && !waiting) ||
+      (args.expectedRunnerAttempt !== undefined &&
+        run.runnerAttempt !== args.expectedRunnerAttempt) ||
       (args.expectedCheckpointIteration !== undefined &&
         (run.checkpoint?.iteration ?? 0) !==
           args.expectedCheckpointIteration + (waiting ? 1 : 0))
-    )
+    ) {
+      await discardContinuation();
       return { status: "not_completed" as const };
+    }
     const currentMessage = await ctx.db.get(run.agentMessageId);
     const usedTools = [
       ...new Set([...(currentMessage?.usedTools ?? []), ...args.usedTools]),
@@ -5509,7 +5566,16 @@ export const completeRunInternal = internalMutation({
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
     if (waiting && run.checkpoint) {
+      if (
+        args.modelContinuationStorageId &&
+        run.modelContinuationStorageId &&
+        args.modelContinuationStorageId !== run.modelContinuationStorageId
+      )
+        await ctx.storage.delete(run.modelContinuationStorageId);
       await ctx.db.patch(run._id, {
+        ...(args.modelContinuationStorageId
+          ? { modelContinuationStorageId: args.modelContinuationStorageId }
+          : {}),
         checkpoint: {
           ...run.checkpoint,
           summary:
@@ -5528,8 +5594,12 @@ export const completeRunInternal = internalMutation({
       });
     }
     if (!waiting) {
+      await discardContinuation();
+      if (run.modelContinuationStorageId)
+        await ctx.storage.delete(run.modelContinuationStorageId);
       await ctx.db.patch(run._id, {
         status: "completed",
+        modelContinuationStorageId: undefined,
         completedAt: now,
         checkpoint: {
           iteration: (run.checkpoint?.iteration ?? 0) + 1,
@@ -5549,10 +5619,39 @@ export const completeRunInternal = internalMutation({
   },
 });
 
+export const waitForRouterInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.optional(v.number()),
+    expectedCheckpointIteration: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      (args.expectedRunnerAttempt !== undefined &&
+        run.runnerAttempt !== args.expectedRunnerAttempt) ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
+    )
+      return;
+    await ctx.db.patch(run._id, {
+      status: "queued",
+      updatedAt: dayjs().valueOf(),
+    });
+    await ctx.scheduler.runAfter(2_000, internal.operatorAgentRunner.run, {
+      runId: run._id,
+    });
+  },
+});
+
 export const continueRunInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.optional(v.number()),
+    modelContinuationStorageId: v.optional(v.id("_storage")),
     summary: v.string(),
     usedTools: v.array(v.string()),
     toolCalls: v.array(
@@ -5565,16 +5664,32 @@ export const continueRunInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
-    if (!run) return null;
+    if (!run) {
+      if (args.modelContinuationStorageId)
+        await ctx.storage.delete(args.modelContinuationStorageId);
+      return null;
+    }
     if (run.status === "waiting_confirmation") {
+      if (
+        args.modelContinuationStorageId &&
+        args.modelContinuationStorageId !== run.modelContinuationStorageId
+      )
+        await ctx.storage.delete(args.modelContinuationStorageId);
       return { status: "waiting_confirmation" as const };
     }
     if (
       run.status !== "running" ||
       run.cancellationRequestedAt ||
+      (args.expectedRunnerAttempt !== undefined &&
+        run.runnerAttempt !== args.expectedRunnerAttempt) ||
       (args.expectedCheckpointIteration !== undefined &&
         (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration)
     ) {
+      if (
+        args.modelContinuationStorageId &&
+        args.modelContinuationStorageId !== run.modelContinuationStorageId
+      )
+        await ctx.storage.delete(args.modelContinuationStorageId);
       return { status: "not_continued" as const };
     }
     const message = await ctx.db.get(run.agentMessageId);
@@ -5593,6 +5708,9 @@ export const continueRunInternal = internalMutation({
     });
     await ctx.db.patch(run._id, {
       status: "queued",
+      ...(args.modelContinuationStorageId
+        ? { modelContinuationStorageId: args.modelContinuationStorageId }
+        : {}),
       checkpoint: {
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
         executionCount:
@@ -5602,6 +5720,13 @@ export const continueRunInternal = internalMutation({
       },
       updatedAt: now,
     });
+    if (
+      args.modelContinuationStorageId &&
+      run.modelContinuationStorageId &&
+      args.modelContinuationStorageId !== run.modelContinuationStorageId
+    ) {
+      await ctx.storage.delete(run.modelContinuationStorageId);
+    }
     await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
       runId: run._id,
     });
@@ -5612,12 +5737,18 @@ export const continueRunInternal = internalMutation({
 export const failRunInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.optional(v.number()),
     error: v.string(),
     expectedCheckpointIteration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
     if (!run) return;
+    if (
+      args.expectedRunnerAttempt !== undefined &&
+      run.runnerAttempt !== args.expectedRunnerAttempt
+    )
+      return;
     if (
       args.expectedCheckpointIteration !== undefined &&
       (run.status !== "running" ||
@@ -5662,8 +5793,11 @@ export const failRunInternal = internalMutation({
           }),
         ),
     );
+    if (run.modelContinuationStorageId)
+      await ctx.storage.delete(run.modelContinuationStorageId);
     await ctx.db.patch(run._id, {
       status: "failed",
+      modelContinuationStorageId: undefined,
       lastError: args.error.slice(0, 1_000),
       completedAt: now,
       checkpoint: run.checkpoint

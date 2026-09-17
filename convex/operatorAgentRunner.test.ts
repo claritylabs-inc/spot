@@ -3,7 +3,9 @@ import { convexTest } from "convex-test";
 import dayjs from "dayjs";
 import { afterEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import { RouterJobPending } from "./lib/routerJobClient";
 import { seedRequestIntake } from "./lib/procurementNarrative";
 
 const { generate } = vi.hoisted(() => ({ generate: vi.fn() }));
@@ -12,6 +14,16 @@ vi.mock("./lib/models", async (importOriginal) => ({
   generateAgentTextForOperatorTask: generate,
 }));
 const modules = import.meta.glob("./**/*.ts");
+
+async function finishOperatorSchedules(t: ReturnType<typeof convexTest>) {
+  // An action must finish before fake time reaches its abandoned-action watchdog.
+  for (let iteration = 0; iteration < 1000; iteration += 1) {
+    await t.finishInProgressScheduledFunctions();
+    if (vi.getTimerCount() === 0) return;
+    vi.advanceTimersToNextTimer();
+  }
+  throw new Error("Operator schedules did not settle");
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -91,6 +103,10 @@ test("pauses a batch at its first approval, preserves research, and resumes with
     firstSegmentFinished = true;
     return {
       text: "The operator run expired.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [{ role: "assistant", content: "Exact confirmation step" }],
+      },
       steps: [
         {
           toolCalls: [
@@ -117,7 +133,7 @@ test("pauses a batch at its first approval, preserves research, and resumes with
       dedupeKey: "research",
     },
   );
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   expect(firstSegmentFinished).toBe(true);
   const waiting = await t.query(
     internal.operatorAgent.getRunResultForOperatorInternal,
@@ -174,12 +190,16 @@ test("pauses a batch at its first approval, preserves research, and resumes with
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
     expect(options.system).toContain("miller.example");
     expect(options.system).toContain("networkStatus");
+    expect(options.messages.at(-1)).toEqual({
+      role: "assistant",
+      content: "Exact confirmation step",
+    });
     return {
       text: "The approved broker update is complete. Remaining research found no supported changes.",
       steps: [],
     };
   });
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   expect(await t.run((ctx) => ctx.db.get(ids.brokerOrgId))).not.toHaveProperty(
     "website",
   );
@@ -306,6 +326,10 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
     expect(result.status).toBe("confirmation_required");
     return {
       text: "Waiting for confirmation.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [{ role: "assistant", content: "Exact confirmation step" }],
+      },
       steps: [
         {
           toolCalls: [
@@ -331,6 +355,10 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
     expect(result.status).toBe("confirmation_required");
     return {
       text: "Waiting for corrected confirmation.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [{ role: "assistant", content: "Exact confirmation step" }],
+      },
       steps: [
         {
           toolCalls: [
@@ -364,7 +392,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
       dedupeKey: "safe-recovery",
     },
   );
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   const firstConfirmation = await t.query(
     internal.operatorAgent.getPendingConfirmationInternal,
     { operatorUserId: ids.operatorUserId, threadId },
@@ -401,7 +429,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
     await t.run((ctx) => ctx.db.query("procurementFileItems").collect()),
   ).toHaveLength(0);
 
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   const secondConfirmation = await t.query(
     internal.operatorAgent.getPendingConfirmationInternal,
     { operatorUserId: ids.operatorUserId, threadId },
@@ -444,7 +472,7 @@ test("recovers from a confirmed no-write validation failure with a fresh approva
     }),
   ).toEqual({ status: "needs_refresh", runId: queued.runId });
 
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   const items = await t.run((ctx) =>
     ctx.db.query("procurementFileItems").collect(),
   );
@@ -555,6 +583,10 @@ test("corrects an invented ACORD code before approval and preserves an omitted w
     expect(result.status).toBe("confirmation_required");
     return {
       text: "Waiting for the corrected approval.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [{ role: "assistant", content: "Exact confirmation step" }],
+      },
       steps: [
         {
           toolCalls: [
@@ -607,7 +639,7 @@ test("corrects an invented ACORD code before approval and preserves an omitted w
       dedupeKey: "blis-acord",
     },
   );
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   const confirmation = await t.query(
     internal.operatorAgent.getPendingConfirmationInternal,
     { operatorUserId: ids.operatorUserId, threadId },
@@ -627,7 +659,7 @@ test("corrects an invented ACORD code before approval and preserves an omitted w
     decision: "approve",
     channel: "slack",
   });
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
 
   const broker = await t.run(async (ctx) => ({
     organization: await ctx.db.get(ids.brokerOrgId),
@@ -708,6 +740,10 @@ test("resumes when approval-time preflight proves the target stale without writi
       await options.tools.update_broker_network_profile.execute(input);
     return {
       text: "Waiting for approval.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [{ role: "assistant", content: "Exact confirmation step" }],
+      },
       steps: [
         {
           toolCalls: [{ toolName: "update_broker_network_profile", input }],
@@ -737,7 +773,7 @@ test("resumes when approval-time preflight proves the target stale without writi
       dedupeKey: "approval-preflight",
     },
   );
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
   const confirmation = await t.query(
     internal.operatorAgent.getPendingConfirmationInternal,
     { operatorUserId: ids.operatorUserId, threadId },
@@ -766,7 +802,7 @@ test("resumes when approval-time preflight proves the target stale without writi
       },
     },
   });
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await finishOperatorSchedules(t);
 
   const audit = await t.run((ctx) =>
     ctx.db
@@ -791,7 +827,7 @@ test("resumes when approval-time preflight proves the target stale without writi
   expect(generate).toHaveBeenCalledTimes(2);
 });
 
-test("Approve all completes a batch of writes in one model run without approval pauses or duplicate execution", async () => {
+test("resumes pending inference and checkpoints auto-approved writes without duplicate execution", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
@@ -827,6 +863,7 @@ test("Approve all completes a batch of writes in one model run without approval 
       conversationKey: "automatic-batch",
     },
   );
+  generate.mockRejectedValueOnce(new RouterJobPending("pending-step"));
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
     const inputs = ["onboarding", "live"].map((status) => ({
       orgId: ids.orgId,
@@ -849,7 +886,21 @@ test("Approve all completes a batch of writes in one model run without approval 
       }),
     ).toBeNull();
     return {
-      text: "Cove is now live.",
+      text: "",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [
+          {
+            role: "tool",
+            content: inputs.map((input, index) => ({
+              type: "tool-result",
+              toolCallId: `call-${index}`,
+              toolName: "set_organization_status",
+              output: { type: "json", value: results[index] },
+            })),
+          },
+        ],
+      },
       steps: [
         {
           toolCalls: inputs.map((input) => ({
@@ -864,6 +915,14 @@ test("Approve all completes a batch of writes in one model run without approval 
       ],
     };
   });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.messages.at(-1).role).toBe("tool");
+    expect(run.durable.route).toEqual({
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
+    return { text: "Cove is now live.", steps: [{ toolCalls: [] }] };
+  });
   const queued = await t.mutation(
     internal.operatorAgent.enqueueMessageInternal,
     {
@@ -874,8 +933,11 @@ test("Approve all completes a batch of writes in one model run without approval 
       dedupeKey: "batch",
     },
   );
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(generate).toHaveBeenCalledOnce();
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(3);
+  expect(generate.mock.calls[0][3].durable.invocationKey).toBe(
+    generate.mock.calls[1][3].durable.invocationKey,
+  );
   const result = await t.query(
     internal.operatorAgent.getRunResultForOperatorInternal,
     {
@@ -884,6 +946,7 @@ test("Approve all completes a batch of writes in one model run without approval 
     },
   );
   expect(result.run.status).toBe("completed");
+  expect(result.run.modelContinuationStorageId).toBeUndefined();
   expect(result.response?.content).toBe("Cove is now live.");
   const state = await t.run(async (ctx) => ({
     org: await ctx.db.get(ids.orgId),
@@ -899,4 +962,381 @@ test("Approve all completes a batch of writes in one model run without approval 
       (row) => row.status === "completed" && row.approvalMode === "automatic",
     ),
   ).toBe(true);
+});
+
+async function durableOperatorFixture() {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      email: "durable@claritylabs.inc",
+      accountKind: "operator",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "durable@claritylabs.inc",
+      role: "operator",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("operatorAgentSettings", {
+      key: "default",
+      approveAll: true,
+      updatedBy: userId,
+      updatedAt: 1,
+    });
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Durable client",
+      type: "client",
+    });
+    return { userId, orgId };
+  });
+  const threadId = await t.mutation(
+    internal.operatorAgent.createOrGetChannelThreadInternal,
+    {
+      operatorUserId: ids.userId,
+      channel: "slack",
+      conversationKey: "durable-regression",
+    },
+  );
+  const queued = await t.mutation(
+    internal.operatorAgent.enqueueMessageInternal,
+    {
+      operatorUserId: ids.userId,
+      threadId,
+      channel: "slack",
+      content: "Update the client",
+      dedupeKey: "durable-regression",
+    },
+  );
+  return { t, ...ids, threadId, queued };
+}
+
+test("cancelling pending inference atomically rejects its late result and prevents queued tool execution", async () => {
+  vi.useFakeTimers();
+  const { t, userId, orgId, threadId, queued } = await durableOperatorFixture();
+  const invocationKey = `operator:${queued.runId}:0:0`;
+  const requestStorageId = await t.run((ctx) =>
+    ctx.storage.store(new Blob(['{"prompt":"test"}'])),
+  );
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    const journal = await t.mutation(internal.routerJobs.prepare, {
+      invocationKey,
+      operation: "generate",
+      fingerprint: "a".repeat(64),
+      requestToken: "b".repeat(64),
+      requestTokenHash: "b".repeat(64),
+      resultToken: "c".repeat(64),
+      resultTokenHash: "c".repeat(64),
+      requestStorageId,
+    });
+    await t.mutation(internal.operatorAgent.cancelRunInternal, {
+      operatorUserId: userId,
+      threadId,
+    });
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(['{"text":"late"}'])),
+    );
+    expect(
+      await t.mutation(internal.routerJobs.finish, {
+        id: journal._id,
+        tokenHash: journal.resultTokenHash,
+        invocationKey,
+        fingerprint: journal.fingerprint,
+        jobId: "late-router-id",
+        status: "succeeded",
+        storageId,
+      }),
+    ).toBe(false);
+    expect(await t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
+    await expect(
+      options.tools.set_organization_status.execute({ orgId, status: "live" }),
+    ).rejects.toThrow("no longer active");
+    throw new RouterJobPending(invocationKey);
+  });
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(1);
+  const state = await t.run(async (ctx) => ({
+    run: await ctx.db.get(queued.runId),
+    org: await ctx.db.get(orgId),
+    audit: await ctx.db.query("agentActionAuditEvents").collect(),
+  }));
+  expect(state.run?.status).toBe("cancelled");
+  expect(state.org?.operatorStatus).toBeUndefined();
+  expect(state.audit).toHaveLength(0);
+  expect(
+    (await t.query(internal.routerJobs.get, { invocationKey }))?.status,
+  ).toBe("cancelled");
+});
+
+test("stale pending callbacks cannot queue or replace a newer checkpoint", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  expect(
+    await t.mutation(internal.operatorAgent.markRunStartedInternal, {
+      runId: queued.runId,
+    }),
+  ).toBe(1);
+  const currentStorageId = await t.run((ctx) =>
+    ctx.storage.store(new Blob(['{"messages":[]}'])),
+  );
+  await t.run((ctx) =>
+    ctx.db.patch(queued.runId, {
+      checkpoint: {
+        iteration: 1,
+        executionCount: 2,
+        summary: "current evidence",
+      },
+      modelContinuationStorageId: currentStorageId,
+    }),
+  );
+  await t.mutation(internal.operatorAgent.waitForRouterInternal, {
+    runId: queued.runId,
+    expectedCheckpointIteration: 0,
+  });
+  const staleStorageId = await t.run((ctx) =>
+    ctx.storage.store(new Blob(['{"messages":["stale"]}'])),
+  );
+  expect(
+    await t.mutation(internal.operatorAgent.continueRunInternal, {
+      runId: queued.runId,
+      expectedCheckpointIteration: 0,
+      modelContinuationStorageId: staleStorageId,
+      summary: "stale evidence",
+      usedTools: [],
+      toolCalls: [],
+    }),
+  ).toEqual({ status: "not_continued" });
+  await t.mutation(internal.operatorAgent.failRunInternal, {
+    runId: queued.runId,
+    expectedCheckpointIteration: 0,
+    error: "old transport failed",
+  });
+  const run = await t.run((ctx) => ctx.db.get(queued.runId));
+  expect(run).toMatchObject({
+    status: "running",
+    checkpoint: { iteration: 1, summary: "current evidence" },
+    modelContinuationStorageId: currentStorageId,
+  });
+  expect(await t.run((ctx) => ctx.storage.get(staleStorageId))).toBeNull();
+  expect(
+    await t.run(async (ctx) =>
+      Boolean(await ctx.storage.get(currentStorageId)),
+    ),
+  ).toBe(true);
+  await t.run((ctx) => ctx.db.patch(queued.runId, { status: "cancelled" }));
+  await finishOperatorSchedules(t);
+  expect(generate).not.toHaveBeenCalled();
+});
+
+test("exact model messages, route pin and parent request survive continuation and its blob is removed on completion", async () => {
+  vi.useFakeTimers();
+  const { t, orgId, queued } = await durableOperatorFixture();
+  const route = { provider: "openai", model: "gpt-5.6-terra" };
+  let continuationStorageId: Id<"_storage"> | undefined;
+  let expectedMessages: unknown[] = [];
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    const input = { orgId, status: "live" };
+    const output = await options.tools.set_organization_status.execute(input);
+    const responseMessages = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "stable-call",
+            toolName: "set_organization_status",
+            input,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "stable-call",
+            toolName: "set_organization_status",
+            output: { type: "json", value: output },
+          },
+        ],
+      },
+    ];
+    expectedMessages = [...options.messages, ...responseMessages];
+    return {
+      text: "",
+      route,
+      clRouter: { requestId: "router-original" },
+      response: { messages: responseMessages },
+      steps: [
+        {
+          toolCalls: [{ toolName: "set_organization_status", input }],
+          toolResults: [{ toolName: "set_organization_status", output }],
+        },
+      ],
+    };
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.messages).toEqual(expectedMessages);
+    expect(run.durable.route).toEqual(route);
+    expect(run.trace.parentRequestId).toBe("router-original");
+    const checkpoint = await t.run((ctx) => ctx.db.get(queued.runId));
+    continuationStorageId = checkpoint?.modelContinuationStorageId;
+    expect(continuationStorageId).toBeDefined();
+    return { text: "Client updated.", steps: [{ toolCalls: [] }] };
+  });
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(2);
+  const state = await t.run(async (ctx) => ({
+    run: await ctx.db.get(queued.runId),
+    audit: await ctx.db.query("agentActionAuditEvents").collect(),
+  }));
+  expect(state.run).toMatchObject({ status: "completed" });
+  expect(state.run?.modelContinuationStorageId).toBeUndefined();
+  expect(state.audit).toHaveLength(1);
+  if (!continuationStorageId) throw new Error("Missing continuation blob");
+  const completedStorageId = continuationStorageId;
+  expect(await t.run((ctx) => ctx.storage.get(completedStorageId))).toBeNull();
+});
+
+test("abandoned runner recovery replays the same step and fences every stale attempt callback without repeating writes", async () => {
+  vi.useFakeTimers();
+  const { t, orgId, queued } = await durableOperatorFixture();
+  const input = { orgId, status: "live" };
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    expect(
+      (await options.tools.set_organization_status.execute(input)).status,
+    ).toBe("succeeded");
+    const first = await t.run((ctx) => ctx.db.get(queued.runId));
+    expect(first?.runnerAttempt).toBe(1);
+    await t.mutation(internal.operatorAgent.recoverAbandonedRunInternal, {
+      runId: queued.runId,
+      runnerAttempt: 1,
+    });
+    const recovered = await t.run((ctx) => ctx.db.get(queued.runId));
+    expect(recovered).toMatchObject({
+      status: "queued",
+      checkpoint: { iteration: 0 },
+      runnerAttempt: 1,
+    });
+    throw new RouterJobPending("same-provider-step");
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, runOptions) => {
+    expect(runOptions.durable.invocationKey).toBe(
+      generate.mock.calls[0][3].durable.invocationKey,
+    );
+    const stale = {
+      runId: queued.runId,
+      expectedRunnerAttempt: 1,
+      expectedCheckpointIteration: 0,
+    };
+    await t.mutation(internal.operatorAgent.waitForRouterInternal, stale);
+    await t.mutation(internal.operatorAgent.failRunInternal, {
+      ...stale,
+      error: "stale failure",
+    });
+    expect(
+      await t.mutation(internal.operatorAgent.completeRunInternal, {
+        ...stale,
+        content: "stale completion",
+        usedTools: [],
+        toolCalls: [],
+      }),
+    ).toEqual({ status: "not_completed" });
+    const orphan = await t.run((ctx) =>
+      ctx.storage.store(new Blob(['{"messages":[]}'])),
+    );
+    expect(
+      await t.mutation(internal.operatorAgent.continueRunInternal, {
+        ...stale,
+        summary: "stale",
+        usedTools: [],
+        toolCalls: [],
+        modelContinuationStorageId: orphan,
+      }),
+    ).toEqual({ status: "not_continued" });
+    expect(await t.run((ctx) => ctx.storage.get(orphan))).toBeNull();
+    await t.mutation(internal.operatorAgent.recoverAbandonedRunInternal, {
+      runId: queued.runId,
+      runnerAttempt: 1,
+    });
+    expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+      status: "running",
+      runnerAttempt: 2,
+      checkpoint: { iteration: 0 },
+    });
+    expect(
+      (await options.tools.set_organization_status.execute(input)).status,
+    ).toBe("succeeded");
+    return {
+      text: "The saved update is complete.",
+      steps: [{ toolCalls: [] }],
+    };
+  });
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(2);
+  const state = await t.run(async (ctx) => ({
+    run: await ctx.db.get(queued.runId),
+    audit: await ctx.db.query("agentActionAuditEvents").collect(),
+    confirmations: await ctx.db.query("operatorAgentConfirmations").collect(),
+  }));
+  expect(state.run).toMatchObject({ status: "completed", runnerAttempt: 2 });
+  expect(state.audit).toHaveLength(1);
+  expect(state.confirmations).toHaveLength(1);
+});
+
+test("the watchdog recovers a lost action after its platform lifetime without changing the model invocation", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  const startedAt = dayjs().valueOf();
+  expect(
+    await t.mutation(internal.operatorAgent.markRunStartedInternal, {
+      runId: queued.runId,
+    }),
+  ).toBe(1);
+  generate.mockImplementationOnce(async (_ctx, _task, _options, runOptions) => {
+    expect(dayjs().valueOf() - startedAt).toBeGreaterThanOrEqual(
+      11 * 60 * 1000,
+    );
+    expect(runOptions.durable.invocationKey).toBe(`operator:${queued.runId}:0`);
+    expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+      runnerAttempt: 2,
+      checkpoint: { iteration: 0 },
+    });
+    return { text: "Recovered result.", steps: [{ toolCalls: [] }] };
+  });
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+    status: "completed",
+    runnerAttempt: 2,
+  });
+});
+
+test("cancellation before request preparation prevents a late journal from starting inference", async () => {
+  vi.useFakeTimers();
+  const { t, queued, userId, threadId } = await durableOperatorFixture();
+  const invocationKey = `operator:${queued.runId}:0:0`;
+  await t.mutation(internal.operatorAgent.cancelRunInternal, {
+    operatorUserId: userId,
+    threadId,
+  });
+  const requestStorageId = await t.run((ctx) =>
+    ctx.storage.store(new Blob(["{}"])),
+  );
+  await expect(
+    t.mutation(internal.routerJobs.prepare, {
+      invocationKey,
+      operation: "generate",
+      fingerprint: "a".repeat(64),
+      requestToken: "b".repeat(64),
+      requestTokenHash: "b".repeat(64),
+      resultToken: "c".repeat(64),
+      resultTokenHash: "c".repeat(64),
+      requestStorageId,
+    }),
+  ).rejects.toThrow("no longer active");
+  expect(await t.query(internal.routerJobs.get, { invocationKey })).toBeNull();
+  await finishOperatorSchedules(t);
+  expect(generate).not.toHaveBeenCalled();
 });

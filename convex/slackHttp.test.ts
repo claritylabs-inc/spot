@@ -178,11 +178,11 @@ test.each([
     ]) {
       expect((await signedInteraction(t, unauthorized)).status).toBe(200);
     }
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000));
     expect(workerFetch).not.toHaveBeenCalled();
 
     expect((await signedInteraction(t, payload)).status).toBe(200);
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000));
     expect(workerFetch).toHaveBeenCalledTimes(status === "pending" ? 2 : 1);
     const [url, options] = workerFetch.mock.calls[0];
     expect(url).toBe("https://slack-worker.example.com/message/update");
@@ -328,6 +328,12 @@ test("a legacy invalid write preserves its exact failure while the goal resumes 
     expect(result.status).toBe("confirmation_required");
     return {
       text: "Waiting for the corrected broker-profile confirmation.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [
+          { role: "assistant", content: "Awaiting corrected approval" },
+        ],
+      },
       steps: [
         {
           toolCalls: [
@@ -367,7 +373,7 @@ test("a legacy invalid write preserves its exact failure while the goal resumes 
   for (let click = 0; click < 2; click++) {
     workerFetch.mockClear();
     expect((await signedInteraction(t, payload)).status).toBe(200);
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000));
     const updates = workerFetch.mock.calls.filter(([url]) =>
       String(url).endsWith("/message/update"),
     );
@@ -440,7 +446,7 @@ test("a legacy invalid write preserves its exact failure while the goal resumes 
       channel: "slack",
     }),
   ).toMatchObject({ status: "needs_refresh" });
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1_000));
 
   await t.run(async (ctx) => {
     const profile = await ctx.db

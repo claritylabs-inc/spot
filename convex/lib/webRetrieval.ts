@@ -1,4 +1,5 @@
 "use node";
+import { durableRouterClientOptions } from "./routerJobClient";
 
 import { isIP } from "node:net";
 
@@ -156,7 +157,7 @@ export async function runWebRetrieval(
   rawInput: WebRetrievalInput,
 ): Promise<WebRetrievalResult> {
   const config = await resolveWebRetrievalForOrg(ctx, orgId);
-  return runWebRetrievalWithConfig(config, rawInput, String(orgId));
+  return runWebRetrievalWithConfig(ctx, config, rawInput, String(orgId));
 }
 
 export async function runOperatorWebRetrieval(
@@ -172,21 +173,25 @@ export async function runOperatorWebRetrieval(
     config.primary === "model_default"
       ? await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {})
       : undefined;
-  return runWebRetrievalWithConfig({ ...config, route }, rawInput);
+  return runWebRetrievalWithConfig(ctx, { ...config, route }, rawInput);
 }
 
 async function runWebRetrievalWithConfig(
+  ctx: ActionCtx,
   config: ResolvedWebRetrievalRoute,
   rawInput: WebRetrievalInput,
   orgId?: string,
 ): Promise<WebRetrievalResult> {
   const input = normalizeInput(rawInput);
-  return clRouterRetrieve({
-    ...(orgId ? { orgId } : {}),
-    input,
-    config: {
-      primary: config.primary,
-      ...(config.route ? { route: config.route } : {}),
+  return clRouterRetrieve(
+    {
+      ...(orgId ? { orgId } : {}),
+      input,
+      config: {
+        primary: config.primary,
+        ...(config.route ? { route: config.route } : {}),
+      },
     },
-  });
+    durableRouterClientOptions(ctx),
+  );
 }

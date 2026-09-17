@@ -178,8 +178,7 @@ clean checkout:
    `npx convex function-spec --deployment acoustic-caiman-755`.
 2. Configure the shared-dev Convex and Railway worker with the migrated lane's
    `CL_ROUTER_URL=https://tangible-warbler-253.convex.site`, matching inference
-   `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass`, and matching optional
-   timeout. Set `CONVEX_SITE_URL=https://acoustic-caiman-755.convex.site` on
+   `CL_ROUTER_SECRET` and `CL_ROUTER_TENANT_ID=glass`. Set `CONVEX_SITE_URL=https://acoustic-caiman-755.convex.site` on
    the Railway extraction worker and verify Convex's built-in
    `CONVEX_SITE_URL` resolves to that same canonical site before deploying
    either consumer. Do not try to overwrite the Convex system variable with
@@ -399,8 +398,8 @@ Every deployed lane needs matching values:
 
 | Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, optional `CL_ROUTER_TIMEOUT_MS`; configure `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled. |
-| Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state), optional `CL_ROUTER_TIMEOUT_MS`                                                                                                                                                                                                |
+| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL`, `CL_ROUTER_SECRET`; configure `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled. |
+| Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state)                                                                                                                                                                                                |
 | cl-router         | `SPOT_ENV`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, exact comma-separated `CL_ROUTER_ASSET_HOSTS`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, and provider/retrieval credentials. Do not set `DATABASE_URL`, `PORT`, Railway variables, or the retired Fastify refresh/scoring interval variables on the Convex router deployments. |
 
 Production callers use the canonical origin
@@ -427,8 +426,8 @@ Tool-bearing agent loops use `getAgentLanguageModelForOrg`,
 `getAgentLanguageModelForPublicTask`, `generateAgentTextForOrg`, or
 `generateAgentTextForPublicTask`. These helpers preserve AI SDK tools and
 `stopWhen`, require stable run and surface metadata, select through cl-router
-once, and pin the chosen route for the remaining steps. Routed generation
-carries one total execution budget. The router may select its configured
+once, and pin the chosen route for the remaining steps. Routed generation has no default elapsed-time deadline. Explicit caller budgets
+apply to the complete generation request. The router may select its configured
 fallback inside the same request before visible output or tool execution.
 `query_reason` always retains
 a cross-provider router candidate even when a stale static settings snapshot
@@ -517,7 +516,7 @@ or during an explicitly controlled production rollout.
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.
 Conductor setup imports the source development router URL, inference secret,
-admin secret, tenant, and timeout into native-local Convex and passes only the
+admin secret and tenant into native-local Convex and passes only the
 execution subset to the extraction worker. New setup filters provider keys from
 the copied root env and cloud import. Because Convex environment imports are
 additive, filtering alone does not delete values already stored by an older
@@ -587,3 +586,23 @@ wildcard asset origins on a cloud router.
     the consumer release or pinning/freezing router policy—not by restoring
     consumer provider credentials. Reserve `CL_ROUTER_FROZEN=1` for incidents
     where the control surface is unavailable.
+
+
+### Durable inference rollout
+
+Deploy the cl-router job ledger and its separate Node worker before these Spot
+consumers. Follow the router repository's `docs/durable-inference.md` for its
+worker secret, provider credentials, callback/asset allowlists, and worker health.
+Spot keeps only its inference bearer; never copy the router worker secret or
+provider credentials here. Then release Spot Convex and the extraction worker
+through their existing lane workflows. Verify a job callback, reconnect after a
+lost submission/status response, explicit cancellation, and a lost-worker unknown
+outcome before production traffic. Existing synchronous router endpoints remain
+compatible during the rollout. Roll back consumers before removing the worker.
+
+Blanket `CL_ROUTER_TIMEOUT_MS` and `MODEL_CALL_TIMEOUT_MS` no longer apply. Short
+control waits only reconnect to the existing job. For local Spot with a remote
+router, set `SPOT_ROUTER_CALLBACK_URL` on local Convex to a reachable HTTPS tunnel
+origin and allowlist that exact host on the router; text-only calls also need it.
+Alternatively run a local router worker on the same machine, with local-only
+loopback callback/asset allowlists. See [the Spot protocol](../architecture/router-jobs.md).

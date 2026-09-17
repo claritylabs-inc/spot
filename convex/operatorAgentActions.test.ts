@@ -21,6 +21,8 @@ afterEach(() => {
 test("operator web research preserves router source evidence on replay and rejects revoked operators", async () => {
   vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
   vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+  vi.stubEnv("SPOT_ENV", "local");
+  vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const now = dayjs().valueOf();
@@ -45,9 +47,18 @@ test("operator web research preserves router source evidence on replay and rejec
     });
     return { operatorUserId, profileId };
   });
-  const fetchMock = vi.fn(async (url: string) => {
-    expect(url).toBe("https://router.example.test/v1/retrieve");
-    return Response.json({
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    expect(url).toBe("https://router.example.test/v1/jobs");
+    const submission = JSON.parse(String(init?.body));
+    expect(submission.operation).toBe("retrieve");
+    const requestUrl = new URL(submission.requestUrl);
+    const request = await t.fetch(`${requestUrl.pathname}${requestUrl.search}`);
+    expect(request.status).toBe(200);
+    expect(await request.json()).toMatchObject({
+      tenantId: "glass",
+      input: { query: "Miller Brokerage", maxResults: 1 },
+    });
+    const result = {
       provider: "exa",
       attempts: [
         { provider: "parallel", ok: false, error: "unavailable" },
@@ -60,7 +71,27 @@ test("operator web research preserves router source evidence on replay and rejec
           url: "https://miller.example/about",
         },
       ],
-    });
+    };
+    const resultUrl = new URL(submission.resultUrl);
+    const delivered = await t.fetch(
+      `${resultUrl.pathname}${resultUrl.search}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jobId: "research-job",
+          idempotencyKey: submission.idempotencyKey,
+          fingerprint: submission.fingerprint,
+          status: "succeeded",
+          result,
+        }),
+      },
+    );
+    expect(delivered.status).toBe(204);
+    return Response.json(
+      { jobId: "research-job", status: "succeeded" },
+      { status: 202 },
+    );
   });
   vi.stubGlobal("fetch", fetchMock);
   const args = {

@@ -64,7 +64,6 @@ export type ClRouterLanguageModelOptions = {
     cleanup: () => void | Promise<void>;
   }>;
   client?: ClRouterClientOptions;
-  initialExecutionBudgetMs?: number;
   onResponse?: (
     response: ClRouterResponseMetadata,
     step: ClRouterLanguageModelStep,
@@ -375,7 +374,6 @@ async function requestForCall(
   parentRequestId?: string,
   selectedRoute?: ModelRoute,
   allowFallback = true,
-  executionBudgetMs?: number,
   assetState?: StagedAssetState,
 ): Promise<ClRouterGenerateRequest> {
   const responseFormat = options.responseFormat;
@@ -407,7 +405,6 @@ async function requestForCall(
         }
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
-    ...(executionBudgetMs ? { executionBudgetMs } : {}),
     sessionKey: adapter.sessionKey,
     ...(tools ? { tools } : {}),
     ...(toolChoice ? { toolChoice } : {}),
@@ -678,21 +675,7 @@ export function createClRouterLanguageModel(
   let successfulRouterSteps = 0;
   const clientOptions = (
     abortSignal: AbortSignal | undefined,
-    initialStep: boolean,
-  ): ClRouterClientOptions => ({
-    ...adapter.client,
-    ...(initialStep && adapter.initialExecutionBudgetMs
-      ? {
-          environment: {
-            ...(adapter.client?.environment ?? process.env),
-            CL_ROUTER_TIMEOUT_MS: String(
-              adapter.initialExecutionBudgetMs + 5_000,
-            ),
-          },
-        }
-      : {}),
-    abortSignal,
-  });
+  ): ClRouterClientOptions => ({ ...adapter.client, abortSignal });
   const stepContext = (
     options: LanguageModelV3CallOptions,
   ): ClRouterLanguageModelStep => ({
@@ -733,9 +716,6 @@ export function createClRouterLanguageModel(
             parentRequestId,
             selectedRoute,
             successfulRouterSteps === 0,
-            successfulRouterSteps === 0
-              ? adapter.initialExecutionBudgetMs
-              : undefined,
             assetState,
           ),
           adapter.assetStager,
@@ -743,7 +723,7 @@ export function createClRouterLanguageModel(
         );
         const response = await clRouterGenerate(
           request,
-          clientOptions(options.abortSignal, successfulRouterSteps === 0),
+          clientOptions(options.abortSignal),
         );
         let content: LanguageModelV3Content[];
         try {
@@ -795,9 +775,6 @@ export function createClRouterLanguageModel(
             parentRequestId,
             selectedRoute,
             successfulRouterSteps === 0,
-            successfulRouterSteps === 0
-              ? adapter.initialExecutionBudgetMs
-              : undefined,
             assetState,
           ),
           adapter.assetStager,
@@ -805,7 +782,7 @@ export function createClRouterLanguageModel(
         );
         response = await clRouterGenerateStream(
           request,
-          clientOptions(options.abortSignal, successfulRouterSteps === 0),
+          clientOptions(options.abortSignal),
         );
       } catch (error) {
         await cleanupStagedAssets(cleanups);
