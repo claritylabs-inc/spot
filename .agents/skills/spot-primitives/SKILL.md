@@ -25,7 +25,8 @@ deleted after use or by bounded cleanup.
 Typed decisions reuse `convex/lib/decisions.ts` for per-family policy and
 reasoning fallback, and `makeDecide` from `sdkCallbacks.ts` for SDK callbacks.
 Structured questions cross only the authenticated cl-router `/v1/decide`
-boundary. Use the SDK's shared `runDecision` cascade; do not duplicate
+boundary. Use the SDK's dependency-free `@claritylabs/cl-sdk/decisions`
+`runDecision` cascade; do not duplicate
 confidence validation, manufacture fallback probabilities, or add provider
 credentials. Tool decisions prepare real AI SDK steps and retain all existing
 registry and approval checks. See `docs/deployment/typed-decisions.md` for
