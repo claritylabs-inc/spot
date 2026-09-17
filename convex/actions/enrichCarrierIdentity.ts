@@ -248,6 +248,11 @@ async function selectCarrierIdentityWithModel(
         ]),
       ),
     },
+    requiredQuestionIds: (answers) => {
+      const selected = answers.site;
+      const index = selected?.type === "choice" ? sites.findIndex((_, index) => String(index) === selected.choice) : -1;
+      return index < 0 ? ["site"] : ["site", `relationship_${index}`];
+    },
     accept: (answers) => {
       const choice = acceptedChoice(
         answers.site,

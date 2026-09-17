@@ -84,7 +84,7 @@ export function decideCertificateEvidence<Change extends string>(args: {
         return {
           status: "held",
           reasonCode: "policy_change_required",
-          reasonMessage: `Existing policy evidence requires an endorsement for: ${unsupported.join(", ")}.`,
+          reasonMessage: `Existing policy evidence requires an endorsement for: ${unsupported.map((change) => change.replaceAll("_", " ")).join(", ")}.`,
           requiredChanges,
           evidenceIds: [...new Set(ids)],
         };
