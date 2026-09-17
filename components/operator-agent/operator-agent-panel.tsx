@@ -25,6 +25,8 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useStickToBottom } from "use-stick-to-bottom";
 
+import { ThinkingSummary } from "@/components/agent-thread/thinking-summary";
+import { useChatDisplayPreferences } from "@/components/profile/streaming-preference";
 import { AgentThinkingBubble } from "@/components/agent-thread/agent-thinking-bubble";
 import { ThreadMessageBubble } from "@/components/agent-thread/message-bubble";
 import { ThreadAttachmentChip } from "@/components/agent-thread/thread-attachment-chip";
@@ -307,7 +309,7 @@ function OperatorMessageFooter({
             <PillButton
               variant="ghost"
               size="small"
-              className={controlClass}
+              className={cn("-ml-2", controlClass)}
               aria-expanded={expanded}
               onClick={() => setExpanded(!expanded)}
             >
@@ -464,6 +466,8 @@ function OperatorMessageRow({
   message: OperatorAgentMessage;
   showThinking: boolean;
 }) {
+  const { streamResponses, showThinking: showThinkingSummary } =
+    useChatDisplayPreferences();
   const bubbleChannel = operatorBubbleChannel(message.channel);
   const content =
     message.content.trim() ||
@@ -484,7 +488,10 @@ function OperatorMessageRow({
 
     return (
       <div className="w-full">
-        {showThinking ? (
+        {showThinkingSummary ? (
+          <ThinkingSummary tools={message.usedTools} working={showThinking} />
+        ) : null}
+        {showThinking && (!streamResponses || !content) ? (
           <AgentThinkingBubble />
         ) : (
           <ThreadMessageBubble

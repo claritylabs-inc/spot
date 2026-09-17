@@ -453,6 +453,8 @@ export default defineSchema({
       v.union(v.literal("customer"), v.literal("operator")),
     ),
     serviceAccountKind: v.optional(v.literal("slack")),
+    streamResponses: v.optional(v.boolean()),
+    showThinking: v.optional(v.boolean()),
     // Personal profile fields
     title: v.optional(v.string()),
     // Onboarding & admin
@@ -4456,6 +4458,8 @@ export default defineSchema({
     .index("idempotency", ["operatorUserId", "idempotencyKey"]),
 
   routerJobs: defineTable({
+    streamTarget: v.optional(v.union(v.id("threadMessages"), v.id("operatorAgentMessages"))),
+    progressSequence: v.optional(v.number()),
     invocationKey: v.string(),
     operation: v.union(
       v.literal("generate"),

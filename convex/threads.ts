@@ -1029,7 +1029,7 @@ export const streamAgentProgress = internalMutation({
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.id);
-    if (existing?.status === "cancelled") return;
+    if (existing?.status !== "processing") return;
     const patch: Record<string, unknown> = {};
     if (args.content !== undefined) patch.content = args.content;
     if (args.usedTools !== undefined) patch.usedTools = args.usedTools;

@@ -168,6 +168,7 @@ async function prepareJob(
   payload: unknown,
   invocationKey: string,
   signal?: AbortSignal,
+  streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">,
 ): Promise<Doc<"routerJobs">> {
   const existing = await ctx.runQuery(internal.routerJobs.get, {
     invocationKey,
@@ -202,6 +203,7 @@ async function prepareJob(
     let row: Doc<"routerJobs">;
     try {
       row = await ctx.runMutation(internal.routerJobs.prepare, {
+        ...(streamTarget ? { streamTarget } : {}),
         invocationKey,
         operation,
         fingerprint: await sha256(serialized),
@@ -296,7 +298,10 @@ export async function executeDurableRouterRequest(
   payload: unknown,
   invocationKey: string,
   abortSignal?: AbortSignal,
-  options: { wait?: "yield" | "poll" } = {},
+  options: {
+    wait?: "yield" | "poll";
+    streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  } = {},
 ): Promise<unknown> {
   let row = await prepareJob(
     ctx,
@@ -304,6 +309,7 @@ export async function executeDurableRouterRequest(
     payload,
     invocationKey,
     abortSignal,
+    options.streamTarget,
   );
   for (;;) {
     if (abortSignal?.aborted) {
@@ -338,6 +344,7 @@ export async function executeDurableRouterRequest(
           {
             idempotencyKey: invocationKey,
             operation: row.operation,
+            ...(row.streamTarget ? { stream: true } : {}),
             tenantId: "glass",
             fingerprint: row.fingerprint,
             requestUrl: `${siteUrl}/router-jobs/request?token=${row.requestToken}`,
@@ -408,6 +415,7 @@ export async function cancelDurableRouterRequest(
       const response = await routerControl("/v1/jobs", {
         idempotencyKey: invocationKey,
         operation: row.operation,
+        ...(row.streamTarget ? { stream: true } : {}),
         tenantId: "glass",
         fingerprint: row.fingerprint,
         requestUrl: `${siteUrl}/router-jobs/request?token=${row.requestToken}`,

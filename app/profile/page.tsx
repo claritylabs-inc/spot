@@ -29,6 +29,7 @@ import {
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -452,6 +453,12 @@ export default function ProfilePage() {
               />
               <OperationalPanelBody className="px-5 py-5">
                 <ThemeModeSelector className="max-w-lg" />
+              </OperationalPanelBody>
+            </OperationalPanel>
+            <OperationalPanel className="mt-4">
+              <OperationalPanelHeader title="Chat" />
+              <OperationalPanelBody>
+                <StreamingPreference />
               </OperationalPanelBody>
             </OperationalPanel>
           </FadeIn>
