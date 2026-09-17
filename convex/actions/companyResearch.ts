@@ -175,9 +175,7 @@ export const run = internalAction({
         return;
       }
       const official = await runWebRetrieval(ctx, claim.orgId, {
-        url: website,
-        allowedDomains: publicResearchAllowedDomains(website),
-        maxResults: 5,
+        url: website, allowedDomains: publicResearchAllowedDomains(website), maxResults: 5,
         goal: "Read the official company website for explicit products, operations, locations, history, and industry evidence. Cite the pages supporting each fact.",
       });
       const officialUrls = [

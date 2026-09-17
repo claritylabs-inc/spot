@@ -63,6 +63,8 @@ test("nested question criteria remain structured and raw distributions are not r
     nested: criteria,
   });
   expect(acceptedChoice({ type: "noul", noul: 1 }, ["yes"])).toBeUndefined();
+  expect(() => decisionState(true)).toThrow("Decision state");
+  expect(() => decisionState(3)).toThrow("Decision state");
   for (const answer of [
     choice("missing"),
     choice("__abstain"),
@@ -199,7 +201,12 @@ describe("bounded dispatch preserves execution boundaries", () => {
   });
   test("preparation has no tool effects; actual execution retains registry checks and rejects changed arguments", async () => {
     const execute = vi.fn(async () => ({ status: "pending_confirmation" }));
+    const otherExecute = vi.fn();
     const original = {
+      other: {
+        inputSchema: z.object({ freeText: z.string() }),
+        execute: otherExecute,
+      },
       list: {
         description: "List records",
         inputSchema: z.object({
@@ -225,6 +232,10 @@ describe("bounded dispatch preserves execution boundaries", () => {
       dispatched.tools.list.execute!({ scope: "archived" }, options),
     ).rejects.toThrow("no action was executed");
     expect(execute).not.toHaveBeenCalled();
+    await expect(
+      dispatched.tools.other.execute!({ freeText: "injected" }, options),
+    ).rejects.toThrow("Tool differs");
+    expect(otherExecute).not.toHaveBeenCalled();
     expect(
       await dispatched.tools.list.execute!({ scope: "current" }, options),
     ).toEqual({ status: "pending_confirmation" });
@@ -255,6 +266,14 @@ describe("bounded dispatch preserves execution boundaries", () => {
       prepareStep: () => ({ toolChoice: "none" }),
     });
     expect(await owner.prepareStep(step())).toEqual({ toolChoice: "none" });
+    for (const constraint of [
+      { toolChoice: "none" as const },
+      { toolChoice: { type: "tool" as const, toolName: "list" } },
+      { activeTools: [] },
+    ]) {
+      const constrained = boundedToolDispatch({ ctx, tools, ...constraint });
+      expect(await constrained.prepareStep(step())).toBeUndefined();
+    }
   });
 });
 

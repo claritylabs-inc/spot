@@ -228,6 +228,8 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
         system: args.options.system,
         abortSignal: args.options.abortSignal,
         prepareStep: args.options.prepareStep,
+        toolChoice: args.options.toolChoice,
+        activeTools: args.options.activeTools,
       }),
     },
     args.run,
@@ -300,8 +302,7 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
       text: hasCompletedPolicyEvidence(retryAudit)
         ? generatedTextFromResult(retryResult)
         : POLICY_EVIDENCE_UNAVAILABLE_MESSAGE,
-      ...(hasCompletedPolicyEvidence(retryAudit) &&
-      retryResult.clRouter?.requestId
+      ...(hasCompletedPolicyEvidence(retryAudit) && retryResult.clRouter?.requestId
         ? { routerRequestId: retryResult.clRouter.requestId }
         : {}),
     };

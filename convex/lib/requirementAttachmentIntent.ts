@@ -116,8 +116,7 @@ export function validateRequirementAttachmentDecision<
     attachments
       .filter(
         (attachment): attachment is T & { fileId: Id<"_storage"> } =>
-          Boolean(attachment.fileId) &&
-          supportedRequirementCandidate(attachment),
+          Boolean(attachment.fileId) && supportedRequirementCandidate(attachment),
       )
       .map((attachment) => [String(attachment.fileId), attachment]),
   );
@@ -176,8 +175,7 @@ export async function decideRequirementAttachmentImport<
   },
 ): Promise<RequirementImportResolution<T>> {
   const candidates = args.attachments.filter(
-    (attachment) =>
-      attachment.fileId && supportedRequirementCandidate(attachment),
+    (attachment) => attachment.fileId && supportedRequirementCandidate(attachment),
   );
   if (candidates.length === 0) {
     return { authorization: "none", attachments: [] };

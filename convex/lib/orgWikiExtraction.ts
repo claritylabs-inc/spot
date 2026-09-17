@@ -13,15 +13,13 @@ import { normalizeWikiContent } from "./orgWikiPolicy";
 const MINIMUM_CONFIDENCE = 0.9;
 
 const OrgWikiExtractionSchema = z.object({
-  facts: z
-    .array(
-      z.object({
-        section: z.enum(ORG_WIKI_SECTION_KEYS),
-        content: z.string().min(1).max(280),
-        confidence: z.number().min(0).max(1),
-      }),
-    )
-    .max(8),
+  facts: z.array(
+    z.object({
+      section: z.enum(ORG_WIKI_SECTION_KEYS),
+      content: z.string().min(1).max(280),
+      confidence: z.number().min(0).max(1),
+    }),
+  ).max(8),
 });
 
 export async function extractOrgWikiFromExchange(
@@ -92,9 +90,7 @@ Rules:
   const sectionKeys: string[] = [];
   let acceptedCount = 0;
   for (const [key] of ORG_WIKI_SECTIONS) {
-    const contents = facts
-      .filter((fact) => fact.section === key)
-      .map((fact) => fact.content);
+    const contents = facts.filter((fact) => fact.section === key).map((fact) => fact.content);
     if (contents.length === 0) continue;
     const result = await ctx.runMutation(internal.orgWiki.appendFacts, {
       orgId: args.orgId,

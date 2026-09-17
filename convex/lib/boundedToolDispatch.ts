@@ -3,6 +3,7 @@ import {
   type ToolSet,
   type PrepareStepFunction,
   type ModelMessage,
+  type ToolChoice,
 } from "ai";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
@@ -90,6 +91,8 @@ export function boundedToolDispatch(args: {
   abortSignal?: AbortSignal;
   prepareStep?: PrepareStepFunction;
   system?: string;
+  toolChoice?: ToolChoice<ToolSet>;
+  activeTools?: string[];
 }): { tools: ToolSet; prepareStep: PrepareStepFunction } {
   let expected: { name: string; input: Record<string, JsonValue> } | null =
     null;
@@ -104,12 +107,12 @@ export function boundedToolDispatch(args: {
                 input: unknown,
                 options: Parameters<NonNullable<typeof original.execute>>[1],
               ) => {
-                if (
-                  expected?.name === name &&
-                  JSON.stringify(decisionState(input)) !==
-                    JSON.stringify(expected.input)
-                ) {
-                  // Compare objects without relying on provider key order.
+                if (expected) {
+                  if (expected.name !== name) {
+                    throw new Error(
+                      "Tool differs from the bounded decision; no action was executed.",
+                    );
+                  }
                   const actual =
                     input && typeof input === "object"
                       ? (input as Record<string, unknown>)
@@ -139,7 +142,13 @@ export function boundedToolDispatch(args: {
       expected = null;
       const previous = await args.prepareStep?.(step);
       // Respect an existing step owner, explicit tool choice, and rich input.
-      if (previous || !textualMessages(step.messages)) return previous;
+      if (
+        previous ||
+        args.toolChoice !== undefined ||
+        args.activeTools !== undefined ||
+        !textualMessages(step.messages)
+      )
+        return previous;
       const candidates: ClosedTool[] = [];
       for (const [name, tool] of Object.entries(args.tools)) {
         if (!tool.execute) continue;

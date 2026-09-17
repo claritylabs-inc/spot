@@ -85,8 +85,8 @@ export async function buildDocumentContext(
   }
 
   // Prefer source-tree retrieval whenever the org has source nodes.
-  const [hasDocumentChunks, hasSourceSpans, hasSourceNodes] = await Promise.all(
-    [
+  const [hasDocumentChunks, hasSourceSpans, hasSourceNodes] =
+    await Promise.all([
       ctx.runQuery(internal.documentChunks.hasChunksForOrg, { orgId }),
       ctx.runQuery((internal as any).sourceSpans.hasSpansForOrg, {
         orgId,
