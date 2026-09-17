@@ -7,7 +7,6 @@ import { effectiveExtractionDataStage } from "./backfillDeclarationFacts";
 import { recordCarrierIdentityBackfillResult } from "./carrierIdentityBackfill";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
 import { carrierIdentityBackfillSkipReason } from "./lib/carrierIdentityBackfill";
-import { syncOrgProfileFromDeclarationFacts } from "./lib/orgProfileFacts";
 import {
   applyCarrierIdentityEnrichment,
   readCarrierIdentity,
@@ -134,17 +133,38 @@ export const backfillDeclarationFacts = migrations.define({
     if (!policy.orgId || effectiveExtractionDataStage(policy) !== "final") {
       return;
     }
-    await replacePolicyDeclarationFacts(ctx, policy._id, undefined, false);
+    await replacePolicyDeclarationFacts(ctx, policy._id);
   },
 });
 
-export const syncDeclarationFactProfiles = migrations.define({
+export const removeCompanyDetails = migrations.define({
   table: "organizations",
   batchSize: 10,
   migrateOne: async (ctx, org) => {
-    await syncOrgProfileFromDeclarationFacts(ctx, org._id);
+    await ctx.db.patch(org._id, {
+      industry: undefined,
+      industryVertical: undefined,
+      mailingAddress: undefined,
+      profileFacts: undefined,
+      profileFactsUpdatedAt: undefined,
+      profileOverrides: undefined,
+      profileOverridesUpdatedAt: undefined,
+      profileOverridesUpdatedByUserId: undefined,
+      relatedLegalEntities: undefined,
+    });
   },
 });
+
+export const removeCompanyExtractionProfiles = migrations.define({
+  table: "companyInformationExtractions",
+  batchSize: 100,
+  migrateOne: async () => ({ profile: undefined }),
+});
+
+export const removeStructuredCompanyDetails = migrations.runner([
+  internal.migrations.removeCompanyDetails,
+  internal.migrations.removeCompanyExtractionProfiles,
+]);
 
 export const consolidateCarrierIdentityBranding = migrations.define({
   table: "policies",
@@ -221,7 +241,6 @@ export const rebuildCarrierIdentitiesFromStoredSources = migrations.define({
 
 export const runDeclarationFactsBackfill = migrations.runner([
   internal.migrations.backfillDeclarationFacts,
-  internal.migrations.syncDeclarationFactProfiles,
 ]);
 
 export const runCarrierIdentityBackfill = migrations.runner([

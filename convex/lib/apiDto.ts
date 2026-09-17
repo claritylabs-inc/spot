@@ -29,14 +29,12 @@ export interface OrgDtoSource {
   _id: DtoId;
   _creationTime: number;
   name: string;
-  industry?: string;
 }
 
 export interface OrgDto {
   id: string;
   name: string;
   created_at: number;
-  industry?: string;
 }
 
 export function toOrgDto(org: OrgDtoSource): OrgDto {
@@ -44,7 +42,6 @@ export function toOrgDto(org: OrgDtoSource): OrgDto {
     id: org._id,
     name: org.name,
     created_at: org._creationTime,
-    industry: org.industry,
   };
 }
 

@@ -214,13 +214,6 @@ function cleanOptionalString(value?: string) {
   return trimmed || undefined;
 }
 
-function orgLegalNames(org: Doc<"organizations"> | null | undefined) {
-  return [
-    org?.name,
-    ...(org?.relatedLegalEntities ?? []).map((entity) => entity.legalName),
-  ].filter((name): name is string => Boolean(name?.trim()));
-}
-
 function sanitizeRequirementArgs(args: {
   kind: Doc<"insuranceRequirements">["kind"];
   scope: Doc<"insuranceRequirements">["scope"];
@@ -360,7 +353,6 @@ async function assessForSubject(
   );
   const result = assessRequirementCompliance(requirement, policies, {
     expectedInsuredName: subjectOrg?.name,
-    expectedInsuredNames: orgLegalNames(subjectOrg),
     includePreviewPolicies: options?.includePreviewPolicies,
     existingChecks: checks,
   });
@@ -1118,7 +1110,6 @@ export const getCertificateRequirementSourcePlanInternal = internalQuery({
           requirement.complianceCheck ??
           assessRequirementCompliance(requirement, policies, {
             expectedInsuredName: org?.name,
-            expectedInsuredNames: orgLegalNames(org),
             includePreviewPolicies: false,
           });
         return {
@@ -1245,7 +1236,6 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         ? {
             _id: org._id,
             name: org.name,
-            relatedLegalEntities: org.relatedLegalEntities ?? [],
           }
         : null,
       requirement,
@@ -1254,7 +1244,6 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         activePolicies,
         {
           expectedInsuredName: org?.name,
-          expectedInsuredNames: orgLegalNames(org),
         },
       ),
       policies: activePolicies.map((policy) => ({

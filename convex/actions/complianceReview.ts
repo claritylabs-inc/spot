@@ -33,7 +33,6 @@ type ManualReviewContext = {
   org: {
     _id: Id<"organizations">;
     name: string;
-    relatedLegalEntities?: Array<Record<string, unknown>>;
   } | null;
   policies: Array<{ _id: Id<"policies"> }>;
 };

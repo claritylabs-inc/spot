@@ -556,8 +556,6 @@ export const insertLocalFixture = internalMutation({
       type: "client" as const,
       brokerOrgId: undefined,
       website: LOCAL_FIXTURE.client.website,
-      industry: LOCAL_FIXTURE.client.industry,
-      industryVertical: LOCAL_FIXTURE.client.industryVertical,
       agentHandle: LOCAL_FIXTURE.client.agentHandle,
       primaryContactName: LOCAL_FIXTURE.client.admin.name,
       primaryContactEmail: LOCAL_FIXTURE.client.admin.email,

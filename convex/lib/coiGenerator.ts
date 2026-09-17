@@ -38,15 +38,9 @@ export type CoverageLine = CertificateCoverageLine;
  * Produces one CoverageLine per detected coverage type.
  */
 
-type ClientProfileFacts = {
-  mailingAddress?: { value?: unknown };
-  operationsDescription?: { value?: unknown };
-};
-
 export function policyToCoiData(
   policy: any,
   options: {
-    clientProfileFacts?: ClientProfileFacts;
     includedLineOfBusinessCodes?: string[];
   } = {},
 ): CoiData {
@@ -63,7 +57,7 @@ export function policyToCoiData(
   const effDate = profileValue(profile?.effectiveDate) ?? pickField(declarations, "policyPeriodStart") ?? policy.effectiveDate ?? "";
   const expDate = profileValue(profile?.expirationDate) ?? pickField(declarations, "policyPeriodEnd") ?? policy.expirationDate ?? "";
   const coverageForm = policy.coverageForm ?? "occurrence";
-  const partyContext = resolvePolicyPartyContext(policy, options);
+  const partyContext = resolvePolicyPartyContext(policy);
   const propertyFields = certificatePropertyFields(policy, profile, declarations);
 
   // Build insurer row for Insurer A

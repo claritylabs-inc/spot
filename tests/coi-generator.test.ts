@@ -55,3 +55,46 @@ describe("COI PDF generation", () => {
     expect(extracted.text).toContain("$280000");
   });
 });
+
+
+describe("certificate policy evidence", () => {
+  it("does not fill missing policy facts from a legacy company profile", () => {
+    const legacyOptions = {
+      includedLineOfBusinessCodes: ["CGL"],
+      clientProfileFacts: {
+        operationsDescription: { value: "Unrelated company operations" },
+        mailingAddress: { value: "99 Company St" },
+      },
+    };
+    const certificate = policyToCoiData({}, legacyOptions);
+    expect(certificate.description).toBeUndefined();
+    expect(certificate.insuredAddress).toBeUndefined();
+  });
+
+  it("uses policy operations and address and honors explicit policy clears", () => {
+    const policy = {
+      declarations: { fields: [
+        { field: "descriptionOfOperations", value: "Policy-declared operations" },
+        { field: "masterPolicyHolderAndMailingAddressStreet", value: "1 Policy St" },
+      ] },
+    };
+    expect(policyToCoiData(policy)).toMatchObject({
+      description: "Policy-declared operations",
+      insuredAddress: "1 Policy St",
+    });
+    expect(policyToCoiData({
+      ...policy,
+      operationalProfile: {
+        operationsDescription: { value: "Policy operational profile" },
+      },
+    }).description).toBe("Policy operational profile");
+    const cleared = policyToCoiData({
+      ...policy,
+      policyDetailOverrides: { operationsDescription: "", insured: { address: "" } },
+    });
+    expect(cleared.description).toBeUndefined();
+    expect(cleared.insuredAddress).toBeUndefined();
+    expect(policyToCoiData({}).description).toBeUndefined();
+    expect(policyToCoiData({}).insuredAddress).toBeUndefined();
+  });
+});

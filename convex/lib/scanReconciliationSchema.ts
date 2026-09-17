@@ -120,5 +120,7 @@ export const scanReconciliationTables = {
     identityKey: v.string(),
     orgId: v.id("organizations"),
     createdAt: v.number(),
-  }).index("identity", ["identityKey"]),
+  })
+    .index("identity", ["identityKey"])
+    .index("organization", ["orgId"]),
 };

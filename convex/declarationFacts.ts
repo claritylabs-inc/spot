@@ -7,7 +7,6 @@ import {
   declarationFactHash,
   extractDeclarationFactsFromPolicy,
 } from "./lib/declarationFacts";
-import { syncOrgProfileFromDeclarationFacts } from "./lib/orgProfileFacts";
 
 type PersistedFactValue = {
   fieldPath: string;
@@ -53,11 +52,10 @@ export async function replacePolicyDeclarationFacts(
   ctx: MutationCtx,
   policyId: Id<"policies">,
   observedAt = dayjs().valueOf(),
-  syncProfile = true,
 ) {
   const policy = await ctx.db.get(policyId);
   if (!policy?.orgId) {
-    return { inserted: 0, deactivated: 0, unchanged: true, profile: undefined };
+    return { inserted: 0, deactivated: 0, unchanged: true };
   }
 
   const existingActive = await ctx.db
@@ -98,10 +96,7 @@ export async function replacePolicyDeclarationFacts(
     }
   }
 
-  const profile = syncProfile
-    ? await syncOrgProfileFromDeclarationFacts(ctx, policy.orgId)
-    : undefined;
-  return { inserted, deactivated, unchanged, profile };
+  return { inserted, deactivated, unchanged };
 }
 
 export const syncPolicyInternal = internalMutation({

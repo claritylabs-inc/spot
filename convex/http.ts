@@ -2171,8 +2171,6 @@ http.route({
         _id: org._id,
         name: org.name,
         website: org.website,
-        industry: org.industry,
-        industryVertical: org.industryVertical,
 
       });
     } catch (e) {
@@ -2446,7 +2444,7 @@ const MCP_TOOLS: TenantMcpToolCatalogEntry[] = [
   {
     name: "get_org_info",
     description:
-      "Get organization profile information including name, industry, website, and broker details.",
+      "Get organization profile information including name, website, and broker details.",
     inputSchema: { type: "object" as const, properties: {} },
   },
   {
@@ -3426,8 +3424,6 @@ async function handleToolCall(
                 _id: org._id,
                 name: org.name,
                 website: org.website,
-                industry: org.industry,
-                industryVertical: org.industryVertical,
 
               },
               null,
