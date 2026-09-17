@@ -46,7 +46,10 @@ also validates evidence coverage, candidate membership, identity, and source
 references before accepting a result. Missing candidates, stale sources,
 conflicting endorsements, namesakes, quoted instructions, and omitted pages
 must escalate. PDF-only interpretation remains on the reasoning path when
-text and trusted metadata are insufficient.
+text and trusted metadata are insufficient. Policy-document intake always retains
+PDF reasoning: PDF.js text extraction and normalized rendering operations do
+not prove that image-only status marks or unsupported content are absent.
+A configured intake family cannot override this evidence boundary.
 
 Tool dispatch stays within real AI SDK steps. The original executor enforces
 roles, scopes, approval, idempotency, and audit. Selection never grants access
@@ -94,7 +97,7 @@ answers consumed by the selected branch.
 | Company memory | `memory.durable_fact_detection`, `memory.evidence_and_section` |
 | Evidence review | `certificates.evidence_support`, `compliance.requirement_evidence`, `proposal.requirement_review` |
 | Retrieval and security | `retrieval.passage_ranking`, `security.prompt_injection` |
-| Policy intake | `policy_document_intake` |
+| Policy intake | PDF reasoning retained; no active replacement |
 | Shared extraction SDK | `extraction.cleanup`, `extraction.recovery_regions`, `extraction.verify` |
 
 SDK query and application coordinators also expose their own gates, documented
@@ -116,3 +119,7 @@ provider attempts; `totalCostNanoUsd` combines them when every component is
 known. `expectedFallbackCostNanoUsd` is a historical estimate, not an invoice
 or a replacement for actual attempt costs. Existing top-level generation cost
 keeps its original meaning.
+
+The shared cascade imports `@claritylabs/cl-sdk/decisions`, whose published
+browser bundle contains only the dependency-free decision core. Convex shared
+modules must use this entry rather than the Node-oriented SDK root.

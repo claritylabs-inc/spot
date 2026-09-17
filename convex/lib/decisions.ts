@@ -5,7 +5,7 @@ import {
   runDecision,
   type DecisionEvent,
   type DecisionPolicy,
-} from "@claritylabs/cl-sdk";
+} from "@claritylabs/cl-sdk/decisions";
 import type {
   DecisionAnswer,
   DecisionEntry,

@@ -89,6 +89,8 @@ Convex/UI contracts and the release evidence documented above.
 
 `convex/lib/decisions.ts` owns domain decision policy and reasoning fallback;
 `convex/lib/sdkCallbacks.ts` supplies the SDK's optional `Decide` callback.
+Shared Convex code imports the dependency-free `@claritylabs/cl-sdk/decisions`
+entry; the SDK root contains Node-only extraction dependencies.
 Both Convex and the extraction worker send structured questions to the router's
 `/v1/decide` endpoint using the existing router bearer credential and tenant
 `glass`. TypeSafe credentials remain in cl-router. Instructions, option
@@ -101,7 +103,10 @@ fallback never manufactures a Jev confidence value.
 legacy reasoning. Active families require an explicit evaluated threshold and
 evaluation ID; shadow always executes the established reasoning path. Domain
 acceptance also checks source coverage, identity, contradictions, and allowed
-candidate values. Cancellation stops the request without starting fallback;
+candidate values. Policy-document intake retains PDF reasoning because
+PDF.js text and normalized operators do not prove complete visual evidence;
+no family configuration can bypass that boundary. Cancellation stops the
+request without starting fallback;
 transient decision failures and uncertainty use the existing reasoning route.
 Rollout and evidence requirements are documented in
 `docs/deployment/typed-decisions.md`.
