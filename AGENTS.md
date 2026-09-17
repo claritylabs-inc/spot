@@ -91,14 +91,14 @@ Uploads, procurement emails and connected-mailbox scans retain their ordinary fi
 
 ## Current typed decision boundary
 
-`convex/lib/decisions.ts` owns domain decision policy and reasoning fallback;
+`convex/lib/decisions.ts` owns domain decision execution and reasoning fallback;
 `convex/lib/sdkCallbacks.ts` supplies the SDK's optional `Decide` callback.
 Additional-insured interpretation uses `extraction.additional_insured`: literal
 evidence discovery precedes batched classification and support checks, with the
 existing eligibility validator and reasoning fallback. Requirement imports use
 `requirements.import_verification` on the normalized persistence projection;
-qualified active failures get one repair and re-verification, then stop before
-writes if unresolved. Neither gate grants visual completeness or activates itself.
+unresolved results get one repair and re-verification, then stop before
+writes if unresolved. Neither decision grants visual completeness.
 
 Shared Convex code imports the dependency-free `@claritylabs/cl-sdk/decisions`
 entry; the SDK root contains Node-only extraction dependencies.
@@ -109,29 +109,28 @@ criteria, score legends, and state preserve ordinary nested JSON. Choice,
 Score, and Noul answers retain their distinct native probabilities; reasoning
 fallback never manufactures a Jev confidence value.
 
-`SPOT_DECISION_POLICY` is a versioned JSON policy with `legacy`, `shadow`, and
-`active` modes and per-family overrides. Missing or invalid configuration uses
-legacy reasoning. Active families require an explicit evaluated threshold and
-evaluation ID; shadow always executes the established reasoning path. Domain
-acceptance also checks source coverage, identity, contradictions, and allowed
+Jev decisions run by default in Convex and the extraction worker. There are no
+Spot legacy/shadow modes, per-family activation flags, or evaluation prerequisites;
+the retired `SPOT_DECISION_POLICY` environment variable is ignored. The published
+SDK's required policy shape is fixed in `extraction-worker/src/decisionPolicy.json`,
+shared by both runtimes; its `not-evaluated:spot-always-on-v1` marker is compatibility
+metadata, not evaluation evidence. Confidence thresholds remain answer checks.
+Domain acceptance also checks source coverage, identity, contradictions, and allowed
 candidate values. Policy-document intake retains PDF reasoning because
 PDF.js text and normalized operators do not prove complete visual evidence;
 no family configuration can bypass that boundary. Cancellation stops the
 request without starting fallback;
 transient decision failures and uncertainty use the existing reasoning route.
-Rollout and evidence requirements are documented in
+Execution and evidence checks are documented in
 `docs/deployment/typed-decisions.md`.
 
-Final extraction accuracy and omission judgments use the independently gated
-`extraction.audit` family, with batched questions in both source-to-fact and
+Final extraction accuracy and omission judgments use the `extraction.audit` family, with batched questions in both source-to-fact and
 fact-to-source directions. Spot's `extractionEvidenceAudit.ts` reuses only an
 exactly bound source/document/profile report under the current threshold and
-evaluation; changed postprocessed snapshots are re-audited. The existing private
+compatibility version; changed postprocessed snapshots are re-audited. The existing private
 source-bundle artifact retains the report and audited snapshot. Completion pins
 the original run/lease before review; artifact, log, cleanup, and promotion writes
-reject stale ownership atomically. Qualified active
-unresolved audits block completion preflight; shadow and legacy preserve the
-existing behavior. This is a provided-text audit, never visual completeness or
+reject stale ownership atomically. Unresolved audits block completion preflight. This is a provided-text audit, never visual completeness or
 permission to bypass the deterministic ledger and sole promotion mutation.
 Original input spans survive worker completion so dropped normalization units
 cannot disappear from completeness accounting. `extraction.field_review`

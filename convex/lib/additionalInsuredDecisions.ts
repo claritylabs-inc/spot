@@ -4,11 +4,7 @@ import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { DocumentSourceNode, SourceSpanLike } from "./sourceTree";
-import {
-  decideWithFallback,
-  decisionPolicyFromEnvironment,
-  type DecisionQuestion,
-} from "./decisions";
+import { decideWithFallback, type DecisionQuestion } from "./decisions";
 import { decisionState } from "./domainDecisionQuestions";
 import { makeGenerateObject } from "./sdkCallbacks";
 
@@ -147,15 +143,6 @@ export async function decideAdditionalInsuredEligibility(args: {
     return args.fallback();
   };
   args.abortSignal?.throwIfAborted();
-  const policy = decisionPolicyFromEnvironment();
-  const rule = policy.families?.[FAMILY];
-  const mode = rule?.mode ?? policy.mode;
-  if (
-    mode === "legacy" ||
-    (mode === "active" && (!rule?.evaluationId || rule.threshold === undefined))
-  ) {
-    return fallback();
-  }
   const context = providedTextContext(args.sourceTree, args.sourceSpans ?? []);
   if (!context || !withinBudget(context)) return fallback();
 

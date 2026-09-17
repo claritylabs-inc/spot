@@ -24,20 +24,20 @@ manual mode; the global switch can satisfy that gate automatically.
 
 ## Bounded decision dispatch
 
-Policy extraction can run a separately qualified batched evidence audit after
+Policy extraction runs a batched evidence audit after
 cleanup and recovery. It verifies provided text in both directions and retains
-the exact audited snapshot in existing private artifacts. Unresolved active
+the exact audited snapshot in existing private artifacts. Unresolved
 audits block completion preflight; source coverage, leases, authorization, and
 the existing promotion mutation remain authoritative. Visual completeness is
 not inferred. No audit or field-review tool is added to the model-callable
 catalog, and none of these judgments grants permission to issue or send.
 
-The optional typed decision layer can select an available tool and bounded
+The typed decision layer runs by default and can select an available tool and bounded
 arguments before a real AI SDK step. It uses the same operator and tenant
 catalogs listed here, and grants no additional tools or authority. Execution
 still validates arguments and runs the existing preflight, approval,
 idempotency, cancellation, and audit paths. Ambiguous selections, free-form
-arguments, and unqualified decision families retain reasoning dispatch. The
+arguments, and unsupported evidence retain reasoning dispatch. The
 operator's selected reasoning model remains pinned. No decision endpoint is
 exposed as a new operator or tenant MCP tool.
 

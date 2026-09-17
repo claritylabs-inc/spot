@@ -20,7 +20,7 @@ export { insuranceDocToPolicy, policyToInsuranceDoc } from "./documentMapping";
 import { createExtractor } from "@claritylabs/cl-sdk";
 import type { LogFn, TokenUsage } from "@claritylabs/cl-sdk";
 import { makeDecide, makeGenerateObject } from "./sdkCallbacks";
-import { decisionPolicyFromEnvironment, logDecisionEvent } from "./decisions";
+import { decisionPolicy, logDecisionEvent } from "./decisions";
 import { modelCapabilitiesForTask } from "./modelCatalog";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -96,7 +96,7 @@ export function buildExtractor(opts?: {
       await throwIfCancelled();
       return result;
     },
-    decisionPolicy: decisionPolicyFromEnvironment(),
+    decisionPolicy: decisionPolicy(),
     onDecision: logDecisionEvent,
     generateObject: async (params) => {
       await throwIfCancelled();

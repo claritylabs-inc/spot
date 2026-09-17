@@ -12,7 +12,7 @@ import {
 } from "@claritylabs/cl-pipelines/convex";
 import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
 import { buildExtractor, runCoverageRecovery } from "../lib/extraction";
-import { decisionPolicyFromEnvironment, logDecisionEvent } from "../lib/decisions";
+import { decisionPolicy, logDecisionEvent } from "../lib/decisions";
 import { decidePolicyDocumentIntake, policyDocumentClassificationSchema } from "../lib/policyDocumentDecisions";
 import {
   resolveExtractionEvidenceAudit,
@@ -3603,7 +3603,7 @@ export const backfillStoredCoverageRecovery = internalAction({
 
     const recovery = await runCoverageRecovery({
       decide: makeDecide({ ctx, orgId: policy.orgId, tracePolicyId: args.policyId }),
-      decisionPolicy: decisionPolicyFromEnvironment(),
+      decisionPolicy: decisionPolicy(),
       onDecision: logDecisionEvent,
       sourceTree,
       sourceSpans: sdkSourceSpans,

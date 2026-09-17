@@ -3,11 +3,7 @@
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { RequirementScope } from "./complianceTypes";
-import {
-  decideWithFallback,
-  decisionPolicyFromEnvironment,
-  type DecisionQuestion,
-} from "./decisions";
+import { decideWithFallback, type DecisionQuestion } from "./decisions";
 import { decisionState } from "./domainDecisionQuestions";
 
 const FAMILY = "requirements.import_verification";
@@ -86,17 +82,6 @@ export async function verifyRequirementImport<T>(args: {
   repair: (issues: string[]) => Promise<T>;
   abortSignal: AbortSignal;
 }): Promise<T> {
-  const policy = decisionPolicyFromEnvironment();
-  const rule = policy.families?.[FAMILY];
-  const mode = rule?.mode ?? policy.mode;
-  // The shared cascade still enforces qualification and all answer validation.
-  const active =
-    mode === "active" &&
-    !!rule?.evaluationId &&
-    rule.threshold !== undefined &&
-    rule.threshold > 0.5;
-  if (!active && mode !== "shadow") return args.candidate;
-
   const audit = async (value: T): Promise<string[]> => {
     args.abortSignal.throwIfAborted();
     if (args.sourceText.length > MAX_SOURCE_CHARS) {
@@ -179,11 +164,7 @@ export async function verifyRequirementImport<T>(args: {
           if (answers) {
             unresolved = Object.keys(batch).filter((id) => {
               const answer = answers[id];
-              return (
-                !answer ||
-                answer.type !== "noul" ||
-                answer.noul < (rule?.threshold ?? 0.95)
-              );
+              return !answer || answer.type !== "noul" || answer.noul < 0.95;
             });
           }
         },
@@ -197,7 +178,7 @@ export async function verifyRequirementImport<T>(args: {
   };
 
   const issues = await audit(args.candidate);
-  if (!active || !issues.length) return args.candidate;
+  if (!issues.length) return args.candidate;
   args.abortSignal.throwIfAborted();
   const repaired = await args.repair(issues);
   args.abortSignal.throwIfAborted();

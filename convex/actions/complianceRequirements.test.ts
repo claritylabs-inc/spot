@@ -189,28 +189,28 @@ afterEach(() => {
 
 describe("requirement import source verification through public actions", () => {
   test.each(["legacy", "shadow"] as const)(
-    "%s preserves established extraction without repair",
+    "retired %s configuration still verifies extraction",
     async (mode) => {
       configure(mode);
       const router = mockRouter({
-        answer: () => ({ type: "noul", noul: 0.01 }),
+        answer: () => ({ type: "noul", noul: 0.99 }),
       });
       const f = await fixture();
       expect((await f.run()).createdCount).toBe(1);
       expect(router.generations).toHaveLength(1);
-      expect(router.decisions).toHaveLength(mode === "shadow" ? 1 : 0);
+      expect(router.decisions).toHaveLength(1);
       expect((await f.saved()).requirements[0].limits?.[0].amount).toBe(
         1000000,
       );
     },
   );
 
-  test("another active family does not qualify import verification", async () => {
+  test("a different configured family cannot disable import verification", async () => {
     configure("active", "compliance.requirement_evidence");
     const router = mockRouter();
     const f = await fixture();
     await f.run();
-    expect(router.decisions).toHaveLength(0);
+    expect(router.decisions).toHaveLength(1);
     expect(router.generations).toHaveLength(1);
   });
 
@@ -483,24 +483,15 @@ describe("requirement import source verification through public actions", () => 
         }),
       });
       const f = await fixture();
-      if (mode === "active") {
-        await expect(f.run(fullSource)).rejects.toThrow("needs review");
-        expect(router.generations).toHaveLength(2);
-        expect(router.decisions).toHaveLength(2);
-        for (const request of router.decisions) {
-          expect(request.state).toMatchObject({ sourceText: fullSource });
-        }
-        expect(router.generations[1]).toContain("A-rated carrier admitted");
-        expect((await f.saved()).sources).toEqual([]);
-        expect((await f.saved()).requirements).toEqual([]);
-      } else {
-        expect((await f.run(fullSource)).createdCount).toBe(1);
-        expect(router.decisions).toHaveLength(0);
-        expect(router.generations).toHaveLength(1);
-        expect((await f.saved()).requirements[0].limits?.[0].amount).toBe(
-          1000000,
-        );
+      await expect(f.run(fullSource)).rejects.toThrow("needs review");
+      expect(router.generations).toHaveLength(2);
+      expect(router.decisions).toHaveLength(2);
+      for (const request of router.decisions) {
+        expect(request.state).toMatchObject({ sourceText: fullSource });
       }
+      expect(router.generations[1]).toContain("A-rated carrier admitted");
+      expect((await f.saved()).sources).toEqual([]);
+      expect((await f.saved()).requirements).toEqual([]);
     },
   );
 

@@ -193,19 +193,18 @@ test.each([
   ["legacy", "extraction.additional_insured"],
   ["active", "extraction.audit"],
   ["active", "extraction.field_review"],
-])(
-  "%s without family qualification preserves the original call and result (%s)",
-  async (mode, family) => {
-    configure(mode, family);
-    expect(
-      resultEligibility(await extractAdditionalInsuredEligibility(args())),
-    ).toEqual(legacy);
-    expect(generations()).toHaveLength(1);
-    expect(decisions()).toHaveLength(0);
-  },
-);
+])("%s ignores retired family qualification (%s)", async (mode, family) => {
+  configure(mode, family);
+  expect(
+    resultEligibility(await extractAdditionalInsuredEligibility(args())),
+  ).toMatchObject({
+    withoutEndorsement: [expect.objectContaining({ category: "Lessors" })],
+  });
+  expect(generations()).toHaveLength(1);
+  expect(decisions()).toHaveLength(1);
+});
 
-test("missing and invalid configuration add no calls", async () => {
+test("missing and invalid configuration still run decisions", async () => {
   for (const policy of [
     "",
     "{invalid",
@@ -215,9 +214,11 @@ test("missing and invalid configuration add no calls", async () => {
     requests = [];
     expect(
       resultEligibility(await extractAdditionalInsuredEligibility(args())),
-    ).toEqual(legacy);
+    ).toMatchObject({
+      withoutEndorsement: [expect.objectContaining({ category: "Lessors" })],
+    });
     expect(generations()).toHaveLength(1);
-    expect(decisions()).toHaveLength(0);
+    expect(decisions()).toHaveLength(1);
   }
 });
 
@@ -254,13 +255,15 @@ test("literal discovery precedes batched classification with full unfiltered sou
   expect(Object.keys(decisions()[0].questions!)).toHaveLength(3);
 });
 
-test("shadow executes the original reasoning output despite certain classifications", async () => {
+test("retired shadow configuration cannot discard a supported classification", async () => {
   configure("shadow");
   expect(
     resultEligibility(await extractAdditionalInsuredEligibility(args())),
-  ).toEqual(legacy);
+  ).toMatchObject({
+    withoutEndorsement: [expect.objectContaining({ category: "Lessors" })],
+  });
   expect(decisions()).toHaveLength(1);
-  expect(generations()).toHaveLength(2);
+  expect(generations()).toHaveLength(1);
 });
 
 test.each(["automatic", "scheduled", "endorsement_required", "review"])(
@@ -434,7 +437,7 @@ test.each(["before", "discovery", "decision", "fallback"])(
   async (stage) => {
     const controller = new AbortController();
     if (stage === "before") controller.abort();
-    if (stage === "fallback") configure("legacy");
+
     duringFetch = (request) => {
       if (
         (stage === "discovery" && request.schema?.properties.items) ||

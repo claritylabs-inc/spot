@@ -288,8 +288,8 @@ test.each(["legacy", "shadow", "active"])(
       filenames: ["lease.pdf"],
       scope: "own_org",
     });
-    expect(mocks.generate).toHaveBeenCalledTimes(mode === "active" ? 0 : 1);
-    expect(mocks.decide).toHaveBeenCalledTimes(mode === "legacy" ? 0 : 1);
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.decide).toHaveBeenCalledOnce();
     const stored = await t.run(async (ctx) => ({
       wiki: await ctx.db.query("markdownDocuments").collect(),
       items: await ctx.db.query("connectedEmailAutomationItems").collect(),
@@ -357,7 +357,7 @@ test("memory-only stored true is ineligible for background scans; explicit scan 
   ).toEqual({ status: "automation_disabled" });
   expect(mocks.withClient).not.toHaveBeenCalled();
   expect(await scan()).toMatchObject({ attentionCount: 0, processedCount: 1 });
-  expect(mocks.generate).toHaveBeenCalledOnce();
+  expect(mocks.generate).not.toHaveBeenCalled();
   expect(mocks.importPolicy).not.toHaveBeenCalled();
   expect(mocks.importRequirements).not.toHaveBeenCalled();
   expect(await t.run((ctx) => ctx.db.query("threads").collect())).toEqual([]);
@@ -367,10 +367,10 @@ test("memory-only stored true is ineligible for background scans; explicit scan 
   expect(await t.run((ctx) => ctx.db.get(receipt.itemId))).toEqual(historical);
 });
 
-test.each(["uncertain", "unqualified", "invalid_reference"])(
+test.each(["uncertain", "invalid_reference"])(
   "%s decisions use reasoning at the public scan callsite",
   async (variant) => {
-    configure("active", variant !== "unqualified");
+    configure("active", false);
     mocks.decide.mockImplementation(async ({ questions }) => {
       const result = response(questions, variant === "uncertain");
       if (variant === "invalid_reference")
@@ -448,7 +448,7 @@ test.each(["questions", "serialized_body"])(
 );
 
 test("unknown email and attachment references cannot import files", async () => {
-  configure("legacy");
+  mocks.decide.mockRejectedValue(new Error("decision unavailable"));
   mocks.generate.mockImplementation(async () => ({
     object: {
       decisions: [
