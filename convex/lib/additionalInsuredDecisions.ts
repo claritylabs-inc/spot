@@ -86,7 +86,7 @@ function withinBudget(value: unknown): boolean {
   );
 }
 
-function completeTextContext(
+function providedTextContext(
   nodes: DocumentSourceNode[],
   spans: SourceSpanLike[],
 ) {
@@ -105,6 +105,14 @@ function completeTextContext(
       (span) =>
         !span.id ||
         !span.text?.trim() ||
+        (span.parentSpanId && !spanIds.has(span.parentSpanId)) ||
+        ![
+          "pdf_text",
+          "html",
+          "markdown",
+          "plain_text",
+          "structured_field",
+        ].includes(span.kind ?? "") ||
         (span.documentId && !documentIds.has(span.documentId)),
     )
   )
@@ -148,7 +156,7 @@ export async function decideAdditionalInsuredEligibility(args: {
   ) {
     return fallback();
   }
-  const context = completeTextContext(args.sourceTree, args.sourceSpans ?? []);
+  const context = providedTextContext(args.sourceTree, args.sourceSpans ?? []);
   if (!context || !withinBudget(context)) return fallback();
 
   const system = `Extract literal additional-insured evidence, not eligibility classifications.
