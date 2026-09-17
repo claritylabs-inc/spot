@@ -18,7 +18,7 @@ import {
   resolveExtractionEvidenceAudit,
   requireResolvedExtractionAudit,
 } from "../lib/extractionEvidenceAudit";
-import type { ExtractionAuditBinding } from "@claritylabs/cl-sdk";
+import type { ExtractionAuditBinding } from "@claritylabs/cl-sdk/extraction-audit";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
 import {
   preparePdfTextWithParserFallback,
@@ -1959,7 +1959,7 @@ export function makePhases(
         await pCtx.saveState(promotionState);
       }
 
-      const finalFields = {
+      const finalFields: Record<string, unknown> = {
         fileName: resolvedFileName,
         ...fields,
         ...sourceTreePolicyFields({
@@ -3113,7 +3113,7 @@ async function completeExternalExtractFromPayload(
     return { ok: false };
   }
 
-  const finalFields = {
+  const finalFields: Record<string, unknown> = {
     fileName: resolvedFileName,
     ...fields,
     ...sourceTreePolicyFields({
