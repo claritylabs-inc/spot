@@ -1,3 +1,10 @@
+import { decideCertificateEvidence } from "./lib/certificateDecisions";
+import { decideWithFallback } from "./lib/decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "./lib/domainDecisionQuestions";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import dayjs from "dayjs";
 import { v } from "convex/values";
@@ -185,10 +192,20 @@ async function evaluateCertificateRequestGateWithLlm(params: {
     tracePolicyId: params.policyId,
   });
   try {
-    const result = await generateGateObject({
-      schema: certificateGateReviewSchema,
-      maxTokens: 1400,
-      system: `You are a conservative certificate-of-insurance gate reviewer.
+    const review = await decideCertificateEvidence({
+      ctx: params.ctx,
+      orgId: params.orgId,
+      requiredChanges,
+      evidencePacket,
+      certificateHolder: params.certificateHolder,
+      requestText: params.requestText,
+      requestedEndorsements: params.requestedEndorsements,
+      fallback: async () =>
+        (
+          await generateGateObject({
+            schema: certificateGateReviewSchema,
+            maxTokens: 1400,
+            system: `You are a conservative certificate-of-insurance gate reviewer.
 
 Decide whether Spot may issue the requested COI from existing policy and endorsement evidence.
 
@@ -200,7 +217,7 @@ Rules:
 - If the holder is not already scheduled/named and the policy requires scheduled/named additional insureds to be added by endorsement, hold with reasonCode policy_change_required.
 - If evidence is missing, ambiguous, or conflicting, hold. Do not guess.
 - For waiver, primary/non-contributory, loss payee, mortgagee, or special wording, apply the same rule: allow only if existing policy/endorsement evidence clearly supports the requested wording.`,
-      prompt: `Certificate holder:
+            prompt: `Certificate holder:
 ${params.certificateHolder ?? "(not provided)"}
 
 Request text:
@@ -216,8 +233,9 @@ Evidence packet:
 ${JSON.stringify(evidencePacket, null, 2).slice(0, 60000)}
 
 Return a gate verdict. If held, write a specific reason that explains whether the problem is missing endorsement evidence, an endorsement still needed, or ambiguity.`,
+          })
+        ).object as z.infer<typeof certificateGateReviewSchema>,
     });
-    const review = result.object as z.infer<typeof certificateGateReviewSchema>;
     const evidenceById = new Map(
       evidencePacket.map((item) => [item.evidenceId, item]),
     );
@@ -724,18 +742,59 @@ async function reviewHolderIdentityWithModel(args: {
     tracePolicyId: args.policyId,
   });
   try {
-    const result = await generateIdentityObject({
-      schema: HolderIdentityReviewSchema,
-      maxTokens: 700,
-      system: `You classify certificate holder identity for certificate reuse.
+    const review = await decideWithFallback<
+      Omit<z.infer<typeof HolderIdentityReviewSchema>, "confidence">
+    >({
+      ctx: args.ctx,
+      orgId: args.orgId,
+      family: "identity.certificate_holder",
+      state: decisionState({
+        requested: args.requested,
+        candidates: args.candidates.map((candidate) => ({
+          candidateId: candidate.candidateId,
+          identity: candidate.identity,
+        })),
+      }),
+      questions: {
+        holder: choiceQuestion(
+          "Which current-policy candidate is the same legal/display certificate holder AND address as the requested holder? Never select by name alone; abstain for namesakes, missing address, multiple matches or conflicting identity.",
+          Object.fromEntries(
+            args.candidates.map((candidate) => [
+              candidate.candidateId,
+              { candidate: decisionState(candidate.identity) },
+            ]),
+          ),
+        ),
+      },
+      accept: (answers) => {
+        const selected = acceptedChoice(
+          answers.holder,
+          args.candidates.map((candidate) => candidate.candidateId),
+        );
+        return selected
+          ? {
+              verdict: "same_holder",
+              matchedCandidateId: selected.value,
+              reason:
+                "Requested holder identity and address match the selected current-policy candidate.",
+            }
+          : undefined;
+      },
+      fallback: async () =>
+        (
+          await generateIdentityObject({
+            schema: HolderIdentityReviewSchema,
+            maxTokens: 700,
+            system: `You classify certificate holder identity for certificate reuse.
 
 Return same_holder only when the requested holder is the same legal/display holder and address as one of the provided current-policy candidates. Return ambiguous rather than guessing.`,
-      prompt: buildHolderIdentityReviewPrompt({
-        requested: args.requested,
-        candidates: args.candidates,
-      }),
+            prompt: buildHolderIdentityReviewPrompt({
+              requested: args.requested,
+              candidates: args.candidates,
+            }),
+          })
+        ).object as z.infer<typeof HolderIdentityReviewSchema>,
     });
-    const review = result.object as z.infer<typeof HolderIdentityReviewSchema>;
     if (review.verdict === "same_holder") {
       const candidate = args.candidates.find(
         (item) => item.candidateId === review.matchedCandidateId,

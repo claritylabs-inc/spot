@@ -3,6 +3,12 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { z } from "zod";
+import { decideWithFallback } from "../lib/decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "../lib/domainDecisionQuestions";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -14,10 +20,7 @@ import {
   type GroundedCarrierIdentitySelection,
 } from "../lib/carrierIdentityEnrichment";
 import { generateObjectForOrg } from "../lib/models";
-import {
-  runWebRetrieval,
-  type WebRetrievalSource,
-} from "../lib/webRetrieval";
+import { runWebRetrieval, type WebRetrievalSource } from "../lib/webRetrieval";
 import {
   normalizePublicWebsiteUrl,
   readWebsiteFaviconSignals,
@@ -36,12 +39,7 @@ const CarrierIdentitySelectionSchema = z.object({
   officialSite: z.boolean(),
   publicName: z.string().min(1).max(120).nullable(),
   nameRelationship: z
-    .enum([
-      "same_legal_entity",
-      "trading_name",
-      "parent_brand",
-      "group_brand",
-    ])
+    .enum(["same_legal_entity", "trading_name", "parent_brand", "group_brand"])
     .nullable(),
   confidence: z.enum(["high", "medium", "low"]),
   reason: z.string().min(1).max(500),
@@ -49,11 +47,7 @@ const CarrierIdentitySelectionSchema = z.object({
 
 type CarrierIdentityPolicy = Pick<
   Doc<"policies">,
-  | "carrier"
-  | "carrierIdentity"
-  | "security"
-  | "carrierLegalName"
-  | "insurer"
+  "carrier" | "carrierIdentity" | "security" | "carrierLegalName" | "insurer"
 >;
 
 type CandidateSite = {
@@ -217,6 +211,95 @@ async function selectCarrierIdentityWithModel(
   sites: CandidateSite[],
   retrievalText: string,
 ): Promise<GroundedCarrierIdentitySelection> {
+  return decideWithFallback({
+    ctx,
+    orgId,
+    family: "identity.carrier_website",
+    state: decisionState({
+      carrierName,
+      sites,
+      retrievalText: retrievalText.slice(0, 8_000),
+    }),
+    questions: {
+      site: choiceQuestion(
+        "Which official first-party site explicitly identifies the exact carrier, trading name, parent or group? Reject namesakes, brokers, directories, portals and unsupported name similarity.",
+        Object.fromEntries(
+          sites.map((site, index) => [
+            String(index),
+            { candidate: decisionState(site) },
+          ]),
+        ),
+      ),
+      ...Object.fromEntries(
+        sites.map((site, index) => [
+          `relationship_${index}`,
+          choiceQuestion(
+            "If this site is official, how is its siteName related to the policy carrier? Require an explicit first-party relationship, never infer a subsidiary from an additional insured.",
+            {
+              same_legal_entity: "Same legal entity's concise public name.",
+              trading_name: "Explicit documented DBA/trading name.",
+              parent_brand: "Explicit documented parent brand.",
+              group_brand: "Explicit documented group brand.",
+              unnamed:
+                "Official site established but no supported public name.",
+            },
+            { site: decisionState(site) },
+          ),
+        ]),
+      ),
+    },
+    accept: (answers) => {
+      const choice = acceptedChoice(
+        answers.site,
+        sites.map((_, index) => String(index)),
+      );
+      if (!choice) return undefined;
+      const index = Number(choice.value);
+      const relationship = acceptedChoice(answers[`relationship_${index}`], [
+        "same_legal_entity",
+        "trading_name",
+        "parent_brand",
+        "group_brand",
+        "unnamed",
+      ]);
+      if (!relationship) return undefined;
+      const named = relationship.value !== "unnamed";
+      if (named && !sites[index].siteName) return undefined;
+      try {
+        return groundCarrierIdentitySelection(
+          {
+            candidateIndex: index,
+            officialSite: true,
+            publicName: named ? sites[index].siteName! : null,
+            nameRelationship: named
+              ? (relationship.value as
+                  | "same_legal_entity"
+                  | "trading_name"
+                  | "parent_brand"
+                  | "group_brand")
+              : null,
+            confidence: "high",
+            reason:
+              "Explicit first-party identity and relationship selected from supplied candidates.",
+          },
+          sites,
+        );
+      } catch {
+        return undefined;
+      }
+    },
+    fallback: () =>
+      reasonCarrierIdentity(ctx, orgId, carrierName, sites, retrievalText),
+  });
+}
+
+async function reasonCarrierIdentity(
+  ctx: ActionCtx,
+  orgId: Id<"organizations">,
+  carrierName: string,
+  sites: CandidateSite[],
+  retrievalText: string,
+): Promise<GroundedCarrierIdentitySelection> {
   const { output } = await generateObjectForOrg(
     ctx,
     orgId,
@@ -282,11 +365,7 @@ async function enrichPolicyCarrierIdentity(
     return { success: false as const, reason: "missing_carrier" };
   }
   const normalizedName = normalizeCarrierIdentityName(carrierName);
-  const cachedResult = await applyCachedIdentity(
-    ctx,
-    policyId,
-    normalizedName,
-  );
+  const cachedResult = await applyCachedIdentity(ctx, policyId, normalizedName);
   if (cachedResult.applied) {
     return { success: true as const, cached: true };
   }
@@ -319,30 +398,22 @@ async function enrichPolicyCarrierIdentity(
           query: `"${researchName}" official insurer website trading name brand`,
           goal: "Find the insurer's official public website and any official statement connecting the extracted legal insurer, syndicate, or underwriting entity to its trading name, DBA, parent brand, or group brand. Prefer first-party evidence over brokers, directories, social profiles, and news coverage.",
           maxResults: MAX_CANDIDATE_SITES,
-        })
+        }),
       ),
     );
     const retrievalSources = retrievals.flatMap(
       (retrieval) => retrieval.sources,
     );
-    const retrievalText = boundedEvidence(
-      retrievals.map((retrieval) => retrieval.text),
-    ) ?? "";
+    const retrievalText =
+      boundedEvidence(retrievals.map((retrieval) => retrieval.text)) ?? "";
     const reusablePreviousSources = reusableCacheSources([cachedIdentity]);
-    let sites = (
-      await Promise.all(
-        candidateUrls(
-          [...reusablePreviousSources, ...retrievalSources],
-          retrievalText,
-        ).map((seed) =>
-          inspectCarrierCandidate(
-            ctx,
-            policy.orgId!,
-            carrierName,
-            seed,
-          ),
-        ),
-      )
+    let sites = await Promise.all(
+      candidateUrls(
+        [...reusablePreviousSources, ...retrievalSources],
+        retrievalText,
+      ).map((seed) =>
+        inspectCarrierCandidate(ctx, policy.orgId!, carrierName, seed),
+      ),
     );
     if (sites.length === 0) throw new Error("No candidate carrier websites");
 
@@ -367,50 +438,35 @@ async function enrichPolicyCarrierIdentity(
           );
         }
         const hostname = new URL(selectedSite.website).hostname;
-        const relationshipRetrieval = await runWebRetrieval(
-          ctx,
-          policy.orgId,
-          {
-            query: `"${selection.publicName}" "trading name"`,
-            goal: `Find a first-party statement on ${hostname} that says whether ${selection.publicName} is a trading name, DBA, or operating name for the extracted legal insurer or syndicate. Return the exact official page, not a directory or news story.`,
-            allowedDomains: [hostname],
-            maxResults: MAX_CANDIDATE_SITES,
-          },
-        );
+        const relationshipRetrieval = await runWebRetrieval(ctx, policy.orgId, {
+          query: `"${selection.publicName}" "trading name"`,
+          goal: `Find a first-party statement on ${hostname} that says whether ${selection.publicName} is a trading name, DBA, or operating name for the extracted legal insurer or syndicate. Return the exact official page, not a directory or news story.`,
+          allowedDomains: [hostname],
+          maxResults: MAX_CANDIDATE_SITES,
+        });
         relationshipSourceUrls = relationshipRetrieval.sources.map(
           (source) => source.url,
         );
-        const relationshipSites = (
-          await Promise.all(
-            candidateUrls(
-              relationshipRetrieval.sources,
-              relationshipRetrieval.text,
-            ).map((seed) =>
-              inspectCarrierCandidate(
-                ctx,
-                policy.orgId!,
-                carrierName,
-                seed,
-              ),
-            ),
-          )
+        const relationshipSites = await Promise.all(
+          candidateUrls(
+            relationshipRetrieval.sources,
+            relationshipRetrieval.text,
+          ).map((seed) =>
+            inspectCarrierCandidate(ctx, policy.orgId!, carrierName, seed),
+          ),
         );
         const knownSites = new Set(sites.map((site) => site.website));
         sites = [
           ...sites,
-          ...relationshipSites.filter(
-            (site) => !knownSites.has(site.website),
-          ),
+          ...relationshipSites.filter((site) => !knownSites.has(site.website)),
         ];
         selection = await selectCarrierIdentityWithModel(
           ctx,
           policy.orgId,
           carrierName,
           sites,
-          boundedEvidence([
+          boundedEvidence([retrievalText, relationshipRetrieval.text]) ??
             retrievalText,
-            relationshipRetrieval.text,
-          ]) ?? retrievalText,
         );
       } catch (error) {
         console.warn(
@@ -442,9 +498,7 @@ async function enrichPolicyCarrierIdentity(
     const iconStorageId = faviconSignals.favicon
       ? await ctx.storage.store(faviconSignals.favicon)
       : null;
-    const website = normalizePublicWebsiteUrl(
-      new URL(selected.website).origin,
-    );
+    const website = normalizePublicWebsiteUrl(new URL(selected.website).origin);
     const cacheEntryId = await ctx.runMutation(
       internal.carrierIdentityCache.upsertInternal,
       {
@@ -499,10 +553,7 @@ async function enrichPolicyCarrierIdentity(
       return { success: false as const, reason: "in_progress" };
     }
     const retryDelay = RETRY_DELAYS_MS[attempt - 1];
-    if (
-      failureResult.status === "failed" &&
-      retryDelay !== undefined
-    ) {
+    if (failureResult.status === "failed" && retryDelay !== undefined) {
       await ctx.scheduler.runAfter(
         retryDelay,
         internal.actions.enrichCarrierIdentity.ensureInternal,

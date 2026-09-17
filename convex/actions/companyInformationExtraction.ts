@@ -1,5 +1,7 @@
 "use node";
 
+import { reviewCompanyFacts } from "../lib/companyMemoryDecisions";
+
 import type { ModelMessage } from "ai";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
@@ -188,11 +190,14 @@ async function recordFailure(
     retry: (delayMs: number) => Promise<unknown>;
   },
 ) {
-  const result = await ctx.runMutation(internal.companyInformation.failInternal, {
-    sourceRef: args.sourceRef,
-    sourceFingerprint: args.sourceFingerprint,
-    error: errorMessage(args.error),
-  });
+  const result = await ctx.runMutation(
+    internal.companyInformation.failInternal,
+    {
+      sourceRef: args.sourceRef,
+      sourceFingerprint: args.sourceFingerprint,
+      error: errorMessage(args.error),
+    },
+  );
   if (result.retry) {
     await args.retry(Math.min(30_000, 5_000 * 2 ** (result.attempt - 1)));
   }
@@ -211,7 +216,9 @@ export const extractClientFile = internalAction({
       });
       const parts = context.parts;
       if (!hasReadableAttachmentContent(parts)) {
-        throw new Error("No readable file content was available for extraction");
+        throw new Error(
+          "No readable file content was available for extraction",
+        );
       }
       const messages: ModelMessage[] = [
         {
@@ -253,6 +260,19 @@ export const extractClientFile = internalAction({
         },
       );
       const extraction = sanitizeCompanyInformationExtraction(result.object);
+      if (!modelMessagesHaveRichInput(messages)) {
+        extraction.organizationFacts = await reviewCompanyFacts(
+          ctx,
+          source.orgId,
+          {
+            organizationName: source.organizationName,
+            text: parts
+              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("\n"),
+          },
+          extraction.organizationFacts,
+        );
+      }
       return await ctx.runMutation(
         internal.companyInformation.completeClientFileInternal,
         {
@@ -267,11 +287,7 @@ export const extractClientFile = internalAction({
         sourceFingerprint: source.sourceFingerprint,
         error,
         retry: async (delayMs) =>
-          await ctx.scheduler.runAfter(
-            delayMs,
-            extractClientFileRef,
-            args,
-          ),
+          await ctx.scheduler.runAfter(delayMs, extractClientFileRef, args),
       });
       return { status: "failed" as const };
     }
@@ -304,6 +320,15 @@ export const extractProcurementEmailThread = internalAction({
         },
       );
       const extraction = sanitizeCompanyInformationExtraction(result.object);
+      extraction.organizationFacts = await reviewCompanyFacts(
+        ctx,
+        source.orgId,
+        {
+          organizationName: source.organizationName,
+          text: emailThreadText(source.requestTitle, source.messages),
+        },
+        extraction.organizationFacts,
+      );
       return await ctx.runMutation(
         internal.companyInformation.completeEmailThreadInternal,
         {
@@ -318,11 +343,7 @@ export const extractProcurementEmailThread = internalAction({
         sourceFingerprint: source.sourceFingerprint,
         error,
         retry: async (delayMs) =>
-          await ctx.scheduler.runAfter(
-            delayMs,
-            extractEmailThreadRef,
-            args,
-          ),
+          await ctx.scheduler.runAfter(delayMs, extractEmailThreadRef, args),
       });
       return { status: "failed" as const };
     }
