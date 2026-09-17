@@ -44,7 +44,7 @@ export default function OperatorClientWikiPage() {
           >
             /
           </span>
-          <span className="truncate">Company wiki</span>
+          <span className="truncate">Notes</span>
         </span>
       }
       customSidebar={({ collapsed, onToggleCollapse }) => (
@@ -65,8 +65,8 @@ export default function OperatorClientWikiPage() {
           pageType: "operator_client_wiki",
           entityId: clientOrgId,
           summary: client
-            ? `Company wiki for ${client.name}`
-            : "Current client company wiki",
+            ? `Notes for ${client.name}`
+            : "Current client notes",
         }}
       />
       {clients === undefined ? (

@@ -161,7 +161,7 @@ export function OperatorClientSidebar({
           />
           <SidebarMenuItem
             href={`${basePath}/wiki`}
-            label="Company wiki"
+            label="Notes"
             icon={Brain}
             active={active === "wiki"}
             collapsed={collapsed}

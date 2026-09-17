@@ -67,7 +67,7 @@ function WikiEditor({
       savedMarkdown.current = value;
     },
     errorMessage: (error) =>
-      getUserFacingErrorMessage(error, "Failed to save the company wiki"),
+      getUserFacingErrorMessage(error, "Failed to save the notes"),
   });
   return (
     <>
@@ -107,7 +107,7 @@ function WikiEditor({
         />
       ) : null}
       <MarkdownEditor
-        label="Company wiki Markdown"
+        label="Notes Markdown"
         value={markdown}
         onChange={edit}
         defaultMode="preview"
@@ -210,7 +210,7 @@ export function CompanyWikiSection({
       </OperationalPanel>
     );
   if (wiki === null)
-    return <EmptyStateCard title="No company wiki shared yet" />;
+    return <EmptyStateCard title="No notes shared yet" />;
   return (
     <div className="space-y-4">
       <WikiEditor
