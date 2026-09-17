@@ -87,12 +87,19 @@ Convex/UI contracts and the release evidence documented above.
 
 ## Intentional company information updates
 
-Uploads and procurement emails retain their ordinary file/message workflows without background company-profile or wiki extraction. Agents add requested details through `update_organization_profile` and `update_client_wiki`; existing authorization, exact approval, and revision checks apply. Policy-derived profiles, manual overrides, saved source contributions, and public company research retain their existing owners. Historical file contributions retract when their source is archived or deleted; restoration does not regenerate them. The standalone supplementary extraction action/backfill and rerun control are removed. Saved supplementary facts remain searchable, and normal policy extraction still captures supported facts. No stored-data migration or purge accompanies this change.
+Uploads, procurement emails and connected-mailbox scans retain their ordinary file/message workflows without background company-profile or wiki extraction. Agents add requested details through `update_organization_profile` and `update_client_wiki`; existing authorization, exact approval, and revision checks apply. Policy-derived profiles, manual overrides, saved source contributions, and public company research retain their existing owners. Historical file contributions retract when their source is archived or deleted; restoration does not regenerate them. The standalone supplementary extraction action/backfill and rerun control are removed. Saved supplementary facts remain searchable, and normal policy extraction still captures supported facts. No stored-data migration or purge accompanies this change.
 
 ## Current typed decision boundary
 
 `convex/lib/decisions.ts` owns domain decision policy and reasoning fallback;
 `convex/lib/sdkCallbacks.ts` supplies the SDK's optional `Decide` callback.
+Additional-insured interpretation uses `extraction.additional_insured`: literal
+evidence discovery precedes batched classification and support checks, with the
+existing eligibility validator and reasoning fallback. Requirement imports use
+`requirements.import_verification` on the normalized persistence projection;
+qualified active failures get one repair and re-verification, then stop before
+writes if unresolved. Neither gate grants visual completeness or activates itself.
+
 Shared Convex code imports the dependency-free `@claritylabs/cl-sdk/decisions`
 entry; the SDK root contains Node-only extraction dependencies.
 Both Convex and the extraction worker send structured questions to the router's

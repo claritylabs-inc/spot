@@ -2,7 +2,7 @@
 
 This reference lists the tools that Spot exposes to its operator agent, tenant-facing conversational agent, internal agent subagents, and OAuth MCP clients. It describes the current executable catalogs; it does not include deterministic controls, ordinary Convex functions, REST routes, or browser actions that are not model-callable or MCP-callable tools.
 
-Company-profile and wiki updates are intentional tool writes: operator `update_organization_profile` and `update_client_wiki` retain their existing authorization and exact approval; tenant `save_note` requires an explicit user request to add or remember a fact. Uploading a file or receiving procurement email no longer starts general company-information extraction. Historical contributions and policy-derived profiles remain. No agent tool was added or removed for this change. The operator portal standalone supplementary-facts rerun is retired; existing facts remain searchable.
+Company-profile and wiki updates are intentional tool writes: operator `update_organization_profile` and `update_client_wiki` retain their existing authorization and exact approval; tenant `save_note` requires an explicit user request to add or remember a fact. Uploading a file, receiving procurement email or scanning a connected mailbox no longer starts general company-information extraction. Historical contributions and policy-derived profiles remain. No agent tool was added or removed for this change. The operator portal standalone supplementary-facts rerun is retired; existing facts remain searchable.
 
 ## Operator approval policy
 
@@ -243,7 +243,7 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `lookup_vendor_policies`         | List policies for a connected vendor.                                              | All channels.                                                                   |
 | `lookup_vendor_compliance`       | Retrieve requirement-by-requirement vendor compliance.                             | All channels.                                                                   |
 | `lookup_policy_section`          | Search source-native policy hierarchy and exact PDF evidence.                      | All channels; final policies only.                                              |
-| `save_note`                      | Add an explicit stable company fact to the shared company Markdown file.                     | All channels; write permission required.                                        |
+| `save_note`                      | Add an explicit stable company fact to the shared company Markdown file.                     | All channels; explicit user request and write permission required.                                        |
 | `attach_policy_document`         | Attach the original full policy PDF to the response.                               | All channels; final readable policy and stored PDF required.                    |
 | `confirm_policy_fact`            | Confirm a source-backed policy fact and optionally patch allowed top-level fields. | All channels; final writable policy and exact source spans required.            |
 | `generate_coi`                   | Generate or reuse certificates from a policy or requirements source.               | All channels; write permission and final supporting policies required.          |

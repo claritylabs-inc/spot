@@ -24,6 +24,13 @@ deleted after use or by bounded cleanup.
 
 Typed decisions reuse `convex/lib/decisions.ts` for per-family policy and
 reasoning fallback, and `makeDecide` from `sdkCallbacks.ts` for SDK callbacks.
+Additional-insured interpretation uses `extraction.additional_insured`: literal
+evidence discovery precedes batched classification and support checks, with the
+existing eligibility validator and reasoning fallback. Requirement imports use
+`requirements.import_verification` on the normalized persistence projection;
+qualified active failures get one repair and re-verification, then stop before
+writes if unresolved. Neither gate grants visual completeness or activates itself.
+
 Structured questions cross only the authenticated cl-router `/v1/decide`
 boundary. Use the SDK's dependency-free `@claritylabs/cl-sdk/decisions`
 `runDecision` cascade; do not duplicate
@@ -42,7 +49,7 @@ establishes complete visual evidence. Field corrections reuse the existing
 `extractionFieldReview.ts` application boundary and its independently gated
 batched decision path.
 
-Company-information capture from arbitrary uploads and procurement email is retired. Keep existing source contributions and policy-derived profiles; new general company details are explicit profile/wiki tool edits. The standalone supplementary backfill and rerun are retired; existing facts and normal policy extraction/search remain.
+Company-information capture from arbitrary uploads, procurement email and connected-mailbox scans is retired. Keep existing source contributions and policy-derived profiles; new general company details are explicit profile/wiki tool edits. The standalone supplementary backfill and rerun are retired; existing facts and normal policy extraction/search remain.
 
 ## Rule
 

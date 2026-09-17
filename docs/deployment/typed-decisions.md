@@ -94,12 +94,14 @@ answers consumed by the selected branch.
 | Mailbox | `mailbox.classification`, `mailbox.evidence_selection`, `mailbox.known_record_matching`, `mailbox.reconciliation_relevance` |
 | Conversation | `agent.bounded_dispatch`, `intent.forward_direction`, `intent.policy_evidence`, `intent.requirement_import` |
 | Identity | `identity.carrier_website`, `identity.certificate_holder`, `identity.company_website`, `identity.company_industry`, `identity.company_vertical` |
-| Company memory | `memory.durable_fact_detection`, `memory.evidence_and_section` |
+| Public company research facts | `memory.evidence_and_section` |
 | Evidence review | `certificates.evidence_support`, `compliance.requirement_evidence`, `proposal.requirement_review` |
 | Retrieval and security | `retrieval.passage_ranking`, `security.prompt_injection` |
 | Policy intake | PDF reasoning retained; no active replacement |
 | Shared extraction SDK | `extraction.cleanup`, `extraction.recovery_regions`, `extraction.audit` |
 | Spot field correction | `extraction.field_review` |
+| Additional-insured interpretation | `extraction.additional_insured` |
+| Requirement imports | `requirements.import_verification` |
 
 SDK query and application coordinators also expose their own gates, documented
 in the SDK's `DECISIONS.md`. Spot does not currently call those coordinators;
@@ -176,18 +178,52 @@ For example, joined coverage `originalContent` that does not occur literally in
 the supplied text retains reasoning. Fixture acceptance does not establish how
 often real documents qualify.
 
-## Related judgments still using reasoning
+## Extraction followed by bounded interpretation
 
-These are candidates for separate migrations, not active decision families or
-measured savings. Existing certificate, compliance-review, proposal, memory-fact,
-mailbox, identity-selection, and retrieval gates are already wired above.
+`extraction.additional_insured` first extracts literal clauses, conditions and
+explicitly named additional-insured parties. It then batches classification and
+support questions over the full supplied text, with a separate candidate-coverage
+question. This does not extract the primary named insured. At most 63 candidates
+produce 127 questions, within a 512 KiB body budget. Unknown/image spans, missing
+references, nonliteral candidates, uncertainty and exceeded bounds use the
+existing reasoning classifier. Accepted output still passes the existing
+eligibility validator and never authorizes certificate issuance. This augmentation
+runs in the in-process extraction lane; external-worker completion does not add
+this extra pass. Supplied-signal checks prevent subsequent work after cancellation,
+but the existing traced generative callback does not abort an in-flight request.
 
-| Existing owner | Candidate judgment | Retained boundary |
-| --- | --- | --- |
-| `actions/policyExtraction.ts`, additional-insured augmentation | Explicit automatic/scheduled/endorsement-required status and relationships between known clauses | Novel entity/clause discovery, complete endorsement evidence, issuance and authorization |
-| `actions/complianceRequirements.ts` | Requirement/holder support, entity scope, conditions and omitted obligations | Untruncated source coverage, units, normalization and import authority |
-| `actions/companyInformationExtraction.ts` | Structured profile facts belong to the exact insured entity and current source | Manual overrides, source retraction, rich-input interpretation; existing memory gates cover narrative facts only |
-| `actions/extractSupplementary.ts` | Supplementary fact support, same-scope duplication, contradiction and omitted source facts | Novel discovery, original source hashes, authorized writes and indexing |
+`requirements.import_verification` checks the normalized requirements and holders
+that would be persisted, after generative extraction. Independent support, scope,
+condition and reverse-omission questions share full supplied source context in
+each batch. The verifier admits up to 120,000 source characters and 128 questions
+per call within 512 KiB; it does not silently clip the verification source.
+Unresolved qualified active results get one bounded reasoning repair and a fresh
+verification. If still unresolved, the import stops before source/requirement
+writes. Material carrier-eligibility, applicability or notice conditions that the
+typed fields cannot enforce require review. Legacy and shadow retain their
+existing results. Available text does not establish PDF visual completeness.
+Extraction-run token totals describe the original generation only; decision logs
+record Jev usage separately, and repair usage is not included in those totals.
+Do not use those totals to claim whole-workflow savings.
+
+Both families require independent qualification. Existing compliance and proposal
+comparison families retain their current gates and deterministic calculation and
+save boundaries. No family is activated by this implementation.
+
+## Intentional company facts
+
+Uploads, procurement email and connected-mailbox scans no longer mine general
+company facts. Profile/wiki tools handle explicit requests; existing approval,
+revision and evidence rules still apply. Public company research and normal
+policy-derived profiles retain their existing owners. Historical contributions
+remain readable, with file-source removal retracting its contribution. The stored
+mailbox `companyMemory` key is optional legacy data and cannot enable execution.
+
+The standalone supplementary backfill and operator rerun are retired. Existing
+facts remain searchable, and normal policy extraction still captures supported
+supplementary information. No stored-data purge accompanies these removals.
+
+## Remaining batching opportunities
 
 Company industry and vertical also share known evidence and taxonomy branches;
 they can be speculatively batched while consuming only the selected industry's
