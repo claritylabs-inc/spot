@@ -1213,7 +1213,7 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
             <ThreadMessageBubble role="agent">
               <ProseMarkdown gfm breaks>{msg.content}</ProseMarkdown>
             </ThreadMessageBubble>
-          ) : showThinkingSummary ? null : (
+          ) : (
             <AgentThinkingBubble />
           )}
           <CancelButton messageId={msg._id} show />

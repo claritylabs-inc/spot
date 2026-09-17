@@ -924,8 +924,11 @@ support before enabling the Spot consumer change.
 Profile settings store personal `users.streamResponses` (default on) and
 `users.showThinking` (default off). Both operator and client web renderers share
 these preferences. Show thinking displays a collapsed tool-activity disclosure once
-tools are available. Waiting and tool activity share a compact capsule with a slowly
-spinning Spot mark (static with reduced motion); showing activity suppresses the
-separate waiting capsule. The summary shows tool activity,
-not raw reasoning or tool payloads. Approvals and task artifacts remain independent
-of these display preferences. Non-web channel delivery stays terminal-only.
+tools are available, using a plain chevron, tool count, and unbordered activity rows.
+`lib/tool-activity-icons.ts` maps every operator tool to a category icon; the complete
+list lives in `docs/design/operator-tool-icons.md`. Secondary activity text and icons
+use half-opacity muted foreground. Operator activity lists individual recorded calls
+with available search terms, titles, or filenames; legacy/client summaries list unique tools without claiming call counts.
+The separate inline waiting status uses a standard spinner with reduced-motion support.
+The summary omits raw reasoning and full tool payloads. Approvals and task artifacts
+remain independent of these display preferences. Non-web channel delivery stays terminal-only.

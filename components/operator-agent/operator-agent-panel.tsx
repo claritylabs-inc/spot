@@ -171,23 +171,25 @@ function ConfirmationArtifact({
   return (
     <OperationalPanel
       as="div"
-      className="flex min-w-0 flex-wrap items-end gap-4 p-4"
+      className="flex min-w-0 flex-wrap items-center gap-3 p-3"
     >
       <div className="min-w-0 flex-1 basis-80">
-        <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
-        <p
-          className={cn(
-            "mt-2 break-words text-foreground",
-            typeStyle(details.length ? "body.medium" : "body.default"),
-          )}
-        >
-          {title}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+          <p
+            className={cn(
+              "min-w-0 flex-1 basis-48 break-words text-foreground",
+              typeStyle("body.large"),
+            )}
+          >
+            {title}
+          </p>
+        </div>
         {details.length ? (
           <p
             className={cn(
               "mt-2 whitespace-pre-line break-words text-foreground",
-              typeStyle("body.default"),
+              typeStyle("body.large"),
             )}
           >
             {details.join("\n")}
@@ -261,7 +263,7 @@ function ConfirmationArtifacts({
             {group.length} {group.length === 1 ? "task" : "tasks"} auto-approved
           </span>
         </summary>
-        <div className="space-y-4">{group.map(renderConfirmation)}</div>
+        <div className="space-y-2">{group.map(renderConfirmation)}</div>
       </details>
     ) : (
       <Fragment key={group[0].id}>{renderConfirmation(group[0])}</Fragment>
@@ -487,10 +489,14 @@ function OperatorMessageRow({
     return (
       <div className="w-full">
         {showThinkingSummary ? (
-          <ThinkingSummary tools={message.usedTools} working={showThinking} />
+          <ThinkingSummary
+            tools={message.usedTools}
+            toolCalls={message.toolCalls}
+            working={showThinking}
+          />
         ) : null}
         {showThinking && (!streamResponses || !content) ? (
-          showThinkingSummary ? null : <AgentThinkingBubble />
+          <AgentThinkingBubble />
         ) : (
           <ThreadMessageBubble
             role="agent"

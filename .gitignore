@@ -42,6 +42,7 @@
 /docs/design/*
 !/docs/design/interface-style.md
 !/docs/design/typography.md
+!/docs/design/operator-tool-icons.md
 !/docs/deployment/
 /docs/deployment/*
 !/docs/deployment/environments.md
