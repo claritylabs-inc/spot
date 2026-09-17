@@ -1,3 +1,4 @@
+import { serializeToolActivityInput } from "./lib/agentToolAudit";
 import { clientIdentity } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
@@ -479,6 +480,11 @@ async function operatorConfirmationSummary(
     threadId: Id<"operatorAgentThreads">;
   },
 ) {
+  if (toolName === "call_mcp_tool") {
+    const id = ctx.db.normalizeId("operatorMcpServers", String(input.serverId));
+    const server = id ? await ctx.db.get(id) : null;
+    return `Call ${String(input.toolName)} on ${server?.name ?? "MCP server"} (${server?.url ?? "unavailable"})`;
+  }
   if (toolName === "import_policy_files") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const files = await resolveOperatorPolicySources(ctx, {
@@ -2845,6 +2851,12 @@ async function executeToolActionDomain(
     confirmationId?: Id<"operatorAgentConfirmations">;
   },
 ): Promise<OperatorActionToolResult> {
+  if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
+    return await ctx.runAction(internal.actions.operatorMcp.run, {
+      operatorUserId: args.operatorUserId, toolName: args.toolName, input: args.input,
+    });
+  }
+
   if (isOperatorGoogleWorkspaceTool(args.toolName)) {
     return await ctx.runAction(
       internal.actions.operatorGoogleWorkspace.runToolInternal,
@@ -3832,7 +3844,7 @@ async function confirmOperatorAction(
     if ((succeeded || recoverableFailure) && run.executionKind === "goal") {
       const toolCall = {
         name: payload.toolName,
-        input: boundedJson(parsedInput, 500),
+        input: serializeToolActivityInput(payload.toolName, parsedInput),
         output: boundedJson(result, 500),
       };
       const currentMessage = await ctx.db.get(run.agentMessageId);
@@ -3898,7 +3910,7 @@ async function confirmOperatorAction(
       toolCalls: [
         {
           name: payload.toolName,
-          input: boundedJson(parsedInput, 500),
+          input: serializeToolActivityInput(payload.toolName, parsedInput),
           output: boundedJson(result, 500),
         },
       ],
@@ -4298,7 +4310,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
 
     const toolCall = {
       name: payload.toolName,
-      input: boundedJson(JSON.parse(payload.input), 500),
+      input: serializeToolActivityInput(payload.toolName, JSON.parse(payload.input)),
       output: boundedJson(outcome, 500),
     };
     const currentMessage = await ctx.db.get(run.agentMessageId);
@@ -5189,7 +5201,7 @@ export const invokeRegisteredToolInternal = internalAction({
         toolCalls: [
           {
             name: args.toolName,
-            input: boundedJson(input, 500),
+            input: serializeToolActivityInput(args.toolName, input),
             output: boundedJson(outcome, 500),
           },
         ],

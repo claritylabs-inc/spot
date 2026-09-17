@@ -20,6 +20,7 @@ import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
+  "call_mcp_tool",
   "confirm_policy_fact",
   "update_client_wiki",
   "update_procurement_packet",
@@ -785,6 +786,21 @@ export async function preflightOperatorToolConfirmation(
   await assertNoOperatorImpersonation(ctx, args.operatorUserId);
 
   switch (args.toolName) {
+    case "call_mcp_tool": {
+      const server = await ctx.db.get(
+        exactId(ctx, "operatorMcpServers", args.input.serverId, "MCP server"),
+      );
+      if (!server?.enabled || server.revision !== args.input.serverRevision)
+        throw new Error(
+          "MCP server changed or was disabled. Discover tools again.",
+        );
+      const tools = JSON.parse(server.toolsJson) as { name: string }[];
+      if (!tools.some((tool) => tool.name === args.input.toolName))
+        throw new Error("MCP tool is not in the saved catalog");
+      if (JSON.stringify(args.input.arguments).length > 100_000)
+        throw new Error("MCP arguments are too large");
+      return;
+    }
     case "import_policy_files":
       await resolveOperatorPolicySources(ctx, {
         operatorUserId: args.operatorUserId,

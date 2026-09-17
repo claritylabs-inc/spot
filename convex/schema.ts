@@ -773,6 +773,34 @@ export default defineSchema({
     .index("slack_user", ["slackTeamId", "slackUserId"])
     .index("status", ["status"]),
 
+  operatorMcpOAuthSessions: defineTable({
+    stateHash: v.string(),
+    serverId: v.id("operatorMcpServers"),
+    serverRevision: v.number(),
+    operatorUserId: v.id("users"),
+    encryptedData: v.string(),
+    expiresAt: v.number(),
+    exchanging: v.boolean(),
+  }).index("state", ["stateHash"]),
+
+  operatorMcpServers: defineTable({
+    authType: v.optional(v.union(v.literal("bearer"), v.literal("oauth"))),
+    encryptedOAuth: v.optional(v.string()),
+    oauthClientId: v.optional(v.string()),
+    encryptedOAuthClientSecret: v.optional(v.string()),
+    oauthRefreshLease: v.optional(v.string()),
+    oauthRefreshExpiresAt: v.optional(v.number()),
+    name: v.string(),
+    url: v.string(),
+    logoUrl: v.optional(v.string()),
+    enabled: v.boolean(),
+    encryptedToken: v.optional(v.string()),
+    toolsJson: v.string(),
+    revision: v.number(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }),
+
   operatorAgentSettings: defineTable({
     key: v.literal("default"),
     approveAll: v.boolean(),

@@ -39,6 +39,20 @@ function serializeToolAuditValue(
   }
 }
 
+export function serializeToolActivityInput(
+  name: string,
+  value: unknown,
+): string | undefined {
+  if (name === "call_mcp_tool" && value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    return JSON.stringify({
+      serverId: input.serverId,
+      toolName: input.toolName,
+    });
+  }
+  return serializeToolAuditValue(value);
+}
+
 export function collectToolAudit(result: unknown): AgentToolAudit {
   const usedTools: string[] = [];
   const completedTools: string[] = [];
@@ -60,7 +74,7 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
     const input = call.input ?? call.args ?? call.parameters;
     toolCalls.push({
       name,
-      input: serializeToolAuditValue(input),
+      input: serializeToolActivityInput(name, input),
     });
   };
 
