@@ -19,7 +19,6 @@ import {
 import {
   normalizeCertificateDescription,
 } from "../lib/certificateDescription";
-import { effectiveOrganizationProfileFacts } from "../lib/orgProfileFacts";
 import { certificateRequirementSnapshotValidator } from "../lib/certificateRequirementPlan";
 
 const holderAddressValidator = v.object({
@@ -265,12 +264,7 @@ export const run = internalAction({
         holderRelationship: args.holderRelationship,
         operationalProfile: (policy as Record<string, unknown>).operationalProfile,
       });
-      const org = await ctx.runQuery(internal.orgs.getInternal, { id: args.orgId });
       let coiData = policyToCoiData(policy, {
-        clientProfileFacts:
-          org && typeof org === "object"
-            ? effectiveOrganizationProfileFacts(org as Record<string, unknown>)
-            : undefined,
         includedLineOfBusinessCodes: args.includedLineOfBusinessCodes,
       });
       coiData = {

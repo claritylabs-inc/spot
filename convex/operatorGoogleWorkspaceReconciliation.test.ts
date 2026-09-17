@@ -14,6 +14,11 @@ import dayjs from "dayjs";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import schema from "./schema";
 import { readOrgWiki } from "./orgWiki";
+import {
+  resolveScanOrganization,
+  scanOrganizationAddressKey,
+  scanOrganizationAddressEvidence,
+} from "./lib/workspaceScanDomain";
 import { manualWikiDocument } from "./lib/orgWikiDocument";
 import { api, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -1090,7 +1095,13 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
       "See attached.",
     );
   await h.t.run(async (ctx) => {
-    await ctx.db.patch(h.orgId, { mailingAddress: address });
+    await ctx.db.insert("operatorWorkspaceScanIdentities", {
+      identityKey: `client:cove:address:${Object.values(address)
+        .map((value) => value.toLowerCase())
+        .join("|")}`,
+      orgId: h.orgId,
+      createdAt: 1,
+    });
     await ctx.db.patch(h.sourceId, {
       status: "ready",
       evidence: attachmentOnly,
@@ -1213,7 +1224,15 @@ test("same contact and address under a legal-name variant requires attention ins
     state: "MA",
     zip: "02110",
   };
-  await f.t.run((ctx) => ctx.db.patch(f.orgId, { mailingAddress: address }));
+  await f.t.run((ctx) =>
+    ctx.db.insert("operatorWorkspaceScanIdentities", {
+      identityKey: `client:cove:address:${Object.values(address)
+        .map((value) => value.toLowerCase())
+        .join("|")}`,
+      orgId: f.orgId,
+      createdAt: 1,
+    }),
+  );
   const text = "Cove LLC requests insurance at 100 Main St Boston MA 02110.";
   await expect(
     replaceEvidence(
@@ -2425,3 +2444,159 @@ test.each(["correct", "before_apply", "before_correction"] as const)(
     }
   },
 );
+
+test("same-name organizations are resolved only by their matching address evidence", async () => {
+  const f = await fixture();
+  const address = {
+    street1: "100 Main St",
+    city: "Boston",
+    state: "MA",
+    zip: "02110",
+  };
+  const otherAddress = { ...address, street1: "900 Other St" };
+  const otherOrgId = await f.t.run(async (ctx) => {
+    const other = await ctx.db.insert("organizations", {
+      name: identity.name,
+      type: "client",
+      primaryContactEmail: identity.contactEmail,
+    });
+    for (const [orgId, value] of [
+      [f.orgId, address],
+      [other, otherAddress],
+    ] as const) {
+      await ctx.db.insert("operatorWorkspaceScanIdentities", {
+        identityKey: scanOrganizationAddressKey(
+          { type: "client", name: identity.name },
+          value,
+        ),
+        orgId,
+        createdAt: 1,
+      });
+    }
+    return other;
+  });
+  expect(
+    (
+      await f.t.run((ctx) =>
+        resolveScanOrganization(ctx, { ...identity, address }),
+      )
+    )?._id,
+  ).toBe(f.orgId);
+  expect(
+    (
+      await f.t.run((ctx) =>
+        resolveScanOrganization(ctx, { ...identity, address: otherAddress }),
+      )
+    )?._id,
+  ).toBe(otherOrgId);
+  await expect(
+    f.t.run((ctx) => resolveScanOrganization(ctx, identity)),
+  ).rejects.toThrow("ambiguous");
+  await expect(
+    f.t.run((ctx) =>
+      resolveScanOrganization(ctx, {
+        ...identity,
+        address: { ...address, street1: "Unknown" },
+      }),
+    ),
+  ).rejects.toThrow("ambiguous");
+});
+
+test("selected client cannot bypass a contradictory original PDF address", async () => {
+  const f = await stagedPolicyFixture();
+  const address = {
+    street1: "100 Main St",
+    city: "Boston",
+    state: "MA",
+    zip: "02110",
+  };
+  await f.t.run(async (ctx) => {
+    await ctx.db.insert("operatorWorkspaceScanIdentities", {
+      identityKey: scanOrganizationAddressKey(
+        { type: "client", name: identity.name },
+        address,
+      ),
+      orgId: f.orgId,
+      createdAt: 1,
+    });
+    await ctx.db.patch(f.importId, {
+      insuredAddress: { ...address, street1: "900 Other St" },
+    });
+  });
+  await expect(
+    f.t.mutation(
+      internal.operatorGoogleWorkspaceReconciliation.bindImportInternal,
+      {
+        ...f.args,
+        importId: f.importId,
+        clientOrgId: f.orgId,
+      },
+    ),
+  ).rejects.toThrow("Original PDF insured");
+});
+
+test("scan address evidence honors final policy corrections and ignores deleted or unfinished policy evidence", async () => {
+  const f = await fixture();
+  const address = {
+    street1: "100 Main St",
+    city: "Boston",
+    state: "MA",
+    zip: "02110",
+  };
+  const corrected = { ...address, street1: "200 Correct St" };
+  const policyId = await f.t.run((ctx) =>
+    ctx.db.insert("policies", {
+      orgId: f.orgId,
+      carrier: "Synthetic",
+      policyNumber: "address-evidence",
+      linesOfBusiness: ["UN"],
+      documentType: "policy",
+      policyYear: 2026,
+      effectiveDate: "2026-01-01",
+      expirationDate: "2027-01-01",
+      isRenewal: false,
+      coverages: [],
+      insuredName: identity.name,
+      insuredAddress: address,
+      pipelineStatus: "complete",
+    }),
+  );
+  async function evidence(value = address) {
+    return f.t.run(async (ctx) =>
+      scanOrganizationAddressEvidence(ctx, (await ctx.db.get(f.orgId))!, value),
+    );
+  }
+  expect(await evidence()).toEqual({ matches: true, hasEvidence: true });
+  await f.t.run((ctx) =>
+    ctx.db.patch(policyId, {
+      policyDetailOverrides: {
+        insured: {
+          name: identity.name,
+          address: corrected,
+          additionalNamedInsureds: [],
+        },
+      },
+    }),
+  );
+  expect(await evidence()).toEqual({ matches: false, hasEvidence: true });
+  expect(await evidence(corrected)).toEqual({
+    matches: true,
+    hasEvidence: true,
+  });
+  await f.t.run((ctx) => ctx.db.patch(policyId, { deletedAt: 1 }));
+  expect(await evidence(corrected)).toEqual({
+    matches: false,
+    hasEvidence: false,
+  });
+  await f.t.run((ctx) =>
+    ctx.db.patch(policyId, {
+      deletedAt: undefined,
+      pipelineStatus: "running",
+      extractionDataStage: "final",
+    }),
+  );
+  expect(await evidence(corrected)).toEqual({
+    matches: false,
+    hasEvidence: false,
+  });
+});

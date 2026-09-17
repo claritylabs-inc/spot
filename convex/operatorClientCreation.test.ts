@@ -86,7 +86,7 @@ test("interactive creation retains explicit team membership and onboarding defau
       primaryInsuranceContactId: userId,
       companyResearch: {
         status: "pending",
-        unresolvedFields: ["website", "industry", "industryVertical"],
+        unresolvedFields: ["website"],
       },
     });
     expect(await ctx.db.query("orgMemberships").collect()).toMatchObject([
@@ -109,23 +109,20 @@ test("self-service creation researches missing websites and preserves explicit l
       name: "Harbor Robotics LLC d/b/a Harbor",
     });
   expect(await t.run((ctx) => ctx.db.get(orgId))).toMatchObject({
-    name: "Harbor",
-    relatedLegalEntities: [
-      { legalName: "Harbor Robotics LLC", relationship: "current" },
-    ],
+    name: "Harbor Robotics LLC d/b/a Harbor",
     companyResearch: {
       status: "pending",
-      unresolvedFields: ["website", "industry", "industryVertical"],
+      unresolvedFields: ["website"],
     },
   });
 });
 
-test("canonical standalone constructor rejects an existing client's current legal identity", async () => {
+test("canonical standalone constructor rejects a duplicate client name", async () => {
   const { t, operatorUserId } = await fixture();
   await t.run((ctx) =>
     createStandaloneClientOrganizationByOperator(ctx, {
       operatorUserId,
-      name: "Harbor Robotics LLC dba Harbor",
+      name: "Harbor Robotics LLC",
     }),
   );
   await expect(
@@ -141,107 +138,25 @@ test("canonical standalone constructor rejects an existing client's current lega
   ).toHaveLength(1);
 });
 
-test("portal client edits preserve omitted website and clear an incompatible vertical", async () => {
+test("portal client name edits preserve the omitted website", async () => {
   const { t, operatorUserId } = await fixture();
-  const clientOrgId = await t.run(async (ctx) => {
-    return await ctx.db.insert("organizations", {
+  const clientOrgId = await t.run((ctx) =>
+    ctx.db.insert("organizations", {
       name: "Harbor",
       type: "client",
       website: "https://harbor.example",
-      industry: "agriculture",
-      industryVertical: "crop_farming",
-      relatedLegalEntities: [
-        { legalName: "Harbor LLC", relationship: "current" },
-      ],
-    });
-  });
+    }),
+  );
   await t
     .withIdentity({ subject: `${operatorUserId}|session` })
     .mutation(api.operator.updateClientSettings, {
       clientOrgId,
-      industry: "construction",
+      name: "Harbor Robotics",
     });
-  const org = await t.run((ctx) => ctx.db.get(clientOrgId));
-  expect(org).toMatchObject({
-    name: "Harbor",
+  expect(await t.run((ctx) => ctx.db.get(clientOrgId))).toMatchObject({
+    name: "Harbor Robotics",
     website: "https://harbor.example",
-    industry: "construction",
-    relatedLegalEntities: [
-      { legalName: "Harbor LLC", relationship: "current" },
-    ],
     companyResearch: { status: "pending" },
-  });
-  expect(org?.industryVertical).toBeUndefined();
-});
-
-test("insurance profile form persists explicit empty entity type and source identifiers", async () => {
-  const t = convexTest(schema, modules);
-  const { userId, orgId } = await t.run(async (ctx) => {
-    const userId = await ctx.db.insert("users", {
-      email: "admin@harbor.example",
-      accountKind: "customer",
-    });
-    const orgId = await ctx.db.insert("organizations", {
-      name: "Harbor",
-      type: "client",
-      profileOverrides: { entityType: "corporation", fein: "12-3456789" },
-    });
-    await ctx.db.insert("orgMemberships", { orgId, userId, role: "admin" });
-    return { userId, orgId };
-  });
-  const profile = {
-    mailingAddress: {},
-    entityType: "" as const,
-    fein: "",
-    businessNumber: "",
-    operationsDescription: "",
-  };
-  const result = await t
-    .withIdentity({ subject: `${userId}|session` })
-    .mutation(api.orgs.updateOrganizationProfile, { profile });
-  expect(result).toEqual(profile);
-  expect((await t.run((ctx) => ctx.db.get(orgId)))?.profileOverrides).toEqual(
-    profile,
-  );
-});
-
-test("editing one insurance field preserves agent updates and does not freeze extracted fields", async () => {
-  const { t, operatorUserId } = await fixture();
-  const orgId = await t.run((ctx) =>
-    ctx.db.insert("organizations", {
-      name: "Harbor",
-      type: "client",
-      profileOverrides: {
-        entityType: "corporation",
-        operationsDescription: "Agent researched operations",
-      },
-    }),
-  );
-  const operator = t.withIdentity({ subject: `${operatorUserId}|session` });
-  const result = await operator.mutation(api.orgs.updateOrganizationProfile, {
-    operatorClientOrgId: orgId,
-    profile: { fein: "123456789" },
-  });
-  expect(result).toMatchObject({
-    entityType: "corporation",
-    operationsDescription: "Agent researched operations",
-    fein: "12-3456789",
-  });
-  const saved = await t.run((ctx) => ctx.db.get(orgId));
-  expect(saved?.profileOverrides).toEqual({
-    entityType: "corporation",
-    operationsDescription: "Agent researched operations",
-    fein: "12-3456789",
-  });
-  await operator.mutation(api.orgs.updateOrganizationProfile, {
-    operatorClientOrgId: orgId,
-    profile: { fein: "", mailingAddress: {} },
-  });
-  expect((await t.run((ctx) => ctx.db.get(orgId)))?.profileOverrides).toEqual({
-    entityType: "corporation",
-    operationsDescription: "Agent researched operations",
-    fein: "",
-    mailingAddress: {},
   });
 });
 

@@ -15,8 +15,6 @@ export const LOCAL_FIXTURE = {
   client: {
     name: "Cove",
     website: "https://cove.dev",
-    industry: "technology",
-    industryVertical: "fintech",
     agentHandle: "cove",
     context:
       "Cove builds underwriting tools for the relationship-based parts of the housing and finance ecosystem. It works with realtors, property managers, brokers, and mortgage agents. Cove is a technology company focused on underwriting and credit products.",

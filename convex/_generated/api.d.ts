@@ -198,7 +198,6 @@ import type * as lib_emailSubagent from "../lib/emailSubagent.js";
 import type * as lib_emailTemplate from "../lib/emailTemplate.js";
 import type * as lib_emailWorkflow from "../lib/emailWorkflow.js";
 import type * as lib_employeeProvisioning from "../lib/employeeProvisioning.js";
-import type * as lib_entityTypes from "../lib/entityTypes.js";
 import type * as lib_extraction from "../lib/extraction.js";
 import type * as lib_extractionFieldReview from "../lib/extractionFieldReview.js";
 import type * as lib_extractionIntegrityAudit from "../lib/extractionIntegrityAudit.js";
@@ -231,7 +230,6 @@ import type * as lib_imessageOutbound from "../lib/imessageOutbound.js";
 import type * as lib_imessageSlashCommands from "../lib/imessageSlashCommands.js";
 import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmailDeterministicControls.js";
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
-import type * as lib_industries from "../lib/industries.js";
 import type * as lib_linesOfBusiness from "../lib/linesOfBusiness.js";
 import type * as lib_liteparsePreprocessor from "../lib/liteparsePreprocessor.js";
 import type * as lib_localSeedData from "../lib/localSeedData.js";
@@ -263,7 +261,6 @@ import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.
 import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
-import type * as lib_orgProfileFacts from "../lib/orgProfileFacts.js";
 import type * as lib_orgWiki from "../lib/orgWiki.js";
 import type * as lib_orgWikiDocument from "../lib/orgWikiDocument.js";
 import type * as lib_orgWikiExtraction from "../lib/orgWikiExtraction.js";
@@ -589,7 +586,6 @@ declare const fullApi: ApiFromModules<{
   "lib/emailTemplate": typeof lib_emailTemplate;
   "lib/emailWorkflow": typeof lib_emailWorkflow;
   "lib/employeeProvisioning": typeof lib_employeeProvisioning;
-  "lib/entityTypes": typeof lib_entityTypes;
   "lib/extraction": typeof lib_extraction;
   "lib/extractionFieldReview": typeof lib_extractionFieldReview;
   "lib/extractionIntegrityAudit": typeof lib_extractionIntegrityAudit;
@@ -622,7 +618,6 @@ declare const fullApi: ApiFromModules<{
   "lib/imessageSlashCommands": typeof lib_imessageSlashCommands;
   "lib/inboundEmailDeterministicControls": typeof lib_inboundEmailDeterministicControls;
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
-  "lib/industries": typeof lib_industries;
   "lib/linesOfBusiness": typeof lib_linesOfBusiness;
   "lib/liteparsePreprocessor": typeof lib_liteparsePreprocessor;
   "lib/localSeedData": typeof lib_localSeedData;
@@ -654,7 +649,6 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorMcpToolCatalog": typeof lib_operatorMcpToolCatalog;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/orgBranding": typeof lib_orgBranding;
-  "lib/orgProfileFacts": typeof lib_orgProfileFacts;
   "lib/orgWiki": typeof lib_orgWiki;
   "lib/orgWikiDocument": typeof lib_orgWikiDocument;
   "lib/orgWikiExtraction": typeof lib_orgWikiExtraction;

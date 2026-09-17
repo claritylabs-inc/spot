@@ -208,7 +208,6 @@ export const listActivityCandidates = query({
           label: [
             org.name,
             org.primaryContactEmail,
-            org.mailingAddress?.street1,
           ]
             .filter(Boolean)
             .join(" · "),

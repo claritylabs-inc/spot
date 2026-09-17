@@ -20,15 +20,8 @@ import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
-import {
-  OrganizationInsuranceProfile,
-  type OrganizationProfile,
-} from "@/components/settings/organization-insurance-profile";
 import { TeamSection } from "@/components/settings/team-section";
-import {
-  AutoSaveStatus,
-  combineAutoSaveStatuses,
-} from "@/components/ui/auto-save-status";
+import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { StatusTag } from "@/components/ui/status-tag";
 import {
   Dialog,
@@ -54,7 +47,6 @@ import {
 import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { ClientCompanyDetails } from "./client-company-details";
 import {
   parseOperatorClientSection,
   type OperatorClientPageTab,
@@ -140,36 +132,17 @@ function ClientWorkspace({
   const settingsDraft = useLiveRecordDraft(clientOrgId, {
     name: supportDetails.name,
     website: supportDetails.website ?? "",
-    industry: supportDetails.industry ?? "",
-    industryVertical: supportDetails.industryVertical ?? "",
-    relatedLegalEntities: supportDetails.relatedLegalEntities ?? [],
   });
-  const {
-    name: organizationName,
-    website,
-    industry,
-    industryVertical,
-    relatedLegalEntities,
-  } = settingsDraft.value;
+  const { name: organizationName, website } = settingsDraft.value;
   const setOrganizationName = settingsDraft.field("name");
   const setWebsite = settingsDraft.field("website");
-  const setIndustry = settingsDraft.field("industry");
-  const setIndustryVertical = settingsDraft.field("industryVertical");
-  const setRelatedLegalEntities = settingsDraft.field("relatedLegalEntities");
   const [textFieldFocused, setTextFieldFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [disableDialogOpen, setDisableDialogOpen] = useState(false);
   const [teamInviteOpen, setTeamInviteOpen] = useState(false);
   const [savingFeatureFlagId, setSavingFeatureFlagId] =
     useState<FeatureFlagId | null>(null);
-  const [profileAutoSaveStatus, setProfileAutoSaveStatus] = useState<
-    "saved" | "saving" | "unsaved" | "error"
-  >("saved");
-
   const updateClientSettings = useMutation(api.operator.updateClientSettings);
-  const updateOrganizationProfile = useMutation(
-    api.orgs.updateOrganizationProfile,
-  );
   const setClientFeatureFlag = useMutation(api.operator.setClientFeatureFlag);
   const setClientStatus = useMutation(api.operator.setSoloClientStatus);
 
@@ -186,16 +159,6 @@ function ClientWorkspace({
     ...(settingsDraft.patch.website !== undefined
       ? { website: website.trim() }
       : {}),
-    ...(settingsDraft.patch.relatedLegalEntities !== undefined
-      ? {
-          relatedLegalEntities: relatedLegalEntities
-            .map((entity) => ({
-              ...entity,
-              legalName: entity.legalName.trim(),
-            }))
-            .filter((entity) => entity.legalName),
-        }
-      : {}),
   };
   const clientSettingsAutoSave = useLocalFirstAutoSave({
     mutationName: "operator.updateClientSettings",
@@ -203,9 +166,7 @@ function ClientWorkspace({
     valueKey: String(settingsDraft.revision),
     resetKey: clientOrgId,
     enabled: true,
-    canSave:
-      !validationError &&
-      relatedLegalEntities.every((entity) => entity.legalName.trim()),
+    canSave: !validationError,
     autoSave: !textFieldFocused,
     delayMs: 700,
     flush: async ({ patch: args, revision }) => {
@@ -217,11 +178,6 @@ function ClientWorkspace({
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Client settings could not be saved."),
   });
-  const combinedSaveStatus = combineAutoSaveStatuses(
-    clientSettingsAutoSave.status,
-    profileAutoSaveStatus,
-  );
-
   function navigate(tab: ClientTab) {
     if (tab !== "team") setTeamInviteOpen(false);
     const next = new URLSearchParams(searchParams.toString());
@@ -233,28 +189,6 @@ function ClientWorkspace({
     setTextFieldFocused(false);
     void clientSettingsAutoSave.saveNow();
   }
-
-  function requestClientSettingsSave() {
-    requestAnimationFrame(() => {
-      void clientSettingsAutoSave.saveNow();
-    });
-  }
-
-  const saveOrganizationProfile = useCallback(
-    (profile: Partial<OrganizationProfile> | null) =>
-      updateOrganizationProfile({
-        operatorClientOrgId: clientOrgId,
-        profile,
-      }),
-    [clientOrgId, updateOrganizationProfile],
-  );
-
-  const handleProfileAutoSaveChange = useCallback(
-    (status: "saved" | "saving" | "unsaved" | "error") => {
-      setProfileAutoSaveStatus(status);
-    },
-    [],
-  );
 
   const saveClientSettingsNow = clientSettingsAutoSave.saveNow;
 
@@ -293,7 +227,7 @@ function ClientWorkspace({
 
   useEffect(() => {
     if (activeTab === "overview") {
-      setShellActions(<AutoSaveStatus status={combinedSaveStatus} />);
+      setShellActions(<AutoSaveStatus status={clientSettingsAutoSave.status} />);
     } else if (activeTab === "team") {
       setShellActions(
         <PillButton size="compact" onClick={() => setTeamInviteOpen(true)}>
@@ -308,7 +242,7 @@ function ClientWorkspace({
     return () => {
       setShellActions(null);
     };
-  }, [activeTab, combinedSaveStatus, setShellActions]);
+  }, [activeTab, clientSettingsAutoSave.status, setShellActions]);
 
   useEffect(() => {
     registerBeforeImpersonationStart(saveClientSettingsNow);
@@ -361,28 +295,6 @@ function ClientWorkspace({
                     </Field>
                   </div>
                 </FormSection>
-              </OperationalPanelBody>
-            </OperationalPanel>
-
-            <OperationalPanel aria-label="Company details and insurance profile">
-              <OperationalPanelBody className="space-y-4">
-                <ClientCompanyDetails
-                  industry={industry}
-                  industryVertical={industryVertical}
-                  relatedLegalEntities={relatedLegalEntities}
-                  setIndustry={setIndustry}
-                  setIndustryVertical={setIndustryVertical}
-                  setRelatedLegalEntities={setRelatedLegalEntities}
-                  onSaveRequested={requestClientSettingsSave}
-                  onTextFocus={() => setTextFieldFocused(true)}
-                  onTextBlur={finishTextEdit}
-                />
-                <OrganizationInsuranceProfile
-                  key={String(supportDetails._id)}
-                  org={supportDetails}
-                  onSaveProfile={saveOrganizationProfile}
-                  onAutoSaveChange={handleProfileAutoSaveChange}
-                />
               </OperationalPanelBody>
             </OperationalPanel>
 

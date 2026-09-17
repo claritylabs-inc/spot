@@ -1,9 +1,5 @@
 import { parseMarkdownDocument } from "./markdownDocument";
-import {
-  clientIdentity,
-  clientIdentityMatches,
-  clientClassificationPatch,
-} from "./clientProfile";
+import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
 
 import type { Id, TableNames } from "../_generated/dataModel";
@@ -979,16 +975,6 @@ export async function preflightOperatorToolConfirmation(
       if (args.input.website !== null) validateOptionalUrl(args.input.website);
       if (args.input.name !== undefined && !normalizedText(args.input.name))
         throw new Error("Organization name cannot be blank");
-      clientClassificationPatch(org, {
-        industry:
-          args.input.industry === undefined
-            ? undefined
-            : (normalizedText(args.input.industry) ?? null),
-        industryVertical:
-          args.input.industryVertical === undefined
-            ? undefined
-            : (normalizedText(args.input.industryVertical) ?? null),
-      });
       if (org.type === "broker")
         assertExternalBrokerIdentity({
           ...org,
@@ -999,14 +985,6 @@ export async function preflightOperatorToolConfirmation(
             ? { website: normalizedText(args.input.website) }
             : {}),
         });
-      if (
-        org.type === "broker" &&
-        (args.input.relatedLegalEntities !== undefined ||
-          args.input.insuranceProfile !== undefined)
-      )
-        throw new Error(
-          "Insurance profile and legal entities are client-only fields",
-        );
       return;
     }
     case "research_client":

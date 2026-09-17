@@ -1,3 +1,4 @@
+import { resolvePolicyPartyContext } from "./policyPartyContext";
 import { requestPacketText } from "./procurementNarrative";
 import { appendPrivatePacketNote } from "./packetDocuments";
 import { getMarkdownDocument } from "../markdownDocuments";
@@ -45,17 +46,87 @@ export type ScanTarget = {
     | null;
 };
 
+export function scanOrganizationAddressKey(
+  org: { type?: "client" | "broker"; name: string },
+  address: NonNullable<ScanOperation["identity"]["address"]>,
+) {
+  return `${org.type ?? "client"}:${normalizedIdentity(org.name)}:address:${[
+    address.street1,
+    address.city,
+    address.state,
+    address.zip,
+  ]
+    .map(normalizedIdentity)
+    .join("|")}`;
+}
+
 function scanIdentityKeys(identity: ScanOperation["identity"]) {
   const name = normalizedIdentity(identity.name);
   return [
     `${identity.kind}:${name}:${normalizedIdentity(identity.contactEmail)}`,
     ...(identity.address
       ? [
-          `${identity.kind}:${name}:address:${Object.values(identity.address).map(normalizedIdentity).join("|")}`,
+          scanOrganizationAddressKey(
+            { type: identity.kind, name: identity.name },
+            identity.address,
+          ),
         ]
       : []),
   ];
 }
+export async function scanOrganizationAddressEvidence(
+  ctx: Ctx,
+  org: Doc<"organizations">,
+  address: NonNullable<ScanOperation["identity"]["address"]>,
+) {
+  const bindings = await ctx.db
+    .query("operatorWorkspaceScanIdentities")
+    .withIndex("organization", (q) => q.eq("orgId", org._id))
+    .take(101);
+  if (bindings.length > 100)
+    throw new ScanAttention(
+      "Organization has too many identity anchors to reconcile automatically",
+    );
+  const prefix = `${org.type ?? "client"}:${normalizedIdentity(org.name)}:address:`;
+  const addresses = bindings.filter((binding) =>
+    binding.identityKey.startsWith(prefix),
+  );
+  const identityKey = scanOrganizationAddressKey(org, address);
+  if (addresses.some((binding) => binding.identityKey === identityKey))
+    return { matches: true, hasEvidence: true };
+  const policies = await ctx.db
+    .query("policies")
+    .withIndex("organization", (q) => q.eq("orgId", org._id))
+    .take(101);
+  if (policies.length > 100)
+    throw new ScanAttention(
+      "Organization has too many policies to reconcile address evidence automatically",
+    );
+  const insuredAddresses = policies
+    .filter(
+      (policy) =>
+        policy.deletedAt === undefined &&
+        (policy.pipelineStatus === undefined ||
+          policy.pipelineStatus === "complete") &&
+        (policy.extractionDataStage ??
+          (policy.pipelineStatus === "complete" ? "final" : "placeholder")) ===
+          "final",
+    )
+    .map((policy) => resolvePolicyPartyContext(policy).insuredAddress)
+    .filter((value) => value !== undefined && typeof value !== "string");
+  return {
+    hasEvidence: addresses.length > 0 || insuredAddresses.length > 0,
+    matches: insuredAddresses.some((insuredAddress) =>
+      Object.entries(address).every(
+        ([key, value]) =>
+          normalizedIdentity(
+            insuredAddress[key as keyof typeof address] ?? "",
+          ) === normalizedIdentity(value),
+      ),
+    ),
+  };
+}
+
 export async function resolveScanOrganization(
   ctx: Ctx,
   identity: ScanOperation["identity"],
@@ -72,10 +143,13 @@ export async function resolveScanOrganization(
   }
   const boundIds: Id<"organizations">[] = [];
   for (const identityKey of scanIdentityKeys(identity)) {
-    const bound = await ctx.db
+    const bindings = await ctx.db
       .query("operatorWorkspaceScanIdentities")
       .withIndex("identity", (q) => q.eq("identityKey", identityKey))
-      .unique();
+      .take(2);
+    if (bindings.length > 1)
+      throw new ScanAttention("Organization identity anchor is ambiguous");
+    const bound = bindings[0];
     if (bound) {
       const org = await ctx.db.get(bound.orgId);
       if (
@@ -90,7 +164,7 @@ export async function resolveScanOrganization(
     }
   }
   const contactEmail = normalizedIdentity(identity.contactEmail);
-  const [contacts, named, users, addresses] = await Promise.all([
+  const [contacts, named, users] = await Promise.all([
     ctx.db
       .query("organizations")
       .withIndex("scan_contact", (q) =>
@@ -105,16 +179,6 @@ export async function resolveScanOrganization(
       .query("users")
       .withIndex("email", (q) => q.eq("email", contactEmail))
       .take(21),
-    identity.address
-      ? ctx.db
-          .query("organizations")
-          .withIndex("scan_address", (q) =>
-            q
-              .eq("mailingAddress.street1", identity.address!.street1)
-              .eq("mailingAddress.zip", identity.address!.zip),
-          )
-          .take(21)
-      : Promise.resolve([]),
   ]);
   if (contacts.length > 20 || named.length > 20 || users.length > 20)
     throw new ScanAttention("Identity has too many conflicting exact matches");
@@ -138,9 +202,10 @@ export async function resolveScanOrganization(
   ).filter((org): org is Doc<"organizations"> => !!org);
   const organizations = [
     ...new Map(
-      [...contacts, ...named, ...memberOrgs, ...discovered, ...addresses].map(
-        (org) => [org._id, org],
-      ),
+      [...contacts, ...named, ...memberOrgs, ...discovered].map((org) => [
+        org._id,
+        org,
+      ]),
     ).values(),
   ];
   const sameName = organizations.filter(
@@ -148,10 +213,7 @@ export async function resolveScanOrganization(
       org.type === identity.kind &&
       normalizedIdentity(org.name) === normalizedIdentity(identity.name),
   );
-  if (
-    !sameName.length &&
-    (contacts.length || memberOrgs.length || addresses.length)
-  )
+  if (!sameName.length && (contacts.length || memberOrgs.length))
     throw new ScanAttention(
       "A known participant is associated with a different organization name; review the legal identity before creating a record",
     );
@@ -160,17 +222,11 @@ export async function resolveScanOrganization(
     const emailMatches =
       normalizedIdentity(org.primaryContactEmail ?? "") === contactEmail ||
       memberOrgs.some((memberOrg) => memberOrg._id === org._id);
-    const address = identity.address;
-    const addressMatches =
-      address &&
-      org.mailingAddress &&
-      Object.entries(address).every(
-        ([key, value]) =>
-          normalizedIdentity(
-            org.mailingAddress?.[key as keyof typeof address] ?? "",
-          ) === normalizedIdentity(value),
-      );
-    if (emailMatches || addressMatches) matches.push(org);
+    const addressEvidence = identity.address
+      ? await scanOrganizationAddressEvidence(ctx, org, identity.address)
+      : null;
+    if (addressEvidence?.hasEvidence && !addressEvidence.matches) continue;
+    if (emailMatches || addressEvidence?.matches) matches.push(org);
   }
   if (matches.length > 1 || (sameName.length && !matches.length))
     throw new ScanAttention(
@@ -379,9 +435,17 @@ export async function writeScanDomain(
             operatorStatus: "live",
           });
     await ctx.db.patch(orgId, {
-      mailingAddress: op.identity.address,
       primaryContactEmail: op.identity.contactEmail,
     });
+    if (op.identity.kind === "client") {
+      await writeWorkspaceScanCompanyFacts(ctx, {
+        operatorUserId,
+        orgId,
+        key: "profile",
+        body: `Company address: ${Object.values(op.identity.address).join(", ")}.`,
+        replaces: [],
+      });
+    }
     for (const identityKey of scanIdentityKeys(op.identity))
       await ctx.db.insert("operatorWorkspaceScanIdentities", {
         identityKey,

@@ -13,11 +13,6 @@ import {
 
 export type PolicyPartyAddress = string | OperationalAddress;
 
-type ClientProfileFacts = {
-  mailingAddress?: { value?: unknown };
-  operationsDescription?: { value?: unknown };
-};
-
 type ResolvedParty = Omit<OperationalParty, "address"> & {
   address?: PolicyPartyAddress;
   naicNumber?: string;
@@ -164,7 +159,6 @@ function upsertResolvedParty(
 
 export function resolvePolicyPartyContext(
   policy: Record<string, any>,
-  options: { clientProfileFacts?: ClientProfileFacts } = {},
 ) {
   const profile = compatibilityRecord(policy.operationalProfile) as Partial<PolicyOperationalProfile>;
   const declarationValue = declarationValues(policy);
@@ -207,7 +201,6 @@ export function resolvePolicyPartyContext(
     : insuredParty?.address ??
       sourceBackedMailingAddress ??
       address(policy.insuredAddress) ??
-      address(options.clientProfileFacts?.mailingAddress?.value) ??
       joinLines(
         declarationValue("masterPolicyHolderAndMailingAddressStreet")?.replace(/;$/, ""),
         declarationValue("masterPolicyHolderAndMailingAddressCityStateZip"),
@@ -357,7 +350,6 @@ export function resolvePolicyPartyContext(
   )
     ? text(detailOverrides.operationsDescription)
     : sourceBackedText(profile.operationsDescription) ??
-      sourceBackedText(options.clientProfileFacts?.operationsDescription) ??
       declarationValue("descriptionOfOperations", "operationsDescription", "businessOperations");
   const additionalNamedInsureds = insuredOverride
     ? (Array.isArray(insuredOverride.additionalNamedInsureds)

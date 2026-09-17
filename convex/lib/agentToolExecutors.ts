@@ -46,7 +46,6 @@ import {
   resolvePolicyCarrierDisplay,
   resolvePolicyPartyContext,
 } from "./policyPartyContext";
-import { effectiveOrganizationProfileFacts } from "./orgProfileFacts";
 import { lookupMapboxAddress } from "./mapboxAddress";
 import { createAgentPolicyPresentationState } from "./agentPolicyPresentation";
 import type { AgentToolSurface } from "./agentMessageHistory";
@@ -82,7 +81,6 @@ type ListedPolicyForTool = Record<string, any> & {
   _id?: Id<"policies">;
   orgId?: Id<"organizations">;
   _scopeOrgName?: string;
-  _clientProfileFacts?: Record<string, any>;
 };
 
 export type BuildAgentToolExecutorsOptions = {
@@ -124,13 +122,7 @@ function orgWikiSourceForSurface(surface: AgentToolSurface) {
 function formatPolicyForTool(policy: Record<string, any>) {
   const extractionDataStage = effectivePolicyDataStage(policy);
   const provisional = extractionDataStage === "preview";
-  const clientProfileFacts =
-    policy._clientProfileFacts && typeof policy._clientProfileFacts === "object"
-      ? (policy._clientProfileFacts as Record<string, any>)
-      : {};
-  const partyContext = resolvePolicyPartyContext(policy, {
-    clientProfileFacts,
-  });
+  const partyContext = resolvePolicyPartyContext(policy);
   const carrierDisplay = resolvePolicyCarrierDisplay(policy);
   return {
     id: policy._id,
@@ -141,23 +133,6 @@ function formatPolicyForTool(policy: Record<string, any>) {
     operationsDescription: partyContext.operationsDescription,
     additionalNamedInsureds: partyContext.additionalNamedInsureds,
     policyParties: partyContext.parties,
-    clientProfile: {
-      namedInsured: clientProfileFacts.namedInsured?.value,
-      mailingAddress: clientProfileFacts.mailingAddress?.value,
-      operationsDescription: clientProfileFacts.operationsDescription?.value,
-      dba: clientProfileFacts.dba?.value,
-      entityType: clientProfileFacts.entityType?.value,
-      taxId: clientProfileFacts.taxId?.value,
-      fein: clientProfileFacts.fein?.value ?? clientProfileFacts.taxId?.value,
-      businessNumber: clientProfileFacts.businessNumber?.value,
-      additionalNamedInsureds: Array.isArray(
-        clientProfileFacts.additionalNamedInsureds,
-      )
-        ? clientProfileFacts.additionalNamedInsureds
-            .map((fact: Record<string, any>) => fact?.value)
-            .filter(Boolean)
-        : undefined,
-    },
     carrier:
       carrierDisplay.carrierDisplayName ??
       partyContext.carrierDisplayName ??
@@ -256,19 +231,12 @@ async function listPoliciesForReadableOrgs(
   const readOrgIds = options.readOrgIds ?? options.scope.readOrgIds;
   const rows = await Promise.all(
     readOrgIds.map(async (orgId) => {
-      const [policies, org] = await Promise.all([
-        ctx.runQuery(internal.policies.listAllPreviewReadableInternal, {
-          orgId,
-        }),
-        ctx.runQuery(internal.orgs.getInternal, { id: orgId }),
-      ]);
+      const policies = await ctx.runQuery(internal.policies.listAllPreviewReadableInternal, {
+        orgId,
+      });
       return (policies as Array<Record<string, unknown>>).map((policy) => ({
         ...policy,
         _scopeOrgName: orgLabelForScope(options.scope, orgId),
-        _clientProfileFacts:
-          org && typeof org === "object"
-            ? effectiveOrganizationProfileFacts(org as Record<string, unknown>)
-            : undefined,
       }));
     }),
   );
@@ -289,19 +257,7 @@ async function resolveReadablePolicy(
   if (!policy.orgId || !canReadOrg(options, policy.orgId)) {
     return { ok: false as const, message: "Policy not found." };
   }
-  const org = await ctx.runQuery(internal.orgs.getInternal, {
-    id: policy.orgId,
-  });
-  return {
-    ok: true,
-    policy: {
-      ...policy,
-      _clientProfileFacts:
-        org && typeof org === "object"
-          ? effectiveOrganizationProfileFacts(org as Record<string, unknown>)
-          : undefined,
-    },
-  };
+  return { ok: true, policy };
 }
 
 async function resolveWritablePolicy(

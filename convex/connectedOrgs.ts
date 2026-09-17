@@ -62,8 +62,6 @@ function publicOrg(org: Doc<"organizations">) {
     _id: org._id,
     name: org.name,
     website: org.website,
-    industry: org.industry,
-    industryVertical: org.industryVertical,
 
     type: org.type ?? "client",
   };

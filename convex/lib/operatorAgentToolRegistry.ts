@@ -1,8 +1,3 @@
-import {
-  relatedLegalEntitySchema,
-  insuranceProfilePatchSchema,
-} from "./clientProfile";
-import { INDUSTRIES } from "./industries";
 import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 
@@ -275,7 +270,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_organization: defineOperatorTool({
     version: 1,
     description:
-      "Get the full current organization identity, legal entities, effective insurance profile, public research status, lifecycle, feature flags and counts by exact organization ID. Read the company wiki separately.",
+      "Get the current organization name, website, public research status, lifecycle, feature flags and counts by exact organization ID. Read company details from the company wiki separately.",
     inputSchema: z.object({ orgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -1700,9 +1695,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create standalone client ${JSON.stringify(input.name)}`,
   }),
   update_organization_profile: defineOperatorTool({
-    version: 3,
+    version: 4,
     description:
-      "Update the full editable client profile. Only supplied fields change. Legal entities replace the list: preserve supported existing entries. Insurance profile fields merge with existing overrides; empty strings clear text. Keep detailed narrative in the company wiki. Public identity edits schedule research.",
+      "Update the organization name or website. Only supplied fields change. Store company details in the company Markdown using update_client_wiki. Public identity edits schedule research.",
     inputSchema: z
       .object({
         orgId: organizationId,
@@ -1710,28 +1705,11 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         website: clearable(optionalHttpUrl.max(500)).describe(
           "Omit to preserve the saved website. Pass null only when the operator explicitly requested or evidence supports clearing it.",
         ),
-        industry: clearable(z.enum(INDUSTRIES.map((item) => item.value))),
-        industryVertical: clearable(z.string().max(200)).describe(
-          "Exact vertical value belonging to the selected industry: " +
-            INDUSTRIES.map(
-              (item) =>
-                `${item.value}: ${item.verticals.map((vertical) => vertical.value).join(", ")}`,
-            ).join("; "),
-        ),
-        relatedLegalEntities: omittable(
-          z.array(relatedLegalEntitySchema).max(100),
-        ),
-        insuranceProfile: omittable(insuranceProfilePatchSchema),
       })
+      .strict()
       .refine(
-        (input) =>
-          input.name !== undefined ||
-          input.website !== undefined ||
-          input.industry !== undefined ||
-          input.industryVertical !== undefined ||
-          input.relatedLegalEntities !== undefined ||
-          input.insuranceProfile !== undefined,
-        "At least one profile field is required",
+        (input) => input.name !== undefined || input.website !== undefined,
+        "At least one identity field is required",
       ),
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -1740,21 +1718,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => {
       const fields = [
-        input.relatedLegalEntities !== undefined
-          ? `legal entities=${JSON.stringify(input.relatedLegalEntities)}`
-          : null,
-        input.insuranceProfile !== undefined
-          ? `insurance profile=${JSON.stringify(input.insuranceProfile)}`
-          : null,
         input.name !== undefined ? `name=${JSON.stringify(input.name)}` : null,
         input.website !== undefined
           ? `website=${JSON.stringify(input.website)}`
-          : null,
-        input.industry !== undefined
-          ? `industry=${JSON.stringify(input.industry)}`
-          : null,
-        input.industryVertical !== undefined
-          ? `industryVertical=${JSON.stringify(input.industryVertical)}`
           : null,
       ].filter(Boolean);
       return `Update organization ${input.orgId}: ${fields.join(", ")}`;
@@ -1763,7 +1729,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   research_client: defineOperatorTool({
     version: 1,
     description:
-      "Research an exact client's public identity, official website, industry and vertical, and enrich its company Markdown with supported facts. Schedules durable research; read get_organization for completed, partial or failed outcomes. Never claim a queued task is complete.",
+      "Research an exact client's public identity and official website, and enrich its company Markdown with supported facts. Schedules durable research; read get_organization for completed, partial or failed outcomes. Never claim a queued task is complete.",
     inputSchema: z.object({ orgId: organizationId }),
     capability: "operator.organizations.write",
     effect: "reversible_write",
