@@ -135,6 +135,9 @@ every supplied source unit for facts missing from that projection. Support,
 contradiction, representability, and omission questions share bounded requests.
 Independent batches run with bounded concurrency; speculative questions only
 affect acceptance when their branch is consumed. Repairs require a fresh audit.
+Facts without their own citations remain explicitly uncited and require review
+against the complete supplied text. Invalid citation IDs cannot use this path;
+partial context remains unresolved. Audit receipts do not invent citations.
 
 Traversal counts are code-owned. Oversized or unreadable units, normalization
 gaps, missing evidence, unresolved cross-section context, exhausted budgets,
@@ -160,7 +163,10 @@ and deterministic policy projections remain owned by their existing code.
 judgments over the same supplied document. Accepted changes still pass the
 registered-field application and numeric/date checks. Unsupported candidates,
 contradictions, missing context, or exceeded bounds retain the original reasoning
-review; clipped snippets cannot establish completeness.
+review; clipped snippets cannot establish completeness. An absent optional field
+can remain absent only after a separate judgment finds no source-backed value or
+row to add. This branch never clears an existing value. The local .99 evidence
+floor is conservative configuration, not a calibrated quality result.
 
 ## Related judgments still using reasoning
 
