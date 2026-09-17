@@ -9,34 +9,6 @@ import {
 } from "./domainDecisionQuestions";
 import { ORG_WIKI_SECTIONS, type OrgWikiSectionKey } from "./orgWiki";
 
-export function hasDurableCompanyFacts(
-  ctx: ActionCtx,
-  orgId: Id<"organizations">,
-  organizationName: string,
-  text: string,
-) {
-  return decideWithFallback({
-    ctx,
-    orgId,
-    family: "memory.durable_fact_detection",
-    state: { organizationName, text },
-    questions: {
-      presence: choiceQuestion(
-        "Does this source contain any explicit durable company-profile facts about the target organization?",
-        {
-          yes: "Legal structure, headquarters, products, operations, employees, dated revenue, supported ownership, or compliance posture.",
-          no: "Only policy terms, certificate details, recipients, attachments, one-off workflow tasks, requests, opinions, or no facts about the target company.",
-        },
-      ),
-    },
-    accept: (answers) => {
-      const selected = acceptedChoice(answers.presence, ["yes", "no"]);
-      return selected ? selected.value === "yes" : undefined;
-    },
-    fallback: async () => true, // Reasoning extraction below decides whether facts exist.
-  });
-}
-
 export async function reviewCompanyFacts<
   T extends { section: string; content: string },
 >(

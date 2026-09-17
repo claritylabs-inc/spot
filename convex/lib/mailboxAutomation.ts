@@ -3,7 +3,6 @@ import { z } from "zod";
 export type ConnectedEmailAutomation = {
   policyImports: boolean;
   requirementImports: boolean;
-  companyMemory: boolean;
 };
 
 export function effectiveConnectedEmailAutomation(
@@ -12,7 +11,6 @@ export function effectiveConnectedEmailAutomation(
   return {
     policyImports: automation?.policyImports ?? false,
     requirementImports: automation?.requirementImports ?? false,
-    companyMemory: automation?.companyMemory ?? false,
   };
 }
 
@@ -20,11 +18,7 @@ export function hasConnectedEmailAutomation(
   automation?: Partial<ConnectedEmailAutomation> | null,
 ) {
   const effective = effectiveConnectedEmailAutomation(automation);
-  return (
-    effective.policyImports ||
-    effective.requirementImports ||
-    effective.companyMemory
-  );
+  return effective.policyImports || effective.requirementImports;
 }
 
 export type MailboxAutomationPolicy = {
@@ -55,7 +49,6 @@ export const mailboxAutomationClassificationSchema = z.enum([
   "ignore",
   "policy_document",
   "insurance_requirements",
-  "company_context",
   "multiple",
   "review_needed",
 ]);
@@ -76,7 +69,6 @@ export const mailboxAutomationDecisionSchema = z.object({
     .enum(["lease_agreement", "client_contract", "vendor_requirements", "other"])
     .nullable(),
   requirementScope: z.enum(["vendors", "own_org"]).nullable(),
-  extractCompanyMemory: z.boolean(),
   attentionTitle: z.string().max(160).nullable(),
   attentionBody: z.string().max(1200).nullable(),
 });

@@ -21,7 +21,6 @@ export type EmailScope = "user" | "org";
 export type MailboxAutomation = {
   policyImports: boolean;
   requirementImports: boolean;
-  companyMemory: boolean;
 };
 
 export type ConnectedEmailAccountRow = {
@@ -54,13 +53,11 @@ export const EMAIL_SCOPE_LABELS: Record<EmailScope, string> = {
 export const AUTOMATION_ENABLED: MailboxAutomation = {
   policyImports: true,
   requirementImports: true,
-  companyMemory: true,
 };
 
 export const AUTOMATION_DISABLED: MailboxAutomation = {
   policyImports: false,
   requirementImports: false,
-  companyMemory: false,
 };
 
 export function GoogleLogo(props: SVGProps<SVGSVGElement>) {
@@ -114,7 +111,10 @@ export function iconForMailboxHost(host: string) {
 
 export function configuredAutomation(account: ConnectedEmailAccountRow) {
   if (!account.automationConfigured) return AUTOMATION_DISABLED;
-  return account.automation ?? AUTOMATION_DISABLED;
+  return {
+    policyImports: account.automation?.policyImports ?? false,
+    requirementImports: account.automation?.requirementImports ?? false,
+  };
 }
 
 export function automationSummary(account: ConnectedEmailAccountRow) {
@@ -126,11 +126,9 @@ export function automationSummary(account: ConnectedEmailAccountRow) {
   const enabled = [
     automation.policyImports ? "policies" : null,
     automation.requirementImports ? "requirements" : null,
-    automation.companyMemory ? "company wiki" : null,
   ].filter(Boolean);
 
   if (enabled.length === 0) return "Monitoring off";
-  if (enabled.length === 3) return "Policies, requirements, and company wiki";
   return enabled.join(" and ");
 }
 
@@ -195,11 +193,6 @@ export function AutomationToggleRows({
       key: "requirementImports",
       title: "Insurance requirements",
       description: "Import requests from clients, lenders, landlords, and investors.",
-    },
-    {
-      key: "companyMemory",
-      title: "Company wiki",
-      description: "Add durable company facts to the company wiki.",
     },
   ];
 
