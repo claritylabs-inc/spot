@@ -909,3 +909,20 @@ starts a new chat turn from a finished, non-direct-tool run owned by the current
 operator, preserving original input, attachments, history, and prior-work context.
 The separate error-context option adds the saved failure and last tool name.
 Reruns reject active threads and never reuse approval records or execution state.
+
+## Web response streaming
+
+Operator and client web replies stream through durable router jobs. `stream: true`
+requests send ordered, cumulative text snapshots to the existing result capability
+with `status: "progress"`; Spot validates invocation, token, fingerprint, router
+ID, sequence, active message, and operator checkpoint before updating the reply.
+Only text is streamed; tool execution waits for the terminal model result.
+Cancelled/terminal jobs reject late progress. Router progress delivery is best
+effort and never restarts inference. Deploy the router schema/API and worker
+support before enabling the Spot consumer change.
+
+Profile settings store personal `users.streamResponses` (default on) and
+`users.showThinking` (default off). Both operator and client web renderers share
+these preferences. Show thinking displays a collapsible summary of tool activity,
+not raw reasoning or tool payloads. Approvals and task artifacts remain independent
+of these display preferences. Non-web channel delivery stays terminal-only.

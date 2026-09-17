@@ -134,6 +134,7 @@ class AgentIncompleteOutputError extends Error {
   }
 }
 export type AgentModelRunOptions = {
+  streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
   durable?: { invocationKey: string; route?: ModelRoute };
   sessionKey: string;
   taskKind: ModelCallTaskKind;
@@ -948,7 +949,7 @@ function agentLanguageModel(
             payload,
             `${invocationKey}:${jobStep}`,
             abortSignal,
-            { wait: run.durable ? "yield" : "poll" },
+            { wait: run.durable ? "yield" : "poll", streamTarget: run.streamTarget },
           );
           jobStep += 1;
           return result;

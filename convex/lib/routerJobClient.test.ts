@@ -4,6 +4,7 @@ import type { ActionCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   callbackSiteUrl,
+  cancelDurableRouterRequest,
   executeDurableRouterRequest,
   RouterJobPending,
 } from "./routerJobClient";
@@ -186,4 +187,63 @@ test("callback tunnel overrides are HTTPS origins and cannot replace production"
   vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
   vi.stubEnv("SPOT_ROUTER_CALLBACK_URL", "https://spot-test.example");
   expect(() => callbackSiteUrl()).toThrow("canonical Spot origin");
+});
+
+test("freezes a web stream destination through lost acknowledgements", async () => {
+  const h = harness();
+  const fetch = vi
+    .fn()
+    .mockRejectedValueOnce(new TypeError("ACK lost"))
+    .mockResolvedValueOnce(Response.json({ jobId: "router-1" }));
+  vi.stubGlobal("fetch", fetch);
+  const streamTarget = "message-1" as Id<"threadMessages">;
+  await expect(
+    executeDurableRouterRequest(
+      h.ctx,
+      "generate",
+      { prompt: "hello" },
+      "web:1",
+      undefined,
+      { streamTarget },
+    ),
+  ).rejects.toBeInstanceOf(RouterJobPending);
+  await expect(
+    executeDurableRouterRequest(
+      h.ctx,
+      "generate",
+      { prompt: "hello" },
+      "web:1",
+    ),
+  ).rejects.toBeInstanceOf(RouterJobPending);
+  expect(h.row().streamTarget).toBe(streamTarget);
+  expect(JSON.parse(fetch.mock.calls[0][1].body).stream).toBe(true);
+  expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body);
+});
+
+test("cancels the original streaming job after a lost submission acknowledgement", async () => {
+  const h = harness();
+  const fetch = vi
+    .fn()
+    .mockRejectedValueOnce(new TypeError("ACK lost"))
+    .mockResolvedValueOnce(Response.json({ jobId: "router-1" }))
+    .mockResolvedValueOnce(Response.json({ status: "cancelled" }));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    executeDurableRouterRequest(
+      h.ctx,
+      "generate",
+      { prompt: "hello" },
+      "web:1",
+      undefined,
+      {
+        streamTarget: "message-1" as Id<"threadMessages">,
+      },
+    ),
+  ).rejects.toBeInstanceOf(RouterJobPending);
+  await cancelDurableRouterRequest(h.ctx, "web:1");
+  expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body);
+  expect(fetch.mock.calls[2][0]).toBe(
+    "http://localhost:8080/v1/jobs/router-1/cancel",
+  );
+  expect(h.row().status).toBe("cancelled");
 });

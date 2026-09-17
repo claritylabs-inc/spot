@@ -106,3 +106,24 @@ allowlists. The override is an origin only: no credentials, path, query, or
 fragment. Production retains its canonical Spot origin and rejects other values.
 This override applies to request, result, and job-owned asset capability URLs;
 it grants no access without the original per-job capability token.
+
+## Web response streaming
+
+Operator and client web replies stream through durable router jobs. `stream: true`
+requests send ordered, cumulative text snapshots to the existing result capability
+with `status: "progress"`; Spot validates invocation, token, fingerprint, router
+ID, sequence, active message, and operator checkpoint before updating the reply.
+Only text is streamed; tool execution waits for the terminal model result.
+Cancelled/terminal jobs reject late progress. Router progress delivery is best
+effort and never restarts inference. Deploy the router schema/API and worker
+support before enabling the Spot consumer change.
+
+Profile settings store personal `users.streamResponses` (default on) and
+`users.showThinking` (default off). Both operator and client web renderers share
+these preferences. Show thinking displays a collapsible summary of tool activity,
+not raw reasoning or tool payloads. Approvals and task artifacts remain independent
+of these display preferences. Non-web channel delivery stays terminal-only.
+
+These preferences control presentation only; turning streaming off does not stop
+router progress callbacks. A transport rollback must deploy a Spot consumer that
+omits `stream: true` and drain in-flight jobs before removing router support.

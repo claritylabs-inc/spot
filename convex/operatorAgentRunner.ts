@@ -355,6 +355,13 @@ export const run = internalAction({
               : ""),
           messages,
           tools,
+          onStepFinish: async (step) => {
+            if (traceChannel !== "web") return;
+            await ctx.runMutation(internal.routerJobs.recordToolActivity, {
+              target: run.agentMessageId,
+              tools: step.toolCalls.map((call) => call.toolName),
+            });
+          },
           stopWhen: [
             stepCountIs(OPERATOR_AGENT_MAX_STEPS),
             () => Boolean(pendingConfirmation),
@@ -362,6 +369,9 @@ export const run = internalAction({
         },
         {
           taskKind: "operator_agent",
+          ...(traceChannel === "web"
+            ? { streamTarget: run.agentMessageId }
+            : {}),
           durable: {
             invocationKey: `operator:${String(run._id)}:${expectedCheckpointIteration}`,
             route: continuation?.route,

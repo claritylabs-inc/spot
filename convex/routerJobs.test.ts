@@ -177,3 +177,186 @@ test("upload cleanup preserves adopted blobs after a lost mutation acknowledgeme
   ).toBe(true);
   expect(await t.run((ctx) => ctx.storage.get(orphan))).toBeNull();
 });
+
+test("streams ordered snapshots only to the active message and rejects stale or foreign callbacks", async () => {
+  const { t, args, row } = await fixture();
+  const target = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", { name: "Client" });
+    const userId = await ctx.db.insert("users", { name: "Viewer" });
+    const threadId = await ctx.db.insert("threads", {
+      orgId,
+      createdBy: userId,
+      title: "Chat",
+      lastMessageAt: 0,
+    });
+    const id = await ctx.db.insert("threadMessages", {
+      threadId,
+      orgId,
+      channel: "chat",
+      role: "agent",
+      content: "",
+      status: "processing",
+    });
+    await ctx.db.patch(row._id, { streamTarget: id });
+    return id;
+  });
+  const progress = {
+    id: row._id,
+    tokenHash: args.resultTokenHash,
+    jobId: "router-1",
+    invocationKey: args.invocationKey,
+    fingerprint: args.fingerprint,
+    sequence: 2,
+    text: "The renewal costs",
+  };
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      ...progress,
+      tokenHash: "wrong",
+    }),
+  ).toBe(false);
+  expect(await t.mutation(internal.routerJobs.progress, progress)).toBe(true);
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      ...progress,
+      sequence: 1,
+      text: "The",
+    }),
+  ).toBe(true);
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      ...progress,
+      jobId: "another",
+      sequence: 3,
+    }),
+  ).toBe(false);
+  expect((await t.run((ctx) => ctx.db.get(target)))?.content).toBe(
+    "The renewal costs",
+  );
+  await t.run((ctx) =>
+    ctx.db.patch(target, {
+      status: "cancelled",
+      content: "Response cancelled.",
+    }),
+  );
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      ...progress,
+      sequence: 3,
+    }),
+  ).toBe(false);
+  expect((await t.run((ctx) => ctx.db.get(target)))?.content).toBe(
+    "Response cancelled.",
+  );
+});
+
+test("terminal jobs never replace the final reply with delayed progress", async () => {
+  vi.useFakeTimers();
+  const { t, row, args } = await fixture();
+  const target = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", { name: "Client" });
+    const userId = await ctx.db.insert("users", { name: "Viewer" });
+    const threadId = await ctx.db.insert("threads", {
+      orgId,
+      createdBy: userId,
+      title: "Chat",
+      lastMessageAt: 0,
+    });
+    const id = await ctx.db.insert("threadMessages", {
+      threadId,
+      orgId,
+      channel: "chat",
+      role: "agent",
+      content: "",
+      status: "processing",
+    });
+    await ctx.db.patch(row._id, { streamTarget: id });
+    return id;
+  });
+  await t.mutation(internal.routerJobs.cancel, { id: row._id });
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      id: row._id,
+      tokenHash: args.resultTokenHash,
+      jobId: "router-1",
+      invocationKey: args.invocationKey,
+      fingerprint: args.fingerprint,
+      sequence: 1,
+      text: "late",
+    }),
+  ).toBe(false);
+  expect((await t.run((ctx) => ctx.db.get(target)))?.content).toBe("");
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+});
+
+test("operator streaming survives durable polling yields but fences approval waits and old checkpoints", async () => {
+  const { t, args, row } = await fixture();
+  const { runId, messageId, invocationKey } = await t.run(async (ctx) => {
+    const ownerUserId = await ctx.db.insert("users", { name: "Operator" });
+    const threadId = await ctx.db.insert("operatorAgentThreads", {
+      ownerUserId,
+      visibility: "private",
+      channel: "chat",
+      title: "Task",
+      lastMessageAt: 0,
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    const messageId = await ctx.db.insert("operatorAgentMessages", {
+      ownerUserId,
+      threadId,
+      channel: "chat",
+      role: "agent",
+      content: "",
+      status: "processing",
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    const runId = await ctx.db.insert("operatorAgentRuns", {
+      operatorUserId: ownerUserId,
+      threadId,
+      userMessageId: messageId,
+      agentMessageId: messageId,
+      objective: "Task",
+      status: "queued",
+      checkpoint: { iteration: 0, executionCount: 0 },
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    const invocationKey = `operator:${runId}:0:0`;
+    await ctx.db.patch(row._id, { streamTarget: messageId, invocationKey });
+    return { runId, messageId, invocationKey };
+  });
+  const progress = {
+    id: row._id,
+    tokenHash: args.resultTokenHash,
+    jobId: "router-1",
+    invocationKey,
+    fingerprint: args.fingerprint,
+    sequence: 1,
+    text: "Live reply",
+  };
+  expect(await t.mutation(internal.routerJobs.progress, progress)).toBe(true);
+  await t.run((ctx) => ctx.db.patch(runId, { status: "waiting_confirmation" }));
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      ...progress,
+      sequence: 2,
+    }),
+  ).toBe(false);
+  await t.run((ctx) =>
+    ctx.db.patch(runId, {
+      status: "running",
+      checkpoint: { iteration: 1, executionCount: 0 },
+    }),
+  );
+  expect(
+    await t.mutation(internal.routerJobs.progress, {
+      ...progress,
+      sequence: 2,
+    }),
+  ).toBe(false);
+  expect((await t.run((ctx) => ctx.db.get(messageId)))?.content).toBe(
+    "Live reply",
+  );
+});

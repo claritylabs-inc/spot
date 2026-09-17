@@ -606,8 +606,14 @@ export const run = internalAction({
           onResponseAttachment: (attachment) => {
             responseAttachments.push(attachment);
           },
-          onToolArtifact: (artifact) => {
+          onToolArtifact: async (artifact) => {
             toolArtifacts.push(artifact);
+            if (surface === "web") {
+              await ctx.runMutation(internal.threads.streamAgentProgress, {
+                id: agentMsgId,
+                toolArtifacts,
+              });
+            }
           },
         }),
         ...(surface === "slack"
@@ -810,6 +816,13 @@ export const run = internalAction({
           messages: messageHistory,
           tools,
           stopWhen: stepCountIs(25),
+          onStepFinish: async (step) => {
+            if (surface !== "web") return;
+            await ctx.runMutation(internal.routerJobs.recordToolActivity, {
+              target: agentMsgId,
+              tools: step.toolCalls.map((call) => call.toolName),
+            });
+          },
           prepareStep: ({ stepNumber }) => {
             if (surface === "slack" && stepNumber === 0) {
               return {
@@ -826,6 +839,7 @@ export const run = internalAction({
           },
         },
         run: {
+          ...(surface === "web" ? { streamTarget: agentMsgId } : {}),
           taskKind: "query_reason",
           sessionKey: String(args.threadId),
           trace: {

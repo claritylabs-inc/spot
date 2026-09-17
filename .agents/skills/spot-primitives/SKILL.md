@@ -221,3 +221,20 @@ When the user asks for primitive cleanup, start with branding/email shell owners
 - `OperatorAgentProvider` and `OperatorAgentPanel` start a fresh thread when the page agent panel opens or moves to another page; they never restore a persisted selection or automatically select recent history. Existing threads remain selectable explicitly. `operator-page-context.tsx` builds internal **Open with context** links from the Threads sidebar and full conversation page, using `agentThread` to select that exact conversation in the destination panel. Operator thread `initialContext.href` retains the starting page and tab as navigation metadata only; it grants no access. Older entity contexts resolve to supported client pages, with `operatorAgent.getThread` resolving procurement and policy ownership for their destination paths. Threads without a supported context omit the action.
 
 `components/ui/tag-remove-button.tsx` owns the small neutral × control for removable tags in broker token fields, prompt references, composer attachments, and operator page context. It provides an accessible name, keyboard focus, and disabled styling. Inline tag removal uses this native button, not `PillButton`, and is exempt from the destructive pill action rule. Record deletion and standalone actions retain `PillButton`.
+
+## Web response streaming
+
+Operator and client web replies stream through durable router jobs. `stream: true`
+requests send ordered, cumulative text snapshots to the existing result capability
+with `status: "progress"`; Spot validates invocation, token, fingerprint, router
+ID, sequence, active message, and operator checkpoint before updating the reply.
+Only text is streamed; tool execution waits for the terminal model result.
+Cancelled/terminal jobs reject late progress. Router progress delivery is best
+effort and never restarts inference. Deploy the router schema/API and worker
+support before enabling the Spot consumer change.
+
+Profile settings store personal `users.streamResponses` (default on) and
+`users.showThinking` (default off). Both operator and client web renderers share
+these preferences. Show thinking displays a collapsible summary of tool activity,
+not raw reasoning or tool payloads. Approvals and task artifacts remain independent
+of these display preferences. Non-web channel delivery stays terminal-only.

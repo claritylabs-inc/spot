@@ -39,6 +39,9 @@ export const get = internalQuery({
 
 export const prepare = internalMutation({
   args: {
+    streamTarget: v.optional(
+      v.union(v.id("threadMessages"), v.id("operatorAgentMessages")),
+    ),
     invocationKey: v.string(),
     operation,
     fingerprint: v.string(),
@@ -372,6 +375,76 @@ async function boundedBody(request: Request): Promise<string | null> {
   }
 }
 
+export const recordToolActivity = internalMutation({
+  args: {
+    target: v.union(v.id("threadMessages"), v.id("operatorAgentMessages")),
+    tools: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.target);
+    if (
+      !message ||
+      message.status !== "processing" ||
+      message.channel !== "chat"
+    )
+      return;
+    const usedTools = [
+      ...new Set([...(message.usedTools ?? []), ...args.tools]),
+    ];
+    await ctx.db.patch(args.target, { usedTools });
+  },
+});
+
+export const progress = internalMutation({
+  args: {
+    id: v.id("routerJobs"),
+    tokenHash: v.string(),
+    jobId: v.string(),
+    invocationKey: v.string(),
+    fingerprint: v.string(),
+    sequence: v.number(),
+    text: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.id);
+    if (
+      !row ||
+      !row.streamTarget ||
+      row.resultTokenHash !== args.tokenHash ||
+      row.invocationKey !== args.invocationKey ||
+      row.fingerprint !== args.fingerprint ||
+      (row.routerJobId && row.routerJobId !== args.jobId) ||
+      !["prepared", "running"].includes(row.status) ||
+      !Number.isSafeInteger(args.sequence) ||
+      args.sequence < 1 ||
+      new TextEncoder().encode(args.text).byteLength > 256 * 1024
+    )
+      return false;
+    if (args.sequence <= (row.progressSequence ?? 0)) return true;
+    const message = await ctx.db.get(row.streamTarget);
+    if (!message || message.status !== "processing") return false;
+    const owner = /^operator:([^:]+):(\d+):/.exec(row.invocationKey);
+    if (owner) {
+      const runId = ctx.db.normalizeId("operatorAgentRuns", owner[1]);
+      const run = runId ? await ctx.db.get(runId) : null;
+      if (
+        !run ||
+        !["running", "queued"].includes(run.status) ||
+        run.cancellationRequestedAt ||
+        run.agentMessageId !== message._id ||
+        (run.checkpoint?.iteration ?? 0) !== Number(owner[2])
+      )
+        return false;
+    }
+    await ctx.db.patch(row._id, {
+      routerJobId: args.jobId,
+      progressSequence: args.sequence,
+    });
+    await ctx.db.patch(row.streamTarget, { content: args.text });
+    return true;
+  },
+});
+
 export const resultHttp = httpAction(async (ctx, request) => {
   const tokenHash = await capabilityToken(request);
   const row = tokenHash
@@ -391,6 +464,30 @@ export const resultHttp = httpAction(async (ctx, request) => {
     body = parsed as Record<string, unknown>;
   } catch {
     return new Response(null, { status: 400 });
+  }
+  if (body.status === "progress") {
+    if (
+      typeof body.jobId !== "string" ||
+      !body.jobId ||
+      body.jobId.length > 300 ||
+      typeof body.sequence !== "number" ||
+      typeof body.text !== "string" ||
+      body.idempotencyKey !== row.invocationKey ||
+      body.fingerprint !== row.fingerprint
+    )
+      return new Response(null, { status: 409 });
+    if (new TextEncoder().encode(body.text).byteLength > 256 * 1024)
+      return new Response(null, { status: 413 });
+    const accepted = await ctx.runMutation(internal.routerJobs.progress, {
+      id: row._id,
+      tokenHash,
+      jobId: body.jobId,
+      invocationKey: row.invocationKey,
+      fingerprint: row.fingerprint,
+      sequence: body.sequence,
+      text: body.text,
+    });
+    return new Response(null, { status: accepted ? 204 : 409 });
   }
   if (
     typeof body.jobId !== "string" ||

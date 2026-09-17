@@ -76,6 +76,8 @@ import {
 import { ThreadAttachmentChip } from "@/components/agent-thread/thread-attachment-chip";
 import { usePdf } from "@/components/pdf-context";
 import { ThreadMessageBubble } from "@/components/agent-thread/message-bubble";
+import { ThinkingSummary } from "@/components/agent-thread/thinking-summary";
+import { useChatDisplayPreferences } from "@/components/profile/streaming-preference";
 import { AgentThinkingBubble } from "@/components/agent-thread/agent-thinking-bubble";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
@@ -1182,6 +1184,8 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   onOpenMailboxArtifact?: (ref: MailboxArtifactRef) => void;
   openMailboxArtifactRef?: MailboxArtifactRef | null;
 }) {
+  const { streamResponses, showThinking: showThinkingSummary } =
+    useChatDisplayPreferences();
   const [showQuoted, setShowQuoted] = useState(false);
   const time = dayjs(msg._creationTime);
   const channelIcon =
@@ -1198,15 +1202,29 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
     [agentTargets, msg, threadContext],
   );
 
-  // Processing stays intentionally opaque: Spot reads the message, thinks,
-  // then publishes one complete response like the other conversation channels.
   if (msg.role === "agent" && msg.status === "processing") {
     return (
       <div className="w-full">
-        <div className="flex items-center gap-2">
-          <AgentThinkingBubble />
+        {showThinkingSummary ? (
+          <ThinkingSummary tools={msg.usedTools} working />
+        ) : null}
+        <div className="flex items-start gap-2">
+          {streamResponses && msg.content ? (
+            <ThreadMessageBubble role="agent">
+              <ProseMarkdown gfm breaks>{msg.content}</ProseMarkdown>
+            </ThreadMessageBubble>
+          ) : (
+            <AgentThinkingBubble />
+          )}
           <CancelButton messageId={msg._id} show />
         </div>
+        <VendorComplianceArtifacts
+          messageId={msg._id}
+          artifacts={msg.toolArtifacts}
+          openArtifactRef={openVendorComplianceArtifactRef}
+          onOpenArtifact={onOpenVendorCompliance}
+        />
+        <CertificateHoldArtifacts artifacts={msg.toolArtifacts} />
         {relatedEmailMessages.length > 0 ? (
           <div className="mt-3">
             <EmailStackCard
@@ -1277,6 +1295,9 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
     }
     return (
       <div className={brokerPerspective ? "ml-auto w-full max-w-lg" : "w-full"}>
+        {showThinkingSummary ? (
+          <ThinkingSummary tools={msg.usedTools} working={false} />
+        ) : null}
         {collapseEmailMessages && msg.channel === "email" ? (
           <EmailSummaryCard
             message={msg}

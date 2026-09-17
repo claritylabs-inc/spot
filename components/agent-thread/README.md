@@ -20,9 +20,9 @@ The thread route is intentionally thin. Reusable message UI and artifact surface
 
 Web chat follows a messaging contract rather than an execution-console contract:
 
-- While Spot is working, render one compact thinking bubble. Do not stream partial answer text, model reasoning, tool labels, tool input/output, or subagent logs into the conversation.
+- Web replies stream when the viewer’s Stream responses preference is enabled (default on). Show thinking independently enables a collapsible tool-activity summary (default off). Use the thinking bubble before text arrives or when streaming is disabled. Keep raw model reasoning, tool inputs/outputs, and subagent logs private.
 - Show `Delivered` on the viewer's latest web message after Convex acknowledges it, and `Read` only after the linked agent run has started. Older receipts stay hidden to keep the thread quiet.
-- Publish the agent's response as one complete message. Keep source links, files, delivery status, and actionable artifacts because they change what the user can verify or do next.
-- Tool audit data may remain available to internal telemetry and channel adapters, but model reasoning stays private and the customer-facing thread does not disclose either.
+- Reconcile streamed text with the final saved response. Keep source links, files, delivery status, and actionable artifacts because they change what the user can verify or do next.
+- Detailed tool audit data remains in internal telemetry and channel adapters. The optional activity summary shows tool labels only; model reasoning and tool payloads stay private.
 
 Artifact summary cards should be compact, truncate long labels and expose one clear action that opens the right panel. Right panels should use the same 12px header height, close button pattern and bottom action bar only when there are actionable controls.

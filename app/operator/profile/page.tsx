@@ -16,6 +16,7 @@ import {
   OperationalPanelBody,
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
+import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { api } from "@/convex/_generated/api";
 import { OPERATOR_EMAIL_ADDRESS } from "@/convex/lib/operatorEmailAddress";
@@ -189,6 +190,12 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
             <OperationalPanelHeader title="Appearance" />
             <OperationalPanelBody>
               <ThemeModeSelector className="max-w-lg" />
+            </OperationalPanelBody>
+          </OperationalPanel>
+          <OperationalPanel className="mt-4">
+            <OperationalPanelHeader title="Chat" />
+            <OperationalPanelBody>
+              <StreamingPreference />
             </OperationalPanelBody>
           </OperationalPanel>
         </FadeIn>

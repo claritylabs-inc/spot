@@ -240,6 +240,8 @@ export const checkPhoneAvailability = query({
 // Personal profile fields only — company fields live on organizations.
 export const updateProfile = mutation({
   args: {
+    streamResponses: v.optional(v.boolean()),
+    showThinking: v.optional(v.boolean()),
     name: v.optional(v.string()),
     title: v.optional(v.string()),
     phone: v.optional(v.string()),
@@ -247,8 +249,16 @@ export const updateProfile = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
-    const patch: { name?: string; title?: string; phone?: string | undefined } =
-      {};
+    const patch: {
+      name?: string;
+      title?: string;
+      phone?: string | undefined;
+      streamResponses?: boolean;
+      showThinking?: boolean;
+    } = {};
+    if (args.showThinking !== undefined) patch.showThinking = args.showThinking;
+    if (args.streamResponses !== undefined)
+      patch.streamResponses = args.streamResponses;
     if (args.name !== undefined) patch.name = args.name;
     if (args.title !== undefined) patch.title = args.title;
     if (args.phone !== undefined) {
