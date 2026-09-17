@@ -492,7 +492,7 @@ function OperatorMessageRow({
           <ThinkingSummary tools={message.usedTools} working={showThinking} />
         ) : null}
         {showThinking && (!streamResponses || !content) ? (
-          <AgentThinkingBubble />
+          showThinkingSummary ? null : <AgentThinkingBubble />
         ) : (
           <ThreadMessageBubble
             role="agent"
