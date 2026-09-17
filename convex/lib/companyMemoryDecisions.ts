@@ -64,6 +64,13 @@ export async function reviewCompanyFacts<
     family: "memory.evidence_and_section",
     state: decisionState(source),
     questions,
+    requiredQuestionIds: (answers) =>
+      facts.flatMap((_, index) => {
+        const support = answers[`support_${index}`];
+        return support?.type === "choice" && support.choice === "supported"
+          ? [`support_${index}`, `section_${index}`]
+          : [`support_${index}`];
+      }),
     accept: (answers) => {
       const reviewed: T[] = [];
       for (const [index, fact] of facts.entries()) {

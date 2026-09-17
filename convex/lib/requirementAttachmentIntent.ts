@@ -116,7 +116,8 @@ export function validateRequirementAttachmentDecision<
     attachments
       .filter(
         (attachment): attachment is T & { fileId: Id<"_storage"> } =>
-          Boolean(attachment.fileId) && supportedRequirementCandidate(attachment),
+          Boolean(attachment.fileId) &&
+          supportedRequirementCandidate(attachment),
       )
       .map((attachment) => [String(attachment.fileId), attachment]),
   );
@@ -175,7 +176,8 @@ export async function decideRequirementAttachmentImport<
   },
 ): Promise<RequirementImportResolution<T>> {
   const candidates = args.attachments.filter(
-    (attachment) => attachment.fileId && supportedRequirementCandidate(attachment),
+    (attachment) =>
+      attachment.fileId && supportedRequirementCandidate(attachment),
   );
   if (candidates.length === 0) {
     return { authorization: "none", attachments: [] };
@@ -249,6 +251,26 @@ export async function decideRequirementAttachmentImport<
       attachments: candidates,
     }),
     questions,
+    requiredQuestionIds: (answers) => {
+      const intent = answers.intent;
+      if (
+        intent?.type !== "choice" ||
+        !["import_new_requirements", "analyze_new_requirements"].includes(
+          intent.choice,
+        )
+      )
+        return ["intent"];
+      return [
+        "intent",
+        "scope",
+        ...candidates.flatMap((_, index) => {
+          const selected = answers[`selected_${index}`];
+          return selected?.type === "choice" && selected.choice === "yes"
+            ? [`selected_${index}`, `document_${index}`]
+            : [`selected_${index}`];
+        }),
+      ];
+    },
     accept: (answers) => {
       const intent = acceptedChoice(answers.intent, intents);
       if (!intent) return undefined;

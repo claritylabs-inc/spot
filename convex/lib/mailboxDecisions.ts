@@ -97,6 +97,25 @@ export async function decideMailboxBatch(
     state: decisionState({ policy, messages }),
     questions,
     fallback,
+    requiredQuestionIds: (answers) =>
+      messages.flatMap((message, index) => {
+        const category = answers[`category_${index}`];
+        const required = [`category_${index}`];
+        if (category?.type !== "choice") return required;
+        if (
+          category.choice === "policy_document" ||
+          category.choice === "insurance_requirements"
+        ) {
+          required.push(
+            ...message.attachments.map(
+              (_, fileIndex) => `file_${index}_${fileIndex}`,
+            ),
+          );
+        }
+        if (category.choice === "insurance_requirements")
+          required.push(`scope_${index}`, `source_${index}`, `body_${index}`);
+        return required;
+      }),
     accept: (answers) => {
       const decisions: MailboxAutomationDecision[] = [];
       for (const [index, message] of messages.entries()) {

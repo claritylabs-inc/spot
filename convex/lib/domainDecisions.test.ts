@@ -240,6 +240,10 @@ describe("bounded dispatch preserves execution boundaries", () => {
       await dispatched.tools.list.execute!({ scope: "current" }, options),
     ).toEqual({ status: "pending_confirmation" });
     expect(execute).toHaveBeenCalledOnce();
+    await expect(
+      dispatched.tools.list.execute!({ scope: "current" }, options),
+    ).rejects.toThrow("no action was replayed");
+    expect(execute).toHaveBeenCalledOnce();
     expect(
       original.list.inputSchema.safeParse({ scope: "archived" }).success,
     ).toBe(true);
@@ -347,4 +351,71 @@ test("memory judgments preserve narrative provenance and escalate uncertain supp
       "Please send a certificate",
     ),
   ).toBe(false);
+});
+
+test("only selected branches gate mailbox, memory and dispatch confidence", async () => {
+  mock.answers = {
+    category_0: choice("ignore"),
+    scope_0: choice("__abstain", 0.1),
+  };
+  await decideMailboxBatch(
+    ctx,
+    orgId,
+    {
+      automation: {
+        policyImports: true,
+        requirementImports: true,
+        companyMemory: true,
+      },
+      alertOnly: false,
+    },
+    [{ attachments: [] }],
+    async () => ({ decisions: [] }),
+  );
+  let call = mock.calls.at(-1) as {
+    requiredQuestionIds: (answers: Record<string, DecisionAnswer>) => string[];
+  };
+  expect(call.requiredQuestionIds(mock.answers)).toEqual(["category_0"]);
+  mock.answers = {
+    support_0: choice("unsupported"),
+    section_0: choice("__abstain", 0.1),
+  };
+  await reviewCompanyFacts(
+    ctx,
+    orgId,
+    { organizationName: "Acme", text: "No company fact" },
+    [{ section: "notes", content: "Acme makes boats" }],
+  );
+  call = mock.calls.at(-1) as typeof call;
+  expect(call.requiredQuestionIds(mock.answers)).toEqual(["support_0"]);
+  mock.answers = {
+    tool: choice("chosen"),
+    arg_0_flag: choice("0"),
+    arg_1_scope: choice("__abstain", 0.1),
+  };
+  const dispatch = boundedToolDispatch({
+    ctx,
+    tools: {
+      chosen: {
+        inputSchema: z.object({ flag: z.boolean() }),
+        execute: vi.fn(),
+      },
+      unused: {
+        inputSchema: z.object({ scope: z.enum(["all", "none"]) }),
+        execute: vi.fn(),
+      },
+    },
+  });
+  await dispatch.prepareStep({
+    messages: [{ role: "user", content: "Use chosen with flag true" }],
+    steps: [],
+    stepNumber: 0,
+    model: "test",
+    experimental_context: undefined,
+  });
+  call = mock.calls.at(-1) as typeof call;
+  expect(call.requiredQuestionIds(mock.answers)).toEqual([
+    "tool",
+    "arg_0_flag",
+  ]);
 });

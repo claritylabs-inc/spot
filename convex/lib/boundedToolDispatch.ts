@@ -94,8 +94,11 @@ export function boundedToolDispatch(args: {
   toolChoice?: ToolChoice<ToolSet>;
   activeTools?: string[];
 }): { tools: ToolSet; prepareStep: PrepareStepFunction } {
-  let expected: { name: string; input: Record<string, JsonValue> } | null =
-    null;
+  let expected: {
+    name: string;
+    input: Record<string, JsonValue>;
+    attempted?: boolean;
+  } | null = null;
   const tools: ToolSet = Object.fromEntries(
     Object.entries(args.tools).map(([name, original]) => [
       name,
@@ -128,6 +131,13 @@ export function boundedToolDispatch(args: {
                       "Tool arguments differ from the bounded decision; no action was executed.",
                     );
                   }
+                }
+                if (expected) {
+                  if (expected.attempted)
+                    throw new Error(
+                      "Bounded tool call already attempted in this step; no action was replayed.",
+                    );
+                  expected.attempted = true;
                 }
                 return original.execute!(input, options);
               },
@@ -208,6 +218,21 @@ export function boundedToolDispatch(args: {
           messages: step.messages,
         }),
         questions,
+        requiredQuestionIds: (answers) => {
+          const selected = answers.tool;
+          const index =
+            selected?.type === "choice"
+              ? candidates.findIndex((tool) => tool.name === selected.choice)
+              : -1;
+          return index < 0
+            ? ["tool"]
+            : [
+                "tool",
+                ...Object.keys(candidates[index].parameters).map(
+                  (parameter) => `arg_${index}_${parameter}`,
+                ),
+              ];
+        },
         accept: (answers) => {
           const choice = acceptedChoice(
             answers.tool,
