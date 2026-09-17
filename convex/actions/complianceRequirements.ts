@@ -532,6 +532,13 @@ async function runRequirementImport(
     candidate.requirements
       .map((requirement) => normalizeImportedRequirement(requirement, scope))
       .filter(isCheckableCoverageRequirement);
+  const projectImport = (candidate: z.infer<typeof RequirementImportSchema>) => ({
+    requirements: normalizeRequirements(candidate),
+    certificateHolders: candidate.certificateHolders.map((holder) => ({
+      ...normalizeImportedCertificateHolder(holder),
+      sourceExcerpt: holder.sourceExcerpt,
+    })),
+  });
   let imported;
   try {
     imported = await verifyRequirementImport({
@@ -541,13 +548,7 @@ async function runRequirementImport(
       scope,
       candidate: result.object,
       abortSignal,
-      project: (candidate) => ({
-        requirements: normalizeRequirements(candidate),
-        certificateHolders: candidate.certificateHolders.map((holder) => ({
-          ...normalizeImportedCertificateHolder(holder),
-          sourceExcerpt: holder.sourceExcerpt,
-        })),
-      }),
+      project: projectImport,
       repair: async (issues) => {
         const prompt = `${buildPrompt({
           sourceText: fullSourceText,
@@ -558,11 +559,14 @@ async function runRequirementImport(
 Verify and repair the candidate below against the entire supplied source text.
 Resolve these checks: ${JSON.stringify(issues)}.
 Check every retained rule's source support, obligated party/scope, and conditions, and inspect the whole source for omitted coverage obligations and explicit certificate holders.
-Use exact source quotes. Do not invent references or remove a real obligation merely to pass verification. Conditions that cannot be enforced by the typed fields require manual review; do not turn them into unconditional rules. Text evidence cannot establish visual completeness.
+Use exact source quotes. Do not invent references or remove a real obligation merely to pass verification. For this verification, carrier eligibility (including ratings and admitted/licensed status) and notice conditions affecting insurance satisfaction are material even though the extraction schema cannot express them. Only unrelated administrative clauses may be excluded. Conditions that cannot be enforced by the typed fields require manual review; do not turn them into unconditional rules. Text evidence cannot establish visual completeness.
 Return the corrected complete import using the same schema. It will be independently reverified before any source or requirement is saved.
 
-Candidate:
-${JSON.stringify(result.object)}`;
+Original extraction (including rows filtered out of typed coverage checks):
+${JSON.stringify(result.object)}
+
+Verification candidate (check suffixes such as support_0, scope_0 and conditions_0 refer to these normalized requirement indices; holder_0 refers to these holder indices):
+${JSON.stringify(projectImport(result.object))}`;
         // Leave ample space for the schema and routing envelope below 4 MiB.
         if (
           Buffer.byteLength(JSON.stringify({ prompt }), "utf8") >

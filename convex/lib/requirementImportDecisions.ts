@@ -134,7 +134,7 @@ export async function verifyRequirementImport<T>(args: {
         `Does ${row} apply to the correct obligated party and scope, using requestedScope as the user's intended import scope? Do not confuse the insured/vendor with the holder, broker, insurer, or a different contracting party.`,
       );
       questions[`conditions_${index}`] = question(
-        `Can ${row} be applied as a typed coverage rule without losing any source applicability condition, exception, alternative, or dependency? Only typed fields govern checks; copying a condition into requirementText/title does not enforce it. A condition not represented by the typed fields is a failure.`,
+        `Can ${row} be applied as a typed coverage rule without losing any source applicability condition, exception, alternative, or dependency? Include carrier eligibility (such as required rating or admitted/licensed status) and notice conditions when they affect whether the insurance satisfies the source requirement. Only typed fields govern checks; copying a condition into requirementText/title does not enforce it. A material condition not represented by the typed fields is a failure.`,
       );
     });
     candidate.certificateHolders.forEach((_, index) => {
@@ -144,7 +144,7 @@ export async function verifyRequirementImport<T>(args: {
     });
     sourceSegments.forEach((_, index) => {
       questions[`omissions_${index}`] = question(
-        `Compare sourceSegments[${index}] against all candidate.requirements and candidate.certificateHolders, using the entire sourceText for context across segment boundaries. Is every material coverage obligation and explicit certificate holder/recipient in this segment represented faithfully in the candidate? Include distinct limits, conditions and forms, even for an already represented insurance line. Ignore insurer ratings, administrative delivery/notice obligations and non-insurance clauses. Existing saved requirements do not excuse omissions from this candidate. Answer yes when the segment has no relevant obligation or holder.`,
+        `Compare sourceSegments[${index}] against all candidate.requirements and candidate.certificateHolders, using the entire sourceText for context across segment boundaries. Is every material coverage obligation and explicit certificate holder/recipient in this segment represented faithfully in the candidate? Include distinct limits, conditions and forms, even for an already represented insurance line. Include carrier eligibility (such as required rating or admitted/licensed status) and notice conditions that affect whether the insurance satisfies a requirement. These cannot be silently omitted or preserved only in prose when typed checks cannot enforce them. Exclude unrelated administrative delivery/notice clauses and non-insurance clauses only when they do not affect insurance satisfaction. Existing saved requirements do not excuse omissions from this candidate. Answer yes when the segment has no relevant obligation or holder.`,
       );
     });
 
