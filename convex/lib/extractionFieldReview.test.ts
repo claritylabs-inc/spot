@@ -329,6 +329,134 @@ test("same-document identity and financial groups are one independent fan-out ba
   expect(Object.keys(request.questions).length).toBeLessThanOrEqual(128);
 });
 
+// Synthetic compact declarations schedule, not a measured eligibility dataset.
+// Exercise the public entry point with every real group and all 23 fields.
+const coverage = {
+  coverages: [{ name: "Professional liability", limit: "$1,000,000" }],
+  limits: [{ name: "Professional liability", amount: "$1,000,000" }],
+  deductibles: [{ name: "Professional liability", amount: "$1,000" }],
+  coverageForm: "Claims made",
+  retroactiveDate: "01/01/2020",
+};
+const coverageSource = {
+  id: "coverage-schedule",
+  text: "Coverage: Professional liability\nLimit: $1,000,000\nDeductible: $1,000\nCoverage form: Claims made\nRetroactive date: 01/01/2020",
+};
+const fullDocument = { ...identity, ...financial, ...coverage };
+const fullSources = [identitySource, financialSource, coverageSource];
+
+test("a populated full declarations fixture accepts all 23 fields in one bounded batch", async () => {
+  mocks.decide.mockImplementation(async (request: Request) =>
+    respond(request, moneyAnswers(request)),
+  );
+  const result = await reviewExtractionFields(options(fullDocument, fullSources));
+  expect(mocks.decide).toHaveBeenCalledOnce();
+  expect(mocks.generate).not.toHaveBeenCalled();
+  expect(result.reviewedFieldCount).toBe(23);
+  expect(result.document).toEqual({
+    ...fullDocument,
+    minimumPremiumAmount: undefined,
+  });
+  expect(result.applied).toHaveLength(1);
+  const request = mocks.decide.mock.calls[0][0] as Request;
+  const candidates = (request.state as unknown as State).candidates;
+  expect(candidates).toHaveLength(40);
+  expect(Object.keys(request.questions)).toHaveLength(110);
+  expect(Object.keys(request.questions).filter((id) => id.startsWith("select_")))
+    .toHaveLength(23);
+  expect(Buffer.byteLength(JSON.stringify(request))).toBeLessThan(256_000);
+  expect(request.questions.select_policyNumber).toBeDefined();
+  expect(request.questions.select_paymentPlan).toBeDefined();
+  expect(request.questions.select_retroactiveDate).toBeDefined();
+});
+
+function absentAnswers(request: Request) {
+  const answers = answersFor(request);
+  for (const [id, question] of Object.entries(request.questions)) {
+    if (id.startsWith("omission_")) {
+      const field = id.slice("omission_".length);
+      answers[id] = { type: "noul", noul: 0 };
+      answers[`select_${field}`] = choice(request.questions[`select_${field}`], "keep_absent");
+      // Unused current-value support must not prevent a supported absence.
+      answers[`support_${field}`] = { type: "noul", noul: 0.5 };
+    } else if (id.startsWith("role_")) {
+      answers[id] = choice(question, "other", 0.5);
+    }
+  }
+  return answers;
+}
+const ordinaryDocument = {
+  ...identity,
+  ...coverage,
+  premium: "$12,000",
+  premiumAmount: 12_000,
+  totalCost: "$12,000",
+  totalCostAmount: 12_000,
+  premiumBreakdown: [],
+  taxesAndFees: [],
+};
+const ordinarySources = [
+  identitySource,
+  { id: "premium", text: "Annual premium: $12,000\nTotal payable: $12,000" },
+  coverageSource,
+];
+
+test("ordinary full declarations with absent optional terms uses one all-groups decision", async () => {
+  mocks.decide.mockImplementation(async (request: Request) => respond(request, absentAnswers(request)));
+  const result = await reviewExtractionFields(options(ordinaryDocument, ordinarySources));
+  expect(mocks.decide).toHaveBeenCalledOnce();
+  expect(mocks.generate).not.toHaveBeenCalled();
+  expect(result.reviewedFieldCount).toBe(23);
+  expect(result.document).toEqual(ordinaryDocument);
+  expect(result.applied).toEqual([]);
+  const request = mocks.decide.mock.calls[0][0] as Request;
+  expect(Object.keys(request.questions).filter((id) => id.startsWith("omission_"))).toHaveLength(7);
+  expect((request.state as unknown as State).candidates).toHaveLength(30);
+  expect(Object.keys(request.questions)).toHaveLength(107);
+  expect(Object.keys(request.questions).length).toBeLessThanOrEqual(128);
+});
+
+test.each(["premiumBreakdown", "taxesAndFees", "paymentPlan", "minimumPremium", "depositPremium"])(
+  "an omitted source-supported %s value/row sends the full batch to reasoning",
+  async (field) => {
+    const document: Record<string, unknown> = { ...fullDocument };
+    delete document[field];
+    delete document[`${field}Amount`];
+    mocks.decide.mockImplementation(async (request: Request) => {
+      const answers = absentAnswers(request);
+      // Existing source contains the missing fact/row. No new rows may be generated.
+      answers[`omission_${field}`] = { type: "noul", noul: 1 };
+      return respond(request, answers);
+    });
+    const result = await reviewExtractionFields(options(document, fullSources));
+    expect(mocks.decide).toHaveBeenCalledOnce();
+    expect(mocks.generate).toHaveBeenCalledTimes(5);
+    expect(result.document).toEqual(document);
+    expect(result.applied).toEqual([]);
+  },
+);
+
+test.each(["uncertain_omission", "missing_context", "invented_absence", "partial_money", "shadow"])(
+  "%s cannot turn supported absence into an unchecked change",
+  async (condition) => {
+    const document: Record<string, unknown> = { ...ordinaryDocument };
+    if (condition === "partial_money") document.depositPremiumAmount = 12_000;
+    if (condition === "shadow") configure("shadow");
+    mocks.decide.mockImplementation(async (request: Request) => {
+      const answers = absentAnswers(request);
+      if (condition === "uncertain_omission") answers.omission_taxesAndFees = { type: "noul", noul: 0.5 };
+      if (condition === "missing_context") answers.context = { type: "noul", noul: 0 };
+      if (condition === "invented_absence") answers.select_premium = choice(request.questions.select_premium, "keep_absent");
+      return respond(request, answers);
+    });
+    const result = await reviewExtractionFields(options(document, ordinarySources));
+    expect(mocks.decide).toHaveBeenCalledOnce();
+    expect(mocks.generate).toHaveBeenCalledTimes(5);
+    expect(result.document).toEqual(document);
+    expect(result.applied).toEqual([]);
+  },
+);
+
 test.each([
   "missing_ids",
   "duplicate_ids",
