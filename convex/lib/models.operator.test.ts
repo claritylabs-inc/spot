@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { stepCountIs, tool } from "ai";
+import { stepCountIs, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { generateAgentTextForOperatorTask } from "./models";
 import {
@@ -147,6 +147,83 @@ describe("operator model execution boundary", () => {
       });
       expect(request.settings).not.toHaveProperty("providerKeys");
     }
+  });
+
+  test("preserves tool history across a saved model continuation without repeating the tool", async () => {
+    vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    const execute = vi.fn(async ({ id }: { id: string }) => ({ id, ok: true }));
+    const tools = {
+      inspect_record: tool({
+        inputSchema: z.object({ id: z.string() }),
+        execute,
+      }),
+    };
+    const fetchMock = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        routerResponse(
+          "paused-step",
+          {
+            toolCalls: [
+              {
+                toolCallId: "inspect-1",
+                toolName: "inspect_record",
+                input: { id: "record-1" },
+              },
+            ],
+          },
+          "tool-calls",
+        ),
+      )
+      .mockResolvedValueOnce(
+        routerResponse("resumed-step", "Inspection complete.", "stop"),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const messages: ModelMessage[] = [
+      { role: "user", content: "Inspect record-1." },
+    ];
+    const paused = await generateAgentTextForOperatorTask(
+      operatorContext() as never,
+      "chat",
+      { messages, tools, stopWhen: stepCountIs(1) },
+      run,
+    );
+    const savedMessages: ModelMessage[] = JSON.parse(
+      JSON.stringify([...messages, ...paused.response.messages]),
+    );
+    expect(savedMessages).toEqual([
+      ...messages,
+      expect.objectContaining({
+        role: "assistant",
+        content: expect.arrayContaining([
+          expect.objectContaining({
+            type: "tool-call",
+            toolCallId: "inspect-1",
+            input: { id: "record-1" },
+          }),
+        ]),
+      }),
+      expect.objectContaining({
+        role: "tool",
+        content: expect.arrayContaining([
+          expect.objectContaining({
+            type: "tool-result",
+            toolCallId: "inspect-1",
+            output: { type: "json", value: { id: "record-1", ok: true } },
+          }),
+        ]),
+      }),
+    ]);
+    const resumed = await generateAgentTextForOperatorTask(
+      operatorContext() as never,
+      "chat",
+      { messages: savedMessages, tools },
+      run,
+    );
+    expect(resumed.text).toBe("Inspection complete.");
+    expect(execute).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test("fails closed after one router attempt", async () => {

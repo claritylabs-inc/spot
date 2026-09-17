@@ -198,6 +198,7 @@ function withGeneratedText<T extends AiGenerateTextResult>(
   return {
     ...result,
     text: generatedTextFromResult(result),
+    response: result.response,
     ...(finishReason ? { finishReason } : {}),
     ...(preserveStructuredOutput ? { output } : {}),
   } as T;
