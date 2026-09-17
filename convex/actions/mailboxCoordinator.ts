@@ -4,6 +4,12 @@ import dayjs from "dayjs";
 import { v } from "convex/values";
 import { stepCountIs } from "ai";
 import { z } from "zod";
+import { decideWithFallback } from "../lib/decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "../lib/domainDecisionQuestions";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -579,30 +585,135 @@ ${selectedAccountRows.length ? selectedAccountRows.map((account) => `  - ${accou
       },
     );
 
+    const evidenceCandidates = evidenceEmails.slice(-12);
+    const attachmentCandidates = evidenceAttachments.slice(-12);
     const evidenceResult =
-      evidenceEmails.length > 0 || evidenceAttachments.length > 0
-        ? await generateObjectForOrg(ctx, args.orgId, "mailbox_coordinator", {
-            schema: MailboxEvidenceSchema,
-            maxOutputTokens: 1536,
-            system: `Summarize the specific mailbox evidence used by the coordinator for UI artifacts.
+      evidenceCandidates.length || attachmentCandidates.length
+        ? await decideWithFallback<z.infer<typeof MailboxEvidenceSchema>>({
+            ctx,
+            orgId: args.orgId,
+            family: "mailbox.evidence_selection",
+            state: decisionState({
+              emails: evidenceCandidates,
+              attachments: attachmentCandidates,
+              finalAnswer: result.text,
+              mailboxErrors: mailboxErrors.slice(-8),
+            }),
+            questions: {
+              ...Object.fromEntries(
+                evidenceCandidates.map((email, index) => [
+                  `email_${index}`,
+                  choiceQuestion(
+                    "Was this exact email used as evidence in the coordinator's final answer?",
+                    {
+                      yes: "The final answer relies on this exact email.",
+                      no: "Not relied on.",
+                    },
+                    { email: decisionState(email) },
+                  ),
+                ]),
+              ),
+              ...Object.fromEntries(
+                attachmentCandidates.map((attachment, index) => [
+                  `attachment_${index}`,
+                  choiceQuestion(
+                    "Was this exact attachment used as evidence in the final answer?",
+                    {
+                      yes: "The answer relies on this exact attachment.",
+                      no: "Not relied on.",
+                    },
+                    { attachment: decisionState(attachment) },
+                  ),
+                ]),
+              ),
+            },
+            accept: (answers) => {
+              const selectedAttachments = [];
+              for (const [
+                index,
+                attachment,
+              ] of attachmentCandidates.entries()) {
+                const selected = acceptedChoice(
+                  answers[`attachment_${index}`],
+                  ["yes", "no"],
+                );
+                if (!selected) return undefined;
+                if (selected.value === "yes")
+                  selectedAttachments.push(attachment);
+              }
+              const emails = [];
+              for (const [index, email] of evidenceCandidates.entries()) {
+                const selected = acceptedChoice(answers[`email_${index}`], [
+                  "yes",
+                  "no",
+                ]);
+                if (!selected) return undefined;
+                const attachments = selectedAttachments.filter(
+                  (attachment) => attachment.emailRef === email.emailRef,
+                );
+                if (selected.value === "no" && !attachments.length) continue;
+                emails.push({
+                  emailRef: email.emailRef,
+                  mailbox: email.mailbox ?? null,
+                  accountEmail: email.accountEmail ?? null,
+                  subject: email.subject,
+                  from: email.from ?? null,
+                  date: email.date ?? null,
+                  reason: null,
+                  attachments: attachments.map((attachment) => ({
+                    filename: attachment.filename,
+                    contentType: attachment.contentType ?? null,
+                    size: attachment.size ?? null,
+                    reason: null,
+                  })),
+                });
+              }
+              if (
+                selectedAttachments.some(
+                  (attachment) =>
+                    !emails.some(
+                      (email) => email.emailRef === attachment.emailRef,
+                    ),
+                )
+              )
+                return undefined;
+              const parsed = MailboxEvidenceSchema.safeParse({
+                emails,
+                note: null,
+              });
+              return parsed.success ? parsed.data : undefined;
+            },
+            fallback: async () =>
+              (
+                await generateObjectForOrg(
+                  ctx,
+                  args.orgId,
+                  "mailbox_coordinator",
+                  {
+                    schema: MailboxEvidenceSchema,
+                    maxOutputTokens: 1536,
+                    system: `Summarize the specific mailbox evidence used by the coordinator for UI artifacts.
 
 Rules:
 - Include only emails or attachments present in the provided JSON.
 - Preserve emailRef, accountEmail, mailbox, subject, from, date, attachment filenames, content types, and sizes when available.
 - Keep reasons factual and brief.
 - Do not include raw email body text.`,
-            prompt: JSON.stringify({
-              emails: evidenceEmails.slice(-12),
-              attachments: evidenceAttachments.slice(-12),
-              mailboxErrors: mailboxErrors.slice(-8),
-              finalAnswer: result.text,
-            }),
+                    prompt: JSON.stringify({
+                      emails: evidenceEmails.slice(-12),
+                      attachments: evidenceAttachments.slice(-12),
+                      mailboxErrors: mailboxErrors.slice(-8),
+                      finalAnswer: result.text,
+                    }),
+                  },
+                )
+              ).object,
           })
         : undefined;
 
     const output = {
       plan,
-      evidence: evidenceResult?.object ?? { emails: [] },
+      evidence: evidenceResult ?? { emails: [] },
       searches: mailboxSearches,
       mailboxErrors,
       text: result.text,

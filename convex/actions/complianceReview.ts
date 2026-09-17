@@ -3,6 +3,13 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import dayjs from "dayjs";
 import { z } from "zod";
+import type { ComplianceCheckResult } from "../lib/complianceCheck";
+import { decideWithFallback } from "../lib/decisions";
+import {
+  acceptedChoice,
+  decisionState,
+  evidenceQuestion,
+} from "../lib/domainDecisionQuestions";
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -36,6 +43,7 @@ type ManualReviewContext = {
     relatedLegalEntities?: Array<Record<string, unknown>>;
   } | null;
   policies: Array<{ _id: Id<"policies"> }>;
+  deterministicCheck: ComplianceCheckResult;
 };
 
 const COMPLIANCE_REVIEW_TIMEOUT_MS = 75_000;
@@ -46,11 +54,7 @@ function truncate(value: unknown, maxLength = 1200) {
 }
 
 function compactContext(value: unknown) {
-  return JSON.stringify(
-    value,
-    (_key, item) => truncate(item),
-    2,
-  );
+  return JSON.stringify(value, (_key, item) => truncate(item), 2);
 }
 
 export const recheckOwnRequirement = action({
@@ -75,14 +79,14 @@ export const recheckOwnRequirement = action({
     const userId = await getAuthUserId(ctx);
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
 
-    const context = await ctx.runQuery(
+    const context = (await ctx.runQuery(
       internal.compliance.getManualComplianceReviewContextInternal,
       {
         orgId: args.orgId,
         requirementId: args.requirementId,
         userId: userId as Id<"users">,
       },
-    ) as ManualReviewContext;
+    )) as ManualReviewContext;
 
     const knownPolicyIds = new Set(
       context.policies.map((policy: { _id: Id<"policies"> }) =>
@@ -93,13 +97,50 @@ export const recheckOwnRequirement = action({
     const abortSignal = AbortSignal.timeout(COMPLIANCE_REVIEW_TIMEOUT_MS);
     let result;
     try {
-      result = await generateObjectForOrg(ctx, args.orgId, "analysis", {
-        schema: ComplianceReviewSchema,
-        abortSignal,
-        maxOutputTokens: 500,
-        system:
-          "You are a careful commercial insurance compliance reviewer. Decide whether the organization's current policies satisfy a single insurance requirement using only the provided structured policy evidence. Do not guess. If the evidence is ambiguous, incomplete, internally inconsistent, or requires human interpretation, return unverified.",
-        prompt: `Today is ${today}.
+      result = await decideWithFallback<z.infer<typeof ComplianceReviewSchema>>(
+        {
+          ctx,
+          orgId: args.orgId,
+          family: "compliance.requirement_evidence",
+          abortSignal,
+          state: decisionState({ today, context }),
+          questions: {
+            support: evidenceQuestion(
+              "Does all supplied policy evidence unambiguously support the deterministicCheck conclusion for the entire requirement, including exact insured identity, provisions and applicable exclusions? Arithmetic and dates are already computed by code. Abstain for incomplete evidence, provisional data, conflicting endorsements, or wording needing interpretation.",
+            ),
+          },
+          accept: (answers) => {
+            const support = acceptedChoice(answers.support, ["supported"]);
+            const check = context.deterministicCheck;
+            if (
+              !support ||
+              !check ||
+              check.status === "unverified" ||
+              !check.matchedSummary ||
+              check.matchedPolicy?.provisional ||
+              check.matchedPolicy?.dataStage !== "final" ||
+              check.matchedPolicyIds.some(
+                (id) => !knownPolicyIds.has(String(id)),
+              )
+            )
+              return undefined;
+            return {
+              status: check.status,
+              matchedPolicyIds: check.matchedPolicyIds.map(String),
+              expiresAt: check.expiresAt ?? null,
+              daysUntilExpiration: check.daysUntilExpiration ?? null,
+              notes: check.matchedSummary.slice(0, 600),
+            };
+          },
+          fallback: async () =>
+            (
+              await generateObjectForOrg(ctx, args.orgId, "analysis", {
+                schema: ComplianceReviewSchema,
+                abortSignal,
+                maxOutputTokens: 500,
+                system:
+                  "You are a careful commercial insurance compliance reviewer. Decide whether the organization's current policies satisfy a single insurance requirement using only the provided structured policy evidence. Do not guess. If the evidence is ambiguous, incomplete, internally inconsistent, or requires human interpretation, return unverified.",
+                prompt: `Today is ${today}.
 
 Status rules:
 - met: active policy evidence clearly satisfies the requirement.
@@ -113,7 +154,10 @@ Use matchedPolicyIds only from the provided policies. Keep notes short and speci
 
 Review context:
 ${compactContext(context)}`,
-      });
+              })
+            ).object,
+        },
+      );
     } catch (error) {
       if (abortSignal.aborted) {
         throw new Error(
@@ -123,15 +167,15 @@ ${compactContext(context)}`,
       throw error;
     }
 
-    const matchedPolicyIds = result.object.matchedPolicyIds
+    const matchedPolicyIds = result.matchedPolicyIds
       .filter((id: string) => knownPolicyIds.has(id))
       .map((id: string) => id as Id<"policies">);
     const review: ComplianceReviewResult = {
-      status: result.object.status,
+      status: result.status,
       matchedPolicyIds,
-      expiresAt: result.object.expiresAt ?? undefined,
-      daysUntilExpiration: result.object.daysUntilExpiration ?? undefined,
-      notes: result.object.notes.trim(),
+      expiresAt: result.expiresAt ?? undefined,
+      daysUntilExpiration: result.daysUntilExpiration ?? undefined,
+      notes: result.notes.trim(),
     };
 
     await ctx.runMutation(

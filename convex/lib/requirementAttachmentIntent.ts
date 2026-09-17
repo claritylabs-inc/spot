@@ -1,6 +1,12 @@
 "use node";
 
 import { z } from "zod";
+import { decideWithFallback, type DecisionQuestion } from "./decisions";
+import {
+  acceptedChoice,
+  choiceQuestion,
+  decisionState,
+} from "./domainDecisionQuestions";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -101,10 +107,7 @@ function supportedRequirementCandidate(attachment: AttachmentCandidate) {
 
 export function validateRequirementAttachmentDecision<
   T extends AttachmentCandidate,
->(
-  value: unknown,
-  attachments: T[],
-): RequirementImportResolution<T> {
+>(value: unknown, attachments: T[]): RequirementImportResolution<T> {
   const parsed = RequirementAttachmentDecisionSchema.safeParse(value);
   if (!parsed.success) return { authorization: "none", attachments: [] };
 
@@ -113,7 +116,8 @@ export function validateRequirementAttachmentDecision<
     attachments
       .filter(
         (attachment): attachment is T & { fileId: Id<"_storage"> } =>
-          Boolean(attachment.fileId) && supportedRequirementCandidate(attachment),
+          Boolean(attachment.fileId) &&
+          supportedRequirementCandidate(attachment),
       )
       .map((attachment) => [String(attachment.fileId), attachment]),
   );
@@ -172,12 +176,143 @@ export async function decideRequirementAttachmentImport<
   },
 ): Promise<RequirementImportResolution<T>> {
   const candidates = args.attachments.filter(
-    (attachment) => attachment.fileId && supportedRequirementCandidate(attachment),
+    (attachment) =>
+      attachment.fileId && supportedRequirementCandidate(attachment),
   );
   if (candidates.length === 0) {
     return { authorization: "none", attachments: [] };
   }
 
+  if (candidates.length > 20 || args.messageText.length > 240) {
+    return reasonRequirementAttachmentImport(ctx, args);
+  }
+  const intents = [
+    "import_new_requirements",
+    "analyze_new_requirements",
+    "use_existing_requirements",
+    "no_import",
+    "ambiguous",
+  ];
+  const scopes = ["vendors", "own_org", "mixed", "ambiguous"];
+  const classes = [
+    "insurance_requirements",
+    "insurance_policy",
+    "certificate",
+    "other",
+  ];
+  const questions: Record<string, DecisionQuestion> = {
+    intent: choiceQuestion(
+      "Does the current user's message explicitly request using newly attached files as canonical insurance requirements? Honor negation; comparing a policy with saved requirements does not import the policy.",
+      {
+        import_new_requirements:
+          "Explicitly import or save new attached requirement sources.",
+        analyze_new_requirements:
+          "Explicitly analyze new attached requirements as the canonical source.",
+        use_existing_requirements:
+          "Use already saved requirements; attached policies are comparison evidence.",
+        no_import:
+          "No requested import, or explicit instruction not to persist the attachment.",
+        ambiguous: "The requested use of the attachment is unclear.",
+      },
+    ),
+    scope: choiceQuestion(
+      "Whose insurance obligations are imposed by the new requirements?",
+      {
+        vendors:
+          "Obligations of vendors, contractors, suppliers or tenants serving this organization.",
+        own_org:
+          "Obligations of this organization imposed by a client, landlord, lender or investor.",
+        mixed: "Both kinds explicitly present.",
+        ambiguous: "The obligated party is not explicit.",
+      },
+    ),
+  };
+  candidates.forEach((candidate, index) => {
+    questions[`document_${index}`] = choiceQuestion(
+      "What type of document is this exact attachment, based on explicit current-user evidence? A filename alone is insufficient; abstain when content interpretation is needed.",
+      Object.fromEntries(classes.map((value) => [value, value])),
+      { attachment: decisionState(candidate) },
+    );
+    questions[`selected_${index}`] = choiceQuestion(
+      "Does the current user explicitly select this exact attachment as a new requirement source?",
+      {
+        yes: "Explicitly selected as a requirement source.",
+        no: "Not selected as a requirement source.",
+      },
+      { attachment: decisionState(candidate) },
+    );
+  });
+  return decideWithFallback<RequirementImportResolution<T>>({
+    ctx,
+    orgId: args.orgId,
+    family: "intent.requirement_import",
+    state: decisionState({
+      currentMessage: args.messageText,
+      attachments: candidates,
+    }),
+    questions,
+    accept: (answers) => {
+      const intent = acceptedChoice(answers.intent, intents);
+      if (!intent) return undefined;
+      if (["no_import", "use_existing_requirements"].includes(intent.value))
+        return { authorization: "none", attachments: [] };
+      if (intent.value === "ambiguous") return undefined;
+      const scope = acceptedChoice(answers.scope, scopes);
+      if (
+        !scope ||
+        !["vendors", "own_org"].includes(scope.value) ||
+        !args.messageText.trim()
+      )
+        return undefined;
+      const documents = [];
+      const selectedFileIds: string[] = [];
+      const confidences = [intent.confidence, scope.confidence];
+      for (const [index, candidate] of candidates.entries()) {
+        const selected = acceptedChoice(answers[`selected_${index}`], [
+          "yes",
+          "no",
+        ]);
+        if (!selected) return undefined;
+        confidences.push(selected.confidence);
+        if (selected.value === "no") continue;
+        const kind = acceptedChoice(answers[`document_${index}`], classes);
+        if (!kind || kind.value !== "insurance_requirements") return undefined;
+        selectedFileIds.push(String(candidate.fileId));
+        documents.push({
+          fileId: String(candidate.fileId),
+          classification: kind.value,
+          confidence: kind.confidence,
+        });
+      }
+      if (!selectedFileIds.length) return undefined;
+      return validateRequirementAttachmentDecision(
+        {
+          intent: intent.value,
+          intentEvidence: args.messageText.trim(),
+          scope: scope.value,
+          selectedFileIds,
+          documents,
+          confidence: Math.min(...confidences),
+        },
+        candidates,
+      );
+    },
+    fallback: () => reasonRequirementAttachmentImport(ctx, args),
+  });
+}
+
+async function reasonRequirementAttachmentImport<T extends AttachmentCandidate>(
+  ctx: ActionCtx,
+  args: {
+    orgId: Id<"organizations">;
+    messageText: string;
+    attachments: T[];
+  },
+): Promise<RequirementImportResolution<T>> {
+  const candidates = args.attachments.filter(
+    (attachment) =>
+      attachment.fileId && supportedRequirementCandidate(attachment),
+  );
   try {
     const { object } = await generateObjectForOrg(
       ctx,
@@ -274,9 +409,7 @@ export async function importRequirementSources(
     nextAction: "review_imported_requirements",
     requiredSlots: [],
     forbiddenQuestions: [],
-    forbiddenClaims: [
-      "import_completed_without_import_completed_side_effect",
-    ],
+    forbiddenClaims: ["import_completed_without_import_completed_side_effect"],
     sideEffects: imports.flatMap((imported) => [
       {
         kind: "import_completed" as const,
