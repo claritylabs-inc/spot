@@ -405,7 +405,7 @@ export function AddMailboxDrawer({
               Start monitoring
             </p>
             <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-              Spot will monitor all three sources by default.
+              Spot will monitor policy documents and insurance requirements by default.
             </p>
           </div>
           <AutomationToggleRows
@@ -415,7 +415,7 @@ export function AddMailboxDrawer({
             }
           />
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            Imported policies, requirements, and company facts become workspace
+            Imported policies and requirements become workspace
             data visible to the organization, even when mailbox access is set to
             Just me.
           </p>
@@ -693,7 +693,7 @@ export function MailboxSettingsDrawer({
                 />
               </div>
               <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-                Imported policies, requirements, and company facts become workspace
+                Imported policies and requirements become workspace
                 data visible to the organization, even when mailbox access is set to
                 Just me.
               </p>

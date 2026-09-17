@@ -5,7 +5,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Id } from "../convex/_generated/dataModel";
-import { AUTOMATION_ENABLED, AUTOMATION_DISABLED, automationSummary, configuredAutomation, type ConnectedEmailAccountRow } from "../components/settings/email-connection-ui";
+import {
+  AUTOMATION_ENABLED,
+  AUTOMATION_DISABLED,
+  automationSummary,
+  configuredAutomation,
+  type ConnectedEmailAccountRow,
+} from "../components/settings/email-connection-ui";
 import { MailboxSettingsDrawer } from "../components/settings/email-connection-drawers";
 
 const mocks = vi.hoisted(() => ({
@@ -34,11 +40,11 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/sync/use-local-first-auto-save", () => ({
   useLocalFirstAutoSave: (options: unknown) => {
     mocks.autoSave(options);
-    return ({
-    saveNow: mocks.saveNow,
-    saving: false,
-    status: "saving",
-  });
+    return {
+      saveNow: mocks.saveNow,
+      saving: false,
+      status: "saving",
+    };
   },
 }));
 
@@ -61,7 +67,9 @@ vi.mock("@/components/settings/settings-drawer", () => ({
 }));
 
 vi.mock("@/components/ui/dialog", () => {
-  const Section = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+  const Section = ({ children }: { children?: ReactNode }) => (
+    <div>{children}</div>
+  );
 
   return {
     Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) =>
@@ -86,8 +94,9 @@ vi.mock("@/components/ui/pill-button", () => ({
   ),
 }));
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ACCOUNT: ConnectedEmailAccountRow = {
   _id: "mailbox-1" as Id<"connectedEmailAccounts">,
@@ -128,9 +137,7 @@ function buttonWithText(container: ParentNode, text: string) {
 
 async function mountDrawer(options?: {
   canManageMailbox?: boolean;
-  onSaveBarrierChange?: (
-    barrier: (() => Promise<boolean>) | null,
-  ) => void;
+  onSaveBarrierChange?: (barrier: (() => Promise<boolean>) | null) => void;
 }) {
   const container = document.createElement("div");
   document.body.append(container);
@@ -238,7 +245,9 @@ describe("MailboxSettingsDrawer manual scan", () => {
     });
 
     expect(mocks.scanMailboxRange).not.toHaveBeenCalled();
-    expect(container.querySelector('[data-testid="scan-dialog"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="scan-dialog"]'),
+    ).not.toBeNull();
     expect(
       buttonWithText(
         container.querySelector('[data-testid="scan-dialog"]')!,
@@ -246,24 +255,42 @@ describe("MailboxSettingsDrawer manual scan", () => {
       ).disabled,
     ).toBe(false);
   });
-
 });
 
-
 it("offers and saves only policy and requirement controls, including stale legacy input", async () => {
-  expect(AUTOMATION_ENABLED).toEqual({ policyImports: true, requirementImports: true });
-  expect(AUTOMATION_DISABLED).toEqual({ policyImports: false, requirementImports: false });
-  const legacy = { ...ACCOUNT, automation: { ...AUTOMATION_DISABLED, companyMemory: true } };
+  expect(AUTOMATION_ENABLED).toEqual({
+    policyImports: true,
+    requirementImports: true,
+  });
+  expect(AUTOMATION_DISABLED).toEqual({
+    policyImports: false,
+    requirementImports: false,
+  });
+  const legacy = {
+    ...ACCOUNT,
+    automation: { ...AUTOMATION_DISABLED, companyMemory: true },
+  };
   expect(configuredAutomation(legacy)).toEqual(AUTOMATION_DISABLED);
   expect(automationSummary(legacy)).toBe("Monitoring off");
   const container = await mountDrawer();
   expect(container.querySelectorAll('[role="switch"]')).toHaveLength(2);
   expect(container.textContent).not.toContain("Company wiki");
   await act(async () => {
-    (container.querySelector('[aria-label="Monitor policy documents"]') as HTMLButtonElement).click();
+    (
+      container.querySelector(
+        '[aria-label="Monitor policy documents"]',
+      ) as HTMLButtonElement
+    ).click();
   });
   const options = mocks.autoSave.mock.lastCall?.[0];
-  expect(options.args.automation).toEqual({ policyImports: false, requirementImports: true });
+  expect(options.args.automation).toEqual({
+    policyImports: false,
+    requirementImports: true,
+  });
   await options.flush(options.args);
-  expect(mocks.mutation).toHaveBeenCalledWith({ accountId: ACCOUNT._id, scope: "user", automation: { policyImports: false, requirementImports: true } });
+  expect(mocks.mutation).toHaveBeenCalledWith({
+    accountId: ACCOUNT._id,
+    scope: "user",
+    automation: { policyImports: false, requirementImports: true },
+  });
 });
