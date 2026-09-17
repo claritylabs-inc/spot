@@ -24,6 +24,7 @@ type BackendMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  rerun?: { runId: string; withErrorContext: boolean };
   replyToMessageId?: string;
   dedupeKey?: string;
   toolCalls?: OperatorAgentToolCall[];
@@ -154,6 +155,7 @@ export type OperatorAgentMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  rerun?: { runId: string; withErrorContext: boolean };
   replyToMessageId?: string;
   isDirectToolRequest?: boolean;
   toolCalls?: OperatorAgentToolCall[];
@@ -237,6 +239,11 @@ export const operatorAgentApi = {
     SendMessageArgs,
     { threadId: string; messageId: string; runId: string; duplicate: boolean }
   >("operatorAgent:sendMessage"),
+  rerunTurn: makeFunctionReference<
+    "mutation",
+    { runId: string; includeErrorContext: boolean },
+    { threadId: string; messageId: string; runId: string; duplicate: boolean }
+  >("operatorAgent:rerunTurn"),
   cancelRun: makeFunctionReference<
     "mutation",
     CancelRunArgs,
@@ -303,6 +310,7 @@ export function normalizeOperatorAgentThread(
       status: message.status,
       createdAt: message.createdAt,
       userName: message.userName,
+      rerun: message.rerun,
       replyToMessageId: message.replyToMessageId,
       isDirectToolRequest:
         message.role === "user" &&
