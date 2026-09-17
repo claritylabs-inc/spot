@@ -273,7 +273,6 @@ import type * as lib_orgBranding from "../lib/orgBranding.js";
 import type * as lib_orgProfileFacts from "../lib/orgProfileFacts.js";
 import type * as lib_orgWiki from "../lib/orgWiki.js";
 import type * as lib_orgWikiDocument from "../lib/orgWikiDocument.js";
-import type * as lib_orgWikiExtraction from "../lib/orgWikiExtraction.js";
 import type * as lib_orgWikiPolicy from "../lib/orgWikiPolicy.js";
 import type * as lib_packetDocuments from "../lib/packetDocuments.js";
 import type * as lib_pdfFiller from "../lib/pdfFiller.js";
@@ -675,7 +674,6 @@ declare const fullApi: ApiFromModules<{
   "lib/orgProfileFacts": typeof lib_orgProfileFacts;
   "lib/orgWiki": typeof lib_orgWiki;
   "lib/orgWikiDocument": typeof lib_orgWikiDocument;
-  "lib/orgWikiExtraction": typeof lib_orgWikiExtraction;
   "lib/orgWikiPolicy": typeof lib_orgWikiPolicy;
   "lib/packetDocuments": typeof lib_packetDocuments;
   "lib/pdfFiller": typeof lib_pdfFiller;
