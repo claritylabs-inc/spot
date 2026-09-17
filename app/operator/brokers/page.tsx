@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Loader2, Plus, Search } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -42,8 +42,6 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 type NetworkStatus = "prospect" | "active" | "inactive" | "blacklisted";
 type BrokerRow = NonNullable<FunctionReturnType<typeof api.brokerProfiles.get>>;
 
-const ALL = "all";
-
 const NETWORK_STATUS_LABELS: Record<NetworkStatus, string> = {
   prospect: "Prospect",
   active: "Active",
@@ -52,10 +50,6 @@ const NETWORK_STATUS_LABELS: Record<NetworkStatus, string> = {
 };
 
 export default function OperatorBrokersPage() {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<NetworkStatus | typeof ALL>(ALL);
-  const [writingState, setWritingState] = useState("");
-  const [line, setLine] = useState("");
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("brokerId") as Id<"organizations"> | null;
@@ -66,12 +60,7 @@ export default function OperatorBrokersPage() {
     router.replace(`/operator/brokers${next.size ? `?${next.toString()}` : ""}`, { scroll: false });
   }
   const [creating, setCreating] = useState(false);
-  const rows = useQuery(api.brokerProfiles.list, {
-    search: search.trim() || undefined,
-    status: status === ALL ? undefined : status,
-    writingState: writingState.trim() || undefined,
-    lineOfBusinessCode: line.trim() || undefined,
-  });
+  const rows = useQuery(api.brokerProfiles.list, {});
   const selected = useQuery(
     api.brokerProfiles.get,
     selectedId ? { brokerOrgId: selectedId } : "skip",
@@ -118,51 +107,6 @@ export default function OperatorBrokersPage() {
       disableCommandPalette
     >
       <div className="@container/brokers space-y-4">
-        <div className="grid gap-3 @xl/brokers:grid-cols-2 @5xl/brokers:grid-cols-[minmax(16rem,1fr)_11rem_9rem_11rem]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search brokers"
-              aria-label="Search brokers"
-            />
-          </div>
-          <Select
-            value={status}
-            items={{ [ALL]: "All statuses", ...NETWORK_STATUS_LABELS }}
-            onValueChange={(value) =>
-              setStatus((value ?? ALL) as NetworkStatus | typeof ALL)
-            }
-          >
-            <SelectTrigger aria-label="Filter by network status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All statuses</SelectItem>
-              {Object.entries(NETWORK_STATUS_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            value={writingState}
-            onChange={(event) =>
-              setWritingState(event.target.value.toUpperCase().slice(0, 2))
-            }
-            placeholder="State"
-            aria-label="Writing state"
-          />
-          <Input
-            value={line}
-            onChange={(event) => setLine(event.target.value.toUpperCase())}
-            placeholder="ACORD line"
-            aria-label="ACORD line"
-          />
-        </div>
         <OperationalPanel>
           <Table className="table-fixed">
             <TableHeader>
@@ -186,7 +130,7 @@ export default function OperatorBrokersPage() {
                     colSpan={4}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
-                    No brokers match these filters.
+                    No brokers yet.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -212,6 +156,7 @@ export default function OperatorBrokersPage() {
                         <OrgBrandIcon
                           name={row.broker.name}
                           iconUrl={row.broker.iconUrl}
+                          website={row.broker.website}
                           size="md"
                         />
                         <div className="min-w-0">
