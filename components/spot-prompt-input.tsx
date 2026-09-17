@@ -1,5 +1,7 @@
 "use client";
 
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+
 import {
   useCallback,
   useRef,
@@ -18,7 +20,6 @@ import {
   Inbox,
   Paperclip,
   Square,
-  X,
 } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -161,14 +162,10 @@ function AttachmentTags({
               </span>
             ) : null}
           </span>
-          <button
-            type="button"
+          <TagRemoveButton
+            label={`Remove ${file.filename}`}
             onClick={() => attachments.remove(file.id)}
-            title={`Remove ${file.filename}`}
-            className="-mr-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
-          >
-            <X className="h-3 w-3" />
-          </button>
+          />
         </span>
       ))}
     </div>

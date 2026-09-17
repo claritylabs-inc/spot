@@ -261,6 +261,9 @@ Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save
   promotional links: an underlined label and small trailing northeast arrow,
   with no button border, background, or padding. The primitive owns muted text,
   hover emphasis, and keyboard focus. Table record names retain `TableNameLink`.
+- Removable tags use `TagRemoveButton` for their inline × control, with neutral
+  styling and an accessible label. This field/composer control is exempt from
+  the destructive pill action rule.
 - Use `variant="destructive"` for every destructive action. An icon-only
   destructive action must also provide `iconOnly` and a nonempty `label`.
 - Raw buttons are for structural controls such as row targets, tabs, menu

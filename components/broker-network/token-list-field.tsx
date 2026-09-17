@@ -1,9 +1,9 @@
 "use client";
 
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+
 import { useState, type KeyboardEvent } from "react";
-import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 
 export function TokenListField({
@@ -51,18 +51,11 @@ export function TokenListField({
           className={`inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-foreground ${typeStyle("caption.default")}`}
         >
           {item}
-          <PillButton
-            type="button"
-            variant="destructive"
-            iconOnly
+          <TagRemoveButton
             label={`Remove ${item}`}
-            className="-mr-1"
             disabled={disabled}
             onClick={() => onChange(value.filter((entry) => entry !== item))}
-            size="compact"
-          >
-            <X className="size-3" />
-          </PillButton>
+          />
         </span>
       ))}
       <Input
