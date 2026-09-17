@@ -13,7 +13,6 @@ import {
   writeOperatorAudit,
 } from "./operatorIdentity";
 import { throwUserFacingError, userFacingErrorCodes } from "./userFacingErrors";
-import { scheduleClientFileCompanyInformation } from "../companyInformation";
 
 export function normalizeClientFileSha256(value: string) {
   const trimmed = value.trim();
@@ -302,7 +301,6 @@ export async function createClientFileFromOperatorAttachment(
     createdAt: now,
     updatedAt: now,
   });
-  await scheduleClientFileCompanyInformation(ctx, clientFileId);
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",

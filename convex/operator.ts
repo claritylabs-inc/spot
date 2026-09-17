@@ -957,40 +957,6 @@ export const backfillCoverageRecovery = action({
   },
 });
 
-export const rerunSupplementaryExtraction = action({
-  args: { policyId: v.id("policies") },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
-    const access = (await ctx.runQuery(
-      internalApi.operator.requireOperatorPolicyWriteForUserInternal,
-      {
-        userId,
-        policyId: args.policyId,
-      },
-    )) as { pipelineStatus?: string };
-    if (access.pipelineStatus !== "complete") {
-      throw new Error(
-        "Supplementary extraction requires a complete policy extraction.",
-      );
-    }
-    const result = await ctx.runAction(
-      internalApi.actions.extractSupplementary.extractOne,
-      { policyId: args.policyId, force: true },
-    );
-    await ctx.runMutation(
-      internalApi.operator.recordPolicyExtractionOperationInternal,
-      {
-        operatorUserId: userId,
-        policyId: args.policyId,
-        operation: "supplementary_extraction",
-        metadata: result,
-      },
-    );
-    return result;
-  },
-});
-
 export const rebuildPolicySearchIndex = action({
   args: { policyId: v.id("policies") },
   handler: async (ctx, args) => {

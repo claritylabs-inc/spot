@@ -42,6 +42,8 @@ establishes complete visual evidence. Field corrections reuse the existing
 `extractionFieldReview.ts` application boundary and its independently gated
 batched decision path.
 
+Company-information capture from arbitrary uploads and procurement email is retired. Keep existing source contributions and policy-derived profiles; new general company details are explicit profile/wiki tool edits. The standalone supplementary backfill and rerun are retired; existing facts and normal policy extraction/search remain.
+
 ## Rule
 
 All tables keep action buttons, action menus, edit controls, and dropzones out

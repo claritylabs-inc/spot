@@ -2,6 +2,8 @@
 
 This reference lists the tools that Spot exposes to its operator agent, tenant-facing conversational agent, internal agent subagents, and OAuth MCP clients. It describes the current executable catalogs; it does not include deterministic controls, ordinary Convex functions, REST routes, or browser actions that are not model-callable or MCP-callable tools.
 
+Company-profile and wiki updates are intentional tool writes: `update_organization_profile` and `update_client_wiki` retain their existing authorization and exact approval. Uploading a file or receiving procurement email no longer starts general company-information extraction. Historical contributions and policy-derived profiles remain. No agent tool was added or removed for this change. The operator portal standalone supplementary-facts rerun is retired; existing facts remain searchable.
+
 ## Operator approval policy
 
 Operator Settings (`/operator/settings`) owns one global **Approve all** switch,

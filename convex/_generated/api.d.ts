@@ -17,7 +17,6 @@ import type * as actions_backfillLinesOfBusiness from "../actions/backfillLinesO
 import type * as actions_cleanupLegacyLineOfBusinessFields from "../actions/cleanupLegacyLineOfBusinessFields.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
-import type * as actions_companyInformationExtraction from "../actions/companyInformationExtraction.js";
 import type * as actions_companyResearch from "../actions/companyResearch.js";
 import type * as actions_complianceRequirements from "../actions/complianceRequirements.js";
 import type * as actions_complianceReview from "../actions/complianceReview.js";
@@ -29,7 +28,6 @@ import type * as actions_emailDrafts from "../actions/emailDrafts.js";
 import type * as actions_enrichCarrierIdentity from "../actions/enrichCarrierIdentity.js";
 import type * as actions_extractCompanyInfo from "../actions/extractCompanyInfo.js";
 import type * as actions_extractFromUpload from "../actions/extractFromUpload.js";
-import type * as actions_extractSupplementary from "../actions/extractSupplementary.js";
 import type * as actions_extractionIntegrityAudit from "../actions/extractionIntegrityAudit.js";
 import type * as actions_extractionReviews from "../actions/extractionReviews.js";
 import type * as actions_generateCoi from "../actions/generateCoi.js";
@@ -408,7 +406,6 @@ declare const fullApi: ApiFromModules<{
   "actions/cleanupLegacyLineOfBusinessFields": typeof actions_cleanupLegacyLineOfBusinessFields;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
-  "actions/companyInformationExtraction": typeof actions_companyInformationExtraction;
   "actions/companyResearch": typeof actions_companyResearch;
   "actions/complianceRequirements": typeof actions_complianceRequirements;
   "actions/complianceReview": typeof actions_complianceReview;
@@ -420,7 +417,6 @@ declare const fullApi: ApiFromModules<{
   "actions/enrichCarrierIdentity": typeof actions_enrichCarrierIdentity;
   "actions/extractCompanyInfo": typeof actions_extractCompanyInfo;
   "actions/extractFromUpload": typeof actions_extractFromUpload;
-  "actions/extractSupplementary": typeof actions_extractSupplementary;
   "actions/extractionIntegrityAudit": typeof actions_extractionIntegrityAudit;
   "actions/extractionReviews": typeof actions_extractionReviews;
   "actions/generateCoi": typeof actions_generateCoi;

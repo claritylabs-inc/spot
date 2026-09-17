@@ -155,7 +155,7 @@ describe("client files", () => {
     ).resolves.toBeNull();
   });
 
-  test("keeps uploads operator-owned and schedules content naming", async () => {
+  test("keeps uploads operator-owned and schedules naming without company enrichment", async () => {
     const fixture = await seedClientFileFixture();
     const operator = fixture.t.withIdentity({
       subject: `${fixture.operatorUserId}|session`,
@@ -203,6 +203,13 @@ describe("client files", () => {
     await expect(
       fixture.t.run((ctx) => ctx.db.get(upload.uploadIntentId)),
     ).resolves.toBeNull();
+
+    const scheduled = await fixture.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(scheduled.some((job) => job.name.includes("clientFileNaming"))).toBe(true);
+    expect(scheduled.some((job) => job.name.includes("companyInformation"))).toBe(false);
+    expect(await fixture.t.run((ctx) => ctx.db.query("companyInformationExtractions").collect())).toEqual([]);
 
     const replayFileId = await fixture.t.run((ctx) =>
       ctx.storage.store(
@@ -413,6 +420,27 @@ describe("client files", () => {
       });
     });
 
+    const historicalContribution = await fixture.t.run(async (ctx) => {
+      await ctx.db.patch(fixture.clientOrgId, {
+        relatedLegalEntities: [{ legalName: "Manually recorded affiliate", relationship: "affiliate" }],
+      });
+      return await ctx.db.insert("companyInformationExtractions", {
+        orgId: fixture.clientOrgId,
+        actorUserId: fixture.operatorUserId,
+        clientFileId,
+        sourceKind: "client_file",
+        sourceRef: `client-file:${clientFileId}`,
+        sourceFingerprint: "historical",
+        appliedFingerprint: "historical",
+        extractionVersion: "company-information-v1",
+        status: "completed",
+        attempts: 1,
+        observedAt: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+
     await expect(
       client.mutation(api.clientFiles.setArchived, {
         clientFileId,
@@ -424,6 +452,10 @@ describe("client files", () => {
       clientFileId,
       archived: true,
     });
+
+    expect(await fixture.t.run((ctx) => ctx.db.get(historicalContribution))).toBeNull();
+    expect((await fixture.t.run((ctx) => ctx.db.get(fixture.clientOrgId)))?.relatedLegalEntities)
+      .toEqual([{ legalName: "Manually recorded affiliate", relationship: "affiliate" }]);
 
     const archivedList = await operator.query(api.clientFiles.list, {
       clientOrgId: fixture.clientOrgId,
@@ -461,6 +493,10 @@ describe("client files", () => {
       clientOrgId: fixture.clientOrgId,
     });
     expect(restored.files.map((file) => file._id)).toEqual([clientFileId]);
+    const scheduled = await fixture.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(scheduled.some((job) => job.name.includes("companyInformation"))).toBe(false);
     await expect(
       operator.query(api.clientFiles.list, {
         clientOrgId: fixture.clientOrgId,
