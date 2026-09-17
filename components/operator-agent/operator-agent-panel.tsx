@@ -1,5 +1,7 @@
 "use client";
 
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+
 import {
   Fragment,
   useCallback,
@@ -11,7 +13,7 @@ import {
 } from "react";
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -981,17 +983,14 @@ export function OperatorAgentPanel({
                 {operatorPageContextLabel(displayedPageContext)}
               </span>
               {!retainedThreadContext ? (
-                <button
-                  type="button"
-                  aria-label="Remove current page context"
-                  className="shrink-0 transition-colors hover:text-foreground"
-                  onClick={() =>
-                    currentPageContextKey &&
-                    controller.detachPageContext(currentPageContextKey)
-                  }
-                >
-                  <X className="size-3" />
-                </button>
+                <TagRemoveButton
+                  label="Remove current page context"
+                  onClick={() => {
+                    if (currentPageContextKey) {
+                      controller.detachPageContext(currentPageContextKey);
+                    }
+                  }}
+                />
               ) : null}
             </div>
           ) : (

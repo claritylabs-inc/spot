@@ -1,7 +1,8 @@
 "use client";
 
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+
 import { useMemo } from "react";
-import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
@@ -113,14 +114,7 @@ export function PromptReferenceTag({
         {label}
       </span>
       {onRemove ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          title={`Remove ${label}`}
-          className="-mr-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
-        >
-          <X className="h-2.5 w-2.5" />
-        </button>
+        <TagRemoveButton label={`Remove ${label}`} onClick={onRemove} />
       ) : null}
     </span>
   );
