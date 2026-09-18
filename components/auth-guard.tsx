@@ -123,7 +123,8 @@ type OperatorNavSection =
   | "clients"
   | "demo-leads"
   | "channels"
-  | "routing"
+  | "logs"
+  | "usage"
   | "profile"
   | "settings";
 
@@ -132,7 +133,9 @@ function getOperatorActiveSection(pathname: string): OperatorNavSection {
   if (pathname.startsWith("/operator/clients")) return "clients";
   if (pathname.startsWith("/operator/demo-leads")) return "demo-leads";
   if (pathname.startsWith("/operator/channels")) return "channels";
-  if (pathname.startsWith("/operator/routing")) return "routing";
+  if (pathname.startsWith("/operator/logs") || pathname.startsWith("/operator/telemetry")) return "logs";
+  if (pathname.startsWith("/operator/usage")) return "usage";
+  if (pathname.startsWith("/operator/routing")) return "settings";
   if (pathname.startsWith("/operator/profile")) return "profile";
   if (pathname.startsWith("/operator/settings")) return "settings";
   return "clients";

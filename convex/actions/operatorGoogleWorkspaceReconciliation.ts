@@ -274,7 +274,7 @@ async function inspectPolicyAttachment(
         },
       },
       executionBudgetMs: 90000,
-    });
+    }, { telemetry: ctx });
     const kind = judged.answers.documentKind;
     const complete = judged.answers.singleCompletePolicy;
     await ctx.runMutation(

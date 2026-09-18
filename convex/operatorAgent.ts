@@ -2124,17 +2124,28 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_routing_status") {
+    if (typeof input.callId === "string") {
+      const id = ctx.db.normalizeId("modelRoutingEvents", input.callId);
+      const call = id ? await ctx.db.get(id) : null;
+      if (!call || call.kind !== "call") throw new Error("Model call not found or no longer retained");
+      return { callId: call._id, timestamp: call.timestamp, task: call.task, operation: call.operation, status: call.status,
+        provider: call.callProvider, model: call.model, routeSource: call.routeSource, selection: call.routingSummary,
+        requestId: call.requestId, runId: call.runId, channel: call.channel, orgId: call.orgId,
+        inputTokens: call.inputTokens, outputTokens: call.outputTokens, cachedInputTokens: call.cachedInputTokens,
+        reasoningTokens: call.reasoningTokens, costUsd: call.costUsd ?? null, durationMs: call.durationMs,
+        finishReason: call.finishReason, error: call.error };
+    }
     const task = typeof input.task === "string" ? input.task.trim() : undefined;
     const limit = typeof input.limit === "number" ? input.limit : 50;
     const events = task
       ? await ctx.db
           .query("modelRoutingEvents")
-          .withIndex("task_time", (index) => index.eq("task", task))
+          .withIndex("task_calls", (index) => index.eq("kind", "call").eq("task", task))
           .order("desc")
           .take(limit)
       : await ctx.db
           .query("modelRoutingEvents")
-          .withIndex("time")
+          .withIndex("kind_time", (index) => index.eq("kind", "call"))
           .order("desc")
           .take(limit);
     const settings = await ctx.db
@@ -2142,6 +2153,8 @@ async function executeToolDomain(
       .withIndex("key", (index) => index.eq("key", "default"))
       .unique();
     const counts = {
+      running: events.filter(event => event.status === "running").length,
+      unknown: events.filter(event => event.status === "unknown").length,
       complete: events.filter((event) => event.status === "complete").length,
       incomplete: events.filter((event) => event.status === "incomplete")
         .length,
@@ -2159,6 +2172,7 @@ async function executeToolDomain(
       recentIssues: events
         .filter(
           (event) =>
+            event.status === "unknown" ||
             event.status === "error" ||
             event.status === "incomplete" ||
             event.status === "fallback" ||
@@ -2168,10 +2182,13 @@ async function executeToolDomain(
         .map((event) => ({
           eventId: event._id,
           timestamp: event.timestamp,
+          requestId: event.requestId,
+          runId: event.runId,
+          costUsd: event.costUsd ?? null,
           task: event.task,
           phase: event.phase,
           status: event.status,
-          provider: event.provider,
+          provider: event.callProvider ?? event.provider,
           model: event.model,
           transport: event.transport,
           fallbackReason: event.fallbackReason,

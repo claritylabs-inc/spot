@@ -64,6 +64,7 @@ describe("prompt injection Jev decisions", () => {
         task: "prompt_injection",
         questions: { category: expect.objectContaining({ type: "choice" }) },
       }),
+      { telemetry: context },
     );
     expect(result).toMatchObject({
       safe: false,

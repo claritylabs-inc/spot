@@ -1,6 +1,11 @@
 import dayjs from "dayjs";
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
+import type { MutationCtx } from "./_generated/server";
+import {
+  callContextValidator,
+  callResultValidator,
+} from "./lib/modelCallTelemetry";
 import { internal } from "./_generated/api";
 import { internalMutation, query } from "./_generated/server";
 import type { ClRouterResponseMetadata } from "./lib/clRouterClient";
@@ -61,9 +66,9 @@ export const recordResponseInternal = internalMutation({
     const response = args.response as ClRouterResponseMetadata;
     const timestamp = dayjs().valueOf();
     const completionIssue = args.hitOutputLimit
-      ? "output_limit" as const
+      ? ("output_limit" as const)
       : args.visibleTextLength === 0 && (args.toolNames?.length ?? 0) === 0
-        ? "empty_response" as const
+        ? ("empty_response" as const)
         : undefined;
     await ctx.db.insert("modelRoutingEvents", {
       kind: "model_step",
@@ -302,10 +307,219 @@ export const sweepExpired = internalMutation({
     for (const event of expired) await ctx.db.delete(event._id);
     const continuationScheduled = expired.length === limit;
     if (continuationScheduled) {
-      await ctx.scheduler.runAfter(0, internal.modelRoutingEvents.sweepExpired, {
-        batchSize: limit,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.modelRoutingEvents.sweepExpired,
+        {
+          batchSize: limit,
+        },
+      );
     }
     return { deleted: expired.length, continuationScheduled };
+  },
+});
+
+// Invocation records are separate from the legacy step/run summaries above.
+// Durable callbacks update the same row, so polling never creates usage.
+export const startCall = internalMutation({
+  args: {
+    callKey: v.string(),
+    operation: v.string(),
+    context: callContextValidator,
+  },
+  handler: async (ctx, args) => startModelCall(ctx, args),
+});
+
+export async function startModelCall(
+  ctx: MutationCtx,
+  args: {
+    callKey: string;
+    operation: string;
+    context: Infer<typeof callContextValidator>;
+  },
+) {
+  const existing = await ctx.db
+    .query("modelRoutingEvents")
+    .withIndex("call", (q) => q.eq("callKey", args.callKey))
+    .unique();
+  if (existing) return existing._id;
+  const timestamp = dayjs().valueOf();
+  const owner = /^operator:([^:]+):/.exec(args.callKey);
+  return ctx.db.insert("modelRoutingEvents", {
+    ...args.context,
+    callKey: args.callKey,
+    operation: args.operation,
+    kind: "call",
+    runId:
+      owner?.[1] ??
+      args.context.runId ??
+      (args.context.sessionKey.replace(/^requirement:/, "") || args.callKey),
+    label: args.context.taskKind,
+    phase: args.operation,
+    transport: "cl-router",
+    status: "running",
+    timestamp,
+    expiresAt: expiresAt(timestamp),
+  });
+}
+
+export async function finishModelCall(
+  ctx: MutationCtx,
+  callKey: string,
+  status: "complete" | "error" | "cancelled" | "unknown",
+  result?: Infer<typeof callResultValidator>,
+  error?: string,
+) {
+  const call = await ctx.db
+    .query("modelRoutingEvents")
+    .withIndex("call", (q) => q.eq("callKey", callKey))
+    .unique();
+  if (!call || call.status !== "running") return;
+  const completedAt = dayjs().valueOf();
+  const metadata = Object.fromEntries(
+    Object.entries(result ?? {}).filter(([, value]) => value !== undefined),
+  );
+  await ctx.db.patch(call._id, {
+    ...metadata,
+    status:
+      status === "complete" &&
+      (result?.completionIssue || result?.finishReason === "length")
+        ? "incomplete"
+        : status,
+    completedAt,
+    durationMs: completedAt - call.timestamp,
+    error: error?.slice(0, 2000),
+    expiresAt: expiresAt(completedAt),
+  });
+}
+export const finishCall = internalMutation({
+  args: {
+    callKey: v.string(),
+    status: v.union(
+      v.literal("complete"),
+      v.literal("error"),
+      v.literal("cancelled"),
+      v.literal("unknown"),
+    ),
+    result: v.optional(callResultValidator),
+    error: v.optional(v.string()),
+  },
+  handler: (ctx, args) =>
+    finishModelCall(ctx, args.callKey, args.status, args.result, args.error),
+});
+
+const callFilters = {
+  from: v.number(),
+  to: v.number(),
+  search: v.optional(v.string()),
+  status: v.optional(v.string()),
+  task: v.optional(v.string()),
+  model: v.optional(v.string()),
+  modelExact: v.optional(v.boolean()),
+  channel: v.optional(v.string()),
+  orgId: v.optional(v.id("organizations")),
+  routeSource: v.optional(v.string()),
+};
+export const listCalls = query({
+  args: { ...callFilters, paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    if (
+      !Number.isFinite(args.from) ||
+      !Number.isFinite(args.to) ||
+      args.to < args.from ||
+      args.to - args.from > 31 * 86400_000
+    ) {
+      throw new Error("Choose a time range of at most 31 days");
+    }
+    const result = await ctx.db
+      .query("modelRoutingEvents")
+      .withIndex("kind_time", (q) =>
+        q
+          .eq("kind", "call")
+          .gte("timestamp", args.from)
+          .lte("timestamp", args.to),
+      )
+      .order("desc")
+      .paginate({
+        ...args.paginationOpts,
+        numItems: Math.min(args.paginationOpts.numItems, 250),
+      });
+    const needle = args.search?.trim().toLowerCase();
+    return {
+      ...result,
+      page: result.page.filter(
+        (call) =>
+          (!args.status || call.status === args.status) &&
+          (!args.task || call.task === args.task) &&
+          (!args.model ||
+            (args.modelExact
+              ? (call.model ?? call.callProvider ?? "Not reported") ===
+                args.model
+              : (call.model ?? call.callProvider ?? "Not reported")
+                  .toLowerCase()
+                  .includes(args.model.toLowerCase()))) &&
+          (!args.channel || call.channel === args.channel) &&
+          (!args.orgId || call.orgId === args.orgId) &&
+          (!args.routeSource ||
+            (args.routeSource === "automatic"
+              ? ["autonomous", "automatic", "static"].includes(
+                  call.routeSource ?? "",
+                )
+              : args.routeSource === "override"
+                ? [
+                    "global",
+                    "org",
+                    "broker",
+                    "override",
+                    "pin",
+                    "pinned",
+                    "request_pin",
+                  ].includes(call.routeSource ?? "")
+                : call.routeSource === args.routeSource)) &&
+          (!needle ||
+            [
+              call.task,
+              call.taskKind,
+              call.model,
+              call.callProvider,
+              call.error,
+              call.requestId,
+              call.runId,
+              call.callKey,
+              call.orgId,
+            ].some((value) => value?.toLowerCase().includes(needle))),
+      ),
+    };
+  },
+});
+
+export const getCall = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const id = ctx.db.normalizeId("modelRoutingEvents", args.id);
+    const call = id ? await ctx.db.get(id) : null;
+    if (!call || call.kind !== "call") return null;
+    const runId = ctx.db.normalizeId("operatorAgentRuns", call.runId);
+    const run = runId ? await ctx.db.get(runId) : null;
+    const org = call.orgId ? await ctx.db.get(call.orgId) : null;
+    const requirementRun = call.sessionKey.startsWith("requirement:")
+      ? await ctx.db
+          .query("requirementExtractionRuns")
+          .withIndex("run", (q) => q.eq("runId", call.runId))
+          .unique()
+      : null;
+    const policyRun = await ctx.db
+      .query("policyExtractionTraceSessions")
+      .withIndex("trace", (q) => q.eq("traceId", call.runId))
+      .unique();
+    return {
+      ...call,
+      policyRun,
+      orgName: org?.name,
+      threadId: run?.threadId,
+      requirementRun,
+    };
   },
 });

@@ -969,3 +969,34 @@ or enabled-state changes invalidate pending calls. Unknown remote outcomes must
 not be replayed automatically. Configuration is portal-only. Activity uses the
 configured server logo through `OrgBrandIcon`, with its website favicon fallback,
 in the existing expanded rows and collapsed icon summary.
+
+## Operator model logs, usage and overrides
+
+`/operator/logs` and `/operator/usage` replace the Routing and Telemetry pages.
+Model overrides live in Settings (`?section=models`), including the required
+operator-agent pin and retrieval-provider selection. The old routes redirect.
+Use the existing Table family, app-shell right panel and SettingsDrawer;
+log filters replace the existing left sidebar contents, with Back restoring
+navigation. Export is a navbar action; record actions stay in panel footers.
+
+`modelRoutingEvents` owns canonical `kind: call` invocation records alongside
+retained legacy step/run events. `routerJobs` starts and finishes one record
+atomically with each durable invocation; direct Jev decisions use the same
+owner through `ClRouterClientOptions.telemetry`. Polls, repeated callbacks and
+legacy run summaries are not new billable calls. Logs and Usage use canonical
+records only, starting when this instrumentation is deployed. Diagnostic
+retention is 30 days. Metadata excludes prompts, binary assets, capability
+URLs and response bodies. The explicit request/response preview reads existing
+seven-day router-job payloads through an operator-authorized action, omits binary
+assets and capability URLs, and bounds the displayed text. Payloads are not
+attached to agent investigations automatically. Costs use the router's inclusive total when supplied,
+otherwise known generation/selection costs or decision nano-dollar costs;
+unpriced costs remain null. Token categories are not added twice.
+
+Log search filters bounded server pages over the selected time range. Usage
+reads every page of the seven-day interval before displaying totals or enabling
+export. A failed fetch never presents a partial total as complete. Ask agent
+starts a normal operator thread with the selected diagnostic metadata;
+`get_routing_status` can inspect the exact callId with the existing operator
+read authorization. Requirement extraction reviews remain in related call
+details. Router-global policy/freeze controls are absent from these portal pages.

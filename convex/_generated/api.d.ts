@@ -41,6 +41,7 @@ import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.
 import type * as actions_mailboxCoordinator from "../actions/mailboxCoordinator.js";
 import type * as actions_mcpChat from "../actions/mcpChat.js";
 import type * as actions_mirrorWebChatToImessage from "../actions/mirrorWebChatToImessage.js";
+import type * as actions_modelCallLogs from "../actions/modelCallLogs.js";
 import type * as actions_operationalRouterSmoke from "../actions/operationalRouterSmoke.js";
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
 import type * as actions_operatorChannelDelivery from "../actions/operatorChannelDelivery.js";
@@ -244,6 +245,7 @@ import type * as lib_markdownDocumentSchema from "../lib/markdownDocumentSchema.
 import type * as lib_mcpAgentToolAccess from "../lib/mcpAgentToolAccess.js";
 import type * as lib_mcpProtocol from "../lib/mcpProtocol.js";
 import type * as lib_mergePdfs from "../lib/mergePdfs.js";
+import type * as lib_modelCallTelemetry from "../lib/modelCallTelemetry.js";
 import type * as lib_modelCatalog from "../lib/modelCatalog.js";
 import type * as lib_models from "../lib/models.js";
 import type * as lib_noWriteInputError from "../lib/noWriteInputError.js";
@@ -438,6 +440,7 @@ declare const fullApi: ApiFromModules<{
   "actions/mailboxCoordinator": typeof actions_mailboxCoordinator;
   "actions/mcpChat": typeof actions_mcpChat;
   "actions/mirrorWebChatToImessage": typeof actions_mirrorWebChatToImessage;
+  "actions/modelCallLogs": typeof actions_modelCallLogs;
   "actions/operationalRouterSmoke": typeof actions_operationalRouterSmoke;
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
   "actions/operatorChannelDelivery": typeof actions_operatorChannelDelivery;
@@ -641,6 +644,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mcpAgentToolAccess": typeof lib_mcpAgentToolAccess;
   "lib/mcpProtocol": typeof lib_mcpProtocol;
   "lib/mergePdfs": typeof lib_mergePdfs;
+  "lib/modelCallTelemetry": typeof lib_modelCallTelemetry;
   "lib/modelCatalog": typeof lib_modelCatalog;
   "lib/models": typeof lib_models;
   "lib/noWriteInputError": typeof lib_noWriteInputError;

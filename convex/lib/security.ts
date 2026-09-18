@@ -124,7 +124,7 @@ export async function classifyPromptInjection(
           },
         },
       },
-    });
+    }, { telemetry: _ctx });
     const answer = result.answers.category;
     const decision =
       answer?.type === "choice"

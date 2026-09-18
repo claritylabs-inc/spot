@@ -564,7 +564,7 @@ This is a legacy alert-only mailbox: ${policy.alertOnly ? "yes" : "no"}.`,
         alertOnly: policy.alertOnly,
       }),
       questions,
-    });
+    }, { telemetry: ctx });
     for (const decision of result.object.decisions) {
       const message = messageByCandidateRef.get(decision.emailRef);
       if (!message || decisions.has(message.emailRef)) continue;

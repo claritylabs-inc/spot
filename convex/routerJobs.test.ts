@@ -17,6 +17,7 @@ async function fixture() {
   const args = {
     invocationKey: "test:run:step:0",
     operation: "generate" as const,
+    callContext: { task: "chat", taskKind: "test", channel: "web", sessionKey: "test" },
     fingerprint: "a".repeat(64),
     requestToken: "b".repeat(64),
     requestTokenHash: await routerJobTokenHash("b".repeat(64)),
@@ -71,6 +72,9 @@ test("accepts callback before submission ACK, binds identity, and removes duplic
     storageId: resultId,
   };
   expect(await t.mutation(internal.routerJobs.finish, finish)).toBe(true);
+  const calls = await t.run(ctx => ctx.db.query("modelRoutingEvents").withIndex("call", q => q.eq("callKey", args.invocationKey)).take(2));
+  expect(calls).toHaveLength(1);
+  expect(calls[0].status).toBe("complete");
   await t.mutation(internal.routerJobs.bind, {
     id: row._id,
     jobId: "router-1",

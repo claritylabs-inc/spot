@@ -1,5 +1,6 @@
 "use node";
 
+import { modelCallContext } from "./modelCallTelemetry";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -200,12 +201,19 @@ async function prepareJob(
       invocationKey,
       storageIds: [requestStorageId, ...assets],
     });
+    const callContext = modelCallContext(payload, operation);
     let row: Doc<"routerJobs">;
     try {
       row = await ctx.runMutation(internal.routerJobs.prepare, {
         ...(streamTarget ? { streamTarget } : {}),
         invocationKey,
         operation,
+        callContext: {
+          ...callContext,
+          orgId: callContext.orgId as
+            | Id<"organizations">
+            | undefined,
+        },
         fingerprint: await sha256(serialized),
         requestToken,
         requestTokenHash: await sha256(requestToken),
