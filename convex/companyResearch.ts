@@ -71,7 +71,8 @@ export async function scheduleCompanyResearch(
   options: { force?: boolean } = {},
 ) {
   const org = await ctx.db.get(orgId);
-  if (!org || org.type !== "client") return false;
+  if (!org || org.deletedAt !== undefined || org.type !== "client")
+    return false;
   const fingerprint = companyResearchFingerprint(org);
   if (
     org.companyResearch?.fingerprint === fingerprint &&
@@ -110,7 +111,8 @@ export const claim = internalMutation({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, { orgId }) => {
     const org = await ctx.db.get(orgId);
-    if (!org || org.type !== "client") return null;
+    if (!org || org.deletedAt !== undefined || org.type !== "client")
+      return null;
     const research = org.companyResearch;
     if (!research || research.fingerprint !== companyResearchFingerprint(org)) {
       await scheduleCompanyResearch(ctx, orgId);
@@ -168,6 +170,7 @@ export const recover = internalMutation({
   args: { orgId: v.id("organizations"), leaseId: v.string() },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.orgId);
+    if (org?.deletedAt !== undefined) return;
     if (
       !org ||
       org.companyResearch?.status !== "running" ||
@@ -191,6 +194,7 @@ export const fail = internalMutation({
   },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.orgId);
+    if (org?.deletedAt !== undefined) return false;
     if (
       !org ||
       org.companyResearch?.status !== "running" ||
@@ -218,6 +222,7 @@ export const complete = internalMutation({
   },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.orgId);
+    if (org?.deletedAt !== undefined) return false;
     const research = org?.companyResearch;
     if (
       !org ||
@@ -289,7 +294,8 @@ export const complete = internalMutation({
 
 async function requestResearch(ctx: MutationCtx, orgId: Id<"organizations">) {
   const org = await ctx.db.get(orgId);
-  if (!org || org.type !== "client") throw new Error("Client not found");
+  if (!org || org.deletedAt !== undefined || org.type !== "client")
+    throw new Error("Client not found");
   const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });
   const current = await ctx.db.get(orgId);
   return {

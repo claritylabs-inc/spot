@@ -205,3 +205,73 @@ test("accepting a vendor invitation researches the newly created client", async 
     });
   });
 });
+
+test("operator logo updates preserve client identity and research, and reject impersonation", async () => {
+  const { t, operatorUserId } = await fixture();
+  const { clientOrgId, logoStorageId, customerUserId } = await t.run(
+    async (ctx) => ({
+      clientOrgId: await ctx.db.insert("organizations", {
+        name: "Harbor Robotics",
+        type: "client",
+        website: "https://harbor.example",
+        operatorStatus: "onboarding",
+      }),
+      logoStorageId: await ctx.storage.store(
+        new Blob(["logo"], { type: "image/png" }),
+      ),
+      customerUserId: await ctx.db.insert("users", {
+        email: "customer@example.test",
+        accountKind: "customer",
+      }),
+    }),
+  );
+  await t.run(async (ctx) => {
+    // convex-test stores blob bytes but omits upload contentType metadata.
+    // @ts-expect-error The test database permits patching system storage metadata.
+    await ctx.db.patch(logoStorageId, { contentType: "image/png" });
+  });
+  const operator = t.withIdentity({ subject: operatorUserId });
+  await operator.mutation(api.operator.updateClientSettings, {
+    clientOrgId,
+    iconStorageId: logoStorageId,
+  });
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(clientOrgId)).toMatchObject({
+      name: "Harbor Robotics",
+      website: "https://harbor.example",
+      iconStorageId: logoStorageId,
+    });
+    expect(
+      await ctx.db.system.query("_scheduled_functions").collect(),
+    ).toHaveLength(0);
+  });
+  await expect(
+    t
+      .withIdentity({ subject: customerUserId })
+      .mutation(api.operator.updateClientSettings, {
+        clientOrgId,
+        iconStorageId: logoStorageId,
+      }),
+  ).rejects.toThrow();
+  await operator.mutation(api.operator.startImpersonation, {
+    targetOrgId: clientOrgId,
+    targetRole: "admin",
+  });
+  await expect(
+    operator.mutation(api.operator.generateClientLogoUploadUrl, {
+      clientOrgId,
+    }),
+  ).rejects.toThrow();
+  await expect(
+    operator.mutation(api.operator.updateClientSettings, {
+      clientOrgId,
+      name: "Changed",
+    }),
+  ).rejects.toThrow();
+  await expect(
+    operator.mutation(api.operator.setSoloClientStatus, {
+      clientOrgId,
+      status: "live",
+    }),
+  ).rejects.toThrow();
+});

@@ -127,7 +127,8 @@ export const resolveForAction = internalQuery({
   },
   handler: async (ctx, args): Promise<AgentScope> => {
     const primaryOrg = await ctx.db.get(args.orgId);
-    if (!primaryOrg) throw new Error("Organization not found");
+    if (!primaryOrg || primaryOrg.deletedAt !== undefined)
+      throw new Error("Organization not found");
 
     if (args.surface === "slack") {
       if (!args.slackActorId) {

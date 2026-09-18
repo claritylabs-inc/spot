@@ -139,7 +139,8 @@ async function requireOrgAdminForUser(
   }
 
   const org = await ctx.db.get(membership.orgId);
-  if (!org) throw new Error("Organization not found");
+  if (!org || org.deletedAt !== undefined)
+    throw new Error("Organization not found");
   return { userId, orgId: membership.orgId, role: membership.role, org };
 }
 
@@ -150,7 +151,8 @@ async function requireOperatorClientForUser(
 ) {
   await requireOperatorForUser(ctx, userId);
   const org = await ctx.db.get(clientOrgId);
-  if (!org || org.type !== "client") throw new Error("Client not found");
+  if (!org || org.deletedAt !== undefined || org.type !== "client")
+    throw new Error("Client not found");
   return { userId, orgId: org._id, role: "admin" as const, org };
 }
 
@@ -161,7 +163,7 @@ async function getTeamReadOrgId(
   if (operatorClientOrgId) {
     await requireOperator(ctx);
     const client = await ctx.db.get(operatorClientOrgId);
-    if (!client || client.type !== "client")
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
     return client._id;
   }
@@ -175,7 +177,7 @@ async function getTeamAdminWriteAccess(
   if (operatorClientOrgId) {
     const operator = await requireOperator(ctx);
     const client = await ctx.db.get(operatorClientOrgId);
-    if (!client || client.type !== "client")
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
     return {
       orgId: client._id,
@@ -262,7 +264,7 @@ export const viewerOrg = query({
     if (!membership) return null;
 
     const org = await ctx.db.get(membership.orgId);
-    if (!org) return null;
+    if (!org || org.deletedAt !== undefined) return null;
 
     const iconUrl = org.iconStorageId
       ? await ctx.storage.getUrl(org.iconStorageId)
@@ -413,7 +415,7 @@ export const pendingInvitationForViewer = query({
     if (!pending) return null;
 
     const org = await ctx.db.get(pending.orgId);
-    if (!org) return null;
+    if (!org || org.deletedAt !== undefined) return null;
 
     const invitedBy = await ctx.db.get(pending.invitedBy);
 
@@ -731,7 +733,7 @@ export const getMemberInvitationEmailContextInternal = internalQuery({
     if (!invitation) return null;
     const org = await ctx.db.get(invitation.orgId);
     const invitedBy = await ctx.db.get(invitation.invitedBy);
-    if (!org || !invitedBy) return null;
+    if (!org || org.deletedAt !== undefined || !invitedBy) return null;
     return {
       invitation,
       org: {
@@ -791,6 +793,11 @@ export const acceptInvitation = mutation({
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
 
     const invitation = await ctx.db.get(args.invitationId);
+    if (invitation) {
+      const org = await ctx.db.get(invitation.orgId);
+      if (!org || org.deletedAt !== undefined)
+        throw new Error("Organization not found");
+    }
     if (!invitation) throw new Error("Invitation not found");
     if (invitation.status !== "pending")
       throw new Error("Invitation is no longer valid");
@@ -1036,7 +1043,8 @@ export const ensurePrimaryInsuranceContact = mutation({
       : null;
     const { orgId } = operatorAccess ?? (await requireOrgAccess(ctx));
     const org = await ctx.db.get(orgId);
-    if (!org) throw new Error("Organization not found");
+    if (!org || org.deletedAt !== undefined)
+      throw new Error("Organization not found");
 
     const memberships = await humanTeamMemberships(ctx, orgId);
 
@@ -1137,7 +1145,11 @@ export const resolveClientBySender = internalQuery({
       .first();
 
     if (handleOwner) {
-      if ((handleOwner.type ?? "client") !== "client") return null;
+      if (
+        handleOwner.deletedAt !== undefined ||
+        (handleOwner.type ?? "client") !== "client"
+      )
+        return null;
       const matchedBy = await senderMatchesOrg(ctx, handleOwner, email, domain);
       return matchedBy ? { org: handleOwner, matchedBy } : null;
     }
@@ -1145,7 +1157,8 @@ export const resolveClientBySender = internalQuery({
 
     const organizations = await ctx.db.query("organizations").collect();
     for (const org of organizations) {
-      if ((org.type ?? "client") !== "client") continue;
+      if (org.deletedAt !== undefined || (org.type ?? "client") !== "client")
+        continue;
       const matchedBy = await senderMatchesOrg(ctx, org, email, domain);
       if (matchedBy) return { org, matchedBy };
     }
@@ -1165,14 +1178,15 @@ export const getOrgsByUserId = internalQuery({
       memberships.map((membership) => ctx.db.get(membership.orgId)),
     );
 
-    return orgs.filter(Boolean);
+    return orgs.filter((org) => org && org.deletedAt === undefined);
   },
 });
 
 export const getInternal = internalQuery({
   args: { id: v.id("organizations") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const org = await ctx.db.get(args.id);
+    return org?.deletedAt === undefined ? org : null;
   },
 });
 
@@ -1241,7 +1255,8 @@ export const setIconInternal = internalMutation({
 export const listAllInternal = internalQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("organizations").collect();
+    const orgs = await ctx.db.query("organizations").collect();
+    return orgs.filter((org) => org.deletedAt === undefined);
   },
 });
 

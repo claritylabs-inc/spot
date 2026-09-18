@@ -290,3 +290,14 @@ Router job lifecycle mutations own durable log state, so polling and callbacks
 do not duplicate cost. Operator Logs/Usage reuse shared tables and shell panels;
 filters occupy the existing left sidebar. Overrides belong in Settings.
 `get_routing_status` supports an exact callId and never returns payloads or keys.
+
+## Organization lifecycle
+
+`organizations.deletedAt` and `deletedByUserId` record operator portal soft
+deletion through `operator.deleteOrganization`. Reuse the active-organization
+checks in access, client-file, broker-profile, and procurement owners; do not
+make deleted accounts writable through a new surface. Active organization
+queries use `deletion_type`. Preserve policies, files, Markdown, procurement
+history, memberships, and issued snapshots, and never cascade broker deletion
+to clients. `components/operator/delete-organization-button.tsx` owns the shared
+client/broker confirmation flow. Deletion is not an agent/MCP tool.

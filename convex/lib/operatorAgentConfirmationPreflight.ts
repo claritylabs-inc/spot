@@ -104,7 +104,13 @@ async function requireDocument<TableName extends TableNames>(
 ) {
   const id = exactId(ctx, table, value, label);
   const document = await ctx.db.get(id);
-  if (!document) throw new Error(`${label} not found`);
+  if (
+    !document ||
+    (table === "organizations" &&
+      "deletedAt" in document &&
+      document.deletedAt !== undefined)
+  )
+    throw new Error(`${label} not found`);
   return document;
 }
 

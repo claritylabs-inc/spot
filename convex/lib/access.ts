@@ -71,7 +71,8 @@ export async function getOrgAccess(
   const { userId } = await requireAuth(ctx);
 
   const org = await ctx.db.get(orgId);
-  if (!org) throw new Error("Organization not found");
+  if (!org || org.deletedAt !== undefined)
+    throw new Error("Organization not found");
 
   const orgType: "broker" | "client" | "partner" =
     (org.type as "broker" | "client" | "partner") ?? "client";
@@ -136,6 +137,8 @@ export async function getOrgAccess(
     .collect();
 
   for (const relationship of activeRelationships) {
+    const clientOrg = await ctx.db.get(relationship.clientOrgId);
+    if (!clientOrg || clientOrg.deletedAt !== undefined) continue;
     const clientMembership = await ctx.db
       .query("orgMemberships")
       .withIndex("organization_user", (q) =>
@@ -208,10 +211,13 @@ function toCurrentOrgAccess(access: OrgAccess): CurrentOrgAccess {
 }
 
 async function getFirstOrgMembershipForUser(ctx: Ctx, userId: Id<"users">) {
-  return await ctx.db
+  for await (const membership of ctx.db
     .query("orgMemberships")
-    .withIndex("user", (q) => q.eq("userId", userId))
-    .first();
+    .withIndex("user", (q) => q.eq("userId", userId))) {
+    const org = await ctx.db.get(membership.orgId);
+    if (org && org.deletedAt === undefined) return membership;
+  }
+  return null;
 }
 
 async function resolveCurrentOrgAccess(

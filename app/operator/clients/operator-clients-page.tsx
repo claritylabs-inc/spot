@@ -1,18 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useMemo, useRef, useState } from "react";
+import { useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { StatusTag } from "@/components/ui/status-tag";
-import {
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
-  OperationalPanel,
-} from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@/components/ui/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -29,7 +26,10 @@ import { Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { OperatorSidebar } from "../operator-sidebar";
-import { getPublicAgentDomain } from "@/lib/domains";
+import {
+  ClientDetailsEditor,
+  type ClientEditorHandle,
+} from "./client-details-editor";
 import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
@@ -43,8 +43,6 @@ import {
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
-
-const AGENT_DOMAIN = getPublicAgentDomain();
 
 function Field({
   label,
@@ -96,12 +94,15 @@ export default function OperatorClientsScreen() {
     () => clients?.find((client) => client._id === selectedId) ?? null,
     [clients, selectedId],
   );
-  const channelOverview = useQuery(
-    api.agentChannels.getForOperator,
-    selected && panelMode === "details"
-      ? { clientOrgId: selected._id }
-      : "skip",
-  );
+  const editor = useRef<ClientEditorHandle>(null);
+
+  async function saveDetails() {
+    return (
+      panelMode !== "details" ||
+      !editor.current ||
+      (await editor.current.saveNow())
+    );
+  }
 
   async function submitClient(event: React.FormEvent) {
     event.preventDefault();
@@ -126,6 +127,7 @@ export default function OperatorClientsScreen() {
   }
 
   async function impersonate(client: OperatorClientRow) {
+    if (!(await saveDetails())) return;
     setBusy(true);
     try {
       await startImpersonation({
@@ -147,12 +149,14 @@ export default function OperatorClientsScreen() {
     return client.primaryContactEmail ?? client.adminEmail;
   }
 
-  function openDetails(client: OperatorClientRow) {
+  async function openDetails(client: OperatorClientRow) {
+    if (!(await saveDetails())) return;
     setSelectedId(client._id);
     setPanelMode("details");
   }
 
-  function openCreate() {
+  async function openCreate() {
+    if (!(await saveDetails())) return;
     setPanelMode("create");
   }
 
@@ -178,21 +182,11 @@ export default function OperatorClientsScreen() {
       </PillButton>
     </>
   );
-  const enabledChannels = channelOverview
-    ? [
-        channelOverview.settings.emailEnabled ? "Email" : null,
-        channelOverview.settings.imessageEnabled ? "iMessage" : null,
-        channelOverview.settings.slackEnabled ? "Slack" : null,
-      ]
-        .filter(Boolean)
-        .join(", ") || "None"
-    : null;
-
   const rightPanel = (
     <SettingsDrawer
       open={panelMode !== null}
-      onOpenChange={(open) => {
-        if (!open) {
+      onOpenChange={async (open) => {
+        if (!open && (await saveDetails())) {
           setPanelMode(null);
           setSelectedId(null);
         }
@@ -229,6 +223,17 @@ export default function OperatorClientsScreen() {
           </PillButton>
         ) : selected ? (
           <>
+            <DeleteOrganizationButton
+              orgId={selected._id}
+              name={selected.name}
+              type="client"
+              disabled={busy || Boolean(current?.activeImpersonation)}
+              beforeDelete={saveDetails}
+              onDeleted={() => {
+                setPanelMode(null);
+                setSelectedId(null);
+              }}
+            />
             <PillButton
               variant="secondary"
               disabled={busy}
@@ -236,7 +241,12 @@ export default function OperatorClientsScreen() {
             >
               Impersonate
             </PillButton>
-            <PillButton href={`/operator/clients/${selected._id}`}>
+            <PillButton
+              onClick={async () => {
+                if (await saveDetails())
+                  router.push(`/operator/clients/${selected._id}`);
+              }}
+            >
               Manage client
             </PillButton>
           </>
@@ -266,83 +276,12 @@ export default function OperatorClientsScreen() {
           </Field>
         </form>
       ) : selected ? (
-        <div className="space-y-5">
-          <div className="flex items-center gap-3">
-            <OrgBrandIcon
-              name={selected.name}
-              iconUrl={selected.iconUrl}
-              size="lg"
-            />
-            <div className="min-w-0">
-              <p
-                className={`truncate text-foreground ${typeStyle("body.medium")}`}
-              >
-                {selected.primaryContactName ??
-                  selected.adminName ??
-                  "No primary contact"}
-              </p>
-              <p
-                className={`truncate text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                {contactEmail(selected) ?? "No contact email"}
-              </p>
-            </div>
-          </div>
-
-          <OperationalLabelValueList title="Client details">
-            <OperationalLabelValueRow
-              label="Website"
-              value={selected.website ?? "Not set"}
-            />
-            <OperationalLabelValueRow
-              label="Created"
-              value={formatDisplayDate(selected.createdAt)}
-            />
-          </OperationalLabelValueList>
-
-          <OperationalLabelValueList title="Agent channels">
-            <OperationalLabelValueRow
-              label="Active channels"
-              value={
-                enabledChannels ?? (
-                  <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-                )
-              }
-            />
-            <OperationalLabelValueRow
-              label="Email"
-              value={
-                channelOverview?.agentEmailAddress ? (
-                  channelOverview.agentEmailAddress.handle ? (
-                    `${channelOverview.agentEmailAddress.handle}@${AGENT_DOMAIN}`
-                  ) : (
-                    "Not configured"
-                  )
-                ) : (
-                  <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-                )
-              }
-            />
-            <OperationalLabelValueRow
-              label="Slack"
-              value={
-                channelOverview ? (
-                  channelOverview.connection ? (
-                    `${channelOverview.connection.teamName}${
-                      channelOverview.joinedChannels.length > 0
-                        ? ` · ${channelOverview.joinedChannels.length} joined ${channelOverview.joinedChannels.length === 1 ? "channel" : "channels"}`
-                        : " · No joined channels"
-                    }`
-                  ) : (
-                    "Not connected"
-                  )
-                ) : (
-                  <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-                )
-              }
-            />
-          </OperationalLabelValueList>
-        </div>
+        <ClientDetailsEditor
+          key={selected._id}
+          ref={editor}
+          client={selected}
+          disabled={Boolean(current?.activeImpersonation)}
+        />
       ) : null}
     </SettingsDrawer>
   );

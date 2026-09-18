@@ -3,13 +3,12 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
-  Brain,
+  NotebookPen,
   ClipboardCheck,
   FileSearch,
   FolderOpen,
   FileText,
   Settings,
-  User,
   Users,
 } from "lucide-react";
 import {
@@ -23,7 +22,6 @@ import type { OperatorImpersonationTarget } from "@/lib/operator-navigation";
 import { OperatorClientImpersonationAction } from "./operator-client-impersonation-action";
 
 type OperatorClientNavigationSection =
-  | "overview"
   | "policies"
   | "procurement"
   | "files"
@@ -95,9 +93,9 @@ function activeClientSection({
   }
   if (pathname === basePath || pathname === `${basePath}/`) {
     if (tab === "team") return "team";
-    if (tab === "settings") return "settings";
+    if (tab === "settings" || tab === "overview") return "settings";
   }
-  return "overview";
+  return "wiki";
 }
 
 export function OperatorClientSidebar({
@@ -146,10 +144,10 @@ export function OperatorClientSidebar({
 
           <SectionHeader label="Client" collapsed={collapsed} />
           <SidebarMenuItem
-            href={basePath}
-            label="Overview"
-            icon={User}
-            active={active === "overview"}
+            href={`${basePath}/wiki`}
+            label="Notes"
+            icon={NotebookPen}
+            active={active === "wiki"}
             collapsed={collapsed}
           />
           <SidebarMenuItem
@@ -157,13 +155,6 @@ export function OperatorClientSidebar({
             label="Files"
             icon={FolderOpen}
             active={active === "files"}
-            collapsed={collapsed}
-          />
-          <SidebarMenuItem
-            href={`${basePath}/wiki`}
-            label="Notes"
-            icon={Brain}
-            active={active === "wiki"}
             collapsed={collapsed}
           />
           <SectionHeader label="Insurance" collapsed={collapsed} />

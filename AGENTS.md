@@ -1000,3 +1000,24 @@ starts a normal operator thread with the selected diagnostic metadata;
 `get_routing_status` can inspect the exact callId with the existing operator
 read authorization. Requirement extraction reviews remain in related call
 details. Router-global policy/freeze controls are absent from these portal pages.
+
+## Operator client and broker soft deletion
+
+Client and broker sidebar footers expose operator-only soft deletion through
+`operator.deleteOrganization`. It rejects impersonation, records `deletedAt`
+and `deletedByUserId`, ends active impersonation sessions for the target, and
+writes one audit event. Deletion retains organization rows, memberships, stored
+files, Markdown, policies, procurement records, and issued snapshots. It does
+not delete a broker's clients. Active directories exclude deleted organizations
+using `organizations.deletion_type`; handles and slugs remain reserved.
+Workspace access, tenant OAuth validation/refresh, invitations, agent scope,
+company research, and packet token access check the deletion marker. Request
+packet links stop working when their client is deleted; legacy broker-scoped
+links also stop working when their broker is deleted. Existing evidence is not
+rewritten. There is no portal restore action or agent/MCP deletion tool.
+
+The client list sidebar autosaves name, website, and account status and uploads
+logos through the operator API. `client-details-editor.tsx` keeps record-scoped
+field patches and checks saves before closing or switching rows;
+`client-logo-field.tsx` is reused by client settings. Operator logo and status
+writes reject impersonation. Company details continue to belong in Markdown.

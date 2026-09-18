@@ -383,7 +383,7 @@ export async function getActiveOperatorImpersonation(ctx: Ctx) {
     .first();
   if (!session) return null;
   const targetOrg = await ctx.db.get(session.targetOrgId);
-  if (!targetOrg) return null;
+  if (!targetOrg || targetOrg.deletedAt !== undefined) return null;
   return { operator, session, targetOrg };
 }
 

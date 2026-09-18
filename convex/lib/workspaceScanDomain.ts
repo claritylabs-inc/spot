@@ -135,7 +135,7 @@ export async function resolveScanOrganization(
 ) {
   if (selectedOrgId) {
     const org = await ctx.db.get(selectedOrgId);
-    if (!org || org.type !== identity.kind)
+    if (!org || org.deletedAt !== undefined || org.type !== identity.kind)
       throw new ScanAttention(
         "Selected organization has the wrong type or no longer exists",
       );
@@ -154,6 +154,7 @@ export async function resolveScanOrganization(
       const org = await ctx.db.get(bound.orgId);
       if (
         !org ||
+        org.deletedAt !== undefined ||
         org.type !== identity.kind ||
         normalizedIdentity(org.name) !== normalizedIdentity(identity.name)
       )
@@ -210,6 +211,7 @@ export async function resolveScanOrganization(
   ];
   const sameName = organizations.filter(
     (org) =>
+      org.deletedAt === undefined &&
       org.type === identity.kind &&
       normalizedIdentity(org.name) === normalizedIdentity(identity.name),
   );

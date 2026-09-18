@@ -69,7 +69,12 @@ async function resolveClientFileSource(
   const file = await ctx.db.get(clientFileId);
   if (!file || !isActiveSource(file)) return null;
   const organization = await ctx.db.get(file.orgId);
-  if (!organization || organization.type !== "client") return null;
+  if (
+    !organization ||
+    organization.deletedAt !== undefined ||
+    organization.type !== "client"
+  )
+    return null;
 
   const fileItems = await ctx.db
     .query("procurementFileItems")

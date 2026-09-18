@@ -152,7 +152,7 @@ function optionalDate(value: unknown) {
 
 async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
   const client = await ctx.db.get(clientOrgId);
-  if (!client || client.type !== "client") {
+  if (!client || client.deletedAt !== undefined || client.type !== "client") {
     throw new Error("Client organization not found");
   }
   return client;
@@ -215,7 +215,7 @@ async function requireBrokerOrganization(
 ) {
   if (!brokerOrgId) return null;
   const broker = await ctx.db.get(brokerOrgId);
-  if (!broker || broker.type !== "broker") {
+  if (!broker || broker.deletedAt !== undefined || broker.type !== "broker") {
     throw new Error("Broker organization not found");
   }
   assertExternalBrokerIdentity(broker);
@@ -1596,7 +1596,9 @@ export const resolveInboxInternal = internalQuery({
       .unique();
     if (!request) return null;
     const client = await ctx.db.get(request.clientOrgId);
-    return client?.type === "client" ? { request, client } : null;
+    return client?.type === "client" && client.deletedAt === undefined
+      ? { request, client }
+      : null;
   },
 });
 

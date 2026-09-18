@@ -69,6 +69,18 @@ export const claimExternalJobInternal = internalMutation({
     if (!job) return null;
 
     const proposal = await ctx.db.get(job.proposalId);
+    const client = await ctx.db.get(job.clientOrgId);
+    const broker = proposal ? await ctx.db.get(proposal.brokerOrgId) : null;
+    if (client?.deletedAt !== undefined || broker?.deletedAt !== undefined) {
+      await ctx.db.patch(job._id, {
+        status: "failed",
+        leaseId: undefined,
+        leaseExpiresAt: undefined,
+        lastError: "Organization deleted",
+        updatedAt: now,
+      });
+      return null;
+    }
     if (
       !proposal ||
       proposal.extractionFingerprint !== job.extractionFingerprint ||
@@ -136,6 +148,12 @@ export const assertExternalCompletionInternal = internalQuery({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     const proposal = await ctx.db.get(args.proposalId);
+    if (proposal) {
+      const client = await ctx.db.get(proposal.clientOrgId);
+      const broker = await ctx.db.get(proposal.brokerOrgId);
+      if (client?.deletedAt !== undefined || broker?.deletedAt !== undefined)
+        return null;
+    }
     if (
       !job ||
       job.proposalId !== args.proposalId ||
@@ -207,6 +225,12 @@ export const failExternalJobInternal = internalMutation({
       updatedAt: now,
     });
     const proposal = await ctx.db.get(args.proposalId);
+    if (proposal) {
+      const client = await ctx.db.get(proposal.clientOrgId);
+      const broker = await ctx.db.get(proposal.brokerOrgId);
+      if (client?.deletedAt !== undefined || broker?.deletedAt !== undefined)
+        return false;
+    }
     if (
       proposal?.status === "extracting" &&
       proposal.extractionFingerprint === args.extractionFingerprint
@@ -229,6 +253,12 @@ export const completeExternalJobInternal = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     const proposal = await ctx.db.get(args.proposalId);
+    if (proposal) {
+      const client = await ctx.db.get(proposal.clientOrgId);
+      const broker = await ctx.db.get(proposal.brokerOrgId);
+      if (client?.deletedAt !== undefined || broker?.deletedAt !== undefined)
+        return false;
+    }
     if (
       !job ||
       job.proposalId !== args.proposalId ||

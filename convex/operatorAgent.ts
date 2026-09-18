@@ -1548,19 +1548,28 @@ async function executeToolDomain(
             await Promise.all([
               ctx.db
                 .query("organizations")
-                .withIndex("type", (index) => index.eq("type", "client"))
+                .withIndex("deletion_type", (index) =>
+                  index.eq("deletedAt", undefined).eq("type", "client"),
+                )
                 .take(500),
               ctx.db
                 .query("organizations")
-                .withIndex("type", (index) => index.eq("type", undefined))
+                .withIndex("deletion_type", (index) =>
+                  index.eq("deletedAt", undefined).eq("type", undefined),
+                )
                 .take(500),
             ])
           ).flat()
         : await ctx.db
             .query("organizations")
-            .withIndex("type", (index) => index.eq("type", "broker"))
+            .withIndex("deletion_type", (index) =>
+              index.eq("deletedAt", undefined).eq("type", "broker"),
+            )
             .take(500)
-      : await ctx.db.query("organizations").take(1_000);
+      : await ctx.db
+          .query("organizations")
+          .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
+          .take(1_000);
     return organizations
       .filter(
         (organization) =>
@@ -1592,7 +1601,8 @@ async function executeToolDomain(
   if (toolName === "get_organization") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization) throw new Error("Organization not found");
+    if (!organization || organization.deletedAt !== undefined)
+      throw new Error("Organization not found");
     const [memberships, policies] = await Promise.all([
       ctx.db
         .query("orgMemberships")
@@ -1636,7 +1646,10 @@ async function executeToolDomain(
   if (toolName === "get_operator_overview") {
     const [organizations, policies, extractionRuns, agentRuns] =
       await Promise.all([
-        ctx.db.query("organizations").take(2_000),
+        ctx.db
+          .query("organizations")
+          .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
+          .take(2_000),
         ctx.db.query("policies").take(5_000),
         ctx.db.query("policyExtractionRuns").take(5_000),
         ctx.db.query("operatorAgentRuns").take(2_000),
@@ -1682,7 +1695,8 @@ async function executeToolDomain(
   if (toolName === "list_policies") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization) throw new Error("Organization not found");
+    if (!organization || organization.deletedAt !== undefined)
+      throw new Error("Organization not found");
     const queryText =
       typeof input.query === "string" ? input.query.trim().toLowerCase() : "";
     const limit = typeof input.limit === "number" ? input.limit : 15;
@@ -1749,7 +1763,11 @@ async function executeToolDomain(
   if (toolName === "list_client_files") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization || organization.type !== "client") {
+    if (
+      !organization ||
+      organization.deletedAt !== undefined ||
+      organization.type !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const limit = typeof input.limit === "number" ? input.limit : 25;
@@ -2127,20 +2145,40 @@ async function executeToolDomain(
     if (typeof input.callId === "string") {
       const id = ctx.db.normalizeId("modelRoutingEvents", input.callId);
       const call = id ? await ctx.db.get(id) : null;
-      if (!call || call.kind !== "call") throw new Error("Model call not found or no longer retained");
-      return { callId: call._id, timestamp: call.timestamp, task: call.task, operation: call.operation, status: call.status,
-        provider: call.callProvider, model: call.model, routeSource: call.routeSource, selection: call.routingSummary,
-        requestId: call.requestId, runId: call.runId, channel: call.channel, orgId: call.orgId,
-        inputTokens: call.inputTokens, outputTokens: call.outputTokens, cachedInputTokens: call.cachedInputTokens,
-        reasoningTokens: call.reasoningTokens, costUsd: call.costUsd ?? null, durationMs: call.durationMs,
-        finishReason: call.finishReason, error: call.error };
+      if (!call || call.kind !== "call")
+        throw new Error("Model call not found or no longer retained");
+      return {
+        callId: call._id,
+        timestamp: call.timestamp,
+        task: call.task,
+        operation: call.operation,
+        status: call.status,
+        provider: call.callProvider,
+        model: call.model,
+        routeSource: call.routeSource,
+        selection: call.routingSummary,
+        requestId: call.requestId,
+        runId: call.runId,
+        channel: call.channel,
+        orgId: call.orgId,
+        inputTokens: call.inputTokens,
+        outputTokens: call.outputTokens,
+        cachedInputTokens: call.cachedInputTokens,
+        reasoningTokens: call.reasoningTokens,
+        costUsd: call.costUsd ?? null,
+        durationMs: call.durationMs,
+        finishReason: call.finishReason,
+        error: call.error,
+      };
     }
     const task = typeof input.task === "string" ? input.task.trim() : undefined;
     const limit = typeof input.limit === "number" ? input.limit : 50;
     const events = task
       ? await ctx.db
           .query("modelRoutingEvents")
-          .withIndex("task_calls", (index) => index.eq("kind", "call").eq("task", task))
+          .withIndex("task_calls", (index) =>
+            index.eq("kind", "call").eq("task", task),
+          )
           .order("desc")
           .take(limit)
       : await ctx.db
@@ -2153,8 +2191,8 @@ async function executeToolDomain(
       .withIndex("key", (index) => index.eq("key", "default"))
       .unique();
     const counts = {
-      running: events.filter(event => event.status === "running").length,
-      unknown: events.filter(event => event.status === "unknown").length,
+      running: events.filter((event) => event.status === "running").length,
+      unknown: events.filter((event) => event.status === "unknown").length,
       complete: events.filter((event) => event.status === "complete").length,
       incomplete: events.filter((event) => event.status === "incomplete")
         .length,
@@ -2726,7 +2764,8 @@ async function executeToolDomain(
   if (toolName === "update_organization_profile") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization) throw new Error("Organization not found");
+    if (!organization || organization.deletedAt !== undefined)
+      throw new Error("Organization not found");
     const patch: Partial<Doc<"organizations">> = {};
     if (input.name != null) {
       const identity = clientIdentity(String(input.name));
@@ -2756,7 +2795,8 @@ async function executeToolDomain(
   if (toolName === "research_client") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const org = await ctx.db.get(orgId);
-    if (!org || org.type !== "client") throw new Error("Client not found");
+    if (!org || org.deletedAt !== undefined || org.type !== "client")
+      throw new Error("Client not found");
     const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });
     return {
       queued,
@@ -2768,7 +2808,8 @@ async function executeToolDomain(
   if (toolName === "set_organization_status") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization) throw new Error("Organization not found");
+    if (!organization || organization.deletedAt !== undefined)
+      throw new Error("Organization not found");
     const status = input.status;
     if (status !== "onboarding" && status !== "live") {
       throw new Error("Invalid organization status");
@@ -2791,7 +2832,11 @@ async function executeToolDomain(
   if (toolName === "set_client_feature_flag") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization || organization.type !== "client") {
+    if (
+      !organization ||
+      organization.deletedAt !== undefined ||
+      organization.type !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const flagId = input.flagId;
@@ -4729,7 +4774,11 @@ export const resolveOperatorCoiTargetInternal = internalQuery({
       if (!policy?.orgId || policy.deletedAt)
         throw new Error("Policy not found");
       const organization = await ctx.db.get(policy.orgId);
-      if (!organization || organization.type !== "client") {
+      if (
+        !organization ||
+        organization.deletedAt !== undefined ||
+        organization.type !== "client"
+      ) {
         throw new Error("Client organization not found");
       }
       const holderName = normalizedOptionalText(input.certificateHolder)
@@ -4774,7 +4823,11 @@ export const resolveOperatorCoiTargetInternal = internalQuery({
     const orgId = source?.orgId ?? requirement?.orgId;
     if (!orgId) throw new Error("Requirements source not found");
     const organization = await ctx.db.get(orgId);
-    if (!organization || organization.type !== "client") {
+    if (
+      !organization ||
+      organization.deletedAt !== undefined ||
+      organization.type !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     return {

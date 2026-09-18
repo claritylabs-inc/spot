@@ -1,7 +1,8 @@
-export type OperatorClientPageTab = "overview" | "team" | "settings";
+export type OperatorClientPageTab = "wiki" | "team" | "settings";
 
 export function parseOperatorClientSection(
   value: string | null,
 ): OperatorClientPageTab {
-  return value === "team" || value === "settings" ? value : "overview";
+  if (value === "overview") return "settings";
+  return value === "team" || value === "settings" ? value : "wiki";
 }

@@ -494,10 +494,13 @@ async function ensurePolicyExtractionRun(
   ctx: any,
   policyId: DataModelId<"policies">,
 ) {
+  const policy = await ctx.db.get(policyId);
+  if (policy?.orgId) {
+    const org = await ctx.db.get(policy.orgId);
+    if (org?.deletedAt !== undefined) throw new Error("Organization deleted");
+  }
   const existing = await getPolicyExtractionRun(ctx, policyId);
   if (existing) return existing;
-
-  const policy = await ctx.db.get(policyId);
   const now = nowMs();
   const fields: Record<string, unknown> = {
     policyId,
@@ -3477,6 +3480,12 @@ export const pipelineClaimExternalWorkerJob = internalMutation({
         await ctx.db.delete(queueRow._id);
         continue;
       }
+      const policy = await ctx.db.get(run.policyId);
+      const org = policy?.orgId ? await ctx.db.get(policy.orgId) : null;
+      if (org?.deletedAt !== undefined) {
+        await ctx.db.delete(queueRow._id);
+        continue;
+      }
       const checkpoint = run.pipelineCheckpoint as
         | {
             nextPhase?: string;
@@ -3625,6 +3634,11 @@ export const pipelineClaimExternalPreviewWorkerJob = internalMutation({
         continue;
       }
       if (isFinalExtractedPolicy(policy) || run.pipelineStatus !== "running") {
+        await ctx.db.delete(queueRow._id);
+        continue;
+      }
+      const org = policy?.orgId ? await ctx.db.get(policy.orgId) : null;
+      if (org?.deletedAt !== undefined) {
         await ctx.db.delete(queueRow._id);
         continue;
       }

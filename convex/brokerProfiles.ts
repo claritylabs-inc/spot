@@ -40,7 +40,7 @@ async function requireBroker(
   brokerOrgId: Id<"organizations">,
 ) {
   const broker = await ctx.db.get(brokerOrgId);
-  if (!broker || broker.type !== "broker")
+  if (!broker || broker.deletedAt !== undefined || broker.type !== "broker")
     throw new Error("Broker organization not found");
   assertExternalBrokerIdentity(broker);
   return broker;
@@ -144,7 +144,9 @@ export async function listBrokerProfiles(
   // intentionally bounded after filtering so every network profile is eligible.
   const brokers = await ctx.db
     .query("organizations")
-    .withIndex("type", (q) => q.eq("type", "broker"))
+    .withIndex("deletion_type", (q) =>
+      q.eq("deletedAt", undefined).eq("type", "broker"),
+    )
     .collect();
   const rows = await Promise.all(
     brokers
@@ -249,6 +251,11 @@ export const list = query({
 export const get = query({
   args: { brokerOrgId: v.id("organizations") },
   handler: async (ctx, args) => {
+    const broker = await ctx.db.get(args.brokerOrgId);
+    if (broker?.deletedAt !== undefined) {
+      await requireOperator(ctx);
+      return null;
+    }
     const access = await getOrgAccess(ctx, args.brokerOrgId, {
       allowOperator: true,
     });

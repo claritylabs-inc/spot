@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
+import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
 import { TokenListField } from "@/components/broker-network/token-list-field";
 import { OperatorSidebar } from "../operator-sidebar";
@@ -57,7 +58,10 @@ export default function OperatorBrokersPage() {
     const next = new URLSearchParams(searchParams.toString());
     if (id) next.set("brokerId", id);
     else next.delete("brokerId");
-    router.replace(`/operator/brokers${next.size ? `?${next.toString()}` : ""}`, { scroll: false });
+    router.replace(
+      `/operator/brokers${next.size ? `?${next.toString()}` : ""}`,
+      { scroll: false },
+    );
   }
   const [creating, setCreating] = useState(false);
   const rows = useQuery(api.brokerProfiles.list, {});
@@ -389,7 +393,16 @@ function BrokerDrawer({
             {saving ? <Loader2 className="size-4 animate-spin" /> : null}
             Create broker
           </PillButton>
-        ) : undefined
+        ) : (
+          <DeleteOrganizationButton
+            orgId={row.broker._id}
+            name={row.broker.name}
+            type="broker"
+            disabled={saving}
+            beforeDelete={autoSave.saveNow}
+            onDeleted={onClose}
+          />
+        )
       }
     >
       <form id="broker-profile-form" className="space-y-4" onSubmit={submit}>
@@ -528,10 +541,20 @@ function BrokerDrawer({
           </div>
         ) : null}
       </form>
-      {row ? <div className="mt-4"><WorkspaceScanActivity entityId={row.broker._id} onRightPanel={(panel) => {
-        if (!panel) setActivityPanel(null);
-        else void autoSave.saveNow().then((saved) => { if (saved) setActivityPanel(panel); });
-      }} /></div> : null}
+      {row ? (
+        <div className="mt-4">
+          <WorkspaceScanActivity
+            entityId={row.broker._id}
+            onRightPanel={(panel) => {
+              if (!panel) setActivityPanel(null);
+              else
+                void autoSave.saveNow().then((saved) => {
+                  if (saved) setActivityPanel(panel);
+                });
+            }}
+          />
+        </div>
+      ) : null}
     </SettingsDrawer>
   );
 }
