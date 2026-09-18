@@ -2,6 +2,7 @@
 
 import type { Id } from "@/convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { StatusTag } from "@/components/ui/status-tag";
 import {
@@ -27,6 +28,7 @@ type TeamMembersListProps = {
   showActivationStatus?: boolean;
   onEditMember: (member: TeamMember) => void;
   onOpenInvitation: (invitation: TeamInvitation) => void;
+  onInviteMember?: () => void;
 };
 
 export function TeamMembersList({
@@ -38,9 +40,25 @@ export function TeamMembersList({
   showActivationStatus,
   onEditMember,
   onOpenInvitation,
+  onInviteMember,
 }: TeamMembersListProps) {
   const pendingInvitations =
     invitations?.filter((invitation) => invitation.status === "pending") ?? [];
+
+  if (members.length === 0 && pendingInvitations.length === 0) {
+    return (
+      <EmptyStateCard
+        title="No team members yet"
+        description={
+          canEditMembers
+            ? "Invite a member to give them access to this account."
+            : undefined
+        }
+        actionLabel={canEditMembers ? "Invite member" : undefined}
+        onAction={canEditMembers ? onInviteMember : undefined}
+      />
+    );
+  }
 
   return (
     <OperationalPanel>
