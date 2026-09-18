@@ -87,7 +87,7 @@ Use the file contents as the primary evidence and the operator hint only as cont
       }
       const task = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
-        : "classification";
+        : "summary";
       const result = await generateObjectForOrg(
         ctx,
         file.orgId,

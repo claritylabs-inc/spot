@@ -1,107 +1,65 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { z } from "zod";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { runAgentTurn } from "./channelAgentRunner";
 
-const mocks = vi.hoisted(() => ({ generate: vi.fn(), classify: vi.fn() }));
+const generate = vi.hoisted(() => vi.fn());
 vi.mock("./models", () => ({
-  generateAgentTextForOrg: mocks.generate,
-  generateObjectForOrg: mocks.classify,
+  generateAgentTextForOrg: generate,
   generatedTextFromResult: (result: { text: string }) => result.text,
 }));
 
-beforeEach(() => {
-  mocks.generate.mockReset();
-  mocks.classify.mockResolvedValue({
-    object: { requiresPolicyEvidence: true, confidence: 1 },
+beforeEach(() => generate.mockReset());
+
+const args: Parameters<typeof runAgentTurn>[1] = {
+  orgId: "org" as Id<"organizations">,
+  task: "chat",
+  options: {
+    system: "Answer from the available evidence.",
+    messages: [{ role: "user", content: "Summarize our policy." }],
+    tools: {},
+  },
+  run: {
+    taskKind: "query_reason",
+    sessionKey: "test-thread",
+    trace: {
+      traceId: "test",
+      label: "test",
+      phase: "query_reason",
+      channel: "web",
+    },
+  },
+};
+
+test("returns the normal turn response when the router abstains from tools", async () => {
+  generate.mockResolvedValueOnce({
+    text: "Please identify the policy.",
+    clRouter: { requestId: "request-1" },
   });
+  const result = await runAgentTurn({} as ActionCtx, args);
+  expect(result.text).toBe("Please identify the policy.");
+  expect(result.routerRequestId).toBe("request-1");
+  expect(generate).toHaveBeenCalledOnce();
 });
 
-test("Slack reaction-first context recovers with available policy discovery rather than an unavailable reaction tool", async () => {
-  const policyLookup = vi
-    .fn()
-    .mockResolvedValue("Policy QA-1 has a $3 million cyber limit.");
-  mocks.generate.mockResolvedValueOnce({
-    text: "I will check your policy.",
-    toolCalls: [{ toolName: "choose_slack_reaction", input: { name: "eyes" } }],
-    toolResults: [{ toolName: "choose_slack_reaction", output: { ok: true } }],
-  });
-  mocks.generate.mockImplementationOnce(async (_ctx, _org, _task, options) => {
-    expect(await options.prepareStep({ stepNumber: 0 })).toMatchObject({
-      toolChoice: { type: "tool", toolName: "lookup_policy" },
-    });
-    const output = await options.tools.lookup_policy.execute({});
-    return {
-      text: output,
-      toolCalls: [{ toolName: "lookup_policy", input: {} }],
-      toolResults: [{ toolName: "lookup_policy", output }],
-    };
-  });
-  const result = await runAgentTurn({} as ActionCtx, {
-    orgId: "org" as Id<"organizations">,
-    task: "chat",
-    messageText: "Summarize our current policy",
-    auditExcludedTools: new Set(["choose_slack_reaction"]),
-    options: {
-      system: "Choose a Slack reaction first, then answer the question.",
-      tools: {
-        lookup_policy: {
-          description: "Find current policies",
-          inputSchema: z.object({}),
-          execute: policyLookup,
-        },
-      },
-    },
-    run: {
-      taskKind: "query_reason",
-      sessionKey: "qa-policy-evidence",
-      trace: {
-        traceId: "qa",
-        label: "slack",
-        phase: "query_reason",
-        channel: "slack",
-      },
-    },
-  });
-  expect(policyLookup).toHaveBeenCalledOnce();
-  expect(result.text).toContain("$3 million");
-  expect(result.audit.completedTools).toEqual(["lookup_policy"]);
-});
-
-test("policy recovery never replays a turn that already used a write tool", async () => {
-  mocks.generate.mockResolvedValueOnce({
-    text: "Message sent.",
+test("finishes an incomplete response from completed tool results without replaying a write", async () => {
+  generate.mockResolvedValueOnce({
+    text: "",
+    finishReason: "length",
     toolCalls: [{ toolName: "send_email", input: {} }],
     toolResults: [{ toolName: "send_email", output: { sent: true } }],
+    response: { messages: [{ role: "assistant", content: "Email was sent." }] },
   });
-  const lookup = vi.fn();
-  const result = await runAgentTurn({} as ActionCtx, {
-    orgId: "org" as Id<"organizations">,
-    task: "chat",
-    messageText: "Summarize our current policy",
-    options: {
-      system: "Answer from evidence",
-      tools: {
-        lookup_policy: {
-          description: "Find policies",
-          inputSchema: z.object({}),
-          execute: lookup,
-        },
-      },
-    },
-    run: {
-      taskKind: "query_reason",
-      sessionKey: "qa-policy-evidence",
-      trace: {
-        traceId: "qa",
-        label: "test",
-        phase: "query_reason",
-        channel: "slack",
-      },
-    },
+  generate.mockImplementationOnce(async (_ctx, _org, _task, options) => {
+    expect(options.tools).toBeUndefined();
+    expect(options.messages).toContainEqual({
+      role: "assistant",
+      content: "Email was sent.",
+    });
+    return { text: "Email sent.", clRouter: { requestId: "request-2" } };
   });
-  expect(mocks.generate).toHaveBeenCalledOnce();
-  expect(lookup).not.toHaveBeenCalled();
-  expect(result.text).not.toBe("Message sent.");
+  const result = await runAgentTurn({} as ActionCtx, args);
+  expect(result.text).toBe("Email sent.");
+  expect(result.audit.completedTools).toEqual(["send_email"]);
+  expect(generate).toHaveBeenCalledTimes(2);
 });

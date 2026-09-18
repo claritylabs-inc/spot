@@ -33,6 +33,8 @@ import {
 } from "./lib/featureFlags";
 import {
   getOperatorAgentToolSpec,
+  availableOperatorAgentToolNames,
+  operatorToolRoleAllowed,
   isOperatorAgentToolName,
   parseOperatorAgentToolInput,
   operatorUpdateFieldLabel,
@@ -46,6 +48,7 @@ import {
   resolveOperatorAgentIntent,
 } from "./lib/operatorAgentIntentRegistry";
 import { buildOperatorRunCheckpointSummary } from "./lib/operatorAgentContinuation";
+import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import { lookupMapboxAddress } from "./lib/mapboxAddress";
 import {
   requireOperator,
@@ -828,7 +831,7 @@ function assertOperatorRole(
   actual: OperatorToolRole,
   required: OperatorToolRole,
 ) {
-  if (required === "owner" && actual !== "owner") {
+  if (!operatorToolRoleAllowed(actual, required)) {
     throw new Error("This operator action requires an owner");
   }
 }
@@ -2853,7 +2856,9 @@ async function executeToolActionDomain(
 ): Promise<OperatorActionToolResult> {
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
     return await ctx.runAction(internal.actions.operatorMcp.run, {
-      operatorUserId: args.operatorUserId, toolName: args.toolName, input: args.input,
+      operatorUserId: args.operatorUserId,
+      toolName: args.toolName,
+      input: args.input,
     });
   }
 
@@ -4310,7 +4315,10 @@ export const finishConfirmedActionToolInternal = internalMutation({
 
     const toolCall = {
       name: payload.toolName,
-      input: serializeToolActivityInput(payload.toolName, JSON.parse(payload.input)),
+      input: serializeToolActivityInput(
+        payload.toolName,
+        JSON.parse(payload.input),
+      ),
       output: boundedJson(outcome, 500),
     };
     const currentMessage = await ctx.db.get(run.agentMessageId);
@@ -5216,7 +5224,7 @@ export const getRunContextInternal = internalQuery({
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
     if (!run) return null;
-    await requireOperatorForUser(ctx, run.operatorUserId);
+    const operator = await requireOperatorForUser(ctx, run.operatorUserId);
     const thread = await requireOperatorThread(
       ctx,
       run.threadId,
@@ -5228,7 +5236,49 @@ export const getRunContextInternal = internalQuery({
       .withIndex("thread", (index) => index.eq("threadId", run.threadId))
       .order("desc")
       .take(96);
-    return { run, thread, messages: messages.reverse() };
+    const [impersonation, workspace, credential, mcpServers] =
+      await Promise.all([
+        ctx.db
+          .query("operatorImpersonationSessions")
+          .withIndex("operator_status", (q) =>
+            q.eq("operatorUserId", run.operatorUserId).eq("status", "active"),
+          )
+          .first(),
+        ctx.db
+          .query("operatorGoogleWorkspaceConfig")
+          .withIndex("key", (q) => q.eq("key", "default"))
+          .unique(),
+        googleWorkspaceCredentialEnvelope(),
+        ctx.db.query("operatorMcpServers").take(16),
+      ]);
+    const toolNames = availableOperatorAgentToolNames({
+      role: operator.profile.role,
+      impersonating: Boolean(impersonation),
+      integrations: {
+        google_workspace: Boolean(
+          workspace?.enabled &&
+          credential.credentials &&
+          (workspace.mailboxMode === "directory"
+            ? workspace.directoryAdminEmail
+            : workspace.mailboxes.length),
+        ),
+        slack: Boolean(
+          process.env.SLACK_CLARITY_TEAM_ID?.trim() &&
+          process.env.SLACK_WORKER_URL?.trim() &&
+          process.env.SLACK_WORKER_SECRET?.trim(),
+        ),
+        mapbox: Boolean(
+          process.env.MAPBOX_ACCESS_TOKEN?.trim() ||
+          process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim(),
+        ),
+        mcp: mcpServers.some(
+          (server) =>
+            server.enabled &&
+            (server.authType !== "oauth" || Boolean(server.encryptedOAuth)),
+        ),
+      },
+    });
+    return { run, thread, messages: messages.reverse(), toolNames };
   },
 });
 

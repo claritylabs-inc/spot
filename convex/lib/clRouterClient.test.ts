@@ -4,6 +4,7 @@ import {
   ClRouterRequestError,
   assertSpotRouterAssetUrl,
   clRouterCapabilities,
+  clRouterDecide,
   clRouterGenerate,
   clRouterGenerateStream,
   clRouterRetrieve,
@@ -110,13 +111,13 @@ describe("cl-router requests", () => {
     );
     await clRouterGenerate(
       {
-        task: "classification",
+        task: "analysis",
         orgId: "org-1",
         settings: {
           routes: {
-            classification: { provider: "openai", model: "gpt-5-mini" },
+            analysis: { provider: "openai", model: "gpt-5-mini" },
           },
-          routeSources: { classification: "org" },
+          routeSources: { analysis: "org" },
         },
         prompt: "Classify.",
       },
@@ -332,3 +333,130 @@ describe("Spot router asset URL allowlist", () => {
     ).toThrowError(/local router or a durable callback tunnel/);
   });
 });
+
+test("decisions use the authenticated Jev endpoint and validate exact question coverage", async () => {
+  const request = {
+    orgId: "org-1",
+    task: "test_decision",
+    parentRequestId: "parent-1",
+    state: { message: "Reply to the original sender" },
+    questions: {
+      reply: { type: "noul" as const, instructions: "Is a reply requested?" },
+    },
+  };
+  const response = {
+    contractVersion: 1,
+    requestId: "decision-1",
+    parentRequestId: "parent-1",
+    model: "jev-1.13.0",
+    answers: { reply: { type: "noul", noul: 0.95 } },
+    usage: { inputTokens: 100, outputTokens: 8 },
+    cost: { status: "priced", costNanoUsd: 4200 },
+    durationMs: 100,
+  };
+  const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+    Response.json(response),
+  );
+  const executeJob = vi.fn();
+  const result = await clRouterDecide(request, {
+    executeJob,
+    environment,
+    fetch: fetchMock,
+  });
+  expect(executeJob).not.toHaveBeenCalled();
+  expect(result.answers.reply).toEqual({ type: "noul", noul: 0.95 });
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    "https://router.example.test/v1/decide",
+  );
+  const init = fetchMock.mock.calls[0][1]!;
+  expect(init.headers).toMatchObject({ Authorization: "Bearer router-secret" });
+  expect(JSON.parse(String(init.body))).toEqual({
+    ...request,
+    tenantId: "glass",
+  });
+  fetchMock.mockResolvedValueOnce(Response.json({ ...response, answers: {} }));
+  await expect(
+    clRouterDecide(request, { environment, fetch: fetchMock }),
+  ).rejects.toMatchObject({ kind: "invalid_response" });
+});
+
+test("classification cannot silently use generation routing", async () => {
+  const fetchMock = vi.fn();
+  for (const generate of [clRouterGenerate, clRouterGenerateStream]) {
+    await expect(
+      generate(
+        { task: "classification", prompt: "Classify" },
+        { environment, fetch: fetchMock },
+      ),
+    ).rejects.toMatchObject({ kind: "configuration" });
+  }
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test.each([false, true])(
+  "preserves validated Jev selection metadata (stream=%s)",
+  async (stream) => {
+    const selection = {
+      mode: "jev_active",
+      selectorVersion: "jev-1.13.0",
+      outcome: "accepted",
+      reason: "selected",
+      durationMs: 30,
+      costNanoUsd: 4200,
+      requestId: "decision-1",
+      proposedRoute: { provider: "openai", model: "gpt-5-mini" },
+      estimatedInputTokens: 100,
+      estimatedOutputTokens: null,
+      expectedFallbackCostNanoUsd: null,
+      generationAttemptsCostNanoUsd: 1000,
+      totalCostNanoUsd: null,
+    };
+    const metadata = {
+      ...responseMetadata(),
+      routing: { ...responseMetadata().routing, selection },
+    };
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      stream
+        ? new Response(
+            `event: done\ndata: ${JSON.stringify({ type: "done", ...metadata, finishReason: "stop" })}\n\n`,
+            { headers: { "content-type": "text/event-stream" } },
+          )
+        : Response.json({ ...metadata, output: "done" }),
+    );
+    if (stream) {
+      const response = await clRouterGenerateStream(
+        { task: "chat", prompt: "Hello" },
+        { environment, fetch: fetchMock },
+      );
+      const events = [];
+      for await (const event of response.events) events.push(event);
+      expect(events).toEqual([
+        expect.objectContaining({
+          routing: expect.objectContaining({ selection }),
+        }),
+      ]);
+    } else {
+      const response = await clRouterGenerate(
+        { task: "chat", prompt: "Hello" },
+        { environment, fetch: fetchMock },
+      );
+      expect(response.routing.selection).toEqual(selection);
+    }
+    fetchMock.mockResolvedValueOnce(
+      Response.json({
+        ...metadata,
+        routing: {
+          ...metadata.routing,
+          selection: { ...selection, costNanoUsd: -1 },
+        },
+        output: "done",
+      }),
+    );
+    await expect(
+      clRouterGenerate(
+        { task: "chat", prompt: "Hello" },
+        { environment, fetch: fetchMock },
+      ),
+    ).rejects.toMatchObject({ kind: "invalid_response" });
+  },
+);

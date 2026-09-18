@@ -66,7 +66,6 @@ import {
 } from "../lib/emailSubagent";
 import { FATAL_ACTION_FAILED_MESSAGE } from "../lib/actionFailures";
 import {
-  buildRecentAgentConversationContext,
   buildTextModelHistory,
   buildThreadContinuityPrompt,
   buildThreadHistoryToolInstructions,
@@ -84,7 +83,6 @@ import {
   confirmedRequirementImportMessage,
   decideRequirementAttachmentImport,
   importConfirmedRequirementSources,
-  requiredRequirementImportStep,
 } from "../lib/requirementAttachmentIntent";
 import {
   formatInboundEmailForAgent,
@@ -519,7 +517,9 @@ export const processInbound = internalAction({
       // Resend delivers account-wide events to both production and shared dev.
       if (process.env.SPOT_ENV !== "production") return;
     }
-    const operatorRecipients = routingRecipients.filter(isOperatorEmailRecipient);
+    const operatorRecipients = routingRecipients.filter(
+      isOperatorEmailRecipient,
+    );
     if (operatorRecipients.length > 0) {
       await ctx.runAction(
         internal.actions.handleInboundOperatorEmail.processInbound,
@@ -1064,7 +1064,6 @@ export const processInbound = internalAction({
       const systemPrompt = buildSystemPromptForContext({
         org: {
           name: org.name,
-
         },
         mode:
           effectiveMode === "direct"
@@ -1655,25 +1654,12 @@ IMPORTANT GROUPING RULE: A real-world policy commonly arrives as multiple PDFs i
         const turn = await runAgentTurn(ctx, {
           orgId,
           task: "email_reply",
-          messageText: `Subject: ${subject}\n\n${bodyForAgent}`,
-          currentAttachmentNames: claudeAttachments.map(
-            (attachment) => attachment.filename,
-          ),
-          recentConversationContext: buildRecentAgentConversationContext(
-            boundedHistory.messages,
-            String(inboundMessageId),
-          ),
           options: {
             maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
             system: systemContext,
             messages,
             tools: emailTools,
             stopWhen: stepCountIs(10),
-            prepareStep: ({ stepNumber }) =>
-              requiredRequirementImportStep(
-                stepNumber,
-                requirementImportAttachments.length > 0,
-              ),
           },
           run: {
             taskKind: "inbound_email_reply",

@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  parseRoutingSelectionMetadata,
+  type RoutingSelectionMetadata,
+} from "@claritylabs/cl-router-policy";
 
 export type ClRouterModelRoute = {
   provider: string;
@@ -74,6 +78,7 @@ export type ClRouterRoutingMetadata = {
   shadowMode?: boolean;
   wouldHaveChosen?: ClRouterModelRoute & { decision: string };
   wouldHaveMatched?: boolean;
+  selection?: RoutingSelectionMetadata;
 };
 
 export type ClRouterGenerateResponse = {
@@ -289,8 +294,22 @@ function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
       "cl-router returned invalid generate metadata",
     );
   }
+  let selection: RoutingSelectionMetadata | undefined;
+  if (routing.selection !== undefined) {
+    try {
+      selection = parseRoutingSelectionMetadata(routing.selection);
+    } catch {
+      throw new ClRouterProtocolError(
+        "cl-router returned invalid selection metadata",
+      );
+    }
+  }
   return {
     ...(value as ClRouterGenerateResponse),
+    routing: {
+      ...(routing as ClRouterRoutingMetadata),
+      ...(selection ? { selection } : {}),
+    },
     usage: {
       ...(usage as ClRouterGenerateResponse["usage"]),
       cacheWriteTokens,

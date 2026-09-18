@@ -1,6 +1,15 @@
 "use node";
 
 import {
+  parseDecideRequest,
+  parseDecideResponse,
+  parseRoutingSelectionMetadata,
+  type RoutingSelectionMetadata,
+  type DecideRequest,
+  type DecideResponse,
+} from "@claritylabs/cl-router-policy";
+
+import {
   MODEL_PROVIDERS,
   MODEL_TASKS,
   type ModelProvider,
@@ -53,6 +62,7 @@ export type ClRouterRoutingMetadata = {
   shadowMode?: boolean;
   wouldHaveChosen?: ModelRoute & { decision: string };
   wouldHaveMatched?: boolean;
+  selection?: RoutingSelectionMetadata;
 };
 
 export type ClRouterResponseMetadata = {
@@ -229,7 +239,6 @@ export type ClRouterGenerateRequest = {
   executionBudgetMs?: number;
   sessionKey?: string;
   tools?: ClRouterToolDefinition[];
-  toolChoice?: ClRouterToolChoice;
   routing?: { pin?: ModelRoute; allowFallback?: boolean };
   trace?: ClRouterTraceMetadata;
 };
@@ -239,12 +248,6 @@ export type ClRouterToolDefinition = {
   description?: string;
   inputSchema: Record<string, unknown>;
 };
-
-export type ClRouterToolChoice =
-  | "auto"
-  | "none"
-  | "required"
-  | { type: "tool"; toolName: string };
 
 export type ClRouterGenerateResponse = ClRouterResponseMetadata & {
   output: unknown;
@@ -663,8 +666,17 @@ function readRouting(value: unknown): ClRouterRoutingMetadata | null {
   ) {
     return null;
   }
+  let selection: RoutingSelectionMetadata | undefined;
+  if (value.selection !== undefined) {
+    try {
+      selection = parseRoutingSelectionMetadata(value.selection);
+    } catch {
+      return null;
+    }
+  }
   return {
     decision: value.decision,
+    ...(selection ? { selection } : {}),
     candidatesConsidered: candidates,
     policyVersion: value.policyVersion,
     cacheStickinessApplied: value.cacheStickinessApplied,
@@ -1023,10 +1035,23 @@ function parseStreamEventBlock(block: string): ClRouterStreamEvent | null {
   }
 }
 
+function assertGenerationTask(request: ClRouterGenerateRequest) {
+  if (
+    request.task === "classification" ||
+    request.taskKind?.endsWith("_classify")
+  ) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Classification requires typed questions through clRouterDecide (/v1/decide).",
+    );
+  }
+}
+
 export async function clRouterGenerateStream(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateStreamResponse> {
+  assertGenerationTask(request);
   if (options.executeJob) {
     const response = await clRouterGenerate(request, options);
     const events = (async function* (): AsyncIterable<ClRouterStreamEvent> {
@@ -1168,10 +1193,31 @@ export async function clRouterGenerateStream(
   return { events, headers: response.headers };
 }
 
+export async function clRouterDecide(
+  request: Omit<DecideRequest, "tenantId">,
+  options: ClRouterClientOptions = {},
+): Promise<DecideResponse> {
+  const body = parseDecideRequest({
+    ...request,
+    tenantId: CL_ROUTER_TENANT_ID,
+  });
+  const payload = await postJson("/v1/decide", body, options);
+  try {
+    return parseDecideResponse(payload, body);
+  } catch (error) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router decision response is invalid",
+      { cause: error },
+    );
+  }
+}
+
 export async function clRouterGenerate(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateResponse> {
+  assertGenerationTask(request);
   const payload = await postJson(
     "/v1/generate",
     requestPayload(request),

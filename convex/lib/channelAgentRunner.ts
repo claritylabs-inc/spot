@@ -1,49 +1,9 @@
 "use node";
 
-import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import {
-  generateAgentTextForOrg,
-  generateObjectForOrg,
-  generatedTextFromResult,
-} from "./models";
-import {
-  collectToolAudit,
-  mergeToolAudits,
-  type AgentToolAudit,
-} from "./agentToolAudit";
-
-const PolicyEvidenceDecisionSchema = z.object({
-  requiresPolicyEvidence: z.boolean(),
-  confidence: z.number().min(0).max(1),
-});
-
-const POLICY_EVIDENCE_TOOL_NAMES = [
-  "lookup_policy",
-  "lookup_policy_section",
-  "compare_coverages",
-] as const;
-const POLICY_EVIDENCE_TOOLS = new Set<string>(POLICY_EVIDENCE_TOOL_NAMES);
-
-const REPLAY_SAFE_TOOLS = new Set([
-  ...POLICY_EVIDENCE_TOOL_NAMES,
-  "lookup_company_context",
-  "lookup_compliance_requirements",
-  "lookup_connected_vendors",
-  "lookup_vendor_policies",
-  "lookup_vendor_compliance",
-  "lookup_address",
-  "search_connected_email",
-  "read_connected_email",
-  "read_connected_email_attachment",
-  "search_thread_history",
-  "read_thread_attachment",
-  "web_research",
-]);
-
-const POLICY_EVIDENCE_UNAVAILABLE_MESSAGE =
-  "I couldn't retrieve the policy evidence needed to answer that reliably. Please try again in a moment.";
+import { generateAgentTextForOrg, generatedTextFromResult } from "./models";
+import { collectToolAudit, type AgentToolAudit } from "./agentToolAudit";
 
 export const AGENT_MAX_OUTPUT_TOKENS = 8_192;
 
@@ -63,9 +23,6 @@ type RunAgentTurnArgs = {
   task: Parameters<typeof generateAgentTextForOrg>[2];
   options: AgentTurnOptions;
   run: Parameters<typeof generateAgentTextForOrg>[4];
-  messageText: string;
-  recentConversationContext?: string;
-  currentAttachmentNames?: string[];
   auditExcludedTools?: ReadonlySet<string>;
 };
 
@@ -82,10 +39,6 @@ function filterAudit(
     toolCalls: audit.toolCalls.filter((call) => !excludedTools.has(call.name)),
     workflowOutcomes: audit.workflowOutcomes,
   };
-}
-
-function hasCompletedPolicyEvidence(audit: AgentToolAudit) {
-  return audit.completedTools.some((name) => POLICY_EVIDENCE_TOOLS.has(name));
 }
 
 async function synthesizeCompletedToolResults(
@@ -138,41 +91,7 @@ async function synthesizeCompletedToolResults(
   }
 }
 
-async function requiresPolicyEvidence(ctx: ActionCtx, args: RunAgentTurnArgs) {
-  try {
-    const result = await generateObjectForOrg(
-      ctx,
-      args.orgId,
-      "classification",
-      {
-        schema: PolicyEvidenceDecisionSchema,
-        maxOutputTokens: 96,
-        system: `Decide whether answering the current message requires private policy evidence from the organization's Spot policy records.
-
-Set requiresPolicyEvidence true only for an informational answer that depends on the organization's actual policy facts, including coverage, limits, deductibles, premiums, dates, carriers, insured parties, endorsements, exclusions, conditions, wording, or comparisons between its policies.
-
-Set it false for general insurance explanations, greetings, product-capability questions, requests fully answerable from a current attachment, and requests whose primary outcome is an action such as drafting or sending email, generating a certificate, changing a policy, or coordinating mailbox work. Those workflows enforce their own evidence rules.
-
-Use recent conversation only to resolve contextual follow-ups. If the message combines a generic concept with a question about the organization's actual policy, set it true. Return only the structured decision.`,
-        prompt: JSON.stringify({
-          currentMessage: args.messageText,
-          recentConversation: args.recentConversationContext?.slice(-1600),
-          currentAttachments: args.currentAttachmentNames,
-        }),
-      },
-      { taskKind: "query_classify" },
-    );
-    return (
-      result.object.requiresPolicyEvidence && result.object.confidence >= 0.65
-    );
-  } catch (error) {
-    console.warn("[agent-turn] Policy evidence classification failed", error);
-    return false;
-  }
-}
-
 export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
-  const evidenceDecision = requiresPolicyEvidence(ctx, args);
   const result = await generateAgentTextForOrg(
     ctx,
     args.orgId,
@@ -195,60 +114,5 @@ export async function runAgentTurn(ctx: ActionCtx, args: RunAgentTurnArgs) {
       : undefined;
   }
 
-  if (!(await evidenceDecision) || hasCompletedPolicyEvidence(audit)) {
-    return { audit, text, routerRequestId };
-  }
-
-  const canRetry = audit.usedTools.every((name) => REPLAY_SAFE_TOOLS.has(name));
-  const recoveryTools = Object.fromEntries(
-    POLICY_EVIDENCE_TOOL_NAMES.flatMap((name) =>
-      args.options.tools[name] ? [[name, args.options.tools[name]]] : [],
-    ),
-  ) as AgentTools;
-
-  if (!canRetry || Object.keys(recoveryTools).length === 0) {
-    return { audit, text: POLICY_EVIDENCE_UNAVAILABLE_MESSAGE };
-  }
-  const firstEvidenceTool = Object.keys(recoveryTools)[0];
-
-  try {
-    const retryResult = await generateAgentTextForOrg(
-      ctx,
-      args.orgId,
-      args.task,
-      {
-        ...args.options,
-        system: `${args.options.system}\n\nPOLICY EVIDENCE RECOVERY:\n- The previous attempt did not complete a current-turn policy evidence lookup required for this answer.\n- Use the available read-only policy tools silently, then answer from their result.\n- If the tools find no matching policy or cannot retrieve the needed evidence, report that concrete outcome instead of promising future work.`,
-        tools: recoveryTools,
-        prepareStep: ({ stepNumber }) =>
-          stepNumber === 0
-            ? { toolChoice: { type: "tool" as const, toolName: firstEvidenceTool } }
-            : undefined,
-      },
-      {
-        ...args.run,
-        trace: {
-          ...args.run.trace,
-          traceId: `${args.run.trace.traceId}:policy-evidence-retry`,
-          label: `${args.run.trace.label}.policyEvidenceRetry`,
-        },
-      },
-    );
-    const retryAudit = filterAudit(
-      collectToolAudit(retryResult),
-      args.auditExcludedTools,
-    );
-    return {
-      audit: mergeToolAudits(audit, retryAudit),
-      text: hasCompletedPolicyEvidence(retryAudit)
-        ? generatedTextFromResult(retryResult)
-        : POLICY_EVIDENCE_UNAVAILABLE_MESSAGE,
-      ...(hasCompletedPolicyEvidence(retryAudit) && retryResult.clRouter?.requestId
-        ? { routerRequestId: retryResult.clRouter.requestId }
-        : {}),
-    };
-  } catch (error) {
-    console.warn("[agent-turn] Policy evidence retry failed", error);
-    return { audit, text: POLICY_EVIDENCE_UNAVAILABLE_MESSAGE };
-  }
+  return { audit, text, routerRequestId };
 }

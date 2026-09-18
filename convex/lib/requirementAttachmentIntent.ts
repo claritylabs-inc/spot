@@ -4,7 +4,7 @@ import { z } from "zod";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { generateObjectForOrg } from "./models";
+import { clRouterDecide } from "./clRouterClient";
 import type { RequirementScope } from "./complianceTypes";
 import type { WorkflowOutcome } from "./workflows/types";
 
@@ -164,7 +164,7 @@ export function validateRequirementAttachmentDecision<
 export async function decideRequirementAttachmentImport<
   T extends AttachmentCandidate,
 >(
-  ctx: ActionCtx,
+  _ctx: ActionCtx,
   args: {
     orgId: Id<"organizations">;
     messageText: string;
@@ -179,27 +179,96 @@ export async function decideRequirementAttachmentImport<
   }
 
   try {
-    const { object } = await generateObjectForOrg(
-      ctx,
-      args.orgId,
-      "classification",
-      {
-        schema: RequirementAttachmentDecisionSchema,
-        maxOutputTokens: 700,
-        system: `Classify whether the user explicitly wants newly attached files treated as canonical insurance-requirement sources.
-
-Return structured evidence only. Distinguish agreements, leases, contracts, insurance schedules, and requirement packets from insurance policies, binders, declarations, endorsements, and certificates. A request to compare a policy with already-saved requirements is not a request to import the policy. Negated persistence instructions are no_import. Scope must be vendors only when the requirements govern vendors/contractors/suppliers/tenants, own_org only when they govern the user's organization, mixed when both are explicit, and ambiguous otherwise. Select only exact file IDs from the supplied candidates. Confidence measures the entire decision, and each document gets its own classification confidence.`,
-        prompt: JSON.stringify({
-          message: args.messageText,
-          attachments: candidates.map((attachment) => ({
-            fileId: String(attachment.fileId),
-            filename: attachment.filename,
-            contentType: attachment.contentType,
-          })),
-        }),
+    const result = await clRouterDecide({
+      orgId: args.orgId,
+      task: "requirement_attachment_import",
+      state: {
+        message: args.messageText,
+        attachments: candidates.map((attachment, index) => ({
+          candidate: `document_${index}`,
+          fileId: String(attachment.fileId),
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+        })),
       },
+      questions: {
+        intent: {
+          type: "choice",
+          instructions:
+            "Does the current user explicitly want newly attached files treated as canonical insurance-requirement sources? Honor negated persistence instructions. Comparing a policy to saved requirements is not importing it.",
+          criteria: {
+            import_new_requirements:
+              "Explicitly import new attached requirement sources",
+            analyze_new_requirements:
+              "Explicitly analyze new attached requirement sources",
+            use_existing_requirements: "Use already-saved requirements",
+            no_import: "No import requested or persistence is negated",
+            ambiguous: "Unclear intent",
+          },
+        },
+        scope: {
+          type: "choice",
+          instructions: "Who do the new insurance requirements govern?",
+          criteria: {
+            vendors: "Vendors, contractors, suppliers, or tenants",
+            own_org: "The user's own organization",
+            mixed: "Both explicitly",
+            ambiguous: "Unclear scope",
+          },
+        },
+        ...Object.fromEntries(
+          candidates.map((attachment, index) => [
+            `document_${index}`,
+            {
+              type: "choice" as const,
+              instructions: `Classify candidate document_${index} (${attachment.filename}). Select insurance_requirements only when the user selects this attachment as a new requirement source. Agreements, leases, contracts and requirement schedules may qualify; policies, binders, declarations, endorsements and certificates do not.`,
+              criteria: {
+                insurance_requirements:
+                  "Selected new insurance requirement source",
+                insurance_policy:
+                  "Policy, binder, declarations, or endorsement",
+                certificate: "Insurance certificate",
+                other: "Other, unselected, or uncertain document",
+              },
+            },
+          ]),
+        ),
+      },
+    });
+    const intent = result.answers.intent;
+    const scope = result.answers.scope;
+    if (intent?.type !== "choice" || scope?.type !== "choice") {
+      return { authorization: "none", attachments: [] };
+    }
+    const documents = candidates.map((attachment, index) => {
+      const answer = result.answers[`document_${index}`];
+      return {
+        fileId: String(attachment.fileId),
+        classification: answer?.type === "choice" ? answer.choice : "other",
+        confidence:
+          answer?.type === "choice"
+            ? (answer.probabilities[answer.choice] ?? 0)
+            : 0,
+      };
+    });
+    return validateRequirementAttachmentDecision(
+      {
+        intent: intent.choice,
+        intentEvidence: args.messageText.slice(0, 240),
+        scope: scope.choice,
+        selectedFileIds: documents
+          .filter(
+            (document) => document.classification === "insurance_requirements",
+          )
+          .map((document) => document.fileId),
+        documents,
+        confidence: Math.min(
+          intent.probabilities[intent.choice] ?? 0,
+          scope.probabilities[scope.choice] ?? 0,
+        ),
+      },
+      candidates,
     );
-    return validateRequirementAttachmentDecision(object, candidates);
   } catch {
     return { authorization: "none", attachments: [] };
   }
@@ -338,24 +407,4 @@ export function confirmedRequirementImportMessage(result: {
   createdCount: number;
 }) {
   return `Imported ${result.createdCount} insurance requirement${result.createdCount === 1 ? "" : "s"} from the confirmed source${result.imports.length === 1 ? "" : "s"}.`;
-}
-
-const REQUIRED_REQUIREMENT_TOOLS = [
-  "import_requirement_attachments",
-  "lookup_compliance_requirements",
-] as const;
-
-export function requiredRequirementImportStep(
-  stepNumber: number,
-  hasAuthorizedRequirementAttachments: boolean,
-) {
-  if (!hasAuthorizedRequirementAttachments) return undefined;
-  const toolName = REQUIRED_REQUIREMENT_TOOLS[stepNumber];
-  if (!toolName) return undefined;
-  return {
-    toolChoice: {
-      type: "tool" as const,
-      toolName,
-    },
-  };
 }

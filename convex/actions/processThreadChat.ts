@@ -82,7 +82,6 @@ import { lobLabel } from "../lib/linesOfBusiness";
 import {
   buildRequirementImportConfirmation,
   decideRequirementAttachmentImport,
-  requiredRequirementImportStep,
 } from "../lib/requirementAttachmentIntent";
 import {
   SLACK_PROCESSING_REACTIONS,
@@ -430,7 +429,7 @@ export const run = internalAction({
               )}\nTreat these as explicit user steering. Prioritize them over generic retrieval. If mailbox work is needed and mailboxes are selected, keep the mailbox coordinator scoped to those accounts unless the user asks to broaden the search.`
           : "";
 
-      const { history: messageHistory, latestAttachmentNames } =
+      const { history: messageHistory } =
         await buildMessageHistoryWithAttachmentContext(
           ctx,
           allMessages,
@@ -805,9 +804,6 @@ export const run = internalAction({
       const turn = await runAgentTurn(ctx, {
         orgId: args.orgId,
         task: chatTask,
-        messageText: text,
-        recentConversationContext,
-        currentAttachmentNames: latestAttachmentNames,
         auditExcludedTools:
           surface === "slack" ? new Set([SLACK_REACTION_TOOL_NAME]) : undefined,
         options: {
@@ -822,20 +818,6 @@ export const run = internalAction({
               target: agentMsgId,
               tools: step.toolCalls.map((call) => call.toolName),
             });
-          },
-          prepareStep: ({ stepNumber }) => {
-            if (surface === "slack" && stepNumber === 0) {
-              return {
-                toolChoice: {
-                  type: "tool" as const,
-                  toolName: SLACK_REACTION_TOOL_NAME,
-                },
-              };
-            }
-            return requiredRequirementImportStep(
-              stepNumber - (surface === "slack" ? 1 : 0),
-              requirementImportAttachments.length > 0,
-            );
           },
         },
         run: {

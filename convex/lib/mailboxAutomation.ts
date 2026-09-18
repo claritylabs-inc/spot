@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DecideResponse } from "@claritylabs/cl-router-policy";
 
 export type ConnectedEmailAutomation = {
   policyImports: boolean;
@@ -73,7 +74,12 @@ export const mailboxAutomationDecisionSchema = z.object({
   requirementFilenames: z.array(z.string().min(1)).max(12),
   includeEmailBodyAsRequirements: z.boolean(),
   requirementSourceType: z
-    .enum(["lease_agreement", "client_contract", "vendor_requirements", "other"])
+    .enum([
+      "lease_agreement",
+      "client_contract",
+      "vendor_requirements",
+      "other",
+    ])
     .nullable(),
   requirementScope: z.enum(["vendors", "own_org"]).nullable(),
   extractCompanyMemory: z.boolean(),
@@ -91,6 +97,86 @@ export type MailboxAutomationClassification = z.infer<
 export type MailboxAutomationDecision = z.infer<
   typeof mailboxAutomationDecisionSchema
 >;
+
+type MailboxAutomationExtraction = Omit<
+  MailboxAutomationDecision,
+  | "classification"
+  | "confidence"
+  | "includeEmailBodyAsRequirements"
+  | "requirementSourceType"
+  | "requirementScope"
+  | "extractCompanyMemory"
+>;
+
+export function applyMailboxAutomationJudgments(
+  extracted: MailboxAutomationExtraction,
+  answers: DecideResponse["answers"],
+  attachments: MailboxAttachmentSummary[],
+): MailboxAutomationDecision | null {
+  const category = answers[`${extracted.emailRef}_classification`];
+  const body = answers[`${extracted.emailRef}_body`];
+  const memory = answers[`${extracted.emailRef}_memory`];
+  const source = answers[`${extracted.emailRef}_source`];
+  const scope = answers[`${extracted.emailRef}_scope`];
+  if (
+    category?.type !== "choice" ||
+    body?.type !== "noul" ||
+    memory?.type !== "noul" ||
+    source?.type !== "choice" ||
+    scope?.type !== "choice"
+  )
+    return null;
+
+  const classification = mailboxAutomationClassificationSchema.parse(
+    category.choice,
+  );
+  const policyCategory =
+    classification === "policy_document" || classification === "multiple";
+  const requirementCategory =
+    classification === "insurance_requirements" ||
+    classification === "multiple";
+  const memoryCategory =
+    classification === "company_context" || classification === "multiple";
+  const requirementSourceType = requirementCategory
+    ? mailboxAutomationDecisionSchema.shape.requirementSourceType.parse(
+        source.choice === "none" ? null : source.choice,
+      )
+    : null;
+  const requirementScope = requirementCategory
+    ? mailboxAutomationDecisionSchema.shape.requirementScope.parse(
+        scope.choice === "none" ? null : scope.choice,
+      )
+    : null;
+  return sanitizeMailboxAutomationDecision(
+    {
+      ...extracted,
+      classification,
+      confidence: Math.min(
+        category.confidence,
+        ...(requirementCategory
+          ? [
+              source.confidence,
+              scope.confidence,
+              requirementSourceType && requirementScope ? 1 : 0,
+            ]
+          : []),
+      ),
+      policyGroups: policyCategory ? extracted.policyGroups : [],
+      requirementFilenames: requirementCategory
+        ? extracted.requirementFilenames
+        : [],
+      includeEmailBodyAsRequirements:
+        requirementCategory &&
+        body.noul >= MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD,
+      extractCompanyMemory:
+        memoryCategory &&
+        memory.noul >= MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD,
+      requirementSourceType,
+      requirementScope,
+    },
+    attachments,
+  );
+}
 
 export type MailboxAttachmentSummary = {
   filename?: string | null;

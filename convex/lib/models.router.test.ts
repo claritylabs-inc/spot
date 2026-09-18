@@ -83,8 +83,8 @@ describe("router-only model calls", () => {
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
     vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
     const runQuery = vi.fn(async () => ({
-      routes: { classification: route },
-      routeSources: { classification: "global" },
+      routes: { analysis: route },
+      routeSources: { analysis: "global" },
     }));
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
       response({ decision: "covered" }),
@@ -93,7 +93,7 @@ describe("router-only model calls", () => {
 
     const result = await generateObjectForPublicTask(
       { runQuery } as never,
-      "classification",
+      "analysis",
       {
         prompt: "Classify this.",
         schema: z.object({ decision: z.literal("covered") }),

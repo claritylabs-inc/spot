@@ -19,7 +19,6 @@ import {
   buildPolicyToolInstructions,
 } from "../lib/aiUtils";
 import {
-  buildRecentAgentConversationContext,
   buildTextModelHistory,
   buildThreadContinuityPrompt,
   buildThreadHistoryToolInstructions,
@@ -383,11 +382,6 @@ MCP MODE:
     const turn = await runAgentTurn(ctx, {
       orgId: args.orgId,
       task: "chat",
-      messageText: args.message,
-      recentConversationContext: buildRecentAgentConversationContext(
-        allMessages,
-        String(userMessageId),
-      ),
       options: {
         maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
         system: fullSystemPrompt,

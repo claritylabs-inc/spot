@@ -108,8 +108,7 @@ type ModelProvider = DirectModelProvider;
 type ModelTask =
   | "extraction"
   | "extraction_preview"
-  | "extraction_coverage_recovery"
-  | "classification";
+  | "extraction_coverage_recovery";
 
 type WorkerModelRoute = {
   provider: ModelProvider;
@@ -686,7 +685,6 @@ function readSourceKind(
 }
 
 const WORKER_STATIC_ROUTES: Record<ModelTask, WorkerModelRoute> = {
-  classification: MODEL_ROUTING.classification,
   extraction: MODEL_ROUTING.extraction,
   extraction_preview: MODEL_ROUTING.extraction_preview,
   extraction_coverage_recovery: MODEL_ROUTING.extraction_coverage_recovery,
@@ -731,7 +729,11 @@ function readRouteSource(value: unknown): WorkerRouteSource | undefined {
 
 function modelTaskForTaskKind(taskKind?: string): ModelTask {
   if (taskKind === "extraction_preview") return "extraction_preview";
-  if (taskKind === "extraction_classify") return "classification";
+  if (taskKind?.endsWith("_classify")) {
+    throw new Error(
+      "Classification requires a typed router /v1/decide request, not an SDK generation callback",
+    );
+  }
   if (taskKind === "extraction_coverage_recovery")
     return "extraction_coverage_recovery";
   return "extraction";
@@ -953,7 +955,6 @@ function modelTraceLabel(
       ? "Extract policy text"
       : "Extract policy structure";
   if (task === "extraction_preview") return "Extract provisional policy fields";
-  if (task === "classification") return "Classify document";
   return kind === "generateText"
     ? "Generate text"
     : "Generate structured output";

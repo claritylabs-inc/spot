@@ -36,6 +36,36 @@ describe("sdkCallbacks router inputs", () => {
     vi.unstubAllGlobals();
   });
 
+  test.each(["extraction_classify", "query_classify", "application_classify"])(
+    "rejects %s before any generation request",
+    async (taskKind) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        makeGenerateObject("extraction")({
+          taskKind,
+          prompt: "Classify",
+          maxTokens: 100,
+          schema: z.object({ ok: z.boolean() }),
+        }),
+      ).rejects.toThrow("typed clRouterDecide");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test("rejects the generic classification task before generation", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      makeGenerateObject("classification")({
+        prompt: "Classify",
+        maxTokens: 100,
+        schema: z.object({ ok: z.boolean() }),
+      }),
+    ).rejects.toThrow("typed clRouterDecide");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("keeps a small PDF inline and executes only through cl-router", async () => {
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
     vi.stubEnv("CL_ROUTER_SECRET", "router-secret");

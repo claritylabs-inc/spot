@@ -422,6 +422,25 @@ credentialed retrieval call. There is no task gate, consumer-side direct path,
 or break-glass provider fallback. A missing or unavailable router produces the
 typed unavailable state or failure for that operation.
 
+Typed classification decisions use `clRouterDecide` and authenticated
+`POST /v1/decide`, with the router-owned Jev pin and native Choice/Noul answers.
+Spot keeps no TypeSafe key. The app and extraction worker consume router-policy
+0.8.0; the checked-in API snapshot includes decision request/response fixtures.
+Deploy the router decision endpoint before this Spot version. Classification
+and security generation-route settings no longer control these decisions.
+Decision calls remain inline JSON even when a caller has a durable generation
+transport. Both generation clients validate and retain additive
+`routing.selection` metadata, including nullable cost fields, using the shared
+policy parser. Trace ingestion and storage retain the same optional metadata,
+including worker-delivered events and legacy nested trace envelopes. This consumer
+migration does not activate or change router model-selector controls.
+
+Before each operator model step, Spot filters tool definitions by current role,
+impersonation, and known integration configuration. It sends all remaining tools
+for router-owned selection, without `toolChoice`, and revalidates exact access
+and approvals at execution. There is no separate chat policy-evidence
+classifier, completed-lookup gate, or recovery generation.
+
 Tool-bearing agent loops use `getAgentLanguageModelForOrg`,
 `getAgentLanguageModelForPublicTask`, `generateAgentTextForOrg`, or
 `generateAgentTextForPublicTask`. These helpers preserve AI SDK tools and
