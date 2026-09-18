@@ -141,6 +141,14 @@ function ClientWorkspace({
   const [textFieldFocused, setTextFieldFocused] = useState(false);
   const [settingsTab, setSettingsTab] = useState("account");
   const [teamInviteOpen, setTeamInviteOpen] = useState(false);
+  const handleOperatorActivationSent = useCallback(
+    () =>
+      patchClientStatus(
+        clientOrgId,
+        client.operatorStatus === "onboarding" ? "live" : client.operatorStatus,
+      ),
+    [clientOrgId, client.operatorStatus, patchClientStatus],
+  );
   const [savingFeatureFlagId, setSavingFeatureFlagId] =
     useState<FeatureFlagId | null>(null);
   const updateClientSettings = useMutation(api.operator.updateClientSettings);
@@ -366,14 +374,7 @@ function ClientWorkspace({
             onInviteOpenChange={setTeamInviteOpen}
             showInviteAction={false}
             setOperatorRightPanel={setRightPanel}
-            onOperatorActivationSent={() =>
-              patchClientStatus(
-                client._id,
-                client.operatorStatus === "onboarding"
-                  ? "live"
-                  : client.operatorStatus,
-              )
-            }
+            onOperatorActivationSent={handleOperatorActivationSent}
           />
         ) : null}
       </main>
