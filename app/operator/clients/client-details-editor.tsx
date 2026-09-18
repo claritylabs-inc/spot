@@ -132,7 +132,7 @@ export function ClientDetailsEditor({
               draft.field("status")(value);
           }}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue>
               <StatusLabel {...statusPresentation}>
                 {statusLabel}
@@ -142,11 +142,9 @@ export function ClientDetailsEditor({
           <SelectContent>
             {Object.entries(OPERATOR_CLIENT_STATUSES).map(
               ([value, { label, ...presentation }]) => (
-              <SelectItem key={value} value={value}>
-                <StatusLabel {...presentation}>
-                  {label}
-                </StatusLabel>
-              </SelectItem>
+                <SelectItem key={value} value={value}>
+                  <StatusLabel {...presentation}>{label}</StatusLabel>
+                </SelectItem>
               ),
             )}
           </SelectContent>
