@@ -1012,14 +1012,23 @@ export async function preflightOperatorToolConfirmation(
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
       return;
-    case "set_organization_status":
-      await requireDocument(
+    case "set_organization_status": {
+      const organization = await requireDocument(
         ctx,
         "organizations",
         args.input.orgId,
         "Organization",
       );
+      if (
+        organization.type !== "client" &&
+        (args.input.status === "lost" || args.input.status === "churned")
+      ) {
+        throw new Error(
+          "Lost and churned statuses are only available for clients",
+        );
+      }
       return;
+    }
     case "set_client_feature_flag": {
       const organization = await requireClientOrganization(
         ctx,

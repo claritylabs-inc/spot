@@ -16,6 +16,7 @@ import { OperatorSidebar } from "../operator-sidebar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { FileDropZone } from "@/components/ui/file-drop";
 import { Input } from "@/components/ui/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { OperationalPanel } from "@/components/ui/operational-panel";
@@ -338,7 +339,12 @@ function BrokerDrawer({
 
   async function uploadLogo(file: File) {
     if (!row) return;
+    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+      toast.error("Choose an image smaller than 5 MB");
+      return;
+    }
     setSaving(true);
+    const notification = toast.loading("Uploading logo…");
     try {
       const uploadUrl = await generateLogoUploadUrl({
         brokerOrgId: row.broker._id,
@@ -356,10 +362,11 @@ function BrokerDrawer({
         brokerOrgId: row.broker._id,
         iconStorageId: storageId,
       });
-      toast.success("Broker logo saved");
+      toast.success("Broker logo saved", { id: notification });
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(error, "Could not save the broker logo"),
+        { id: notification },
       );
     } finally {
       setSaving(false);
@@ -420,7 +427,7 @@ function BrokerDrawer({
         </Field>
         {row ? (
           <Field label="Logo">
-            <div className="flex items-center gap-3">
+            <div className="space-y-3">
               {row.broker.iconUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -429,28 +436,13 @@ function BrokerDrawer({
                   className="size-10 rounded-md border border-input object-contain"
                 />
               ) : null}
-              <PillButton
-                type="button"
-                variant="secondary"
-                disabled={saving}
-                onClick={() =>
-                  document
-                    .getElementById(`operator-broker-logo-${row.broker._id}`)
-                    ?.click()
-                }
-              >
-                Upload logo
-              </PillButton>
-              <input
-                id={`operator-broker-logo-${row.broker._id}`}
-                className="hidden"
-                type="file"
+              <FileDropZone
                 accept="image/*"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void uploadLogo(file);
-                  event.currentTarget.value = "";
-                }}
+                disabled={saving}
+                idleLabel="Drop logo here"
+                activeLabel="Upload this logo"
+                hint="or click to choose an image · Max 5 MB"
+                onFile={(file) => void uploadLogo(file)}
               />
             </div>
           </Field>

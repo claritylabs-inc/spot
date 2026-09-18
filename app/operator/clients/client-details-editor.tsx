@@ -19,10 +19,9 @@ import { useOperatorClientCacheActions } from "@/lib/sync/operator-cached-querie
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ClientLogoField } from "./client-logo-field";
-import type { OperatorClientRow } from "./client-model";
+import { operatorClientStatuses, type OperatorClientRow } from "./client-model";
 
 export type ClientEditorHandle = { saveNow: () => Promise<boolean> };
-const statuses = { onboarding: "Onboarding", live: "Live" };
 
 export function ClientDetailsEditor({
   client,
@@ -114,10 +113,15 @@ export function ClientDetailsEditor({
         </span>
         <Select
           value={draft.value.status}
-          items={statuses}
+          items={operatorClientStatuses}
           disabled={disabled}
           onValueChange={(value) => {
-            if (value === "live" || value === "onboarding")
+            if (
+              value === "live" ||
+              value === "onboarding" ||
+              value === "lost" ||
+              value === "churned"
+            )
               draft.field("status")(value);
           }}
         >
@@ -125,7 +129,7 @@ export function ClientDetailsEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(statuses).map(([value, label]) => (
+            {Object.entries(operatorClientStatuses).map(([value, label]) => (
               <SelectItem key={value} value={value}>
                 {label}
               </SelectItem>

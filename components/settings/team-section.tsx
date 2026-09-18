@@ -34,7 +34,7 @@ import {
 type OperatorClientTeamTarget = {
   _id: Id<"organizations">;
   primaryInsuranceContactId?: Id<"users">;
-  operatorStatus?: "onboarding" | "live";
+  operatorStatus?: "onboarding" | "live" | "lost" | "churned";
 };
 
 export function TeamSection({

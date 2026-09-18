@@ -45,9 +45,11 @@ import {
   userFacingErrorCodes,
 } from "./lib/userFacingErrors";
 
-const brokerStatusValidator = v.union(
+const clientStatusValidator = v.union(
   v.literal("onboarding"),
   v.literal("live"),
+  v.literal("lost"),
+  v.literal("churned"),
 );
 const orgRoleValidator = v.union(v.literal("admin"), v.literal("member"));
 const operatorClientUserValidator = v.object({
@@ -431,7 +433,6 @@ async function listOperatorClientRows(ctx: QueryCtx) {
         agentHandle: client.agentHandle,
         operatorStatus: client.operatorStatus ?? "live",
         onboardingComplete: client.onboardingComplete,
-        inviteStatus: client.inviteStatus,
         primaryContactName: client.primaryContactName,
         primaryContactEmail: client.primaryContactEmail,
         primaryContactPhone: client.primaryContactPhone,
@@ -1180,7 +1181,7 @@ export const createClientWithoutUsersForAgentInternal = internalAction({
 export const setSoloClientStatus = mutation({
   args: {
     clientOrgId: v.id("organizations"),
-    status: brokerStatusValidator,
+    status: clientStatusValidator,
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -1674,7 +1675,7 @@ export async function createStandaloneClientOrganizationByOperator(
     operatorUserId: Id<"users">;
     name: string;
     website?: string;
-    operatorStatus?: "onboarding" | "live";
+    operatorStatus?: Doc<"organizations">["operatorStatus"];
   },
 ) {
   await requireOperatorForUser(ctx, args.operatorUserId);
@@ -1929,9 +1930,10 @@ export const markSoloClientLaunchedInternal = internalMutation({
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
-    const wasLive = (client.operatorStatus ?? "live") === "live";
+    const wasOnboarding = client.operatorStatus === "onboarding";
     await ctx.db.patch(args.clientOrgId, {
-      operatorStatus: "live",
+      operatorStatus:
+        client.operatorStatus === "onboarding" ? "live" : client.operatorStatus,
       onboardingComplete: true,
     });
     await writeOperatorAudit(ctx, {
@@ -1939,7 +1941,7 @@ export const markSoloClientLaunchedInternal = internalMutation({
       type: "client_launch_email_sent",
       targetOrgId: args.clientOrgId,
       targetUserId: args.adminUserId,
-      summary: `${wasLive ? "Resent activation email for" : "Launched"} ${client.name}; email provider accepted client login email`,
+      summary: `${wasOnboarding ? "Launched" : "Sent activation email for"} ${client.name}; email provider accepted client login email`,
       metadata: {
         recipientEmail: args.recipientEmail,
         resendEmailId: args.resendEmailId,

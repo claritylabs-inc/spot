@@ -200,9 +200,7 @@ export default function OperatorClientsScreen() {
             <span className="flex shrink-0 items-center gap-2">
               <StatusTag
                 tone={
-                  selected.operatorStatus === "live" && !selected.inviteStatus
-                    ? "success"
-                    : "warning"
+                  selected.operatorStatus === "live" ? "success" : "warning"
                 }
               >
                 {operatorClientStatusLabel(selected)}
@@ -384,6 +382,7 @@ export default function OperatorClientsScreen() {
                         <OrgBrandIcon
                           name={client.name}
                           iconUrl={client.iconUrl}
+                          website={client.website}
                           size="md"
                         />
                         <TableNameLink
@@ -403,8 +402,7 @@ export default function OperatorClientsScreen() {
                     <TableCell>
                       <StatusTag
                         tone={
-                          client.operatorStatus === "live" &&
-                          !client.inviteStatus
+                          client.operatorStatus === "live"
                             ? "success"
                             : "warning"
                         }

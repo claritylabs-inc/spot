@@ -562,7 +562,12 @@ export default defineSchema({
     onboardingComplete: v.optional(v.boolean()),
     // Internal operator lifecycle for operator-provisioned tenants. Missing legacy value means live.
     operatorStatus: v.optional(
-      v.union(v.literal("onboarding"), v.literal("live")),
+      v.union(
+        v.literal("onboarding"),
+        v.literal("live"),
+        v.literal("lost"),
+        v.literal("churned"),
+      ),
     ),
     // Branding
     iconStorageId: v.optional(v.id("_storage")),
@@ -570,8 +575,8 @@ export default defineSchema({
     type: v.optional(v.union(v.literal("broker"), v.literal("client"))),
     // Set on client orgs only — ID of the managing broker org
     brokerOrgId: v.optional(v.id("organizations")),
-    // Client-org lifecycle: "draft" = broker is preparing, "invited" = invite sent and pending,
-    // undefined = legacy/active (accepted or pre-dates this field).
+    // Legacy organization invitation metadata; not the client lifecycle.
+    // Current invitation and activation state belongs to team members.
     inviteStatus: v.optional(v.union(v.literal("draft"), v.literal("invited"))),
     // Draft/invite contact details captured by broker before the client accepts.
     primaryContactName: v.optional(v.string()),
