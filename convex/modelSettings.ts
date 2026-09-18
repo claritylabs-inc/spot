@@ -83,7 +83,6 @@ const globalRoutesValidator = v.object({
   email_reply: v.optional(routeUpdateValidator),
   extraction: v.optional(routeUpdateValidator),
   extraction_preview: v.optional(routeUpdateValidator),
-  extraction_coverage_recovery: v.optional(routeUpdateValidator),
   classification: v.optional(routeUpdateValidator),
   requirement_extraction: v.optional(routeUpdateValidator),
   org_memory_extraction: v.optional(routeUpdateValidator),

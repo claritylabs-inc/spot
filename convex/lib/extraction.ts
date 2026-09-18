@@ -7,7 +7,7 @@
 // ── Still exported from SDK ──
 export { stripFences, sanitizeNulls, extractPageRange, getPdfPageCount } from "@claritylabs/cl-sdk";
 export { CONTEXT_KEY_MAP } from "@claritylabs/cl-sdk";
-export { chunkDocument, createExtractor, runCoverageRecovery } from "@claritylabs/cl-sdk";
+export { chunkDocument, createExtractor } from "@claritylabs/cl-sdk";
 
 // ── Types ──
 export type { LogFn, ContextKeyMapping, TokenUsage, ConvertPdfToImagesFn, PdfInput } from "@claritylabs/cl-sdk";
@@ -98,10 +98,5 @@ export function buildExtractor(opts?: {
     onProgress: opts?.onProgress,
     onTokenUsage: opts?.onTokenUsage,
     modelCapabilities: modelCapabilitiesForTask("extraction"),
-    modelCapabilitiesByTaskKind: {
-      extraction_coverage_recovery: modelCapabilitiesForTask(
-        "extraction_coverage_recovery",
-      ),
-    },
   });
 }

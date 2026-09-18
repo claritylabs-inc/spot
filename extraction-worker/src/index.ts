@@ -73,7 +73,6 @@ type WorkerState = {
   policyFileId?: string;
   traceId?: string;
   externalWorker?: boolean;
-  coverageRecovery?: { enabled: boolean; forcedByOperator?: boolean };
 };
 
 type ClaimedJob = {
@@ -105,10 +104,7 @@ type ClaimedProposalJob = {
 
 type ModelProvider = DirectModelProvider;
 
-type ModelTask =
-  | "extraction"
-  | "extraction_preview"
-  | "extraction_coverage_recovery";
+type ModelTask = "extraction" | "extraction_preview";
 
 type WorkerModelRoute = {
   provider: ModelProvider;
@@ -687,7 +683,6 @@ function readSourceKind(
 const WORKER_STATIC_ROUTES: Record<ModelTask, WorkerModelRoute> = {
   extraction: MODEL_ROUTING.extraction,
   extraction_preview: MODEL_ROUTING.extraction_preview,
-  extraction_coverage_recovery: MODEL_ROUTING.extraction_coverage_recovery,
 };
 
 const WORKER_COVERAGE_CLEANUP_ROUTE: WorkerModelRoute =
@@ -734,8 +729,9 @@ function modelTaskForTaskKind(taskKind?: string): ModelTask {
       "Classification requires a typed router /v1/decide request, not an SDK generation callback",
     );
   }
-  if (taskKind === "extraction_coverage_recovery")
-    return "extraction_coverage_recovery";
+  if (taskKind === "extraction_coverage_recovery") {
+    throw new Error("AI coverage recovery is retired");
+  }
   return "extraction";
 }
 
@@ -1537,7 +1533,6 @@ function buildWorkerExtractor(opts: {
       [
         "extraction_source_tree",
         "extraction_operational_profile",
-        "extraction_coverage_recovery",
         "extraction_coverage_cleanup",
         "extraction_review",
         "extraction_referential_lookup",
@@ -2440,7 +2435,6 @@ async function completeJob(
     sourceChunks,
     sourceTree: resultSourceTree,
     operationalProfile: result.operationalProfile,
-    coverageRecovery: result.coverageRecovery,
     warnings: result.warnings ?? [],
     tokenUsage: result.tokenUsage,
     performanceReport: result.performanceReport
@@ -2723,7 +2717,7 @@ async function processJob(
             >,
           }
         : {}),
-      coverageRecovery: job.state.coverageRecovery ?? { enabled: false },
+      coverageRecovery: { enabled: false },
       protocolVersion: WORKER_PROTOCOL_VERSION,
       extractorVersion: WORKER_CL_SDK_VERSION,
       sectionStore,
@@ -2894,7 +2888,7 @@ async function extractProposalDocument(
       sourceSpans: prepared.prepared.sourceSpans as NonNullable<
         ExtractOptions["sourceSpans"]
       >,
-      coverageRecovery: { enabled: true },
+      coverageRecovery: { enabled: false },
       protocolVersion: WORKER_PROTOCOL_VERSION,
       extractorVersion: WORKER_CL_SDK_VERSION,
     },

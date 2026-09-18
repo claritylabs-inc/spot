@@ -119,7 +119,7 @@ export const MODEL_TASK_DESCRIPTIONS: Record<ModelTask, string> = {
   extraction_preview:
     "Fast preview route for policy-list fields extracted from LiteParse text before full enrichment completes.",
   extraction_coverage_recovery:
-    "Document-wide source-tree recovery for missing coverage terms, asset schedules, premiums, taxes, fees, and total payable.",
+    "Retired route retained for stored settings compatibility; AI coverage recovery is disabled.",
   classification:
     "Legacy generation route retained for stored settings compatibility. Classification decisions use router-owned Jev through /v1/decide.",
   requirement_extraction:
@@ -305,7 +305,9 @@ export const QUALITY_PRIMARY_TASK_KINDS = POLICY_QUALITY_PRIMARY_TASK_KINDS;
 export const QUALITY_ESCALATION_TASK_KINDS =
   POLICY_QUALITY_ESCALATION_TASK_KINDS;
 
-export const MODEL_TASKS = [...POLICY_MODEL_TASKS];
+export const MODEL_TASKS = POLICY_MODEL_TASKS.filter(
+  (task) => task !== "extraction_coverage_recovery",
+);
 export const EXTRACTION_QUALITY_MODEL_ROUTE_ID = "extraction_quality" as const;
 export const EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID =
   "extraction_coverage_cleanup" as const;
@@ -400,7 +402,6 @@ export const MODEL_TASK_GROUPS = [
       "requirement_extraction",
       "org_memory_extraction",
       "extraction",
-      "extraction_coverage_recovery",
       "document_extraction",
       "email_extraction",
     ],
@@ -433,7 +434,6 @@ export const OPERATOR_MODEL_ROUTE_GROUPS = [
       "requirement_extraction",
       "org_memory_extraction",
       "extraction",
-      "extraction_coverage_recovery",
       "extraction_quality",
       "extraction_coverage_cleanup",
       "fallback",

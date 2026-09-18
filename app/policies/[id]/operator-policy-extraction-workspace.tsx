@@ -83,7 +83,6 @@ type ExtractionTraceSession = NonNullable<ExtractionTraceDetail>["session"];
 type ExtractionTraceEvent = NonNullable<ExtractionTraceDetail>["events"][number];
 type OperatorExtractionOperation =
   | "full"
-  | "coverage"
   | "supplementary"
   | "search";
 
@@ -299,13 +298,6 @@ function ExtractionOverview({
               pending={activeOperation === "full"}
               disabled={fullBlocked}
               onRun={() => onOperation("full")}
-            />
-            <OperationRow
-              title="Coverage recovery"
-              actionLabel="Recover coverages"
-              pending={activeOperation === "coverage"}
-              disabled={targetedBlocked}
-              onRun={() => onOperation("coverage")}
             />
             <OperationRow
               title="Supplementary facts"
@@ -1390,7 +1382,6 @@ export function OperatorPolicyExtractionPanel({
   const [stopping, setStopping] = useState(false);
   const [confirmFullExtraction, setConfirmFullExtraction] = useState(false);
   const rerunExtraction = useAction(api.operator.rerunExtraction);
-  const recoverCoverages = useAction(api.operator.backfillCoverageRecovery);
   const rerunSupplementary = useAction(
     api.operator.rerunSupplementaryExtraction,
   );
@@ -1405,19 +1396,7 @@ export function OperatorPolicyExtractionPanel({
       }
       setActiveOperation(operation);
       try {
-        if (operation === "coverage") {
-          const result = await recoverCoverages({
-            policyId: policy._id,
-            force: true,
-          });
-          if (recordValue(result)?.ok === false) {
-            throw new Error(
-              textValue(recordValue(result)?.status) ??
-                "Coverage recovery did not complete",
-            );
-          }
-          toast.success("Coverage recovery complete");
-        } else if (operation === "supplementary") {
+        if (operation === "supplementary") {
           const result = await rerunSupplementary({ policyId: policy._id });
           const facts = recordValue(result)?.facts;
           toast.success(
@@ -1442,7 +1421,7 @@ export function OperatorPolicyExtractionPanel({
       } finally {
         setActiveOperation(null);
       }
-    }, [policy._id, rebuildSearchIndex, recoverCoverages, rerunSupplementary],
+    }, [policy._id, rebuildSearchIndex, rerunSupplementary],
   );
 
   const confirmFullRerun = useCallback(async () => {

@@ -9,16 +9,6 @@ export const FEATURE_FLAGS = {
     allowedOrgTypes: ["client"],
     beta: true,
   },
-  coverage_recovery_v2: {
-    id: "coverage_recovery_v2",
-    label: "AI coverage recovery",
-    description:
-      "Inspect the complete policy source tree for missing coverage terms, asset schedules, premiums, taxes, and fees.",
-    scope: "org",
-    defaultEnabled: false,
-    allowedOrgTypes: ["client"],
-    beta: true,
-  },
   imessage_app_cards: {
     id: "imessage_app_cards",
     label: "iMessage app cards",
