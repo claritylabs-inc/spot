@@ -77,7 +77,7 @@ from public channels for customers.
 Applying a manifest does not widen tokens that were already issued. An
 installation created before a scope was added keeps its original grant, and
 Slack rejects the affected calls with `missing_scope` until an operator
-reconnects that workspace from `/operator/channels`. Reactions are the quiet
+reconnects that workspace from `/operator/settings?section=channels`. Reactions are the quiet
 case: without `reactions:write` the agent still answers normally but never marks
 a message as seen, so `/agent-health` reports the gap directly through
 `checks.slackHostScopesGranted` and `operatorSlack.missingHostScopes`, and
@@ -260,7 +260,7 @@ DM route.
 
 ## Onboarding and operating model
 
-1. An operator uses `/operator/channels` to OAuth-install the matching native app in
+1. An operator uses `/operator/settings?section=channels` to OAuth-install the matching native app in
    the Clarity workspace, persisting its rotating credentials in Convex.
 2. A Spot operator records their Clarity `{teamId,userId}` identity.
 3. The operator creates `#spot-<client-slug>` and sends the Slack Connect

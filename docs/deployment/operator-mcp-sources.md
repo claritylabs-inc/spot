@@ -1,6 +1,6 @@
 # Operator MCP sources
 
-Settings → MCP servers configures shared remote HTTPS Streamable HTTP servers.
+Settings → MCP connections configures shared remote HTTPS Streamable HTTP servers.
 Operators can select **Bearer token** or **OAuth**. Empty bearer credentials allow
 anonymous servers. Local stdio and legacy standalone SSE transports are not
 supported. The settings list and operator tool activity use each server's logo

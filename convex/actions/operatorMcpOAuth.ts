@@ -64,7 +64,7 @@ export const callback = internalAction({
     issuer: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string> => {
-    const redirect = new URL("/operator/settings", getAuthSiteUrl());
+    const redirect = new URL("/operator/settings?section=mcp", getAuthSiteUrl());
     let sessionId;
     try {
       if (args.state.length > 200 || (args.code?.length ?? 0) > 4000)
