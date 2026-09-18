@@ -639,7 +639,12 @@ export function TeamSection({
     viewerUserId,
   ]);
 
-  if (viewer === undefined || orgData === undefined || members === undefined) {
+  if (
+    viewer === undefined ||
+    orgData === undefined ||
+    members === undefined ||
+    invitations === undefined
+  ) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -669,6 +674,7 @@ export function TeamSection({
         primaryContactId={primaryContactId}
         showActivationStatus={!!operatorClientOrgId}
         onEditMember={openEditMember}
+        onInviteMember={() => setInviteOpen(true)}
         onOpenInvitation={(invitation) => {
           setEditingMember(null);
           setSelectedInvitation(invitation);
