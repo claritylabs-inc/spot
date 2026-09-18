@@ -7,7 +7,7 @@
       "main": true,
       "preview/workspace-chat-ui": false,
       "preview/operator-mcp-servers": false,
-      "preview/workspace-jev": true
+      "preview/workspace-jev": false
     }
   }
 }
