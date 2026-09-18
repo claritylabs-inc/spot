@@ -932,3 +932,35 @@ with available search terms, titles, or filenames; legacy/client summaries list 
 The separate inline waiting status uses a standard spinner with reduced-motion support.
 The summary omits raw reasoning and full tool payloads. Approvals and task artifacts
 remain independent of these display preferences. Non-web channel delivery stays terminal-only.
+
+## Operator-configured MCP sources
+
+Operator Settings owns shared remote MCP server configuration through
+`operatorMcpServers.ts` and `actions/operatorMcp.ts`. Active operators outside
+impersonation may add, refresh, disable, or remove HTTPS Streamable HTTP servers.
+Bearer tokens, OAuth tokens, client secrets, and PKCE verifiers use the existing
+`EMAIL_CONNECTIONS_ENCRYPTION_KEY` credential owner and never return to browsers,
+model tools, or audits. OAuth uses MCP discovery, PKCE, one-use hashed state bound
+to the operator and server revision, dynamic/client-metadata registration or
+optional pre-registered credentials, and serialized refresh-token rotation.
+`operatorMcpOAuth.ts`, `actions/operatorMcpOAuth.ts`, and
+`lib/operatorMcpOAuth.ts` own consent and token state. OAuth callback sessions
+expire after ten minutes for authentication/replay protection; human tool
+approvals remain unchanged. Callback success refreshes tools and enables the
+connection, while operator revocation, impersonation, server edits, or removal
+reject stale consent. Refresh preserves exact-call revisions. Anonymous servers
+are supported by leaving bearer credentials empty; local stdio is unsupported.
+See `docs/deployment/operator-mcp-sources.md` for OAuth callback setup.
+`lib/operatorMcpClient.ts` pins public DNS destinations, rejects redirects and URL
+credentials, bounds transport time and response bytes, and never retries tool calls.
+
+The shared operator registry exposes `list_mcp_tools` and `call_mcp_tool` across
+operator channels and operator MCP, never tenant agents/MCP. Discovery reads the
+saved enabled catalog; Save and refresh tools reconnects and replaces it. Every
+remote call uses exact approval (or Approve all), existing audit/idempotency, and
+current operator/impersonation checks. Remote annotations cannot downgrade the
+gate. Approval inputs include the server revision; endpoint, credential, catalog,
+or enabled-state changes invalidate pending calls. Unknown remote outcomes must
+not be replayed automatically. Configuration is portal-only. Activity uses the
+configured server logo through `OrgBrandIcon`, with its website favicon fallback,
+in the existing expanded rows and collapsed icon summary.

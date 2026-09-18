@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react";
 
 import { toolActivityIcon } from "@/lib/tool-activity-icons";
+import { McpToolActivityIcon, mcpActivityInput } from "./mcp-tool-activity";
 import { typeStyle } from "@/lib/typography";
 
 type ActivityCall = { name: string; input?: string };
@@ -36,7 +37,27 @@ export function ThinkingSummary({
     : [...new Set(tools)].map((name) => ({ name }));
   if (activities.length === 0) return null;
 
-  const icons = [...new Set(activities.map((call) => toolActivityIcon(call.name)))];
+  const mcpServerIds = [
+    ...new Set(
+      activities.flatMap((call) => {
+        const input =
+          call.name === "call_mcp_tool"
+            ? mcpActivityInput(call.input)
+            : undefined;
+        return input ? [input.serverId] : [];
+      }),
+    ),
+  ];
+  const icons = [
+    ...new Set(
+      activities
+        .filter(
+          (call) =>
+            !(call.name === "call_mcp_tool" && mcpActivityInput(call.input)),
+        )
+        .map((call) => toolActivityIcon(call.name)),
+    ),
+  ];
   const noun = hasCalls ? "tool call" : "tool";
   return (
     <details
@@ -53,6 +74,9 @@ export function ThinkingSummary({
           {activities.length === 1 ? "" : "s"}
         </span>
         <span className="flex flex-wrap items-center gap-1.5" aria-hidden>
+          {mcpServerIds.map((serverId) => (
+            <McpToolActivityIcon key={serverId} serverId={serverId} />
+          ))}
           {icons.map((Icon, index) => (
             <Icon key={index} className="size-3.5 shrink-0" />
           ))}
@@ -60,9 +84,14 @@ export function ThinkingSummary({
       </summary>
       <ul className="space-y-3 py-2">
         {activities.map((call, index) => {
+          const mcp =
+            call.name === "call_mcp_tool"
+              ? mcpActivityInput(call.input)
+              : undefined;
           const label =
+            mcp?.toolName ??
             call.name.charAt(0).toUpperCase() +
-            call.name.slice(1).replaceAll("_", " ");
+              call.name.slice(1).replaceAll("_", " ");
           const context = activityContext(call.input);
           const Icon = toolActivityIcon(call.name);
           return (
@@ -70,7 +99,11 @@ export function ThinkingSummary({
               key={`${call.name}-${index}`}
               className="flex min-w-0 items-start gap-2"
             >
-              <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />
+              {mcp ? (
+                <McpToolActivityIcon serverId={mcp.serverId} />
+              ) : (
+                <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />
+              )}
               <div
                 className={`flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 ${typeStyle("body.large")}`}
               >

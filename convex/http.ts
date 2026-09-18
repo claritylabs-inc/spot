@@ -360,6 +360,27 @@ function jsonResponse(data: unknown, status = 200): Response {
 auth.addHttpRoutes(http);
 
 http.route({
+  path: "/operator-mcp/oauth/client-metadata.json",
+  method: "GET",
+  handler: httpAction(async (ctx) => jsonResponse(await ctx.runAction(internal.actions.operatorMcpOAuth.clientMetadata, {}), 200)),
+});
+
+http.route({
+  path: "/operator-mcp/oauth/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const redirect = await ctx.runAction(internal.actions.operatorMcpOAuth.callback, {
+      state: url.searchParams.get("state") ?? "",
+      code: url.searchParams.get("code") ?? undefined,
+      error: url.searchParams.get("error") ?? undefined,
+      issuer: url.searchParams.get("iss") ?? undefined,
+    });
+    return new Response(null, { status: 302, headers: { Location: redirect, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  }),
+});
+
+http.route({
   path: "/slack/oauth/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {

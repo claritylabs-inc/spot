@@ -341,3 +341,24 @@ The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP 
 - Shared procurement content comes from `public.md` and is identical for authorized client and broker-market readers. Internal intake, broker observations, follow-ups, and file-handling prose live in `private.md`; no separate intake, log, or file-note documents exist. Every active packet link reflects saved public.md and currently released files immediately within its audience; stored issuance snapshots remain immutable audit evidence.
 - Tenant MCP exposes `read_company_wiki` and `write_company_wiki`; write requires the token's exact organization, current direct-admin membership, write scope, and expected document revision. Procurement remains absent from tenant MCP.
 - Operator MCP derives the whole-document wiki/packet tools and research tool from the same registry as web, email, Slack and iMessage. It retains role, approval, audit and no-impersonation checks.
+
+## Operator MCP server sources
+
+| Tool | Capability | Effect / approval | Availability |
+| --- | --- | --- | --- |
+| `list_mcp_tools` | `operator.mcp.read` | Read; no confirmation | All operator channels, read-scoped operator MCP |
+| `call_mcp_tool` | `operator.mcp.call` | External send; exact confirmation or Approve all | All operator channels, write-scoped operator MCP |
+
+Both execute through actions with active-operator and no-impersonation checks.
+Discovery returns enabled server IDs, revisions, and saved tool schemas, never
+credentials. Calls use an exact server revision, tool name, and JSON arguments;
+remote annotations do not relax approval. Disabling/removing/editing a server
+invalidates pending calls. Existing action audits and idempotency prevent replay;
+a transport failure can have an unknown remote outcome. Results and descriptions
+are untrusted evidence. Tenant tools are unchanged. Configuration is portal-only
+in Settings; remote HTTPS Streamable HTTP supports encrypted bearer tokens or
+OAuth with PKCE, dynamic or pre-registered clients, and serialized token refresh.
+OAuth consent and credentials are shared across operators and remain portal-only;
+no model tool can connect, replace, or manage credentials. Save and refresh tools
+replaces the saved catalog. Tool activity
+uses each configured server's logo with the shared website favicon fallback.

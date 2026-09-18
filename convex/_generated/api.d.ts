@@ -47,6 +47,8 @@ import type * as actions_operatorChannelDelivery from "../actions/operatorChanne
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_operatorGoogleWorkspaceReconciliation from "../actions/operatorGoogleWorkspaceReconciliation.js";
 import type * as actions_operatorGoogleWorkspaceScan from "../actions/operatorGoogleWorkspaceScan.js";
+import type * as actions_operatorMcp from "../actions/operatorMcp.js";
+import type * as actions_operatorMcpOAuth from "../actions/operatorMcpOAuth.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
@@ -259,6 +261,8 @@ import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.js";
+import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
+import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
 import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
@@ -353,6 +357,8 @@ import type * as operatorGoogleWorkspaceReconciliation from "../operatorGoogleWo
 import type * as operatorGoogleWorkspaceScan from "../operatorGoogleWorkspaceScan.js";
 import type * as operatorGoogleWorkspaceScanActivity from "../operatorGoogleWorkspaceScanActivity.js";
 import type * as operatorImessage from "../operatorImessage.js";
+import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
+import type * as operatorMcpServers from "../operatorMcpServers.js";
 import type * as operatorPolicyImports from "../operatorPolicyImports.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
 import type * as operatorSlack from "../operatorSlack.js";
@@ -438,6 +444,8 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/operatorGoogleWorkspaceReconciliation": typeof actions_operatorGoogleWorkspaceReconciliation;
   "actions/operatorGoogleWorkspaceScan": typeof actions_operatorGoogleWorkspaceScan;
+  "actions/operatorMcp": typeof actions_operatorMcp;
+  "actions/operatorMcpOAuth": typeof actions_operatorMcpOAuth;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
@@ -650,6 +658,8 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorMcpAttachments": typeof lib_operatorMcpAttachments;
+  "lib/operatorMcpClient": typeof lib_operatorMcpClient;
+  "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
   "lib/operatorMcpToolCatalog": typeof lib_operatorMcpToolCatalog;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/orgBranding": typeof lib_orgBranding;
@@ -744,6 +754,8 @@ declare const fullApi: ApiFromModules<{
   operatorGoogleWorkspaceScan: typeof operatorGoogleWorkspaceScan;
   operatorGoogleWorkspaceScanActivity: typeof operatorGoogleWorkspaceScanActivity;
   operatorImessage: typeof operatorImessage;
+  operatorMcpOAuth: typeof operatorMcpOAuth;
+  operatorMcpServers: typeof operatorMcpServers;
   operatorPolicyImports: typeof operatorPolicyImports;
   operatorProvisioning: typeof operatorProvisioning;
   operatorSlack: typeof operatorSlack;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
@@ -23,6 +24,7 @@ export default function OperatorSettingsPage() {
   const settings = useQuery(api.operator.getAgentSettings);
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
+  const mcp = useMcpSettings(!current || Boolean(current.activeImpersonation));
 
   return (
     <AppShell
@@ -34,6 +36,7 @@ export default function OperatorSettingsPage() {
         />
       )}
       customSidebarStorageKey="operator-sidebar"
+      rightPanel={mcp.drawer}
       disablePersistentChat
       disableCommandPalette
     >
@@ -42,41 +45,44 @@ export default function OperatorSettingsPage() {
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <OperationalPanel>
-          <OperationalPanelHeader title="Agent approvals" />
-          <OperationalPanelBody>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className={typeStyle("body.medium")}>Approve all</p>
-                <p
-                  className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
-                >
-                  Run agent actions without asking for approval, including sends
-                  and deletions. Applies to all operators across every channel.
-                  Existing pending approvals still need a decision.
-                </p>
+        <div className="space-y-6">
+          <OperationalPanel>
+            <OperationalPanelHeader title="Agent approvals" />
+            <OperationalPanelBody>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className={typeStyle("body.medium")}>Approve all</p>
+                  <p
+                    className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
+                  >
+                    Run agent actions without asking for approval, including
+                    sends and deletions. Applies to all operators across every
+                    channel. Existing pending approvals still need a decision.
+                  </p>
+                </div>
+                <SettingsSwitch
+                  label="Approve all"
+                  checked={settings.approveAll}
+                  disabled={saving || Boolean(current.activeImpersonation)}
+                  onCheckedChange={() => {
+                    setSaving(true);
+                    void setApproveAll({ approveAll: !settings.approveAll })
+                      .catch((error) => {
+                        toast.error(
+                          getUserFacingErrorMessage(
+                            error,
+                            "Approval settings could not be saved.",
+                          ),
+                        );
+                      })
+                      .finally(() => setSaving(false));
+                  }}
+                />
               </div>
-              <SettingsSwitch
-                label="Approve all"
-                checked={settings.approveAll}
-                disabled={saving || Boolean(current.activeImpersonation)}
-                onCheckedChange={() => {
-                  setSaving(true);
-                  void setApproveAll({ approveAll: !settings.approveAll })
-                    .catch((error) => {
-                      toast.error(
-                        getUserFacingErrorMessage(
-                          error,
-                          "Approval settings could not be saved.",
-                        ),
-                      );
-                    })
-                    .finally(() => setSaving(false));
-                }}
-              />
-            </div>
-          </OperationalPanelBody>
-        </OperationalPanel>
+            </OperationalPanelBody>
+          </OperationalPanel>
+          {mcp.panel}
+        </div>
       )}
     </AppShell>
   );

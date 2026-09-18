@@ -48,6 +48,8 @@ export const toolActivityCategories = {
 } as const;
 
 const operatorToolCategories = {
+  list_mcp_tools: "settings",
+  call_mcp_tool: "settings",
   web_search: "web",
   research_client: "web",
   search_organizations: "organizations",
