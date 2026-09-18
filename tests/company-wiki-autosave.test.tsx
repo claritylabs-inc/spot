@@ -28,16 +28,19 @@ vi.mock("@/components/ui/markdown-editor", () => ({
     value,
     onChange,
     label,
+    toolbarActions,
     footer,
     readOnly,
   }: {
     value: string;
     onChange: (value: string) => void;
     label: string;
+    toolbarActions: ReactNode;
     footer: ReactNode;
     readOnly: boolean;
   }) => (
     <div>
+      {toolbarActions}
       <textarea
         aria-label={label}
         value={value}
