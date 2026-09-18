@@ -362,7 +362,7 @@ Copy the assigned shared line into the GitHub Actions variable
 `SPOT_PRODUCTION_OPERATOR_IMESSAGE_CONTACT_PHONE` as an E.164 number. The
 `main` release workflow writes it to Convex as
 `OPERATOR_IMESSAGE_CONTACT_PHONE`; authenticated operators see the formatted
-number and their own linked sender number under `/operator/channels`. The
+number and their own linked sender number under `/operator/settings?section=channels`. The
 number is never exposed through a public browser environment variable.
 
 Configure that Railway service with root directory `/imessage-worker` and

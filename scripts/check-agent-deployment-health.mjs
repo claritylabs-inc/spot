@@ -276,7 +276,7 @@ const checks = [
         }
         if (missingHostScopes.length > 0) {
           throw new Error(
-            `host Slack installation is missing scopes: ${missingHostScopes.join(", ")}. Reconnect the host workspace from /operator/channels to reauthorize.`,
+            `host Slack installation is missing scopes: ${missingHostScopes.join(", ")}. Reconnect the host workspace from /operator/settings?section=channels to reauthorize.`,
           );
         }
       }

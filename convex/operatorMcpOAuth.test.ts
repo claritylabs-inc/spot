@@ -125,7 +125,7 @@ async function connect(f: Awaited<ReturnType<typeof fixture>>) {
     { state, code: "authorization-code", issuer: "https://8.8.4.4" },
   );
   expect(redirect).toBe(
-    "https://portal.example.test/operator/settings?mcp=connected",
+    "https://portal.example.test/operator/settings?section=mcp&mcp=connected",
   );
   return { state, url };
 }

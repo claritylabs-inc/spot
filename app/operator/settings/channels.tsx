@@ -21,7 +21,7 @@ import {
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
-import { OperatorSidebar } from "../operator-sidebar";
+import { OperatorSettingsSidebar } from "./settings-sidebar";
 import { typeStyle } from "@/lib/typography";
 import {
   OperatorGoogleWorkspaceContent,
@@ -682,7 +682,7 @@ function OperatorChannelsContent({
   return (
     <AppShell
       customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
+        <OperatorSettingsSidebar
           collapsed={collapsed}
           onToggleCollapse={onToggleCollapse}
           active="channels"
@@ -873,7 +873,7 @@ export default function OperatorChannelsPage() {
   ) : (
     <AppShell
       customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
+        <OperatorSettingsSidebar
           collapsed={collapsed}
           onToggleCollapse={onToggleCollapse}
           active="channels"

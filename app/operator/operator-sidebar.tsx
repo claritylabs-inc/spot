@@ -11,7 +11,6 @@ import {
   ScrollText,
   Settings,
   ChartNoAxesColumn,
-  Radio,
   User,
   Users,
 } from "lucide-react";
@@ -55,7 +54,6 @@ export function OperatorSidebar({
     | "brokers"
     | "clients"
     | "demo-leads"
-    | "channels"
     | "usage"
     | "logs"
     | "profile"
@@ -190,13 +188,6 @@ export function OperatorSidebar({
         </div>
         <SectionHeader label="DevOps" collapsed={collapsed} />
         <div className="flex flex-col gap-1">
-          <SidebarMenuItem
-            href="/operator/channels"
-            label="Channels"
-            icon={Radio}
-            active={active === "channels"}
-            collapsed={collapsed}
-          />
           <SidebarMenuItem
             href="/operator/usage"
             label="Usage"
