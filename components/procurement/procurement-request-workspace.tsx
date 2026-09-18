@@ -1397,6 +1397,7 @@ export function ProcurementRequestWorkspace({
   onRightPanel: (node: ReactNode) => void;
 }) {
   const router = useRouter();
+  const [documentToolbarTarget, setDocumentToolbarTarget] = useState<HTMLDivElement | null>(null);
   const result = useQuery(api.procurementRequests.get, { requestId });
   const policies = useQuery(api.procurementRequests.listPolicyOptions, {
     clientOrgId,
@@ -1577,7 +1578,7 @@ export function ProcurementRequestWorkspace({
 
   useEffect(() => {
     if (readOnly) {
-      onActions?.(null);
+      onActions?.(view === "notes" || view === "shared" ? <div ref={setDocumentToolbarTarget} /> : null);
       return () => onActions?.(null);
     }
 
@@ -1601,6 +1602,7 @@ export function ProcurementRequestWorkspace({
 
     onActions?.(
       <>
+        {view === "notes" || view === "shared" ? <div ref={setDocumentToolbarTarget} /> : null}
         {view !== "shared" ? (
           <PillButton
             type="button"
@@ -1726,6 +1728,7 @@ export function ProcurementRequestWorkspace({
           readOnly={readOnly}
           requestId={requestId}
           filename={view === "shared" ? "public.md" : "private.md"}
+          toolbarTarget={documentToolbarTarget}
         />
       ) : null}
 

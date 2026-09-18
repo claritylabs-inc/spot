@@ -391,3 +391,7 @@ Before merging a browser UI change, confirm:
 - Destructive actions, empty states, errors, loading, focus, disabled, desktop,
   mobile, light, and dark behavior have been checked when relevant.
 - `git diff --check` and the focused frontend validation pass.
+
+## Page tabs
+
+Page tabs use plain navigation labels, without status indicators. Always retain the primary view; hide empty secondary data views and omit the tab bar when only the primary view remains. If a selected view becomes empty, return to the primary view. Determine availability from the full relevant dataset, not the current filtered page. Configuration, editing, and creation controls are useful content even before records exist; keep those reachable.

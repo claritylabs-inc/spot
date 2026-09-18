@@ -147,8 +147,8 @@ export function PacketLinkDrawer({
         )}
         {activeLink ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            Saved changes and file visibility updates appear automatically on this
-            link. Regenerating replaces the existing link.
+            Saved changes and file visibility updates appear automatically on
+            this link. Regenerating replaces the existing link.
           </p>
         ) : null}
       </div>
@@ -162,6 +162,7 @@ type PacketWorkspaceProps = {
   requestId: Id<"procurementRequests">;
   filename: PacketFilename;
   readOnly?: boolean;
+  toolbarTarget?: HTMLElement | null;
   ref?: Ref<PacketEditorHandle>;
 };
 
@@ -169,6 +170,7 @@ export function PacketWorkspace({
   requestId,
   filename,
   readOnly = false,
+  toolbarTarget,
   ref,
 }: PacketWorkspaceProps) {
   const packet = useQuery(api.procurementPacket.get, { requestId });
@@ -188,6 +190,7 @@ export function PacketWorkspace({
       requestId={requestId}
       filename={filename}
       readOnly={readOnly}
+      toolbarTarget={toolbarTarget}
       document={
         document ?? {
           markdown: `---\nvisibility: ${filename === "public.md" ? "shared" : "private"}\n---\n`,
@@ -199,6 +202,7 @@ export function PacketWorkspace({
 }
 
 function LoadedPacketEditor({
+  toolbarTarget,
   requestId,
   filename,
   readOnly,
@@ -281,48 +285,54 @@ function LoadedPacketEditor({
         value={draft}
         onChange={setDraft}
         readOnly={readOnly}
-        defaultMode="preview"
-        footer={
+        toolbarTarget={toolbarTarget}
+        toolbarActions={
           <>
-            {autoSave.status === "error" ? (
-              <>
-                <PillButton
-                  variant="destructive"
-                  onClick={() => {
-                    revision.current = document.revision;
-                    saved.current = document.markdown;
-                    setDraft(document.markdown);
-                  }}
-                >
-                  Discard edits
-                </PillButton>
-                <PillButton
-                  variant="secondary"
-                  onClick={() => void autoSave.saveNow()}
-                >
-                  Retry save
-                </PillButton>
-              </>
-            ) : null}
             {!readOnly ? (
               <PillButton
+                size="compact"
+                expandLabel
+                label="Import"
                 type="button"
                 variant="secondary"
                 onClick={() => fileInput.current?.click()}
               >
                 <Upload className="size-3.5" />
-                Import
               </PillButton>
             ) : null}
             <PillButton
+              size="compact"
               variant="secondary"
+              expandLabel
+              label="Download"
               href={`data:text/markdown;charset=utf-8,${encodeURIComponent(draft)}`}
               download={filename}
             >
               <Download className="size-3.5" />
-              Download
             </PillButton>
           </>
+        }
+        footer={
+          autoSave.status === "error" ? (
+            <>
+              <PillButton
+                variant="destructive"
+                onClick={() => {
+                  revision.current = document.revision;
+                  saved.current = document.markdown;
+                  setDraft(document.markdown);
+                }}
+              >
+                Discard edits
+              </PillButton>
+              <PillButton
+                variant="secondary"
+                onClick={() => void autoSave.saveNow()}
+              >
+                Retry save
+              </PillButton>
+            </>
+          ) : null
         }
       />
     </>

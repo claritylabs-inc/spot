@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
 import type { Id } from "@/convex/_generated/dataModel";
+import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { PillButton } from "@/components/ui/pill-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -434,19 +435,34 @@ export function PolicyDetailBody({
         : "details",
     ),
   );
-  const shouldLoadFullPolicy =
-    operatorMode ||
-    activeTab === "details" ||
-    activeTab === "coverages" ||
-    showCertificateSheet ||
-    showEditExtractedFields ||
-    editingPolicyDetails !== null;
   const policySummary = useCachedPolicySummary(id as Id<"policies">);
   const fullPolicy = useCachedPolicyDetail(
     id as Id<"policies">,
-    shouldLoadFullPolicy,
   );
   const policy = fullPolicy ?? policySummary;
+  const history = useCachedQuery(
+    "policyVersions.listByPolicy",
+    api.policyVersions.listByPolicy,
+    !operatorMode ? { policyId: id as Id<"policies"> } : "skip",
+  );
+  const hasHistory = (history?.length ?? 0) > 0;
+  const certificates = useCachedQuery(
+    "certificateLifecycle.listByPolicy",
+    api.certificateLifecycle.listByPolicy,
+    { policyId: id as Id<"policies"> },
+  );
+  const certificateActivity = useCachedQuery(
+    "certificates.listActivityByPolicy",
+    api.certificates.listActivityByPolicy,
+    { policyId: id as Id<"policies"> },
+  );
+  const extractionTraces = useCachedQuery(
+    "operator.listExtractionTraces",
+    api.operator.listExtractionTraces,
+    operatorMode ? { policyId: id as Id<"policies">, limit: 1 } : "skip",
+  );
+  const hasCertificates = (certificates?.length ?? 0) > 0 || (certificateActivity?.certificates.length ?? 0) > 0 || (certificateActivity?.holds.length ?? 0) > 0;
+  const hasExtractionHistory = (extractionTraces?.length ?? 0) > 0;
   const fileUrl = useCachedQuery(
     "policies.getPolicyFileUrl.detail",
     api.policies.getPolicyFileUrl,
@@ -546,16 +562,34 @@ export function PolicyDetailBody({
   );
   const reviewQuestions = extractionReviewQuestions(p);
   const hasExtractionReviews = reviewQuestions.length > 0;
-  const visibleActiveTab =
-    activeTab === "extraction" ||
-    (activeTab === "extraction-history" && !operatorMode) ||
-    (isRejectedDocument &&
-      (activeTab === "coverages" ||
-        activeTab === "certificates" ||
-        activeTab === "review")) ||
-    (activeTab === "review" && !hasExtractionReviews)
-      ? "details"
-      : activeTab;
+  const coverageBreakdown = buildCoverageBreakdown(p);
+  const hasCoverages = coverageBreakdown.all.length > 0 || coverageBreakdown.schedules.length > 0;
+  const visibleTabs = [
+    { id: "details" as const, label: "Details" },
+    ...(!isRejectedDocument && hasCoverages
+      ? [{ id: "coverages" as const, label: "Coverages" }]
+      : []),
+    ...(hasExtractionReviews && !isRejectedDocument
+      ? [{ id: "review" as const, label: "Review" }]
+      : []),
+    ...(!isRejectedDocument && hasCertificates
+      ? [{ id: "certificates" as const, label: "Certificates" }]
+      : []),
+    ...(operatorMode && hasExtractionHistory
+      ? [
+          {
+            id: "extraction-history" as const,
+            label: "Extraction history",
+          },
+        ]
+      : []),
+    ...(!operatorMode && hasHistory
+      ? [{ id: "history" as const, label: "History" }]
+      : []),
+  ];
+  const visibleActiveTab = visibleTabs.some((tab) => tab.id === activeTab)
+    ? activeTab
+    : "details";
   const selectedCertificateForPanel =
     visibleActiveTab === "certificates" &&
     selectedCertificate?.policyId === policy?._id
@@ -1159,57 +1193,35 @@ export function PolicyDetailBody({
         />
       ) : null}
 
-      <Tabs
-        value={visibleActiveTab}
-        onValueChange={(value) => {
-          setOperatorInspection(null);
-          setActiveTab(value as PolicyDetailTab);
-        }}
-        className="mb-6"
-      >
-        <TabsList variant="pill">
-          {(
-            [
-              { id: "details" as const, label: "Details" },
-              ...(!isRejectedDocument
-                ? [{ id: "coverages" as const, label: "Coverages" }]
-                : []),
-              ...(hasExtractionReviews && !isRejectedDocument
-                ? [{ id: "review" as const, label: "Review" }]
-                : []),
-              ...(!isRejectedDocument
-                ? [{ id: "certificates" as const, label: "Certificates" }]
-                : []),
-              ...(operatorMode
-                ? [
-                    {
-                      id: "extraction-history" as const,
-                      label: "Extraction history",
-                    },
-                  ]
-                : []),
-              ...(!operatorMode
-                ? [{ id: "history" as const, label: "History" }]
-                : []),
-            ] as const
-          ).map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id}>
-              {tab.id === "review" ? (
-                <span className="inline-flex items-center gap-1.5">
-                  Review
-                  <span
-                    className={`rounded-full border border-border-emphasized px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
-                  >
-                    {reviewQuestions.length}
+      {visibleTabs.length > 1 ? (
+        <Tabs
+          value={visibleActiveTab}
+          onValueChange={(value) => {
+            setOperatorInspection(null);
+            setActiveTab(value as PolicyDetailTab);
+          }}
+          className="mb-6"
+        >
+          <TabsList variant="pill">
+            {visibleTabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id}>
+                {tab.id === "review" ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    Review
+                    <span
+                      className={`rounded-full border border-border-emphasized px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
+                    >
+                      {reviewQuestions.length}
+                    </span>
                   </span>
-                </span>
-              ) : (
-                tab.label
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+                ) : (
+                  tab.label
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
 
       {visibleActiveTab === "details" && (
         <PolicyDetailsTab

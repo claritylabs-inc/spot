@@ -160,3 +160,9 @@ export function scaledSvgWordmarkTypography(size: number): Readonly<CSSPropertie
     fontVariantNumeric: "normal",
   });
 }
+
+/** CodeMirror keeps source text at one size and only emphasizes Markdown syntax. */
+export const markdownSyntaxTypographyStyles = Object.freeze({
+  strong: Object.freeze({ fontWeight: "600" }),
+  emphasis: Object.freeze({ fontStyle: "italic" }),
+});

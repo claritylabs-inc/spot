@@ -606,12 +606,27 @@ export function ClientFilesWorkspace({
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
 }) {
-  const [view, setView] = useState<ClientFilesView>("private");
-  const result = useQuery(api.clientFiles.list, {
+  const [requestedView, setView] = useState<ClientFilesView>("private");
+  const activeResult = useQuery(api.clientFiles.list, {
     clientOrgId,
     limit: 200,
-    archived: view === "archived",
+    archived: false,
   });
+  const archivedResult = useQuery(api.clientFiles.list, {
+    clientOrgId,
+    limit: 200,
+    archived: true,
+  });
+  const hasSharedFiles = Boolean(
+    activeResult?.truncated || activeResult?.files.some((file) => file.clientVisible),
+  );
+  const hasArchivedFiles = (archivedResult?.files.length ?? 0) > 0;
+  const view =
+    (requestedView === "shared" && activeResult !== undefined && !hasSharedFiles) ||
+    (requestedView === "archived" && archivedResult !== undefined && !hasArchivedFiles)
+      ? "private"
+      : requestedView;
+  const result = view === "archived" ? archivedResult : activeResult;
   const policyRows = useQuery(api.policies.listForOrg, {
     orgId: clientOrgId,
     documentType: "policy",
@@ -711,28 +726,30 @@ export function ClientFilesWorkspace({
           view === "shared" ? file.clientVisible : !file.clientVisible,
         )
       : files;
-  const visibilityTabs = operatorView ? (
+  const visibilityTabs = operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
     <div className="flex min-w-0 items-center justify-between gap-4">
-      <div className="overflow-x-auto">
-        <Tabs
-          value={view}
-          onValueChange={(value) => {
-            if (
-              value === "private" ||
-              value === "shared" ||
-              value === "archived"
-            ) {
-              setView(value);
-            }
-          }}
-        >
-          <TabsList variant="pill" aria-label="Client files view">
-            <TabsTrigger value="private">Private</TabsTrigger>
-            <TabsTrigger value="shared">Shared</TabsTrigger>
-            <TabsTrigger value="archived">Archived</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      {hasSharedFiles || hasArchivedFiles ? (
+        <div className="overflow-x-auto">
+          <Tabs
+            value={view}
+            onValueChange={(value) => {
+              if (
+                value === "private" ||
+                value === "shared" ||
+                value === "archived"
+              ) {
+                setView(value);
+              }
+            }}
+          >
+            <TabsList variant="pill" aria-label="Client files view">
+              <TabsTrigger value="private">Private</TabsTrigger>
+              {hasSharedFiles ? <TabsTrigger value="shared">Shared</TabsTrigger> : null}
+              {hasArchivedFiles ? <TabsTrigger value="archived">Archived</TabsTrigger> : null}
+            </TabsList>
+          </Tabs>
+        </div>
+      ) : null}
       {result.truncated ? (
         <span
           className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}

@@ -1160,6 +1160,7 @@ function ExtractionDiagnostics({
 }
 
 function TraceInspection({ traceId }: { traceId: string }) {
+  const [tab, setTab] = useState("overview");
   const detail = useCachedOperatorExtractionTraceDetail(traceId) as
     | ExtractionTraceDetail
     | undefined;
@@ -1214,11 +1215,13 @@ function TraceInspection({ traceId }: { traceId: string }) {
   );
 
   return (
-    <Tabs defaultValue="overview" className="gap-4">
-      <TabsList variant="pill" aria-label="Extraction trace details">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="logs">Logs</TabsTrigger>
-      </TabsList>
+    <Tabs value={detail.events.length > 0 ? tab : "overview"} onValueChange={(value) => setTab(String(value))} className="gap-4">
+      {detail.events.length > 0 ? (
+        <TabsList variant="pill" aria-label="Extraction trace details">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="logs">Logs</TabsTrigger>
+        </TabsList>
+      ) : null}
       <TabsContent value="overview" className="space-y-4">
         <ExtractionReviewPanel
           targetKind="policy_extraction"

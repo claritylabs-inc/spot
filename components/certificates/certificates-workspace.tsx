@@ -337,10 +337,12 @@ export function CertificatesWorkspace({
     [certificates, selectedCertificateId],
   );
   const hasReviewJobs = reviewJobs.length > 0;
-  const visibleTab = tab === "review" && !hasReviewJobs ? "active" : tab;
-  const visibleTabs = hasReviewJobs
-    ? TABS
-    : TABS.filter((item) => item.value !== "review");
+  const visibleTabs = TABS.filter((item) =>
+    item.value === "active" ||
+    (item.value === "review" && hasReviewJobs) ||
+    (item.value === "archived" && archivedCertificates.length > 0),
+  );
+  const visibleTab = visibleTabs.some((item) => item.value === tab) ? tab : "active";
   const tableCertificates = visibleTab === "archived" ? archivedCertificates : activeCertificates;
   const policyFilters = useMemo(
     () => certificatePolicyFilterOptions(tableCertificates),
@@ -511,7 +513,7 @@ export function CertificatesWorkspace({
         Generate certificate
       </PillButton>
     ) : null, [orgId, readOnly]);
-  const toolbar = (
+  const toolbar = visibleTabs.length > 1 ? (
     <Select
       value={visibleTab}
       onValueChange={(value) => {
@@ -533,7 +535,7 @@ export function CertificatesWorkspace({
         ))}
       </SelectContent>
     </Select>
-  );
+  ) : null;
   const content = (
     <>
       <CertificatesPageContext
@@ -541,7 +543,7 @@ export function CertificatesWorkspace({
         reviewCount={reviewJobs.length}
       />
       <div className="space-y-4">
-        {!renderShell ? (
+        {!renderShell && visibleTabs.length > 1 ? (
           <Tabs
             value={visibleTab}
             onValueChange={(value) =>

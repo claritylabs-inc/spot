@@ -16,6 +16,7 @@ import {
   MAX_MARKDOWN_BYTES,
   parseMarkdownDocument,
 } from "@/convex/lib/markdownDocument";
+import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
@@ -26,7 +27,9 @@ function WikiEditor({
   filename,
   canManage,
   onSave,
+  toolbarTarget,
 }: {
+  toolbarTarget?: HTMLElement | null;
   sourceMarkdown: string;
   sourceRevision: number;
   filename: string;
@@ -71,6 +74,7 @@ function WikiEditor({
   });
   return (
     <>
+      {canManage ? <AutoSaveStatus status={autoSave.status} /> : null}
       {canManage ? (
         <input
           ref={fileInput}
@@ -110,50 +114,55 @@ function WikiEditor({
         label="Notes Markdown"
         value={markdown}
         onChange={edit}
-        defaultMode="preview"
         readOnly={!canManage}
-        footer={
+        toolbarTarget={toolbarTarget}
+        toolbarActions={
           <>
-            {canManage ? <AutoSaveStatus status={autoSave.status} /> : null}
-            {canManage && autoSave.status === "error" ? (
-              <>
-                <PillButton
-                  variant="secondary"
-                  onClick={() => void autoSave.saveNow()}
-                >
-                  Retry
-                </PillButton>
-                <PillButton
-                  variant="destructive"
-                  onClick={() => {
-                    revision.current = sourceRevision;
-                    savedMarkdown.current = sourceMarkdown;
-                    edit(sourceMarkdown);
-                  }}
-                >
-                  Discard edits
-                </PillButton>
-              </>
-            ) : null}
             {canManage ? (
               <PillButton
+                size="compact"
+                expandLabel
+                label="Import"
                 type="button"
                 variant="secondary"
                 onClick={() => fileInput.current?.click()}
               >
                 <Upload className="size-3.5" />
-                Import
               </PillButton>
             ) : null}
             <PillButton
+              size="compact"
               variant="secondary"
+              expandLabel
+              label="Download"
               href={`data:text/markdown;charset=utf-8,${encodeURIComponent(markdown)}`}
               download={filename}
             >
               <Download className="size-3.5" />
-              Download
             </PillButton>
           </>
+        }
+        footer={
+          canManage && autoSave.status === "error" ? (
+            <>
+              <PillButton
+                variant="secondary"
+                onClick={() => void autoSave.saveNow()}
+              >
+                Retry
+              </PillButton>
+              <PillButton
+                variant="destructive"
+                onClick={() => {
+                  revision.current = sourceRevision;
+                  savedMarkdown.current = sourceMarkdown;
+                  edit(sourceMarkdown);
+                }}
+              >
+                Discard edits
+              </PillButton>
+            </>
+          ) : null
         }
       />
     </>
@@ -164,11 +173,21 @@ export function CompanyWikiSection({
   clientOrgId,
   operator = false,
   readOnly = false,
+  toolbarTarget,
 }: {
+  toolbarTarget?: HTMLElement | null;
   clientOrgId?: Id<"organizations">;
   operator?: boolean;
   readOnly?: boolean;
 } = {}) {
+  const { setActions } = useSettingsActions();
+  const [settingsToolbarTarget, setSettingsToolbarTarget] =
+    useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (operator) return;
+    setActions(<div ref={setSettingsToolbarTarget} />);
+    return () => setActions(null);
+  }, [operator, setActions]);
   const currentOrg = useCurrentOrg();
   const orgId = clientOrgId ?? currentOrg?.orgId;
   const tenantWiki = useQuery(
@@ -209,12 +228,12 @@ export function CompanyWikiSection({
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </OperationalPanel>
     );
-  if (wiki === null)
-    return <EmptyStateCard title="No notes shared yet" />;
+  if (wiki === null) return <EmptyStateCard title="No notes shared yet" />;
   return (
     <div className="space-y-4">
       <WikiEditor
         key={String(orgId)}
+        toolbarTarget={toolbarTarget ?? settingsToolbarTarget}
         sourceMarkdown={wiki.markdown}
         sourceRevision={wiki.revision}
         filename={wiki.filename}

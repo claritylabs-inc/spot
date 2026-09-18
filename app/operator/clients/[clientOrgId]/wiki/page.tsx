@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -23,6 +24,9 @@ import { OperatorClientSidebar } from "../operator-client-sidebar";
 
 export default function OperatorClientWikiPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(
+    null,
+  );
   const current = useCachedOperatorCurrent();
   const clients = useCachedOperatorClients();
   const client = clients?.find((row) => row._id === clientOrgId) ?? null;
@@ -30,6 +34,7 @@ export default function OperatorClientWikiPage() {
 
   return (
     <AppShell
+      actions={<div ref={setToolbarTarget} />}
       breadcrumbDetail={
         <span className="flex min-w-0 items-center gap-1.5">
           <Link
@@ -64,9 +69,7 @@ export default function OperatorClientWikiPage() {
         context={{
           pageType: "operator_client_wiki",
           entityId: clientOrgId,
-          summary: client
-            ? `Notes for ${client.name}`
-            : "Current client notes",
+          summary: client ? `Notes for ${client.name}` : "Current client notes",
         }}
       />
       {clients === undefined ? (
@@ -89,6 +92,7 @@ export default function OperatorClientWikiPage() {
           <CompanyWikiSection
             clientOrgId={clientOrgId as Id<"organizations">}
             operator
+            toolbarTarget={toolbarTarget}
             readOnly={Boolean(activeImpersonation)}
           />
         </main>

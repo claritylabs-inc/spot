@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { ManagedClientPolicyWorkspace } from "@/components/policies/managed-client-policy-workspace";
 import { AppShell } from "@/components/app-shell";
@@ -12,8 +12,9 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusLabel } from "@/components/ui/status-tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   useCachedOperatorClients,
@@ -37,8 +38,23 @@ export default function OperatorClientPoliciesPage() {
   );
   const activeImpersonation = current?.activeImpersonation ?? null;
   const basePath = `/operator/clients/${clientOrgId}/policies`;
-  const policyStatus =
-    searchParams.get("view") === "archived" ? "archived" : "active";
+  const archivedPolicies = useCachedQuery(
+    "policies.listForOperator",
+    api.policies.listForOperator,
+    client
+      ? { clientOrgId: client._id, documentType: "policy", archived: true }
+      : "skip",
+  );
+  const hasArchivedPolicies = (archivedPolicies?.length ?? 0) > 0;
+  const archivedRequested = searchParams.get("view") === "archived";
+  const showArchived = archivedRequested && archivedPolicies?.length !== 0;
+  const policyStatus = showArchived ? "archived" : "active";
+
+  useEffect(() => {
+    if (archivedRequested && archivedPolicies?.length === 0) {
+      router.replace(basePath);
+    }
+  }, [archivedRequested, archivedPolicies, basePath, router]);
   const policyPreview = useMemo(
     () =>
       previewPolicyId ? (
@@ -63,8 +79,8 @@ export default function OperatorClientPoliciesPage() {
       }}
     >
       <TabsList variant="pill" aria-label="Policy status" className="min-w-max">
-        <TabsTrigger value="active"><StatusLabel tone="success">Active</StatusLabel></TabsTrigger>
-        <TabsTrigger value="archived"><StatusLabel indicator="inactive">Archived</StatusLabel></TabsTrigger>
+        <TabsTrigger value="active">Active</TabsTrigger>
+        <TabsTrigger value="archived">Archived</TabsTrigger>
       </TabsList>
     </Tabs>
   );
@@ -120,7 +136,9 @@ export default function OperatorClientPoliciesPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
-          <div className="overflow-x-auto">{statusNavigation}</div>
+          {hasArchivedPolicies ? (
+            <div className="overflow-x-auto">{statusNavigation}</div>
+          ) : null}
           {activeImpersonation ? (
             <OperationalPanel
               as="div"
@@ -143,6 +161,7 @@ export default function OperatorClientPoliciesPage() {
           <ManagedClientPolicyWorkspace
             clientOrgId={clientOrgId}
             basePath={basePath}
+            showArchived={showArchived}
             readOnly={Boolean(activeImpersonation)}
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}

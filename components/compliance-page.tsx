@@ -1599,8 +1599,7 @@ function SourceDrawer({
                 value={internalNotes}
                 onChange={setInternalNotes}
                 label="Requirement source notes"
-                defaultMode="preview"
-                readOnly={!canManage}
+                        readOnly={!canManage}
                       />
             </div>
             {hasHolderDetails && !holderName.trim() ? (
@@ -1867,7 +1866,7 @@ function ComplianceWorkspace({
   const view: ComplianceView =
     requestedTab === "certificates" && hasCertificatesTab
       ? "certificates"
-      : requestedTab === "sources"
+      : requestedTab === "sources" && requirementSources?.length !== 0
         ? "sources"
         : requestedTab === "overview" && surface !== "operator"
           ? "overview"
@@ -1959,7 +1958,9 @@ function ComplianceWorkspace({
     surface === "operator"
       ? [
           ...requirementNavigationOptions,
-          { value: "sources", label: "Sources" },
+          ...((requirementSources?.length ?? 0) > 0
+            ? [{ value: "sources", label: "Sources" }]
+            : []),
           ...(hasCertificatesTab
             ? [{ value: "certificates", label: "Certificates" }]
             : []),
@@ -1967,7 +1968,9 @@ function ComplianceWorkspace({
       : [
           { value: "overview", label: "Overview" },
           ...requirementNavigationOptions,
-          { value: "sources", label: "Sources" },
+          ...((requirementSources?.length ?? 0) > 0
+            ? [{ value: "sources", label: "Sources" }]
+            : []),
           ...(hasCertificatesTab
             ? [{ value: "certificates", label: "Certificates" }]
             : []),
@@ -2665,7 +2668,7 @@ function ComplianceWorkspace({
   const actions = view === "certificates" ? certificateTabActions : complianceActions;
   const rightPanel =
     view === "certificates" ? certificateTabRightPanel : complianceRightPanel;
-  const toolbar = (
+  const toolbar = navigationOptions.length > 1 ? (
     <Tabs value={navigationValue} onValueChange={changeNavigation}>
       <TabsList
         variant="pill"
@@ -2679,7 +2682,7 @@ function ComplianceWorkspace({
         ))}
       </TabsList>
     </Tabs>
-  );
+  ) : null;
   const content = (
     <div className="flex w-full flex-col gap-4">
         {complianceWriteRestriction ? (
@@ -2697,7 +2700,7 @@ function ComplianceWorkspace({
             </div>
           </OperationalPanel>
         ) : null}
-        {!renderShell ? (
+        {!renderShell && navigationOptions.length > 1 ? (
           <Tabs value={navigationValue} onValueChange={changeNavigation}>
             <TabsList variant="pill">
               {navigationOptions.map((option) => (
