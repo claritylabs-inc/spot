@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -124,6 +124,7 @@ export type ManagedClientPolicyWorkspaceProps = {
   clientOrgId?: string;
   basePath?: string;
   readOnly?: boolean;
+  showArchived?: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel?: (node: ReactNode) => void;
   onBreadcrumb?: (node: ReactNode) => void;
@@ -135,6 +136,7 @@ export function ManagedClientPolicyWorkspace({
   clientOrgId: clientOrgIdProp,
   basePath: basePathProp,
   readOnly = false,
+  showArchived = false,
   onActions,
   onRightPanel,
   onBreadcrumb,
@@ -145,8 +147,6 @@ export function ManagedClientPolicyWorkspace({
   const clientOrgId = clientOrgIdProp ?? params.clientOrgId;
   const basePath = basePathProp ?? `/clients/${clientOrgId}/policies`;
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const showArchived = searchParams.get("view") === "archived";
   const [uploaderOpen, setUploaderOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const pendingExtractionToastsRef = useRef<

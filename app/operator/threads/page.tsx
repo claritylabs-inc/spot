@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
   Archive,
@@ -28,7 +28,6 @@ import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { operatorThreadContextHref } from "@/components/operator-agent/operator-page-context";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusLabel } from "@/components/ui/status-tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -52,7 +51,18 @@ export default function OperatorThreadsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const controller = useOptionalOperatorAgent();
-  const showArchived = searchParams.get("view") === "archived";
+  const archivedThreads = useQuery(operatorAgentApi.listThreads, {
+    limit: 1,
+    archived: true,
+  });
+  const hasArchivedThreads = normalizeOperatorAgentThreads(archivedThreads).length > 0;
+  const archivedRequested = searchParams.get("view") === "archived";
+  const showArchived = archivedRequested && (archivedThreads === undefined || hasArchivedThreads);
+  useEffect(() => {
+    if (archivedRequested && archivedThreads !== undefined && !hasArchivedThreads) {
+      router.replace("/operator/threads");
+    }
+  }, [archivedRequested, archivedThreads, hasArchivedThreads, router]);
   const rawThreads = useQuery(operatorAgentApi.listThreads, {
     limit: 100,
     archived: showArchived,
@@ -205,21 +215,23 @@ export default function OperatorThreadsPage() {
       disableCommandPalette
     >
       <div className="space-y-4">
-        <Tabs
-          value={showArchived ? "archived" : "active"}
-          onValueChange={(value) =>
-            router.push(
-              value === "archived"
-                ? "/operator/threads?view=archived"
-                : "/operator/threads",
-            )
-          }
-        >
-          <TabsList variant="pill">
-            <TabsTrigger value="active"><StatusLabel tone="success">Active</StatusLabel></TabsTrigger>
-            <TabsTrigger value="archived"><StatusLabel indicator="inactive">Archived</StatusLabel></TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {hasArchivedThreads ? (
+          <Tabs
+            value={showArchived ? "archived" : "active"}
+            onValueChange={(value) =>
+              router.push(
+                value === "archived"
+                  ? "/operator/threads?view=archived"
+                  : "/operator/threads",
+              )
+            }
+          >
+            <TabsList variant="pill">
+              <TabsTrigger value="active">Active</TabsTrigger>
+              <TabsTrigger value="archived">Archived</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
 
         {rawThreads === undefined ? (
           <OperationalPanel>

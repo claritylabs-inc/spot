@@ -16,7 +16,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusLabel, StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
+import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
 import {
   Table,
   TableBody,
@@ -63,9 +63,25 @@ export function WorkspaceScanActivity(props: ActivityListProps) {
 }
 
 function ActivityList({ entityId, onRightPanel }: ActivityListProps) {
-  const [filter, setFilter] = useState<
+  const [requestedFilter, setFilter] = useState<
     GoogleWorkspaceScanActivityFilter | undefined
   >(undefined);
+  const updated = useQuery(api.operatorGoogleWorkspaceScanActivity.listActivity, {
+    entityId, status: "updated", paginationOpts: { numItems: 1, cursor: null },
+  });
+  const needsAttention = useQuery(api.operatorGoogleWorkspaceScanActivity.listActivity, {
+    entityId, status: "needs_attention", paginationOpts: { numItems: 1, cursor: null },
+  });
+  const failed = useQuery(api.operatorGoogleWorkspaceScanActivity.listActivity, {
+    entityId, status: "failed", paginationOpts: { numItems: 1, cursor: null },
+  });
+  const availability = { updated, needs_attention: needsAttention, failed };
+  const filter = requestedFilter && availability[requestedFilter]?.page.length === 0
+    ? undefined
+    : requestedFilter;
+  const visibleFilters = Object.entries(STATUS_LABELS).filter(
+    ([value]) => (availability[value as keyof typeof STATUS_LABELS]?.page.length ?? 0) > 0,
+  );
   const { results, status, loadMore } = usePaginatedQuery(
     api.operatorGoogleWorkspaceScanActivity.listActivity,
     { status: filter, entityId },
@@ -87,31 +103,31 @@ function ActivityList({ entityId, onRightPanel }: ActivityListProps) {
 
   return (
     <section className="space-y-3" aria-label="Email scan activity">
-      <div className="overflow-x-auto">
-        <Tabs
-          value={filter ?? "all"}
-          onValueChange={(value) => {
-            if (value === "all") setFilter(undefined);
-            else if (
-              value === "updated" ||
-              value === "needs_attention" ||
-              value === "failed"
-            )
-              setFilter(value);
-          }}
-        >
-          <TabsList variant="pill" aria-label="Filter email scan activity">
-            <TabsTrigger value="all">All activity</TabsTrigger>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <TabsTrigger key={value} value={value}>
-                <StatusLabel tone={STATUS_TONES[value as keyof typeof STATUS_LABELS]}>
+      {visibleFilters.length > 0 ? (
+        <div className="overflow-x-auto">
+          <Tabs
+            value={filter ?? "all"}
+            onValueChange={(value) => {
+              if (value === "all") setFilter(undefined);
+              else if (
+                value === "updated" ||
+                value === "needs_attention" ||
+                value === "failed"
+              )
+                setFilter(value);
+            }}
+          >
+            <TabsList variant="pill" aria-label="Filter email scan activity">
+              <TabsTrigger value="all">All activity</TabsTrigger>
+              {visibleFilters.map(([value, label]) => (
+                <TabsTrigger key={value} value={value}>
                   {label}
-                </StatusLabel>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+      ) : null}
       <OperationalPanel>
         {entityId ? (
           <OperationalPanelHeader title="Email scan activity" />

@@ -18,7 +18,7 @@ import { typeStyle, type TypographyRole } from "@/lib/typography";
  * Uses Tailwind descendant selectors so they work regardless of
  * which remark plugins are active.
  */
-const BASE_STYLES =
+export const PROSE_MARKDOWN_STYLES =
   `max-w-none ${typeStyle("prose.default")} ` +
   "[&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 " +
   "[&_ul]:my-3 [&_ul]:pl-5 [&_ul]:list-disc " +
@@ -228,7 +228,7 @@ export function ProseMarkdown({
   return (
     <div
       className={cn(
-        compact ? COMPACT_STYLES : BASE_STYLES,
+        compact ? COMPACT_STYLES : PROSE_MARKDOWN_STYLES,
         "min-w-0 wrap-break-word wrap-anywhere",
         className,
       )}

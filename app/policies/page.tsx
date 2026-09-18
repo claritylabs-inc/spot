@@ -1,9 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PolicyListItem } from "@/components/policy-list-item";
-import { StatusLabel } from "@/components/ui/status-tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCachedPolicyList } from "@/lib/sync/spot-cached-queries";
 import { typeStyle } from "@/lib/typography";
@@ -36,26 +36,37 @@ type PolicyRow = {
 export default function PoliciesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const showArchived = searchParams.get("view") === "archived";
+  const archivedPolicies = useCachedPolicyList(true);
+  const hasArchivedPolicies = (archivedPolicies?.length ?? 0) > 0;
+  const archivedRequested = searchParams.get("view") === "archived";
+  const showArchived = archivedRequested && archivedPolicies?.length !== 0;
+
+  useEffect(() => {
+    if (archivedRequested && archivedPolicies?.length === 0) {
+      router.replace("/policies");
+    }
+  }, [archivedRequested, archivedPolicies, router]);
   const policies = useCachedPolicyList(showArchived);
   const rows = (policies ?? []) as PolicyRow[];
 
   return (
     <AppShell>
       <div className="space-y-4">
-        <Tabs
-          value={showArchived ? "archived" : "active"}
-          onValueChange={(value) =>
-            router.push(
-              value === "archived" ? "/policies?view=archived" : "/policies",
-            )
-          }
-        >
-          <TabsList variant="pill">
-            <TabsTrigger value="active"><StatusLabel tone="success">Active</StatusLabel></TabsTrigger>
-            <TabsTrigger value="archived"><StatusLabel indicator="inactive">Archived</StatusLabel></TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {hasArchivedPolicies ? (
+          <Tabs
+            value={showArchived ? "archived" : "active"}
+            onValueChange={(value) =>
+              router.push(
+                value === "archived" ? "/policies?view=archived" : "/policies",
+              )
+            }
+          >
+            <TabsList variant="pill">
+              <TabsTrigger value="active">Active</TabsTrigger>
+              <TabsTrigger value="archived">Archived</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
 
         {policies === undefined ? (
           <div className="min-h-32" aria-hidden="true" />

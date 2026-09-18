@@ -147,3 +147,5 @@ Assets were copied from `claritylabs-inc/clarity-landing` commit
 | `src/app/fonts/redaction/Redaction50-Regular.woff2` | `app/fonts/redaction/Redaction50-Regular.woff2` | `f7cac2422e6decc16b6233243dd315d826ee983b3651689df6097b31cbcbcec5` |
 | `src/app/fonts/redaction/Redaction70-Regular.woff2` | `app/fonts/redaction/Redaction70-Regular.woff2` | `1e922afe6452f402fc532fc3b9a9b75ac4a07571135919083fefc951689810c0` |
 | `src/app/fonts/redaction/Redaction100-Regular.woff2` | `app/fonts/redaction/Redaction100-Regular.woff2` | `6811129cb3cee1125bbc81fa357b17193dea5e27c14ed25cca22d5cf745ed6b1` |
+
+The Markdown source editor uses `markdownSyntaxTypographyStyles` for CodeMirror emphasis: headings and bold text change weight, italic text changes style, and all source remains at the same size without syntax colors. The rendered editor shares `PROSE_MARKDOWN_STYLES` with `ProseMarkdown`.
