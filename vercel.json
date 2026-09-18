@@ -3,6 +3,7 @@
   "git": {
     "deploymentEnabled": {
       "stack/**": false,
+      "preview/workspace-ui": false,
       "main": true
     }
   }
