@@ -543,7 +543,7 @@ function ProposalReviewDetails({
   );
 }
 
-function RequestEditor({
+export function RequestEditor({
   request,
   policies,
   onClose,
