@@ -492,6 +492,8 @@ export default defineSchema({
   // Organizations — owns company data, agent, broker info
   organizations: defineTable({
     name: v.string(),
+    deletedAt: v.optional(v.number()),
+    deletedByUserId: v.optional(v.id("users")),
     website: v.optional(v.string()),
     companyResearch: v.optional(companyResearchValidator),
     smokeMarker: v.optional(v.string()),
@@ -593,6 +595,7 @@ export default defineSchema({
     .index("name", ["name"])
     .index("handle", ["agentHandle"])
     .index("type", ["type"])
+    .index("deletion_type", ["deletedAt", "type"])
     .index("broker", ["brokerOrgId"])
     .index("slug", ["slug"]),
 

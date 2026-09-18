@@ -230,8 +230,10 @@ export const validateAccessTokenWithScopes = internalQuery({
         return null;
       }
       operatorRole = profile.role;
-    } else if (!token.orgId) {
-      return null;
+    } else {
+      if (!token.orgId) return null;
+      const org = await ctx.db.get(token.orgId);
+      if (!org || org.deletedAt !== undefined) return null;
     }
 
     return {
@@ -273,6 +275,11 @@ export const refreshAccessToken = internalMutation({
       throw new ConvexError("invalid_grant");
     }
 
+    if ((token.principalKind ?? "organization") === "organization") {
+      const org = token.orgId ? await ctx.db.get(token.orgId) : null;
+      if (!org || org.deletedAt !== undefined)
+        throw new ConvexError("invalid_grant");
+    }
     const scopes = parseScopesFromToken(token.scopes);
     await ctx.db.patch(token._id, { revokedAt: now });
 

@@ -65,6 +65,9 @@ async function requestForOperator(
 ) {
   const request = await ctx.db.get(requestId);
   if (!request) throw new Error("Procurement request not found");
+  const client = await ctx.db.get(request.clientOrgId);
+  if (!client || client.deletedAt !== undefined)
+    throw new Error("Client not found");
   return request;
 }
 
@@ -742,6 +745,8 @@ async function packetAccessByToken(ctx: QueryCtx, token: string) {
     (link.expiresAt !== undefined && link.expiresAt <= dayjs().valueOf())
   )
     return null;
+  const client = await ctx.db.get(link.clientOrgId);
+  if (!client || client.deletedAt !== undefined) return null;
   const request = await ctx.db.get(link.requestId);
   const outreach = link.outreachId ? await ctx.db.get(link.outreachId) : null;
   if (
@@ -750,6 +755,10 @@ async function packetAccessByToken(ctx: QueryCtx, token: string) {
     (link.outreachId && (!outreach || outreach.requestId !== request._id))
   )
     return null;
+  if (outreach?.brokerOrgId) {
+    const broker = await ctx.db.get(outreach.brokerOrgId);
+    if (!broker || broker.deletedAt !== undefined) return null;
+  }
   return { link, request };
 }
 

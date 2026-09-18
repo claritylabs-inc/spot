@@ -390,3 +390,38 @@ describe("operator oauth principals", () => {
     ).rejects.toThrow("invalid_target");
   });
 });
+
+test("soft deletion immediately rejects existing tenant tokens and refresh grants", async () => {
+  const { t, orgId, userId, clientId } = await seedOAuthClientAndUser();
+  const refreshTokenRaw = "deleted-org-refresh";
+  const refreshTokenHash = await sha256Hex(refreshTokenRaw);
+  await t.run((ctx) =>
+    ctx.db.insert("oauthTokens", {
+      orgId,
+      userId,
+      clientId,
+      tokenHash: "deleted-org-access",
+      refreshTokenHash,
+      expiresAt: dayjs().add(1, "hour").valueOf(),
+      createdAt: dayjs().valueOf(),
+      scopes: ["read", "write"],
+    }),
+  );
+  expect(
+    await t.query(validateAccessTokenWithScopesFn, {
+      tokenHash: "deleted-org-access",
+    }),
+  ).not.toBeNull();
+  await t.run((ctx) => ctx.db.patch(orgId, { deletedAt: dayjs().valueOf() }));
+  expect(
+    await t.query(validateAccessTokenWithScopesFn, {
+      tokenHash: "deleted-org-access",
+    }),
+  ).toBeNull();
+  await expect(
+    t.mutation(internal.oauth.refreshAccessToken, {
+      refreshTokenRaw,
+      clientId,
+    }),
+  ).rejects.toThrow("invalid_grant");
+});

@@ -83,6 +83,10 @@ async function requireProposal(
 ) {
   const proposal = await ctx.db.get(proposalId);
   if (!proposal) throw new Error("Proposal not found");
+  const client = await ctx.db.get(proposal.clientOrgId);
+  const broker = await ctx.db.get(proposal.brokerOrgId);
+  if (client?.deletedAt !== undefined || broker?.deletedAt !== undefined)
+    throw new Error("Organization deleted");
   return proposal;
 }
 

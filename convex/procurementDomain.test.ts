@@ -2757,3 +2757,155 @@ describe("operator procurement tools", () => {
     });
   });
 });
+
+test.each(["client", "broker"] as const)(
+  "operator soft deletion of a %s revokes access while preserving history",
+  async (type) => {
+    const f = await fixture();
+    const { requestId } = await createRequest(f, "Retained request");
+    const outreach = await f.operator.mutation(
+      api.procurementRequests.createOutreach,
+      {
+        requestId,
+        brokerOrgId: f.brokerOrgId,
+      },
+    );
+    const fileId = await seedProposalFile(f);
+    const link = await f.operator.mutation(api.procurementPacket.mintLink, {
+      requestId,
+    });
+    await f.t.run((ctx) =>
+      ctx.db.patch(link.id, { outreachId: outreach.outreachId }),
+    );
+    const orgId = type === "client" ? f.clientOrgId : f.brokerOrgId;
+    const policyId = await f.t.run((ctx) =>
+      ctx.db.insert("policies", {
+        orgId: f.clientOrgId,
+        carrier: "Travelers",
+        policyNumber: "RETAINED-1",
+        linesOfBusiness: ["Property"],
+        documentType: "policy",
+        policyYear: 2026,
+        effectiveDate: "01/01/2026",
+        expirationDate: "01/01/2027",
+        isRenewal: false,
+        coverages: [],
+        insuredName: "Client",
+        extractionDataStage: "final",
+      }),
+    );
+    const invitationId = await f.t.run((ctx) =>
+      ctx.db.insert("orgInvitations", {
+        orgId,
+        email: "client@example.com",
+        role: "member",
+        invitedBy: f.operatorUserId,
+        status: "pending",
+        expiresAt: dayjs().add(1, "day").valueOf(),
+      }),
+    );
+    const snapshot = await f.t.run(async (ctx) => ({
+      request: await ctx.db.get(requestId),
+      policy: await ctx.db.get(policyId),
+      outreach: await ctx.db.get(outreach.outreachId),
+      file: await ctx.db.get(fileId),
+      link: await ctx.db.get(link.id),
+      documents: await ctx.db.query("markdownDocuments").collect(),
+      memberships: await ctx.db.query("orgMemberships").collect(),
+    }));
+    expect(
+      await f.t.query(api.procurementPacket.getByToken, { token: link.token }),
+    ).not.toBeNull();
+    await expect(
+      f.client.mutation(api.operator.deleteOrganization, { orgId, type }),
+    ).rejects.toThrow();
+    await expect(
+      f.broker.mutation(api.operator.deleteOrganization, { orgId, type }),
+    ).rejects.toThrow();
+    await f.operator.mutation(api.operator.startImpersonation, {
+      targetOrgId: f.clientOrgId,
+      targetRole: "admin",
+    });
+    await expect(
+      f.operator.mutation(api.operator.deleteOrganization, { orgId, type }),
+    ).rejects.toThrow();
+    await f.operator.mutation(api.operator.stopImpersonation, {});
+    await f.operator.mutation(api.operator.deleteOrganization, { orgId, type });
+    await f.operator.mutation(api.operator.deleteOrganization, { orgId, type });
+
+    expect(
+      await f.t.query(api.procurementPacket.getByToken, { token: link.token }),
+    ).toBeNull();
+    expect(
+      await f.t.query(internal.procurementPacket.getFileByTokenInternal, {
+        token: link.token,
+        item: "anything",
+      }),
+    ).toBeNull();
+    expect(
+      await (type === "client" ? f.client : f.broker).query(api.orgs.getById, {
+        orgId,
+      }),
+    ).toBeNull();
+    await expect(
+      f.operator.mutation(api.operator.startImpersonation, {
+        targetOrgId: orgId,
+        targetRole: "admin",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      f.client.mutation(api.orgs.acceptInvitation, { invitationId }),
+    ).rejects.toThrow("Organization not found");
+    if (type === "client") {
+      expect(await f.operator.query(api.operator.listClients, {})).toHaveLength(
+        0,
+      );
+      await expect(
+        f.operator.mutation(api.operator.updateClientSettings, {
+          clientOrgId: orgId,
+          name: "Reactivated",
+        }),
+      ).rejects.toThrow();
+      expect(
+        await f.t.mutation(internal.companyResearch.claim, { orgId }),
+      ).toBeNull();
+    } else {
+      expect(await f.operator.query(api.brokerProfiles.list, {})).toHaveLength(
+        0,
+      );
+      expect(
+        await f.operator.query(api.brokerProfiles.get, { brokerOrgId: orgId }),
+      ).toBeNull();
+      expect(await f.operator.query(api.operator.listClients, {})).toHaveLength(
+        1,
+      );
+      await expect(
+        f.operator.mutation(api.brokerProfiles.upsert, {
+          brokerOrgId: orgId,
+          name: "Reactivated",
+        }),
+      ).rejects.toThrow();
+    }
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(orgId)).toMatchObject({
+        deletedAt: expect.any(Number),
+        deletedByUserId: f.operatorUserId,
+      });
+      expect(await ctx.db.get(requestId)).toEqual(snapshot.request);
+      expect(await ctx.db.get(policyId)).toEqual(snapshot.policy);
+      expect(await ctx.db.get(outreach.outreachId)).toEqual(snapshot.outreach);
+      expect(await ctx.db.get(fileId)).toEqual(snapshot.file);
+      expect(await ctx.db.get(link.id)).toEqual(snapshot.link);
+      expect(await ctx.db.query("markdownDocuments").collect()).toEqual(
+        snapshot.documents,
+      );
+      expect(await ctx.db.query("orgMemberships").collect()).toEqual(
+        snapshot.memberships,
+      );
+      const audits = await ctx.db.query("operatorAuditEvents").collect();
+      expect(
+        audits.filter((event) => event.summary.startsWith(`Deleted ${type}`)),
+      ).toHaveLength(1);
+    });
+  },
+);

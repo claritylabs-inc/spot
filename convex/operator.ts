@@ -417,7 +417,9 @@ export const setApproveAll = mutation({
 async function listOperatorClientRows(ctx: QueryCtx) {
   const clients = await ctx.db
     .query("organizations")
-    .withIndex("type", (q) => q.eq("type", "client"))
+    .withIndex("deletion_type", (q) =>
+      q.eq("deletedAt", undefined).eq("type", "client"),
+    )
     .take(500);
   return await Promise.all(
     clients.map(async (client) => {
@@ -457,7 +459,8 @@ export const getClientSupportDetails = query({
   handler: async (ctx, args) => {
     await requireOperator(ctx);
     const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client") return null;
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
+      return null;
     return {
       ...client,
       ...(await orgBrandFields(ctx, client)),
@@ -1221,8 +1224,9 @@ export const setSoloClientStatus = mutation({
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
     const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client")
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
     const previous = client.operatorStatus ?? "live";
     await ctx.db.patch(args.clientOrgId, { operatorStatus: args.status });
@@ -1249,7 +1253,7 @@ export const setClientFeatureFlag = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client")
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
     assertFeatureFlagAllowedForOrg(args.flagId, client);
     await ctx.db.patch(args.clientOrgId, {
@@ -1274,25 +1278,40 @@ export const updateClientSettings = mutation({
     clientOrgId: v.id("organizations"),
     name: v.optional(v.string()),
     website: v.optional(v.string()),
+    iconStorageId: v.optional(v.union(v.id("_storage"), v.null())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
     const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client")
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
     const identity = args.name !== undefined ? clientIdentity(args.name) : null;
     const name = identity?.name ?? client.name;
     if (!name) throw new Error("Organization name is required");
 
+    if (args.iconStorageId) {
+      const file = await ctx.db.system.get(args.iconStorageId);
+      if (
+        !file?.contentType?.startsWith("image/") ||
+        file.size > 5 * 1024 * 1024
+      )
+        throw new Error("Choose an image smaller than 5 MB");
+    }
+
     const patch = {
       ...identity,
+      ...(args.iconStorageId !== undefined
+        ? { iconStorageId: args.iconStorageId ?? undefined }
+        : {}),
       ...(args.website !== undefined
         ? { website: args.website.trim() || undefined }
         : {}),
     };
 
     await ctx.db.patch(args.clientOrgId, patch);
-    await scheduleCompanyResearch(ctx, args.clientOrgId);
+    if (args.name !== undefined || args.website !== undefined)
+      await scheduleCompanyResearch(ctx, args.clientOrgId);
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "setup_write",
@@ -1304,6 +1323,18 @@ export const updateClientSettings = mutation({
         website: patch.website,
       },
     });
+  },
+});
+
+export const generateClientLogoUploadUrl = mutation({
+  args: { clientOrgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const client = await ctx.db.get(args.clientOrgId);
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
+      throw new Error("Client not found");
+    return ctx.storage.generateUploadUrl();
   },
 });
 
@@ -1398,7 +1429,8 @@ export const startImpersonation = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const org = await ctx.db.get(args.targetOrgId);
-    if (!org) throw new Error("Organization not found");
+    if (!org || org.deletedAt !== undefined)
+      throw new Error("Organization not found");
     const now = dayjs().valueOf();
     const active = await ctx.db
       .query("operatorImpersonationSessions")
@@ -1609,6 +1641,8 @@ export const upsertBrokerInternal = internalMutation({
       .query("organizations")
       .withIndex("slug", (q) => q.eq("slug", slug))
       .first();
+    if (existingBySlug?.deletedAt !== undefined)
+      throw new Error("Broker was deleted; choose a different slug");
     if (existingBySlug && existingBySlug.type !== "broker") {
       throw new Error("Slug is already used by a non-broker org");
     }
@@ -1693,8 +1727,10 @@ export async function createStandaloneClientOrganizationByOperator(
     .query("organizations")
     .withIndex("type", (q) => q.eq("type", "client"))
     .collect();
-  const duplicate = existingClients.find((client) =>
-    clientIdentityMatches(client, args.name),
+  const duplicate = existingClients.find(
+    (client) =>
+      client.deletedAt === undefined &&
+      clientIdentityMatches(client, args.name),
   );
   if (duplicate)
     throw new Error(
@@ -1871,7 +1907,8 @@ export const getSoloClientLaunchContextInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client") return null;
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
+      return null;
     const memberships = await ctx.db
       .query("orgMemberships")
       .withIndex("organization", (q) => q.eq("orgId", args.clientOrgId))
@@ -1932,7 +1969,7 @@ export const markSoloClientLaunchedInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.type !== "client")
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
     const wasLive = (client.operatorStatus ?? "live") === "live";
     await ctx.db.patch(args.clientOrgId, {
@@ -1949,6 +1986,42 @@ export const markSoloClientLaunchedInternal = internalMutation({
         recipientEmail: args.recipientEmail,
         resendEmailId: args.resendEmailId,
       },
+    });
+  },
+});
+
+export const deleteOrganization = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    type: v.union(v.literal("client"), v.literal("broker")),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const org = await ctx.db.get(args.orgId);
+    if (!org || org.type !== args.type)
+      throw new Error("Organization not found");
+    if (org.type === "broker") assertExternalBrokerIdentity(org);
+    if (org.deletedAt !== undefined) return;
+    await ctx.db.patch(org._id, {
+      deletedAt: dayjs().valueOf(),
+      deletedByUserId: operator.userId,
+    });
+    for await (const session of ctx.db
+      .query("operatorImpersonationSessions")
+      .withIndex("target", (q) => q.eq("targetOrgId", org._id))) {
+      if (session.status === "active")
+        await ctx.db.patch(session._id, {
+          status: "ended",
+          endedAt: dayjs().valueOf(),
+        });
+    }
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: org._id,
+      summary: `Deleted ${args.type} ${org.name}; retained account history`,
+      metadata: { operation: "soft_delete", organizationType: args.type },
     });
   },
 });

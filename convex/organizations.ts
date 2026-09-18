@@ -41,7 +41,10 @@ export const generateOrgLogoUploadUrl = mutation({
 
 export const getInternal = internalQuery({
   args: { id: v.id("organizations") },
-  handler: async (ctx, args) => ctx.db.get(args.id),
+  handler: async (ctx, args) => {
+    const org = await ctx.db.get(args.id);
+    return org?.deletedAt === undefined ? org : null;
+  },
 });
 
 export const listMembershipsForOrg = internalQuery({

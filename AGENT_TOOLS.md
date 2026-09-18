@@ -366,3 +366,12 @@ OAuth consent and credentials are shared across operators and remain portal-only
 no model tool can connect, replace, or manage credentials. Save and refresh tools
 replaces the saved catalog. Tool activity
 uses each configured server's logo with the shared website favicon fallback.
+
+## Deleted organizations
+
+Client/broker deletion is a portal-only soft delete; it is not offered as an
+operator or tenant agent/MCP tool. `search_organizations`, operator overview
+organization counts, and the broker directory exclude deleted accounts.
+Organization-targeted access and confirmation preflight reject deleted targets;
+tenant OAuth validation and refresh reject tokens for deleted organizations.
+Retained history and issued snapshots are not erased by deletion.

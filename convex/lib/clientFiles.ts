@@ -94,7 +94,11 @@ export async function requireClientOrganization(
   orgId: Id<"organizations">,
 ) {
   const organization = await ctx.db.get(orgId);
-  if (!organization || organization.type !== "client") {
+  if (
+    !organization ||
+    organization.deletedAt !== undefined ||
+    organization.type !== "client"
+  ) {
     throw new Error("Client organization not found");
   }
   return organization;

@@ -56,6 +56,8 @@ import {
   operatorClientStatusLabel,
   type OperatorClientRow,
 } from "../client-model";
+import { ClientLogoField } from "../client-logo-field";
+import OperatorClientWikiPage from "./wiki/page";
 import { typeStyle } from "@/lib/typography";
 
 type ClientTab = OperatorClientPageTab;
@@ -226,8 +228,10 @@ function ClientWorkspace({
   }
 
   useEffect(() => {
-    if (activeTab === "overview") {
-      setShellActions(<AutoSaveStatus status={clientSettingsAutoSave.status} />);
+    if (activeTab === "settings") {
+      setShellActions(
+        <AutoSaveStatus status={clientSettingsAutoSave.status} />,
+      );
     } else if (activeTab === "team") {
       setShellActions(
         <PillButton size="compact" onClick={() => setTeamInviteOpen(true)}>
@@ -252,7 +256,7 @@ function ClientWorkspace({
   return (
     <>
       <main className="w-full space-y-6">
-        {activeTab === "overview" ? (
+        {activeTab === "settings" ? (
           <div className="space-y-5">
             <OperationalPanel>
               <OperationalPanelBody>
@@ -293,12 +297,21 @@ function ClientWorkspace({
                         placeholder="https://example.com"
                       />
                     </Field>
+                    <ClientLogoField
+                      client={client}
+                      disabled={Boolean(current?.activeImpersonation)}
+                    />
                   </div>
                 </FormSection>
               </OperationalPanelBody>
             </OperationalPanel>
 
-            {current && !current.activeImpersonation ? <WorkspaceScanActivity entityId={clientOrgId} onRightPanel={setRightPanel} /> : null}
+            {current && !current.activeImpersonation ? (
+              <WorkspaceScanActivity
+                entityId={clientOrgId}
+                onRightPanel={setRightPanel}
+              />
+            ) : null}
 
             <OperationalPanel>
               <OperationalPanelHeader
@@ -329,29 +342,11 @@ function ClientWorkspace({
                 }
               />
             </OperationalPanel>
-          </div>
-        ) : null}
-
-        {activeTab === "team" ? (
-          <TeamSection
-            operatorClient={supportDetails}
-            inviteOpen={teamInviteOpen}
-            onInviteOpenChange={setTeamInviteOpen}
-            showInviteAction={false}
-            setOperatorRightPanel={setRightPanel}
-            onOperatorActivationSent={() =>
-              patchClientStatus(client._id, "live")
-            }
-          />
-        ) : null}
-
-        {activeTab === "settings" ? (
-          <div className="space-y-5">
             <section className="space-y-3" aria-label="Agent channels">
               <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
                 Agent channels
               </h2>
-                <AgentChannelsSection
+              <AgentChannelsSection
                 clientOrgId={client._id}
                 defaultClientSlug={slackChannelSlug(client)}
                 defaultInviteEmail={
@@ -370,13 +365,28 @@ function ClientWorkspace({
                   key={flag.id}
                   flag={flag}
                   enabled={isFeatureEnabled(client, flag.id)}
-                  onChange={(enabled) => void updateFeatureFlag(flag.id, enabled)}
+                  onChange={(enabled) =>
+                    void updateFeatureFlag(flag.id, enabled)
+                  }
                   loading={savingFeatureFlagId === flag.id}
                   disabled={savingFeatureFlagId !== null}
                 />
               ))}
             </section>
           </div>
+        ) : null}
+
+        {activeTab === "team" ? (
+          <TeamSection
+            operatorClient={supportDetails}
+            inviteOpen={teamInviteOpen}
+            onInviteOpenChange={setTeamInviteOpen}
+            showInviteAction={false}
+            setOperatorRightPanel={setRightPanel}
+            onOperatorActivationSent={() =>
+              patchClientStatus(client._id, "live")
+            }
+          />
         ) : null}
       </main>
 
@@ -419,6 +429,15 @@ function ClientWorkspace({
 }
 
 export default function OperatorClientPage() {
+  const searchParams = useSearchParams();
+  return parseOperatorClientSection(searchParams.get("tab")) === "wiki" ? (
+    <OperatorClientWikiPage />
+  ) : (
+    <OperatorClientSettingsPage />
+  );
+}
+
+function OperatorClientSettingsPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
   const searchParams = useSearchParams();
   const current = useCachedOperatorCurrent();
@@ -441,7 +460,11 @@ export default function OperatorClientPage() {
   const client = clients?.find((item) => item._id === clientOrgId) ?? null;
   const activeTab = parseOperatorClientSection(searchParams.get("tab"));
   const breadcrumbSection =
-    activeTab === "team" ? "Team" : activeTab === "settings" ? "Settings" : null;
+    activeTab === "team"
+      ? "Team"
+      : activeTab === "settings"
+        ? "Settings"
+        : null;
 
   return (
     <AppShell

@@ -121,6 +121,17 @@ async function readSettings(
     .query("agentChannelSettings")
     .withIndex("client", (q) => q.eq("clientOrgId", clientOrgId))
     .first();
+  const org = await ctx.db.get(clientOrgId);
+  if (!org || org.deletedAt !== undefined)
+    return {
+      clientOrgId,
+      ...DEFAULT_AGENT_CHANNEL_SETTINGS,
+      emailEnabled: false,
+      imessageEnabled: false,
+      slackEnabled: false,
+      slackSafeAlertsEnabled: false,
+      slackVendorAlertsEnabled: false,
+    };
   return settings ?? { clientOrgId, ...DEFAULT_AGENT_CHANNEL_SETTINGS };
 }
 
@@ -522,7 +533,11 @@ export const updateForOperator = mutation({
   handler: async (ctx, args) => {
     const operator = await requireWritableOperator(ctx);
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const { clientOrgId, ...settings } = args;
@@ -586,7 +601,11 @@ export const startSlackSetup = mutation({
   handler: async (ctx, args) => {
     const operator = await requireWritableOperator(ctx);
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const connection = await retainedConnection(ctx, args.clientOrgId);
@@ -918,7 +937,11 @@ export const authorizeSetup = internalQuery({
   args: { clientOrgId: v.id("organizations"), userId: v.id("users") },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const kind = await setupActorKind(ctx, args.clientOrgId, args.userId);
@@ -936,7 +959,11 @@ export const authorizeSlackInstallInvite = internalQuery({
   args: { clientOrgId: v.id("organizations"), userId: v.id("users") },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const profile = await ctx.db
@@ -987,7 +1014,11 @@ export const getSlackSupportSetupContext = internalQuery({
   args: { clientOrgId: v.id("organizations") },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const hostTeamId = process.env.SLACK_CLARITY_TEAM_ID?.trim();
@@ -1230,7 +1261,11 @@ export const recordSlackInstallInviteSent = internalMutation({
       throwUserFacingError(userFacingErrorCodes.operatorRequired);
     }
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const setup = await ctx.db.get(args.setupStateId);
@@ -2238,7 +2273,11 @@ export const authorizeDisconnect = internalQuery({
   args: { clientOrgId: v.id("organizations"), userId: v.id("users") },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.clientOrgId);
-    if (!org || (org.type ?? "client") !== "client") {
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type ?? "client") !== "client"
+    ) {
       throw new Error("Client organization not found");
     }
     const actorKind = await setupActorKind(ctx, args.clientOrgId, args.userId);
