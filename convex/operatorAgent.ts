@@ -2811,7 +2811,14 @@ async function executeToolDomain(
     if (!organization || organization.deletedAt !== undefined)
       throw new Error("Organization not found");
     const status = input.status;
-    if (status !== "onboarding" && status !== "live") {
+    if (
+      status !== "onboarding" &&
+      status !== "live" &&
+      !(
+        organization.type === "client" &&
+        (status === "lost" || status === "churned")
+      )
+    ) {
       throw new Error("Invalid organization status");
     }
     const previous = organization.operatorStatus ?? "live";

@@ -301,3 +301,14 @@ queries use `deletion_type`. Preserve policies, files, Markdown, procurement
 history, memberships, and issued snapshots, and never cascade broker deletion
 to clients. `components/operator/delete-organization-button.tsx` owns the shared
 client/broker confirmation flow. Deletion is not an agent/MCP tool.
+
+## Client relationship status
+
+Client lifecycle uses `operatorStatus`: Onboarding, Live, Lost (never became live),
+and Churned (formerly live). Operator client lists and detail badges use this
+field only; Draft/Invited are team invitation concerns, never client statuses.
+Legacy organization invitation metadata remains schema-compatible but is not
+returned in the operator client list. Team activation emails promote Onboarding
+to Live and preserve Lost/Churned; returning those clients to Live requires an
+explicit status edit. Status changes preserve history and do not revoke team
+memberships. Broker lifecycle remains Onboarding/Live.

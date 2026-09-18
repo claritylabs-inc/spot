@@ -5,8 +5,13 @@ type OperatorClientList = FunctionReturnType<typeof api.operator.listClients>;
 
 export type OperatorClientRow = OperatorClientList[number];
 
+export const operatorClientStatuses = {
+  onboarding: "Onboarding",
+  live: "Live",
+  lost: "Lost",
+  churned: "Churned",
+};
+
 export function operatorClientStatusLabel(client: OperatorClientRow) {
-  if (client.inviteStatus === "draft") return "Draft";
-  if (client.inviteStatus === "invited") return "Invited";
-  return client.operatorStatus === "live" ? "Live" : "Onboarding";
+  return operatorClientStatuses[client.operatorStatus];
 }

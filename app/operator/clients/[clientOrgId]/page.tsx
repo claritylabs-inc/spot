@@ -266,9 +266,7 @@ function ClientWorkspace({
                   action={
                     <StatusTag
                       tone={
-                        client.operatorStatus === "live" && !client.inviteStatus
-                          ? "success"
-                          : "warning"
+                        client.operatorStatus === "live" ? "success" : "warning"
                       }
                     >
                       {operatorClientStatusLabel(client)}
@@ -384,7 +382,12 @@ function ClientWorkspace({
             showInviteAction={false}
             setOperatorRightPanel={setRightPanel}
             onOperatorActivationSent={() =>
-              patchClientStatus(client._id, "live")
+              patchClientStatus(
+                client._id,
+                client.operatorStatus === "onboarding"
+                  ? "live"
+                  : client.operatorStatus,
+              )
             }
           />
         ) : null}

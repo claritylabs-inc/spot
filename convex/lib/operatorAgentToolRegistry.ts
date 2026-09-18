@@ -1790,10 +1790,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   set_organization_status: defineOperatorTool({
     version: 1,
     description:
-      "Set the internal operator lifecycle of one exact broker or client organization.",
+      "Set the internal operator lifecycle of one exact organization. Clients support onboarding, live, lost (never became live), and churned (formerly live). Brokers support onboarding and live. Invitation state is separate.",
     inputSchema: z.object({
       orgId: organizationId,
-      status: z.enum(["onboarding", "live"]),
+      status: z.enum(["onboarding", "live", "lost", "churned"]),
     }),
     capability: "operator.organizations.write",
     effect: "reversible_write",

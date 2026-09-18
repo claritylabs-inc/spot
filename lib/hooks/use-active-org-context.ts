@@ -24,7 +24,7 @@ export type ActiveOrgContext = {
 
 type OperatorContext = {
   activeImpersonation?: {
-    targetOrgOperatorStatus?: "onboarding" | "live";
+    targetOrgOperatorStatus?: "onboarding" | "live" | "lost" | "churned";
   } | null;
 };
 

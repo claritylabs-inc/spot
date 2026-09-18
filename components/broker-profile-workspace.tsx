@@ -15,7 +15,7 @@ import {
   OperationalPanelBody,
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
-import { PillButton } from "@/components/ui/pill-button";
+import { FileDropZone } from "@/components/ui/file-drop";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useCurrentOrg } from "@/hooks/use-current-org";
@@ -149,8 +149,13 @@ function BrokerProfileEditor({
   });
   const disabled = !canEdit;
   async function uploadLogo(file: File) {
-    if (!brokerOrgId) return;
+    if (!brokerOrgId || !canEdit) return;
+    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+      toast.error("Choose an image smaller than 5 MB");
+      return;
+    }
     setSaving(true);
+    const notification = toast.loading("Uploading logo…");
     try {
       const uploadUrl = await generateLogoUploadUrl({ brokerOrgId });
       const response = await fetch(uploadUrl, {
@@ -166,10 +171,11 @@ function BrokerProfileEditor({
         brokerOrgId,
         iconStorageId: storageId,
       });
-      toast.success("Broker logo saved");
+      toast.success("Broker logo saved", { id: notification });
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(error, "Could not save the broker logo"),
+        { id: notification },
       );
     } finally {
       setSaving(false);
@@ -190,7 +196,7 @@ function BrokerProfileEditor({
             />
           </Field>
           <Field label="Logo">
-            <div className="flex items-center gap-3">
+            <div className="space-y-3">
               <div className="flex size-10 items-center justify-center overflow-hidden rounded-md border border-input bg-popover">
                 {profile.broker.iconUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -204,27 +210,15 @@ function BrokerProfileEditor({
                 )}
               </div>
               {canEdit ? (
-                <PillButton
-                  variant="secondary"
+                <FileDropZone
+                  accept="image/*"
                   disabled={saving}
-                  onClick={() =>
-                    document.getElementById("broker-logo-upload")?.click()
-                  }
-                >
-                  Upload logo
-                </PillButton>
+                  idleLabel="Drop logo here"
+                  activeLabel="Upload this logo"
+                  hint="or click to choose an image · Max 5 MB"
+                  onFile={(file) => void uploadLogo(file)}
+                />
               ) : null}
-              <input
-                id="broker-logo-upload"
-                className="hidden"
-                type="file"
-                accept="image/*"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void uploadLogo(file);
-                  event.currentTarget.value = "";
-                }}
-              />
             </div>
           </Field>
           <Field label="Primary office address">
