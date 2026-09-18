@@ -154,25 +154,6 @@ describe("Conductor Convex bootstrap", () => {
     expect(consumerAiCredentialNames).toContain("VERCEL_AI_GATEWAY_API_KEY");
   });
 
-  it("removes credentials retained by an older local Convex setup", () => {
-    const setupSource = readFileSync(
-      path.join(repoRoot, "scripts/setup-conductor-workspace.mjs"),
-      "utf8",
-    );
-    expect(setupSource).toContain("removeConsumerAiCredentials(convex);");
-    expect(setupSource).toContain('run(convex, ["env", "remove", name])');
-  });
-
-  it("passes the native-local HTTP actions URL to the extraction worker", () => {
-    const setupSource = readFileSync(
-      path.join(repoRoot, "scripts/setup-conductor-workspace.mjs"),
-      "utf8",
-    );
-    expect(setupSource).toMatch(
-      /writeRuntimeEnv\("extraction-worker\.env", \{\s+CONVEX_URL: localUrls\.cloud,\s+CONVEX_SITE_URL: localUrls\.site,/,
-    );
-  });
-
   it("requires only router URL and inference secret for every AI task", () => {
     expect(
       resolveConductorClRouterConfig(

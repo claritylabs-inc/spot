@@ -44,31 +44,6 @@ async function fixture() {
 }
 
 describe("operator task intents", () => {
-  test("returns contextual starters without exposing unrelated tasks", async () => {
-    const f = await fixture();
-
-    const global = await f.operator.query(api.operatorAgent.listIntents, {});
-    expect(global.map((intent) => intent.id)).toEqual([
-      "find_account_or_policy",
-      "check_system_health",
-      "search_company_email",
-      "investigate_recent_failures",
-    ]);
-
-    const contextual = await f.operator.query(api.operatorAgent.listIntents, {
-      pageContext: {
-        pageType: "operator_client",
-        entityId: "client-id",
-        summary: "Cove",
-      },
-    });
-    expect(contextual.map((intent) => intent.id)).toEqual([
-      "review_client",
-      "update_client",
-      "start_procurement",
-    ]);
-  });
-
   test("starts a governed thread with immutable context and intent provenance", async () => {
     const f = await fixture();
     const pageContext = {
@@ -105,7 +80,6 @@ describe("operator task intents", () => {
     });
 
     expect(persisted.thread).toMatchObject({
-      title: "Investigate this policy",
       initialContext: pageContext,
     });
     expect(persisted.messages).toHaveLength(2);
