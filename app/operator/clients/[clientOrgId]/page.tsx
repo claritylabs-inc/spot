@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -22,16 +22,15 @@ import { AgentChannelsSection } from "@/components/settings/agent-channels-secti
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusLabel } from "@/components/ui/status-tag";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { FormSection } from "@/components/ui/form-section";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
   OperationalPanel,
@@ -53,8 +52,8 @@ import {
 } from "./operator-client-tabs";
 import { OperatorClientSidebar } from "./operator-client-sidebar";
 import {
-  operatorClientStatusLabel,
-  operatorClientStatusPresentation,
+  OPERATOR_CLIENT_STATUSES,
+  operatorClientStatuses,
   type OperatorClientRow,
 } from "../client-model";
 import { ClientLogoField } from "../client-logo-field";
@@ -92,7 +91,7 @@ function Field({
   className?: string;
 }) {
   return (
-    <label className={className}>
+    <label className={`block ${className ?? ""}`}>
       <span
         className={`mb-1.5 block text-muted-foreground ${typeStyle("caption.medium")}`}
       >
@@ -127,7 +126,6 @@ function ClientWorkspace({
 }) {
   const clientOrgId = client._id;
   const current = useCachedOperatorCurrent();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { patchClientSettings, patchClientStatus } =
     useOperatorClientCacheActions();
@@ -135,13 +133,13 @@ function ClientWorkspace({
   const settingsDraft = useLiveRecordDraft(clientOrgId, {
     name: supportDetails.name,
     website: supportDetails.website ?? "",
+    status: client.operatorStatus,
   });
   const { name: organizationName, website } = settingsDraft.value;
   const setOrganizationName = settingsDraft.field("name");
   const setWebsite = settingsDraft.field("website");
   const [textFieldFocused, setTextFieldFocused] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("account");
   const [teamInviteOpen, setTeamInviteOpen] = useState(false);
   const [savingFeatureFlagId, setSavingFeatureFlagId] =
     useState<FeatureFlagId | null>(null);
@@ -155,7 +153,6 @@ function ClientWorkspace({
 
   const clientSettingsArgs = {
     clientOrgId,
-    ...settingsDraft.patch,
     ...(settingsDraft.patch.name !== undefined
       ? { name: organizationName.trim() }
       : {}),
@@ -165,15 +162,25 @@ function ClientWorkspace({
   };
   const clientSettingsAutoSave = useLocalFirstAutoSave({
     mutationName: "operator.updateClientSettings",
-    args: { patch: clientSettingsArgs, revision: settingsDraft.revision },
+    args: {
+      patch: clientSettingsArgs,
+      status: settingsDraft.patch.status,
+      revision: settingsDraft.revision,
+    },
     valueKey: String(settingsDraft.revision),
     resetKey: clientOrgId,
-    enabled: true,
+    enabled: !current?.activeImpersonation,
     canSave: !validationError,
     autoSave: !textFieldFocused,
     delayMs: 700,
-    flush: async ({ patch: args, revision }) => {
-      await updateClientSettings(args);
+    flush: async ({ patch: args, status, revision }) => {
+      if (args.name !== undefined || args.website !== undefined) {
+        await updateClientSettings(args);
+      }
+      if (status !== undefined) {
+        await setClientStatus({ clientOrgId, status });
+        await patchClientStatus(clientOrgId, status);
+      }
       settingsDraft.acknowledge(revision);
       const { clientOrgId: updatedClientOrgId, ...patch } = args;
       await patchClientSettings(updatedClientOrgId, patch);
@@ -181,34 +188,12 @@ function ClientWorkspace({
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Client settings could not be saved."),
   });
-  function navigate(tab: ClientTab) {
-    if (tab !== "team") setTeamInviteOpen(false);
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("tab", tab);
-    router.push(`/operator/clients/${clientOrgId}?${next.toString()}`);
-  }
-
   function finishTextEdit() {
     setTextFieldFocused(false);
     void clientSettingsAutoSave.saveNow();
   }
 
   const saveClientSettingsNow = clientSettingsAutoSave.saveNow;
-
-  const disableAccount = useCallback(async () => {
-    setBusy(true);
-    try {
-      if (!(await saveClientSettingsNow())) return;
-      await setClientStatus({ clientOrgId: client._id, status: "onboarding" });
-      await patchClientStatus(client._id, "onboarding");
-      setDisableDialogOpen(false);
-      toast.success("Client account disabled");
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Failed to update client"));
-    } finally {
-      setBusy(false);
-    }
-  }, [client._id, patchClientStatus, saveClientSettingsNow, setClientStatus]);
 
   async function updateFeatureFlag(flagId: FeatureFlagId, enabled: boolean) {
     const previousFlags = client.featureFlags;
@@ -258,23 +243,27 @@ function ClientWorkspace({
     <>
       <main className="w-full space-y-6">
         {activeTab === "settings" ? (
-          <div className="space-y-5">
-            <OperationalPanel>
-              <OperationalPanelBody>
-                <FormSection
-                  title="Account"
-                  divided={false}
-                  action={
-                    <StatusTag
-                      {...operatorClientStatusPresentation(client)}
-                    >
-                      {operatorClientStatusLabel(client)}
-                    </StatusTag>
-                  }
-                >
-                  <div className="grid gap-4 md:grid-cols-2">
+          <Tabs
+            value={settingsTab}
+            onValueChange={(value) => setSettingsTab(String(value))}
+            className="gap-5"
+          >
+            <TabsList
+              variant="pill"
+              aria-label="Client settings"
+              className="max-w-full flex-wrap"
+            >
+              <TabsTrigger value="account">Account</TabsTrigger>
+              <TabsTrigger value="channels">Agent channels</TabsTrigger>
+              <TabsTrigger value="features">Beta features</TabsTrigger>
+            </TabsList>
+            <TabsContent value="account" keepMounted className="space-y-5">
+              <OperationalPanel className="max-w-2xl">
+                <OperationalPanelBody className="space-y-4">
+                  <div className="space-y-4">
                     <Field label="Organization name" error={validationError}>
                       <Input
+                        disabled={Boolean(current?.activeImpersonation)}
                         value={organizationName}
                         aria-invalid={Boolean(validationError)}
                         onChange={(event) =>
@@ -287,6 +276,7 @@ function ClientWorkspace({
                     </Field>
                     <Field label="Website">
                       <Input
+                        disabled={Boolean(current?.activeImpersonation)}
                         value={website}
                         onChange={(event) => setWebsite(event.target.value)}
                         onFocus={() => setTextFieldFocused(true)}
@@ -294,55 +284,54 @@ function ClientWorkspace({
                         placeholder="https://example.com"
                       />
                     </Field>
+                    <Field label="Status">
+                      <Select
+                        value={settingsDraft.value.status}
+                        items={operatorClientStatuses}
+                        disabled={Boolean(current?.activeImpersonation)}
+                        onValueChange={(value) => {
+                          if (
+                            value === "onboarding" ||
+                            value === "live" ||
+                            value === "lost" ||
+                            value === "churned"
+                          ) {
+                            settingsDraft.field("status")(value);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(OPERATOR_CLIENT_STATUSES).map(
+                            ([value, { label, ...presentation }]) => (
+                              <SelectItem key={value} value={value}>
+                                <StatusLabel {...presentation}>
+                                  {label}
+                                </StatusLabel>
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </Field>
                     <ClientLogoField
                       client={client}
                       disabled={Boolean(current?.activeImpersonation)}
                     />
                   </div>
-                </FormSection>
-              </OperationalPanelBody>
-            </OperationalPanel>
+                </OperationalPanelBody>
+              </OperationalPanel>
 
-            {current && !current.activeImpersonation ? (
-              <WorkspaceScanActivity
-                entityId={clientOrgId}
-                onRightPanel={setRightPanel}
-              />
-            ) : null}
-
-            <OperationalPanel>
-              <OperationalPanelHeader
-                className="items-center border-b-0"
-                title="Account access"
-                description={
-                  client.operatorStatus === "onboarding"
-                    ? "Send an activation email to an admin from Team to enable access."
-                    : "Activation emails can be resent to admins who have not activated their account."
-                }
-                action={
-                  client.operatorStatus === "onboarding" ? (
-                    <PillButton
-                      variant="secondary"
-                      onClick={() => navigate("team")}
-                    >
-                      Open team
-                    </PillButton>
-                  ) : (
-                    <PillButton
-                      variant="destructive"
-                      disabled={busy}
-                      onClick={() => setDisableDialogOpen(true)}
-                    >
-                      Disable account
-                    </PillButton>
-                  )
-                }
-              />
-            </OperationalPanel>
-            <section className="space-y-3" aria-label="Agent channels">
-              <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
-                Agent channels
-              </h2>
+              {current && !current.activeImpersonation ? (
+                <WorkspaceScanActivity
+                  entityId={clientOrgId}
+                  onRightPanel={setRightPanel}
+                />
+              ) : null}
+            </TabsContent>
+            <TabsContent value="channels">
               <AgentChannelsSection
                 clientOrgId={client._id}
                 defaultClientSlug={slackChannelSlug(client)}
@@ -352,11 +341,8 @@ function ClientWorkspace({
                 defaultInviteUserId={supportDetails.primaryInsuranceContactId}
                 setRightPanel={setRightPanel}
               />
-            </section>
-            <section className="space-y-3" aria-label="Beta features">
-              <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
-                Beta features
-              </h2>
+            </TabsContent>
+            <TabsContent value="features" className="space-y-3">
               {betaFeatureFlagsForOrgType("client").map((flag) => (
                 <FeatureFlagToggleRow
                   key={flag.id}
@@ -369,8 +355,8 @@ function ClientWorkspace({
                   disabled={savingFeatureFlagId !== null}
                 />
               ))}
-            </section>
-          </div>
+            </TabsContent>
+          </Tabs>
         ) : null}
 
         {activeTab === "team" ? (
@@ -391,41 +377,6 @@ function ClientWorkspace({
           />
         ) : null}
       </main>
-
-      <Dialog
-        open={disableDialogOpen}
-        onOpenChange={(open) => {
-          if (!busy) setDisableDialogOpen(open);
-        }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Disable account</DialogTitle>
-            <DialogDescription>
-              Disable <strong>{client.name}</strong>? The client will lose
-              access to Spot and return to onboarding. You can send a new
-              activation email later.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <PillButton
-              variant="secondary"
-              disabled={busy}
-              onClick={() => setDisableDialogOpen(false)}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              variant="destructive"
-              disabled={busy}
-              onClick={() => void disableAccount()}
-            >
-              {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {busy ? "Disabling…" : "Disable account"}
-            </PillButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

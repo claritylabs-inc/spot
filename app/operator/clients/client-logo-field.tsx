@@ -61,7 +61,7 @@ export function ClientLogoField({
       >
         Logo
       </span>
-      <div className="space-y-3">
+      <div className="flex items-center gap-3">
         <OrgBrandIcon
           name={client.name}
           iconUrl={client.iconUrl}
@@ -69,6 +69,7 @@ export function ClientLogoField({
           size="lg"
         />
         <FileDropZone
+          padding="px-4 py-3"
           accept="image/*"
           disabled={disabled || busy}
           idleLabel="Drop logo here"
