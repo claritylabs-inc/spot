@@ -172,7 +172,7 @@ export function OperatorSidebar({
           />
           <SidebarMenuItem
             href="/operator/brokers"
-            label="Brokers"
+            label="Insurance providers"
             icon={Building2}
             active={active === "brokers"}
             collapsed={collapsed}

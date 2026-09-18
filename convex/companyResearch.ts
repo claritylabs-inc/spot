@@ -12,9 +12,15 @@ import {
   samePublicResearchSite,
   samePublicResearchUrl,
 } from "./lib/companyResearch";
+import {
+  isSpotOwnedBrokerIdentity,
+  normalizeBrokerWritingStates,
+  normalizeBrokerLineOfBusinessCodes,
+} from "./lib/brokerProfileValidation";
+import { researchBrokerValidator } from "./lib/companyResearch";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
 
-const LEASE_MS = 5 * 60 * 1_000;
+const LEASE_MS = 15 * 60 * 1_000;
 const MAX_ATTEMPTS = 3;
 const runRef = makeFunctionReference<"action", { orgId: Id<"organizations"> }>(
   "actions/companyResearch:run",
@@ -71,7 +77,12 @@ export async function scheduleCompanyResearch(
   options: { force?: boolean } = {},
 ) {
   const org = await ctx.db.get(orgId);
-  if (!org || org.deletedAt !== undefined || org.type !== "client")
+  if (
+    !org ||
+    org.deletedAt !== undefined ||
+    (org.type !== "client" && org.type !== "broker") ||
+    (org.type === "broker" && isSpotOwnedBrokerIdentity(org))
+  )
     return false;
   const fingerprint = companyResearchFingerprint(org);
   if (
@@ -90,6 +101,27 @@ export async function scheduleCompanyResearch(
     ? (org.companyResearch?.sourceUrls ?? [])
     : [];
   const facts = retainEvidence ? (org.companyResearch?.facts ?? []) : [];
+  if (
+    !retainEvidence &&
+    org.type === "broker" &&
+    org.companyResearch?.appliedBrokerFields?.length
+  ) {
+    const profile = await ctx.db
+      .query("brokerProfiles")
+      .withIndex("broker", (q) => q.eq("brokerOrgId", orgId))
+      .unique();
+    if (profile) {
+      const owned = new Set(org.companyResearch.appliedBrokerFields);
+      await ctx.db.patch(profile._id, {
+        ...(owned.has("writingStates") ? { writingStates: [] } : {}),
+        ...(owned.has("lineOfBusinessCodes")
+          ? { lineOfBusinessCodes: [] }
+          : {}),
+        ...(owned.has("officeAddress") ? { officeAddress: undefined } : {}),
+        updatedAt: dayjs().valueOf(),
+      });
+    }
+  }
   await ctx.db.patch(orgId, {
     companyResearch: {
       version: COMPANY_RESEARCH_VERSION,
@@ -99,6 +131,12 @@ export async function scheduleCompanyResearch(
       unresolvedFields: missingFields(org),
       sourceUrls,
       facts,
+      brokerFindings: retainEvidence
+        ? org.companyResearch?.brokerFindings
+        : undefined,
+      appliedBrokerFields: retainEvidence
+        ? org.companyResearch?.appliedBrokerFields
+        : undefined,
       updatedAt: dayjs().valueOf(),
     },
   });
@@ -111,7 +149,12 @@ export const claim = internalMutation({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, { orgId }) => {
     const org = await ctx.db.get(orgId);
-    if (!org || org.deletedAt !== undefined || org.type !== "client")
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      (org.type !== "client" && org.type !== "broker") ||
+      (org.type === "broker" && isSpotOwnedBrokerIdentity(org))
+    )
       return null;
     const research = org.companyResearch;
     if (!research || research.fingerprint !== companyResearchFingerprint(org)) {
@@ -133,12 +176,31 @@ export const claim = internalMutation({
       },
     });
     await ctx.scheduler.runAfter(LEASE_MS, recoverRef, { orgId, leaseId });
+    let profileUpdatedAt: number | undefined;
+    if (org.type === "broker") {
+      const profile = await ctx.db
+        .query("brokerProfiles")
+        .withIndex("broker", (q) => q.eq("brokerOrgId", orgId))
+        .unique();
+      if (!profile)
+        await ctx.db.insert("brokerProfiles", {
+          brokerOrgId: orgId,
+          networkStatus: "prospect",
+          writingStates: [],
+          lineOfBusinessCodes: [],
+          createdAt: now,
+          updatedAt: now,
+        });
+      profileUpdatedAt = profile?.updatedAt ?? now;
+    }
     return {
       orgId,
       leaseId,
       fingerprint: research.fingerprint,
       name: org.name,
       website: org.website,
+      type: org.type,
+      profileUpdatedAt,
     };
   },
 });
@@ -160,6 +222,15 @@ async function failLease(
       updatedAt: dayjs().valueOf(),
     },
   });
+  if (!retry)
+    await ctx.db.insert("companyResearchEvents", {
+      orgId: org._id,
+      fingerprint: research.fingerprint,
+      status: "failed",
+      sourceCount: research.sourceUrls.length,
+      unresolvedFields: research.unresolvedFields,
+      createdAt: dayjs().valueOf(),
+    });
   if (retry)
     await ctx.scheduler.runAfter(research.attempts * 1_000, runRef, {
       orgId: org._id,
@@ -219,6 +290,9 @@ export const complete = internalMutation({
     facts: v.array(companyResearchFactValidator),
     sourceUrls: v.array(v.string()),
     reason: v.optional(v.string()),
+    unresolvedFields: v.optional(v.array(v.string())),
+    brokerFindings: v.optional(researchBrokerValidator),
+    profileUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.orgId);
@@ -242,7 +316,7 @@ export const complete = internalMutation({
           .map(publicResearchUrl)
           .filter((url): url is string => Boolean(url)),
       ),
-    ].slice(0, 10);
+    ].slice(0, 40);
     const currentFacts = args.facts
       .flatMap((fact) => {
         const sourceRef = currentSourceUrls.find((url) =>
@@ -255,10 +329,31 @@ export const complete = internalMutation({
       .slice(0, 40);
     const verifiedCurrentEvidence =
       currentSourceUrls.length > 0 && !args.reason;
-    const facts = verifiedCurrentEvidence ? currentFacts : research.facts;
-    const sourceUrls = verifiedCurrentEvidence
+    const replaceFacts =
+      verifiedCurrentEvidence &&
+      currentFacts.length > 0 &&
+      !args.unresolvedFields?.length;
+    let sourceUrls = replaceFacts
       ? currentSourceUrls
-      : research.sourceUrls;
+      : [
+          ...new Set([
+            ...research.sourceUrls,
+            ...(verifiedCurrentEvidence ? currentSourceUrls : []),
+          ]),
+        ].slice(0, 120);
+    const mergedFacts = [
+      ...new Map(
+        [
+          ...research.facts,
+          ...(verifiedCurrentEvidence ? currentFacts : []),
+        ].map((fact) => [`${fact.key}:${fact.content}`, fact]),
+      ).values(),
+    ];
+    const facts = replaceFacts
+      ? currentFacts
+      : mergedFacts
+          .filter((fact) => sourceUrls.includes(fact.sourceRef))
+          .slice(0, 120);
     const patch: Partial<Doc<"organizations">> = {};
     const website = args.website && publicResearchUrl(args.website);
     if (
@@ -268,7 +363,122 @@ export const complete = internalMutation({
     )
       patch.website = website;
     const updated = { ...org, ...patch };
-    const unresolvedFields = missingFields(updated);
+    const unresolvedFields = [
+      ...missingFields(updated),
+      ...(args.unresolvedFields ?? []),
+    ];
+    if (mergedFacts.length > 120 || sourceUrls.length === 120)
+      unresolvedFields.push("evidenceCapacity");
+    let brokerFindings = research.brokerFindings;
+    const appliedBrokerFields = new Set(research.appliedBrokerFields ?? []);
+    if (
+      org.type === "broker" &&
+      verifiedCurrentEvidence &&
+      args.brokerFindings
+    ) {
+      const supported = (items: typeof args.brokerFindings.writingStates) =>
+        items.filter(
+          (item) =>
+            Number.isFinite(item.confidence) &&
+            item.confidence > 0.7 &&
+            item.confidence <= 1,
+        );
+      const nextStates = supported(args.brokerFindings.writingStates);
+      const nextLines = supported(args.brokerFindings.lineOfBusinessCodes);
+      const mergeSelections = (
+        previous: typeof nextStates,
+        next: typeof nextStates,
+        field: string,
+      ) =>
+        next.length && !unresolvedFields.includes(field)
+          ? next
+          : [
+              ...new Map(
+                [...previous, ...next].map((item) => [item.code, item]),
+              ).values(),
+            ];
+      const officeSupported =
+        !!args.brokerFindings.officeAddress &&
+        !!args.brokerFindings.officeSourceRef &&
+        currentSourceUrls.some((url) =>
+          samePublicResearchUrl(url, args.brokerFindings!.officeSourceRef!),
+        );
+      if (!nextStates.length) unresolvedFields.push("writingStates");
+      if (!nextLines.length) unresolvedFields.push("lineOfBusinessCodes");
+      if (!officeSupported) unresolvedFields.push("officeAddress");
+      brokerFindings = {
+        writingStates: mergeSelections(
+          research.brokerFindings?.writingStates ?? [],
+          nextStates,
+          "writingStates",
+        ),
+        lineOfBusinessCodes: mergeSelections(
+          research.brokerFindings?.lineOfBusinessCodes ?? [],
+          nextLines,
+          "lineOfBusinessCodes",
+        ),
+        ...(officeSupported
+          ? {
+              officeAddress: args.brokerFindings.officeAddress,
+              officeSourceRef: args.brokerFindings.officeSourceRef,
+            }
+          : {
+              officeAddress: research.brokerFindings?.officeAddress,
+              officeSourceRef: research.brokerFindings?.officeSourceRef,
+            }),
+      };
+      if (
+        !nextStates.length ||
+        !nextLines.length ||
+        !officeSupported ||
+        unresolvedFields.includes("writingStates") ||
+        unresolvedFields.includes("lineOfBusinessCodes")
+      ) {
+        sourceUrls = [
+          ...new Set([...sourceUrls, ...research.sourceUrls]),
+        ].slice(0, 120);
+      }
+      const writingStates = normalizeBrokerWritingStates(
+        brokerFindings.writingStates.map((item) => item.code),
+      );
+      const lineOfBusinessCodes = normalizeBrokerLineOfBusinessCodes(
+        brokerFindings.lineOfBusinessCodes.map((item) => item.code),
+      );
+      const profile = await ctx.db
+        .query("brokerProfiles")
+        .withIndex("broker", (q) => q.eq("brokerOrgId", org._id))
+        .unique();
+      if (profile && profile.updatedAt === args.profileUpdatedAt) {
+        // Refresh only research-owned or missing fields; manual writes relinquish research ownership.
+        const manualFields = new Set(profile.manualFields ?? []);
+        const writeStates =
+          !manualFields.has("writingStates") &&
+          (appliedBrokerFields.has("writingStates") ||
+            !profile.writingStates.length);
+        const writeLines =
+          !manualFields.has("lineOfBusinessCodes") &&
+          (appliedBrokerFields.has("lineOfBusinessCodes") ||
+            !profile.lineOfBusinessCodes.length);
+        const writeOffice =
+          !manualFields.has("officeAddress") &&
+          (appliedBrokerFields.has("officeAddress") ||
+            !Object.values(profile.officeAddress ?? {}).some(Boolean));
+        if (writeStates) appliedBrokerFields.add("writingStates");
+        if (writeLines) appliedBrokerFields.add("lineOfBusinessCodes");
+        if (writeOffice) appliedBrokerFields.add("officeAddress");
+        await ctx.db.patch(profile._id, {
+          ...(writeStates ? { writingStates } : {}),
+          ...(writeLines ? { lineOfBusinessCodes } : {}),
+          ...(writeOffice
+            ? { officeAddress: brokerFindings.officeAddress }
+            : {}),
+          updatedByUserId: undefined,
+          updatedAt: dayjs().valueOf(),
+        });
+      } else unresolvedFields.push("profileChangedDuringResearch");
+    }
+    if (org.type === "broker" && !args.brokerFindings)
+      unresolvedFields.push("brokerProfile");
     if (!currentSourceUrls.length || args.reason)
       unresolvedFields.push("publicIdentity");
     if (!currentFacts.length) unresolvedFields.push("companyFacts");
@@ -280,12 +490,22 @@ export const complete = internalMutation({
         status: unresolvedFields.length ? "partial" : "completed",
         sourceUrls,
         facts,
+        brokerFindings,
+        appliedBrokerFields: [...appliedBrokerFields],
         unresolvedFields,
         error: args.reason,
         leaseId: undefined,
         leaseExpiresAt: undefined,
         updatedAt: dayjs().valueOf(),
       },
+    });
+    await ctx.db.insert("companyResearchEvents", {
+      orgId: org._id,
+      fingerprint: companyResearchFingerprint(updated),
+      status: unresolvedFields.length ? "partial" : "completed",
+      sourceCount: sourceUrls.length,
+      unresolvedFields,
+      createdAt: dayjs().valueOf(),
     });
     await reconcileCompanyResearchFacts(ctx, org._id, facts);
     return true;

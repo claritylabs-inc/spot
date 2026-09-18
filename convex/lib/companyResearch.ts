@@ -1,11 +1,30 @@
 import { v } from "convex/values";
 import { ORG_WIKI_SECTIONS } from "./orgWiki";
 
-export const COMPANY_RESEARCH_VERSION = "public-company-v2";
+export const COMPANY_RESEARCH_VERSION = "public-company-v3";
 export const companyResearchFactValidator = v.object({
   key: v.union(...ORG_WIKI_SECTIONS.map(([key]) => v.literal(key))),
   content: v.string(),
   sourceRef: v.string(),
+});
+export const researchSelectionValidator = v.object({
+  code: v.string(),
+  confidence: v.number(),
+});
+export const researchBrokerValidator = v.object({
+  writingStates: v.array(researchSelectionValidator),
+  lineOfBusinessCodes: v.array(researchSelectionValidator),
+  officeAddress: v.optional(
+    v.object({
+      street1: v.optional(v.string()),
+      street2: v.optional(v.string()),
+      city: v.optional(v.string()),
+      state: v.optional(v.string()),
+      postalCode: v.optional(v.string()),
+      country: v.optional(v.string()),
+    }),
+  ),
+  officeSourceRef: v.optional(v.string()),
 });
 export const companyResearchValidator = v.object({
   version: v.string(),
@@ -24,6 +43,16 @@ export const companyResearchValidator = v.object({
   unresolvedFields: v.array(v.string()),
   sourceUrls: v.array(v.string()),
   facts: v.array(companyResearchFactValidator),
+  brokerFindings: v.optional(researchBrokerValidator),
+  appliedBrokerFields: v.optional(
+    v.array(
+      v.union(
+        v.literal("writingStates"),
+        v.literal("lineOfBusinessCodes"),
+        v.literal("officeAddress"),
+      ),
+    ),
+  ),
   updatedAt: v.number(),
 });
 
@@ -41,6 +70,7 @@ export function companyResearchFingerprint(org: PublicCompanyIdentity) {
 }
 
 export function publicResearchUrl(value: string) {
+  if (value.length > 2048) return null;
   try {
     const url = new URL(value);
     if (

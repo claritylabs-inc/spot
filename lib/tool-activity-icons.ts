@@ -27,7 +27,7 @@ import type { OperatorAgentToolName } from "@/convex/lib/operatorAgentToolRegist
 export const toolActivityCategories = {
   web: { label: "Public research", icon: Globe },
   organizations: { label: "Organizations", icon: Building2 },
-  brokers: { label: "Broker network", icon: Users },
+  brokers: { label: "Insurance providers", icon: Users },
   email: { label: "Email", icon: Mail },
   files: { label: "Files and attachments", icon: Paperclip },
   policies: { label: "Policies and coverage", icon: Shield },
@@ -52,6 +52,7 @@ const operatorToolCategories = {
   call_mcp_tool: "settings",
   web_search: "web",
   research_client: "web",
+  research_broker: "web",
   search_organizations: "organizations",
   get_organization: "organizations",
   create_client_organization: "organizations",

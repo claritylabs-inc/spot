@@ -291,6 +291,7 @@ import type * as lib_procurementCapabilities from "../lib/procurementCapabilitie
 import type * as lib_procurementCompletionOutcome from "../lib/procurementCompletionOutcome.js";
 import type * as lib_procurementNarrative from "../lib/procurementNarrative.js";
 import type * as lib_procurementPacket from "../lib/procurementPacket.js";
+import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrchestrator.js";
 import type * as lib_proposalMarkdown from "../lib/proposalMarkdown.js";
 import type * as lib_proposalReview from "../lib/proposalReview.js";
 import type * as lib_publicDemoAgent from "../lib/publicDemoAgent.js";
@@ -690,6 +691,7 @@ declare const fullApi: ApiFromModules<{
   "lib/procurementCompletionOutcome": typeof lib_procurementCompletionOutcome;
   "lib/procurementNarrative": typeof lib_procurementNarrative;
   "lib/procurementPacket": typeof lib_procurementPacket;
+  "lib/profileResearchOrchestrator": typeof lib_profileResearchOrchestrator;
   "lib/proposalMarkdown": typeof lib_proposalMarkdown;
   "lib/proposalReview": typeof lib_proposalReview;
   "lib/publicDemoAgent": typeof lib_publicDemoAgent;

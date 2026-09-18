@@ -4,7 +4,7 @@ import { scheduleCompanyResearch } from "./companyResearch";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
-import { isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
+import { assertExternalBrokerIdentity, isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v, type Infer } from "convex/values";
 import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
@@ -2792,11 +2792,12 @@ async function executeToolDomain(
     };
   }
 
-  if (toolName === "research_client") {
+  if (toolName === "research_client" || toolName === "research_broker") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const org = await ctx.db.get(orgId);
-    if (!org || org.deletedAt !== undefined || org.type !== "client")
-      throw new Error("Client not found");
+    if (!org || org.deletedAt !== undefined || org.type !== (toolName === "research_broker" ? "broker" : "client"))
+      throw new Error("Research organization not found");
+    if (org.type === "broker") assertExternalBrokerIdentity(org);
     const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });
     return {
       queued,

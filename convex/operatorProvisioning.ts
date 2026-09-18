@@ -1,3 +1,4 @@
+import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
@@ -361,6 +362,7 @@ export const upsertProvisionedBroker = internalMutation({
       onboardingComplete: args.markOnboardingComplete,
     });
 
+    await scheduleCompanyResearch(ctx, brokerOrgId);
     return {
       brokerOrgId,
       adminUserId: args.adminUserId,

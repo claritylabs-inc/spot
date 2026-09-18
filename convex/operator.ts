@@ -1665,6 +1665,7 @@ export const upsertBrokerInternal = internalMutation({
       summary: `Created or updated broker ${brokerName}`,
       metadata: { slug, adminEmail: args.adminEmail },
     });
+    await scheduleCompanyResearch(ctx, brokerOrgId);
     return { brokerOrgId };
   },
 });

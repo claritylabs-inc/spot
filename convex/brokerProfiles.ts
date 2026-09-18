@@ -1,3 +1,4 @@
+import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 
@@ -35,6 +36,37 @@ const addressValidator = v.object({
   postalCode: v.optional(v.string()),
   country: v.optional(v.string()),
 });
+async function releaseResearchOwnership(
+  ctx: MutationCtx,
+  broker: Doc<"organizations">,
+  args: {
+    writingStates?: string[];
+    lineOfBusinessCodes?: string[];
+    officeAddress?: unknown;
+  },
+) {
+  const profile = await ctx.db
+    .query("brokerProfiles")
+    .withIndex("broker", (q) => q.eq("brokerOrgId", broker._id))
+    .unique();
+  const edited = (
+    ["writingStates", "lineOfBusinessCodes", "officeAddress"] as const
+  ).filter((field) => args[field] !== undefined);
+  if (profile && edited.length)
+    await ctx.db.patch(profile._id, {
+      manualFields: [...new Set([...(profile.manualFields ?? []), ...edited])],
+    });
+  if (!broker.companyResearch?.appliedBrokerFields) return;
+  await ctx.db.patch(broker._id, {
+    companyResearch: {
+      ...broker.companyResearch,
+      appliedBrokerFields: broker.companyResearch.appliedBrokerFields.filter(
+        (field) => args[field] === undefined,
+      ),
+    },
+  });
+}
+
 async function requireBroker(
   ctx: QueryCtx | MutationCtx,
   brokerOrgId: Id<"organizations">,
@@ -65,6 +97,7 @@ async function profileRow(
   ctx: QueryCtx,
   broker: Doc<"organizations">,
   includeNetworkActivity = true,
+  includeResearch = true,
 ) {
   const profile = await ctx.db
     .query("brokerProfiles")
@@ -92,7 +125,7 @@ async function profileRow(
     ? await Promise.all([
         ctx.db
           .query("procurementBrokerOutreaches")
-          .withIndex("broker", (q) => q.eq("brokerOrgId", broker._id))
+          .withIndex("broker_sent", (q) => q.eq("brokerOrgId", broker._id))
           .order("desc")
           .first(),
         ctx.db
@@ -107,6 +140,7 @@ async function profileRow(
       name: broker.name,
       website: broker.website,
       iconStorageId: broker.iconStorageId,
+      ...(includeResearch ? { companyResearch: broker.companyResearch } : {}),
       iconUrl: broker.iconStorageId
         ? await ctx.storage.getUrl(broker.iconStorageId)
         : null,
@@ -115,7 +149,7 @@ async function profileRow(
     contacts: contacts.filter(Boolean),
     ...(includeNetworkActivity
       ? {
-          lastOutreachAt: lastOutreach?.updatedAt,
+          lastOutreachAt: lastOutreach?.sentAt,
           proposalCount: proposals.length,
         }
       : {}),
@@ -151,7 +185,7 @@ export async function listBrokerProfiles(
   const rows = await Promise.all(
     brokers
       .filter((broker) => !isSpotOwnedBrokerIdentity(broker))
-      .map((broker) => profileRow(ctx, broker)),
+      .map((broker) => profileRow(ctx, broker, true, false)),
   );
   const search = args.search?.trim().toLowerCase();
   const state = args.writingState?.trim().toUpperCase();
@@ -224,7 +258,10 @@ export async function updateBrokerProfileByOperator(
     orgPatch.website = args.website?.trim() || undefined;
   if (args.iconStorageId !== undefined)
     orgPatch.iconStorageId = args.iconStorageId ?? undefined;
+  await releaseResearchOwnership(ctx, broker, args);
   if (Object.keys(orgPatch).length) await ctx.db.patch(broker._id, orgPatch);
+  if (args.name !== undefined || args.website !== undefined)
+    await scheduleCompanyResearch(ctx, broker._id);
   await writeOperatorAudit(ctx, {
     operatorUserId: operator.userId,
     type: "setup_write",
@@ -370,6 +407,9 @@ export const upsert = mutation({
         summary: `Updated broker network profile for ${broker.name}`,
         metadata: { profileId },
       });
+    await releaseResearchOwnership(ctx, broker, args);
+    if (args.name !== undefined || args.website !== undefined)
+      await scheduleCompanyResearch(ctx, broker._id);
     return profileId;
   },
 });
@@ -437,6 +477,7 @@ export async function createStandaloneBrokerByOperator(
     summary: `Created standalone broker profile ${name}`,
     metadata: { profileId, hasPortalUsers: false, source: args.source },
   });
+  await scheduleCompanyResearch(ctx, brokerOrgId);
   return { brokerOrgId, profileId };
 }
 
@@ -456,5 +497,105 @@ export const createStandalone = mutation({
       ...args,
       source: "operator",
     });
+  },
+});
+
+export const activity = query({
+  args: { brokerOrgId: v.id("organizations") },
+  handler: async (ctx, { brokerOrgId }) => {
+    await requireOperator(ctx);
+    const broker = await requireBroker(ctx, brokerOrgId);
+    const [audits, outreaches, proposals, researchEvents] = await Promise.all([
+      ctx.db
+        .query("operatorAuditEvents")
+        .withIndex("target_created", (q) => q.eq("targetOrgId", brokerOrgId))
+        .order("desc")
+        .take(100),
+      ctx.db
+        .query("procurementBrokerOutreaches")
+        .withIndex("broker_sent", (q) => q.eq("brokerOrgId", brokerOrgId))
+        .order("desc")
+        .take(100),
+      ctx.db
+        .query("procurementProposals")
+        .withIndex("broker_created", (q) => q.eq("brokerOrgId", brokerOrgId))
+        .order("desc")
+        .take(100),
+      ctx.db
+        .query("companyResearchEvents")
+        .withIndex("organization", (q) => q.eq("orgId", brokerOrgId))
+        .order("desc")
+        .take(100),
+    ]);
+    const events: Array<{
+      id: string;
+      at: number;
+      title: string;
+      detail?: string;
+      requestId?: Id<"procurementRequests">;
+      clientOrgId?: Id<"organizations">;
+    }> = [
+      ...audits.map((event) => ({
+        id: event._id,
+        at: event.createdAt,
+        title: event.summary,
+      })),
+      ...outreaches.flatMap((event) =>
+        event.sentAt
+          ? [
+              {
+                id: `${event._id}:sent`,
+                at: event.sentAt,
+                title: "Outreach sent",
+                detail: event.contactName ?? event.contactEmail,
+                requestId: event.requestId,
+                clientOrgId: event.clientOrgId,
+              },
+            ]
+          : [],
+      ),
+      ...proposals.map((event) => ({
+        id: event._id,
+        at: event.createdAt,
+        title: "Proposal added",
+        requestId: event.requestId,
+        clientOrgId: event.clientOrgId,
+      })),
+    ];
+    const history = researchEvents.map((event) => ({
+      id: event._id as string,
+      at: event.createdAt,
+      status: event.status,
+      sourceCount: event.sourceCount,
+      unresolvedFields: event.unresolvedFields,
+    }));
+    const research = broker.companyResearch;
+    if (
+      !history.length &&
+      research &&
+      !["pending", "running"].includes(research.status)
+    )
+      history.push({
+        id: `research:${research.updatedAt}`,
+        at: research.updatedAt,
+        status: research.status as "completed" | "partial" | "failed",
+        sourceCount: research.sourceUrls.length,
+        unresolvedFields: research.unresolvedFields,
+      });
+    for (const event of history)
+      events.push({
+        id: event.id,
+        at: event.at,
+        title:
+          event.status === "completed"
+            ? "Research completed"
+            : event.status === "partial"
+              ? "Research partially completed"
+              : "Research failed",
+        detail: `${event.sourceCount} sources${event.unresolvedFields.length ? ` · ${event.unresolvedFields.length} unresolved fields` : ""}`,
+      });
+    return events
+      .sort((a, b) => b.at - a.at || a.id.localeCompare(b.id))
+      .slice(0, 100);
   },
 });
