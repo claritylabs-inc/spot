@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ImagePlus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
@@ -16,6 +16,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { FileDropZone } from "@/components/ui/file-drop";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useCurrentOrg } from "@/hooks/use-current-org";
@@ -196,26 +197,34 @@ function BrokerProfileEditor({
             />
           </Field>
           <Field label="Logo">
-            <div className="space-y-3">
-              <div className="flex size-10 items-center justify-center overflow-hidden rounded-md border border-input bg-popover">
-                {profile.broker.iconUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.broker.iconUrl}
-                    alt=""
-                    className="size-full object-contain"
-                  />
-                ) : (
-                  <ImagePlus className="size-4 text-muted-foreground" />
-                )}
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-muted/20 p-3">
+                <OrgBrandIcon
+                  name={profile.broker.name}
+                  iconUrl={profile.broker.iconUrl}
+                  size="xl"
+                  className="rounded-lg"
+                />
+                <div className="min-w-0">
+                  <p className={typeStyle("body.medium")}>
+                    {profile.broker.name}
+                  </p>
+                  <p
+                    className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    {profile.broker.iconUrl ? "Current logo" : "No logo uploaded yet"}
+                  </p>
+                </div>
               </div>
               {canEdit ? (
                 <FileDropZone
                   accept="image/*"
                   disabled={saving}
-                  idleLabel="Drop logo here"
-                  activeLabel="Upload this logo"
-                  hint="or click to choose an image · Max 5 MB"
+                  idleLabel="Upload a logo"
+                  activeLabel="Drop logo to upload"
+                  hint="PNG, JPG, or SVG · Max 5 MB"
+                  padding="px-4 py-3"
+                  className="min-h-24"
                   onFile={(file) => void uploadLogo(file)}
                 />
               ) : null}

@@ -61,20 +61,31 @@ export function ClientLogoField({
       >
         Logo
       </span>
-      <div className="flex items-center gap-3">
-        <OrgBrandIcon
-          name={client.name}
-          iconUrl={client.iconUrl}
-          website={client.website}
-          size="lg"
-        />
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-muted/20 p-3">
+          <OrgBrandIcon
+            name={client.name}
+            iconUrl={client.iconUrl}
+            size="xl"
+            className="rounded-lg"
+          />
+          <div className="min-w-0">
+            <p className={typeStyle("body.medium")}>{client.name}</p>
+            <p
+              className={`text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              {client.iconUrl ? "Current logo" : "No logo uploaded yet"}
+            </p>
+          </div>
+        </div>
         <FileDropZone
           padding="px-4 py-3"
           accept="image/*"
           disabled={disabled || busy}
-          idleLabel="Drop logo here"
-          activeLabel="Upload this logo"
-          hint="or click to choose an image · Max 5 MB"
+          idleLabel="Upload a logo"
+          activeLabel="Drop logo to upload"
+          hint="PNG, JPG, or SVG · Max 5 MB"
+          className="min-h-24"
           onFile={(file) => void upload(file)}
         />
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { typeStyle } from "@/lib/typography";
 
 const DEFAULT_IMAGE_BACKGROUND = "#FFFFFF";
 const SAMPLE_SIZE = 48;
@@ -15,6 +16,7 @@ const sizeClasses = {
   sm: "h-6 w-6",
   md: "h-7 w-7",
   lg: "h-8 w-8",
+  xl: "h-16 w-16",
 } as const;
 
 function toHex(value: number) {
@@ -130,6 +132,7 @@ type BrandIconProps = {
 
 export function BrandIcon({
   src,
+  name,
   alt = "",
   size = "md",
   className,
@@ -186,14 +189,33 @@ export function BrandIcon({
           }}
         />
       ) : (
-        <Building2
-          className="h-2/3 w-2/3"
-          strokeWidth={1.75}
-          role={alt ? "img" : undefined}
-          aria-label={alt || undefined}
-          aria-hidden={!alt}
-        />
+        name?.trim() ? (
+          <span className={cn("select-none", typeStyle("label.tag"))}>
+            {getInitials(name)}
+          </span>
+        ) : (
+          <Building2
+            className="h-2/3 w-2/3"
+            strokeWidth={1.75}
+            role={alt ? "img" : undefined}
+            aria-label={alt || undefined}
+            aria-hidden={!alt}
+          />
+        )
       )}
     </span>
   );
+}
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) {
+    return Array.from(parts[0]).slice(0, 2).join("").toUpperCase();
+  }
+  return parts
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0])
+    .join("")
+    .toUpperCase();
 }
