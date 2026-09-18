@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { modelDefaultRetrievalConfigured } from "./tools-tab";
+import { modelDefaultRetrievalConfigured } from "./retrieval-availability";
 
 describe("router web retrieval availability", () => {
   test("does not treat dedicated retrieval credentials as native model retrieval", () => {

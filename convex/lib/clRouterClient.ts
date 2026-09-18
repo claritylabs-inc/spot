@@ -1,4 +1,8 @@
 "use node";
+import { internal } from "../_generated/api";
+import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
 
 import {
   parseDecideRequest,
@@ -448,6 +452,7 @@ export class ClRouterRequestError extends Error {
 }
 
 export type ClRouterClientOptions = {
+  telemetry?: Pick<ActionCtx, "runMutation">;
   environment?: ClRouterEnvironment;
   fetch?: typeof fetch;
   abortSignal?: AbortSignal;
@@ -1201,15 +1206,44 @@ export async function clRouterDecide(
     ...request,
     tenantId: CL_ROUTER_TENANT_ID,
   });
-  const payload = await postJson("/v1/decide", body, options);
+  const callKey = crypto.randomUUID();
+  const telemetry = options.telemetry;
+  if (telemetry)
+    await telemetry.runMutation(internal.modelRoutingEvents.startCall, {
+      callKey,
+      operation: "decide",
+      context: {
+        ...modelCallContext(body),
+        orgId: body.orgId as Id<"organizations"> | undefined,
+      },
+    });
   try {
-    return parseDecideResponse(payload, body);
+    const payload = await postJson("/v1/decide", body, options);
+    let result: DecideResponse;
+    try {
+      result = parseDecideResponse(payload, body);
+    } catch (error) {
+      throw new ClRouterRequestError(
+        "invalid_response",
+        "cl-router decision response is invalid",
+        { cause: error },
+      );
+    }
+    if (telemetry)
+      await telemetry.runMutation(internal.modelRoutingEvents.finishCall, {
+        callKey,
+        status: "complete",
+        result: modelCallResult(payload),
+      });
+    return result;
   } catch (error) {
-    throw new ClRouterRequestError(
-      "invalid_response",
-      "cl-router decision response is invalid",
-      { cause: error },
-    );
+    if (telemetry)
+      await telemetry.runMutation(internal.modelRoutingEvents.finishCall, {
+        callKey,
+        status: "error",
+        error: error instanceof Error ? error.message : "Decision failed",
+      });
+    throw error;
   }
 }
 

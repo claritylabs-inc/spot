@@ -36,7 +36,7 @@ export async function decideForwardReplyDirection(
           },
         },
       },
-    });
+    }, { telemetry: _ctx });
     const answer = result.answers.replyToOriginal;
     return answer?.type === "noul" && answer.noul >= 0.9
       ? { target: "original_sender", originalSender }

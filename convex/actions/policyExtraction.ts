@@ -1414,7 +1414,7 @@ async function classifyInsuranceExtractability(params: {
       },
     },
     trace: params.traceId ? { traceId: params.traceId } : undefined,
-  });
+  }, { telemetry: params.ctx });
   const answer = result.answers.classification;
   if (answer?.type !== "choice") {
     throw new Error("Policy intake decision did not return a choice");

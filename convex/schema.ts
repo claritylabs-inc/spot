@@ -883,9 +883,16 @@ export default defineSchema({
   modelRoutingEvents: defineTable({
     kind: v.union(
       v.literal("model_step"),
+      v.literal("call"),
       v.literal("direct_fallback"),
       v.literal("run"),
     ),
+    routingSummary: v.optional(v.string()),
+    callKey: v.optional(v.string()),
+    operation: v.optional(v.string()),
+    callProvider: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
     runId: v.string(),
     sessionKey: v.string(),
     orgId: v.optional(v.id("organizations")),
@@ -939,6 +946,9 @@ export default defineSchema({
         v.literal("incomplete"),
         v.literal("error"),
         v.literal("fallback"),
+        v.literal("running"),
+        v.literal("cancelled"),
+        v.literal("unknown"),
       ),
     ),
     toolCallCount: v.optional(v.number()),
@@ -958,6 +968,9 @@ export default defineSchema({
     expiresAt: v.number(),
   })
     .index("time", ["timestamp"])
+    .index("call", ["callKey"])
+    .index("kind_time", ["kind", "timestamp"])
+    .index("task_calls", ["kind", "task", "timestamp"])
     .index("task_time", ["task", "timestamp"])
     .index("run_time", ["runId", "timestamp"])
     .index("expiration", ["expiresAt"]),

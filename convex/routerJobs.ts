@@ -1,3 +1,5 @@
+import { startModelCall, finishModelCall } from "./modelRoutingEvents";
+import { callContextValidator, callResultValidator, modelCallResult } from "./lib/modelCallTelemetry";
 import dayjs from "dayjs";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
@@ -39,6 +41,7 @@ export const get = internalQuery({
 
 export const prepare = internalMutation({
   args: {
+    callContext: v.optional(callContextValidator),
     streamTarget: v.optional(
       v.union(v.id("threadMessages"), v.id("operatorAgentMessages")),
     ),
@@ -95,12 +98,14 @@ export const prepare = internalMutation({
     if (assetBytes > 16 * 1024 * 1024)
       throw new Error("Router assets exceed aggregate limit");
     const now = dayjs().valueOf();
+    const { callContext, ...jobArgs } = args;
     const id = await ctx.db.insert("routerJobs", {
-      ...args,
+      ...jobArgs,
       status: "prepared",
       createdAt: now,
       updatedAt: now,
     });
+    if (callContext) await startModelCall(ctx, { callKey: args.invocationKey, operation: args.operation, context: callContext });
     return (await ctx.db.get(id))!;
   },
 });
@@ -183,6 +188,7 @@ export const authorize = internalQuery({
 
 export const finish = internalMutation({
   args: {
+    callResult: v.optional(callResultValidator),
     id: v.id("routerJobs"),
     tokenHash: v.string(),
     jobId: v.string(),
@@ -228,6 +234,7 @@ export const finish = internalMutation({
       terminalAt: now,
       updatedAt: now,
     });
+    await finishModelCall(ctx, row.invocationKey, args.status === "succeeded" ? "complete" : args.error?.includes("outcome is unknown") ? "unknown" : "error", args.callResult, args.error);
     await ctx.scheduler.runAfter(
       TERMINAL_RETENTION_MS,
       internal.routerJobs.cleanup,
@@ -252,6 +259,7 @@ export async function cancelRouterJobForInvocation(
     terminalAt: now,
     updatedAt: now,
   });
+  await finishModelCall(ctx, row.invocationKey, "cancelled");
   await ctx.scheduler.runAfter(
     TERMINAL_RETENTION_MS,
     internal.routerJobs.cleanup,
@@ -519,6 +527,7 @@ export const resultHttp = httpAction(async (ctx, request) => {
       invocationKey: row.invocationKey,
       fingerprint: row.fingerprint,
       status: body.status,
+      ...(body.status === "succeeded" ? { callResult: modelCallResult(body.result) } : {}),
       ...(storageId ? { storageId } : {}),
       ...(body.status === "failed"
         ? {

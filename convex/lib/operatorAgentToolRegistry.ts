@@ -985,10 +985,11 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `List ${input.status ?? "problematic"} ${input.domain ?? "all-domain"} extraction work${input.orgId ? ` for organization ${input.orgId}` : ""}`,
   }),
   get_routing_status: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Get a bounded operational summary of recent model routing outcomes, fallbacks, errors, and configured route freshness without returning provider secrets.",
+      "Read model-call logs and usage metadata, or inspect one exact callId from the operator Logs page. Includes errors, incomplete responses, unknown outcomes and route freshness; excludes prompts, response content and credentials.",
     inputSchema: z.object({
+      callId: omittable(z.string().min(1).max(100)),
       task: omittable(z.string().min(1).max(100)),
       limit: omittable(z.number().int().min(1).max(100)),
     }),

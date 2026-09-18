@@ -280,3 +280,13 @@ or enabled-state changes invalidate pending calls. Unknown remote outcomes must
 not be replayed automatically. Configuration is portal-only. Activity uses the
 configured server logo through `OrgBrandIcon`, with its website favicon fallback,
 in the existing expanded rows and collapsed icon summary.
+
+## Model-call observability
+
+Reuse `modelRoutingEvents` for invocation metadata; `kind: call` is one durable
+invocation or direct decision, separate from legacy step/run summaries.
+`convex/lib/modelCallTelemetry.ts` allowlists metadata and cost normalization.
+Router job lifecycle mutations own durable log state, so polling and callbacks
+do not duplicate cost. Operator Logs/Usage reuse shared tables and shell panels;
+filters occupy the existing left sidebar. Overrides belong in Settings.
+`get_routing_status` supports an exact callId and never returns payloads or keys.

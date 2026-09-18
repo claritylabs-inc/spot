@@ -10,7 +10,7 @@ import {
   MessageSquareText,
   ScrollText,
   Settings,
-  Route,
+  ChartNoAxesColumn,
   Radio,
   User,
   Users,
@@ -45,7 +45,9 @@ export function OperatorSidebar({
   collapsed,
   onToggleCollapse,
   active,
+  onOpenLogFilters,
 }: {
+  onOpenLogFilters?: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   active:
@@ -54,8 +56,8 @@ export function OperatorSidebar({
     | "clients"
     | "demo-leads"
     | "channels"
-    | "routing"
-    | "telemetry"
+    | "usage"
+    | "logs"
     | "profile"
     | "settings";
 }) {
@@ -196,17 +198,19 @@ export function OperatorSidebar({
             collapsed={collapsed}
           />
           <SidebarMenuItem
-            href="/operator/routing"
-            label="Routing"
-            icon={Route}
-            active={active === "routing"}
+            href="/operator/usage"
+            label="Usage"
+            icon={ChartNoAxesColumn}
+            active={active === "usage"}
             collapsed={collapsed}
           />
           <SidebarMenuItem
-            href="/operator/telemetry"
-            label="Telemetry"
+            {...(onOpenLogFilters
+              ? { onClick: onOpenLogFilters }
+              : { href: "/operator/logs" })}
+            label="Logs"
             icon={ScrollText}
-            active={active === "telemetry"}
+            active={active === "logs"}
             collapsed={collapsed}
           />
         </div>

@@ -97,6 +97,8 @@ export function operatorPageContextFromPathname(
     "demo-leads": "Demo leads",
     policies: "Client policies",
     profile: "Operator profile",
+    logs: "Model call logs",
+    usage: "Model usage",
     routing: "Model routing",
     telemetry: "System telemetry",
   };
@@ -139,7 +141,7 @@ export function operatorThreadContextHref(thread: {
   }
   const url = new URL(href, "https://spot.invalid");
   if (
-    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|demo-leads|profile|routing|telemetry|settings)\/?$/.test(url.pathname)
+    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|demo-leads|profile|routing|telemetry|logs|usage|settings)\/?$/.test(url.pathname)
   ) return null;
   url.searchParams.set("agentThread", thread.id);
   return `${url.pathname}${url.search}${url.hash}`;

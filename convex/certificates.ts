@@ -751,7 +751,7 @@ async function reviewHolderIdentityWithModel(args: {
           },
         },
       },
-    });
+    }, { telemetry: args.ctx });
     const answer = result.answers.holder;
     if (
       answer?.type === "choice" &&

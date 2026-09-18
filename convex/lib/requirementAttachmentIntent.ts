@@ -234,7 +234,7 @@ export async function decideRequirementAttachmentImport<
           ]),
         ),
       },
-    });
+    }, { telemetry: _ctx });
     const intent = result.answers.intent;
     const scope = result.answers.scope;
     if (intent?.type !== "choice" || scope?.type !== "choice") {

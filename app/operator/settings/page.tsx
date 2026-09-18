@@ -1,12 +1,19 @@
 "use client";
 
+import { useModelOverrides } from "./model-overrides";
+import { useSearchParams } from "next/navigation";
+import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
+import {
+  SidebarMenuItem,
+  SidebarTooltipProvider,
+} from "@/components/app-sidebar/nav-item";
+import { Settings, Route } from "lucide-react";
 import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { OperatorSidebar } from "@/app/operator/operator-sidebar";
 import { AppShell } from "@/components/app-shell";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import {
@@ -21,6 +28,11 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export default function OperatorSettingsPage() {
   const current = useCachedOperatorCurrent();
+  const section =
+    useSearchParams().get("section") === "models" ? "models" : "general";
+  const overrides = useModelOverrides(
+    !current || Boolean(current.activeImpersonation),
+  );
   const settings = useQuery(api.operator.getAgentSettings);
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
@@ -29,18 +41,41 @@ export default function OperatorSettingsPage() {
   return (
     <AppShell
       customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="settings"
-        />
+        <SidebarTooltipProvider>
+          <SidebarHeader
+            collapsed={collapsed}
+            initials="OP"
+            headerOrgName="Settings"
+            onToggleCollapse={onToggleCollapse}
+            backHref="/operator/threads"
+          />
+          <div className="space-y-1 p-2">
+            <SidebarMenuItem
+              href="/operator/settings"
+              icon={Settings}
+              label="General"
+              active={section === "general"}
+              collapsed={collapsed}
+            />
+            <SidebarMenuItem
+              href="/operator/settings?section=models"
+              icon={Route}
+              label="Model overrides"
+              active={section === "models"}
+              collapsed={collapsed}
+            />
+          </div>
+        </SidebarTooltipProvider>
       )}
       customSidebarStorageKey="operator-sidebar"
-      rightPanel={mcp.drawer}
+      rightPanel={section === "models" ? overrides.drawer : mcp.drawer}
+      actions={section === "models" ? overrides.action : undefined}
       disablePersistentChat
       disableCommandPalette
     >
-      {!settings || !current ? (
+      {section === "models" ? (
+        overrides.panel
+      ) : !settings || !current ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
