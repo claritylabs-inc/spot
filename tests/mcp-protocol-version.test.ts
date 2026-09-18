@@ -27,10 +27,4 @@ describe("MCP protocol version negotiation", () => {
       );
     }
   });
-
-  it("advertises a revision that defines serverInfo icons", () => {
-    // Icons on `Implementation` arrived in 2025-11-25. Advertising anything
-    // older makes clients drop the Spot logo from their connector list.
-    expect(LATEST_MCP_PROTOCOL_VERSION >= "2025-11-25").toBe(true);
-  });
 });

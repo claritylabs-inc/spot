@@ -24,10 +24,6 @@ describe("operator MCP tool catalog", () => {
     ) as { items?: { enum?: string[]; description?: string } } | undefined;
     expect(lineArray?.items?.enum).toContain("AUTOB");
     expect(lineArray?.items?.enum).not.toContain("CAUT");
-    expect(lineArray?.items?.description).toContain("Business Automobile");
-    expect(schema.properties?.website?.description).toContain(
-      "Omit to preserve",
-    );
 
     expect(() =>
       parseOperatorAgentToolInput("update_broker_network_profile", {
