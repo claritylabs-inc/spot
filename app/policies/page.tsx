@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PolicyListItem } from "@/components/policy-list-item";
+import { StatusLabel } from "@/components/ui/status-tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCachedPolicyList } from "@/lib/sync/spot-cached-queries";
 import { typeStyle } from "@/lib/typography";
@@ -51,8 +52,8 @@ export default function PoliciesPage() {
           }
         >
           <TabsList variant="pill">
-            <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="archived">Archived</TabsTrigger>
+            <TabsTrigger value="active"><StatusLabel tone="success">Active</StatusLabel></TabsTrigger>
+            <TabsTrigger value="archived"><StatusLabel indicator="inactive">Archived</StatusLabel></TabsTrigger>
           </TabsList>
         </Tabs>
 

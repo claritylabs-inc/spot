@@ -40,6 +40,7 @@ import { useStartOperatorImpersonation } from "@/hooks/use-start-operator-impers
 import { formatDisplayDate } from "@/lib/date-format";
 import {
   operatorClientStatusLabel,
+  operatorClientStatusPresentation,
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
@@ -199,11 +200,7 @@ export default function OperatorClientsScreen() {
             <span className="min-w-0 truncate">{selected.name}</span>
             <span className="flex shrink-0 items-center gap-2">
               <StatusTag
-                tone={
-                  selected.operatorStatus === "live" && !selected.inviteStatus
-                    ? "success"
-                    : "warning"
-                }
+                {...operatorClientStatusPresentation(selected)}
               >
                 {operatorClientStatusLabel(selected)}
               </StatusTag>

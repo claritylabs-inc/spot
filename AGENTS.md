@@ -362,6 +362,8 @@ Core layers:
 
 ## Primitive Catalog And Reuse Rules
 
+- `components/ui/status-tag.tsx` owns `StatusTag`, `StatusIndicator`, and `StatusLabel` across browser surfaces. Keep the colored pill for statuses; use the same continuous-ring indicator in status menu options and selected values through `StatusLabel`. Workflow owners map stages explicitly to static ring positions, never elapsed-time or completion estimates. Drafts use a dashed ring, pending an empty ring, completion a check, cancellation an ×, waiting a clock, inactive a minus, and warning/error an exclamation. Tone supplies the default semantic indicator; override it when a domain state differs. Do not add a second icon inside a status tag. Roles, provenance, categories, and modes use ordinary `Badge`, not progress indicators.
+
 - `components/ui/text-link.tsx` owns `TextLink`: an underlined text link with a small trailing northeast arrow, muted text, hover emphasis, and visible keyboard focus. Use it for text-only navigation and promotional links, including the shared packet partner link. Internal paths use Next client navigation with full prefetch; external URLs, protocol links, and downloads retain native anchor behavior. Pill-shaped actions continue to use `PillButton`; table record names use `TableNameLink`.
 
 - `convex/lib/brokerProfileValidation.ts` owns external broker identity eligibility alongside writing-state and ACORD-line validation. Its Spot acquisition snapshot is `config/spot-acquisition-domains.json`; registration, profile edits, provisioning, directory/search reads, and new procurement activity reuse the same exclusion. This is classification only, never operator authentication.

@@ -119,7 +119,7 @@ function ScanControls({ ready, onRightPanel }: ScanControlsProps) {
         <OperationalPanelHeader
           title="Automatic updates"
           action={
-            <StatusTag tone={enabled ? "info" : "neutral"}>
+            <StatusTag tone={enabled ? "info" : "neutral"} indicator={enabled ? "complete" : "inactive"}>
               {enabled ? "Enabled" : "Paused"}
             </StatusTag>
           }
@@ -279,6 +279,7 @@ function ScanMailboxes() {
                 </TableCell>
                 <TableCell className="whitespace-normal">
                   <StatusTag
+                    indicator={mailbox.status === "pending" ? "waiting" : undefined}
                     tone={
                       mailbox.status === "failed"
                         ? "danger"

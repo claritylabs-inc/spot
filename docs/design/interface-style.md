@@ -298,6 +298,27 @@ Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save
 - Every interactive control needs visible hover, focus, disabled, and invalid
   states where applicable. Color alone must not carry essential meaning.
 
+## Status indicators
+
+Use `StatusTag` from `components/ui/status-tag.tsx` for compact status pills
+throughout the operator and client portals and browser artifacts. Its continuous
+ring preserves the existing semantic colors. `StatusLabel` renders the same
+indicator with an unboxed label for status menu options and selected values;
+`StatusIndicator` serves status displays that already own a visible label.
+Keep the label visible and the icon decorative for assistive technology.
+
+Workflow owners map stages to static ring positions. These represent stage
+order, never elapsed time or a measured percentage. Draft uses a dashed ring;
+pending uses an empty ring; completion uses a check; cancellation uses an ×;
+waiting uses a clock; inactive uses a minus; warning and error use an exclamation.
+Tone supplies a sensible default; explicitly override the indicator when the
+domain meaning differs, especially for neutral cancelled, waiting, or completed
+states. Do not infer indicators from rendered label text or add a second icon.
+
+Reuse one domain mapping in tags, menu options, and selected values. Keep
+ordinary category, role, provenance, and mode badges on `Badge`. Loading
+spinners, upload progress meters, and chart legends retain their own primitives.
+
 ## Responsive layout
 
 - Prefer pages, panes, tables, split views, drawers, and toolbars over card

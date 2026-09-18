@@ -15,6 +15,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
 import type { PolicyUploadMode } from "@/components/policy-upload-mode-toggle";
 import { PolicyEmptyState } from "@/components/policy-empty-state";
+import { Badge } from "@/components/ui/badge";
 import { StatusTag } from "@/components/ui/status-tag";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import {
@@ -542,24 +543,22 @@ export function ManagedClientPolicyWorkspace({
                       {displayUploadedBy(policy.uploadedBySide)}
                     </TableCell>
                     <TableCell>
-                      <StatusTag
-                        tone={
-                          policy.isDemo
-                            ? "neutral"
-                            : statusTone(
-                                policy.pipelineStatus,
-                                policy.extractionDataStage,
-                              )
-                        }
-                        className={`${typeStyle("label.tag")}`}
-                      >
-                        {policy.isDemo
-                          ? "demo"
-                          : displayStatus(
-                              policy.pipelineStatus,
-                              policy.extractionDataStage,
-                            )}
-                      </StatusTag>
+                      {policy.isDemo ? (
+                        <Badge variant="outline">demo</Badge>
+                      ) : (
+                        <StatusTag
+                          tone={statusTone(policy.pipelineStatus, policy.extractionDataStage)}
+                          indicator={
+                            policy.pipelineStatus === "cancelled"
+                              ? "cancelled"
+                              : policy.pipelineStatus === "paused"
+                                ? "waiting"
+                                : undefined
+                          }
+                        >
+                          {displayStatus(policy.pipelineStatus, policy.extractionDataStage)}
+                        </StatusTag>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-60 px-4 truncate text-muted-foreground">
                       {cleanField(policy.fileName) ?? "-"}

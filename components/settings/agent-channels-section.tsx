@@ -40,7 +40,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
+import { Badge } from "@/components/ui/badge";
+import { StatusTag, type StatusIndicatorKind, type StatusPresentation, type StatusTagTone } from "@/components/ui/status-tag";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
 import { getPublicAgentDomain } from "@/lib/domains";
@@ -160,12 +161,14 @@ function ChannelRow({
   description,
   status,
   statusTone,
+  statusIndicator,
   onClick,
 }: {
   title: string;
   description: string;
   status: string;
   statusTone: StatusTagTone;
+  statusIndicator?: StatusIndicatorKind;
   onClick: () => void;
 }) {
   return (
@@ -185,7 +188,7 @@ function ChannelRow({
         </span>
       </span>
       <span className="ml-4 flex shrink-0 items-center gap-2">
-        <StatusTag tone={statusTone}>{status}</StatusTag>
+        <StatusTag tone={statusTone} indicator={statusIndicator}>{status}</StatusTag>
         <ChevronRight className="size-4 text-muted-foreground/50" />
       </span>
     </button>
@@ -288,7 +291,7 @@ function AgentEmailAddressField({
       title="Agent email address"
       description={agentEmailAddressDescription(address)}
       action={
-        !canEdit ? <StatusTag tone="neutral">Read only</StatusTag> : undefined
+        !canEdit ? <Badge variant="outline">Read only</Badge> : undefined
       }
       divided={false}
     >
@@ -859,7 +862,7 @@ export function AgentChannelsSection({
     }
   }
 
-  const supportStatus =
+  const supportStatus: { label: string } & StatusPresentation =
     (supportChannel && supportChannel.status !== "active") ||
     supportChannel?.healthStatus === "degraded"
       ? { label: "Unavailable", tone: "danger" as const }
@@ -873,7 +876,7 @@ export function AgentChannelsSection({
               !operatorSetup?.supportInviteSentAt
             ? { label: "Ready", tone: "neutral" as const }
             : supportChannel
-              ? { label: "Invitation pending", tone: "warning" as const }
+              ? { label: "Invitation pending", tone: "warning", indicator: "waiting" }
               : { label: "Not set up", tone: "neutral" as const };
 
   const supportRow = supportChannel ? (
@@ -883,7 +886,7 @@ export function AgentChannelsSection({
       >
         #{supportChannel.channelName}
       </p>
-      <StatusTag tone={supportStatus.tone}>{supportStatus.label}</StatusTag>
+      <StatusTag tone={supportStatus.tone} indicator={supportStatus.indicator}>{supportStatus.label}</StatusTag>
     </div>
   ) : null;
 
@@ -941,7 +944,7 @@ export function AgentChannelsSection({
         >
           #{supportChannel?.channelName ?? `spot-${clientSlug}`}
         </p>
-        <StatusTag tone={supportStatus.tone}>{supportStatus.label}</StatusTag>
+        <StatusTag tone={supportStatus.tone} indicator={supportStatus.indicator}>{supportStatus.label}</StatusTag>
       </div>
     </div>
   );
@@ -1403,10 +1406,10 @@ export function AgentChannelsSection({
     </div>
   ) : null;
 
-  const clientPendingStatus = slackNeedsReinstall
+  const clientPendingStatus: { label: string } & StatusPresentation = slackNeedsReinstall
     ? { label: "Update required", tone: "danger" as const }
     : setupStatus === "in_progress"
-      ? { label: "Setup in progress", tone: "warning" as const }
+      ? { label: "Setup in progress", tone: "warning", indicator: "progress" }
       : { label: "Not connected", tone: "neutral" as const };
   const clientPendingContent = (
     <FormSection
@@ -1422,7 +1425,7 @@ export function AgentChannelsSection({
               ? "Spot support is finishing Slack setup."
               : "Slack is not connected yet."}
         </p>
-        <StatusTag tone={clientPendingStatus.tone}>
+        <StatusTag tone={clientPendingStatus.tone} indicator={clientPendingStatus.indicator}>
           {clientPendingStatus.label}
         </StatusTag>
       </div>
@@ -1813,12 +1816,14 @@ export function AgentChannelsSection({
             description={emailDescription}
             status={emailStatus.label}
             statusTone={emailStatus.tone}
+            statusIndicator={agentEmailAddress.handle && !resolvedSettings.emailEnabled ? "inactive" : undefined}
             onClick={() => setActiveDrawer("email")}
           />
           <ChannelRow
             title="iMessage"
             description="Let linked members message the Spot phone number."
             status={resolvedSettings.imessageEnabled ? "On" : "Off"}
+            statusIndicator={resolvedSettings.imessageEnabled ? "complete" : "inactive"}
             statusTone={
               resolvedSettings.imessageEnabled ? "success" : "neutral"
             }
@@ -1829,6 +1834,7 @@ export function AgentChannelsSection({
             description={slackDescription}
             status={slackRowStatus.label}
             statusTone={slackRowStatus.tone}
+            statusIndicator={setupStatus === "in_progress" ? "progress" : slackReady && !resolvedSettings.slackEnabled ? "inactive" : undefined}
             onClick={() => void openSlackDrawer()}
           />
         </section>

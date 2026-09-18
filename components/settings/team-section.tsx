@@ -1,5 +1,7 @@
 "use client";
 
+import { StatusTag } from "@/components/ui/status-tag";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { useAction, useMutation } from "convex/react";
@@ -582,7 +584,7 @@ export function TeamSection({
           <OperationalLabelValueList>
             <OperationalLabelValueRow
               label="Status"
-              value="Pending invitation"
+              value={<StatusTag indicator="waiting">Pending invitation</StatusTag>}
             />
             <OperationalLabelValueRow
               label="Role"

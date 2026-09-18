@@ -12,6 +12,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import { StatusLabel } from "@/components/ui/status-tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -62,8 +63,8 @@ export default function OperatorClientPoliciesPage() {
       }}
     >
       <TabsList variant="pill" aria-label="Policy status" className="min-w-max">
-        <TabsTrigger value="active">Active</TabsTrigger>
-        <TabsTrigger value="archived">Archived</TabsTrigger>
+        <TabsTrigger value="active"><StatusLabel tone="success">Active</StatusLabel></TabsTrigger>
+        <TabsTrigger value="archived"><StatusLabel indicator="inactive">Archived</StatusLabel></TabsTrigger>
       </TabsList>
     </Tabs>
   );

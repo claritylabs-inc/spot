@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusTag } from "@/components/ui/status-tag";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { typeStyle } from "@/lib/typography";
 
@@ -117,11 +117,9 @@ export function ExtractionReviewPanel({
             ) : (
               <ThumbsDown className="size-4 text-destructive" />
             )}
-            <StatusTag
-              tone={existing.rating === "positive" ? "success" : "danger"}
-            >
+            <Badge variant="outline">
               {existing.rating === "positive" ? "Helpful" : "Needs work"}
-            </StatusTag>
+            </Badge>
             {existing.routerRequestId ? (
               <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>
                 Router signal: {existing.routerSignalStatus.replace("_", " ")}

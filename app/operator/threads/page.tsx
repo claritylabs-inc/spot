@@ -28,6 +28,7 @@ import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { operatorThreadContextHref } from "@/components/operator-agent/operator-page-context";
 import { PillButton } from "@/components/ui/pill-button";
+import { StatusLabel } from "@/components/ui/status-tag";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -215,8 +216,8 @@ export default function OperatorThreadsPage() {
           }
         >
           <TabsList variant="pill">
-            <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="archived">Archived</TabsTrigger>
+            <TabsTrigger value="active"><StatusLabel tone="success">Active</StatusLabel></TabsTrigger>
+            <TabsTrigger value="archived"><StatusLabel indicator="inactive">Archived</StatusLabel></TabsTrigger>
           </TabsList>
         </Tabs>
 

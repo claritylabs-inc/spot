@@ -54,6 +54,7 @@ import {
 import { OperatorClientSidebar } from "./operator-client-sidebar";
 import {
   operatorClientStatusLabel,
+  operatorClientStatusPresentation,
   type OperatorClientRow,
 } from "../client-model";
 import { ClientLogoField } from "../client-logo-field";
@@ -265,11 +266,7 @@ function ClientWorkspace({
                   divided={false}
                   action={
                     <StatusTag
-                      tone={
-                        client.operatorStatus === "live" && !client.inviteStatus
-                          ? "success"
-                          : "warning"
-                      }
+                      {...operatorClientStatusPresentation(client)}
                     >
                       {operatorClientStatusLabel(client)}
                     </StatusTag>

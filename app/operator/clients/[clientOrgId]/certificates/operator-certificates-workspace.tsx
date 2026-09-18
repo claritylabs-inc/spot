@@ -15,7 +15,7 @@ import {
   OperationalPanelBody,
   OperationalSkeletonList,
 } from "@/components/ui/operational-panel";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag, type StatusIndicatorKind } from "@/components/ui/status-tag";
 import {
   Table,
   TableBody,
@@ -47,6 +47,17 @@ type CertificateWorkflowJob = {
 
 function displayValue(value?: string) {
   return value?.replaceAll("_", " ") ?? "—";
+}
+
+function statusIndicator(status?: string): StatusIndicatorKind {
+  if (["active", "issued", "sent"].includes(status ?? "")) return "complete";
+  if (status === "cancelled" || status === "void") return "cancelled";
+  if (status === "archived") return "inactive";
+  if (status === "failed" || status === "blocked_missing_contact") return "error";
+  if (status === "review_required") return "waiting";
+  if (status === "sending") return "progress";
+  if (status === "draft") return "draft";
+  return "pending";
 }
 
 function statusTone(status?: string) {
@@ -309,7 +320,7 @@ export function OperatorCertificatesWorkspace({
                       }}
                     >
                       <TableCell className="px-4">
-                        <StatusTag tone={statusTone(row.status)}>
+                        <StatusTag tone={statusTone(row.status)} indicator={statusIndicator(row.status)}>
                           {displayValue(row.status)}
                         </StatusTag>
                       </TableCell>
@@ -338,7 +349,7 @@ export function OperatorCertificatesWorkspace({
                       <TableCell className="max-w-56">
                         {job ? (
                           <>
-                            <StatusTag tone={statusTone(job.status)}>
+                            <StatusTag tone={statusTone(job.status)} indicator={statusIndicator(job.status)}>
                               {displayValue(job.status)}
                             </StatusTag>
                             <p className={`mt-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>

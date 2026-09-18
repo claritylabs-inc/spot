@@ -43,7 +43,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag, type StatusIndicatorKind } from "@/components/ui/status-tag";
 import {
   Table,
   TableBody,
@@ -140,6 +140,16 @@ function formatDuration(ms?: number) {
 function formatTokens(input?: number, output?: number) {
   if (input === undefined && output === undefined) return "—";
   return `${(input ?? 0).toLocaleString()} in / ${(output ?? 0).toLocaleString()} out`;
+}
+
+function statusIndicator(status?: string): StatusIndicatorKind {
+  if (status === "complete") return "complete";
+  if (status === "cancelled") return "cancelled";
+  if (status === "error") return "error";
+  if (status === "running" || status === "leased") return "progress";
+  if (status === "paused") return "waiting";
+  if (status === "warn" || status === "warning") return "warning";
+  return "pending";
 }
 
 function statusTone(status?: string) {
@@ -264,7 +274,7 @@ function ExtractionOverview({
             <OperationalLabelValueRow
               label="Pipeline"
               value={
-                <StatusTag tone={statusTone(pipelineStatus)}>
+                <StatusTag tone={statusTone(pipelineStatus)} indicator={statusIndicator(pipelineStatus)}>
                   {displayStatus(pipelineStatus)}
                 </StatusTag>
               }
@@ -1121,7 +1131,7 @@ function ExtractionDiagnostics({
                     {displayStatus(trace.trigger)}
                   </TableCell>
                   <TableCell>
-                    <StatusTag tone={statusTone(trace.status)}>
+                    <StatusTag tone={statusTone(trace.status)} indicator={statusIndicator(trace.status)}>
                       {displayStatus(trace.status)}
                     </StatusTag>
                   </TableCell>
@@ -1220,7 +1230,7 @@ function TraceInspection({ traceId }: { traceId: string }) {
             <OperationalLabelValueRow
               label="Status"
               value={
-                <StatusTag tone={statusTone(detail.session.status)}>
+                <StatusTag tone={statusTone(detail.session.status)} indicator={statusIndicator(detail.session.status)}>
                   {displayStatus(detail.session.status)}
                 </StatusTag>
               }

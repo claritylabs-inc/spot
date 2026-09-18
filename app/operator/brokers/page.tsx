@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag, StatusLabel, type StatusPresentation } from "@/components/ui/status-tag";
 import {
   Table,
   TableBody,
@@ -47,7 +47,14 @@ const NETWORK_STATUS_LABELS: Record<NetworkStatus, string> = {
   prospect: "Prospect",
   active: "Active",
   inactive: "Inactive",
-  blacklisted: "Blacklisted",
+  blacklisted: "Restricted",
+};
+
+const NETWORK_STATUS_PRESENTATION: Record<NetworkStatus, StatusPresentation> = {
+  prospect: { tone: "warning", indicator: "draft" },
+  active: { tone: "success", indicator: "complete" },
+  inactive: { tone: "neutral", indicator: "inactive" },
+  blacklisted: { tone: "danger", indicator: "cancelled" },
 };
 
 export default function OperatorBrokersPage() {
@@ -174,15 +181,7 @@ export default function OperatorBrokersPage() {
                     </TableCell>
                     <TableCell>
                       <StatusTag
-                        tone={
-                          row.profile?.networkStatus === "active"
-                            ? "success"
-                            : row.profile?.networkStatus === "blacklisted"
-                              ? "danger"
-                              : row.profile?.networkStatus === "inactive"
-                                ? "neutral"
-                                : "warning"
-                        }
+                        {...NETWORK_STATUS_PRESENTATION[row.profile?.networkStatus ?? "prospect"]}
                       >
                         {
                           NETWORK_STATUS_LABELS[
@@ -464,12 +463,14 @@ function BrokerDrawer({
             }
           >
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue>
+                <StatusLabel {...NETWORK_STATUS_PRESENTATION[status]}>{NETWORK_STATUS_LABELS[status]}</StatusLabel>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {Object.entries(NETWORK_STATUS_LABELS).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
-                  {label}
+                  <StatusLabel {...NETWORK_STATUS_PRESENTATION[value as NetworkStatus]}>{label}</StatusLabel>
                 </SelectItem>
               ))}
             </SelectContent>

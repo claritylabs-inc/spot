@@ -16,7 +16,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusLabel, StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
 import {
   Table,
   TableBody,
@@ -37,6 +37,11 @@ const STATUS_LABELS = {
   needs_attention: "Needs attention",
   failed: "Failed",
 } as const;
+const STATUS_TONES: Record<keyof typeof STATUS_LABELS, StatusTagTone> = {
+  updated: "success",
+  needs_attention: "warning",
+  failed: "danger",
+};
 const ACTION_LABELS = {
   resolve: "Resolve match",
   dismiss: "Dismiss",
@@ -99,7 +104,9 @@ function ActivityList({ entityId, onRightPanel }: ActivityListProps) {
             <TabsTrigger value="all">All activity</TabsTrigger>
             {Object.entries(STATUS_LABELS).map(([value, label]) => (
               <TabsTrigger key={value} value={value}>
-                {label}
+                <StatusLabel tone={STATUS_TONES[value as keyof typeof STATUS_LABELS]}>
+                  {label}
+                </StatusLabel>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -158,13 +165,7 @@ function ActivityList({ entityId, onRightPanel }: ActivityListProps) {
                   </TableCell>
                   <TableCell>
                     <StatusTag
-                      tone={
-                        activity.status === "failed"
-                          ? "danger"
-                          : activity.status === "needs_attention"
-                            ? "warning"
-                            : "success"
-                      }
+                      tone={STATUS_TONES[activity.status]}
                     >
                       {STATUS_LABELS[activity.status]}
                     </StatusTag>
@@ -312,7 +313,7 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
           <OperationalLabelValueList>
             <OperationalLabelValueRow
               label="Status"
-              value={STATUS_LABELS[activity.status]}
+              value={<StatusTag tone={STATUS_TONES[activity.status]}>{STATUS_LABELS[activity.status]}</StatusTag>}
             />
             {activity.importState ? (
               <OperationalLabelValueRow
