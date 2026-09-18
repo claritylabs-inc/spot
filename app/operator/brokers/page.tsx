@@ -19,6 +19,7 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { FileDropZone } from "@/components/ui/file-drop";
 import { Input } from "@/components/ui/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import { typeStyle } from "@/lib/typography";
 import { OperationalPanel } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -38,7 +39,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDisplayDate } from "@/lib/date-format";
-import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 type NetworkStatus = "prospect" | "active" | "inactive" | "blacklisted";
@@ -426,21 +426,31 @@ function BrokerDrawer({
         </Field>
         {row ? (
           <Field label="Logo">
-            <div className="space-y-3">
-              {row.broker.iconUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={row.broker.iconUrl}
-                  alt=""
-                  className="size-10 rounded-md border border-input object-contain"
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-muted/20 p-3">
+                <OrgBrandIcon
+                  name={row.broker.name}
+                  iconUrl={row.broker.iconUrl}
+                  size="xl"
+                  className="rounded-lg"
                 />
-              ) : null}
+                <div className="min-w-0">
+                  <p className={typeStyle("body.medium")}>{row.broker.name}</p>
+                  <p
+                    className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    {row.broker.iconUrl ? "Current logo" : "No logo uploaded yet"}
+                  </p>
+                </div>
+              </div>
               <FileDropZone
                 accept="image/*"
                 disabled={saving}
-                idleLabel="Drop logo here"
-                activeLabel="Upload this logo"
-                hint="or click to choose an image · Max 5 MB"
+                idleLabel="Upload a logo"
+                activeLabel="Drop logo to upload"
+                hint="PNG, JPG, or SVG · Max 5 MB"
+                padding="px-4 py-3"
+                className="min-h-24"
                 onFile={(file) => void uploadLogo(file)}
               />
             </div>
