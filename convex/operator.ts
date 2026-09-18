@@ -898,46 +898,6 @@ export const rerunExtraction = action({
   },
 });
 
-export const backfillCoverageRecovery = action({
-  args: {
-    policyId: v.id("policies"),
-    force: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
-    const access = (await ctx.runQuery(
-      internalApi.operator.requireOperatorPolicyWriteForUserInternal,
-      {
-        userId,
-        policyId: args.policyId,
-      },
-    )) as { pipelineStatus?: string };
-    if (access.pipelineStatus !== "complete") {
-      throw new Error(
-        "Coverage recovery requires a complete policy extraction.",
-      );
-    }
-    const result = await ctx.runAction(
-      internalApi.actions.policyExtraction.backfillStoredCoverageRecovery,
-      {
-        policyId: args.policyId,
-        force: args.force === true,
-      },
-    );
-    await ctx.runMutation(
-      internalApi.operator.recordPolicyExtractionOperationInternal,
-      {
-        operatorUserId: userId,
-        policyId: args.policyId,
-        operation: "coverage_recovery",
-        metadata: result,
-      },
-    );
-    return result;
-  },
-});
-
 export const rerunSupplementaryExtraction = action({
   args: { policyId: v.id("policies") },
   handler: async (ctx, args) => {
@@ -1241,7 +1201,6 @@ export const setClientFeatureFlag = mutation({
     clientOrgId: v.id("organizations"),
     flagId: v.union(
       v.literal("connect_features"),
-      v.literal("coverage_recovery_v2"),
       v.literal("imessage_app_cards"),
     ),
     enabled: v.boolean(),
@@ -1547,7 +1506,6 @@ export const recordPolicyExtractionOperationInternal = internalMutation({
     policyId: v.id("policies"),
     operation: v.union(
       v.literal("full_extraction"),
-      v.literal("coverage_recovery"),
       v.literal("supplementary_extraction"),
       v.literal("search_index"),
     ),

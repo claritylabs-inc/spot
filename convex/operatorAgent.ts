@@ -2797,7 +2797,6 @@ async function executeToolDomain(
     const flagId = input.flagId;
     if (
       flagId !== "connect_features" &&
-      flagId !== "coverage_recovery_v2" &&
       flagId !== "imessage_app_cards"
     ) {
       throw new Error("Unsupported feature flag");

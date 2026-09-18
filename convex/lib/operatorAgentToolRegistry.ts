@@ -1811,7 +1811,6 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       orgId: organizationId,
       flagId: z.enum([
         "connect_features",
-        "coverage_recovery_v2",
         "imessage_app_cards",
       ]),
       enabled: z.boolean(),
