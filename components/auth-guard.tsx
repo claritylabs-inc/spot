@@ -133,7 +133,11 @@ function getOperatorActiveSection(pathname: string): OperatorNavSection {
   if (pathname.startsWith("/operator/clients")) return "clients";
   if (pathname.startsWith("/operator/demo-leads")) return "demo-leads";
   if (pathname.startsWith("/operator/channels")) return "channels";
-  if (pathname.startsWith("/operator/logs") || pathname.startsWith("/operator/telemetry")) return "logs";
+  if (
+    pathname.startsWith("/operator/logs") ||
+    pathname.startsWith("/operator/telemetry")
+  )
+    return "logs";
   if (pathname.startsWith("/operator/usage")) return "usage";
   if (pathname.startsWith("/operator/routing")) return "settings";
   if (pathname.startsWith("/operator/profile")) return "profile";
@@ -400,8 +404,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (
         viewer?.accountKind !== "operator" &&
         !!viewerOrg?.org &&
-        ((viewerOrg.org as { operatorStatus?: "onboarding" | "live" })
-          .operatorStatus ?? "live") === "onboarding" &&
+        ((
+          viewerOrg.org as {
+            operatorStatus?: "onboarding" | "live" | "lost" | "churned";
+          }
+        ).operatorStatus ?? "live") === "onboarding" &&
         !isPublic
       ) {
         return;
@@ -508,8 +515,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     isAuthenticated &&
     viewer?.accountKind !== "operator" &&
     !!viewerOrg?.org &&
-    ((viewerOrg.org as { operatorStatus?: "onboarding" | "live" })
-      .operatorStatus ?? "live") === "onboarding" &&
+    ((
+      viewerOrg.org as {
+        operatorStatus?: "onboarding" | "live" | "lost" | "churned";
+      }
+    ).operatorStatus ?? "live") === "onboarding" &&
     !isPublic
   ) {
     return <PendingLiveScreen />;

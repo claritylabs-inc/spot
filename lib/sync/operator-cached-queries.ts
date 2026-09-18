@@ -44,7 +44,7 @@ type OperatorDemoSalesTranscriptDetail = FunctionReturnType<
 >;
 type GlobalRoutes = OperatorGlobalModelSettings["routes"];
 type EmptyArgs = Record<string, never>;
-type OperatorStatus = "onboarding" | "live";
+type OperatorStatus = OperatorClientRow["operatorStatus"];
 type TraceStatus = "running" | "complete" | "error" | "cancelled";
 type ExtractionRangeKey = "all" | "24h" | "30d" | "90d";
 type ExtractionTraceListArgs = {
@@ -247,7 +247,6 @@ export function useOperatorClientCacheActions() {
         agentHandle: undefined,
         operatorStatus: "onboarding",
         onboardingComplete: true,
-        inviteStatus: "draft",
         primaryContactName: input.adminName,
         primaryContactEmail: input.adminEmail,
         primaryContactPhone: input.adminPhone,

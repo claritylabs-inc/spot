@@ -381,7 +381,12 @@ function ClientWorkspace({
             showInviteAction={false}
             setOperatorRightPanel={setRightPanel}
             onOperatorActivationSent={() =>
-              patchClientStatus(client._id, "live")
+              patchClientStatus(
+                client._id,
+                client.operatorStatus === "onboarding"
+                  ? "live"
+                  : client.operatorStatus,
+              )
             }
           />
         ) : null}

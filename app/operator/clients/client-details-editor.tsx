@@ -22,13 +22,11 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ClientLogoField } from "./client-logo-field";
 import {
   OPERATOR_CLIENT_STATUSES,
+  operatorClientStatuses,
   type OperatorClientRow,
 } from "./client-model";
 
 export type ClientEditorHandle = { saveNow: () => Promise<boolean> };
-const statuses = Object.fromEntries(
-  Object.entries(OPERATOR_CLIENT_STATUSES).map(([value, { label }]) => [value, label]),
-);
 
 export function ClientDetailsEditor({
   client,
@@ -122,10 +120,15 @@ export function ClientDetailsEditor({
         </span>
         <Select
           value={draft.value.status}
-          items={statuses}
+          items={operatorClientStatuses}
           disabled={disabled}
           onValueChange={(value) => {
-            if (value === "live" || value === "onboarding")
+            if (
+              value === "live" ||
+              value === "onboarding" ||
+              value === "lost" ||
+              value === "churned"
+            )
               draft.field("status")(value);
           }}
         >
@@ -137,13 +140,15 @@ export function ClientDetailsEditor({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(OPERATOR_CLIENT_STATUSES).map(([value, { label, ...presentation }]) => (
+            {Object.entries(OPERATOR_CLIENT_STATUSES).map(
+              ([value, { label, ...presentation }]) => (
               <SelectItem key={value} value={value}>
                 <StatusLabel {...presentation}>
                   {label}
                 </StatusLabel>
               </SelectItem>
-            ))}
+              ),
+            )}
           </SelectContent>
         </Select>
       </label>

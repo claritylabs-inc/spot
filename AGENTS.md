@@ -1023,3 +1023,14 @@ logos through the operator API. `client-details-editor.tsx` keeps record-scoped
 field patches and checks saves before closing or switching rows;
 `client-logo-field.tsx` is reused by client settings. Operator logo and status
 writes reject impersonation. Company details continue to belong in Markdown.
+
+## Client relationship status
+
+Client lifecycle uses `operatorStatus`: Onboarding, Live, Lost (never became live),
+and Churned (formerly live). Operator client lists and detail badges use this
+field only; Draft/Invited are team invitation concerns, never client statuses.
+Legacy organization invitation metadata remains schema-compatible but is not
+returned in the operator client list. Team activation emails promote Onboarding
+to Live and preserve Lost/Churned; returning those clients to Live requires an
+explicit status edit. Status changes preserve history and do not revoke team
+memberships. Broker lifecycle remains Onboarding/Live.

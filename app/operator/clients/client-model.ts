@@ -17,23 +17,35 @@ export const OPERATOR_CLIENT_STATUSES = {
     tone: "success",
     indicator: "complete",
   },
-} satisfies Record<OperatorClientRow["operatorStatus"], StatusPresentation & { label: string }>;
+  lost: {
+    label: "Lost",
+    tone: "danger",
+    indicator: "cancelled",
+  },
+  churned: {
+    label: "Churned",
+    tone: "danger",
+    indicator: "cancelled",
+  },
+} satisfies Record<
+  NonNullable<OperatorClientRow["operatorStatus"]>,
+  StatusPresentation & { label: string }
+>;
+
+export const operatorClientStatuses = Object.fromEntries(
+  Object.entries(OPERATOR_CLIENT_STATUSES).map(([value, { label }]) => [
+    value,
+    label,
+  ]),
+) as Record<keyof typeof OPERATOR_CLIENT_STATUSES, string>;
 
 export function operatorClientStatusLabel(client: OperatorClientRow) {
-  if (client.inviteStatus === "draft") return "Draft";
-  if (client.inviteStatus === "invited") return "Invited";
   return OPERATOR_CLIENT_STATUSES[client.operatorStatus].label;
 }
 
 export function operatorClientStatusPresentation(
   client: OperatorClientRow,
 ): StatusPresentation {
-  if (client.inviteStatus === "draft") {
-    return { tone: "warning", indicator: "draft" };
-  }
-  if (client.inviteStatus === "invited") {
-    return { tone: "warning", indicator: "waiting" };
-  }
   const { tone, indicator } = OPERATOR_CLIENT_STATUSES[client.operatorStatus];
   return { tone, indicator };
 }

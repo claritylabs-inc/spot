@@ -381,6 +381,7 @@ export default function OperatorClientsScreen() {
                         <OrgBrandIcon
                           name={client.name}
                           iconUrl={client.iconUrl}
+                          website={client.website}
                           size="md"
                         />
                         <TableNameLink
@@ -400,8 +401,7 @@ export default function OperatorClientsScreen() {
                     <TableCell>
                       <StatusTag
                         tone={
-                          client.operatorStatus === "live" &&
-                          !client.inviteStatus
+                          client.operatorStatus === "live"
                             ? "success"
                             : "warning"
                         }
