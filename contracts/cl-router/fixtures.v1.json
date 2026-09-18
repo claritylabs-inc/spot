@@ -205,6 +205,23 @@
           "schema": "AdminScoreResponse"
         }
       ]
+    },
+    {
+      "name": "structured decision",
+      "method": "post",
+      "path": "/v1/decide",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "DecideRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "DecideResponse"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -374,7 +391,7 @@
           "cachedInputTokens": 0,
           "cacheWriteTokens": 0
         },
-        "costUsd": 0.000001,
+        "costUsd": 1e-06,
         "costStatus": "priced",
         "model": {
           "provider": "openai",
@@ -748,6 +765,48 @@
           }
         }
       ]
+    },
+    {
+      "name": "Spot typed decision request",
+      "schema": "DecideRequest",
+      "value": {
+        "tenantId": "glass",
+        "orgId": "org_contract_fixture",
+        "task": "forward_reply_direction",
+        "state": {
+          "currentText": "Please reply to the original sender."
+        },
+        "questions": {
+          "reply": {
+            "type": "noul",
+            "instructions": "Does the user explicitly ask to reply to the original sender?"
+          }
+        }
+      }
+    },
+    {
+      "name": "Spot typed decision response",
+      "schema": "DecideResponse",
+      "value": {
+        "contractVersion": 1,
+        "requestId": "decision_contract_fixture",
+        "model": "jev-1.13.0",
+        "answers": {
+          "reply": {
+            "type": "noul",
+            "noul": 0.95
+          }
+        },
+        "usage": {
+          "inputTokens": 100,
+          "outputTokens": 8
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 4200
+        },
+        "durationMs": 100
+      }
     }
   ]
 }

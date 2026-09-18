@@ -124,6 +124,10 @@ completion, enrichment, or delivery paths. Both fixtures have marker-validated
 cleanup plus scheduled bounded retry. Do not broaden either API with caller
 selected organizations, users, URLs, models, storage IDs, or deletion targets.
 
+Spot supplies every available tool on each router step in `request.tools`; an empty array means no tools. Definitions carry name, description, and JSON input schema. Before each operator step, `getRunContextInternal` validates the active operator/thread and filters the registry by role, impersonation, and configured Google Workspace, Slack, Mapbox, and MCP access. Exact target authorization and approval are rechecked at execution; a tool's availability cannot authorize an arbitrary target. Spot does not send `toolChoice` or preselect tools for relevance. Router-owned Jev selects one offered tool or abstains, the generation model fills arguments, and Spot executes the call.
+
+`clRouterDecide` uses authenticated `/v1/decide` for typed Jev Choice/Noul decisions, with native probabilities and request-bound response validation. Decisions use inline JSON, never generation SSE or durable jobs. Both Convex and worker generation clients validate and preserve `routing.selection` through the shared policy parser, including unknown cost values. `extractionTraceRouterFields.ts` owns the optional selection validator used by trace ingestion and storage; selector controls remain router-owned. Classifications for forwarded-email direction, requirement import intent, certificate-holder matching, policy intake, mailbox automation, Workspace PDF acceptance, and prompt-injection screening use this path. Extraction and prose remain generation tasks; legacy classification/security generation settings remain schema-compatible but are not active UI routes. SDK generation callbacks reject classification instead of silently using generation. The chat policy-evidence classifier, deterministic completed-lookup check, and recovery generation are removed. Normal tool selection handles evidence retrieval; incomplete tool responses may still receive a tool-free final synthesis that cannot replay actions.
+
 ## Durable router jobs
 
 `convex/routerJobs.ts`, `convex/lib/routerJobClient.ts`, and
@@ -379,7 +383,7 @@ Before adding a new shared component, backend helper, schema field, workflow, ag
 Use these owners as the first place to look:
 
 - Spot branding: `lib/spot-mark.ts` and `lib/spot-wordmark.ts` own the canonical blue globe and outlined uppercase word geometry. `components/ui/logo-icon.tsx` is the static, server-compatible icon renderer, and `components/ui/spot-wordmark.tsx` composes the exact 1027.6011-by-200 lockup with a quarter-globe gap and 85%-height Zalando Sans Expanded Semibold outlines. Browser surfaces reuse those components and scale them through their text size; the globe always stays `#A0D2FA`, while the word follows the light/dark foreground. `npm run brand:export` regenerates app/public SVG, PNG, JPEG, and ICO derivatives from the same geometry. `lib/spot-social-image.tsx` owns the generic Open Graph card and uses the outlined lockup without loading the logo font, while the footer remains `app.spot.insure` in Geist. Product titles and sender names remain `Spot`; when publisher attribution is present, it is exactly `from Tools for Enlightenment`.
-- `convex/lib/channelAgentRunner.ts` owns shared authenticated conversational turn execution, tool-outcome auditing, and the policy-evidence contract. Web, Slack, email, iMessage, and MCP keep ingress, authorization, persistence, typing, reactions, and delivery channel-local. Policy-dependent informational answers must complete a current-turn policy lookup; the runner may retry once with read-only policy tools only when every earlier tool is replay-safe, never after an unknown or side-effectful tool. That retry forces the first available policy evidence tool by name, preferring `lookup_policy` discovery so a generic question needs no known policy ID and Slack reaction instructions cannot consume recovery.
+- `convex/lib/channelAgentRunner.ts` owns shared conversational turn execution, tool-outcome auditing, and tool-free synthesis of incomplete responses. Web, Slack, email, iMessage, and MCP retain channel-local ingress, authorization, persistence, and delivery. Normal router tool selection handles policy lookups; there is no separate policy-evidence classifier, completed-lookup gate, or evidence-recovery generation.
 
 Certificate holder edits in the shared detail drawer target the selected certificate explicitly, regenerate its PDF, and commit holder changes only while recording the next immutable version. Do not route changed holder identity through ordinary reuse matching or mutate an issued PDF in place.
 
@@ -450,13 +454,13 @@ The `query_reason` candidate set keeps OpenAI `gpt-5.6-terra` plus Fireworks `ac
 - `chat` → Fireworks `accounts/fireworks/models/deepseek-v4-flash-0731` for low-latency interactive tool use
 - `chat_vision` → OpenAI `gpt-5.6-terra` for rich image or parser-empty PDF web, iMessage, and operator turns that still need the full chat tool set; ordinary text-only turns remain on `chat`
 - `voice_transcription` → OpenAI `gpt-4o-transcribe` for bounded iMessage voice-memo speech-to-text; the resulting transcript continues through `chat` so voice requests retain the normal tools and side effects
-- `classification`, `triage`, `extraction`, `extraction_preview`, `requirement_extraction`, `org_memory_extraction`, `email_extraction`, `document_extraction` → Fireworks `accounts/fireworks/models/deepseek-v4-flash-0731` for cheap structured work and high-volume extraction/classification calls
+- `triage`, `extraction`, `extraction_preview`, `requirement_extraction`, `org_memory_extraction`, `email_extraction`, `document_extraction` → Fireworks `accounts/fireworks/models/deepseek-v4-flash-0731` for structured evidence extraction and synthesis
 - `extraction_quality` → Fireworks `accounts/fireworks/models/deepseek-v4-flash-0731` for proactive source-tree and operational-profile extraction
 - `fallback` → Fireworks `accounts/fireworks/models/deepseek-v4-pro` for explicit fallback escalation
 - `extraction_coverage_cleanup` → OpenAI `gpt-5.4-mini` by default for source-backed coverage repair. This remains an operator-configurable route and should not be hardcoded in extraction code.
 - `extraction_coverage_recovery` → OpenAI `gpt-5.4-mini` by default for opt-in document-wide source-grounded recovery, with independent budgets and telemetry. Model failure returns control to Spot's deterministic recovery instead of escalating to another language model.
 - `email_draft`, `email_reply`, `analysis`, `summary`, `mailbox_coordinator` → Fireworks `accounts/fireworks/models/glm-5p2` for deliberate text reasoning, writing, compact web/Slack thread naming, and coordination
-- `security` → Fireworks `accounts/fireworks/models/gpt-oss-safeguard-20b`
+- Classification and prompt-injection decisions → router-owned Jev through `/v1/decide`; generation-route overrides do not apply. Legacy `classification` and `security` settings remain stored for compatibility.
 - `embeddings` → OpenAI `text-embedding-3-small` at 1536 dimensions until re-embedding and retrieval-shadow validation prove a Fireworks embedding route is safe
 
 Usage notes:
@@ -650,7 +654,7 @@ Spot persists:
 - Declarations and supplementary facts as top-level policy fields
 - Raw source evidence in `sourceSpans` and retrievable hierarchy in non-vector `sourceNodes`. Source spans preserve `sourceUnit`, `parentSpanId`, table location, page/character location, bounding boxes, and stable `sourceSpanIds`; `sourceSpans.listSpansByPolicyAndSpanIds` returns requested spans plus related parent spans so table-cell facts can highlight their parent row or fall back to the source page. Client-facing source-span lookups are capped for page stability; individual visible rows should query their own narrow evidence IDs instead of asking for every source span in a policy at once. Worker/SDK `sourceChunks` remain transport and manifest compatibility only; Spot does not persist them in a table.
 - Spot runs all post-extraction cleanup through `postProcessExtractionDocument()`: deterministic policy-period fallback, evidence-backed field review, `insuranceDocToPolicy()`, coverage declaration scoping, review-copy polish, and organization-name normalization. Keep new cross-cutting extraction cleanup in this pipeline rather than adding one-off fallback extractors inside `policyExtraction.ts` or `documentMapping.ts`.
-- Field review is configured as reusable groups in `extractionFieldReview.ts`. It uses source spans and document sections, applies only evidence-quoted corrections for registered fields, and runs on the low-cost `classification` route. `EXTRACTION_FIELD_REVIEW_MODE=skip|auto|always` controls whether it is disabled, runs only for missing group fields, or runs for all groups with evidence.
+- Field review is configured as reusable groups in `extractionFieldReview.ts`. It uses source spans and document sections, applies only evidence-quoted corrections for registered fields, and runs on the `extraction` route. `EXTRACTION_FIELD_REVIEW_MODE=skip|auto|always` controls whether it is disabled, runs only for missing group fields, or runs for all groups with evidence.
 - The policy-period fallback still performs a deterministic source-span check over raw PDF text before persistence. Clear `PERIOD OF INSURANCE` / `POLICY PERIOD` / `POLICY TERM` source text, including day-month-year table layouts, is allowed to override missing, malformed, or conflicting SDK `effectiveDate` / `expirationDate` values.
 
 ### Token Limits
@@ -928,10 +932,11 @@ tools are available, using a plain chevron, tool count, and unbordered activity 
 `lib/tool-activity-icons.ts` maps every operator tool to a category icon; the complete
 list lives in `docs/design/operator-tool-icons.md`. Secondary activity text and icons
 use half-opacity muted foreground. Operator activity lists individual recorded calls
-with available search terms, titles, or filenames; legacy/client summaries list unique tools without claiming call counts.
+with available search terms, titles,
+or filenames; legacy/client summaries list unique tools without claiming call counts.
 The separate inline waiting status uses a standard spinner with reduced-motion support.
-The summary omits raw reasoning and full tool payloads. Approvals and task artifacts
-remain independent of these display preferences. Non-web channel delivery stays terminal-only.
+The summary omits raw reasoning and full tool payloads. Approvals and task artifacts remain independent
+of these display preferences. Non-web channel delivery stays terminal-only.
 
 ## Operator-configured MCP sources
 

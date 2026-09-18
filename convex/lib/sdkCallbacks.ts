@@ -652,6 +652,11 @@ export function makeGenerateText(
     const { prompt, system, maxTokens, providerOptions } = params;
     const taskKind = readTaskKind(params as ParamsWithOptionalTaskKind);
     const trace = readTraceDetails(params as ParamsWithOptionalTaskKind);
+    if (task === "classification" || taskKind?.endsWith("_classify")) {
+      throw new Error(
+        "Classification requires a typed clRouterDecide request, not an SDK generation callback",
+      );
+    }
     const effectiveTask = modelTaskForCall(task, taskKind);
     let traceRoute: ModelRoute = MODEL_ROUTING[effectiveTask];
     let routeSource = "static";
@@ -828,6 +833,11 @@ export function makeGenerateObject(
       taskKind,
       trace?.extractorName,
     );
+    if (task === "classification" || taskKind?.endsWith("_classify")) {
+      throw new Error(
+        "Classification requires a typed clRouterDecide request, not an SDK generation callback",
+      );
+    }
     const effectiveTask = modelTaskForCall(task, taskKind);
     let traceRoute: ModelRoute = MODEL_ROUTING[effectiveTask];
     let routeSource = "static";

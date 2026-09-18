@@ -10,7 +10,7 @@ The checker enforces three boundaries:
 - the snapshot bytes match the SHA-256 recorded in `source.json`;
 - the Spot-used operations still reference the expected request and response
   schemas; and
-- representative generation, streaming, embedding, JSON transcription,
+- representative generation, typed Jev decisions, streaming, embedding, JSON transcription,
   capabilities, retrieval, feedback, health, and active admin payloads in
   `fixtures.v1.json` validate with strict Ajv draft-2020-12 checks. Retired
   calibration-seed import and benchmark schemas are intentionally absent;

@@ -1,3 +1,22 @@
+import { v } from "convex/values";
+import { parseRoutingSelectionMetadata, type RoutingSelectionMetadata } from "@claritylabs/cl-router-policy";
+
+export const routingSelectionValidator = v.object({
+  mode: v.union(v.literal("legacy"), v.literal("jev_shadow"), v.literal("jev_active")),
+  selectorVersion: v.string(),
+  outcome: v.union(v.literal("bypass"), v.literal("default"), v.literal("accepted")),
+  reason: v.string(),
+  durationMs: v.number(),
+  costNanoUsd: v.union(v.number(), v.null()),
+  requestId: v.optional(v.string()),
+  proposedRoute: v.optional(v.object({ provider: v.string(), model: v.string() })),
+  estimatedInputTokens: v.number(),
+  estimatedOutputTokens: v.union(v.number(), v.null()),
+  expectedFallbackCostNanoUsd: v.union(v.number(), v.null()),
+  generationAttemptsCostNanoUsd: v.optional(v.union(v.number(), v.null())),
+  totalCostNanoUsd: v.optional(v.union(v.number(), v.null())),
+});
+
 export type ExtractionTraceRouterRoute = {
   provider: string;
   model: string;
@@ -13,6 +32,7 @@ export type ExtractionTraceRouting = {
   shadowMode?: boolean;
   wouldHaveChosen?: ExtractionTraceRouterRoute & { decision: string };
   wouldHaveMatched?: boolean;
+  selection?: RoutingSelectionMetadata;
 };
 
 export type ExtractionTraceRouterFields = {
@@ -80,8 +100,17 @@ function routing(value: unknown): ExtractionTraceRouting | undefined {
   ) {
     return undefined;
   }
+  let selection: RoutingSelectionMetadata | undefined;
+  if (value.selection !== undefined) {
+    try {
+      selection = parseRoutingSelectionMetadata(value.selection);
+    } catch {
+      return undefined;
+    }
+  }
   return {
     decision: value.decision,
+    ...(selection ? { selection } : {}),
     candidatesConsidered: candidatesConsidered as ExtractionTraceRouterRoute[],
     policyVersion: value.policyVersion,
     cacheStickinessApplied: value.cacheStickinessApplied,
@@ -112,7 +141,7 @@ export function normalizeExtractionTraceRouterFields(
   const sanitizedDetails = details
     ? Object.fromEntries(Object.entries(details).filter(([key]) => key !== "clRouter"))
     : input.details;
-  const normalizedRouting = input.routing ?? routing(nested?.routing);
+  const normalizedRouting = routing(input.routing ?? nested?.routing);
   const normalizedCostStatus = input.costStatus ?? costStatus(nested?.costStatus);
   const normalizedCostUsd = input.costUsd !== undefined ? costUsd(input.costUsd) : costUsd(nested?.costUsd);
   const routerRequestId = input.routerRequestId

@@ -529,7 +529,7 @@ describe("operational router smoke live-path contract", () => {
       url.endsWith("/v1/generate"),
     );
     expect(generationRequests.slice(0, 2).map(({ body }) => body.task)).toEqual(
-      ["classification", "classification"],
+      ["summary", "summary"],
     );
     expect(
       generationRequests.slice(0, 2).map(({ body }) => body.maxTokens),
@@ -553,10 +553,12 @@ describe("operational router smoke live-path contract", () => {
       routes: { operator_agent: fallbackRoute },
       routeSources: { operator_agent: "global" },
     });
-    expect(toolRequests[0]?.body.toolChoice).toEqual({
-      type: "tool",
-      toolName: "echo_smoke_marker",
-    });
+    for (const { body } of toolRequests) {
+      expect(body).not.toHaveProperty("toolChoice");
+      expect(body.tools).toEqual([
+        expect.objectContaining({ name: "echo_smoke_marker" }),
+      ]);
+    }
     expect(toolRequests[0]?.body.routing).toEqual({
       pin: fallbackRoute,
       allowFallback: false,

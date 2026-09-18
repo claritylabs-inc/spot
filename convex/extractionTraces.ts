@@ -1,3 +1,4 @@
+import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -59,6 +60,7 @@ const extractionTraceRoutingValidator = v.object({
     decision: v.string(),
   })),
   wouldHaveMatched: v.optional(v.boolean()),
+  selection: v.optional(routingSelectionValidator),
 });
 
 function nowMs() {

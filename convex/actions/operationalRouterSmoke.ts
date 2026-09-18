@@ -224,7 +224,7 @@ async function runGeneration(
   ctx: ActionCtx,
   orgId: Id<"organizations">,
 ): Promise<PhaseResult["generation"]> {
-  const result = await generateTextForOrg(ctx, orgId, "classification", {
+  const result = await generateTextForOrg(ctx, orgId, "summary", {
     maxOutputTokens: 256,
     system: "This is a synthetic operational health check.",
     prompt: "Reply with a short acknowledgement.",
@@ -239,7 +239,7 @@ async function runStructuredOutput(
   ctx: ActionCtx,
   orgId: Id<"organizations">,
 ): Promise<PhaseResult["structuredOutput"]> {
-  const result = await generateObjectForOrg(ctx, orgId, "classification", {
+  const result = await generateObjectForOrg(ctx, orgId, "summary", {
     maxOutputTokens: 256,
     schema: z.object({ ok: z.literal(true) }),
     system: "This is a synthetic operational health check.",
@@ -269,6 +269,7 @@ async function runEchoToolLoop(
         "Call the echo tool once, then finish with a short acknowledgement.",
       tools: {
         [ECHO_TOOL_NAME]: tool({
+          description: "Echo the health-check marker to verify tool execution.",
           inputSchema: z.object({ value: z.literal(ECHO_VALUE) }),
           execute: async ({ value }) => {
             toolCallCount += 1;
@@ -277,15 +278,6 @@ async function runEchoToolLoop(
         }),
       },
       stopWhen: stepCountIs(2),
-      prepareStep: ({ stepNumber }) =>
-        stepNumber === 0
-          ? {
-              toolChoice: {
-                type: "tool" as const,
-                toolName: ECHO_TOOL_NAME,
-              },
-            }
-          : { activeTools: [] },
     },
     {
       taskKind: "operator_agent",

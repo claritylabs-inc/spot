@@ -420,3 +420,49 @@ test("invalid 2xx responses fail closed", async () => {
     ClRouterProtocolError,
   );
 });
+
+test("selection metadata survives inline and durable responses with unknown costs intact", async () => {
+  const selection = {
+    mode: "jev_shadow",
+    selectorVersion: "jev-1.13.0",
+    outcome: "default",
+    reason: "shadow",
+    durationMs: 30,
+    costNanoUsd: null,
+    requestId: "decision-1",
+    estimatedInputTokens: 100,
+    estimatedOutputTokens: null,
+    expectedFallbackCostNanoUsd: null,
+    totalCostNanoUsd: null,
+  };
+  const response = {
+    ...responseBody,
+    routing: { ...responseBody.routing, selection },
+  };
+  const client = createClRouterClient({
+    baseUrl: "https://router.internal",
+    secret: "shared-secret",
+    fetch: async () => Response.json(response),
+  });
+  const input = {
+    task: "extraction",
+    tenantId: "glass",
+    prompt: "Extract",
+    schema: { type: "object" },
+  };
+  assert.deepEqual((await client.generate(input)).routing.selection, selection);
+  assert.deepEqual(
+    (await client.generate(input, async () => response)).routing.selection,
+    selection,
+  );
+  await assert.rejects(
+    client.generate(input, async () => ({
+      ...response,
+      routing: {
+        ...response.routing,
+        selection: { ...selection, durationMs: -1 },
+      },
+    })),
+    ClRouterProtocolError,
+  );
+});

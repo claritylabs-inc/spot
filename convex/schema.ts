@@ -1,3 +1,4 @@
+import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
@@ -74,6 +75,7 @@ const extractionTraceRoutingValidator = v.object({
     }),
   ),
   wouldHaveMatched: v.optional(v.boolean()),
+  selection: v.optional(routingSelectionValidator),
 });
 
 const webRetrievalProviderValidator = v.union(

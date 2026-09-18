@@ -189,6 +189,7 @@ export const run = internalAction({
         run: Doc<"operatorAgentRuns">;
         thread: Doc<"operatorAgentThreads">;
         messages: Array<Doc<"operatorAgentMessages">>;
+        toolNames: OperatorAgentToolName[];
       } | null = await ctx.runQuery(
         internal.operatorAgent.getRunContextInternal,
         { runId: args.runId },
@@ -243,11 +244,8 @@ export const run = internalAction({
       let toolQueue: Promise<unknown> = Promise.resolve();
       let toolEvidence = collectToolAudit({});
 
-      for (const name of Object.keys(OPERATOR_AGENT_TOOL_REGISTRY)) {
-        const spec =
-          OPERATOR_AGENT_TOOL_REGISTRY[
-            name as keyof typeof OPERATOR_AGENT_TOOL_REGISTRY
-          ];
+      for (const name of context.toolNames) {
+        const spec = OPERATOR_AGENT_TOOL_REGISTRY[name];
         tools[name] = dynamicTool({
           description: spec.description,
           inputSchema: spec.inputSchema,

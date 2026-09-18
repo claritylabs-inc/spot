@@ -1,7 +1,13 @@
 "use node";
 
+import {
+  routingSelectionValidator,
+  type ExtractionTraceRouting,
+} from "../lib/extractionTraceRouterFields";
+
 import { randomUUID } from "crypto";
 import dayjs from "dayjs";
+import { PDFDocument } from "pdf-lib";
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -25,12 +31,14 @@ import {
   makeGenerateObject,
   type EmbedTexts,
 } from "../lib/sdkCallbacks";
+import { clRouterDecide } from "../lib/clRouterClient";
 import { modelCapabilitiesForTask } from "../lib/modelCatalog";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { isFeatureEnabled } from "../lib/featureFlags";
 import {
   isSpecimenPolicyDocument,
+  buildDocumentGateEvidence,
   NON_INSURANCE_DOCUMENT_ERROR,
 } from "../lib/policyDocumentGate";
 import {
@@ -470,17 +478,7 @@ async function traceEvent(
     costUsd?: number | null;
     costStatus?: "priced" | "unpriced";
     routingDecision?: string;
-    routing?: {
-      decision: string;
-      candidatesConsidered: Array<{ provider: string; model: string }>;
-      policyVersion: string | null;
-      cacheStickinessApplied: boolean;
-      routeSource?: string;
-      attemptCount?: number;
-      shadowMode?: boolean;
-      wouldHaveChosen?: { provider: string; model: string; decision: string };
-      wouldHaveMatched?: boolean;
-    };
+    routing?: ExtractionTraceRouting;
     error?: string;
     details?: unknown;
   },
@@ -1354,36 +1352,6 @@ ${excerpt.text}`,
   }
 }
 
-function buildDocumentGateExcerpt(
-  sourceSpans: Array<{
-    pageStart?: number;
-    text: string;
-    metadata?: Record<string, unknown>;
-  }>,
-): string {
-  const pageSpans = sourceSpans.filter(
-    (span) => span.metadata?.sourceUnit !== "section_candidate",
-  );
-  const uniquePages = new Set<number>();
-  const excerpts: string[] = [];
-
-  for (const span of pageSpans) {
-    const page =
-      typeof span.pageStart === "number" ? span.pageStart : excerpts.length + 1;
-    if (uniquePages.has(page)) continue;
-    uniquePages.add(page);
-    const text = span.text.replace(/\s+/g, " ").trim();
-    if (!text) continue;
-    excerpts.push(`Page ${page}: ${text.slice(0, 1200)}`);
-    if (excerpts.join("\n\n").length >= 7000 || uniquePages.size >= 8) break;
-  }
-
-  return (
-    excerpts.join("\n\n") ||
-    "No machine-readable text was extracted from the PDF."
-  );
-}
-
 async function classifyInsuranceExtractability(params: {
   ctx: ActionCtx;
   orgId: Id<"organizations">;
@@ -1407,35 +1375,73 @@ async function classifyInsuranceExtractability(params: {
     };
   }
 
-  const generateGateObject = makeGenerateObject("classification", {
-    ctx: params.ctx,
-    orgId: params.orgId,
-    traceId: params.traceId,
-    tracePolicyId: params.policyId,
+  const pdf = await PDFDocument.load(params.pdfBytes, {
+    ignoreEncryption: true,
   });
-  const excerpt = buildDocumentGateExcerpt(params.sourceSpans);
-  const result = await generateGateObject({
-    schema: extractionGateSchema,
-    maxTokens: 600,
-    system: `You are a strict intake gate for Spot post-binding insurance extraction.
-
-Decide whether an uploaded PDF should be processed by a bound-policy extractor. Allow extraction when the document is clearly an already-bound insurance policy, binder, declarations page, renewal policy, insurance schedule, policy wording, endorsement, or post-binding supplement that contains bound policy terms.
-
-Also allow a document explicitly labeled as a specimen policy, sample policy, or testing-only policy when it represents a policy artifact suitable for extraction testing. Return classification "specimen_policy_document" for those testing fixtures. A disclaimer such as "not an actual policy" or "not evidence of insurance" does not disqualify an otherwise valid specimen policy.
-
-Reject unbound quotes, proposals, submissions, applications, marketing material, invoices, novels, books, textbooks, resumes, generic contracts, unrelated legal documents, and any document that is merely about insurance but is not itself a bound policy artifact. A law-office trust ledger, closing statement, or disbursement statement is not a policy, even when it lists a payment for title insurance or an insurance premium. A payment line is not evidence that the document contains bound policy terms. If uncertain, return classification "unknown" and shouldExtract false only when the document is more likely not extractable than extractable.`,
-    prompt: `Classify this PDF before extraction.
-
-Return shouldExtract=true for bound or post-binding insurance policy artifacts and for specimen policy testing fixtures.
-
-Machine-readable excerpts:
-${excerpt}`,
-    providerOptions: {
-      pdfBytes: params.pdfBytes,
-      mimeType: "application/pdf",
+  const evidence = buildDocumentGateEvidence(
+    params.sourceSpans,
+    pdf.getPageCount(),
+  );
+  if (!evidence.complete) {
+    return {
+      shouldExtract: true,
+      classification: "unknown",
+      confidence: 0,
+      reason:
+        "Complete parsed page evidence is unavailable within the intake budget; continuing rich document extraction.",
+      detectedTitle: null,
+    };
+  }
+  const result = await clRouterDecide({
+    orgId: String(params.orgId),
+    task: "policy_extraction_intake",
+    state: { documentText: evidence.text },
+    questions: {
+      classification: {
+        type: "choice",
+        instructions: `Classify this uploaded document for post-binding insurance extraction. Use only the document evidence. A premium payment in a trust ledger, closing statement, or disbursement statement does not make it a bound policy artifact. A disclaimer that a specimen is not actual insurance does not disqualify an otherwise valid specimen. Choose unknown when the excerpts cannot establish the document type.`,
+        criteria: {
+          bound_policy_document:
+            "An already-bound insurance policy, binder, declarations page, renewal policy, insurance schedule, policy wording, endorsement, or post-binding supplement containing bound policy terms.",
+          specimen_policy_document:
+            "A specimen, sample, or testing-only insurance policy artifact suitable for extraction testing.",
+          insurance_related_but_not_bound_policy:
+            "An unbound quote, proposal, submission, application, marketing material, invoice, or other insurance-related document that is not a bound policy artifact.",
+          non_insurance:
+            "A novel, textbook, resume, generic contract, unrelated legal document, trust ledger, closing statement, disbursement statement, or other non-policy document.",
+          unknown: "Insufficient evidence to determine the document type.",
+        },
+      },
     },
+    trace: params.traceId ? { traceId: params.traceId } : undefined,
   });
-  return result.object as ExtractionGateDecision;
+  const answer = result.answers.classification;
+  if (answer?.type !== "choice") {
+    throw new Error("Policy intake decision did not return a choice");
+  }
+  const classification = extractionGateSchema.shape.classification.parse(
+    answer.choice,
+  );
+  const reasons: Record<ExtractionGateDecision["classification"], string> = {
+    bound_policy_document:
+      "The excerpts describe a bound or post-binding policy artifact.",
+    specimen_policy_document:
+      "The excerpts describe a specimen policy testing fixture.",
+    insurance_related_but_not_bound_policy:
+      "The excerpts describe insurance-related material without bound policy terms.",
+    non_insurance: "The excerpts describe a non-policy document.",
+    unknown: "The excerpts do not establish the document type.",
+  };
+  return {
+    classification,
+    shouldExtract:
+      classification === "bound_policy_document" ||
+      classification === "specimen_policy_document" ||
+      classification === "unknown",
+    confidence: answer.confidence,
+    reason: reasons[classification],
+    detectedTitle: null,
+  };
 }
 
 function shouldRejectDocument(decision: ExtractionGateDecision): boolean {
@@ -2286,7 +2292,6 @@ export function makePhases(
                 : "Carrier branding unavailable",
               carrierIdentity.success ? "info" : "warn",
             );
-
           } catch (error) {
             console.warn("[policyExtraction] carrier branding failed", error);
             await pCtx.log("Carrier branding could not be stored", "warn");
@@ -2828,6 +2833,7 @@ export const recordExternalTraceEvent = action({
           }),
         ),
         wouldHaveMatched: v.optional(v.boolean()),
+        selection: v.optional(routingSelectionValidator),
       }),
     ),
     error: v.optional(v.string()),

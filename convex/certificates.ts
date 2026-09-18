@@ -34,10 +34,10 @@ import { summarizeEndorsementEvidence } from "./lib/certificateEndorsements";
 import {
   buildHolderIdentityReviewPrompt,
   certificateHolderIdentity,
-  HolderIdentityReviewSchema,
   resolveDeterministicCertificateHolder,
   type CertificateHolderResolutionCandidate,
 } from "./lib/certificateHolderResolution";
+import { clRouterDecide } from "./lib/clRouterClient";
 import { makeGenerateObject } from "./lib/sdkCallbacks";
 import { z } from "zod";
 import {
@@ -718,52 +718,66 @@ async function reviewHolderIdentityWithModel(args: {
   requested: ReturnType<typeof certificateHolderIdentity>;
   candidates: CertificateHolderResolutionCandidate<IssuedCertificateCandidate>[];
 }) {
-  const generateIdentityObject = makeGenerateObject("classification", {
-    ctx: args.ctx,
-    orgId: args.orgId,
-    tracePolicyId: args.policyId,
-  });
   try {
-    const result = await generateIdentityObject({
-      schema: HolderIdentityReviewSchema,
-      maxTokens: 700,
-      system: `You classify certificate holder identity for certificate reuse.
-
-Return same_holder only when the requested holder is the same legal/display holder and address as one of the provided current-policy candidates. Return ambiguous rather than guessing.`,
-      prompt: buildHolderIdentityReviewPrompt({
+    const candidates = Object.fromEntries(
+      args.candidates.map((candidate, index) => [
+        `candidate_${index}`,
+        candidate,
+      ]),
+    );
+    const result = await clRouterDecide({
+      orgId: args.orgId,
+      task: "certificate_holder_identity",
+      state: buildHolderIdentityReviewPrompt({
         requested: args.requested,
         candidates: args.candidates,
       }),
+      questions: {
+        holder: {
+          type: "choice",
+          instructions:
+            "Select a candidate only when the requested holder has the same legal/display identity and address. Select ambiguous rather than guessing. Select no_match only when no supplied candidate matches.",
+          criteria: {
+            ...Object.fromEntries(
+              Object.entries(candidates).map(([key, candidate]) => [
+                key,
+                { candidateId: candidate.candidateId },
+              ]),
+            ),
+            ambiguous:
+              "Insufficient or conflicting identity or address evidence",
+            no_match:
+              "The requested holder is distinct from every supplied candidate",
+          },
+        },
+      },
     });
-    const review = result.object as z.infer<typeof HolderIdentityReviewSchema>;
-    if (review.verdict === "same_holder") {
-      const candidate = args.candidates.find(
-        (item) => item.candidateId === review.matchedCandidateId,
-      );
+    const answer = result.answers.holder;
+    if (
+      answer?.type === "choice" &&
+      (answer.probabilities[answer.choice] ?? 0) >= 0.9
+    ) {
+      const candidate = candidates[answer.choice];
       if (candidate) {
         return {
           verdict: "same_holder" as const,
           candidate,
-          reason: review.reason,
+          reason:
+            "Jev matched the requested holder identity and address to the supplied candidate.",
         };
       }
-      return {
-        verdict: "ambiguous" as const,
-        reason:
-          "The model selected a candidate that was not in the bounded candidate set.",
-        candidates: args.candidates,
-      };
-    }
-    if (review.verdict === "ambiguous") {
-      return {
-        verdict: "ambiguous" as const,
-        reason: review.reason,
-        candidates: args.candidates,
-      };
+      if (answer.choice === "no_match") {
+        return {
+          verdict: "no_match" as const,
+          reason: "Jev found no matching holder among the supplied candidates.",
+        };
+      }
     }
     return {
-      verdict: "no_match" as const,
-      reason: review.reason,
+      verdict: "ambiguous" as const,
+      reason:
+        "Holder identity could not be matched confidently to a supplied candidate.",
+      candidates: args.candidates,
     };
   } catch (error) {
     return {

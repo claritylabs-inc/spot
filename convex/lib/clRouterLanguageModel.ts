@@ -28,7 +28,6 @@ import {
   type ClRouterMessagePart,
   type ClRouterResponseMetadata,
   type ClRouterSettingsSnapshot,
-  type ClRouterToolChoice,
   type ClRouterToolDefinition,
   type ClRouterUsage,
 } from "./clRouterClient";
@@ -70,42 +69,10 @@ export type ClRouterLanguageModelOptions = {
   ) => void | Promise<void>;
 };
 
-export class ClRouterToolContractError extends ClRouterRequestError {
-  readonly expectedToolName?: string;
-  readonly actualToolNames: string[];
-
-  constructor(
-    expectedToolName: string | undefined,
-    actualToolNames: string[],
-    options?: { requestId?: string },
-  ) {
-    const expectation = expectedToolName
-      ? `tool ${expectedToolName}`
-      : "at least one tool call";
-    const actual =
-      actualToolNames.length > 0 ? actualToolNames.join(", ") : "none";
-    super(
-      "invalid_response",
-      `cl-router violated the forced tool contract: expected ${expectation}, received ${actual}`,
-      options,
-    );
-    this.name = "ClRouterToolContractError";
-    this.expectedToolName = expectedToolName;
-    this.actualToolNames = actualToolNames;
-  }
-}
-
 function failureWithResponseContext(
   error: unknown,
   response: ClRouterResponseMetadata,
 ): unknown {
-  if (error instanceof ClRouterToolContractError) {
-    return new ClRouterToolContractError(
-      error.expectedToolName,
-      error.actualToolNames,
-      { requestId: response.requestId },
-    );
-  }
   if (error instanceof ClRouterRequestError) {
     return new ClRouterRequestError(error.kind, error.message, {
       ...(error.status === undefined ? {} : { status: error.status }),
@@ -309,8 +276,8 @@ export async function clRouterMessagesFromPrompt(
 
 function clRouterTools(
   tools: LanguageModelV3CallOptions["tools"],
-): ClRouterToolDefinition[] | undefined {
-  if (!tools?.length) return undefined;
+): ClRouterToolDefinition[] {
+  if (!tools?.length) return [];
   return tools.map((definition) => {
     if (definition.type !== "function") {
       throw new ClRouterRequestError(
@@ -336,15 +303,6 @@ function clRouterTools(
       inputSchema: definition.inputSchema as Record<string, unknown>,
     };
   });
-}
-
-function clRouterToolChoice(
-  choice: LanguageModelV3CallOptions["toolChoice"],
-): ClRouterToolChoice | undefined {
-  if (!choice) return undefined;
-  return choice.type === "tool"
-    ? { type: "tool", toolName: choice.toolName }
-    : choice.type;
 }
 
 function unsupportedWarnings(
@@ -382,7 +340,6 @@ async function requestForCall(
       ? (responseFormat.schema as Record<string, unknown>)
       : undefined;
   const tools = clRouterTools(options.tools);
-  const toolChoice = clRouterToolChoice(options.toolChoice);
   return {
     task: adapter.task,
     ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
@@ -406,8 +363,7 @@ async function requestForCall(
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
     sessionKey: adapter.sessionKey,
-    ...(tools ? { tools } : {}),
-    ...(toolChoice ? { toolChoice } : {}),
+    tools,
     routing: {
       ...(selectedRoute ? { pin: selectedRoute } : {}),
       allowFallback: adapter.allowFallback ?? allowFallback,
@@ -589,30 +545,6 @@ function generatedContent(
   return [{ type: "text", text: JSON.stringify(response.output) }];
 }
 
-function forcedToolExpectation(
-  choice: LanguageModelV3CallOptions["toolChoice"],
-): string | null | undefined {
-  if (choice?.type === "required") return null;
-  if (choice?.type === "tool") return choice.toolName;
-  return undefined;
-}
-
-function validateForcedToolContract(
-  choice: LanguageModelV3CallOptions["toolChoice"],
-  toolNames: string[],
-): void {
-  const expected = forcedToolExpectation(choice);
-  if (expected === undefined) return;
-  if (
-    expected === null
-      ? toolNames.length > 0
-      : toolNames.length > 0 &&
-        toolNames.every((toolName) => toolName === expected)
-  )
-    return;
-  throw new ClRouterToolContractError(expected ?? undefined, toolNames);
-}
-
 function contentToolNames(content: LanguageModelV3Content[]): string[] {
   return content
     .filter(
@@ -728,10 +660,6 @@ export function createClRouterLanguageModel(
         let content: LanguageModelV3Content[];
         try {
           content = generatedContent(response);
-          validateForcedToolContract(
-            options.toolChoice,
-            contentToolNames(content),
-          );
         } catch (error) {
           throw failureWithResponseContext(error, response);
         }
@@ -831,17 +759,6 @@ export function createClRouterLanguageModel(
                       delta: event.delta,
                     });
                   } else if (event.type === "tool-call") {
-                    const expectedToolName = forcedToolExpectation(
-                      options.toolChoice,
-                    );
-                    if (
-                      typeof expectedToolName === "string" &&
-                      event.toolName !== expectedToolName
-                    ) {
-                      validateForcedToolContract(options.toolChoice, [
-                        event.toolName,
-                      ]);
-                    }
                     visibleRouterOutput = true;
                     routerToolNames.push(event.toolName);
                     startStream();
@@ -871,10 +788,6 @@ export function createClRouterLanguageModel(
                     );
                   } else {
                     receivedDone = true;
-                    validateForcedToolContract(
-                      options.toolChoice,
-                      routerToolNames,
-                    );
                     parentRequestId = event.requestId;
                     selectedRoute = event.model;
                     successfulRouterSteps += 1;

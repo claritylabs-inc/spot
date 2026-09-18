@@ -81,7 +81,6 @@ import {
 import {
   buildRequirementImportConfirmation,
   decideRequirementAttachmentImport,
-  requiredRequirementImportStep,
 } from "../lib/requirementAttachmentIntent";
 import { sendClRouterFeedback } from "../lib/clRouterClient";
 
@@ -666,7 +665,6 @@ export const processInbound = internalAction({
         buildSystemPromptForContext({
           org: {
             name: org.name,
-
           },
           mode: "direct",
           userName,
@@ -872,22 +870,12 @@ export const processInbound = internalAction({
       const turn = await runAgentTurn(ctx, {
         orgId,
         task: chatTask,
-        messageText: inboundMessageText,
-        recentConversationContext,
-        currentAttachmentNames: attachmentRecords.map(
-          (attachment) => attachment.filename,
-        ),
         options: {
           maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
           system: systemPrompt,
           messages: modelMessages,
           tools: imessageTools,
           stopWhen: stepCountIs(8),
-          prepareStep: ({ stepNumber }) =>
-            requiredRequirementImportStep(
-              stepNumber,
-              requirementImportAttachments.length > 0,
-            ),
         },
         run: {
           taskKind: "query_reason",

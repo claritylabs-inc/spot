@@ -112,6 +112,7 @@ describe("cl-router LanguageModelV3 adapter", () => {
       prompt: "Find GL-100.",
       tools: {
         lookup_policy: tool({
+          description: "Read a policy by number",
           inputSchema: z.object({ policyNumber: z.string() }),
           execute,
         }),
@@ -125,6 +126,16 @@ describe("cl-router LanguageModelV3 adapter", () => {
     const requests = fetchMock.mock.calls.map(([, init]) =>
       JSON.parse(String((init as RequestInit).body)),
     );
+    for (const request of requests) {
+      expect(request).not.toHaveProperty("toolChoice");
+      expect(request.tools).toEqual([
+        expect.objectContaining({
+          name: "lookup_policy",
+          description: "Read a policy by number",
+          inputSchema: expect.objectContaining({ type: "object" }),
+        }),
+      ]);
+    }
     expect(requests[0].routing).toEqual({ allowFallback: true });
     expect(requests[1].routing).toEqual({
       pin: { provider: "openai", model: "gpt-5.5" },
@@ -132,6 +143,49 @@ describe("cl-router LanguageModelV3 adapter", () => {
     });
     expect(JSON.stringify(requests)).not.toContain("providerKeys");
   });
+
+  test.each([
+    [],
+    [
+      {
+        type: "function" as const,
+        name: "search_documents",
+        description: "Search authorized documents",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
+      {
+        type: "function" as const,
+        name: "read_document",
+        description: "Read an authorized document",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
+    ],
+  ])(
+    "sends the complete available set and accepts abstention: %j",
+    async (...definitions) => {
+      const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json({ ...doneEvent("stop"), output: "No tool needed." }),
+      );
+      const model = createClRouterLanguageModel(adapterOptions(fetchMock));
+      await expect(
+        model.doGenerate({
+          ...rawCallOptions(),
+          tools: definitions,
+        }),
+      ).resolves.toMatchObject({
+        content: [{ type: "text", text: "No tool needed." }],
+      });
+      const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(request).not.toHaveProperty("toolChoice");
+      expect(request.tools).toEqual(
+        definitions.map(({ name, description, inputSchema }) => ({
+          name,
+          description,
+          inputSchema,
+        })),
+      );
+    },
+  );
 
   test("fails closed after one router failure", async () => {
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>

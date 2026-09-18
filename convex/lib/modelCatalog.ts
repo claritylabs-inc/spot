@@ -121,7 +121,7 @@ export const MODEL_TASK_DESCRIPTIONS: Record<ModelTask, string> = {
   extraction_coverage_recovery:
     "Document-wide source-tree recovery for missing coverage terms, asset schedules, premiums, taxes, fees, and total payable.",
   classification:
-    "Fast routing route for document kind, request intent, delivery rules, extraction/query classification, and other small decisions.",
+    "Legacy generation route retained for stored settings compatibility. Classification decisions use router-owned Jev through /v1/decide.",
   requirement_extraction:
     "Structured extraction route for compliance requirements from leases, client contracts, vendor packets, and pasted requirement text.",
   org_memory_extraction:
@@ -137,7 +137,7 @@ export const MODEL_TASK_DESCRIPTIONS: Record<ModelTask, string> = {
   document_extraction:
     "Document-level extraction route for non-policy subtasks and attachment analysis outside full policy extraction.",
   security:
-    "Safety route for prompt-injection and unsafe-request classification before agent execution.",
+    "Legacy generation route retained for stored settings compatibility. Prompt-injection classification uses router-owned Jev through /v1/decide.",
   mailbox_coordinator:
     "Coordinator route for multi-step connected-mailbox workflows: search mail, inspect attachments, import policies or requirements, and plan follow-up.",
   embeddings:
@@ -395,9 +395,8 @@ export const MODEL_TASK_GROUPS = [
     id: "document_ingestion",
     label: "Document ingestion",
     description:
-      "Routes used to classify documents and extract structured facts from policies, files, and email text.",
+      "Routes used to extract structured facts from policies, files, and email text.",
     tasks: [
-      "classification",
       "requirement_extraction",
       "org_memory_extraction",
       "extraction",
@@ -410,8 +409,8 @@ export const MODEL_TASK_GROUPS = [
     id: "platform_utilities",
     label: "Platform utilities",
     description:
-      "Routes used for enrichment, safety checks, and vector indexing.",
-    tasks: ["triage", "security", "embeddings"],
+      "Routes used for enrichment and vector indexing.",
+    tasks: ["triage", "embeddings"],
   },
 ] as const satisfies readonly ModelRouteGroup<ModelTask>[];
 
@@ -429,9 +428,8 @@ export const OPERATOR_MODEL_ROUTE_GROUPS = [
     id: "document_ingestion",
     label: "Document ingestion",
     description:
-      "Routes used to classify documents and extract structured facts from policies, files, and email text.",
+      "Routes used to extract structured facts from policies, files, and email text.",
     tasks: [
-      "classification",
       "requirement_extraction",
       "org_memory_extraction",
       "extraction",

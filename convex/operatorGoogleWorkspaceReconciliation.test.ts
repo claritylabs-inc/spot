@@ -28,7 +28,11 @@ import {
   sourceEffectiveAt,
   type ScanOperation,
 } from "./lib/googleWorkspaceReconciliation";
-const mocks = vi.hoisted(() => ({ generate: vi.fn(), provider: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  generate: vi.fn(),
+  provider: vi.fn(),
+  decide: vi.fn(),
+}));
 vi.mock("./lib/models", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/models")>()),
   generateObjectForPublicTask: mocks.generate,
@@ -37,9 +41,31 @@ vi.mock("./lib/googleWorkspaceProvider", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/googleWorkspaceProvider")>()),
   createGoogleWorkspaceProvider: mocks.provider,
 }));
+vi.mock("./lib/clRouterClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/clRouterClient")>()),
+  clRouterDecide: mocks.decide,
+}));
+function policyDecision(
+  kind = "bound_policy",
+  confidence = 0.99,
+  complete = 0.99,
+) {
+  return {
+    answers: {
+      documentKind: {
+        type: "choice",
+        choice: kind,
+        confidence,
+        probabilities: { [kind]: confidence },
+      },
+      singleCompletePolicy: { type: "noul", noul: complete },
+    },
+  };
+}
 const modules = import.meta.glob("./**/*.ts");
 beforeEach(() => {
   mocks.generate.mockReset();
+  mocks.decide.mockReset().mockResolvedValue(policyDecision());
   mocks.provider.mockReset();
   vi.useFakeTimers({
     toFake: [
@@ -973,11 +999,11 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
   mocks.generate
     .mockResolvedValueOnce({
       object: {
-        documentKind: "bound_policy",
+        documentEvidence: [{ page: 1, excerpt: "Issued declaration" }],
+        policyIdentifiers: ["POL-1"],
+        documentStructure: "One complete policy package",
         insuredName: "Cove",
         insuredAddress: null,
-        singleCompletePolicy: true,
-        explanation: "Issued terms",
       },
     })
     .mockResolvedValueOnce({
@@ -1035,7 +1061,15 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
   expect(
     await f.t.run((ctx) => ctx.db.query("policies").collect()),
   ).toHaveLength(1);
-  for (const documentKind of ["quote", "ambiguous", "bound_policy"] as const) {
+  for (const [documentKind, confidence, complete] of [
+    ["quote", 0.99, 0.99],
+    ["ambiguous", 0.99, 0.99],
+    ["bound_policy", 0.99, 0.1],
+    ["bound_policy", 0.7, 0.99],
+  ] as const) {
+    mocks.decide.mockResolvedValueOnce(
+      policyDecision(documentKind, confidence, complete),
+    );
     const g = await fixture();
     const otherEvidence = { ...g.evidence, attachments: [attachment] };
     otherEvidence.contentFingerprint =
@@ -1051,11 +1085,13 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
     mocks.generate
       .mockResolvedValueOnce({
         object: {
-          documentKind,
+          documentEvidence: [
+            { page: 1, excerpt: "Quote or unclear policy grouping" },
+          ],
+          policyIdentifiers: [],
+          documentStructure: "Uncertain grouping",
           insuredName: "Cove",
           insuredAddress: null,
-          singleCompletePolicy: false,
-          explanation: "Quote or unclear policy grouping",
         },
       })
       .mockResolvedValueOnce({
@@ -1121,11 +1157,11 @@ test("scheduled model processing imports actual bound PDF bytes once and never t
   mocks.generate
     .mockResolvedValueOnce({
       object: {
-        documentKind: "bound_policy",
+        documentEvidence: [{ page: 1, excerpt: "Issued declaration" }],
+        policyIdentifiers: ["POL-1"],
+        documentStructure: "One complete policy package",
         insuredName: "Cove",
         insuredAddress: address,
-        singleCompletePolicy: true,
-        explanation: "Issued declaration",
       },
     })
     .mockResolvedValueOnce({
