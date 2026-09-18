@@ -462,7 +462,7 @@ export function EmailStackCard({
                       {attachmentCount} file{attachmentCount === 1 ? "" : "s"}
                     </span>
                   ) : null}
-                  <StatusTag tone={getEmailStatusTone(message)}>
+                  <StatusTag tone={getEmailStatusTone(message)} indicator={message.status === "draft_email" ? "draft" : message.status === "cancelled" ? "cancelled" : "complete"}>
                     {getEmailStatusLabel(message)}
                   </StatusTag>
                 </span>
@@ -581,6 +581,7 @@ export function EmailThreadSidebar({
               (message.role === "agent" ? "Sent email" : "Received email")}
           </h2>
           <StatusTag
+            indicator={isDraft ? "draft" : isCancelled ? "cancelled" : "complete"}
             tone={
               isDraft
                 ? "warning"

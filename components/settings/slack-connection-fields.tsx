@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusTag } from "@/components/ui/status-tag";
+import { Badge } from "@/components/ui/badge";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
@@ -245,10 +245,10 @@ export function SlackConnectionFields({
                 </p>
                 <div className="flex shrink-0 items-center gap-2">
                   {channel.id === supportChannelId ? (
-                    <StatusTag tone="neutral">Support</StatusTag>
+                    <Badge variant="outline">Support</Badge>
                   ) : null}
                   {channel.id === selectedChannelId ? (
-                    <StatusTag tone="success">Default</StatusTag>
+                    <Badge variant="outline">Default</Badge>
                   ) : null}
                   {canEdit && !channel.isPrivate && !channel.isShared ? (
                     <button

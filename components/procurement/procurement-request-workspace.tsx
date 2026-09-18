@@ -28,9 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  ClientFileUploadPanel,
-} from "@/components/client-files/client-files-workspace";
+import { ClientFileUploadPanel } from "@/components/client-files/client-files-workspace";
 import { usePdf } from "@/components/pdf-context";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import {
@@ -45,8 +43,8 @@ import {
   ProcurementEmailDrawer,
   RequestStatusTag,
   REQUEST_STATUS_OPTIONS,
-  procurementOutreachStatusLabel,
-  procurementRequestStatusLabel,
+  OutreachStatusLabel,
+  RequestStatusLabel,
   type ProcurementEmailDrawerHandle,
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
@@ -69,7 +67,7 @@ import {
   OperationalPanelHeader,
 } from "@/components/ui/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusLabel, StatusTag } from "@/components/ui/status-tag";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Select,
@@ -422,6 +420,13 @@ function ProposalReviewDetails({
             Packet review{" "}
             <span className="ml-2">
               <StatusTag
+                indicator={
+                  review.stale
+                    ? "warning"
+                    : review.staffConclusion
+                      ? "complete"
+                      : "waiting"
+                }
                 tone={
                   review.stale
                     ? "warning"
@@ -493,20 +498,37 @@ function ProposalReviewDetails({
                 </span>
                 <Select
                   value={conclusion}
-                  items={REVIEW_CONCLUSION_LABELS}
                   disabled={readOnly || Boolean(review.staffConclusion)}
                   onValueChange={(value) =>
                     onConclusionChange(value as typeof conclusion)
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      <StatusLabel
+                        tone={
+                          conclusion === "meets_requirements"
+                            ? "success"
+                            : "warning"
+                        }
+                      >
+                        {REVIEW_CONCLUSION_LABELS[conclusion]}
+                      </StatusLabel>
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(REVIEW_CONCLUSION_LABELS).map(
                       ([value, label]) => (
                         <SelectItem key={value} value={value}>
-                          {label}
+                          <StatusLabel
+                            tone={
+                              value === "meets_requirements"
+                                ? "success"
+                                : "warning"
+                            }
+                          >
+                            {label}
+                          </StatusLabel>
                         </SelectItem>
                       ),
                     )}
@@ -645,13 +667,13 @@ function RequestEditor({
             >
               <SelectTrigger className="w-full">
                 <SelectValue>
-                  {procurementRequestStatusLabel(status)}
+                  <RequestStatusLabel status={status} />
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {REQUEST_STATUS_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                    <RequestStatusLabel status={option.value} />
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1154,13 +1176,13 @@ export function OutreachEditor({
               >
                 <SelectTrigger className="w-full">
                   <SelectValue>
-                    {procurementOutreachStatusLabel(status)}
+                    <OutreachStatusLabel status={status} />
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {OUTREACH_STATUS_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      <OutreachStatusLabel status={option.value} />
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1773,6 +1795,20 @@ export function ProcurementRequestWorkspace({
                       <TableCell>
                         {proposal ? (
                           <StatusTag
+                            indicator={
+                              proposal.status === "draft"
+                                ? "draft"
+                                : proposal.status === "selected"
+                                  ? "complete"
+                                  : proposal.status === "withdrawn"
+                                    ? "cancelled"
+                                    : proposal.status === "archived"
+                                      ? "inactive"
+                                      : "progress"
+                            }
+                            progress={
+                              proposal.status === "reviewed" ? 0.75 : 0.4
+                            }
                             tone={
                               proposal.status === "selected"
                                 ? "success"
@@ -1818,10 +1854,12 @@ export function ProcurementRequestWorkspace({
                           >
                             {REVIEW_CONCLUSION_LABELS[conclusion]}
                           </StatusTag>
+                        ) : proposal ? (
+                          <StatusTag indicator="pending">
+                            Not reviewed
+                          </StatusTag>
                         ) : (
-                          <span className="text-muted-foreground">
-                            {proposal ? "Not reviewed" : "—"}
-                          </span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell>

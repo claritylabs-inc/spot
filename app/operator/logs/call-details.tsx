@@ -11,12 +11,13 @@ import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
 } from "@/components/ui/operational-panel";
+import { StatusTag } from "@/components/ui/status-tag";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { operatorAgentApi } from "@/lib/operator-agent-api";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { cost, diagnostic, displayTask, tokens } from "./log-utils";
+import { callStatusPresentation, cost, diagnostic, displayTask, tokens } from "./log-utils";
 export function CallDetails({
   id,
   onClose,
@@ -156,7 +157,7 @@ export function CallDetails({
           <OperationalLabelValueList>
             <OperationalLabelValueRow
               label="Status"
-              value={displayTask(call.status ?? "unknown")}
+              value={<StatusTag {...callStatusPresentation(call.status)}>{displayTask(call.status ?? "unknown")}</StatusTag>}
             />
             <OperationalLabelValueRow
               label="Operation"

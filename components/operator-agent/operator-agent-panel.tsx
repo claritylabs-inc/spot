@@ -51,7 +51,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag, type StatusPresentation } from "@/components/ui/status-tag";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePageContext } from "@/hooks/use-page-context";
 import {
@@ -140,7 +140,7 @@ function ConfirmationArtifact({
   onDecision: (decision: "approve" | "reject") => void;
 }) {
   const [title, ...details] = confirmation.title.split("\n");
-  const presentation = (() => {
+  const presentation: { label: string } & StatusPresentation = (() => {
     switch (confirmation.state) {
       case "approved":
         return {
@@ -151,19 +151,20 @@ function ConfirmationArtifact({
           tone: "success" as const,
         };
       case "cancelled":
-        return { label: "Cancelled", tone: "neutral" as const };
+        return { label: "Cancelled", tone: "neutral", indicator: "cancelled" };
       case "expired":
         return { label: "Expired", tone: "warning" as const };
       case "superseded":
-        return { label: "Superseded", tone: "neutral" as const };
+        return { label: "Superseded", tone: "neutral", indicator: "inactive" };
       case "unavailable":
-        return { label: "No longer available", tone: "neutral" as const };
+        return { label: "No longer available", tone: "neutral", indicator: "inactive" };
       case "pending":
         return {
           label: confirmation.actionable
             ? "Approval required"
             : "Awaiting approval",
           tone: "warning" as const,
+          indicator: "waiting",
         };
     }
   })();
@@ -175,7 +176,7 @@ function ConfirmationArtifact({
     >
       <div className="min-w-0 flex-1 basis-80">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+          <StatusTag tone={presentation.tone} indicator={presentation.indicator}>{presentation.label}</StatusTag>
           <p
             className={cn(
               "min-w-0 flex-1 basis-48 break-words text-foreground",

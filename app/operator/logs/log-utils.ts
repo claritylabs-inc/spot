@@ -1,3 +1,4 @@
+import type { StatusPresentation } from "@/components/ui/status-tag";
 import dayjs from "dayjs";
 import type { Doc } from "@/convex/_generated/dataModel";
 export type ModelCall = Doc<"modelRoutingEvents">;
@@ -49,4 +50,15 @@ export function downloadReport(
   link.download = name;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export function callStatusPresentation(status: ModelCall["status"]): StatusPresentation {
+  switch (status) {
+    case "complete": return { tone: "neutral", indicator: "complete" };
+    case "running": return { tone: "neutral", indicator: "progress" };
+    case "cancelled": return { tone: "neutral", indicator: "cancelled" };
+    case "error": return { tone: "danger", indicator: "error" };
+    case "fallback": return { tone: "neutral", indicator: "warning" };
+    default: return { tone: "warning", indicator: "warning" };
+  }
 }

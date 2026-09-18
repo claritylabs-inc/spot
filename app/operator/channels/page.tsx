@@ -10,6 +10,7 @@ import { AppShell } from "@/components/app-shell";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Input } from "@/components/ui/input";
 import { PillButton } from "@/components/ui/pill-button";
+import { Badge } from "@/components/ui/badge";
 import { StatusTag } from "@/components/ui/status-tag";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTabParam } from "@/hooks/use-tab-param";
@@ -255,7 +256,7 @@ function OperatorImessageContent() {
           <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
             Operator iMessage
           </h2>
-          <StatusTag tone="info">Test mode</StatusTag>
+          <Badge variant="outline">Test mode</Badge>
         </div>
         <p
           className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}
@@ -359,7 +360,7 @@ function IdentityStatus({
   workspaceTeamId?: string;
 }) {
   if (!teamId || !userId) {
-    return <StatusTag>Not linked</StatusTag>;
+    return <StatusTag indicator="inactive">Not linked</StatusTag>;
   }
   if (!workspaceTeamId || teamId !== workspaceTeamId) {
     return <StatusTag tone="danger">Workspace mismatch</StatusTag>;
@@ -402,7 +403,7 @@ function OperatorIdentityRow({
             />
           ) : null}
           {identity.status === "disabled" ? (
-            <StatusTag>Disabled</StatusTag>
+            <StatusTag indicator="inactive">Disabled</StatusTag>
           ) : null}
         </div>
         <p
@@ -754,11 +755,11 @@ function OperatorChannelsContent({
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {mockMode ? (
-                        <StatusTag tone="info">Test mode</StatusTag>
+                        <Badge variant="outline">Test mode</Badge>
                       ) : hostInstallation ? (
                         <StatusTag tone="success">Connected</StatusTag>
                       ) : (
-                        <StatusTag>Not connected</StatusTag>
+                        <StatusTag indicator="inactive">Not connected</StatusTag>
                       )}
                       {!mockMode ? (
                         <PillButton

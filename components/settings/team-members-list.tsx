@@ -126,6 +126,7 @@ export function TeamMembersList({
                   {showActivationStatus ? (
                     <StatusTag
                       tone={member.isActivated ? "success" : "neutral"}
+                      indicator={member.isActivated ? "complete" : "inactive"}
                     >
                       {member.isActivated ? "Active" : "Not activated"}
                     </StatusTag>

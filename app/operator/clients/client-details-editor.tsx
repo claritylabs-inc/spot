@@ -3,6 +3,7 @@
 import { useImperativeHandle, type Ref } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { StatusLabel } from "@/components/ui/status-tag";
 import { Input } from "@/components/ui/input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { PillButton } from "@/components/ui/pill-button";
@@ -19,7 +20,11 @@ import { useOperatorClientCacheActions } from "@/lib/sync/operator-cached-querie
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ClientLogoField } from "./client-logo-field";
-import { operatorClientStatuses, type OperatorClientRow } from "./client-model";
+import {
+  OPERATOR_CLIENT_STATUSES,
+  operatorClientStatuses,
+  type OperatorClientRow,
+} from "./client-model";
 
 export type ClientEditorHandle = { saveNow: () => Promise<boolean> };
 
@@ -41,6 +46,8 @@ export function ClientDetailsEditor({
     website: client.website ?? "",
     status: client.operatorStatus,
   });
+  const { label: statusLabel, ...statusPresentation } =
+    OPERATOR_CLIENT_STATUSES[draft.value.status];
   const autoSave = useLocalFirstAutoSave({
     mutationName: "operator.updateClientSettings",
     resetKey: client._id,
@@ -126,14 +133,22 @@ export function ClientDetailsEditor({
           }}
         >
           <SelectTrigger>
-            <SelectValue />
+            <SelectValue>
+              <StatusLabel {...statusPresentation}>
+                {statusLabel}
+              </StatusLabel>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(operatorClientStatuses).map(([value, label]) => (
+            {Object.entries(OPERATOR_CLIENT_STATUSES).map(
+              ([value, { label, ...presentation }]) => (
               <SelectItem key={value} value={value}>
-                {label}
+                <StatusLabel {...presentation}>
+                  {label}
+                </StatusLabel>
               </SelectItem>
-            ))}
+              ),
+            )}
           </SelectContent>
         </Select>
       </label>

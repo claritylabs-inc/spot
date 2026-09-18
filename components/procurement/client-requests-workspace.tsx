@@ -64,7 +64,25 @@ function statusTone(status: ClientRequestStatus): StatusTagTone {
 
 function RequestStatus({ status }: { status: ClientRequestStatus }) {
   return (
-    <StatusTag tone={statusTone(status)}>{STATUS_LABELS[status]}</StatusTag>
+    <StatusTag
+      tone={statusTone(status)}
+      indicator={
+        status === "cancelled"
+          ? "cancelled"
+          : status === "information_needed"
+            ? "waiting"
+            : undefined
+      }
+      progress={
+        status === "finalizing"
+          ? 0.88
+          : status === "in_progress"
+            ? 0.5
+            : undefined
+      }
+    >
+      {STATUS_LABELS[status]}
+    </StatusTag>
   );
 }
 

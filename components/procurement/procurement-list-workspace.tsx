@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import {
   REQUEST_STATUS_OPTIONS,
   RequestStatusTag,
-  procurementRequestStatusLabel,
+  RequestStatusLabel,
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
@@ -292,13 +292,13 @@ function NewProcurementRequestDrawer({
             >
               <SelectTrigger className="w-full">
                 <SelectValue>
-                  {procurementRequestStatusLabel(status)}
+                  <RequestStatusLabel status={status} />
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {REQUEST_STATUS_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                    <RequestStatusLabel status={option.value} />
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -449,9 +449,7 @@ export function ProcurementListWorkspace({
               }`}
             >
               <TableCell className="min-w-64 whitespace-normal">
-                <TableNameLink
-                  href={`${basePath}/${request._id}`}
-                >
+                <TableNameLink href={`${basePath}/${request._id}`}>
                   {request.title}
                 </TableNameLink>
               </TableCell>

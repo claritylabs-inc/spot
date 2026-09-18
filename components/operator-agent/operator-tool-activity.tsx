@@ -3,7 +3,7 @@
 import { ChevronRight, CircleAlert, SquareTerminal } from "lucide-react";
 
 import { Spinner } from "@/components/ui/spinner";
-import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
+import { StatusTag, type StatusPresentation } from "@/components/ui/status-tag";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import type {
   OperatorAgentConfirmation,
@@ -25,8 +25,8 @@ function formatToolValue(value: string) {
 function activityStatus(
   response: OperatorAgentMessage | undefined,
   awaitingApproval: boolean,
-): { label: string; tone: StatusTagTone } {
-  if (awaitingApproval) return { label: "Awaiting approval", tone: "warning" };
+): { label: string } & StatusPresentation {
+  if (awaitingApproval) return { label: "Awaiting approval", tone: "warning", indicator: "waiting" };
   if (!response) return { label: "Pending", tone: "neutral" };
   if (
     response.status === "error" ||
@@ -38,14 +38,14 @@ function activityStatus(
     response.status === "cancelled" ||
     response.content.startsWith("Cancelled:")
   )
-    return { label: "Stopped", tone: "neutral" };
+    return { label: "Stopped", tone: "neutral", indicator: "cancelled" };
   if (response.status === "processing")
-    return { label: "Running", tone: "neutral" };
+    return { label: "Running", tone: "neutral", indicator: "progress" };
   if (response.content.startsWith("Blocked:"))
     return { label: "Blocked", tone: "warning" };
   if (response.content.startsWith("Completed:"))
-    return { label: "Completed", tone: "neutral" };
-  return { label: "Finished", tone: "neutral" };
+    return { label: "Completed", tone: "neutral", indicator: "complete" };
+  return { label: "Finished", tone: "neutral", indicator: "complete" };
 }
 
 type ActivityEntry = {
@@ -311,7 +311,7 @@ export function OperatorToolActivity({
               >
                 {request.content}
               </span>
-              <StatusTag tone={status.tone}>{status.label}</StatusTag>
+              <StatusTag tone={status.tone} indicator={status.indicator}>{status.label}</StatusTag>
             </div>
           </div>
           <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground group-open/activity:rotate-90" />

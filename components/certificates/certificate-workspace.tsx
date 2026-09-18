@@ -507,7 +507,7 @@ function CertificateVersionRow({
               Current
             </StatusTag>
           ) : null}
-          <StatusTag tone={tag.tone} className={`${typeStyle("label.tag")}`}>
+          <StatusTag tone={tag.tone} indicator={version.status === "void" ? "cancelled" : version.status === "issued" ? "complete" : version.status === "draft" ? "draft" : undefined} className={`${typeStyle("label.tag")}`}>
             {tag.label}
           </StatusTag>
         </div>

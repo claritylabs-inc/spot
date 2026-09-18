@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusLabel, StatusTag } from "@/components/ui/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
@@ -40,31 +40,117 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 
 export const REQUEST_STATUS_OPTIONS = [
-  { value: "draft", label: "Draft", tone: "neutral" },
-  { value: "submitted", label: "Submitted", tone: "neutral" },
+  {
+    value: "draft",
+    label: "Draft",
+    tone: "neutral",
+    indicator: "draft",
+    progress: 0,
+  },
+  {
+    value: "submitted",
+    label: "Submitted",
+    tone: "neutral",
+    indicator: "pending",
+    progress: 0,
+  },
   {
     value: "gathering_information",
     label: "Gathering information",
     tone: "info",
+    indicator: "progress",
+    progress: 0.25,
   },
-  { value: "marketing", label: "Marketing", tone: "info" },
-  { value: "proposal_review", label: "Proposal review", tone: "info" },
-  { value: "binding", label: "Binding", tone: "info" },
-  { value: "completed", label: "Completed", tone: "success" },
-  { value: "cancelled", label: "Cancelled", tone: "danger" },
+  {
+    value: "marketing",
+    label: "Marketing",
+    tone: "info",
+    indicator: "progress",
+    progress: 0.5,
+  },
+  {
+    value: "proposal_review",
+    label: "Proposal review",
+    tone: "info",
+    indicator: "progress",
+    progress: 0.7,
+  },
+  {
+    value: "binding",
+    label: "Binding",
+    tone: "info",
+    indicator: "progress",
+    progress: 0.88,
+  },
+  {
+    value: "completed",
+    label: "Completed",
+    tone: "success",
+    indicator: "complete",
+    progress: 1,
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+    tone: "danger",
+    indicator: "cancelled",
+    progress: 0,
+  },
 ] as const;
 
 export type ProcurementRequestStatus =
   (typeof REQUEST_STATUS_OPTIONS)[number]["value"];
 
 export const OUTREACH_STATUS_OPTIONS = [
-  { value: "observed", label: "Observed", tone: "neutral" },
-  { value: "request_sent", label: "Request sent", tone: "info" },
-  { value: "can_handle", label: "Can handle", tone: "success" },
-  { value: "cannot_handle", label: "Can’t handle", tone: "danger" },
-  { value: "quote_received", label: "Quote received", tone: "info" },
-  { value: "quote_accepted", label: "Accepted by client", tone: "success" },
-  { value: "quote_rejected", label: "Rejected by client", tone: "danger" },
+  {
+    value: "observed",
+    label: "Observed",
+    tone: "neutral",
+    indicator: "pending",
+    progress: 0,
+  },
+  {
+    value: "request_sent",
+    label: "Request sent",
+    tone: "info",
+    indicator: "progress",
+    progress: 0.25,
+  },
+  {
+    value: "can_handle",
+    label: "Can handle",
+    tone: "success",
+    indicator: "progress",
+    progress: 0.5,
+  },
+  {
+    value: "cannot_handle",
+    label: "Can’t handle",
+    tone: "danger",
+    indicator: "cancelled",
+    progress: 0,
+  },
+  {
+    value: "quote_received",
+    label: "Quote received",
+    tone: "info",
+    indicator: "progress",
+    progress: 0.75,
+  },
+  {
+    value: "quote_accepted",
+    label: "Accepted by client",
+    tone: "success",
+    indicator: "complete",
+    progress: 1,
+  },
+  {
+    value: "quote_rejected",
+    label: "Rejected by client",
+    tone: "danger",
+    indicator: "cancelled",
+    progress: 0,
+  },
 ] as const;
 
 export type ProcurementOutreachStatus =
@@ -97,7 +183,11 @@ export function RequestStatusTag({
 }) {
   const option = optionForValue(REQUEST_STATUS_OPTIONS, status);
   return (
-    <StatusTag tone={option?.tone ?? "neutral"}>
+    <StatusTag
+      tone={option?.tone ?? "neutral"}
+      indicator={option?.indicator}
+      progress={option?.progress}
+    >
       {procurementRequestStatusLabel(status)}
     </StatusTag>
   );
@@ -110,9 +200,47 @@ export function OutreachStatusTag({
 }) {
   const option = optionForValue(OUTREACH_STATUS_OPTIONS, status);
   return (
-    <StatusTag tone={option?.tone ?? "neutral"}>
+    <StatusTag
+      tone={option?.tone ?? "neutral"}
+      indicator={option?.indicator}
+      progress={option?.progress}
+    >
       {procurementOutreachStatusLabel(status)}
     </StatusTag>
+  );
+}
+
+export function RequestStatusLabel({
+  status,
+}: {
+  status: ProcurementRequestStatus;
+}) {
+  const option = optionForValue(REQUEST_STATUS_OPTIONS, status);
+  return (
+    <StatusLabel
+      tone={option?.tone}
+      indicator={option?.indicator}
+      progress={option?.progress}
+    >
+      {procurementRequestStatusLabel(status)}
+    </StatusLabel>
+  );
+}
+
+export function OutreachStatusLabel({
+  status,
+}: {
+  status: ProcurementOutreachStatus;
+}) {
+  const option = optionForValue(OUTREACH_STATUS_OPTIONS, status);
+  return (
+    <StatusLabel
+      tone={option?.tone}
+      indicator={option?.indicator}
+      progress={option?.progress}
+    >
+      {procurementOutreachStatusLabel(status)}
+    </StatusLabel>
   );
 }
 

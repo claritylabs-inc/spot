@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, Check, Clock, X } from "lucide-react";
+import { X } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -99,32 +100,27 @@ function checkStatusMeta(status?: string) {
     case "met":
       return {
         label: "Meets requirement",
-        icon: Check,
         tone: "success" as StatusTagTone,
       };
     case "expiring_soon":
       return {
         label: "Expiring soon",
-        icon: Clock,
         tone: "warning" as StatusTagTone,
       };
     case "expired":
       return {
         label: "Expired",
-        icon: AlertTriangle,
         tone: "danger" as StatusTagTone,
       };
     case "unverified":
       return {
         label: "Unverified",
-        icon: AlertTriangle,
         tone: "warning" as StatusTagTone,
       };
     case "not_met":
     default:
       return {
         label: status === "unverified" ? "Unverified" : "Not met",
-        icon: X,
         tone: "danger" as StatusTagTone,
       };
   }
@@ -193,7 +189,6 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
               <div className="divide-y divide-border">
                 {checks.map((check, checkIndex) => {
                   const meta = checkStatusMeta(check.status);
-                  const StatusIcon = meta.icon;
                   const policy = check.matchedPolicy;
                   const detectedLimit = formatLimitAmount(policy?.detectedLimitAmount);
                   const requiredLimits = formatRequiredLimits(check.requiredLimits);
@@ -204,7 +199,6 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
                           {check.title ?? "Requirement"}
                         </span>
                         <StatusTag tone={meta.tone}>
-                          <StatusIcon className="h-3 w-3" />
                           {meta.label}
                         </StatusTag>
                       </div>

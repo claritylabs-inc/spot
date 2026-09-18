@@ -11,12 +11,9 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
-  CheckCircle2,
-  Clock,
   FileUp,
   Plus,
   BadgeCheck,
-  ShieldCheck,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
@@ -28,6 +25,7 @@ import { ActionSurface } from "@/components/ui/action-surface";
 import { Badge } from "@/components/ui/badge";
 import {
   StatusTag,
+  StatusLabel,
   type StatusTagTone,
 } from "@/components/ui/status-tag";
 import { FileDropZone } from "@/components/ui/file-drop";
@@ -376,8 +374,10 @@ function statusFilterValue(requirement: Requirement): StatusFilter {
   return requirement.complianceCheck?.status ?? "defined";
 }
 
-function statusFilterLabel(value: StatusFilter) {
-  return value === "all" ? "All statuses" : statusMeta(value === "defined" ? undefined : value).label;
+function ComplianceFilterLabel({ value }: { value: StatusFilter }) {
+  if (value === "all") return "All statuses";
+  const meta = statusMeta(value === "defined" ? undefined : value);
+  return <StatusLabel tone={meta.tone}>{meta.label}</StatusLabel>;
 }
 
 function pageLabel(requirement: Requirement) {
@@ -437,42 +437,35 @@ function statusMeta(status?: ComplianceStatus) {
       return {
         label: "Met",
         tone: "success" as StatusTagTone,
-        icon: CheckCircle2,
       };
     case "expiring_soon":
       return {
         label: "Expiring",
         tone: "warning" as StatusTagTone,
-        icon: Clock,
       };
     case "unverified":
       return {
         label: "Unverified",
         tone: "warning" as StatusTagTone,
-        icon: AlertCircle,
       };
     case "expired":
     case "not_met":
       return {
         label: status === "expired" ? "Expired" : "Not met",
         tone: "danger" as StatusTagTone,
-        icon: AlertCircle,
       };
     default:
       return {
         label: "Defined",
         tone: "neutral" as StatusTagTone,
-        icon: ShieldCheck,
       };
   }
 }
 
 function ComplianceStatusTag({ status }: { status?: ComplianceStatus }) {
   const meta = statusMeta(status);
-  const Icon = meta.icon;
   return (
     <StatusTag tone={meta.tone}>
-      <Icon className="h-3 w-3" />
       {meta.label}
     </StatusTag>
   );
@@ -717,7 +710,7 @@ function RequirementsFilterSelect({
 }: {
   label: string;
   value: string;
-  valueLabel: string;
+  valueLabel: ReactNode;
   onValueChange: (value: string) => void;
   children: ReactNode;
 }) {
@@ -2788,11 +2781,11 @@ function ComplianceWorkspace({
                 <RequirementsFilterSelect
                   label="Status"
                   value={effectiveStatusFilter}
-                  valueLabel={statusFilterLabel(effectiveStatusFilter)}
+                  valueLabel={<ComplianceFilterLabel value={effectiveStatusFilter} />}
                   onValueChange={(value) => setStatusFilter(value as StatusFilter)}
                 >
                   {statusFilters.map((filter) => (
-                    <SelectItem key={filter} value={filter}>{statusFilterLabel(filter)}</SelectItem>
+                    <SelectItem key={filter} value={filter}><ComplianceFilterLabel value={filter} /></SelectItem>
                   ))}
                 </RequirementsFilterSelect>
               </div>

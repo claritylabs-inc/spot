@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
+import { StatusTag, type StatusTagTone, type StatusIndicatorKind } from "@/components/ui/status-tag";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
@@ -49,7 +49,7 @@ const GOOGLE_DOMAIN_WIDE_DELEGATION_URL =
   "https://admin.google.com/ac/owl/domainwidedelegation";
 const GOOGLE_SERVICE_ACCOUNT_DOCS_URL =
   "https://developers.google.com/identity/protocols/oauth2/service-account";
-type StatusPresentation = { label: string; tone: StatusTagTone };
+type StatusPresentation = { label: string; tone: StatusTagTone; indicator?: StatusIndicatorKind };
 
 function CopyValueButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -128,7 +128,7 @@ function DirectoryDiagnostic({
         <p className={`text-foreground ${typeStyle("body.medium")}`}>
           Workspace directory
         </p>
-        <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+        <StatusTag tone={presentation.tone} indicator={presentation.indicator}>{presentation.label}</StatusTag>
       </div>
       <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
         {diagnostic.adminEmail ? `${diagnostic.adminEmail} · ` : ""}
@@ -160,7 +160,7 @@ function VerificationDiagnostics({
       <OperationalPanelHeader
         title="Connection diagnostics"
         action={
-          <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+          <StatusTag tone={presentation.tone} indicator={presentation.indicator}>{presentation.label}</StatusTag>
         }
       />
       <div>
@@ -250,14 +250,14 @@ export function OperatorGoogleWorkspaceContent({
   const presentation: StatusPresentation = verification
     ? verificationPresentation(verification)
     : !config
-      ? { label: "Not configured", tone: "neutral" }
+      ? { label: "Not configured", tone: "neutral", indicator: "inactive" }
       : !config.enabled
-        ? { label: "Disabled", tone: "neutral" }
+        ? { label: "Disabled", tone: "neutral", indicator: "inactive" }
         : !status.credentials.present
           ? { label: "Credential missing", tone: "warning" }
           : !credentialIdentitiesAvailable
             ? { label: "Credential incomplete", tone: "warning" }
-            : { label: "Ready to verify", tone: "info" };
+            : { label: "Ready to verify", tone: "info", indicator: "pending" };
   const roster = !config
     ? "Not configured"
     : config.mailboxMode === "directory"
@@ -297,7 +297,7 @@ export function OperatorGoogleWorkspaceContent({
         <OperationalPanelHeader
           title="Company mailbox access"
           action={
-            <StatusTag tone={presentation.tone}>{presentation.label}</StatusTag>
+            <StatusTag tone={presentation.tone} indicator={presentation.indicator}>{presentation.label}</StatusTag>
           }
         />
         <OperationalLabelValueRow label="Mailbox roster" value={roster} />

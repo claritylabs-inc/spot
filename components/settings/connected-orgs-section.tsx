@@ -10,9 +10,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
-  AlertCircle,
   Check,
-  CheckCircle2,
   FileText,
   Link2,
   RefreshCw,
@@ -126,10 +124,10 @@ function VendorStatusTag({
   complianceSummary?: VendorComplianceSummary;
 }) {
   if (row.status !== "active") {
-    return <StatusTag tone="warning">Invited</StatusTag>;
+    return <StatusTag tone="warning" indicator="waiting">Invited</StatusTag>;
   }
   if (!complianceSummary || complianceSummary.policyCount === 0) {
-    return <StatusTag>Waiting on policies</StatusTag>;
+    return <StatusTag indicator="waiting">Waiting on policies</StatusTag>;
   }
   if (complianceSummary.status === "compliant") {
     return (
@@ -139,7 +137,6 @@ function VendorStatusTag({
   if (complianceSummary.status === "attention") {
     return (
       <StatusTag tone="warning">
-        <AlertCircle className="h-3 w-3" />
         Needs attention
       </StatusTag>
     );
@@ -162,7 +159,7 @@ function RelationshipStatusTag({
         : status === "expired"
           ? "danger"
           : "neutral";
-  return <StatusTag tone={tone} className={`${typeStyle("label.tag")}`}>{status}</StatusTag>;
+  return <StatusTag tone={tone} indicator={status === "pending" ? "waiting" : status === "active" || status === "expired" ? undefined : "inactive"} className={`${typeStyle("label.tag")}`}>{status}</StatusTag>;
 }
 
 function formatDate(value: string | undefined) {
@@ -187,7 +184,6 @@ function ComplianceCheckStatusTag({
   if (status === "met") {
     return (
       <StatusTag tone="success">
-        <CheckCircle2 className="h-3 w-3" />
         Met
       </StatusTag>
     );
@@ -195,14 +191,12 @@ function ComplianceCheckStatusTag({
   if (status === "expiring_soon") {
     return (
       <StatusTag tone="warning">
-        <AlertCircle className="h-3 w-3" />
         Needs attention
       </StatusTag>
     );
   }
   return (
     <StatusTag tone="danger">
-      <AlertCircle className="h-3 w-3" />
       Not met
     </StatusTag>
   );

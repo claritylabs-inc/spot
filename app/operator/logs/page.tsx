@@ -31,6 +31,7 @@ import {
   displayTask,
   downloadReport,
   tokens,
+  callStatusPresentation,
 } from "./log-utils";
 
 export default function OperatorLogsPage() {
@@ -323,14 +324,7 @@ export default function OperatorLogsPage() {
                   </TableCell>
                   <TableCell>
                     <StatusTag
-                      tone={
-                        call.status === "error"
-                          ? "danger"
-                          : call.status === "incomplete" ||
-                              call.status === "unknown"
-                            ? "warning"
-                            : "neutral"
-                      }
+                      {...callStatusPresentation(call.status)}
                     >
                       {displayTask(call.status ?? "unknown")}
                     </StatusTag>

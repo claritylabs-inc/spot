@@ -22,7 +22,7 @@ import {
   type CertificateVersionRecord,
   type PolicyCertificateRecord,
 } from "@/components/certificates/certificate-workspace";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusLabel, StatusTag, type StatusPresentation } from "@/components/ui/status-tag";
 import {
   OperationalItem,
   OperationalPanel,
@@ -89,6 +89,12 @@ const TABS: Array<{ value: CertificateWorkspaceTab; label: string }> = [
   { value: "archived", label: "Archived" },
 ];
 
+const TAB_STATUS: Record<CertificateWorkspaceTab, StatusPresentation> = {
+  active: { tone: "success" },
+  review: { tone: "warning", indicator: "waiting" },
+  archived: { tone: "neutral", indicator: "inactive" },
+};
+
 function certificatePolicyFilterValue(row: PolicyCertificateRecord): CertificatePolicyFilter {
   return `policy:${String(row.policyId)}`;
 }
@@ -141,7 +147,11 @@ function ReviewJobRow({
             <p className={`min-w-0 max-w-full truncate text-foreground ${typeStyle("body.medium")}`}>
               {job.holder?.displayName ?? job.recipientName ?? "Certificate holder"}
             </p>
-            <StatusTag tone={jobTone(job.status)} className={`${typeStyle("label.tag")}`}>
+            <StatusTag
+              tone={jobTone(job.status)}
+              indicator={job.status === "review_required" ? "waiting" : job.status === "cancelled" ? "cancelled" : undefined}
+              className={typeStyle("label.tag")}
+            >
               {job.status.replace(/_/g, " ")}
             </StatusTag>
           </div>
@@ -510,14 +520,15 @@ export function CertificatesWorkspace({
     >
       <SelectTrigger className="w-40" aria-label="Certificate status">
         <SelectValue>
-          {visibleTabs.find((item) => item.value === visibleTab)?.label ??
-            "Active"}
+          <StatusLabel {...TAB_STATUS[visibleTab]}>
+            {visibleTabs.find((item) => item.value === visibleTab)?.label ?? "Active"}
+          </StatusLabel>
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {visibleTabs.map((item) => (
           <SelectItem key={item.value} value={item.value}>
-            {item.label}
+            <StatusLabel {...TAB_STATUS[item.value]}>{item.label}</StatusLabel>
           </SelectItem>
         ))}
       </SelectContent>

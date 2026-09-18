@@ -1,5 +1,7 @@
 "use client";
 
+import { StatusTag } from "@/components/ui/status-tag";
+
 import {
   useCallback,
   useLayoutEffect,
@@ -668,7 +670,7 @@ export function MailboxSettingsDrawer({
             <OperationalLabelValueList>
               <OperationalLabelValueRow
                 label="Status"
-                value={healthy ? "Connected" : "Needs attention"}
+                value={<StatusTag tone={healthy ? "success" : "warning"}>{healthy ? "Connected" : "Needs attention"}</StatusTag>}
               />
               <OperationalLabelValueRow
                 label="Last checked"
