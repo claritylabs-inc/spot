@@ -1,5 +1,8 @@
 "use client";
 
+import { RequestEditor } from "./procurement-request-workspace";
+import { PacketLinkDrawer } from "./packet-workspace";
+
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 
 import {
@@ -82,13 +85,70 @@ function ProcurementRequestPreview({
   request,
   basePath,
   onClose,
+  policies,
+  readOnly,
 }: {
   request: ProcurementRequestRow;
   basePath: string;
   onClose: () => void;
+  policies: PolicyOption[];
+  readOnly: boolean;
 }) {
+  const details = useQuery(api.procurementRequests.get, {
+    requestId: request._id,
+  });
+  const currentRequest = details?.request ?? request;
+  const links = useQuery(
+    api.procurementPacket.listLinks,
+    readOnly ? "skip" : { requestId: request._id },
+  );
+  const hasBrokerLink = links?.some(
+    (link) => link.outreachId === null && link.state === "active",
+  );
+  const updateRequest = useMutation(api.procurementRequests.update);
+  const [saving, setSaving] = useState(false);
+
+  async function updateQuickField(patch: {
+    status?: ProcurementRequestStatus;
+    targetEffectiveDate?: string | null;
+  }) {
+    setSaving(true);
+    try {
+      await updateRequest({ requestId: request._id, ...patch });
+      return true;
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not update the request"),
+      );
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const [view, setView] = useState<"summary" | "edit" | "links">("summary");
+  const back = () => setView("summary");
+
+  if (view === "edit" && details && !readOnly) {
+    return (
+      <RequestEditor
+        request={details.request}
+        policies={policies}
+        onClose={back}
+      />
+    );
+  }
+  if (view === "links" && !readOnly) {
+    return (
+      <PacketLinkDrawer
+        requestId={request._id}
+        onClose={back}
+        beforeRegenerate={() => Promise.resolve(true)}
+      />
+    );
+  }
   async function copyAddress() {
-    await navigator.clipboard.writeText(request.forwardingAddress);
+    await navigator.clipboard.writeText(currentRequest.forwardingAddress);
     toast.success("Forwarding address copied");
   }
 
@@ -98,45 +158,143 @@ function ProcurementRequestPreview({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={request.title}
-      actions={<RequestStatusTag status={request.status} />}
+      title={currentRequest.title}
       footer={
-        <PillButton
-          href={`${basePath}/${request._id}`}
-          size="compact"
-          className="w-full sm:w-auto"
-        >
-          <PanelRightOpen className="size-3.5" />
-          Open full workspace
-        </PillButton>
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          {!readOnly ? (
+            <>
+              <PillButton
+                variant="secondary"
+                disabled={!details}
+                onClick={() => setView("edit")}
+              >
+                Edit request
+              </PillButton>
+              <PillButton
+                variant="secondary"
+                disabled={links === undefined}
+                onClick={() => setView("links")}
+              >
+                {links === undefined
+                  ? "Loading broker link…"
+                  : hasBrokerLink
+                    ? "View broker link"
+                    : "Create broker link"}
+              </PillButton>
+            </>
+          ) : null}
+          <PillButton
+            href={`${basePath}/${currentRequest._id}`}
+            size="compact"
+            className="w-full sm:w-auto"
+          >
+            <PanelRightOpen className="size-3.5" />
+            Open full workspace
+          </PillButton>
+        </div>
       }
     >
       <div className="space-y-5">
-        <OperationalLabelValueList title="Current state">
-          <RequestCompletionOutcome outcome={request.completionOutcome} />
-          <OperationalLabelValueRow
-            label="Target effective date"
-            value={formatDisplayDate(request.targetEffectiveDate, "Not set")}
+        {!readOnly ? (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Status
+              </span>
+              <Select
+                value={currentRequest.status}
+                disabled={saving}
+                onValueChange={(value) => {
+                  if (value !== currentRequest.status)
+                    void updateQuickField({
+                      status: value as ProcurementRequestStatus,
+                    });
+                }}
+              >
+                <SelectTrigger className="w-full" aria-label="Request status">
+                  <SelectValue>
+                    <RequestStatusLabel status={currentRequest.status} />
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {REQUEST_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <RequestStatusLabel status={option.value} />
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="block space-y-1.5">
+              <span
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Target effective date
+              </span>
+              <Input
+                key={currentRequest.targetEffectiveDate ?? "unset"}
+                type="date"
+                aria-label="Target effective date"
+                defaultValue={currentRequest.targetEffectiveDate ?? ""}
+                disabled={saving}
+                onBlur={async (event) => {
+                  const input = event.currentTarget;
+                  if (!input.validity.valid) return;
+                  const value = input.value;
+                  if (value === (currentRequest.targetEffectiveDate ?? ""))
+                    return;
+                  if (
+                    !(await updateQuickField({
+                      targetEffectiveDate: value || null,
+                    }))
+                  ) {
+                    input.value = currentRequest.targetEffectiveDate ?? "";
+                  }
+                }}
+              />
+            </label>
+          </div>
+        ) : null}
+        <OperationalLabelValueList>
+          {readOnly ? (
+            <>
+              <OperationalLabelValueRow
+                label="Status"
+                value={<RequestStatusTag status={currentRequest.status} />}
+              />
+              <OperationalLabelValueRow
+                label="Target effective date"
+                value={formatDisplayDate(
+                  currentRequest.targetEffectiveDate,
+                  "Not set",
+                )}
+              />
+            </>
+          ) : null}
+          <RequestCompletionOutcome
+            outcome={currentRequest.completionOutcome}
           />
+          {currentRequest.replacingPolicy ? (
+            <OperationalLabelValueRow
+              label="Replaces"
+              value={currentRequest.replacingPolicy.label}
+            />
+          ) : null}
+          {currentRequest.resultingPolicy ? (
+            <OperationalLabelValueRow
+              label="Resulting policy"
+              value={currentRequest.resultingPolicy.label}
+            />
+          ) : null}
           <OperationalLabelValueRow
-            label="Replaces"
-            value={request.replacingPolicy?.label ?? "No policy"}
-          />
-          <OperationalLabelValueRow
-            label="Resulting policy"
-            value={request.resultingPolicy?.label ?? "Not linked"}
-          />
-          <OperationalLabelValueRow
-            label="Broker activity"
-            value={`${request.brokerCount} ${request.brokerCount === 1 ? "broker" : "brokers"} · ${request.quoteCount} ${request.quoteCount === 1 ? "quote" : "quotes"}`}
-          />
-          <OperationalLabelValueRow
-            label="Email"
-            value={`${request.emailThreadCount} ${request.emailThreadCount === 1 ? "thread" : "threads"}`}
+            label="Activity"
+            value={`${currentRequest.brokerCount} ${currentRequest.brokerCount === 1 ? "broker" : "brokers"} · ${currentRequest.quoteCount} ${currentRequest.quoteCount === 1 ? "quote" : "quotes"} · ${currentRequest.emailThreadCount} email ${currentRequest.emailThreadCount === 1 ? "thread" : "threads"}`}
           />
           <OperationalLabelValueRow
             label="Updated"
-            value={formatDisplayDate(request.updatedAt, "—")}
+            value={formatDisplayDate(currentRequest.updatedAt, "—")}
           />
         </OperationalLabelValueList>
 
@@ -147,13 +305,13 @@ function ProcurementRequestPreview({
             value={
               <span className="flex min-w-0 items-start gap-2">
                 <span className="min-w-0 flex-1 break-all">
-                  {request.forwardingAddress}
+                  {currentRequest.forwardingAddress}
                 </span>
                 <PillButton
                   type="button"
                   variant="icon"
                   iconOnly
-                  label={`Copy forwarding address for ${request.title}`}
+                  label={`Copy forwarding address for ${currentRequest.title}`}
                   onClick={() => void copyAddress()}
                 >
                   <Copy className="size-3.5" />
@@ -384,13 +542,16 @@ export function ProcurementListWorkspace({
       setSelectedRequestId(request._id);
       onRightPanel(
         <ProcurementRequestPreview
+          key={request._id}
           request={request}
+          policies={policies}
+          readOnly={readOnly}
           basePath={basePath}
           onClose={closeRightPanel}
         />,
       );
     },
-    [basePath, closeRightPanel, onRightPanel],
+    [basePath, closeRightPanel, onRightPanel, policies, readOnly],
   );
 
   useEffect(() => {
