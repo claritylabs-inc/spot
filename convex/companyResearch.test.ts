@@ -9,19 +9,41 @@ import { manualWikiDocument } from "./lib/orgWikiDocument";
 import { readOrgWiki } from "./orgWiki";
 import { readMarkdownHeading } from "./lib/markdownDocument";
 import { scheduleCompanyResearch } from "./companyResearch";
-import { runWebRetrieval } from "./lib/webRetrieval";
+import { runProfileWebRetrieval } from "./lib/webRetrieval";
+import { clRouterDecide } from "./lib/clRouterClient";
 import { generateObjectForOrg } from "./lib/models";
 
-vi.mock("./lib/webRetrieval", () => ({ runWebRetrieval: vi.fn() }));
+vi.mock("./lib/clRouterClient", () => ({ clRouterDecide: vi.fn() }));
+vi.mock("./lib/webRetrieval", () => ({ runProfileWebRetrieval: vi.fn() }));
 vi.mock("./lib/models", () => ({ generateObjectForOrg: vi.fn() }));
 const modules = import.meta.glob("./**/*.ts");
 const run = makeFunctionReference<"action">("actions/companyResearch:run");
 const claim = makeFunctionReference<"mutation">("companyResearch:claim");
 const complete = makeFunctionReference<"mutation">("companyResearch:complete");
 const fail = makeFunctionReference<"mutation">("companyResearch:fail");
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.mocked(clRouterDecide).mockImplementation(
+    async (request) =>
+      ({
+        answers: Object.fromEntries(
+          Object.keys(request.questions).map((key) => [
+            key,
+            {
+              type: "noul",
+              noul:
+                request.task === "profile_research_orchestration" &&
+                JSON.parse(request.state as string).evidence.length === 0
+                  ? 0
+                  : 0.95,
+            },
+          ]),
+        ),
+      }) as never,
+  );
+});
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.useRealTimers();
 });
 
@@ -58,7 +80,7 @@ test("intake searches public identity and adds cited facts without replacing man
       expectedRevision: 0,
     });
   });
-  vi.mocked(runWebRetrieval).mockResolvedValue({
+  vi.mocked(runProfileWebRetrieval).mockResolvedValue({
     provider: "model_default",
     attempts: [],
     text: "Cove Software Inc. operates Cove at cove.example, creating business software.",
@@ -93,8 +115,8 @@ test("intake searches public identity and adds cited facts without replacing man
       },
     } as never);
   await t.action(run, { orgId });
-  expect(runWebRetrieval).toHaveBeenCalledTimes(2);
-  const searchInput = vi.mocked(runWebRetrieval).mock.calls[0][2];
+  expect(runProfileWebRetrieval).toHaveBeenCalledTimes(5);
+  const searchInput = vi.mocked(runProfileWebRetrieval).mock.calls[0][2];
   expect(searchInput.query).toContain("Cove");
   expect(JSON.stringify(searchInput)).not.toContain("PRIVATE-TAX-ID");
   await t.run(async (ctx) => {
@@ -115,19 +137,19 @@ test("intake searches public identity and adds cited facts without replacing man
     expect(await scheduleCompanyResearch(ctx, orgId)).toBe(false);
   });
   await t.action(run, { orgId });
-  expect(runWebRetrieval).toHaveBeenCalledTimes(2);
+  expect(runProfileWebRetrieval).toHaveBeenCalledTimes(5);
 });
 
 test("research accepts root and www variants across discovery, retrieval and completion", async () => {
   const { t, orgId } = await fixture();
-  vi.mocked(runWebRetrieval)
+  vi.mocked(runProfileWebRetrieval)
     .mockResolvedValueOnce({
       provider: "model_default",
       attempts: [],
       text: "Cove Software Inc. operates Cove.",
       sources: [{ url: "https://www.cove.example/about" }],
     })
-    .mockResolvedValueOnce({
+    .mockResolvedValue({
       provider: "model_default",
       attempts: [],
       text: "Cove creates business software.",
@@ -159,8 +181,7 @@ test("research accepts root and www variants across discovery, retrieval and com
 
   await t.action(run, { orgId });
 
-  expect(vi.mocked(runWebRetrieval).mock.calls[1][2]).toMatchObject({
-    url: "https://cove.example/",
+  expect(vi.mocked(runProfileWebRetrieval).mock.calls[1][2]).toMatchObject({
     allowedDomains: ["cove.example", "www.cove.example"],
   });
   await t.run(async (ctx) => {
@@ -182,7 +203,7 @@ test("research accepts root and www variants across discovery, retrieval and com
 
 test("research rejects non-www subdomains as different sites", async () => {
   const { t, orgId } = await fixture();
-  vi.mocked(runWebRetrieval).mockResolvedValueOnce({
+  vi.mocked(runProfileWebRetrieval).mockResolvedValueOnce({
     provider: "model_default",
     attempts: [],
     text: "A blog mentions Cove Software Inc.",
@@ -199,7 +220,7 @@ test("research rejects non-www subdomains as different sites", async () => {
 
   await t.action(run, { orgId });
 
-  expect(runWebRetrieval).toHaveBeenCalledTimes(1);
+  expect(runProfileWebRetrieval).toHaveBeenCalledTimes(1);
   await t.run(async (ctx) => {
     const org = await ctx.db.get(orgId);
     expect(org?.website).toBeUndefined();
@@ -572,5 +593,323 @@ test("later incomplete research preserves accumulated verified wiki facts", asyn
     const wiki = await readOrgWiki(ctx, orgId);
     expect(wiki.body).toContain(firstFact.content);
     expect(wiki.body).toContain(firstFact.sourceRef);
+  });
+});
+
+test("broker enrichment preserves manual fields and retracts only owned values after identity changes", async () => {
+  const { t } = await fixture();
+  const { orgId, profileId } = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { name: "Operator" });
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Example Brokerage",
+      type: "broker",
+      website: "https://broker.example",
+    });
+    const profileId = await ctx.db.insert("brokerProfiles", {
+      brokerOrgId: orgId,
+      networkStatus: "prospect",
+      writingStates: ["CA"],
+      lineOfBusinessCodes: [],
+      createdByUserId: userId,
+      updatedByUserId: userId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await scheduleCompanyResearch(ctx, orgId);
+    return { orgId, profileId };
+  });
+  const lease = await t.mutation(claim, { orgId });
+  await t.mutation(complete, {
+    orgId,
+    leaseId: lease.leaseId,
+    fingerprint: lease.fingerprint,
+    profileUpdatedAt: lease.profileUpdatedAt,
+    sourceUrls: ["https://broker.example/products"],
+    facts: [
+      {
+        key: "operations",
+        content: "Offers commercial insurance",
+        sourceRef: "https://broker.example/products",
+      },
+    ],
+    brokerFindings: {
+      writingStates: [
+        {
+          code: "NV",
+          confidence: 0.95,
+        },
+      ],
+      lineOfBusinessCodes: [
+        {
+          code: "CGL",
+          confidence: 0.95,
+        },
+        {
+          code: "PROP",
+          confidence: 0.7,
+        },
+      ],
+    },
+  });
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(profileId)).toMatchObject({
+      writingStates: ["CA"],
+      lineOfBusinessCodes: ["CGL"],
+    });
+    expect(
+      (await ctx.db.get(orgId))?.companyResearch?.unresolvedFields,
+    ).toContain("officeAddress");
+    await ctx.db.patch(orgId, { name: "Different Brokerage" });
+    await scheduleCompanyResearch(ctx, orgId);
+    expect(await ctx.db.get(profileId)).toMatchObject({
+      writingStates: ["CA"],
+      lineOfBusinessCodes: [],
+    });
+  });
+});
+
+test("broker research cannot overwrite a profile edited while retrieval was running", async () => {
+  const { t } = await fixture();
+  const { orgId, profileId } = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {});
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Example Brokerage",
+      type: "broker",
+      website: "https://broker.example",
+    });
+    const profileId = await ctx.db.insert("brokerProfiles", {
+      brokerOrgId: orgId,
+      networkStatus: "prospect",
+      writingStates: [],
+      lineOfBusinessCodes: [],
+      createdByUserId: userId,
+      updatedByUserId: userId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await scheduleCompanyResearch(ctx, orgId);
+    return { orgId, profileId };
+  });
+  const lease = await t.mutation(claim, { orgId });
+  await t.run((ctx) =>
+    ctx.db.patch(profileId, { writingStates: ["OR"], updatedAt: 2 }),
+  );
+  await t.mutation(complete, {
+    orgId,
+    leaseId: lease.leaseId,
+    fingerprint: lease.fingerprint,
+    profileUpdatedAt: lease.profileUpdatedAt,
+    sourceUrls: ["https://broker.example/products"],
+    facts: [],
+    brokerFindings: {
+      writingStates: [
+        {
+          code: "CA",
+          confidence: 0.99,
+        },
+      ],
+      lineOfBusinessCodes: [],
+    },
+  });
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(profileId))?.writingStates).toEqual(["OR"]);
+    expect(
+      (await ctx.db.get(orgId))?.companyResearch?.unresolvedFields,
+    ).toContain("profileChangedDuringResearch");
+  });
+});
+
+test("partial refresh adds verified facts while a failed verification preserves earlier evidence", async () => {
+  const { t, orgId } = await fixture();
+  const oldFact = {
+    key: "operations" as const,
+    content: "Cove builds software.",
+    sourceRef: "https://cove.example/about",
+  };
+  const first = await t.mutation(claim, { orgId });
+  await t.mutation(complete, {
+    orgId,
+    leaseId: first.leaseId,
+    fingerprint: first.fingerprint,
+    website: "https://cove.example/",
+    sourceUrls: [oldFact.sourceRef],
+    facts: [oldFact],
+  });
+  await t.run((ctx) => scheduleCompanyResearch(ctx, orgId, { force: true }));
+  const second = await t.mutation(claim, { orgId });
+  const newFact = {
+    key: "profile" as const,
+    content: "Cove is headquartered in California.",
+    sourceRef: "https://cove.example/contact",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: second.leaseId,
+    fingerprint: second.fingerprint,
+    sourceUrls: [newFact.sourceRef],
+    facts: [newFact],
+    unresolvedFields: ["scale"],
+  });
+  expect(
+    (await t.run((ctx) => ctx.db.get(orgId)))?.companyResearch,
+  ).toMatchObject({ status: "partial", facts: [oldFact, newFact] });
+  await t.run((ctx) => scheduleCompanyResearch(ctx, orgId, { force: true }));
+  const third = await t.mutation(claim, { orgId });
+  await t.mutation(complete, {
+    orgId,
+    leaseId: third.leaseId,
+    fingerprint: third.fingerprint,
+    sourceUrls: [oldFact.sourceRef],
+    facts: [],
+  });
+  expect(
+    (await t.run((ctx) => ctx.db.get(orgId)))?.companyResearch,
+  ).toMatchObject({
+    status: "partial",
+    facts: [oldFact, newFact],
+    unresolvedFields: ["companyFacts"],
+  });
+});
+
+test("a deliberately cleared broker field remains empty after subsequent enrichment", async () => {
+  const { t } = await fixture();
+  const { orgId, userId } = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { accountKind: "operator" });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "operator@example.com",
+      role: "operator",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Example Brokerage",
+      type: "broker",
+      website: "https://broker.example",
+    });
+    await ctx.db.insert("brokerProfiles", {
+      brokerOrgId: orgId,
+      networkStatus: "prospect",
+      writingStates: ["CA"],
+      lineOfBusinessCodes: [],
+      createdByUserId: userId,
+      updatedByUserId: userId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await scheduleCompanyResearch(ctx, orgId);
+    return { orgId, userId };
+  });
+  await t
+    .withIdentity({ subject: `${userId}|session` })
+    .mutation(makeFunctionReference<"mutation">("brokerProfiles:upsert"), {
+      brokerOrgId: orgId,
+      writingStates: [],
+    });
+  const lease = await t.mutation(claim, { orgId });
+  await t.mutation(complete, {
+    orgId,
+    leaseId: lease.leaseId,
+    fingerprint: lease.fingerprint,
+    profileUpdatedAt: lease.profileUpdatedAt,
+    sourceUrls: ["https://broker.example/products"],
+    facts: [],
+    brokerFindings: {
+      writingStates: [{ code: "CA", confidence: 0.95 }],
+      lineOfBusinessCodes: [],
+    },
+  });
+  const profile = await t.run((ctx) =>
+    ctx.db
+      .query("brokerProfiles")
+      .withIndex("broker", (q) => q.eq("brokerOrgId", orgId))
+      .unique(),
+  );
+  expect(profile).toMatchObject({
+    writingStates: [],
+    manualFields: ["writingStates"],
+  });
+});
+
+test("broker refresh improves a resolved dimension without erasing facts or an unverified address", async () => {
+  const { t } = await fixture();
+  const { orgId, profileId } = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {});
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Example Brokerage",
+      type: "broker",
+      website: "https://broker.example",
+    });
+    const profileId = await ctx.db.insert("brokerProfiles", {
+      brokerOrgId: orgId,
+      networkStatus: "prospect",
+      writingStates: [],
+      lineOfBusinessCodes: [],
+      createdByUserId: userId,
+      updatedByUserId: userId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await scheduleCompanyResearch(ctx, orgId);
+    return { orgId, profileId };
+  });
+  const first = await t.mutation(claim, { orgId });
+  const source = "https://broker.example/about";
+  const fact = {
+    key: "operations" as const,
+    content: "Offers commercial insurance.",
+    sourceRef: source,
+  };
+  const officeAddress = {
+    street1: "1 Main St",
+    city: "Sacramento",
+    state: "CA",
+  };
+  await t.mutation(complete, {
+    orgId,
+    leaseId: first.leaseId,
+    fingerprint: first.fingerprint,
+    profileUpdatedAt: first.profileUpdatedAt,
+    sourceUrls: [source],
+    facts: [fact],
+    brokerFindings: {
+      writingStates: [{ code: "CA", confidence: 0.95 }],
+      lineOfBusinessCodes: [{ code: "CGL", confidence: 0.95 }],
+      officeAddress,
+      officeSourceRef: source,
+    },
+  });
+  await t.run((ctx) => scheduleCompanyResearch(ctx, orgId, { force: true }));
+  const second = await t.mutation(claim, { orgId });
+  await t.mutation(complete, {
+    orgId,
+    leaseId: second.leaseId,
+    fingerprint: second.fingerprint,
+    profileUpdatedAt: second.profileUpdatedAt,
+    sourceUrls: ["https://broker.example/locations"],
+    facts: [],
+    unresolvedFields: ["scale"],
+    brokerFindings: {
+      writingStates: [{ code: "NV", confidence: 0.95 }],
+      lineOfBusinessCodes: [],
+    },
+  });
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(profileId)).toMatchObject({
+      writingStates: ["NV"],
+      lineOfBusinessCodes: ["CGL"],
+      officeAddress,
+    });
+    expect((await ctx.db.get(orgId))?.companyResearch).toMatchObject({
+      status: "partial",
+      facts: [fact],
+    });
+    expect(
+      await ctx.db
+        .query("companyResearchEvents")
+        .withIndex("organization", (q) => q.eq("orgId", orgId))
+        .collect(),
+    ).toHaveLength(2);
   });
 });

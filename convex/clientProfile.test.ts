@@ -25,7 +25,10 @@ test("identity edits validate names and research requires a client", async () =>
       type: "broker",
     });
     const preflight = (
-      toolName: "update_organization_profile" | "research_client",
+      toolName:
+        | "update_organization_profile"
+        | "research_client"
+        | "research_broker",
       input: Record<string, unknown>,
     ) =>
       preflightOperatorToolConfirmation(ctx, {
@@ -43,6 +46,20 @@ test("identity edits validate names and research requires a client", async () =>
         website: "https://harbor.example",
       }),
     ).resolves.toBeUndefined();
+    await expect(preflight("research_broker", { orgId })).rejects.toThrow(
+      "Broker organization",
+    );
+    await expect(
+      preflight("research_broker", { orgId: brokerId }),
+    ).resolves.toBeUndefined();
+    const ownedBrokerId = await ctx.db.insert("organizations", {
+      name: "Spot",
+      type: "broker",
+      website: "https://spot.insure",
+    });
+    await expect(
+      preflight("research_broker", { orgId: ownedBrokerId }),
+    ).rejects.toThrow("Spot-owned");
     await expect(
       preflight("research_client", { orgId: brokerId }),
     ).rejects.toThrow("Client organization");

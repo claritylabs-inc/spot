@@ -2909,3 +2909,18 @@ test.each(["client", "broker"] as const)(
     });
   },
 );
+
+test("broker activity remains operator-private", async () => {
+  const f = await fixture();
+  await expect(
+    f.broker.query(api.brokerProfiles.activity, { brokerOrgId: f.brokerOrgId }),
+  ).rejects.toThrow();
+  await expect(
+    f.client.query(api.brokerProfiles.activity, { brokerOrgId: f.brokerOrgId }),
+  ).rejects.toThrow();
+  await expect(
+    f.operator.query(api.brokerProfiles.activity, {
+      brokerOrgId: f.brokerOrgId,
+    }),
+  ).resolves.toEqual([]);
+});

@@ -90,7 +90,7 @@ export function operatorPageContextFromPathname(
   }
 
   const summaryByArea: Record<string, string> = {
-    brokers: "Broker organizations",
+    brokers: "Insurance providers",
     channels: "Agent channels",
     clients: "Client organizations",
     compliance: "Client compliance",

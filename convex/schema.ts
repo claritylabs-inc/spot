@@ -616,7 +616,29 @@ export default defineSchema({
 
   // Supply-side broker directory data. A profile may exist without portal
   // users; portal access remains represented exclusively by orgMemberships.
+  companyResearchEvents: defineTable({
+    orgId: v.id("organizations"),
+    fingerprint: v.string(),
+    status: v.union(
+      v.literal("completed"),
+      v.literal("partial"),
+      v.literal("failed"),
+    ),
+    sourceCount: v.number(),
+    unresolvedFields: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("organization", ["orgId", "createdAt"]),
+
   brokerProfiles: defineTable({
+    manualFields: v.optional(
+      v.array(
+        v.union(
+          v.literal("writingStates"),
+          v.literal("lineOfBusinessCodes"),
+          v.literal("officeAddress"),
+        ),
+      ),
+    ),
     brokerOrgId: v.id("organizations"),
     networkStatus: v.union(
       v.literal("prospect"),
@@ -636,8 +658,8 @@ export default defineSchema({
     ),
     writingStates: v.array(v.string()),
     lineOfBusinessCodes: v.array(v.string()),
-    createdByUserId: v.id("users"),
-    updatedByUserId: v.id("users"),
+    createdByUserId: v.optional(v.id("users")),
+    updatedByUserId: v.optional(v.id("users")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -2675,7 +2697,8 @@ export default defineSchema({
     .index("request_broker", ["requestId", "brokerOrgId"])
     .index("request", ["requestId", "updatedAt"])
     .index("organization", ["clientOrgId", "updatedAt"])
-    .index("broker", ["brokerOrgId", "updatedAt"]),
+    .index("broker", ["brokerOrgId", "updatedAt"])
+    .index("broker_sent", ["brokerOrgId", "sentAt"]),
 
   // Provider events for the operator's Quo broker-outreach number. These stay
   // outside customer channels and never enter the customer agent pipeline.
@@ -2805,6 +2828,7 @@ export default defineSchema({
   })
     .index("request", ["requestId", "updatedAt"])
     .index("broker", ["brokerOrgId", "updatedAt"])
+    .index("broker_created", ["brokerOrgId", "createdAt"])
     .index("outreach", ["outreachId", "updatedAt"])
     .index("request_status", ["requestId", "status", "updatedAt"]),
 
@@ -4509,7 +4533,9 @@ export default defineSchema({
     .index("idempotency", ["operatorUserId", "idempotencyKey"]),
 
   routerJobs: defineTable({
-    streamTarget: v.optional(v.union(v.id("threadMessages"), v.id("operatorAgentMessages"))),
+    streamTarget: v.optional(
+      v.union(v.id("threadMessages"), v.id("operatorAgentMessages")),
+    ),
     progressSequence: v.optional(v.number()),
     invocationKey: v.string(),
     operation: v.union(

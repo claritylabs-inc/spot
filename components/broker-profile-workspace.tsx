@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { Input } from "@/components/ui/input";
 import { TokenListField } from "@/components/broker-network/token-list-field";
 import {
@@ -42,7 +43,7 @@ export function BrokerProfileWorkspace() {
         <OperationalPanelBody
           className={`text-muted-foreground ${typeStyle("body.default")}`}
         >
-          Broker profile not found.
+          Insurance provider profile not found.
         </OperationalPanelBody>
       </OperationalPanel>
     );
@@ -76,6 +77,9 @@ function BrokerProfileEditor({
   const [line2, setLine2] = useState(
     profile.profile?.officeAddress?.street2 ?? "",
   );
+  const [country, setCountry] = useState(
+    profile.profile?.officeAddress?.country ?? "",
+  );
   const [city, setCity] = useState(profile.profile?.officeAddress?.city ?? "");
   const [state, setState] = useState(
     profile.profile?.officeAddress?.state ?? "",
@@ -94,6 +98,7 @@ function BrokerProfileEditor({
     website,
     line1,
     line2,
+    country,
     city,
     state,
     postalCode,
@@ -108,6 +113,7 @@ function BrokerProfileEditor({
     flush: async (next) => {
       const previous = savedValues.current;
       const officeChanged =
+        next.country !== previous.country ||
         next.line1 !== previous.line1 ||
         next.line2 !== previous.line2 ||
         next.city !== previous.city ||
@@ -121,6 +127,10 @@ function BrokerProfileEditor({
             : undefined,
         officeAddress: officeChanged
           ? {
+              country:
+                next.country !== previous.country
+                  ? next.country.trim()
+                  : undefined,
               street1:
                 next.line1 !== previous.line1 ? next.line1.trim() : undefined,
               street2:
@@ -146,7 +156,7 @@ function BrokerProfileEditor({
       savedValues.current = next;
     },
     errorMessage: (error) =>
-      getUserFacingErrorMessage(error, "Could not save the broker profile"),
+      getUserFacingErrorMessage(error, "Could not save the provider profile"),
   });
   const disabled = !canEdit;
   async function uploadLogo(file: File) {
@@ -172,10 +182,10 @@ function BrokerProfileEditor({
         brokerOrgId,
         iconStorageId: storageId,
       });
-      toast.success("Broker logo saved", { id: notification });
+      toast.success("Provider logo saved", { id: notification });
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(error, "Could not save the broker logo"),
+        getUserFacingErrorMessage(error, "Could not save the provider logo"),
         { id: notification },
       );
     } finally {
@@ -202,6 +212,7 @@ function BrokerProfileEditor({
                 <OrgBrandIcon
                   name={profile.broker.name}
                   iconUrl={profile.broker.iconUrl}
+                  website={profile.broker.website}
                   size="xl"
                   className="rounded-lg"
                 />
@@ -212,7 +223,9 @@ function BrokerProfileEditor({
                   <p
                     className={`text-muted-foreground ${typeStyle("caption.default")}`}
                   >
-                    {profile.broker.iconUrl ? "Current logo" : "No logo uploaded yet"}
+                    {profile.broker.iconUrl
+                      ? "Current logo"
+                      : "No logo uploaded yet"}
                   </p>
                 </div>
               </div>
@@ -231,11 +244,26 @@ function BrokerProfileEditor({
             </div>
           </Field>
           <Field label="Primary office address">
-            <Input
+            <AddressAutofillInput
+              id="broker-profile-office-address"
               disabled={disabled}
-              value={line1}
-              onChange={(event) => setLine1(event.target.value)}
-              placeholder="Address line 1"
+              display="street1"
+              value={{
+                street1: line1,
+                street2: line2,
+                city,
+                state,
+                zip: postalCode,
+                country,
+              }}
+              onChange={(next) => {
+                setLine1(next.street1 ?? "");
+                setCountry(next.country ?? "");
+                setLine2(next.street2 ?? "");
+                setCity(next.city ?? "");
+                setState(next.state ?? "");
+                setPostalCode(next.zip ?? "");
+              }}
             />
           </Field>
           <Field label="Address line 2">
@@ -272,10 +300,7 @@ function BrokerProfileEditor({
       </OperationalPanel>
       <OperationalPanel>
         <OperationalPanelBody className="grid gap-5 sm:grid-cols-2">
-          <Field
-            label="USPS writing states"
-            help="Press Enter or comma to add."
-          >
+          <Field label="States serviced" help="Press Enter or comma to add.">
             <TokenListField
               value={writingStates}
               onChange={setWritingStates}

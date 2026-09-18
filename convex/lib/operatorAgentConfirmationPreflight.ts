@@ -51,6 +51,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "create_client_organization",
   "update_organization_profile",
   "research_client",
+  "research_broker",
   "set_organization_status",
   "set_client_feature_flag",
   "send_operator_slack_message",
@@ -1009,6 +1010,9 @@ export async function preflightOperatorToolConfirmation(
         });
       return;
     }
+    case "research_broker":
+      await requireBrokerOrganization(ctx, args.input.orgId);
+      return;
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
       return;

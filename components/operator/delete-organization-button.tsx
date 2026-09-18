@@ -32,6 +32,7 @@ export function DeleteOrganizationButton({
   beforeDelete: () => Promise<boolean>;
   onDeleted: () => void;
 }) {
+  const typeLabel = type === "broker" ? "provider" : "client";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const remove = useMutation(api.operator.deleteOrganization);
@@ -42,10 +43,10 @@ export function DeleteOrganizationButton({
       await remove({ orgId, type });
       setOpen(false);
       onDeleted();
-      toast.success(`${type === "client" ? "Client" : "Broker"} deleted`);
+      toast.success(`${type === "client" ? "Client" : "Provider"} deleted`);
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(error, `Could not delete the ${type}`),
+        getUserFacingErrorMessage(error, `Could not delete the ${typeLabel}`),
       );
     } finally {
       setBusy(false);
@@ -59,7 +60,7 @@ export function DeleteOrganizationButton({
         disabled={disabled || busy}
         onClick={() => setOpen(true)}
       >
-        Delete {type}
+        Delete {typeLabel}
       </PillButton>
       <Dialog
         open={open}
@@ -69,9 +70,9 @@ export function DeleteOrganizationButton({
       >
         <DialogContent showCloseButton={!busy}>
           <DialogHeader>
-            <DialogTitle>Delete {type}</DialogTitle>
+            <DialogTitle>Delete {typeLabel}</DialogTitle>
             <DialogDescription>
-              Delete <strong>{name}</strong>? This removes the {type} from
+              Delete <strong>{name}</strong>? This removes the {typeLabel} from
               active lists and disables its workspace access. Policies, files,
               and procurement history are retained.
               {type === "broker"
@@ -95,7 +96,7 @@ export function DeleteOrganizationButton({
               onClick={() => void confirm()}
             >
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {busy ? "Deleting…" : `Delete ${type}`}
+              {busy ? "Deleting…" : `Delete ${typeLabel}`}
             </PillButton>
           </DialogFooter>
         </DialogContent>

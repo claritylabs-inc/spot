@@ -295,7 +295,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   search_organizations: defineOperatorTool({
     version: 1,
     description:
-      "Search Spot customer and external broker organizations; Spot-owned acquisition brands are excluded from broker results. Use this to resolve an exact organization ID before any organization write.",
+      "Search Spot customer and external insurance provider organizations (legacy type=broker covers carriers, MGAs, wholesalers, agencies and producers); Spot-owned acquisition brands are excluded from broker results. Use this to resolve an exact organization ID before any organization write.",
     inputSchema: z.object({
       query: omittable(z.string().max(200)),
       type: omittable(z.enum(["broker", "client"])),
@@ -841,7 +841,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_broker_network_profile: defineOperatorTool({
     version: 1,
     description:
-      "Read one exact external supplier-network broker profile; Spot-owned acquisition brands are ineligible. Includes neutral organization identity, office, writing states, exact ACORD LOBCd values, portal contacts, last outreach, and proposal count.",
+      "Read one exact external supplier-network insurance provider profile; Spot-owned acquisition brands are ineligible. Includes neutral organization identity, office, writing states, exact ACORD LOBCd values, portal contacts, last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
     inputSchema: z.object({ brokerOrgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -853,7 +853,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   list_broker_network_profiles: defineOperatorTool({
     version: 1,
     description:
-      "Search the external supplier-network broker directory by neutral identity, status, USPS writing state, or exact ACORD LOBCd value. Spot-owned acquisition brands are excluded, including legacy broker rows.",
+      "Search the external supplier-network insurance provider directory by neutral identity, status, USPS writing state, or exact ACORD LOBCd value. Spot-owned acquisition brands are excluded, including legacy broker rows.",
     inputSchema: z.object({
       query: omittable(z.string().max(200)),
       status: omittable(brokerNetworkStatus),
@@ -1486,9 +1486,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Select procurement proposal ${input.procurementProposalId}`,
   }),
   create_broker_network_profile: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Register a new external supplier-network broker organization and its network profile with no portal users and no invites. Spot-owned acquisition brands and domains cannot be registered; treat them as Spot. Search the broker network first and update the existing profile instead when the broker is already registered. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values. " +
+      "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy broker type covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned acquisition brands and domains cannot be registered; treat them as Spot. Search the broker network first and update the existing profile instead when the broker is already registered. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion. " +
       SPOT_ACQUISITION_GUIDANCE,
     inputSchema: z.object({
       name: z.string().min(1).max(200),
@@ -1515,9 +1515,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create broker network profile ${JSON.stringify(input.name)} with no portal users`,
   }),
   update_broker_network_profile: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Update supplied fields on one exact external supplier-network broker profile. Spot-owned acquisition identities are rejected. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged.",
+      "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned acquisition identities are rejected. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
     inputSchema: z
       .object({
         brokerOrgId: organizationId,
@@ -1776,9 +1776,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     },
   }),
   research_client: defineOperatorTool({
-    version: 1,
+    version: 2,
     description:
-      "Research an exact client's public identity and official website, and enrich its company Markdown with supported facts. Schedules durable research; read get_organization for completed, partial or failed outcomes. Never claim a queued task is complete.",
+      "Run Jev-orchestrated parallel public research of an exact client's identity, operations, locations and scale, and enrich its company Markdown with verified cited facts. Schedules durable research; read get_organization for completed, partial or failed outcomes. Never claim a queued task is complete.",
     inputSchema: z.object({ orgId: organizationId }),
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -1786,6 +1786,18 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => `Research and enrich client ${input.orgId}`,
+  }),
+  research_broker: defineOperatorTool({
+    version: 1,
+    description:
+      "Run Jev-orchestrated parallel public research for an exact external insurance provider (carrier, MGA, wholesaler, agency or producer). Verify its actual role and identity, gather cited profile evidence, and select states serviced and ACORD lines above 0.7 confidence. Fill missing profile fields without overwriting manual values. Read get_organization or get_broker_network_profile for completed, partial or failed outcomes; queued is not complete.",
+    inputSchema: z.object({ orgId: organizationId }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({ kind: "organization", id: input.orgId }),
+    summarize: (input) => `Research and enrich insurance provider ${input.orgId}`,
   }),
   set_organization_status: defineOperatorTool({
     version: 1,
@@ -1809,10 +1821,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       "Enable or disable one supported Spot feature flag for an exact client organization.",
     inputSchema: z.object({
       orgId: organizationId,
-      flagId: z.enum([
-        "connect_features",
-        "imessage_app_cards",
-      ]),
+      flagId: z.enum(["connect_features", "imessage_app_cards"]),
       enabled: z.boolean(),
     }),
     capability: "operator.organizations.write",

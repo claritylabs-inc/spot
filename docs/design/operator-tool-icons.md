@@ -8,7 +8,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 
 | Category | Lucide icon | Tools |
 | --- | --- | --- |
-| Public research | `Globe` | `web_search`, `research_client` |
+| Public research | `Globe` | `web_search`, `research_client`, `research_broker` |
 | Organizations | `Building2` | `search_organizations`, `get_organization`, `create_client_organization`, `update_organization_profile`, `set_organization_status` |
 | Broker network | `Users` | `get_broker_network_profile`, `list_broker_network_profiles`, `create_broker_network_profile`, `update_broker_network_profile`, `create_procurement_broker_outreach`, `update_procurement_broker_outreach` |
 | Email | `Mail` | `list_company_mailboxes`, `search_company_email`, `read_company_email_thread`, `get_procurement_forwarding_address`, `list_procurement_email_threads`, `get_procurement_email_thread`, `preview_procurement_email_reconciliation`, `update_procurement_email_thread`, `file_procurement_email_quote` |

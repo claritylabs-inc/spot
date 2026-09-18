@@ -1,4 +1,8 @@
-import { isLobCode, type AcordLobCode } from "./linesOfBusiness";
+import {
+  ACORD_LOB_CODES,
+  isLobCode,
+  type AcordLobCode,
+} from "./linesOfBusiness";
 import { NoWriteInputError } from "./noWriteInputError";
 import acquisitionBrands from "../../config/spot-acquisition-domains.json";
 
@@ -214,7 +218,17 @@ export function normalizeBrokerLineOfBusinessCodes(
   values: readonly string[],
 ): AcordLobCode[] {
   const lines = Array.from(
-    new Set(values.map((value) => value.trim().toUpperCase()).filter(Boolean)),
+    new Set(
+      values
+        .map((value) => {
+          const normalized = value.trim().toUpperCase();
+          return (
+            ACORD_LOB_CODES.find((code) => code.toUpperCase() === normalized) ??
+            normalized
+          );
+        })
+        .filter(Boolean),
+    ),
   );
   const invalid = lines.filter((line) => !isLobCode(line));
   if (invalid.length > 0) {
