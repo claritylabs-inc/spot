@@ -4,7 +4,13 @@ export const CHAT_PRESENTATION_VERSION = 1 as const;
 export const CHAT_PRESENTATION_MAX_BYTES = 96 * 1024;
 const text = z.string().max(4000);
 const label = z.string().min(1).max(200);
-const id = z.string().min(1).max(200);
+const id = z
+  .string()
+  .min(1)
+  .max(200)
+  .refine(
+    (value) => !["__proto__", "prototype", "constructor"].includes(value),
+  );
 const sourceIds = z.array(id).max(12);
 export const presentationReferenceSchema = z
   .object({
@@ -36,13 +42,20 @@ const finding = z
   })
   .strict();
 const choice = z.object({ value: id, label }).strict();
+const choices = z
+  .array(choice)
+  .max(40)
+  .refine(
+    (options) =>
+      new Set(options.map((option) => option.value)).size === options.length,
+  );
 const field = z
   .object({
     id,
     label,
     type: z.enum(["text", "number", "date", "choice", "record"]),
     required: z.boolean(),
-    options: z.array(choice).max(40).optional(),
+    options: choices.optional(),
   })
   .strict();
 export const presentationPropsSchemas = {
@@ -102,7 +115,7 @@ export const presentationPropsSchemas = {
   ChoiceGroup: z
     .object({
       label,
-      options: z.array(choice).min(1).max(20),
+      options: choices.min(1).max(20),
       submitLabel: label,
     })
     .strict(),
@@ -114,7 +127,17 @@ export const presentationPropsSchemas = {
     })
     .strict(),
   ClarificationForm: z
-    .object({ fields: z.array(field).min(1).max(8), submitLabel: label })
+    .object({
+      fields: z
+        .array(field)
+        .min(1)
+        .max(8)
+        .refine(
+          (fields) =>
+            new Set(fields.map((field) => field.id)).size === fields.length,
+        ),
+      submitLabel: label,
+    })
     .strict(),
   ActionGroup: z
     .object({
@@ -243,6 +266,22 @@ export function parseChatPresentation(value: unknown): ChatPresentation | null {
           new Set(props.columns.map((column) => column.id)).size !==
             props.columns.length ||
           props.rows.some((row) => row.values.length !== props.columns.length)
+        )
+          return null;
+      }
+      if (type === "ClarificationForm") {
+        const props = parsed.data as PresentationProps<"ClarificationForm">;
+        if (
+          props.fields.some((field) => {
+            if (field.type === "choice" || field.type === "record") {
+              if (!field.options?.length) return true;
+              return (
+                field.type === "record" &&
+                field.options.some((option) => !references.has(option.value))
+              );
+            }
+            return field.options !== undefined;
+          })
         )
           return null;
       }
