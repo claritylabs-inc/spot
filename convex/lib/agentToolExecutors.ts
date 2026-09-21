@@ -233,12 +233,9 @@ async function listPoliciesForReadableOrgs(
   const readOrgIds = options.readOrgIds ?? options.scope.readOrgIds;
   const rows = await Promise.all(
     readOrgIds.map(async (orgId) => {
-      const policies = await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        {
-          orgId,
-        },
-      );
+      const policies = await ctx.runQuery(internal.policies.listAllPreviewReadableInternal, {
+        orgId,
+      });
       return (policies as Array<Record<string, unknown>>).map((policy) => ({
         ...policy,
         _scopeOrgName: orgLabelForScope(options.scope, orgId),
@@ -516,7 +513,10 @@ export function buildAgentToolExecutors(
               (order.get(String(left._id)) ?? Number.MAX_SAFE_INTEGER) -
               (order.get(String(right._id)) ?? Number.MAX_SAFE_INTEGER),
           );
-        } else if (expiringWithinDays !== undefined && scored.length === 0) {
+        } else if (
+          expiringWithinDays !== undefined &&
+          scored.length === 0
+        ) {
           matches = [...matches].sort(
             (left, right) =>
               dayjs(left.expirationDate).valueOf() -

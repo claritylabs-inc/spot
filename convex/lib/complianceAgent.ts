@@ -104,9 +104,7 @@ function formatRequirementDetails(requirement: Requirement) {
     requirement.lineOfBusiness
       ? `lineOfBusiness: ${requirement.lineOfBusiness} (${lobLabel(requirement.lineOfBusiness)})`
       : undefined,
-    requirement.limits?.length
-      ? `limits: ${formatLimits(requirement)}`
-      : undefined,
+    requirement.limits?.length ? `limits: ${formatLimits(requirement)}` : undefined,
     requirement.maxDeductible
       ? `maxDeductible: ${requirement.maxDeductible.label ?? requirement.maxDeductible.amount}`
       : undefined,
@@ -150,9 +148,7 @@ function formatRequirementDetails(requirement: Requirement) {
           requirement.complianceCheck.matchedPolicy.policyNumber,
           requirement.complianceCheck.matchedPolicy.coverageName,
           requirement.complianceCheck.matchedPolicy.coverageLimit,
-        ]
-          .filter(Boolean)
-          .join(" · ")}`
+        ].filter(Boolean).join(" · ")}`
       : undefined,
     requirement.complianceCheck?.matchedSummary
       ? `complianceSummary: ${requirement.complianceCheck.matchedSummary}`
