@@ -20,6 +20,7 @@ type BackendMessage = {
   role: "user" | "agent" | "system";
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   content: string;
+  presentation?: unknown;
   usedTools?: string[];
   emailContent?: Infer<typeof operatorEmailContentValidator>;
   status?: "processing" | "error" | "cancelled";
@@ -152,6 +153,7 @@ export type OperatorAgentMessage = {
   role: "user" | "assistant";
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   content: string;
+  presentation?: unknown;
   usedTools?: string[];
   emailContent?: BackendMessage["emailContent"];
   status?: "processing" | "error" | "cancelled";
@@ -308,6 +310,7 @@ export function normalizeOperatorAgentThread(
       role: message.role === "user" ? "user" : "assistant",
       channel: message.channel,
       content: message.content,
+      presentation: message.presentation,
       usedTools: message.usedTools,
       emailContent: message.emailContent,
       status: message.status,
