@@ -15,9 +15,10 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   search: new URLSearchParams(),
   closePdf: vi.fn(),
+  replace: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: mocks.replace }),
   useSearchParams: () => mocks.search,
 }));
 vi.mock("@/components/pdf-context", () => ({
@@ -58,6 +59,10 @@ vi.mock("@/components/settings/settings-drawer", () => ({
 beforeEach(() => {
   vi.useFakeTimers();
   mocks.search = new URLSearchParams();
+  mocks.replace.mockImplementation((href: string) => {
+    window.history.replaceState(null, "", href);
+    mocks.search = new URLSearchParams(window.location.search);
+  });
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -237,7 +242,12 @@ function LinkedWorkspace() {
 }
 
 test("proposal links wait for the open editor to close and do not reopen a dismissed link on live updates", async () => {
-  mocks.search = new URLSearchParams("proposal=historical");
+  window.history.replaceState(
+    null,
+    "",
+    "/operator/procurement/request?view=proposals&proposal=historical",
+  );
+  mocks.search = new URLSearchParams(window.location.search);
   mocks.query.mockImplementation((reference) => {
     const name = getFunctionName(reference);
     if (name === "procurementRequests:get")
@@ -250,7 +260,12 @@ test("proposal links wait for the open editor to close and do not reopen a dismi
   try {
     await harness.render(<LinkedWorkspace />);
     expect(harness.container.textContent).toContain("historical.pdf");
-    mocks.search = new URLSearchParams("proposal=current");
+    window.history.replaceState(
+      null,
+      "",
+      "/operator/procurement/request?view=proposals&proposal=current",
+    );
+    mocks.search = new URLSearchParams(window.location.search);
     await harness.render(<LinkedWorkspace />);
     expect(harness.container.textContent).toContain("historical.pdf");
     expect(harness.container.textContent).not.toContain("current.pdf");
@@ -260,6 +275,8 @@ test("proposal links wait for the open editor to close and do not reopen a dismi
         .click(),
     );
     expect(harness.container.textContent).toContain("current.pdf");
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.search.get("proposal")).toBe("current");
     const email = harness.container.querySelector<HTMLInputElement>(
       'input[type="email"]',
     )!;
@@ -278,6 +295,7 @@ test("proposal links wait for the open editor to close and do not reopen a dismi
     );
     expect(harness.container.textContent).toContain("current.pdf");
     expect(email.value).toBe("draft@example.com");
+    expect(mocks.replace).not.toHaveBeenCalled();
     mocks.update.mockResolvedValue({});
     await act(async () =>
       Array.from(harness.container.querySelectorAll("button"))
@@ -285,8 +303,20 @@ test("proposal links wait for the open editor to close and do not reopen a dismi
         .click(),
     );
     expect(harness.container.textContent).not.toContain("current.pdf");
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/operator/procurement/request?view=proposals",
+      { scroll: false },
+    );
     await harness.render(<LinkedWorkspace />);
     expect(harness.container.textContent).not.toContain("current.pdf");
+    window.history.replaceState(
+      null,
+      "",
+      "/operator/procurement/request?view=proposals&proposal=current",
+    );
+    mocks.search = new URLSearchParams(window.location.search);
+    await harness.render(<LinkedWorkspace />);
+    expect(harness.container.textContent).toContain("current.pdf");
   } finally {
     await harness.cleanup();
   }

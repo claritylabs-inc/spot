@@ -1520,11 +1520,33 @@ export function ProcurementRequestWorkspace({
           proposalId={proposalId}
           readOnly={readOnly}
           brokers={brokers ?? []}
-          onClose={closeRightPanel}
+          onClose={() => {
+            const url = new URL(window.location.href);
+            if (
+              proposalId &&
+              url.pathname === `${basePath}/${requestId}` &&
+              url.searchParams.get("proposal") === proposalId
+            ) {
+              url.searchParams.delete("proposal");
+              router.replace(`${url.pathname}${url.search}${url.hash}`, {
+                scroll: false,
+              });
+            }
+            closeRightPanel();
+          }}
         />,
       );
     },
-    [brokers, closePdf, closeRightPanel, onRightPanel, readOnly, requestId],
+    [
+      basePath,
+      brokers,
+      closePdf,
+      closeRightPanel,
+      onRightPanel,
+      readOnly,
+      requestId,
+      router,
+    ],
   );
 
   useEffect(() => {
