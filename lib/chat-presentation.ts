@@ -21,6 +21,7 @@ export const presentationReferenceSchema = z
       "request",
       "proposal",
       "provider",
+      "vendor",
       "file",
       "source",
     ]),
