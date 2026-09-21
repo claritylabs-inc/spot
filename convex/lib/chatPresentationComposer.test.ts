@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { experimental_composeSpec } from "@json-render/core";
 import type { ActionCtx } from "../_generated/server";
 import { composeChatPresentation } from "./chatPresentationComposer";
 import { clRouterDecide } from "./clRouterClient";
@@ -8,6 +9,13 @@ import {
 } from "../../lib/chat-presentation";
 
 vi.mock("./clRouterClient", () => ({ clRouterDecide: vi.fn() }));
+vi.mock("@json-render/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@json-render/core")>();
+  return {
+    ...actual,
+    experimental_composeSpec: vi.fn(actual.experimental_composeSpec),
+  };
+});
 const decide = vi.mocked(clRouterDecide);
 const ctx = { runMutation: vi.fn() } as unknown as ActionCtx;
 const evidence: PresentationEvidence = {
@@ -76,8 +84,15 @@ function choose(
   } as Awaited<ReturnType<typeof clRouterDecide>>;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  const actual =
+    await vi.importActual<typeof import("@json-render/core")>(
+      "@json-render/core",
+    );
+  vi.mocked(experimental_composeSpec).mockImplementation(
+    actual.experimental_composeSpec,
+  );
 });
 
 describe("bounded router composition", () => {
@@ -148,5 +163,127 @@ describe("bounded router composition", () => {
     ).toBeNull();
     expect(decide).toHaveBeenCalledTimes(2);
     warning.mockRestore();
+  });
+  test.each(["limit", "unavailable"] as const)(
+    "discards a valid partial spec when composition stops with %s",
+    async (stopReason) => {
+      const actual =
+        await vi.importActual<typeof import("@json-render/core")>(
+          "@json-render/core",
+        );
+      let suppliedPartialSpec = false;
+      vi.mocked(experimental_composeSpec).mockImplementation(
+        async function* (options) {
+          for await (const event of actual.experimental_composeSpec(options)) {
+            if (event.type === "complete") {
+              suppliedPartialSpec = Boolean(event.spec);
+              yield { ...event, stopReason };
+            } else yield event;
+          }
+        },
+      );
+      decide.mockImplementation(async (request) => choose(request));
+      expect(
+        await composeChatPresentation(ctx, {
+          evidence,
+          sourceRevision: "rev1",
+        }),
+      ).toBeNull();
+      expect(suppliedPartialSpec).toBe(true);
+    },
+  );
+
+  test("retains record-option references when Jev selects a comparison form", async () => {
+    decide.mockImplementation(async (request) => {
+      const result = choose(request);
+      for (const [key, question] of Object.entries(request.questions)) {
+        if (key === "root" || question.type !== "choice") continue;
+        const choice =
+          Object.entries(question.criteria).find(([, description]) =>
+            description.startsWith("Choose two policies"),
+          )?.[0] ?? "omit";
+        result.answers[key] = {
+          type: "choice",
+          choice,
+          probabilities: Object.fromEntries(
+            Object.keys(question.criteria).map((option) => [
+              option,
+              option === choice ? 1 : 0,
+            ]),
+          ),
+        };
+      }
+      return result;
+    });
+    const result = await composeChatPresentation(ctx, {
+      sourceRevision: "rev-form",
+      evidence: {
+        ...evidence,
+        prompt: "I need to pick two policies to compare",
+        tools: [
+          {
+            name: "lookup_policy",
+            output: [
+              { id: "policy1", number: "P-1" },
+              { id: "policy2", number: "P-2" },
+              { id: "policy3", number: "P-3" },
+            ],
+          },
+        ],
+      },
+    });
+    expect(result).not.toBeNull();
+    const form = Object.values(result!.spec.elements).find(
+      (element) => element.type === "ClarificationForm",
+    );
+    if (form?.type !== "ClarificationForm") throw new Error("Form missing");
+    expect(form.props.fields).toHaveLength(2);
+    const referenceIds = new Set(
+      result!.references.map((reference) => reference.id),
+    );
+    expect(
+      form.props.fields.every((field) =>
+        field.options?.every((option) => referenceIds.has(option.value)),
+      ),
+    ).toBe(true);
+    expect(result!.references.map((reference) => reference.recordId)).toEqual([
+      "policy1",
+      "policy2",
+      "policy3",
+    ]);
+    expect(decide).toHaveBeenCalledTimes(1);
+  });
+  test("keeps a known partial-results notice even when Jev selects only one data candidate", async () => {
+    decide.mockImplementation(async (request) => choose(request));
+    const result = await composeChatPresentation(ctx, {
+      evidence: {
+        ...evidence,
+        tools: [
+          {
+            name: "lookup_client_requests",
+            output: {
+              bounded: true,
+              requests: [
+                {
+                  _id: "request1",
+                  title: "Renewal",
+                  status: "in_progress",
+                  files: [],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      sourceRevision: "bounded",
+    });
+    expect(result).not.toBeNull();
+    expect(Object.values(result!.spec.elements)).toContainEqual(
+      expect.objectContaining({
+        type: "Text",
+        props: { text: expect.stringContaining("Partial results shown") },
+      }),
+    );
+    expect(parseChatPresentation(result)).not.toBeNull();
   });
 });
