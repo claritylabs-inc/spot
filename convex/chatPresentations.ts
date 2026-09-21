@@ -81,9 +81,9 @@ vendorOrgId vendorName requirementCount policyCount checks requiredLimits requir
 reasons expiresAt daysUntilExpiration notes limitAmount all pageNumber resolvedFromPage content
 originalPdfChecked sourceSpans sourceNodes confidence coverageLimit extractedOffer brokerName
 quoteNumber proposedEffectiveDate proposedExpirationDate quoteExpirationDate broker clientFile
-brokerRelease release companyResearch sourceUrls facts key sourceRef needsDisambiguation vendors`.split(
-    /\s+/,
-  ),
+brokerRelease release companyResearch sourceUrls facts key sourceRef needsDisambiguation vendors conditions subjectivities exclusions sectionHeadings reviews sectionKey
+conclusion modelConclusion staffConclusion stale confirmedAt extractionFingerprint packetRevision
+proposalDocumentId sourceNodeIds`.split(/\s+/),
 );
 
 function projectEvidence(value: unknown, depth = 0): unknown {
@@ -102,6 +102,28 @@ function projectEvidence(value: unknown, depth = 0): unknown {
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, item]) => {
       if (!evidenceFields.has(key)) return [];
+      if (
+        key === "sectionHeadings" &&
+        item &&
+        typeof item === "object" &&
+        !Array.isArray(item)
+      ) {
+        return [
+          [
+            key,
+            Object.fromEntries(
+              Object.entries(item)
+                .slice(0, 40)
+                .filter(
+                  ([section, heading]) =>
+                    section.length <= 200 &&
+                    typeof heading === "string" &&
+                    heading.length <= 200,
+                ),
+            ),
+          ],
+        ];
+      }
       const projected = projectEvidence(item, depth + 1);
       return projected === undefined ? [] : [[key, projected]];
     }),
