@@ -807,3 +807,37 @@ test("connected client requirements and their source metadata revoke together wi
   );
   expect((await messages()).at(-1)?.presentation).toBeUndefined();
 });
+
+test("unbound vendor choices cannot bypass reference reauthorization", async () => {
+  const f = await clientFixture();
+  const presentation: ChatPresentation = {
+    ...f.presentation,
+    references: [],
+    spec: {
+      root: "choice",
+      elements: {
+        choice: {
+          type: "ChoiceGroup",
+          props: {
+            label: "Which vendor?",
+            options: [{ value: f.otherOrgId, label: "Other" }],
+            submitLabel: "Continue",
+          },
+          children: [],
+        },
+      },
+    },
+  };
+  expect(
+    await f.t.mutation(internal.chatPresentations.save, {
+      messageId: f.messageId,
+      sourceRevision: f.sourceRevision,
+      presentation,
+    }),
+  ).toBe(false);
+  await f.t.run((ctx) => ctx.db.patch(f.messageId, { presentation }));
+  const messages = await f.t
+    .withIdentity({ subject: `${f.userId}|session` })
+    .query(api.threads.messages, { threadId: f.threadId });
+  expect(messages.at(-1)?.presentation).toBeUndefined();
+});

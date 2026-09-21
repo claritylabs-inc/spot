@@ -690,6 +690,20 @@ export async function visiblePresentation(
     presentation.sourceRevision !== presentationSourceRevision(message)
   )
     return undefined;
+  for (const element of Object.values(presentation.spec.elements)) {
+    if (element.type !== "ChoiceGroup") continue;
+    for (const option of element.props.options) {
+      const vendorId = ctx.db.normalizeId("organizations", option.value);
+      if (
+        vendorId &&
+        !presentation.references.some(
+          (reference) =>
+            reference.kind === "vendor" && reference.recordId === vendorId,
+        )
+      )
+        return undefined;
+    }
+  }
   if (budget.messagesRemaining <= 0) return undefined;
   budget.messagesRemaining--;
   const references: PresentationReference[] = [];
