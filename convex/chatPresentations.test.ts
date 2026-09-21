@@ -1056,3 +1056,55 @@ test("the web operator loop captures authorized results before audit truncation 
     await t.run((ctx) => ctx.db.get(result.run.agentMessageId)),
   ).toMatchObject({ content: "The provider lookup completed." });
 });
+
+test("plain client answers schedule no presentation work and clear earlier revision evidence", async () => {
+  const f = await clientFixture();
+  const scheduled = () =>
+    f.t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
+  const before = await scheduled();
+  const plainMessageId = await f.t.run((ctx) =>
+    ctx.db.insert("threadMessages", {
+      threadId: f.threadId,
+      orgId: f.orgId,
+      channel: "chat",
+      role: "agent",
+      content: "",
+      status: "processing",
+      replyToMessageId: f.userMessageId,
+    }),
+  );
+  await f.t.mutation(internal.threads.updateAgentMessage, {
+    id: plainMessageId,
+    content: "Hello.",
+    presentationTools: [],
+  });
+  expect(await scheduled()).toEqual(before);
+  expect(
+    await f.t.run((ctx) =>
+      ctx.db
+        .query("chatPresentationEvidence")
+        .withIndex("message", (q) => q.eq("messageId", plainMessageId))
+        .unique(),
+    ),
+  ).toBeNull();
+  await f.t.mutation(internal.threads.updateAgentMessage, {
+    id: f.messageId,
+    content: "A plain revised answer.",
+    presentationTools: [],
+  });
+  expect(await scheduled()).toEqual(before);
+  expect(
+    await f.t.run((ctx) => ctx.db.query("chatPresentationEvidence").collect()),
+  ).toEqual([]);
+  expect(await f.t.run((ctx) => ctx.db.get(f.messageId))).toMatchObject({
+    content: "A plain revised answer.",
+    presentationRevision: 2,
+  });
+  expect(
+    await f.t.mutation(internal.chatPresentations.save, {
+      messageId: f.messageId,
+      sourceRevision: f.sourceRevision,
+      presentation: f.presentation,
+    }),
+  ).toBe(false);
+});

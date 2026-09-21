@@ -260,7 +260,7 @@ async function appendEvidence(
     (existing.userId !== args.userId ||
       existing.operatorRunId !== args.operatorRunId)
   )
-    return;
+    return false;
   const tools = args.operatorRunId ? [...(existing?.tools ?? [])] : [];
   for (const tool of args.tools) {
     // Reapply the projection at the persistence boundary.
@@ -275,9 +275,13 @@ async function appendEvidence(
     }
     if (captured) appendCapturedPresentationTool(tools, captured);
   }
+  if (!tools.length) {
+    if (existing) await ctx.db.delete(existing._id);
+    return false;
+  }
   if (existing) {
     await ctx.db.patch(existing._id, { tools });
-    return;
+    return true;
   }
   const expiresAt = dayjs().valueOf() + EVIDENCE_TTL_MS;
   const id = await ctx.db.insert("chatPresentationEvidence", {
@@ -295,6 +299,7 @@ async function appendEvidence(
     await ctx.db.delete(id);
     throw error;
   }
+  return true;
 }
 
 export const captureOperatorEvidence = internalMutation({
@@ -343,11 +348,12 @@ export async function schedulePresentation(
   )
     return;
   try {
-    await appendEvidence(ctx, {
+    const hasEvidence = await appendEvidence(ctx, {
       messageId: message._id,
       ...options,
       tools: options.tools ?? [],
     });
+    if (!hasEvidence) return;
     await ctx.scheduler.runAfter(
       0,
       internal.actions.chatPresentations.compose,
