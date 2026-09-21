@@ -166,14 +166,14 @@ export const listForAgentInternal = internalQuery({
         if (request?.clientOrgId === orgId && request.clientVisible)
           visible.push(request);
       } else {
-        const requests = ctx.db
+        const requests = await ctx.db
           .query("procurementRequests")
-          .withIndex("organization", (q) => q.eq("clientOrgId", orgId))
-          .order("desc");
-        for await (const request of requests) {
-          if (request.clientVisible) visible.push(request);
-          if (visible.length >= limit) break;
-        }
+          .withIndex("organization_visibility", (q) =>
+            q.eq("clientOrgId", orgId).eq("clientVisible", true),
+          )
+          .order("desc")
+          .take(limit - visible.length);
+        visible.push(...requests);
       }
       if (visible.length >= limit) break;
     }

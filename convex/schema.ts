@@ -2667,6 +2667,7 @@ export default defineSchema({
     .index("title", ["clientOrgId", "title"])
     .index("normalized_title", ["clientOrgId", "normalizedTitle"])
     .index("organization", ["clientOrgId", "updatedAt"])
+    .index("organization_visibility", ["clientOrgId", "clientVisible", "updatedAt"])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"]),
 
