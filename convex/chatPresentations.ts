@@ -40,6 +40,7 @@ export function presentationReadBudget(): PresentationReadBudget {
 type Scope = { audience: "operator" | "client"; orgId?: Id<"organizations"> };
 const EVIDENCE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_EVIDENCE_BYTES = 128 * 1024;
+const MAX_TOOL_BYTES = 24 * 1024;
 const supportedTools = new Set([
   "list_policies",
   "get_policy_status",
@@ -61,7 +62,7 @@ const supportedTools = new Set([
   "get_organization",
   "search_organizations",
 ]);
-// Only domain data is retained; provider envelopes, credentials and URLs have no owner here.
+// Retain typed domain evidence, excluding provider envelopes and credentials.
 const evidenceFields = new Set(
   `_id id policyId orgId clientOrgId brokerOrgId clientFileId requestId procurementRequestId
 proposalId procurementProposalId requirementId sourceSpanIds spanId policyId1 policyId2 policy1
@@ -84,21 +85,35 @@ originalPdfChecked sourceSpans sourceNodes confidence coverageLimit extractedOff
 quoteNumber proposedEffectiveDate proposedExpirationDate quoteExpirationDate broker clientFile
 brokerRelease release companyResearch sourceUrls facts key sourceRef needsDisambiguation vendors conditions subjectivities exclusions sectionHeadings reviews sectionKey
 conclusion modelConclusion staffConclusion stale confirmedAt extractionFingerprint packetRevision
-proposalDocumentId sourceNodeIds`.split(/\s+/),
+proposalDocumentId sourceNodeIds documents confirmedByUserId category provider purchaseDate result`.split(
+    /\s+/,
+  ),
 );
 
-function projectEvidence(value: unknown, depth = 0): unknown {
-  if (depth > 8) return undefined;
+function projectEvidence(
+  value: unknown,
+  budget: { remaining: number; bounded: boolean },
+  depth = 0,
+): unknown {
+  if (depth > 12 || budget.remaining-- <= 0) {
+    budget.bounded = true;
+    return undefined;
+  }
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
-  if (typeof value === "string")
-    return value.length <= 4000 ? value : undefined;
-  if (Array.isArray(value))
+  if (typeof value === "string") {
+    if (value.length <= 4000) return value;
+    budget.bounded = true;
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 40) budget.bounded = true;
     return value
       .slice(0, 40)
-      .map((item) => projectEvidence(item, depth + 1))
+      .map((item) => projectEvidence(item, budget, depth + 1))
       .filter((item) => item !== undefined);
+  }
   if (!value || typeof value !== "object") return undefined;
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, item]) => {
@@ -109,23 +124,19 @@ function projectEvidence(value: unknown, depth = 0): unknown {
         typeof item === "object" &&
         !Array.isArray(item)
       ) {
-        return [
-          [
-            key,
-            Object.fromEntries(
-              Object.entries(item)
-                .slice(0, 40)
-                .filter(
-                  ([section, heading]) =>
-                    section.length <= 200 &&
-                    typeof heading === "string" &&
-                    heading.length <= 200,
-                ),
-            ),
-          ],
-        ];
+        const headings = Object.entries(item);
+        const retained = headings
+          .slice(0, 40)
+          .filter(
+            ([section, heading]) =>
+              section.length <= 200 &&
+              typeof heading === "string" &&
+              heading.length <= 200,
+          );
+        if (retained.length < headings.length) budget.bounded = true;
+        return [[key, Object.fromEntries(retained)]];
       }
-      const projected = projectEvidence(item, depth + 1);
+      const projected = projectEvidence(item, budget, depth + 1);
       return projected === undefined ? [] : [[key, projected]];
     }),
   );
@@ -164,19 +175,56 @@ export function capturePresentationTool(
     !result ||
     typeof result !== "object" ||
     "error" in result ||
+    ("ok" in result && result.ok === false) ||
     ("success" in result && result.success === false) ||
     ("isError" in result && result.isError === true)
   )
     return null;
-  const outputJson = JSON.stringify(projectEvidence(result));
-  if (
-    !outputJson ||
-    outputJson === "{}" ||
-    outputJson === "[]" ||
-    new TextEncoder().encode(outputJson).length > 24 * 1024
-  )
-    return null;
+  const boundedEnvelope =
+    "bounded" in result && result.bounded === true && "result" in result;
+  const budget = { remaining: 4096, bounded: boundedEnvelope };
+  const projected = projectEvidence(
+    boundedEnvelope ? result.result : result,
+    budget,
+  );
+  const outputJson = JSON.stringify(
+    budget.bounded ? { result: projected, bounded: true } : projected,
+  );
+  if (!outputJson || outputJson === "{}" || outputJson === "[]") return null;
+  if (new TextEncoder().encode(outputJson).length > MAX_TOOL_BYTES - 64)
+    return { name, outputJson: '{"bounded":true}' };
   return { name, outputJson };
+}
+
+export function appendCapturedPresentationTool(
+  tools: CapturedPresentationTool[],
+  tool: CapturedPresentationTool,
+): void {
+  if (
+    tools.some(
+      (item) => item.name === tool.name && item.outputJson === tool.outputJson,
+    )
+  )
+    return;
+  const bytes = new TextEncoder().encode(
+    JSON.stringify([...tools, tool]),
+  ).length;
+  // Leave room to mark the retained evidence if a later result exceeds the budget.
+  if (tools.length < 24 && bytes <= MAX_EVIDENCE_BYTES - 64) {
+    tools.push(tool);
+    return;
+  }
+  const last = tools.at(-1);
+  if (!last) return;
+  const output: unknown = JSON.parse(last.outputJson);
+  if (
+    output &&
+    typeof output === "object" &&
+    "bounded" in output &&
+    output.bounded === true
+  )
+    return;
+  last.outputJson = JSON.stringify({ result: output, bounded: true });
 }
 
 export function presentationSourceRevision(message: Message): string {
@@ -213,8 +261,7 @@ async function appendEvidence(
       existing.operatorRunId !== args.operatorRunId)
   )
     return;
-  const tools = [...(existing?.tools ?? [])];
-  let bytes = new TextEncoder().encode(JSON.stringify(tools)).length;
+  const tools = args.operatorRunId ? [...(existing?.tools ?? [])] : [];
   for (const tool of args.tools) {
     // Reapply the projection at the persistence boundary.
     let captured: CapturedPresentationTool | null;
@@ -226,19 +273,7 @@ async function appendEvidence(
     } catch {
       continue;
     }
-    if (
-      !captured ||
-      tools.some(
-        (item) =>
-          item.name === captured.name &&
-          item.outputJson === captured.outputJson,
-      )
-    )
-      continue;
-    const size = new TextEncoder().encode(JSON.stringify(captured)).length;
-    if (tools.length >= 24 || bytes + size > MAX_EVIDENCE_BYTES) continue;
-    tools.push(captured);
-    bytes += size;
+    if (captured) appendCapturedPresentationTool(tools, captured);
   }
   if (existing) {
     await ctx.db.patch(existing._id, { tools });
@@ -670,8 +705,8 @@ async function authorizeReference(
           page: reference.page,
         }
       : {}),
-    ...(reference.kind === "file" && reference.requestId
-      ? { requestId: reference.requestId }
+    ...(reference.kind === "file"
+      ? { requestId: reference.requestId, page: reference.page }
       : {}),
   };
 }
