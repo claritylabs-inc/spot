@@ -66,3 +66,69 @@ test("exact policy lookup treats null filters as omitted and still honors a real
     omitted,
   );
 });
+
+test("requirements expose saved compliance findings without inferring compliance from limits", async () => {
+  const orgId = "org-cove" as Id<"organizations">;
+  const runQuery = vi.fn(async (ref, args) => {
+    expect(getFunctionName(ref)).toBe("compliance:listRequirementsInternal");
+    expect(args).toEqual({ orgId });
+    return [
+      {
+        _id: "requirement-a",
+        title: "Occurrence limit",
+        scope: "own_org",
+        requirementText: "Carry occurrence coverage",
+        limits: [{ kind: "per_occurrence", amount: 1_000_000 }],
+        complianceCheck: {
+          status: "not_met",
+          reasons: ["Missing occurrence evidence"],
+          matchedPolicyIds: ["policy-a"],
+        },
+        privateInternalValue: "must not be returned",
+      },
+      {
+        _id: "requirement-b",
+        title: "Waiver",
+        scope: "own_org",
+        requirementText: "Waiver required",
+      },
+    ];
+  });
+  const tools = buildAgentToolExecutors({ runQuery } as unknown as ActionCtx, {
+    surface: "web",
+    orgId,
+    userId: "client" as Id<"users">,
+    scope: {
+      mode: "client",
+      surface: "web",
+      primaryOrgId: orgId,
+      readOrgIds: [orgId],
+      writableOrgIds: [],
+      brokerInternal: false,
+      orgs: [
+        {
+          orgId,
+          name: "Cove",
+          type: "client",
+          isPrimary: true,
+          canWrite: false,
+        },
+      ],
+    },
+  });
+  const result = await tools.lookup_compliance_requirements.execute({});
+  expect(result.requirements).toEqual([
+    expect.objectContaining({
+      requirementId: "requirement-a",
+      currentComplianceStatus: "not_met",
+      currentComplianceReasons: ["Missing occurrence evidence"],
+      matchedPolicyIds: ["policy-a"],
+    }),
+    expect.objectContaining({
+      requirementId: "requirement-b",
+      currentComplianceStatus: "unverified",
+      currentComplianceReasons: [],
+    }),
+  ]);
+  expect(JSON.stringify(result)).not.toContain("must not be returned");
+});

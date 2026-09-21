@@ -1,3 +1,4 @@
+import { chatPresentationValidator } from "./lib/chatPresentationValidators";
 import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
@@ -2666,6 +2667,7 @@ export default defineSchema({
     .index("title", ["clientOrgId", "title"])
     .index("normalized_title", ["clientOrgId", "normalizedTitle"])
     .index("organization", ["clientOrgId", "updatedAt"])
+    .index("organization_visibility", ["clientOrgId", "clientVisible", "updatedAt"])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"]),
 
@@ -3825,6 +3827,8 @@ export default defineSchema({
     resendEmailId: v.optional(v.string()),
     // Content
     content: v.string(),
+    presentation: v.optional(chatPresentationValidator),
+    presentationRevision: v.optional(v.number()),
     contentHtml: v.optional(v.string()),
     emailContent: v.optional(emailContentValidator),
     // Reasoning / thinking content (for models that support it)
@@ -4370,6 +4374,8 @@ export default defineSchema({
     replyToMessageId: v.optional(v.id("operatorAgentMessages")),
     dedupeKey: v.optional(v.string()),
     content: v.string(),
+    presentation: v.optional(chatPresentationValidator),
+    presentationRevision: v.optional(v.number()),
     emailContent: v.optional(operatorEmailContentValidator),
     attachments: v.optional(
       v.array(
@@ -4420,6 +4426,14 @@ export default defineSchema({
       searchField: "content",
       filterFields: ["threadId"],
     }),
+
+  chatPresentationEvidence: defineTable({
+    messageId: v.union(v.id("operatorAgentMessages"), v.id("threadMessages")),
+    operatorRunId: v.optional(v.id("operatorAgentRuns")),
+    userId: v.id("users"),
+    tools: v.array(v.object({ name: v.string(), outputJson: v.string() })),
+    expiresAt: v.number(),
+  }).index("message", ["messageId"]),
 
   operatorAgentAttachments: defineTable({
     fileId: v.id("_storage"),

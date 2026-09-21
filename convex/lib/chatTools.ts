@@ -128,6 +128,19 @@ export const lookupCompanyContext = tool({
   }),
 });
 
+export const lookupClientRequests = tool({
+  description:
+    "Read client-visible insurance requests, current client-facing stage, target dates, shared notes, and shared file metadata. Returns only the client request view, never private proposals or market activity.",
+  inputSchema: z.object({
+    requestId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Optional exact request ID from an earlier request lookup."),
+    limit: z.number().int().min(1).max(20).optional(),
+  }),
+});
+
 export const lookupClientFiles = tool({
   description:
     "List client-visible files from the readable client organizations. Use this for shared contracts, schedules, reports, forms, and other miscellaneous documents that are not bound policy PDFs.",

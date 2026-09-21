@@ -1,5 +1,7 @@
 "use node";
 
+import { capturePresentationTool } from "./chatPresentations";
+
 import { CLIENT_PROFILE_GUIDANCE } from "./lib/clientProfile";
 
 import { dynamicTool, stepCountIs, type ModelMessage, type ToolSet } from "ai";
@@ -321,7 +323,27 @@ export const run = internalAction({
                   );
             });
             toolQueue = execution
-              .then((output) => {
+              .then(async (output) => {
+                if (thread.channel === "chat") {
+                  const tool = capturePresentationTool(name, output);
+                  if (tool) {
+                    try {
+                      await ctx.runMutation(
+                        internal.chatPresentations.captureOperatorEvidence,
+                        {
+                          runId: run._id,
+                          expectedRunnerAttempt,
+                          expectedCheckpointIteration: run.checkpoint?.iteration ?? 0,
+                          tool,
+                        },
+                      );
+                    } catch {
+                      console.warn("Chat presentation evidence unavailable", {
+                        runId: run._id,
+                      });
+                    }
+                  }
+                }
                 toolEvidence = mergeToolAudits(
                   toolEvidence,
                   collectToolAudit({
@@ -331,7 +353,7 @@ export const run = internalAction({
                 );
               })
               .catch(() => undefined);
-            return execution;
+            return toolQueue.then(() => execution);
           },
         });
       }

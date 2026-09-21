@@ -189,6 +189,32 @@ export function filterComplianceRequirements(
   });
 }
 
+export function complianceRequirementForTool(requirement: Requirement) {
+  return {
+    requirementId: requirement._id,
+    title: requirement.title,
+    scope: requirement.scope,
+    requirementText: requirement.requirementText,
+    lineOfBusiness: requirement.lineOfBusiness,
+    limits: requirement.limits,
+    maxDeductible: requirement.maxDeductible,
+    coverageForm: requirement.coverageForm,
+    retroactiveDateOnOrBefore: requirement.retroactiveDateOnOrBefore,
+    provisions: requirement.provisions,
+    requiredForms: requirement.requiredForms,
+    requirementSourceDocumentId: requirement.sourceDocumentId,
+    sourceDocumentName: requirement.sourceDocumentName,
+    sourceExcerpt: requirement.sourceExcerpt,
+    sourcePageStart: requirement.sourcePageStart,
+    sourcePageEnd: requirement.sourcePageEnd,
+    currentComplianceStatus:
+      requirement.complianceCheck?.status ?? "unverified",
+    currentComplianceReasons: requirement.complianceCheck?.reasons ?? [],
+    matchedPolicyIds: requirement.complianceCheck?.matchedPolicyIds ?? [],
+    matchedSummary: requirement.complianceCheck?.matchedSummary,
+  };
+}
+
 export function formatComplianceRequirement(requirement: Requirement) {
   const details = formatRequirementDetails(requirement);
   const source = requirement.sourceExcerpt

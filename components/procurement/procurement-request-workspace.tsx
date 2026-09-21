@@ -12,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Copy,
@@ -712,12 +712,14 @@ export function RequestEditor({
 export function OutreachEditor({
   requestId,
   outreach,
+  proposalId,
   brokers,
-  readOnly = false,
+  readOnly: parentReadOnly = false,
   onClose,
 }: {
   requestId: Id<"procurementRequests">;
   outreach?: Outreach;
+  proposalId?: Id<"procurementProposals">;
   brokers: BrokerOption[];
   readOnly?: boolean;
   onClose: () => void;
@@ -748,9 +750,13 @@ export function OutreachEditor({
     proposals?.find(
       (row) =>
         row.outreachId === outreachId &&
-        row.status !== "archived" &&
-        row.status !== "withdrawn",
+        (proposalId
+          ? row._id === proposalId
+          : row.status !== "archived" && row.status !== "withdrawn"),
     );
+  const historical =
+    proposal?.status === "archived" || proposal?.status === "withdrawn";
+  const readOnly = parentReadOnly || (!!proposalId && (!proposal || historical));
   const [brokerOrgId, setBrokerOrgId] = useState(outreach?.brokerOrgId ?? "");
   const [contactName, setContactName] = useState(outreach?.contactName ?? "");
   const [contactEmail, setContactEmail] = useState(
@@ -1032,6 +1038,18 @@ export function OutreachEditor({
     >
       <AutoSaveStatus status={outreachId ? autoSave.status : "saved"} />
       <div className="space-y-4">
+        {proposalId && historical ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            This proposal is {proposal.status} and is read-only.
+          </p>
+        ) : null}
+        {proposalId && !proposal ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            {proposals === undefined
+              ? "Loading proposal…"
+              : "This proposal is no longer available."}
+          </p>
+        ) : null}
         {outreachId ? (
           <Tabs value={sidebarTab} onValueChange={setSidebarTab}>
             <TabsList variant="pill" aria-label="Proposal sidebar">
@@ -1057,19 +1075,21 @@ export function OutreachEditor({
                 </PillButton>
               ) : null,
             )}
-            <ProposalDropzone
-              requestId={requestId}
-              outreach={currentOutreach}
-              proposal={proposal}
-              disabled={
-                readOnly ||
-                busy ||
-                proposals === undefined ||
-                brokerOrgId !== currentOutreach.brokerOrgId
-              }
-              onUploadingChange={setUploading}
-            />
-            {proposal &&
+            {!readOnly ? (
+              <ProposalDropzone
+                requestId={requestId}
+                outreach={currentOutreach}
+                proposal={proposal}
+                disabled={
+                  busy ||
+                  proposals === undefined ||
+                  brokerOrgId !== currentOutreach.brokerOrgId
+                }
+                onUploadingChange={setUploading}
+              />
+            ) : null}
+            {!readOnly &&
+            proposal &&
             proposal.status !== "draft" &&
             proposal.status !== "selected" ? (
               <p
@@ -1091,7 +1111,7 @@ export function OutreachEditor({
             readOnly={readOnly || busy}
           />
         ) : null}
-        {sidebarTab === "terms" && !proposal ? (
+        {sidebarTab === "terms" && !proposal && !proposalId ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
             Upload proposal PDFs to extract their terms.
           </p>
@@ -1386,7 +1406,7 @@ export function ProcurementRequestWorkspace({
   view,
   readOnly,
   onActions,
-  onRightPanel,
+  onRightPanel: setRightPanel,
 }: {
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
@@ -1397,6 +1417,17 @@ export function ProcurementRequestWorkspace({
   onRightPanel: (node: ReactNode) => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedProposalId = searchParams.get("proposal");
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const handledProposalLink = useRef<string | null>(null);
+  const onRightPanel = useCallback(
+    (node: ReactNode) => {
+      setRightPanelOpen(node !== null);
+      setRightPanel(node);
+    },
+    [setRightPanel],
+  );
   const [documentToolbarTarget, setDocumentToolbarTarget] = useState<HTMLDivElement | null>(null);
   const result = useQuery(api.procurementRequests.get, { requestId });
   const policies = useQuery(api.procurementRequests.listPolicyOptions, {
@@ -1479,21 +1510,82 @@ export function ProcurementRequestWorkspace({
   }, [closePdf, closeRightPanel, onRightPanel, requestId]);
 
   const openOutreachEditor = useCallback(
-    (outreach?: Outreach) => {
+    (outreach?: Outreach, proposalId?: Id<"procurementProposals">) => {
       closePdf();
       onRightPanel(
         <OutreachEditor
-          key={outreach?._id ?? "new-outreach"}
+          key={proposalId ?? outreach?._id ?? "new-outreach"}
           requestId={requestId}
           outreach={outreach}
+          proposalId={proposalId}
           readOnly={readOnly}
           brokers={brokers ?? []}
-          onClose={closeRightPanel}
+          onClose={() => {
+            const url = new URL(window.location.href);
+            if (
+              proposalId &&
+              url.pathname === `${basePath}/${requestId}` &&
+              url.searchParams.get("proposal") === proposalId
+            ) {
+              url.searchParams.delete("proposal");
+              router.replace(`${url.pathname}${url.search}${url.hash}`, {
+                scroll: false,
+              });
+            }
+            closeRightPanel();
+          }}
         />,
       );
     },
-    [brokers, closePdf, closeRightPanel, onRightPanel, readOnly, requestId],
+    [
+      basePath,
+      brokers,
+      closePdf,
+      closeRightPanel,
+      onRightPanel,
+      readOnly,
+      requestId,
+      router,
+    ],
   );
+
+  useEffect(() => {
+    const linkKey = requestedProposalId
+      ? `${requestId}:${requestedProposalId}`
+      : null;
+    if (!linkKey) {
+      handledProposalLink.current = null;
+      return;
+    }
+    if (
+      handledProposalLink.current === linkKey ||
+      rightPanelOpen ||
+      proposals === undefined ||
+      !details ||
+      details.request.clientOrgId !== clientOrgId
+    )
+      return;
+    handledProposalLink.current = linkKey;
+    const proposal = proposals.find((row) => row._id === requestedProposalId);
+    const outreach = details.outreaches.find(
+      (row) => row._id === proposal?.outreachId,
+    );
+    if (!proposal || !outreach) {
+      toast.error("This proposal is not available for this request.");
+      return;
+    }
+    // Route navigation synchronizes the externally owned app-shell drawer.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    openOutreachEditor(outreach, proposal._id);
+  }, [
+    clientOrgId,
+    details,
+    openOutreachEditor,
+    proposals,
+    requestId,
+    requestedProposalId,
+    rightPanelOpen,
+  ]);
 
   const openUpload = useCallback(() => {
     closePdf();

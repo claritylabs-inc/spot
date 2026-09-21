@@ -1431,7 +1431,7 @@ function SourceDrawer({
     <SettingsDrawer
       open
       onOpenChange={async (open) => {
-        if (!open && await sourceAutoSave.saveNow() && await contextAutoSave.saveNow()) onClose();
+        if (!open && (!canManage || await sourceAutoSave.saveNow() && await contextAutoSave.saveNow())) onClose();
       }}
       title="Requirement source"
       footer={
@@ -1815,6 +1815,10 @@ function ComplianceWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const currentRoute = useRef({ pathname, searchParams });
+  useEffect(() => {
+    currentRoute.current = { pathname, searchParams };
+  }, [pathname, searchParams]);
   const { openWithUrl } = usePdf();
   const routeOrg = useActiveOrgContext();
   const currentOrg = orgContext ?? routeOrg;
@@ -1861,7 +1865,11 @@ function ComplianceWorkspace({
   const importRequirements = useAction(complianceApi.actions.complianceRequirements.importRequirements);
   const recheckOwnRequirement = useAction(complianceApi.actions.complianceReview.recheckOwnRequirement);
 
-  const requestedTab = searchParams.get("tab");
+  const requestedRequirementId = searchParams.get("requirement");
+  const requestedSourceId = searchParams.get("source");
+  const requestedTab = searchParams.get("tab") ??
+    (requestedSourceId ? "sources" : requestedRequirementId ? "requirements" : null);
+  const handledDeepLink = useRef<string | null>(null);
   const hasCertificatesTab = Boolean(renderCertificatesTab);
   const view: ComplianceView =
     requestedTab === "certificates" && hasCertificatesTab
@@ -2051,7 +2059,57 @@ function ComplianceWorkspace({
       : "skip",
   ) as SourceCertificate[] | undefined;
 
+  useEffect(() => {
+    if (!requestedRequirementId && !requestedSourceId) {
+      handledDeepLink.current = null;
+      return;
+    }
+    if (!orgId || requirements === undefined || requirementSources === undefined) return;
+    const key = JSON.stringify([orgId, pathname, requestedRequirementId, requestedSourceId]);
+    if (handledDeepLink.current === key) return;
+    // Wait for the existing drawer's save-before-close path before changing records.
+    if (selectedRequirement || selectedSource || creationDrawer || certificateSourceId) return;
+    handledDeepLink.current = key;
+    if (requestedRequirementId && requestedSourceId) {
+      toast.error("Open one requirement or source at a time.");
+      return;
+    }
+    if (requestedRequirementId) {
+      const requirement = requirements.find(row => row._id === requestedRequirementId);
+      if (!requirement) {
+        toast.error("This requirement is unavailable.");
+        return;
+      }
+      // Synchronize the URL selection only after the prior editor has closed.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRequirementScope(requirement.scope);
+      setSelectedRequirementId(requirement._id);
+      setSelectedSourceId(null);
+    } else {
+      const source = requirementSources.find(row => row._id === requestedSourceId);
+      if (!source) {
+        toast.error("This source is unavailable.");
+        return;
+      }
+      setSelectedSourceId(source._id);
+      setSelectedRequirementId(null);
+    }
+  }, [
+    orgId, pathname, requestedRequirementId, requestedSourceId, requirements,
+    requirementSources, selectedRequirement, selectedSource, creationDrawer,
+    certificateSourceId,
+  ]);
+
   if (isBroker) return null;
+
+  function clearClosedSelection(kind: "requirement" | "source", id: string) {
+    const route = currentRoute.current;
+    const params = new URLSearchParams(route.searchParams.toString());
+    if (params.get(kind) !== id) return;
+    params.delete(kind);
+    if (!params.has("tab")) params.set("tab", view);
+    router.replace(`${route.pathname}?${params.toString()}`, { scroll: false });
+  }
 
   async function submitRequirement(event: FormEvent) {
     event.preventDefault();
@@ -2594,6 +2652,7 @@ function ComplianceWorkspace({
 
   const detailPanel = selectedRequirement ? (
     <RequirementDrawer
+      key={selectedRequirement._id}
       requirement={selectedRequirement}
       checking={checkingRequirementId === selectedRequirement._id}
       canManage={canManageCompliance}
@@ -2609,7 +2668,10 @@ function ComplianceWorkspace({
         setCertificateSourceId(requirement.sourceDocumentId);
       }}
       onArchive={(id) => void removeRequirement(id)}
-      onClose={() => setSelectedRequirementId(null)}
+      onClose={() => {
+        setSelectedRequirementId(null);
+        clearClosedSelection("requirement", selectedRequirement._id);
+      }}
     />
   ) : null;
   const sourcePanel = selectedSource ? (
@@ -2630,7 +2692,10 @@ function ComplianceWorkspace({
         setCertificateSourceId(source._id);
       }}
       onViewCertificate={openWithUrl}
-      onClose={() => setSelectedSourceId(null)}
+      onClose={() => {
+        setSelectedSourceId(null);
+        clearClosedSelection("source", selectedSource._id);
+      }}
     />
   ) : null;
 

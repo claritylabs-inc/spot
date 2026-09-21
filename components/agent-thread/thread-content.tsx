@@ -1,5 +1,9 @@
 "use client";
 
+import type { PresentationFollowUp } from "@/components/chat-presentation/context";
+import type { PresentationReference } from "@/lib/chat-presentation";
+import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
+
 import {
   memo,
   useCallback,
@@ -1166,7 +1170,11 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   openVendorComplianceArtifactRef,
   onOpenMailboxArtifact,
   openMailboxArtifactRef,
+  onPresentationFollowUp,
+  presentationDisabled = true,
 }: {
+  onPresentationFollowUp?: PresentationFollowUp;
+  presentationDisabled?: boolean;
   msg: ThreadMessage;
   relatedEmailMessages?: ThreadMessage[];
   viewerId?: string;
@@ -1311,15 +1319,24 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
               channel={msg.channel}
               isError={isError}
             >
-              <ProseMarkdown
-                gfm
-                breaks
-                compact={msg.channel === "imessage"}
-                className={markdownStylesForChannel(msg.channel)}
-                components={markdownComponents}
-              >
-                {displayContent}
-              </ProseMarkdown>
+              <ChatPresentationView
+                organizationId={msg.orgId}
+                presentation={isError ? undefined : msg.presentation}
+                onFollowUp={onPresentationFollowUp}
+                structuredReferences
+                disabled={presentationDisabled}
+                answer={
+                  <ProseMarkdown
+                    gfm
+                    breaks
+                    compact={msg.channel === "imessage"}
+                    className={markdownStylesForChannel(msg.channel)}
+                    components={markdownComponents}
+                  >
+                    {displayContent}
+                  </ProseMarkdown>
+                }
+              />
             </ThreadMessageBubble>
             {msg.channel === "slack" &&
             msg.slackDeliveryStatus !== undefined &&
@@ -1800,6 +1817,7 @@ export function UnifiedThreadContent({
       : "skip",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const sendInFlight = useRef(false);
   const [queuedMessage, setQueuedMessage] = useState<PromptInputMessage | null>(
     null,
   );
@@ -2048,7 +2066,8 @@ export function UnifiedThreadContent({
     async (message: PromptInputMessage) => {
       const text = message.text.trim();
       if (!text && message.files.length === 0) return;
-      if (!thread) return;
+      if (!thread || sendInFlight.current) return;
+      sendInFlight.current = true;
       setIsSubmitting(true);
       const content = text || "(attached files)";
       const clientMutationId = createClientMutationId("message");
@@ -2102,6 +2121,7 @@ export function UnifiedThreadContent({
         setChatError(message);
         toast.error("Failed to send message");
       } finally {
+        sendInFlight.current = false;
         setIsSubmitting(false);
       }
     },
@@ -2159,6 +2179,35 @@ export function UnifiedThreadContent({
     sendingQueuedNow,
   ]);
 
+  const sendPresentationFollowUp = useCallback(
+    async (content: string, selectedReferences?: PresentationReference[]) => {
+      if (
+        !thread || thread.archivedAt || thread.originChannel === "slack" ||
+        isAgentActive || isInputBusy || sendInFlight.current || queuedMessage
+      ) {
+        throw new Error("Wait for the current task to finish.");
+      }
+      sendInFlight.current = true;
+      setIsSubmitting(true);
+      try {
+        await sendMessage({
+          threadId,
+          content,
+          ...promptReferenceIds(selectedReferences?.flatMap(reference =>
+            reference.kind === "policy" || reference.kind === "requirement"
+              ? [{ kind: reference.kind, id: reference.recordId, label: reference.label }]
+              : [],
+          )),
+          clientMutationId: createClientMutationId("message"),
+        });
+      } finally {
+        sendInFlight.current = false;
+        setIsSubmitting(false);
+      }
+    },
+    [thread, isAgentActive, isInputBusy, queuedMessage, sendMessage, threadId],
+  );
+
   const collapseEmailMessages = thread?.originChannel !== "email";
 
   if (!thread) {
@@ -2202,6 +2251,11 @@ export function UnifiedThreadContent({
               <div key={msg._id}>
                 <UnifiedMessageBubble
                   msg={renderedMessage}
+                  onPresentationFollowUp={sendPresentationFollowUp}
+                  presentationDisabled={
+                    isAgentActive || isInputBusy || Boolean(queuedMessage) ||
+                    thread.originChannel === "slack" || Boolean(thread.archivedAt)
+                  }
                   relatedEmailMessages={relatedEmailMessages}
                   viewerId={viewerId}
                   viewerEmail={viewerEmail}

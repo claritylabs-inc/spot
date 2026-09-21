@@ -1,5 +1,7 @@
 "use client";
 
+import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
+
 import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 
 import {
@@ -462,7 +464,11 @@ function OperatorMessageRow({
   threadId,
   message,
   showThinking,
+  onFollowUp,
+  presentationDisabled,
 }: {
+  onFollowUp: (message: string) => Promise<void>;
+  presentationDisabled: boolean;
   threadId: string;
   message: OperatorAgentMessage;
   showThinking: boolean;
@@ -485,7 +491,8 @@ function OperatorMessageRow({
   ) : null;
 
   if (message.role === "assistant") {
-    if (!showThinking && !content && !attachments) return null;
+    if (!showThinking && !content && !attachments && !message.presentation)
+      return null;
 
     return (
       <div className="w-full">
@@ -504,15 +511,17 @@ function OperatorMessageRow({
             channel={bubbleChannel}
             isError={message.status === "error"}
           >
-            {content ? (
-              <ProseMarkdown
-                gfm
-                breaks
-                compact={message.channel === "imessage"}
-              >
-                {content}
-              </ProseMarkdown>
-            ) : null}
+            <ChatPresentationView
+              audience="operator"
+              presentation={message.status ? undefined : message.presentation}
+              onFollowUp={onFollowUp}
+              disabled={presentationDisabled}
+              answer={content ? (
+                <ProseMarkdown gfm breaks compact={message.channel === "imessage"}>
+                  {content}
+                </ProseMarkdown>
+              ) : null}
+            />
             {attachments}
           </ThreadMessageBubble>
         )}
@@ -591,7 +600,11 @@ function OperatorConversation({
   onSelectIntent,
   onDecision,
   composer,
+  onFollowUp,
+  presentationDisabled,
 }: {
+  onFollowUp: (message: string) => Promise<void>;
+  presentationDisabled: boolean;
   variant: "rail" | "page";
   activeThreadId: string | null;
   loading: boolean;
@@ -685,6 +698,8 @@ function OperatorConversation({
                     <OperatorMessageRow
                       threadId={activeThreadId ?? ""}
                       message={message}
+                      onFollowUp={onFollowUp}
+                      presentationDisabled={presentationDisabled || hasPendingConfirmation}
                       showThinking={
                         message.status === "processing" &&
                         !hasPendingConfirmation
@@ -785,6 +800,7 @@ export function OperatorAgentPanel({
   const { context: registeredPageContext } = usePageContext();
   const promptRef = useRef<SpotPromptInputHandle>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [confirmationBusyId, setConfirmationBusyId] = useState<string | null>(
     null,
   );
@@ -924,8 +940,11 @@ export function OperatorAgentPanel({
   const submit = useCallback(
     async (message: PromptInputMessage) => {
       const text = message.text.trim();
-      if ((!text && message.files.length === 0) || !controller || submitting)
-        return;
+      if (
+        (!text && message.files.length === 0) || !controller ||
+        submitting || submitInFlight.current
+      ) return;
+      submitInFlight.current = true;
       setSubmitting(true);
       const uploadedIntents: Array<{
         uploadIntentId: Id<"operatorAgentUploadIntents">;
@@ -990,6 +1009,7 @@ export function OperatorAgentPanel({
         );
         throw error;
       } finally {
+        submitInFlight.current = false;
         setSubmitting(false);
       }
     },
@@ -1187,6 +1207,17 @@ export function OperatorAgentPanel({
         intents={intents}
         launchingIntentId={launchingIntentId}
         confirmationBusyId={confirmationBusyId}
+        presentationDisabled={
+          running || Boolean(confirmationBusyId) || Boolean(launchingIntentId) ||
+          Boolean(activeThread?.archivedAt)
+        }
+        onFollowUp={async (text) => {
+          if (
+            running || submitInFlight.current || confirmationBusyId ||
+            launchingIntentId || activeThread?.archivedAt || !controller
+          ) throw new Error("Wait for the current task to finish.");
+          await submit({ text, files: [] });
+        }}
         onSelectIntent={(intentId) => void launchIntent(intentId)}
         onDecision={(confirmation, decision) =>
           void decide(confirmation, decision)

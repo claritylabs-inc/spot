@@ -212,6 +212,12 @@ binding, delivery snapshots, and bounded idempotent transport recovery. See
 `docs/deployment/operator-email.md` for dedicated-subdomain Resend receiving and
 acceptance; the root Google MX remains intact.
 
+## Generated chat presentations
+
+Operator and client web chats use the shared json-render catalog without feature flags. Assistant text remains visible; a separately scheduled presentation may add grounded facts, comparisons, requirements, dates, records, sources, files, and follow-up forms. `lib/chat-presentation.ts` owns the strict versioned envelope and bounded reference tree; `lib/chat-presentation-catalog.ts` owns the 15-component catalog. `convex/lib/chatPresentationCandidates.ts` builds concrete candidates from authorized typed tool results, and `chatPresentationComposer.ts` selects them through the native json-render composer and `clRouterDecide` `/v1/decide` only. Composition cannot replay business tools or generate write actions.
+
+`convex/chatPresentations.ts` owns temporary evidence, revision/run fencing, persistence, and current reference authorization on reads. `components/chat-presentation/` owns rendering and ordinary chat follow-ups for both audiences. Saved compliance findings remain distinct from inferred coverage; client request DTOs exclude private procurement/proposals. Sources and files use existing authorized preview/download boundaries. Forms preserve failed drafts and existing approval gates. See `docs/architecture/chat-presentations.md` for limits and owners. Keep `AGENT_TOOLS.md` synchronized with the typed compliance/source results and `lookup_client_requests` read tool.
+
 ## Workflow
 
 Page tabs use plain navigation labels, without status indicators. Always retain the primary view; hide empty secondary data views and omit the tab bar when only the primary view remains. If a selected view becomes empty, return to the primary view. Determine availability from the full relevant dataset, not the current filtered page. Configuration, editing, and creation controls are useful content even before records exist; keep those reachable.
@@ -387,6 +393,8 @@ Core layers:
 - `convex/lib/magicLinkTokens.ts` owns random bearer-token creation and one-way hashing for public link primitives. Public policy/certificate app cards and email-draft review links store token hashes rather than plaintext tokens; do not add a second token generator or persist returned bearer URLs in durable thread artifacts.
 
 ## Primitive Catalog And Reuse Rules
+
+- Generated chat UI: `lib/chat-presentation.ts` and `lib/chat-presentation-catalog.ts` own the typed envelope and catalog; `convex/chatPresentations.ts` owns evidence persistence and authorization; `convex/lib/chatPresentationCandidates.ts` and `chatPresentationComposer.ts` own grounded candidates and router decisions; `components/chat-presentation/` owns shared rendering and follow-ups. Reuse these owners for both operator and client chats. See the Generated chat presentations boundary above.
 
 - `components/ui/status-tag.tsx` owns `StatusTag`, `StatusIndicator`, and `StatusLabel` across browser surfaces. Keep the colored pill for statuses; use the same continuous-ring indicator in status menu options and selected values through `StatusLabel`. Workflow owners map stages explicitly to static ring positions, never elapsed-time or completion estimates. Drafts use a dashed ring, pending an empty ring, completion a check, cancellation an ×, waiting a clock, inactive a minus, and warning/error an exclamation. Tone supplies the default semantic indicator; override it when a domain state differs. Do not add a second icon inside a status tag. Roles, provenance, categories, and modes use ordinary `Badge`, not progress indicators.
 

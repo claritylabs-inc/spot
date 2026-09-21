@@ -1,3 +1,9 @@
+import {
+  presentationReadBudget,
+  schedulePresentation,
+  visiblePresentation,
+  type PresentationReadBudget,
+} from "./chatPresentations";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import {
@@ -223,11 +229,28 @@ function canCurrentOrgUserAccessThread(args: {
   });
 }
 
-function clientVisibleMessage(message: Doc<"threadMessages">) {
-  const { reasoning: _reasoning, agentSteps, ...visible } = message;
+async function clientVisibleMessage(
+  ctx: QueryCtx,
+  message: Doc<"threadMessages">,
+  orgId: Id<"organizations">,
+  budget: PresentationReadBudget,
+) {
+  const {
+    reasoning: _reasoning,
+    presentation: _presentation,
+    agentSteps,
+    ...visible
+  } = message;
+  const presentation = await visiblePresentation(
+    ctx,
+    message,
+    { audience: "client", orgId },
+    budget,
+  );
   const toolSteps = agentSteps?.filter((step) => step.type === "tool");
   return {
     ...visible,
+    ...(presentation ? { presentation } : {}),
     ...(toolSteps?.length ? { agentSteps: toolSteps } : {}),
   };
 }
@@ -313,7 +336,14 @@ export const messages = query({
       .query("threadMessages")
       .withIndex("thread", (q) => q.eq("threadId", args.threadId))
       .collect();
-    return messages.map(clientVisibleMessage);
+    const budget = presentationReadBudget();
+    return (
+      await Promise.all(
+        messages.reverse().map((message) =>
+          clientVisibleMessage(ctx, message, orgId, budget),
+        ),
+      )
+    ).reverse();
   },
 });
 
@@ -626,6 +656,8 @@ export const cancelProcessing = mutation({
     if (msg.status !== "processing") return; // already finished
     await ctx.db.patch(args.messageId, {
       content: "Response cancelled.",
+      presentation: undefined,
+      presentationRevision: (msg.presentationRevision ?? 0) + 1,
       reasoning: undefined,
       status: "cancelled",
     });
@@ -808,6 +840,9 @@ export const updateAgentMessage = internalMutation({
   args: {
     id: v.id("threadMessages"),
     content: v.string(),
+    presentationTools: v.optional(
+      v.array(v.object({ name: v.string(), outputJson: v.string() })),
+    ),
     routerRequestId: v.optional(v.string()),
     feedbackPromptedAt: v.optional(v.number()),
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
@@ -857,9 +892,11 @@ export const updateAgentMessage = internalMutation({
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.id);
-    if (existing?.status === "cancelled") return;
+    if (!existing || existing.status === "cancelled") return;
     await ctx.db.patch(args.id, {
       content: args.content,
+      presentation: undefined,
+      presentationRevision: (existing.presentationRevision ?? 0) + 1,
       routerRequestId: args.routerRequestId,
       feedbackPromptedAt: args.feedbackPromptedAt,
       status: args.status ?? undefined,
@@ -874,6 +911,23 @@ export const updateAgentMessage = internalMutation({
       attachments: args.attachments,
       pendingEmailId: args.pendingEmailId,
     });
+    if (args.presentationTools) {
+      const source = existing.replyToMessageId
+        ? await ctx.db.get(existing.replyToMessageId)
+        : null;
+      const message = await ctx.db.get(args.id);
+      if (
+        message &&
+        source?.userId &&
+        source.threadId === message.threadId &&
+        source.orgId === message.orgId
+      ) {
+        await schedulePresentation(ctx, message, {
+          userId: source.userId,
+          tools: args.presentationTools,
+        });
+      }
+    }
   },
 });
 
@@ -1051,6 +1105,8 @@ export const updateAgentError = internalMutation({
     if (existing?.status === "cancelled") return;
     await ctx.db.patch(args.id, {
       status: "error",
+      presentation: undefined,
+      presentationRevision: (existing?.presentationRevision ?? 0) + 1,
       error: args.error,
       ...(args.content !== undefined ? { content: args.content } : {}),
     });
