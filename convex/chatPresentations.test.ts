@@ -12,7 +12,14 @@ import {
 } from "./chatPresentations";
 import type { ChatPresentation } from "../lib/chat-presentation";
 
-const { compose } = vi.hoisted(() => ({ compose: vi.fn() }));
+const { compose, generate } = vi.hoisted(() => ({
+  compose: vi.fn(),
+  generate: vi.fn(),
+}));
+vi.mock("./lib/models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/models")>()),
+  generateAgentTextForOperatorTask: generate,
+}));
 vi.mock("./lib/chatPresentationComposer", () => ({
   composeChatPresentation: compose,
 }));
@@ -21,6 +28,7 @@ const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
   vi.useRealTimers();
   compose.mockReset();
+  generate.mockReset();
 });
 
 async function clientFixture() {
@@ -948,6 +956,105 @@ test("a revised client answer replaces its evidence and fences the old compositi
   expect(loaded?.evidence.tools).toEqual([
     { name: replacement.name, output: JSON.parse(replacement.outputJson) },
   ]);
+});
+
+test("the web operator loop captures authorized results before audit truncation and never replays after composition failure", async () => {
+  vi.useFakeTimers();
+  const t = convexTest(schema, modules);
+  const name = "Provider ".repeat(150);
+  const ids = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      email: "operator@example.com",
+      accountKind: "operator",
+    });
+    await ctx.db.insert("operatorProfiles", {
+      userId,
+      email: "operator@example.com",
+      role: "operator",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const brokerOrgId = await ctx.db.insert("organizations", {
+      name,
+      type: "broker",
+    });
+    return { userId, brokerOrgId };
+  });
+  const operator = t.withIdentity({ subject: `${ids.userId}|session` });
+  const threadId = await operator.mutation(api.operatorAgent.createThread, {});
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    const input = { brokerOrgId: ids.brokerOrgId };
+    const output =
+      await options.tools.get_broker_network_profile.execute(input);
+    expect(output.status).toBe("succeeded");
+    return {
+      text: "Retrieved provider.",
+      route: { provider: "openai", model: "gpt-5.6-terra" },
+      response: {
+        messages: [{ role: "assistant", content: "Retrieved provider." }],
+      },
+      steps: [
+        {
+          toolCalls: [{ toolName: "get_broker_network_profile", input }],
+          toolResults: [{ toolName: "get_broker_network_profile", output }],
+        },
+      ],
+    };
+  });
+  generate.mockResolvedValueOnce({
+    text: "The provider lookup completed.",
+    steps: [],
+  });
+  const queued = await t.mutation(
+    internal.operatorAgent.enqueueMessageInternal,
+    {
+      operatorUserId: ids.userId,
+      threadId,
+      channel: "chat",
+      content: "Show provider",
+      dedupeKey: "presentation-loop",
+    },
+  );
+  await t.action(internal.operatorAgentRunner.run, { runId: queued.runId });
+  await t.action(internal.operatorAgentRunner.run, { runId: queued.runId });
+  const result = await t.query(
+    internal.operatorAgent.getRunResultForOperatorInternal,
+    {
+      operatorUserId: ids.userId,
+      runId: queued.runId,
+    },
+  );
+  expect(result.run.status, JSON.stringify(result.run)).toBe("completed");
+  const sourceRevision = `${result.run.agentMessageId}:1`;
+  const input = await t.query(internal.chatPresentations.load, {
+    messageId: result.run.agentMessageId,
+    sourceRevision,
+  });
+  expect(input?.evidence.tools).toHaveLength(1);
+  expect(input?.evidence.tools[0].output).toMatchObject({ broker: { name } });
+  expect(result.response?.toolCalls?.[0].output?.length).toBeLessThan(
+    name.length,
+  );
+  compose.mockRejectedValueOnce(new Error("Decision service unavailable"));
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await t.action(internal.actions.chatPresentations.compose, {
+      messageId: result.run.agentMessageId,
+      sourceRevision,
+    });
+  } finally {
+    warning.mockRestore();
+  }
+  await t.action(internal.operatorAgentRunner.run, { runId: queued.runId });
+  expect(generate).toHaveBeenCalledTimes(2);
+  expect(compose).toHaveBeenCalledTimes(1);
+  expect((await t.run((ctx) => ctx.db.get(queued.runId)))?.status).toBe(
+    "completed",
+  );
+  expect(
+    await t.run((ctx) => ctx.db.get(result.run.agentMessageId)),
+  ).toMatchObject({ content: "The provider lookup completed." });
 });
 
 test("unbound vendor choices cannot bypass reference reauthorization", async () => {
