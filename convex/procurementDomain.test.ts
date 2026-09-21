@@ -980,6 +980,29 @@ describe("procurement domain boundaries", () => {
     expect(dto).not.toHaveProperty("outreaches");
     expect(dto).not.toHaveProperty("emailThreads");
     expect(dto.packet).not.toHaveProperty("sections");
+    const agentRequests = await f.t.query(
+      internal.clientProcurementRequests.listForAgentInternal,
+      {
+        orgIds: [f.clientOrgId],
+        requestId: created.requestId,
+      },
+    );
+    expect(agentRequests).toHaveLength(1);
+    expect(agentRequests[0]).toMatchObject({
+      title: "Property renewal",
+      status: "submitted",
+    });
+    expect(agentRequests[0]).not.toHaveProperty("proposals");
+    expect(agentRequests[0]).not.toHaveProperty("outreaches");
+    expect(agentRequests[0]).not.toHaveProperty("emailThreads");
+    expect(agentRequests[0].files.every((file) => !("url" in file))).toBe(true);
+    expect(
+      await f.t.query(internal.clientProcurementRequests.listForAgentInternal, {
+        orgIds: [f.brokerOrgId],
+        requestId: created.requestId,
+      }),
+    ).toEqual([]);
+
     await expect(
       f.client.query(api.procurementProposals.list, {
         requestId: created.requestId,
@@ -1008,6 +1031,12 @@ describe("procurement domain boundaries", () => {
     await expect(
       f.client.query(api.clientProcurementRequests.list, {}),
     ).resolves.toEqual([]);
+    expect(
+      await f.t.query(internal.clientProcurementRequests.listForAgentInternal, {
+        orgIds: [f.clientOrgId],
+        requestId: created.requestId,
+      }),
+    ).toEqual([]);
   });
 
   test("requires proposal outreach consistency and invalidates a confirmed review when the broker-visible packet changes", async () => {
