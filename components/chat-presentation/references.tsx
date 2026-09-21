@@ -17,10 +17,14 @@ import { usePresentation } from "./context";
 export function referenceHref(
   reference: PresentationReference,
 ): string | undefined {
-  if (reference.kind === "file" || reference.kind === "source")
-    return undefined;
-  if (reference.kind === "vendor")
-    return `/connect/vendors/${encodeURIComponent(reference.recordId)}/policies`;
+  if (reference.kind === "file") return undefined;
+  if (reference.kind === "vendor") {
+    const id = reference.recordId;
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) return undefined;
+    return reference.href === `/operator/clients/${id}`
+      ? reference.href
+      : `/connect/vendors/${id}/policies`;
+  }
   const href = reference.href;
   if (href && !/[\\\s%#]/.test(href)) {
     const id = reference.recordId;
@@ -48,14 +52,28 @@ export function referenceHref(
     )
       return href;
     if (
-      reference.kind === "requirement" &&
-      /^(?:\/operator\/clients\/[a-zA-Z0-9_-]+)?\/compliance$/.test(path) &&
-      ((query.size === 1 && query.get("tab") === "requirements") ||
-        (query.size === 2 &&
-          query.get("tab") === "requirements" &&
-          query.get("requirement") === id))
-    )
-      return href;
+      (reference.kind === "requirement" || reference.kind === "source") &&
+      /^(?:\/operator\/clients\/[a-zA-Z0-9_-]+)?\/compliance$/.test(path)
+    ) {
+      const requirementId = query.get("requirement");
+      const requirementsTab = query.get("tab") === "requirements";
+      const exactRequirement =
+        requirementId &&
+        /^[a-zA-Z0-9_-]+$/.test(requirementId) &&
+        (reference.kind === "requirement"
+          ? requirementId === id
+          : requirementId !== id);
+      if (
+        (exactRequirement &&
+          (query.size === 1 || (query.size === 2 && requirementsTab))) ||
+        (reference.kind === "requirement" &&
+          query.size === 1 &&
+          requirementsTab &&
+          /^[a-zA-Z0-9_-]+$/.test(id))
+      ) {
+        return `${path}?tab=requirements&requirement=${requirementId ?? id}`;
+      }
+    }
     if (reference.kind === "provider" && href === getOperatorBrokerHref(id))
       return href;
     if (
@@ -204,10 +222,20 @@ function RequirementSourceLink({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const pending = useRef(false);
-  const path = reference.href?.split("?")[0];
-  const match = path?.match(
-    /^(?:\/operator\/clients\/([a-zA-Z0-9_-]+))?\/compliance$/,
-  );
+  const href = reference.href;
+  const parts = href?.split("?");
+  const query = new URLSearchParams(parts?.[1]);
+  const ownSource =
+    (query.size === 1 && query.get("tab") === "sources") ||
+    (query.get("source") === reference.recordId &&
+      (query.size === 1 ||
+        (query.size === 2 && query.get("tab") === "sources")));
+  const match =
+    href && !/[\\\s%#]/.test(href) && parts?.length === 2 && ownSource
+      ? parts[0].match(
+          /^(?:\/operator\/clients\/([a-zA-Z0-9_-]+))?\/compliance$/,
+        )
+      : null;
   const orgId = match?.[1] ?? organizationId;
   const inspect = async () => {
     if (pending.current) return;
