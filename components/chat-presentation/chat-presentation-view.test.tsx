@@ -424,7 +424,11 @@ test("vendor policies and canonical requirement and proposal tabs remain navigab
     ],
   ];
   for (const [kind, href] of routes)
-    expect(referenceHref({ ...base, kind, href })).toBe(href);
+    expect(referenceHref({ ...base, kind, href })).toBe(
+      href === "/compliance?tab=requirements"
+        ? "/compliance?tab=requirements&requirement=record"
+        : href,
+    );
   expect(
     referenceHref({
       ...base,
@@ -485,4 +489,179 @@ test("requirement citations inspect only the exact source returned by the author
     "Source unavailable",
   );
   expect(denied.textContent).not.toContain("Maintain $2,000,000");
+});
+
+test("requirement navigation normalizes the exact target with or without a requirements tab", () => {
+  const reference: PresentationReference = {
+    id: "r",
+    kind: "requirement",
+    recordId: "requirement-record",
+    label: "Requirement",
+  };
+  for (const path of [
+    "/compliance",
+    "/operator/clients/client-org/compliance",
+  ]) {
+    for (const queryString of [
+      "requirement=requirement-record",
+      "tab=requirements&requirement=requirement-record",
+      "requirement=requirement-record&tab=requirements",
+    ]) {
+      expect(
+        referenceHref({ ...reference, href: `${path}?${queryString}` }),
+      ).toBe(`${path}?tab=requirements&requirement=requirement-record`);
+    }
+    for (const queryString of [
+      "requirement=another",
+      "requirement=requirement-record&tab=sources",
+      "requirement=requirement-record&redirect=elsewhere",
+      "requirement=requirement-record&requirement=another",
+    ]) {
+      expect(
+        referenceHref({ ...reference, href: `${path}?${queryString}` }),
+      ).toBeUndefined();
+    }
+  }
+});
+
+test("connected requirement citations navigate to the authorized requirement without reading the foreign source", () => {
+  for (const href of [
+    "/compliance?requirement=authorized-requirement",
+    "/operator/clients/client-org/compliance?tab=requirements&requirement=authorized-requirement",
+  ]) {
+    const content = mount(
+      envelope(
+        {
+          type: "SourceReference",
+          props: { referenceId: "connected-source" },
+          children: [],
+        },
+        [
+          {
+            id: "connected-source",
+            kind: "source",
+            recordId: "foreign-source",
+            label: "Shared lease requirements",
+            href,
+          },
+        ],
+      ),
+    );
+    const link = content.querySelector("a")!;
+    expect(link.textContent).toBe("Shared lease requirements");
+    expect(link.getAttribute("href")).toBe(
+      `${href.split("?")[0]}?tab=requirements&requirement=authorized-requirement`,
+    );
+    link.addEventListener("click", (event) => event.preventDefault());
+    act(() => link.click());
+    expect(content.querySelector("button")).toBeNull();
+  }
+  expect(query).not.toHaveBeenCalled();
+  expect(openPreview).not.toHaveBeenCalled();
+});
+
+test("invalid source destinations never fall through to owner source inspection", () => {
+  for (const suffix of [
+    "requirement=foreign-source",
+    "requirement=",
+    "requirement=authorized&tab=sources",
+    "source=another",
+    "tab=unknown",
+  ]) {
+    const content = mount(
+      envelope(
+        {
+          type: "SourceReference",
+          props: { referenceId: "source" },
+          children: [],
+        },
+        [
+          {
+            id: "source",
+            kind: "source",
+            recordId: "foreign-source",
+            label: "Source metadata",
+            href: `/operator/clients/client-org/compliance?${suffix}`,
+          },
+        ],
+      ),
+    );
+    expect(content.querySelector("button")).toBeNull();
+    expect(content.querySelector("a")).toBeNull();
+    expect(content.textContent).toContain("Source metadata");
+  }
+  expect(query).not.toHaveBeenCalled();
+});
+
+test("vendor references preserve exact operator destinations and constrain all navigation to their record", () => {
+  const reference: PresentationReference = {
+    id: "v",
+    kind: "vendor",
+    recordId: "vendor-org",
+    label: "Example vendor",
+  };
+  expect(
+    referenceHref({ ...reference, href: "/operator/clients/vendor-org" }),
+  ).toBe("/operator/clients/vendor-org");
+  expect(
+    referenceHref({
+      ...reference,
+      href: "/connect/vendors/vendor-org/policies",
+    }),
+  ).toBe("/connect/vendors/vendor-org/policies");
+  for (const href of [
+    "/operator/clients/other-org",
+    "/connect/vendors/other-org/policies",
+    "/operator/clients/vendor-org?redirect=elsewhere",
+  ]) {
+    expect(referenceHref({ ...reference, href })).toBe(
+      "/connect/vendors/vendor-org/policies",
+    );
+  }
+  const content = mount(
+    envelope(
+      {
+        type: "ActionGroup",
+        props: { actions: [{ label: "Open vendor", referenceId: "v" }] },
+        children: [],
+      },
+      [{ ...reference, href: "/operator/clients/vendor-org" }],
+    ),
+  );
+  expect(content.querySelector("a")?.getAttribute("href")).toBe(
+    "/operator/clients/vendor-org",
+  );
+  expect(query).not.toHaveBeenCalled();
+});
+
+test("direct source and sources-tab citations retain authenticated source inspection", async () => {
+  query.mockResolvedValue([]);
+  for (const suffix of ["source=source-record", "tab=sources"]) {
+    const content = mount(
+      envelope(
+        {
+          type: "SourceReference",
+          props: { referenceId: "source" },
+          children: [],
+        },
+        [
+          {
+            id: "source",
+            kind: "source",
+            recordId: "source-record",
+            label: "Source metadata",
+            href: `/operator/clients/client-org/compliance?${suffix}`,
+          },
+        ],
+      ),
+    );
+    await act(async () => content.querySelector("button")!.click());
+    expect(query).toHaveBeenLastCalledWith(expect.anything(), {
+      orgId: "client-org",
+    });
+    expect(content.querySelector('[role="alert"]')?.textContent).toContain(
+      "Source unavailable",
+    );
+  }
+  expect(query).toHaveBeenCalledTimes(2);
 });
