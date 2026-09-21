@@ -1158,7 +1158,9 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
 } {
   const builder = new Candidates();
   const tools = evidence.tools.slice(-24);
-  builder.partial = evidence.tools.length > tools.length;
+  builder.partial =
+    evidence.tools.length > tools.length ||
+    tools.some((tool) => record(tool.output).bounded === true);
   const knownPolicies = new Map<string, Policy>();
   for (const tool of tools) {
     if (tool.name === "list_policies" && evidence.audience !== "operator")

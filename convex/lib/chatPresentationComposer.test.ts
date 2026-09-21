@@ -199,12 +199,15 @@ describe("bounded router composition", () => {
       for (const [key, question] of Object.entries(request.questions)) {
         if (key === "root" || question.type !== "choice") continue;
         const choice =
-          Object.entries(question.criteria).find(([, description]) =>
-            description.startsWith("Choose two policies"),
+          Object.entries(question.criteria).find(
+            ([, description]) =>
+              typeof description === "string" &&
+              description.startsWith("Choose two policies"),
           )?.[0] ?? "omit";
         result.answers[key] = {
           type: "choice",
           choice,
+          confidence: 1,
           probabilities: Object.fromEntries(
             Object.keys(question.criteria).map((option) => [
               option,
