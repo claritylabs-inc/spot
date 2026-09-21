@@ -6,8 +6,29 @@ import {
   type PresentationProps,
   type PresentationReference,
 } from "../../lib/chat-presentation";
+import {
+  isRequirementLimitKind,
+  isRequirementProvision,
+  REQUIREMENT_LIMIT_KIND_LABELS,
+  REQUIREMENT_PROVISION_LABELS,
+} from "./complianceTypes";
+import { publicResearchUrl } from "./companyResearch";
 
 type Row = Record<string, unknown>;
+const REQUEST_STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  gathering_information: "Gathering information",
+  marketing: "Marketing",
+  proposal_review: "Proposal review",
+  binding: "Binding",
+  information_needed: "Information needed",
+  in_progress: "In progress",
+  finalizing: "Finalizing",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+export const CHAT_PRESENTATION_PARTIAL_RESOURCE = "partial_results_notice";
 const MAX_CANDIDATES = 18;
 const MAX_ROWS = 20;
 const MAX_REFERENCES = 80;
@@ -54,11 +75,32 @@ class Candidates {
   candidates: PresentationCandidate[] = [];
   references: PresentationReference[] = [];
   private bytes = 0;
+  partial = false;
+
+  result() {
+    if (this.partial && this.candidates.length) {
+      if (this.candidates.length === MAX_CANDIDATES) this.candidates.pop();
+      this.candidates.push({
+        id: "partial_notice",
+        resource: CHAT_PRESENTATION_PARTIAL_RESOURCE,
+        description: "Required notice that the supplied results are incomplete",
+        element: {
+          type: "Text",
+          props: {
+            text: "Partial results shown. Open the full records for a complete review.",
+          },
+          children: [],
+        },
+      });
+    }
+    return { candidates: this.candidates, references: this.references };
+  }
 
   reference(reference: Omit<PresentationReference, "id">): string | undefined {
     const existing = this.references.find(
       (item) =>
         item.kind === reference.kind &&
+        item.sourceUrl === reference.sourceUrl &&
         item.recordId === reference.recordId &&
         item.policyId === reference.policyId &&
         item.requestId === reference.requestId &&
@@ -69,14 +111,20 @@ class Candidates {
           JSON.stringify(reference.sourceSpanIds),
     );
     if (existing) return existing.id;
-    if (this.references.length >= MAX_REFERENCES) return undefined;
+    if (this.references.length >= MAX_REFERENCES) {
+      this.partial = true;
+      return undefined;
+    }
     const id = `ref_${this.references.length}`;
     this.references.push({ id, ...reference });
     return id;
   }
 
   add(description: string, element: PresentationElement, resource?: string) {
-    if (this.candidates.length >= MAX_CANDIDATES) return;
+    if (this.candidates.length >= MAX_CANDIDATES) {
+      this.partial = true;
+      return;
+    }
     const id = `candidate_${this.candidates.length}`;
     const parsed = parseChatPresentation({
       version: 1,
@@ -85,7 +133,10 @@ class Candidates {
       spec: { root: id, elements: { [id]: element } },
       references: this.references,
     });
-    if (!parsed) return;
+    if (!parsed) {
+      this.partial = true;
+      return;
+    }
     const candidate = {
       id,
       description,
@@ -93,7 +144,10 @@ class Candidates {
       ...(resource ? { resource } : {}),
     };
     const size = new TextEncoder().encode(JSON.stringify(candidate)).length;
-    if (this.bytes + size > MAX_CANDIDATE_BYTES) return;
+    if (this.bytes + size > MAX_CANDIDATE_BYTES) {
+      this.partial = true;
+      return;
+    }
     this.bytes += size;
     this.candidates.push(candidate);
   }
@@ -148,6 +202,7 @@ function addPolicies(
   builder: Candidates,
   policies: Policy[],
   resource: string,
+  allowClarification: boolean,
 ) {
   if (!policies.length) return;
   const fields = [
@@ -157,24 +212,36 @@ function addPolicies(
     ["Effective date", "effective", "effectiveDate"],
     ["Expiration date", "expiration", "expirationDate"],
     ["Premium", "premium"],
-    ["Data stage", "dataStage", "extractionDataStage"],
-    ["Provisional", "provisional"],
   ];
   const values: PresentationProps<"ComparisonTable">["rows"] = fields.map(
     ([label, key, alias]) => ({
       label,
       values: policies.map(({ row }) =>
-        key === "provisional"
-          ? row.provisional === true
-            ? "Yes — enrichment is incomplete"
-            : row.provisional === false
-              ? "No"
-              : "Not provided"
-          : unknownValue(row[key] ?? (alias ? row[alias] : undefined)),
+        unknownValue(row[key] ?? (alias ? row[alias] : undefined)),
       ),
       sourceIds: policies.map((policy) => policy.referenceId),
     }),
   );
+  if (
+    policies.some(
+      ({ row }) =>
+        row.provisional === true ||
+        row.dataStage === "preview" ||
+        row.extractionDataStage === "preview",
+    )
+  ) {
+    values.push({
+      label: "Evidence note",
+      values: policies.map(({ row }) =>
+        row.provisional === true ||
+        row.dataStage === "preview" ||
+        row.extractionDataStage === "preview"
+          ? "Enrichment is incomplete; terms are provisional."
+          : "",
+      ),
+      sourceIds: policies.map((policy) => policy.referenceId),
+    });
+  }
   const names = [
     ...new Set(
       policies.flatMap(({ row }) =>
@@ -285,6 +352,74 @@ function addPolicies(
     },
     resource,
   );
+  if (allowClarification && policies.length > 1) {
+    const options = policies.map((policy) => ({
+      value: policy.referenceId,
+      label: policy.label,
+    }));
+    builder.add(
+      "Choose two policies for comparison only when the user has not identified the pair; never replace an already-resolved comparison with a question",
+      {
+        type: "ClarificationForm",
+        props: {
+          fields: [
+            {
+              id: "first_policy",
+              label: "First policy",
+              type: "record",
+              required: true,
+              options,
+            },
+            {
+              id: "second_policy",
+              label: "Second policy",
+              type: "record",
+              required: true,
+              options,
+            },
+          ],
+          submitLabel: "Compare policies",
+        },
+        children: [],
+      },
+      resource,
+    );
+    builder.add(
+      "Choose one policy only when the requested next step needs one record and the user has not identified it",
+      {
+        type: "RecordSelector",
+        props: {
+          label: "Which policy?",
+          referenceIds: policies.map((policy) => policy.referenceId),
+          submitLabel: "Continue",
+        },
+        children: [],
+      },
+      resource,
+    );
+  }
+  const actions: PresentationProps<"ActionGroup">["actions"] =
+    policies.length === 1
+      ? [
+          { label: "Open policy", referenceId: policies[0].referenceId },
+          {
+            label: "Explain coverage terms",
+            followUp: `Explain the coverage terms for policy ${policies[0].id}.`,
+          },
+        ]
+      : policies.map((policy) => ({
+          label: policy.label,
+          referenceId: policy.referenceId,
+        }));
+  builder.add(
+    "Open a resolved policy or explicitly request a coverage explanation when that next step helps the user",
+    {
+      type: "ActionGroup",
+      props: { actions },
+      children: [],
+    },
+    resource,
+  );
 }
 
 function addPolicySources(
@@ -293,6 +428,7 @@ function addPolicySources(
   policyId: string | undefined,
 ) {
   if (!policyId) return;
+  builder.partial ||= hasBoundedEvidence(output);
   const findings: PresentationProps<"FindingsList">["findings"] = [];
   for (const item of rows(output)) {
     const sourceSpanIds = strings(item.sourceSpanIds);
@@ -333,6 +469,7 @@ function addPolicySources(
 }
 
 function addCompliance(builder: Candidates, output: unknown) {
+  builder.partial ||= hasBoundedEvidence(output);
   for (const vendor of rows(output)) {
     const requirements: PresentationProps<"RequirementMatrix">["requirements"] =
       [];
@@ -399,6 +536,7 @@ function addRequirements(
   output: unknown,
   audience: PresentationEvidence["audience"],
 ) {
+  builder.partial ||= hasBoundedEvidence(output);
   const requirements: PresentationProps<"RequirementMatrix">["requirements"] =
     [];
   for (const item of rows(record(output).requirements)) {
@@ -422,7 +560,11 @@ function addRequirements(
     const limits = rows(item.limits).flatMap((limit) => {
       const kind = literal(limit.kind, 200);
       const value = literal(limit.label ?? limit.amount);
-      return kind && value ? [`${kind}: ${value}`] : [];
+      return kind && value
+        ? [
+            `${isRequirementLimitKind(kind) ? REQUIREMENT_LIMIT_KIND_LABELS[kind] : kind}: ${value}`,
+          ]
+        : [];
     });
     const deductible = record(item.maxDeductible);
     const details = [
@@ -439,7 +581,10 @@ function addRequirements(
       literal(item.retroactiveDateOnOrBefore)
         ? `Retroactive date on or before: ${item.retroactiveDateOnOrBefore}`
         : undefined,
-      ...strings(item.provisions).map((value) => `Provision: ${value}`),
+      ...strings(item.provisions).map(
+        (value) =>
+          `Provision: ${isRequirementProvision(value) ? REQUIREMENT_PROVISION_LABELS[value] : value}`,
+      ),
       ...strings(item.requiredForms).map((value) => `Required form: ${value}`),
       `Recorded status: ${unknownValue(item.currentComplianceStatus)}`,
       ...strings(item.currentComplianceReasons).map(
@@ -505,19 +650,32 @@ function addRequirements(
 }
 
 function addVendorClarification(builder: Candidates, output: unknown) {
+  builder.partial ||= hasBoundedEvidence(output);
   const result = record(output);
   if (result.needsDisambiguation !== true) return;
-  const options = rows(result.vendors).flatMap((vendor) => {
-    const value = identifier(vendor.vendorOrgId);
+  const referenceIds = rows(result.vendors).flatMap((vendor) => {
+    const recordId = identifier(vendor.vendorOrgId);
     const label = literal(vendor.name, 200);
-    return value && label ? [{ value, label }] : [];
+    if (!recordId || !label) return [];
+    return (
+      builder.reference({
+        kind: "vendor",
+        recordId,
+        label,
+        href: `/connect/vendors/${recordId}/policies`,
+      }) ?? []
+    );
   });
-  if (options.length)
+  if (referenceIds.length)
     builder.add(
       "Choose the vendor explicitly requested by the policy lookup before continuing",
       {
-        type: "ChoiceGroup",
-        props: { label: "Which vendor?", options, submitLabel: "Continue" },
+        type: "RecordSelector",
+        props: {
+          label: "Which vendor?",
+          referenceIds,
+          submitLabel: "Continue",
+        },
         children: [],
       },
     );
@@ -531,6 +689,7 @@ function requestHref(request: Row) {
     : undefined;
 }
 function addRequests(builder: Candidates, name: string, output: unknown) {
+  builder.partial ||= hasBoundedEvidence(output);
   const clientDto = name === "lookup_client_requests";
   const result = record(output);
   const requests =
@@ -549,10 +708,21 @@ function addRequests(builder: Candidates, name: string, output: unknown) {
       ...(href ? { href } : {}),
     });
     if (!referenceId) continue;
+    const outcome = record(request.completionOutcome);
     const facts = [
       ["Request", request.title],
-      ["Stage", request.status],
-      ["Completion outcome", request.completionOutcome],
+      [
+        "Stage",
+        typeof request.status === "string"
+          ? REQUEST_STATUS_LABELS[request.status]
+          : undefined,
+      ],
+      [
+        "Completion outcome",
+        outcome.kind === "placed_elsewhere" ? "Placed elsewhere" : undefined,
+      ],
+      ["Purchased from", outcome.provider],
+      ["Purchase date", outcome.purchaseDate],
       ["Target effective date", request.targetEffectiveDate],
     ].flatMap(([label, value]) => {
       const text = literal(value);
@@ -613,6 +783,7 @@ function addRequestFiles(
 }
 
 function addProposals(builder: Candidates, name: string, output: unknown) {
+  builder.partial ||= hasBoundedEvidence(output);
   const proposals = (
     name === "list_procurement_proposals"
       ? collection(output, "proposals")
@@ -699,9 +870,154 @@ function addProposals(builder: Candidates, name: string, output: unknown) {
       children: [],
     },
   );
+  for (const item of resolved)
+    addProposalFindings(builder, item.proposal, item.referenceId);
+}
+
+function addProposalFindings(
+  builder: Candidates,
+  proposal: Row,
+  referenceId: string,
+) {
+  const offer = record(proposal.extractedOffer);
+  const findings: PresentationProps<"FindingsList">["findings"] = [];
+  for (const [key, category] of [
+    ["conditions", "Condition"],
+    ["exclusions", "Exclusion"],
+    ["subjectivities", "Subjectivity"],
+  ]) {
+    for (const item of rows(offer[key])) {
+      const label = literal(item.name ?? item.category, 160) ?? category;
+      const detail = literal(item.content ?? item.description);
+      if (!detail) continue;
+      findings.push({
+        label: `${category}: ${label}`,
+        detail,
+        status: key === "subjectivities" ? "uncertain" : "information",
+        sourceIds: proposalSources(
+          builder,
+          proposal,
+          item.evidence,
+          referenceId,
+        ),
+      });
+    }
+  }
+  if (findings.length)
+    builder.add(
+      "Extracted proposal conditions, exclusions and unresolved subjectivities; no finding implies coverage or completion",
+      {
+        type: "FindingsList",
+        props: { findings: findings.slice(0, MAX_ROWS) },
+        children: [],
+      },
+    );
+  if (findings.length > MAX_ROWS) builder.partial = true;
+
+  const review = rows(proposal.reviews)[0];
+  if (!review) return;
+  const current =
+    review.stale === false &&
+    typeof review.confirmedAt === "number" &&
+    Number.isFinite(review.confirmedAt) &&
+    Boolean(identifier(review.confirmedByUserId)) &&
+    ["meets_requirements", "has_gaps", "insufficient_evidence"].includes(
+      String(review.staffConclusion),
+    ) &&
+    typeof proposal.extractionFingerprint === "string" &&
+    review.extractionFingerprint === proposal.extractionFingerprint;
+  const reviewFindings: PresentationProps<"FindingsList">["findings"] = rows(
+    review.findings,
+  ).flatMap((finding) => {
+    const detail = literal(finding.summary, 3500);
+    if (!detail) return [];
+    const heading = record(proposal.sectionHeadings)[
+      String(finding.sectionKey)
+    ];
+    const label =
+      literal(heading, 200) ??
+      literal(finding.sectionKey, 200) ??
+      "Review finding";
+    const evidence = rows(finding.evidence);
+    const grounded =
+      evidence.length > 0 &&
+      evidence.every((item) =>
+        rows(proposal.documents).some(
+          (document) => document._id === item.proposalDocumentId,
+        ),
+      );
+    const status: PresentationProps<"FindingsList">["findings"][number]["status"] =
+      current &&
+      grounded &&
+      review.staffConclusion === "meets_requirements" &&
+      finding.conclusion === "meets"
+        ? "satisfied"
+        : current &&
+            grounded &&
+            review.staffConclusion === "has_gaps" &&
+            finding.conclusion === "has_gap"
+          ? "missing"
+          : "uncertain";
+    const qualification = !current
+      ? "Review is stale or awaiting confirmation."
+      : !grounded
+        ? "Supporting document evidence is unavailable."
+        : undefined;
+    return [
+      {
+        label,
+        detail: qualification ? `${qualification}\n${detail}` : detail,
+        status,
+        sourceIds: proposalSources(
+          builder,
+          proposal,
+          finding.evidence,
+          referenceId,
+        ),
+      },
+    ];
+  });
+  if (reviewFindings.length)
+    builder.add(
+      "Latest proposal requirement-review findings; stale, unconfirmed or unsupported findings remain uncertain",
+      {
+        type: "FindingsList",
+        props: { findings: reviewFindings },
+        children: [],
+      },
+    );
+}
+
+function proposalSources(
+  builder: Candidates,
+  proposal: Row,
+  evidence: unknown,
+  referenceId: string,
+) {
+  const sourceIds = [referenceId];
+  for (const item of rows(evidence).slice(0, 10)) {
+    const document = rows(proposal.documents).find(
+      (document) => document._id === item.proposalDocumentId,
+    );
+    const clientFileId = identifier(document?.clientFileId);
+    if (!document || !clientFileId) continue;
+    const page = item.pageStart;
+    const sourceId = builder.reference({
+      kind: "file",
+      recordId: clientFileId,
+      label: literal(document.fileName, 200) ?? "Proposal document",
+      sourceSpanIds: strings(item.sourceSpanIds),
+      ...(typeof page === "number" && Number.isInteger(page) && page > 0
+        ? { page }
+        : {}),
+    });
+    if (sourceId && !sourceIds.includes(sourceId)) sourceIds.push(sourceId);
+  }
+  return sourceIds;
 }
 
 function addProviders(builder: Candidates, name: string, output: unknown) {
+  builder.partial ||= hasBoundedEvidence(output);
   const result = record(output);
   const providers =
     name === "list_broker_network_profiles" ? rows(result.profiles) : [result];
@@ -746,12 +1062,15 @@ function addProviders(builder: Candidates, name: string, output: unknown) {
     for (const fact of rows(research.facts)) {
       const content = literal(fact.content);
       const key = literal(fact.key, 200);
-      const source = literal(fact.sourceRef, 200);
+      const source = literal(fact.sourceRef, 2000);
       if (!key || !content || !source || !sourceUrls.includes(source)) continue;
+      const sourceUrl = publicResearchUrl(source);
+      if (!sourceUrl) continue;
       const sourceId = builder.reference({
         kind: "source",
         recordId: id,
-        label: source,
+        sourceUrl: source,
+        label: new URL(sourceUrl).hostname.slice(0, 200),
       });
       if (sourceId)
         facts.push({ label: key, value: content, sourceIds: [sourceId] });
@@ -763,6 +1082,75 @@ function addProviders(builder: Candidates, name: string, output: unknown) {
   }
 }
 
+const BOUNDED_COLLECTIONS: Record<string, number> = {
+  policies: 6,
+  proposals: 6,
+  requests: MAX_ROWS,
+  profiles: MAX_ROWS,
+  results: MAX_ROWS,
+  files: MAX_ROWS,
+  documents: MAX_ROWS,
+  checks: MAX_ROWS,
+  requirements: MAX_ROWS,
+  vendors: MAX_ROWS,
+  coverages: 12,
+  all: 12,
+  limits: MAX_ROWS,
+  facts: MAX_ROWS,
+  conditions: MAX_ROWS,
+  exclusions: MAX_ROWS,
+  subjectivities: MAX_ROWS,
+  findings: MAX_ROWS,
+};
+function hasBoundedEvidence(
+  value: unknown,
+  limit = MAX_ROWS,
+  depth = 0,
+): boolean {
+  if (depth > 6 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value))
+    return (
+      value.length > limit ||
+      value
+        .slice(0, limit)
+        .some((item) => hasBoundedEvidence(item, MAX_ROWS, depth + 1))
+    );
+  const item = record(value);
+  if (
+    [
+      "content",
+      "description",
+      "summary",
+      "requirementText",
+      "sourceExcerpt",
+    ].some((key) => typeof item[key] === "string" && item[key].length > 4000)
+  )
+    return true;
+  if (item.bounded === true) return true;
+  for (const [key, maximum] of Object.entries(BOUNDED_COLLECTIONS)) {
+    if (hasBoundedEvidence(item[key], maximum, depth + 1)) return true;
+  }
+  for (const key of [
+    "result",
+    "request",
+    "policy1",
+    "policy2",
+    "coverageBreakdown",
+    "extractedOffer",
+    "broker",
+    "companyResearch",
+  ]) {
+    if (item[key] && hasBoundedEvidence(item[key], MAX_ROWS, depth + 1))
+      return true;
+  }
+  const latestReview = Array.isArray(item.reviews)
+    ? item.reviews[0]
+    : undefined;
+  return Boolean(
+    latestReview && hasBoundedEvidence(latestReview, MAX_ROWS, depth + 1),
+  );
+}
+
 /** Consumes successful authorized snapshots; it never authorizes or repeats a business read. */
 export function buildPresentationCandidates(evidence: PresentationEvidence): {
   candidates: PresentationCandidate[];
@@ -770,13 +1158,20 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
 } {
   const builder = new Candidates();
   const tools = evidence.tools.slice(-24);
+  builder.partial = evidence.tools.length > tools.length;
   const knownPolicies = new Map<string, Policy>();
   for (const tool of tools) {
     if (tool.name === "list_policies" && evidence.audience !== "operator")
       continue;
     const output = outputOf(tool.output);
+    const policyResults = policyRows(tool.name, output);
+    if (
+      policyResults.length > 6 ||
+      (policyResults.length > 0 && hasBoundedEvidence(output))
+    )
+      builder.partial = true;
     const policies: Policy[] = [];
-    for (const row of policyRows(tool.name, output).slice(0, 6)) {
+    for (const row of policyResults.slice(0, 6)) {
       const id = identifier(row.id ?? row.policyId);
       if (
         !id ||
@@ -810,7 +1205,14 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
       policies.push(policy);
       knownPolicies.set(id, policy);
     }
-    addPolicies(builder, policies, `policies_${builder.candidates.length}`);
+    const selectedIds = record(tool.input).policyIds;
+    addPolicies(
+      builder,
+      policies,
+      `policies_${builder.candidates.length}`,
+      tool.name !== "compare_coverages" &&
+        !(Array.isArray(selectedIds) && selectedIds.length === 2),
+    );
   }
   for (const tool of tools) {
     const output = outputOf(tool.output);
@@ -854,5 +1256,5 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
     )
       addProviders(builder, tool.name, output);
   }
-  return { candidates: builder.candidates, references: builder.references };
+  return builder.result();
 }
