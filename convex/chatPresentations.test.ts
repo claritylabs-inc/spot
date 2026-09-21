@@ -700,3 +700,46 @@ test("source references require the current requirement document or verified pro
   });
   expect(await read(provider, "operator")).toBeNull();
 });
+
+test("capture preserves policy array shapes and grounded proposal review fields", () => {
+  const policies = [{ id: "policy1", carrier: "Carrier", number: "ABC" }];
+  expect(
+    JSON.parse(capturePresentationTool("lookup_policy", policies)!.outputJson),
+  ).toEqual(policies);
+  const proposal = {
+    _id: "proposal1",
+    sectionHeadings: { "coverage-terms": "Coverage terms" },
+    extractedOffer: {
+      conditions: [
+        { name: "Inspection", content: "Required", sourceSpanIds: ["span1"] },
+      ],
+    },
+    reviews: [
+      {
+        stale: false,
+        staffConclusion: "has_gaps",
+        findings: [
+          {
+            sectionKey: "coverage-terms",
+            conclusion: "has_gap",
+            summary: "Inspection required",
+            evidence: [
+              {
+                proposalDocumentId: "doc1",
+                sourceNodeIds: ["node1"],
+                sourceSpanIds: ["span1"],
+                pageStart: 1,
+                pageEnd: 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(
+    JSON.parse(
+      capturePresentationTool("get_procurement_proposal", proposal)!.outputJson,
+    ),
+  ).toEqual(proposal);
+});
