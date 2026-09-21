@@ -14,7 +14,7 @@ The shared catalog in `lib/chat-presentation-catalog.ts` contains 15 components:
 
 ## Completion and access
 
-Composition is scheduled after a successful web-chat answer. Failure or abstention leaves that answer intact and never replays a business tool. Both message tables store an optional presentation and revision. Save checks the originating actor, completed run, current access, references, and revision; cancelled or superseded work cannot replace the current result.
+Composition is scheduled after a successful web-chat answer with captured tool evidence. Plain answers create no evidence row or composition job. Failure or abstention leaves that answer intact and never replays a business tool. Both message tables store an optional presentation and revision. Save checks the originating actor, completed run, current access, references, and revision; cancelled or superseded work cannot replace the current result.
 
 Message queries reauthorize saved references with a bounded per-query budget. Access removal hides the presentation. Policy sources resolve against their policy, request files retain request-specific grants, connected requirements retain their existing relationship boundary, and provider citations must match saved public research sources. Server-normalized destinations and existing authorized preview/download APIs own navigation. A provider URL cannot become an arbitrary external action.
 
@@ -26,4 +26,4 @@ Message queries reauthorize saved references with a bounded per-query budget. Ac
 
 ## Validation
 
-Focused tests cover schema rejection, evidence grounding, composer failures, persistence and stale revisions, access revocation, request-file grants, client/private boundaries, follow-up validation and failed-send recovery. Browser fixtures exercise all components in light/dark themes, narrow rails and mobile widths, including a 30-row comparison and keyboard source inspection. Live local acceptance and final check results are recorded in the implementation handoff; local validation does not deploy production.
+Focused tests cover schema rejection, evidence grounding, composer failures, persistence and stale revisions, access revocation, request-file grants, client/private boundaries, follow-up validation and failed-send recovery. Browser fixtures exercise all components in light/dark themes, narrow rails and mobile widths, including a 30-row comparison and keyboard source inspection. See `docs/testing/chat-presentations.md` for acceptance results and their limits. Local validation does not deploy production.
