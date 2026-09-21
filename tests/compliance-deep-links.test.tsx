@@ -187,3 +187,37 @@ test("an editable source keeps its draft and pending navigation after a failed c
     expect(page.container.querySelector("[data-drawer]")?.getAttribute("data-drawer")).toBe("exact requirement");
   } finally { await page.dispose(); }
 });
+
+test("an authorized incoming client requirement opens read-only without its owner's source dataset", async () => {
+  const incoming = {
+    ...requirements[0],
+    _id: "incoming" as Id<"insuranceRequirements">,
+    orgId: "connected-client" as Id<"organizations">,
+    scope: "vendors" as const,
+    title: "Connected client requirement",
+    sourceDocumentId: "foreign-source" as Id<"requirementSourceDocuments">,
+    sourceDocumentName: "Client contract",
+    canArchive: false,
+    clientRequirementSource: { clientOrg: { _id: "connected-client", name: "Connected client" } },
+  };
+  mocks.query.mockImplementation((key: string) => {
+    if (key === "compliance.listRequirements") return [...requirements, incoming];
+    if (key === "compliance.listRequirementSources") return [];
+    return [];
+  });
+  mocks.search = new URLSearchParams("requirement=incoming");
+  const page = mount(false, true);
+  try {
+    await page.render();
+    const drawer = page.container.querySelector("[data-drawer]");
+    expect(drawer?.getAttribute("data-drawer")).toBe(incoming.title);
+    expect(drawer?.textContent).toContain(incoming.requirementText);
+    expect(drawer?.querySelector("input, textarea")).toBeNull();
+    expect(mocks.query.mock.calls.filter(([key]) => key === "compliance.listRequirementSources")
+      .every(([, , args]) => args.orgId === orgId)).toBe(true);
+    expect(mocks.toast).not.toHaveBeenCalled();
+    await page.close();
+    expect(page.container.querySelector("[data-drawer]")).toBeNull();
+    expect(mocks.save).not.toHaveBeenCalled();
+  } finally { await page.dispose(); }
+});
