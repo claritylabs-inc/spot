@@ -1,3 +1,4 @@
+import { chatPresentationValidator } from "./lib/chatPresentationValidators";
 import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
@@ -3825,6 +3826,7 @@ export default defineSchema({
     resendEmailId: v.optional(v.string()),
     // Content
     content: v.string(),
+    presentation: v.optional(chatPresentationValidator),
     contentHtml: v.optional(v.string()),
     emailContent: v.optional(emailContentValidator),
     // Reasoning / thinking content (for models that support it)
@@ -4370,6 +4372,7 @@ export default defineSchema({
     replyToMessageId: v.optional(v.id("operatorAgentMessages")),
     dedupeKey: v.optional(v.string()),
     content: v.string(),
+    presentation: v.optional(chatPresentationValidator),
     emailContent: v.optional(operatorEmailContentValidator),
     attachments: v.optional(
       v.array(
