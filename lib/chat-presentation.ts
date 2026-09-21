@@ -29,6 +29,7 @@ export const presentationReferenceSchema = z
     href: z.string().max(2000).optional(),
     policyId: id.optional(),
     requestId: id.optional(),
+    sourceUrl: z.string().url().max(2000).optional(),
     sourceSpanIds: z.array(id).max(20).optional(),
     page: z.number().int().positive().optional(),
   })
@@ -245,6 +246,19 @@ export function parseChatPresentation(value: unknown): ChatPresentation | null {
     );
     if (references.size !== envelope.references.length) return null;
     for (const reference of references.values()) {
+      if (reference.sourceUrl) {
+        const url = new URL(reference.sourceUrl);
+        if (
+          reference.kind !== "source" ||
+          reference.policyId ||
+          reference.requestId ||
+          reference.href ||
+          !["https:", "http:"].includes(url.protocol) ||
+          url.username ||
+          url.password
+        )
+          return null;
+      }
       if (
         reference.href &&
         (!reference.href.startsWith("/") ||
