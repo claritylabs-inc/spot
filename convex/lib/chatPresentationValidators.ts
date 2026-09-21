@@ -16,6 +16,7 @@ export const presentationReferenceValidator = v.object({
     v.literal("request"),
     v.literal("proposal"),
     v.literal("provider"),
+    v.literal("vendor"),
     v.literal("file"),
     v.literal("source"),
   ),
