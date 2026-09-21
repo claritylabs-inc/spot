@@ -890,7 +890,7 @@ export function buildAgentToolExecutors(
           8,
         );
         await options.onPolicySourceEvidence?.(evidence);
-        return { ...evidence, policyId: resolved.policy._id };
+        return { policyId: resolved.policy._id, results: evidence };
       },
     },
     save_note: {
