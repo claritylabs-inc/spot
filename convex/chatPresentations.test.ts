@@ -5,7 +5,9 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import {
+  appendCapturedPresentationTool,
   capturePresentationTool,
+  type CapturedPresentationTool,
   visiblePresentation,
 } from "./chatPresentations";
 import type { ChatPresentation } from "../lib/chat-presentation";
@@ -298,7 +300,7 @@ test("capture retains complete bounded domain values but excludes failed results
       "lookup_policy",
       Array.from({ length: 40 }, () => ({ summary: "x".repeat(4000) })),
     ),
-  ).toBeNull();
+  ).toEqual({ name: "lookup_policy", outputJson: '{"bounded":true}' });
 });
 
 test("operator attempts fence evidence and duplicate completions cannot replay or schedule another presentation", async () => {
@@ -463,6 +465,7 @@ test("request file visibility is authorized through its current association, ind
         recordId: ids.clientFileId,
         requestId: ids.requestId,
         label: "Requirements",
+        page: 3,
         href: "/operator/settings",
       },
     ],
@@ -484,6 +487,8 @@ test("request file visibility is authorized through its current association, ind
       presentation,
     }),
   ).toBe(true);
+  const stored = await f.t.run((ctx) => ctx.db.get(f.messageId));
+  expect(stored?.presentation?.references[0].page).toBe(3);
   const owner = f.t.withIdentity({ subject: `${f.userId}|session` });
   const messages = () =>
     owner.query(api.threads.messages, { threadId: f.threadId });
@@ -708,15 +713,21 @@ test("capture preserves policy array shapes and grounded proposal review fields"
   ).toEqual(policies);
   const proposal = {
     _id: "proposal1",
+    documents: [{ _id: "doc1", clientFileId: "file1", fileName: "quote.pdf" }],
+    extractionFingerprint: "current",
     sectionHeadings: { "coverage-terms": "Coverage terms" },
     extractedOffer: {
       conditions: [
         { name: "Inspection", content: "Required", sourceSpanIds: ["span1"] },
       ],
+      subjectivities: [{ category: "inspection", description: "Required" }],
     },
     reviews: [
       {
         stale: false,
+        confirmedAt: 1,
+        confirmedByUserId: "operator1",
+        extractionFingerprint: "current",
         staffConclusion: "has_gaps",
         findings: [
           {
@@ -742,6 +753,35 @@ test("capture preserves policy array shapes and grounded proposal review fields"
       capturePresentationTool("get_procurement_proposal", proposal)!.outputJson,
     ),
   ).toEqual(proposal);
+  const list = { proposals: [proposal] };
+  const capturedList = capturePresentationTool(
+    "list_procurement_proposals",
+    list,
+  )!;
+  expect(JSON.parse(capturedList.outputJson)).toEqual(list);
+  expect(
+    capturePresentationTool(
+      capturedList.name,
+      JSON.parse(capturedList.outputJson),
+    ),
+  ).toEqual(capturedList);
+  const requests = {
+    requests: [
+      {
+        _id: "request1",
+        completionOutcome: {
+          kind: "purchased_elsewhere",
+          provider: "Carrier",
+          purchaseDate: "2026-09-21",
+        },
+      },
+    ],
+  };
+  expect(
+    JSON.parse(
+      capturePresentationTool("lookup_client_requests", requests)!.outputJson,
+    ),
+  ).toEqual(requests);
 });
 
 test("connected client requirements and their source metadata revoke together without granting other owner requirements", async () => {
@@ -806,6 +846,108 @@ test("connected client requirements and their source metadata revoke together wi
     ctx.db.patch(ids.relationshipId, { status: "revoked" }),
   );
   expect((await messages()).at(-1)?.presentation).toBeUndefined();
+});
+
+test("capture marks omitted evidence and preserves bounded markers through persistence projection", () => {
+  const result = {
+    policies: Array.from({ length: 41 }, (_, i) => ({ id: `policy${i}` })),
+  };
+  const captured = capturePresentationTool("lookup_policy", result)!;
+  const output = JSON.parse(captured.outputJson);
+  expect(output.bounded).toBe(true);
+  expect(output.result.policies).toHaveLength(40);
+  expect(capturePresentationTool(captured.name, output)).toEqual(captured);
+  const long = capturePresentationTool("get_procurement_proposal", {
+    _id: "proposal1",
+    summary: "x".repeat(4001),
+  })!;
+  expect(JSON.parse(long.outputJson)).toEqual({
+    result: { _id: "proposal1" },
+    bounded: true,
+  });
+  const nested = {
+    result: {
+      result: {
+        result: {
+          result: {
+            result: {
+              result: {
+                result: {
+                  result: {
+                    result: {
+                      result: {
+                        result: { result: { result: { summary: "Deep" } } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  expect(
+    JSON.parse(capturePresentationTool("lookup_policy", nested)!.outputJson)
+      .bounded,
+  ).toBe(true);
+});
+
+test("tool count and byte limits retain a partial marker without changing successful tool execution", () => {
+  const tools: CapturedPresentationTool[] = [];
+  for (let i = 0; i < 25; i++) {
+    const tool = capturePresentationTool("get_policy_status", {
+      policyId: `policy${i}`,
+    })!;
+    appendCapturedPresentationTool(tools, tool);
+  }
+  expect(tools).toHaveLength(24);
+  expect(JSON.parse(tools[23].outputJson)).toEqual({
+    result: { policyId: "policy23" },
+    bounded: true,
+  });
+  const large: CapturedPresentationTool[] = [];
+  for (let i = 0; i < 10; i++) {
+    const tool = capturePresentationTool("lookup_policy", {
+      policies: Array.from({ length: 5 }, () => ({
+        id: `policy${i}`,
+        summary: "x".repeat(3900),
+      })),
+    })!;
+    appendCapturedPresentationTool(large, tool);
+  }
+  expect(large.length).toBeLessThan(10);
+  expect(
+    new TextEncoder().encode(JSON.stringify(large)).length,
+  ).toBeLessThanOrEqual(128 * 1024);
+  expect(JSON.parse(large.at(-1)!.outputJson).bounded).toBe(true);
+});
+
+test("a revised client answer replaces its evidence and fences the old composition callback", async () => {
+  const f = await clientFixture();
+  const replacement = capturePresentationTool("get_policy_status", {
+    policyId: "new-policy",
+    status: "processing",
+  })!;
+  await f.t.mutation(internal.threads.updateAgentMessage, {
+    id: f.messageId,
+    content: "The policy is processing.",
+    presentationTools: [replacement],
+  });
+  expect(
+    await f.t.query(internal.chatPresentations.load, {
+      messageId: f.messageId,
+      sourceRevision: f.sourceRevision,
+    }),
+  ).toBeNull();
+  const loaded = await f.t.query(internal.chatPresentations.load, {
+    messageId: f.messageId,
+    sourceRevision: `${f.messageId}:2`,
+  });
+  expect(loaded?.evidence.tools).toEqual([
+    { name: replacement.name, output: JSON.parse(replacement.outputJson) },
+  ]);
 });
 
 test("unbound vendor choices cannot bypass reference reauthorization", async () => {

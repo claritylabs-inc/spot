@@ -1,6 +1,7 @@
 "use node";
 
 import {
+  appendCapturedPresentationTool,
   capturePresentationTool,
   type CapturedPresentationTool,
 } from "../chatPresentations";
@@ -820,12 +821,12 @@ export const run = internalAction({
           onStepFinish: async (step) => {
             if (surface !== "web") return;
             for (const result of step.toolResults) {
-              if (presentationTools.length >= 24) break;
               const captured = capturePresentationTool(
                 result.toolName,
                 result.output,
               );
-              if (captured) presentationTools.push(captured);
+              if (captured)
+                appendCapturedPresentationTool(presentationTools, captured);
             }
             await ctx.runMutation(internal.routerJobs.recordToolActivity, {
               target: agentMsgId,
