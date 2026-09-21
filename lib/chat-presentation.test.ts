@@ -116,6 +116,44 @@ describe("chat presentation trust boundary", () => {
     ).toBeNull();
   });
 
+  it("bounds a structurally valid presentation before rendering large repeated content", () => {
+    const input = presentation();
+    input.spec.elements.facts = {
+      type: "FactList",
+      props: {
+        facts: Array.from({ length: 30 }, () => ({
+          label: "Evidence",
+          value: "x".repeat(4000),
+          sourceIds: [],
+        })),
+      },
+      children: [],
+    };
+    expect(parseChatPresentation(input)).toBeNull();
+  });
+
+  it("allows explicit web citations but rejects active protocols and credential-bearing URLs", () => {
+    const input = presentation();
+    input.references = [
+      {
+        id: "policy-a",
+        kind: "source",
+        recordId: "provider",
+        label: "Official provider",
+        sourceUrl: "https://example.com/appetite",
+      },
+    ];
+    expect(parseChatPresentation(input)).not.toBeNull();
+    for (const sourceUrl of [
+      "javascript:alert(1)",
+      "data:text/html,test",
+      "https://user:password@example.com/",
+    ]) {
+      input.references[0].sourceUrl = sourceUrl;
+      expect(parseChatPresentation(input)).toBeNull();
+    }
+  });
+
   it("rejects missing, shared, disconnected, and cyclic tree nodes", () => {
     for (const children of [["missing"], ["facts", "facts"], ["root"], []]) {
       const input = presentation();
