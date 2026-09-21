@@ -9,11 +9,17 @@ import type {
 import { ChatPresentationView } from "./chat-presentation-view";
 import { referenceHref } from "./references";
 
-const { query, openPreview } = vi.hoisted(() => ({
+const { query, openPreview, failRender } = vi.hoisted(() => ({
   query: vi.fn(),
   openPreview: vi.fn(),
+  failRender: { value: false },
 }));
-vi.mock("convex/react", () => ({ useConvex: () => ({ query }) }));
+vi.mock("convex/react", () => ({
+  useConvex: () => {
+    if (failRender.value) throw new Error("Preview unavailable");
+    return { query };
+  },
+}));
 vi.mock("@/hooks/use-entity-preview", () => ({
   useEntityPreview: () => ({ openPreview }),
 }));
@@ -37,7 +43,7 @@ function mount(
       <ChatPresentationView
         presentation={presentation}
         onFollowUp={onFollowUp}
-        fallback={<p>Saved text answer</p>}
+        answer={<p>Saved text answer</p>}
       />,
     ),
   );
@@ -60,6 +66,7 @@ afterEach(() => {
   roots.forEach((root) => act(() => root.unmount()));
   roots.length = 0;
   document.body.innerHTML = "";
+  failRender.value = false;
   vi.resetAllMocks();
 });
 
@@ -245,4 +252,237 @@ test("request-shared files use their request grant without a global-file fallbac
 test("empty layout envelopes retain the saved text answer", () => {
   const content = mount(envelope({ type: "Stack", props: {}, children: [] }));
   expect(content.textContent).toBe("Saved text answer");
+});
+
+test("verified public citations use native external navigation instead of record preview", () => {
+  const content = mount(
+    envelope(
+      { type: "SourceReference", props: { referenceId: "s" }, children: [] },
+      [
+        {
+          id: "s",
+          kind: "source",
+          recordId: "provider-source",
+          label: "Provider appetite",
+          sourceUrl: "https://provider.example/appetite",
+        },
+      ],
+    ),
+  );
+  const link = content.querySelector("a")!;
+  expect(link.getAttribute("href")).toBe("https://provider.example/appetite");
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  link.addEventListener("click", (event) => event.preventDefault());
+  act(() => link.click());
+  expect(openPreview).not.toHaveBeenCalled();
+  expect(query).not.toHaveBeenCalled();
+});
+
+test("unsafe or record-mixed external citations retain the saved text fallback", () => {
+  for (const reference of [
+    { sourceUrl: "javascript:alert(1)" },
+    { sourceUrl: "https://user:secret@provider.example" },
+    { sourceUrl: "https://provider.example", policyId: "policy" },
+  ]) {
+    const content = mount(
+      envelope(
+        { type: "SourceReference", props: { referenceId: "s" }, children: [] },
+        [
+          {
+            id: "s",
+            kind: "source",
+            recordId: "source",
+            label: "Source",
+            ...reference,
+          },
+        ],
+      ),
+    );
+    expect(content.textContent).toBe("Saved text answer");
+    expect(content.querySelector("a")).toBeNull();
+  }
+});
+
+test("vendor references use the existing vendor policies page rather than an arbitrary href", () => {
+  const content = mount(
+    envelope(
+      {
+        type: "ActionGroup",
+        props: { actions: [{ label: "Open vendor", referenceId: "v" }] },
+        children: [],
+      },
+      [
+        {
+          id: "v",
+          kind: "vendor",
+          recordId: "vendor-org",
+          label: "Example vendor",
+          href: "/api/untrusted",
+        },
+      ],
+    ),
+  );
+  expect(content.querySelector("a")?.getAttribute("href")).toBe(
+    "/connect/vendors/vendor-org/policies",
+  );
+});
+
+test("valid structured results preserve the complete answer once and render Markdown", () => {
+  const content = mount(
+    envelope({
+      type: "Text",
+      props: { text: "Review **missing evidence** before proceeding." },
+      children: [],
+    }),
+  );
+  expect(content.textContent?.match(/Saved text answer/g)).toHaveLength(1);
+  expect(content.querySelector("strong")?.textContent).toBe("missing evidence");
+});
+
+test("shared fact citations render once while field-specific sources remain distinct", () => {
+  const references: PresentationReference[] = [
+    {
+      id: "s1",
+      kind: "source",
+      recordId: "one",
+      label: "Policy evidence",
+      policyId: "policy-one",
+    },
+    {
+      id: "s2",
+      kind: "source",
+      recordId: "two",
+      label: "Endorsement",
+      policyId: "policy-two",
+    },
+  ];
+  const content = mount(
+    envelope(
+      {
+        type: "FactList",
+        props: {
+          facts: [
+            { label: "Limit", value: "$1,000,000", sourceIds: ["s1"] },
+            { label: "Deductible", value: "$1,000", sourceIds: ["s1"] },
+          ],
+        },
+        children: [],
+      },
+      references,
+    ),
+  );
+  expect(content.querySelectorAll("button")).toHaveLength(1);
+  const distinct = mount(
+    envelope(
+      {
+        type: "FactList",
+        props: {
+          facts: [
+            { label: "Limit", value: "$1,000,000", sourceIds: ["s1"] },
+            { label: "Deductible", value: "$1,000", sourceIds: ["s2"] },
+          ],
+        },
+        children: [],
+      },
+      references,
+    ),
+  );
+  expect(distinct.querySelectorAll("button")).toHaveLength(2);
+});
+
+test("render failures suppress only structured UI and preserve the answer once", () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  failRender.value = true;
+  try {
+    const content = mount(
+      envelope(
+        { type: "FileReference", props: { referenceId: "file" }, children: [] },
+        [{ id: "file", kind: "file", recordId: "file", label: "Evidence.pdf" }],
+      ),
+    );
+    expect(content.textContent).toBe("Saved text answer");
+    expect(content.querySelector("button")).toBeNull();
+  } finally {
+    consoleError.mockRestore();
+  }
+});
+
+test("vendor policies and canonical requirement and proposal tabs remain navigable", () => {
+  const base = { id: "reference", recordId: "record", label: "Record" };
+  const routes: Array<[PresentationReference["kind"], string]> = [
+    ["policy", "/connect/vendors/vendor/policies/record"],
+    ["requirement", "/compliance?tab=requirements"],
+    [
+      "requirement",
+      "/operator/clients/client/compliance?tab=requirements&requirement=record",
+    ],
+    ["proposal", "/operator/clients/client/procurement/request?view=proposals"],
+    [
+      "proposal",
+      "/operator/clients/client/procurement/request?view=proposals&proposal=record",
+    ],
+  ];
+  for (const [kind, href] of routes)
+    expect(referenceHref({ ...base, kind, href })).toBe(href);
+  expect(
+    referenceHref({
+      ...base,
+      kind: "policy",
+      href: "/connect/vendors/vendor/policies/another",
+    }),
+  ).toBeUndefined();
+  expect(
+    referenceHref({
+      ...base,
+      kind: "requirement",
+      href: "/compliance?tab=requirements&requirement=another",
+    }),
+  ).toBeUndefined();
+  expect(
+    referenceHref({
+      ...base,
+      kind: "proposal",
+      href: "/operator/clients/client/procurement/request?view=proposals&proposal=another",
+    }),
+  ).toBeUndefined();
+});
+
+test("requirement citations inspect only the exact source returned by the authorized organization query", async () => {
+  query
+    .mockResolvedValueOnce([
+      {
+        _id: "source-record",
+        title: "Lease insurance requirements",
+        sourceType: "lease_agreement",
+        fileName: "Lease.pdf",
+        sourceTextExcerpt: "Maintain $2,000,000 general aggregate.",
+      },
+    ])
+    .mockResolvedValueOnce([]);
+  const value = envelope(
+    { type: "SourceReference", props: { referenceId: "source" }, children: [] },
+    [
+      {
+        id: "source",
+        kind: "source",
+        recordId: "source-record",
+        label: "Lease requirements",
+        href: "/operator/clients/client-org/compliance?tab=sources&source=source-record",
+      },
+    ],
+  );
+  const content = mount(value);
+  await act(async () => content.querySelector("button")!.click());
+  expect(query.mock.calls[0][1]).toEqual({ orgId: "client-org" });
+  expect(content.textContent).toContain(
+    "Maintain $2,000,000 general aggregate.",
+  );
+  expect(openPreview).not.toHaveBeenCalled();
+  const denied = mount(value);
+  await act(async () => denied.querySelector("button")!.click());
+  expect(denied.querySelector("[role=alert]")?.textContent).toContain(
+    "Source unavailable",
+  );
+  expect(denied.textContent).not.toContain("Maintain $2,000,000");
 });

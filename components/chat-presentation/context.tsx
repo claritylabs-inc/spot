@@ -3,11 +3,25 @@
 import { createContext, useContext } from "react";
 import type { PresentationReference } from "@/lib/chat-presentation";
 
+export type EvidenceInspection = {
+  title: string;
+  values: Array<{ label: string; value: string }>;
+  sourceIds: string[];
+};
+
+export type PresentationFollowUp = (
+  message: string,
+  selectedReferences?: PresentationReference[],
+) => Promise<void>;
+
 export type PresentationContextValue = {
   references: Map<string, PresentationReference>;
   disabled: boolean;
   audience?: "operator" | "client";
-  onFollowUp?: (message: string) => Promise<void>;
+  organizationId?: string;
+  onFollowUp?: PresentationFollowUp;
+  structuredReferences?: boolean;
+  openEvidence?: (evidence: EvidenceInspection) => void;
   closeRecord?: () => void;
   openRecord: (reference: PresentationReference, detail?: string) => void;
 };

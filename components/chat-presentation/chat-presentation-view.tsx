@@ -16,8 +16,17 @@ import {
 } from "@/lib/chat-presentation";
 import { typeStyle } from "@/lib/typography";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { PresentationContext } from "./context";
-import { ReferenceLink, referenceHref } from "./references";
+import {
+  PresentationContext,
+  type EvidenceInspection,
+  type PresentationFollowUp,
+} from "./context";
+import { ProseMarkdown } from "@/components/prose-markdown";
+import {
+  OperationalLabelValueList,
+  OperationalLabelValueRow,
+} from "@/components/ui/operational-panel";
+import { ReferenceLink, referenceHref, Sources } from "./references";
 import {
   ChoiceGroup,
   ClarificationForm,
@@ -44,9 +53,9 @@ const { registry } = defineRegistry(chatPresentationCatalog, {
       </section>
     ),
     Text: ({ props }) => (
-      <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+      <ProseMarkdown gfm breaks>
         {props.text}
-      </p>
+      </ProseMarkdown>
     ),
     FactList: ({ props }) => <FactList {...props} />,
     ComparisonTable: ({ props }) => <ComparisonTable {...props} />,
@@ -82,7 +91,7 @@ const { registry } = defineRegistry(chatPresentationCatalog, {
 });
 
 class PresentationBoundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
+  { children: ReactNode },
   { failed: boolean }
 > {
   state = { failed: false };
@@ -90,7 +99,7 @@ class PresentationBoundary extends Component<
     return { failed: true };
   }
   render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
+    return this.state.failed ? null : this.props.children;
   }
 }
 
@@ -99,38 +108,48 @@ export function ChatPresentationView({
   onFollowUp,
   disabled = false,
   audience = "client",
-  fallback = null,
+  organizationId,
+  answer = null,
+  structuredReferences = false,
 }: {
   presentation: unknown;
-  onFollowUp?: (message: string) => Promise<void>;
+  onFollowUp?: PresentationFollowUp;
   disabled?: boolean;
   audience?: "operator" | "client";
-  fallback?: ReactNode;
+  organizationId?: string;
+  answer?: ReactNode;
+  structuredReferences?: boolean;
 }) {
   const parsed = useMemo(
     () => parseChatPresentation(presentation),
     [presentation],
   );
-  const [selected, setSelected] = useState<{
-    reference: PresentationReference;
-    detail?: string;
-  } | null>(null);
+  const [selected, setSelected] = useState<
+    | { kind: "record"; reference: PresentationReference; detail?: string }
+    | { kind: "evidence"; evidence: EvidenceInspection }
+    | null
+  >(null);
   const openRecord = useCallback(
     (reference: PresentationReference, detail?: string) =>
-      setSelected({ reference, detail }),
+      setSelected({ kind: "record", reference, detail }),
+    [],
+  );
+  const openEvidence = useCallback(
+    (evidence: EvidenceInspection) =>
+      setSelected({ kind: "evidence", evidence }),
     [],
   );
   const closeRecord = useCallback(() => setSelected(null), []);
   const inFlight = useRef(false);
   const [sending, setSending] = useState(false);
   const followUp = useCallback(
-    async (message: string) => {
+    async (message: string, selectedReferences?: PresentationReference[]) => {
       if (disabled || !onFollowUp || inFlight.current)
         throw new Error("Wait for the current task to finish.");
       inFlight.current = true;
       setSending(true);
       try {
-        await onFollowUp(message);
+        await onFollowUp(message, selectedReferences);
       } finally {
         inFlight.current = false;
         setSending(false);
@@ -145,6 +164,9 @@ export function ChatPresentationView({
       ),
       disabled: disabled || sending,
       audience,
+      organizationId,
+      structuredReferences,
+      openEvidence,
       onFollowUp: onFollowUp ? followUp : undefined,
       openRecord,
       closeRecord,
@@ -154,6 +176,9 @@ export function ChatPresentationView({
       disabled,
       sending,
       audience,
+      organizationId,
+      structuredReferences,
+      openEvidence,
       onFollowUp,
       followUp,
       openRecord,
@@ -170,48 +195,69 @@ export function ChatPresentationView({
       return true;
     })
   )
-    return fallback;
+    return answer;
   return (
-    <PresentationBoundary key={parsed.sourceRevision} fallback={fallback}>
-      <PresentationContext.Provider value={context}>
-        <div
-          className={`min-w-0 max-w-full space-y-4 [overflow-wrap:anywhere] ${typeStyle("body.default")}`}
-        >
-          <JSONUIProvider registry={registry}>
-            <Renderer spec={parsed.spec} registry={registry} />
-          </JSONUIProvider>
-        </div>
-        {selected ? (
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-background">
-            <SettingsDrawer
-              open
-              onOpenChange={(open) => {
-                if (!open) setSelected(null);
-              }}
-              title={selected.reference.label}
-              footer={
-                referenceHref(selected.reference) ||
-                selected.reference.kind === "file" ||
-                selected.reference.kind === "policy" ||
-                selected.reference.policyId ? (
-                  <ReferenceLink
-                    referenceId={selected.reference.id}
-                    label={
-                      selected.reference.kind === "file"
-                        ? "Open file"
-                        : "Open record"
-                    }
-                  />
-                ) : undefined
-              }
-            >
-              <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {selected.detail ?? selected.reference.label}
-              </p>
-            </SettingsDrawer>
+    <div className="space-y-4">
+      {answer}
+      <PresentationBoundary key={parsed.sourceRevision}>
+        <PresentationContext.Provider value={context}>
+          <div
+            className={`min-w-0 max-w-full space-y-4 [overflow-wrap:anywhere] ${typeStyle("body.default")}`}
+          >
+            <JSONUIProvider registry={registry}>
+              <Renderer spec={parsed.spec} registry={registry} />
+            </JSONUIProvider>
           </div>
-        ) : null}
-      </PresentationContext.Provider>
-    </PresentationBoundary>
+          {selected ? (
+            <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-background">
+              <SettingsDrawer
+                open
+                onOpenChange={(open) => {
+                  if (!open) setSelected(null);
+                }}
+                title={
+                  selected.kind === "evidence"
+                    ? selected.evidence.title
+                    : selected.reference.label
+                }
+                footer={
+                  selected.kind === "evidence" ? (
+                    <Sources ids={selected.evidence.sourceIds} />
+                  ) : referenceHref(selected.reference) ||
+                    selected.reference.kind === "file" ||
+                    selected.reference.kind === "policy" ||
+                    selected.reference.policyId ? (
+                    <ReferenceLink
+                      referenceId={selected.reference.id}
+                      label={
+                        selected.reference.kind === "file"
+                          ? "Open file"
+                          : "Open record"
+                      }
+                    />
+                  ) : undefined
+                }
+              >
+                {selected.kind === "evidence" ? (
+                  <OperationalLabelValueList>
+                    {selected.evidence.values.map((value, index) => (
+                      <OperationalLabelValueRow
+                        key={index}
+                        label={value.label}
+                        value={value.value || "—"}
+                      />
+                    ))}
+                  </OperationalLabelValueList>
+                ) : (
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    {selected.detail ?? selected.reference.label}
+                  </p>
+                )}
+              </SettingsDrawer>
+            </div>
+          ) : null}
+        </PresentationContext.Provider>
+      </PresentationBoundary>
+    </div>
   );
 }

@@ -516,7 +516,7 @@ function OperatorMessageRow({
               presentation={message.status ? undefined : message.presentation}
               onFollowUp={onFollowUp}
               disabled={presentationDisabled}
-              fallback={content ? (
+              answer={content ? (
                 <ProseMarkdown gfm breaks compact={message.channel === "imessage"}>
                   {content}
                 </ProseMarkdown>

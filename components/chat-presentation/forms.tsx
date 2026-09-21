@@ -27,9 +27,15 @@ export function buildClarificationFollowUp(
   fields: FormField[],
   values: Record<string, string>,
   references: Map<string, PresentationReference>,
-): { message: string; errors: Record<string, string> } {
+  structuredReferences = false,
+): {
+  message: string;
+  errors: Record<string, string>;
+  selectedReferences?: PresentationReference[];
+} {
   const errors = new Map<string, string>();
   const answers: string[] = [];
+  const selectedReferences: PresentationReference[] = [];
   for (const field of fields) {
     const value = (
       Object.hasOwn(values, field.id) ? values[field.id] : ""
@@ -64,6 +70,13 @@ export function buildClarificationFollowUp(
         field.type === "record" ? references.get(value) : undefined;
       if (!option || (field.type === "record" && !reference)) {
         errors.set(field.id, "Choose an available option.");
+      } else if (
+        reference &&
+        structuredReferences &&
+        (reference.kind === "policy" || reference.kind === "requirement")
+      ) {
+        answer = `@${reference.label}`;
+        selectedReferences.push(reference);
       } else {
         answer = reference
           ? `${reference.label} (${reference.kind}: ${reference.recordId})`
@@ -72,31 +85,47 @@ export function buildClarificationFollowUp(
     }
     answers.push(`${field.label}: ${answer}`);
   }
-  return { message: answers.join("\n"), errors: Object.fromEntries(errors) };
+  return {
+    message: answers.join("\n"),
+    errors: Object.fromEntries(errors),
+    ...(selectedReferences.length ? { selectedReferences } : {}),
+  };
+}
+
+function followUpKey(
+  message: string,
+  selectedReferences?: PresentationReference[],
+) {
+  return JSON.stringify([
+    message,
+    selectedReferences?.map((reference) => [
+      reference.kind,
+      reference.recordId,
+    ]) ?? [],
+  ]);
 }
 
 function useFollowUpSubmission() {
   const { disabled, onFollowUp } = usePresentation();
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
-  const [sentMessage, setSentMessage] = useState<string>();
+  const [sentKey, setSentKey] = useState<string>();
   const inFlight = useRef(false);
   const unavailable = disabled || !onFollowUp || sending;
 
-  async function send(message: string) {
-    if (
-      unavailable ||
-      inFlight.current ||
-      message === sentMessage ||
-      !onFollowUp
-    )
+  async function send(
+    message: string,
+    selectedReferences?: PresentationReference[],
+  ) {
+    const key = followUpKey(message, selectedReferences);
+    if (unavailable || inFlight.current || key === sentKey || !onFollowUp)
       return;
     inFlight.current = true;
     setSending(true);
     setSendError(undefined);
     try {
-      await onFollowUp(message);
-      setSentMessage(message);
+      await onFollowUp(message, selectedReferences);
+      setSentKey(key);
     } catch {
       setSendError("Your reply could not be sent. Try again.");
     } finally {
@@ -105,7 +134,7 @@ function useFollowUpSubmission() {
     }
   }
 
-  return { send, sending, sendError, setSendError, sentMessage, unavailable };
+  return { send, sending, sendError, setSendError, sentKey, unavailable };
 }
 
 export function FollowUpButton({
@@ -116,7 +145,7 @@ export function FollowUpButton({
   label: string;
 }) {
   const submission = useFollowUpSubmission();
-  const alreadySent = submission.sentMessage === message;
+  const alreadySent = submission.sentKey === followUpKey(message);
   return (
     <div className="min-w-0 space-y-2">
       <PillButton
@@ -150,7 +179,7 @@ function OptionLabel({
 }) {
   return (
     <>
-      {reference?.kind === "provider" ? (
+      {reference?.kind === "provider" || reference?.kind === "vendor" ? (
         <OrgBrandIcon name={reference.label} size="xs" />
       ) : null}
       <span className="min-w-0 truncate">{reference?.label ?? label}</span>
@@ -162,8 +191,8 @@ function FollowUpForm({
   fields,
   submitLabel,
 }: PresentationProps<"ClarificationForm">) {
-  const { references } = usePresentation();
-  const { send, sending, sendError, setSendError, sentMessage, unavailable } =
+  const { references, structuredReferences } = usePresentation();
+  const { send, sending, sendError, setSendError, sentKey, unavailable } =
     useFollowUpSubmission();
   const id = useId();
   const [values, setValues] = useState<Record<string, string>>(() =>
@@ -172,8 +201,14 @@ function FollowUpForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [composing, setComposing] = useState(false);
   const composingRef = useRef(false);
-  const result = buildClarificationFollowUp(fields, values, references);
-  const alreadySent = Boolean(sentMessage && sentMessage === result.message);
+  const result = buildClarificationFollowUp(
+    fields,
+    values,
+    references,
+    structuredReferences,
+  );
+  const alreadySent =
+    sentKey === followUpKey(result.message, result.selectedReferences);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -191,7 +226,7 @@ function FollowUpForm({
       setSendError("Enter at least one answer.");
       return;
     }
-    await send(result.message);
+    await send(result.message, result.selectedReferences);
   }
 
   function change(fieldId: string, value: string) {
