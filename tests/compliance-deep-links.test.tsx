@@ -64,6 +64,9 @@ beforeEach(() => {
   loaded = true;
   mocks.search = new URLSearchParams();
   mocks.save.mockResolvedValue(undefined);
+  mocks.router.replace.mockImplementation((href: string) => {
+    mocks.search = new URL(href, "https://example.test").searchParams;
+  });
   mocks.query.mockImplementation((key: string) => {
     if (key === "compliance.listRequirements") return loaded ? requirements : undefined;
     if (key === "compliance.listRequirementSources") return loaded ? sources : undefined;
@@ -104,8 +107,7 @@ test.each([false, true])("requirement query waits for authorized data, selects e
     await page.close();
     await page.render();
     expect(page.container.querySelector("[data-drawer]")).toBeNull();
-    mocks.search = new URLSearchParams();
-    await page.render();
+    expect(mocks.search.has("requirement")).toBe(false);
     mocks.search = new URLSearchParams("requirement=exact");
     await page.render();
     expect(page.container.querySelector("[data-drawer]")?.getAttribute("data-drawer")).toBe("exact requirement");
@@ -121,6 +123,7 @@ test("source query selects only the exact authorized source and consumes missing
     await page.close();
     await page.render();
     expect(page.container.querySelector("[data-drawer]")).toBeNull();
+    expect(mocks.search.has("source")).toBe(false);
     for (const query of ["source=foreign-source", "requirement=foreign-requirement", "requirement=exact&source=exact-source"]) {
       mocks.search = new URLSearchParams(query);
       await page.render();
@@ -151,6 +154,7 @@ test("a new requirement link waits for the existing draft to save successfully",
     await page.close();
     expect(title.isConnected).toBe(true);
     expect(title.value).toBe("Unsaved edit");
+    expect(mocks.router.replace).not.toHaveBeenCalled();
     await page.close();
     expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ requirementId: "first", title: "Unsaved edit" }));
     expect(page.container.querySelector("[data-drawer]")?.getAttribute("data-drawer")).toBe("exact requirement");
@@ -177,6 +181,7 @@ test("an editable source keeps its draft and pending navigation after a failed c
     await page.close();
     expect(title.isConnected).toBe(true);
     expect(title.value).toBe("Edited source");
+    expect(mocks.router.replace).not.toHaveBeenCalled();
     await page.close();
     expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ sourceDocumentId: "exact-source", title: "Edited source" }));
     expect(page.container.querySelector("[data-drawer]")?.getAttribute("data-drawer")).toBe("exact requirement");

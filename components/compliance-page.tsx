@@ -1815,6 +1815,10 @@ function ComplianceWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const currentRoute = useRef({ pathname, searchParams });
+  useEffect(() => {
+    currentRoute.current = { pathname, searchParams };
+  }, [pathname, searchParams]);
   const { openWithUrl } = usePdf();
   const routeOrg = useActiveOrgContext();
   const currentOrg = orgContext ?? routeOrg;
@@ -2097,6 +2101,15 @@ function ComplianceWorkspace({
   ]);
 
   if (isBroker) return null;
+
+  function clearClosedSelection(kind: "requirement" | "source", id: string) {
+    const route = currentRoute.current;
+    const params = new URLSearchParams(route.searchParams.toString());
+    if (params.get(kind) !== id) return;
+    params.delete(kind);
+    if (!params.has("tab")) params.set("tab", view);
+    router.replace(`${route.pathname}?${params.toString()}`, { scroll: false });
+  }
 
   async function submitRequirement(event: FormEvent) {
     event.preventDefault();
@@ -2655,7 +2668,10 @@ function ComplianceWorkspace({
         setCertificateSourceId(requirement.sourceDocumentId);
       }}
       onArchive={(id) => void removeRequirement(id)}
-      onClose={() => setSelectedRequirementId(null)}
+      onClose={() => {
+        setSelectedRequirementId(null);
+        clearClosedSelection("requirement", selectedRequirement._id);
+      }}
     />
   ) : null;
   const sourcePanel = selectedSource ? (
@@ -2676,7 +2692,10 @@ function ComplianceWorkspace({
         setCertificateSourceId(source._id);
       }}
       onViewCertificate={openWithUrl}
-      onClose={() => setSelectedSourceId(null)}
+      onClose={() => {
+        setSelectedSourceId(null);
+        clearClosedSelection("source", selectedSource._id);
+      }}
     />
   ) : null;
 
