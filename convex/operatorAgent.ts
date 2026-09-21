@@ -1,3 +1,8 @@
+import {
+  presentationReadBudget,
+  schedulePresentation,
+  visiblePresentation,
+} from "./chatPresentations";
 import { serializeToolActivityInput } from "./lib/agentToolAudit";
 import { clientIdentity } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
@@ -3414,18 +3419,33 @@ export const getThread = query({
           { runId: run._id, withErrorContext: run.status === "failed" },
         ]),
     );
+    const presentationBudget = presentationReadBudget();
     return {
       thread: { ...thread, initialContext },
-      messages: messages.map((message) => ({
-        ...message,
-        rerun: rerunnableRuns.get(message._id),
-        toolCalls: message.toolCalls?.map((call) => ({
-          ...call,
-          effect: isOperatorAgentToolName(call.name)
-            ? getOperatorAgentToolSpec(call.name).effect
-            : undefined,
-        })),
-      })),
+      messages: (
+        await Promise.all(
+          [...messages].reverse().map(async (message) => {
+            const { presentation: _presentation, ...visible } = message;
+            const presentation = await visiblePresentation(
+              ctx,
+              message,
+              { audience: "operator" },
+              presentationBudget,
+            );
+            return {
+              ...visible,
+              ...(presentation ? { presentation } : {}),
+              rerun: rerunnableRuns.get(message._id),
+              toolCalls: message.toolCalls?.map((call) => ({
+                ...call,
+                effect: isOperatorAgentToolName(call.name)
+                  ? getOperatorAgentToolSpec(call.name).effect
+                  : undefined,
+              })),
+            };
+          }),
+        )
+      ).reverse(),
       activeRun,
       recentRuns: runs.slice(0, 25),
       confirmations: confirmations
@@ -5789,6 +5809,8 @@ export const completeRunInternal = internalMutation({
     ].slice(-100);
     await ctx.db.patch(run.agentMessageId, {
       content: args.content,
+      presentation: undefined,
+      presentationRevision: (currentMessage?.presentationRevision ?? 0) + 1,
       status: undefined,
       routerRequestId: args.routerRequestId,
       usedTools: usedTools.length > 0 ? usedTools : undefined,
@@ -5841,6 +5863,15 @@ export const completeRunInternal = internalMutation({
         },
         updatedAt: now,
       });
+    }
+    if (!waiting && run.executionKind !== "direct_tool") {
+      const message = await ctx.db.get(run.agentMessageId);
+      if (message) {
+        await schedulePresentation(ctx, message, {
+          userId: run.operatorUserId,
+          operatorRunId: run._id,
+        });
+      }
     }
     return {
       status: waiting

@@ -1,5 +1,9 @@
 "use node";
 
+import {
+  capturePresentationTool,
+  type CapturedPresentationTool,
+} from "../chatPresentations";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
@@ -801,6 +805,7 @@ export const run = internalAction({
         "coordinate_mailbox_task",
       ]);
       const chatTask = hasRichInput ? "chat_vision" : "chat";
+      const presentationTools: CapturedPresentationTool[] = [];
       const turn = await runAgentTurn(ctx, {
         orgId: args.orgId,
         task: chatTask,
@@ -814,6 +819,14 @@ export const run = internalAction({
           stopWhen: stepCountIs(25),
           onStepFinish: async (step) => {
             if (surface !== "web") return;
+            for (const result of step.toolResults) {
+              if (presentationTools.length >= 24) break;
+              const captured = capturePresentationTool(
+                result.toolName,
+                result.output,
+              );
+              if (captured) presentationTools.push(captured);
+            }
             await ctx.runMutation(internal.routerJobs.recordToolActivity, {
               target: agentMsgId,
               tools: step.toolCalls.map((call) => call.toolName),
@@ -860,6 +873,8 @@ export const run = internalAction({
         id: agentMsgId,
         content,
         routerRequestId: turn.routerRequestId,
+        presentationTools:
+          surface === "web" && !emailResult ? presentationTools : undefined,
         referencedPolicyIds:
           presentedPolicyIds.size > 0 ? [...presentedPolicyIds] : undefined,
         citedSections: citedSections.size > 0 ? [...citedSections] : undefined,
