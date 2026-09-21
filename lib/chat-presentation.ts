@@ -28,6 +28,7 @@ export const presentationReferenceSchema = z
     label,
     href: z.string().max(2000).optional(),
     policyId: id.optional(),
+    requestId: id.optional(),
     sourceSpanIds: z.array(id).max(20).optional(),
     page: z.number().int().positive().optional(),
   })

@@ -13,6 +13,7 @@ import {
   lookupAddress,
   lookupCompanyContext,
   lookupClientFiles,
+  lookupClientRequests,
   lookupComplianceRequirements,
   importRequirementAttachments,
   lookupPolicy,
@@ -32,6 +33,7 @@ import {
   type CertificateRequestWorkflowParams,
 } from "./workflows/certificateRequest";
 import {
+  complianceRequirementForTool,
   filterComplianceRequirements,
   formatComplianceRequirement,
 } from "./complianceAgent";
@@ -231,9 +233,12 @@ async function listPoliciesForReadableOrgs(
   const readOrgIds = options.readOrgIds ?? options.scope.readOrgIds;
   const rows = await Promise.all(
     readOrgIds.map(async (orgId) => {
-      const policies = await ctx.runQuery(internal.policies.listAllPreviewReadableInternal, {
-        orgId,
-      });
+      const policies = await ctx.runQuery(
+        internal.policies.listAllPreviewReadableInternal,
+        {
+          orgId,
+        },
+      );
       return (policies as Array<Record<string, unknown>>).map((policy) => ({
         ...policy,
         _scopeOrgName: orgLabelForScope(options.scope, orgId),
@@ -511,10 +516,7 @@ export function buildAgentToolExecutors(
               (order.get(String(left._id)) ?? Number.MAX_SAFE_INTEGER) -
               (order.get(String(right._id)) ?? Number.MAX_SAFE_INTEGER),
           );
-        } else if (
-          expiringWithinDays !== undefined &&
-          scored.length === 0
-        ) {
+        } else if (expiringWithinDays !== undefined && scored.length === 0) {
           matches = [...matches].sort(
             (left, right) =>
               dayjs(left.expirationDate).valueOf() -
@@ -629,6 +631,22 @@ export function buildAgentToolExecutors(
               ? "This is the whole durable company wiki for each organization. Read it directly; it holds company-profile facts only. Use policy tools for every policy fact."
               : "No company wiki has been written for these organizations. Do not infer policy facts from company context.",
         };
+      },
+    },
+    lookup_client_requests: {
+      ...lookupClientRequests,
+      execute: async (params: { requestId?: string; limit?: number }) => {
+        const requests = await ctx.runQuery(
+          internal.clientProcurementRequests.listForAgentInternal,
+          {
+            orgIds: options.readOrgIds ?? options.scope.readOrgIds,
+            requestId: params.requestId as
+              | Id<"procurementRequests">
+              | undefined,
+            limit: params.limit,
+          },
+        );
+        return { requests, bounded: requests.length === (params.limit ?? 10) };
       },
     },
     lookup_client_files: {
@@ -759,6 +777,11 @@ export function buildAgentToolExecutors(
         scope?: RequirementScope | "all";
       }) => {
         const blocks: string[] = [];
+        const savedRequirements: Array<
+          ReturnType<typeof complianceRequirementForTool> & {
+            orgId: Id<"organizations">;
+          }
+        > = [];
         for (const readOrgId of options.readOrgIds ??
           options.scope.readOrgIds) {
           const requirements = await ctx.runQuery(
@@ -767,15 +790,25 @@ export function buildAgentToolExecutors(
           );
           const matches = filterComplianceRequirements(requirements, params);
           if (matches.length > 0) {
+            savedRequirements.push(
+              ...matches.map((requirement) => ({
+                ...complianceRequirementForTool(requirement),
+                orgId: readOrgId,
+              })),
+            );
             const label = orgLabelForScope(options.scope, readOrgId);
             blocks.push(
               `Requirements for ${label} (orgId: ${readOrgId}):\n${matches.map(formatComplianceRequirement).join("\n")}`,
             );
           }
         }
-        return blocks.length > 0
-          ? blocks.join("\n\n")
-          : "No matching compliance requirements found. Vendor/contractor requirements and internal requirements are stored separately.";
+        return {
+          requirements: savedRequirements,
+          text:
+            blocks.length > 0
+              ? blocks.join("\n\n")
+              : "No matching compliance requirements found. Vendor/contractor requirements and internal requirements are stored separately.",
+        };
       },
     },
     ...(options.requirementImportAttachments?.length
@@ -857,7 +890,7 @@ export function buildAgentToolExecutors(
           8,
         );
         await options.onPolicySourceEvidence?.(evidence);
-        return evidence;
+        return { ...evidence, policyId: resolved.policy._id };
       },
     },
     save_note: {

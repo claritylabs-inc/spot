@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -143,6 +144,54 @@ export const list = query({
       rows
         .filter((row) => row.clientVisible)
         .map((row) => requestDto(ctx, row)),
+    );
+  },
+});
+
+export const listForAgentInternal = internalQuery({
+  args: {
+    orgIds: v.array(v.id("organizations")),
+    requestId: v.optional(v.id("procurementRequests")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(20, Math.max(1, args.limit ?? 10));
+    const visible: Doc<"procurementRequests">[] = [];
+    for (const orgId of args.orgIds.slice(0, 25)) {
+      const org = await ctx.db.get(orgId);
+      if (!org || org.type !== "client" || org.deletedAt !== undefined)
+        continue;
+      if (args.requestId) {
+        const request = await ctx.db.get(args.requestId);
+        if (request?.clientOrgId === orgId && request.clientVisible)
+          visible.push(request);
+      } else {
+        const requests = ctx.db
+          .query("procurementRequests")
+          .withIndex("organization", (q) => q.eq("clientOrgId", orgId))
+          .order("desc");
+        for await (const request of requests) {
+          if (request.clientVisible) visible.push(request);
+          if (visible.length >= limit) break;
+        }
+      }
+      if (visible.length >= limit) break;
+    }
+    return await Promise.all(
+      visible.slice(0, limit).map(async (request) => {
+        const dto = await requestDto(ctx, request);
+        return {
+          ...dto,
+          files: dto.files.map((file) => ({
+            _id: file._id,
+            clientFileId: file.clientFileId,
+            name: file.name,
+            contentType: file.contentType,
+            size: file.size,
+            createdAt: file.createdAt,
+          })),
+        };
+      }),
     );
   },
 });
