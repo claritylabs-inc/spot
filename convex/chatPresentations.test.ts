@@ -569,7 +569,7 @@ test("vendor selectors disappear when the current connection is revoked", async 
   expect(
     (await owner.query(api.threads.messages, { threadId: f.threadId })).at(-1)
       ?.presentation?.references[0].href,
-  ).toBe(`/connect/vendors/${ids.vendorId}`);
+  ).toBe(`/connect/vendors/${ids.vendorId}/policies`);
   await f.t.run((ctx) => ctx.db.patch(ids.connectionId, { status: "revoked" }));
   expect(
     (await owner.query(api.threads.messages, { threadId: f.threadId })).at(-1)
@@ -742,4 +742,68 @@ test("capture preserves policy array shapes and grounded proposal review fields"
       capturePresentationTool("get_procurement_proposal", proposal)!.outputJson,
     ),
   ).toEqual(proposal);
+});
+
+test("connected client requirements and their source metadata revoke together without granting other owner requirements", async () => {
+  const f = await clientFixture();
+  const ids = await f.t.run(async (ctx) => {
+    const sourceId = await ctx.db.insert("requirementSourceDocuments", {
+      orgId: f.otherOrgId,
+      sourceType: "client_contract",
+      title: "Client requirements",
+      status: "complete",
+      createdByUserId: f.outsiderId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const relationshipId = await ctx.db.insert("connectedOrgRelationships", {
+      clientOrgId: f.otherOrgId,
+      vendorOrgId: f.orgId,
+      status: "active",
+      requestedByUserId: f.outsiderId,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.patch(f.requirementId, {
+      orgId: f.otherOrgId,
+      scope: "vendors",
+      sourceDocumentId: sourceId,
+    });
+    return { sourceId, relationshipId };
+  });
+  const presentation: ChatPresentation = {
+    ...f.presentation,
+    references: [
+      ...f.presentation.references,
+      {
+        id: "source",
+        kind: "source",
+        recordId: ids.sourceId,
+        label: "Client requirements",
+      },
+    ],
+  };
+  expect(
+    await f.t.mutation(internal.chatPresentations.save, {
+      messageId: f.messageId,
+      sourceRevision: f.sourceRevision,
+      presentation,
+    }),
+  ).toBe(true);
+  const owner = f.t.withIdentity({ subject: `${f.userId}|session` });
+  const messages = () =>
+    owner.query(api.threads.messages, { threadId: f.threadId });
+  expect(
+    (await messages()).at(-1)?.presentation?.references.map((ref) => ref.href),
+  ).toEqual([
+    `/compliance?requirement=${f.requirementId}`,
+    `/compliance?requirement=${f.requirementId}`,
+  ]);
+  await f.t.run((ctx) => ctx.db.patch(f.requirementId, { scope: "own_org" }));
+  expect((await messages()).at(-1)?.presentation).toBeUndefined();
+  await f.t.run((ctx) => ctx.db.patch(f.requirementId, { scope: "vendors" }));
+  await f.t.run((ctx) =>
+    ctx.db.patch(ids.relationshipId, { status: "revoked" }),
+  );
+  expect((await messages()).at(-1)?.presentation).toBeUndefined();
 });

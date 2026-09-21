@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { getOperatorBrokerHref } from "../lib/operator-navigation";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -413,6 +414,23 @@ async function activeScope(
   return { audience: "client", orgId: message.orgId };
 }
 
+async function connectedRequirementOwner(
+  ctx: QueryCtx | MutationCtx,
+  ownerOrgId: Id<"organizations">,
+  vendorOrgId: Id<"organizations"> | undefined,
+): Promise<boolean> {
+  if (!vendorOrgId) return false;
+  const owner = await ctx.db.get(ownerOrgId);
+  if (!owner || owner.deletedAt !== undefined) return false;
+  const relationship = await ctx.db
+    .query("connectedOrgRelationships")
+    .withIndex("client_vendor", (q) =>
+      q.eq("clientOrgId", ownerOrgId).eq("vendorOrgId", vendorOrgId),
+    )
+    .first();
+  return relationship?.status === "active";
+}
+
 async function authorizeReference(
   ctx: QueryCtx | MutationCtx,
   reference: PresentationReference,
@@ -467,15 +485,32 @@ async function authorizeReference(
     if (documentId) {
       if (reference.sourceUrl) return null;
       const document = await ctx.db.get(documentId);
-      if (
-        !document ||
-        document.archivedAt ||
-        !(await orgAllowed(document.orgId))
-      )
-        return null;
-      href = operator
-        ? `/operator/clients/${document.orgId}/compliance`
-        : "/compliance";
+      if (!document || document.archivedAt) return null;
+      if (await orgAllowed(document.orgId)) {
+        href = operator
+          ? `/operator/clients/${document.orgId}/compliance?tab=sources&source=${document._id}`
+          : `/compliance?tab=sources&source=${document._id}`;
+      } else {
+        if (
+          operator ||
+          !(await connectedRequirementOwner(ctx, document.orgId, scope.orgId))
+        )
+          return null;
+        const requirements = await ctx.db
+          .query("insuranceRequirements")
+          .withIndex("organization_status", (q) =>
+            q.eq("orgId", document.orgId).eq("status", "active"),
+          )
+          .take(200);
+        const requirement = requirements.find(
+          (item) =>
+            item.kind === "coverage" &&
+            item.scope === "vendors" &&
+            item.sourceDocumentId === document._id,
+        );
+        if (!requirement) return null;
+        href = `/compliance?requirement=${requirement._id}`;
+      }
     } else {
       if (!operator) return null;
       const providerId = ctx.db.normalizeId(
@@ -578,7 +613,7 @@ async function authorizeReference(
     const id = ctx.db.normalizeId("procurementProposals", reference.recordId);
     const proposal = id ? await ctx.db.get(id) : null;
     if (!proposal || !(await orgAllowed(proposal.clientOrgId))) return null;
-    href = `/operator/clients/${proposal.clientOrgId}/procurement/${proposal.requestId}`;
+    href = `/operator/clients/${proposal.clientOrgId}/procurement/${proposal.requestId}?view=proposals&proposal=${proposal._id}`;
   } else if (reference.kind === "vendor") {
     const vendorId = ctx.db.normalizeId("organizations", reference.recordId);
     const vendor = vendorId ? await ctx.db.get(vendorId) : null;
@@ -596,26 +631,30 @@ async function authorizeReference(
     }
     href = operator
       ? `/operator/clients/${vendor._id}`
-      : `/connect/vendors/${vendor._id}`;
+      : `/connect/vendors/${vendor._id}/policies`;
   } else if (reference.kind === "provider") {
     if (!operator) return null;
     const id = ctx.db.normalizeId("organizations", reference.recordId);
     const provider = id ? await ctx.db.get(id) : null;
     if (!provider || provider.type !== "broker" || provider.deletedAt)
       return null;
-    href = "/operator/brokers";
+    href = getOperatorBrokerHref(provider._id);
   } else {
     const id = ctx.db.normalizeId("insuranceRequirements", reference.recordId);
     const requirement = id ? await ctx.db.get(id) : null;
-    if (
-      !requirement ||
-      requirement.status !== "active" ||
-      !(await orgAllowed(requirement.orgId))
-    )
-      return null;
+    if (!requirement || requirement.status !== "active") return null;
+    if (!(await orgAllowed(requirement.orgId))) {
+      if (
+        operator ||
+        requirement.kind !== "coverage" ||
+        requirement.scope !== "vendors" ||
+        !(await connectedRequirementOwner(ctx, requirement.orgId, scope.orgId))
+      )
+        return null;
+    }
     href = operator
-      ? `/operator/clients/${requirement.orgId}/compliance`
-      : "/compliance";
+      ? `/operator/clients/${requirement.orgId}/compliance?requirement=${requirement._id}`
+      : `/compliance?requirement=${requirement._id}`;
   }
   return {
     id: reference.id,
@@ -661,7 +700,12 @@ export async function visiblePresentation(
       const cost =
         4 +
         (reference.sourceSpanIds?.length ?? 0) +
-        (reference.kind === "file" && reference.requestId ? 100 : 0);
+        (reference.kind === "file" && reference.requestId ? 100 : 0) +
+        (reference.kind === "source" &&
+        !reference.policyId &&
+        !reference.sourceUrl
+          ? 200
+          : 0);
       if (cost > budget.remaining) return undefined;
       budget.remaining -= cost;
       authorization = authorizeReference(ctx, reference, scope);
