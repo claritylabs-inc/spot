@@ -166,6 +166,7 @@ import type * as lib_certificateIdentity from "../lib/certificateIdentity.js";
 import type * as lib_certificateRequestGate from "../lib/certificateRequestGate.js";
 import type * as lib_certificateRequirementPlan from "../lib/certificateRequirementPlan.js";
 import type * as lib_channelAgentRunner from "../lib/channelAgentRunner.js";
+import type * as lib_chatPresentationValidators from "../lib/chatPresentationValidators.js";
 import type * as lib_chatTools from "../lib/chatTools.js";
 import type * as lib_clRouterClient from "../lib/clRouterClient.js";
 import type * as lib_clRouterLanguageModel from "../lib/clRouterLanguageModel.js";
@@ -566,6 +567,7 @@ declare const fullApi: ApiFromModules<{
   "lib/certificateRequestGate": typeof lib_certificateRequestGate;
   "lib/certificateRequirementPlan": typeof lib_certificateRequirementPlan;
   "lib/channelAgentRunner": typeof lib_channelAgentRunner;
+  "lib/chatPresentationValidators": typeof lib_chatPresentationValidators;
   "lib/chatTools": typeof lib_chatTools;
   "lib/clRouterClient": typeof lib_clRouterClient;
   "lib/clRouterLanguageModel": typeof lib_clRouterLanguageModel;
