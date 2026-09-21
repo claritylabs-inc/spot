@@ -1,5 +1,7 @@
 "use client";
 
+import type { PresentationFollowUp } from "@/components/chat-presentation/context";
+import type { PresentationReference } from "@/lib/chat-presentation";
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
 
 import {
@@ -1171,7 +1173,7 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   onPresentationFollowUp,
   presentationDisabled = true,
 }: {
-  onPresentationFollowUp?: (message: string) => Promise<void>;
+  onPresentationFollowUp?: PresentationFollowUp;
   presentationDisabled?: boolean;
   msg: ThreadMessage;
   relatedEmailMessages?: ThreadMessage[];
@@ -1318,10 +1320,12 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
               isError={isError}
             >
               <ChatPresentationView
+                organizationId={msg.orgId}
                 presentation={isError ? undefined : msg.presentation}
                 onFollowUp={onPresentationFollowUp}
+                structuredReferences
                 disabled={presentationDisabled}
-                fallback={
+                answer={
                   <ProseMarkdown
                     gfm
                     breaks
@@ -2176,7 +2180,7 @@ export function UnifiedThreadContent({
   ]);
 
   const sendPresentationFollowUp = useCallback(
-    async (content: string) => {
+    async (content: string, selectedReferences?: PresentationReference[]) => {
       if (
         !thread || thread.archivedAt || thread.originChannel === "slack" ||
         isAgentActive || isInputBusy || sendInFlight.current || queuedMessage
@@ -2189,6 +2193,11 @@ export function UnifiedThreadContent({
         await sendMessage({
           threadId,
           content,
+          ...promptReferenceIds(selectedReferences?.flatMap(reference =>
+            reference.kind === "policy" || reference.kind === "requirement"
+              ? [{ kind: reference.kind, id: reference.recordId, label: reference.label }]
+              : [],
+          )),
           clientMutationId: createClientMutationId("message"),
         });
       } finally {

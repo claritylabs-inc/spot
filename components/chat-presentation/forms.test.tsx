@@ -12,6 +12,7 @@ import {
   buildClarificationFollowUp,
   ClarificationForm,
   FollowUpButton,
+  RecordSelector,
 } from "./forms";
 
 const references = new Map<string, PresentationReference>([
@@ -125,12 +126,29 @@ test("field identifiers cannot inherit draft values or suppress required validat
 
 let root: Root;
 let container: HTMLDivElement;
-const onFollowUp = vi.fn<(message: string) => Promise<void>>();
-async function render(children: ReactNode, disabled = false) {
+const onFollowUp =
+  vi.fn<
+    (
+      message: string,
+      selectedReferences?: PresentationReference[],
+    ) => Promise<void>
+  >();
+async function render(
+  children: ReactNode,
+  disabled = false,
+  structuredReferences = false,
+  availableReferences = references,
+) {
   await act(async () =>
     root.render(
       <PresentationContext.Provider
-        value={{ references, disabled, onFollowUp, openRecord: vi.fn() }}
+        value={{
+          references: availableReferences,
+          disabled,
+          structuredReferences,
+          onFollowUp,
+          openRecord: vi.fn(),
+        }}
       >
         {children}
       </PresentationContext.Provider>,
@@ -164,6 +182,7 @@ const form = (
 );
 
 beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   onFollowUp.mockReset();
   container = document.createElement("div");
   document.body.append(container);
@@ -172,6 +191,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.unstubAllGlobals();
 });
 
 test("a failed follow-up retains the entered draft for retry and a successful reply cannot be sent twice", async () => {
@@ -181,7 +201,10 @@ test("a failed follow-up retains the entered draft for retry and a successful re
   await render(form);
   await enter("Retail operations");
   await submit();
-  expect(onFollowUp).toHaveBeenCalledWith("Operations: Retail operations");
+  expect(onFollowUp).toHaveBeenCalledWith(
+    "Operations: Retail operations",
+    undefined,
+  );
   expect(container.querySelector("input")?.value).toBe("Retail operations");
   expect(container.querySelector('[role="alert"]')).not.toBeNull();
   await submit();
@@ -238,5 +261,100 @@ test("action follow-ups require an explicit click and allow retry after failure"
   await act(async () => container.querySelector("button")!.click());
   await act(async () => container.querySelector("button")!.click());
   expect(onFollowUp).toHaveBeenCalledTimes(2);
-  expect(onFollowUp).toHaveBeenLastCalledWith("Compare these policies");
+  expect(onFollowUp).toHaveBeenLastCalledWith(
+    "Compare these policies",
+    undefined,
+  );
+});
+
+test("structured selections keep exact policy and requirement metadata without exposing IDs in the reply", () => {
+  const policy = references.get("policy-a")!;
+  const requirement: PresentationReference = {
+    id: "requirement-a",
+    kind: "requirement",
+    recordId: "requirement-record",
+    label: "Liability minimum",
+  };
+  const vendor: PresentationReference = {
+    id: "vendor-a",
+    kind: "vendor",
+    recordId: "vendor-record",
+    label: "Example vendor",
+  };
+  const selectedFields = [policy, requirement, vendor].map(
+    (reference): PresentationProps<"ClarificationForm">["fields"][number] => ({
+      id: reference.id,
+      label: reference.kind,
+      type: "record",
+      required: true,
+      options: [{ value: reference.id, label: reference.label }],
+    }),
+  );
+  const choices = new Map(
+    [policy, requirement, vendor].map((reference) => [reference.id, reference]),
+  );
+  const values = Object.fromEntries([...choices.keys()].map((id) => [id, id]));
+  expect(
+    buildClarificationFollowUp(selectedFields, values, choices, true),
+  ).toEqual({
+    errors: {},
+    message:
+      "policy: @General liability\nrequirement: @Liability minimum\nvendor: Example vendor (vendor: vendor-record)",
+    selectedReferences: [policy, requirement],
+  });
+  expect(
+    buildClarificationFollowUp(selectedFields, values, choices)
+      .selectedReferences,
+  ).toBeUndefined();
+});
+
+test("distinct record selections with identical labels submit their exact identities without silent deduplication", async () => {
+  onFollowUp.mockResolvedValue(undefined);
+  const first = references.get("policy-a")!;
+  const second: PresentationReference = {
+    ...first,
+    id: "policy-b",
+    recordId: "record-b",
+  };
+  await render(
+    <RecordSelector
+      label="Policy"
+      referenceIds={[first.id, second.id]}
+      submitLabel="Send reply"
+    />,
+    false,
+    true,
+    new Map([
+      [first.id, first],
+      [second.id, second],
+    ]),
+  );
+  async function choose(index: number) {
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[role="combobox"]')!.click(),
+    );
+    await act(async () => {
+      const option =
+        document.querySelectorAll<HTMLElement>('[role="option"]')[index];
+      option.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerType: "touch",
+        }),
+      );
+      option.click();
+    });
+  }
+  await choose(0);
+  await submit();
+  expect(onFollowUp).toHaveBeenNthCalledWith(1, "Policy: @General liability", [
+    first,
+  ]);
+  await choose(1);
+  await submit();
+  expect(onFollowUp).toHaveBeenNthCalledWith(2, "Policy: @General liability", [
+    second,
+  ]);
+  await submit();
+  expect(onFollowUp).toHaveBeenCalledTimes(2);
 });

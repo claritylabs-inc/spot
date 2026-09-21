@@ -31,23 +31,38 @@ import { usePresentation } from "./context";
 import { referenceHref, Sources } from "./references";
 
 export function FactList({ facts }: PresentationProps<"FactList">) {
+  const firstSources = [...new Set(facts[0]?.sourceIds)].sort();
+  const sharedSources =
+    firstSources.length > 0 &&
+    facts.every(
+      (fact) =>
+        JSON.stringify([...new Set(fact.sourceIds)].sort()) ===
+        JSON.stringify(firstSources),
+    )
+      ? firstSources
+      : [];
   return (
-    <OperationalLabelValueList>
-      {facts.map((fact, index) => (
-        <OperationalLabelValueRow
-          key={index}
-          label={fact.label}
-          value={
-            <>
-              <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {fact.value || "—"}
-              </span>
-              <Sources ids={fact.sourceIds} />
-            </>
-          }
-        />
-      ))}
-    </OperationalLabelValueList>
+    <div>
+      <OperationalLabelValueList>
+        {facts.map((fact, index) => (
+          <OperationalLabelValueRow
+            key={index}
+            label={fact.label}
+            value={
+              <>
+                <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  {fact.value || "—"}
+                </span>
+                {!sharedSources.length ? (
+                  <Sources ids={fact.sourceIds} />
+                ) : null}
+              </>
+            }
+          />
+        ))}
+      </OperationalLabelValueList>
+      <Sources ids={sharedSources} />
+    </div>
   );
 }
 
@@ -55,6 +70,7 @@ export function ComparisonTable({
   columns,
   rows,
 }: PresentationProps<"ComparisonTable">) {
+  const { openEvidence } = usePresentation();
   return (
     <OperationalPanel>
       <Table aria-label="Comparison">
@@ -73,42 +89,52 @@ export function ComparisonTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row, index) => (
-            <TableRow key={index}>
-              <TableHead
-                scope="row"
-                className="min-w-32 whitespace-normal align-top py-3 text-foreground"
+          {rows.map((row, index) => {
+            const inspect = () =>
+              openEvidence?.({
+                title: row.label,
+                values: columns.map((column, valueIndex) => ({
+                  label: column.label,
+                  value: row.values[valueIndex],
+                })),
+                sourceIds: row.sourceIds,
+              });
+            return (
+              <TableRow
+                key={index}
+                tabIndex={0}
+                aria-label={`Inspect ${row.label}`}
+                onClick={inspect}
+                onKeyDown={(event) => {
+                  if (
+                    event.target === event.currentTarget &&
+                    (event.key === "Enter" || event.key === " ")
+                  ) {
+                    event.preventDefault();
+                    inspect();
+                  }
+                }}
+                className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
-                {row.label}
-              </TableHead>
-              {row.values.map((value, i) => (
-                <TableCell
-                  key={i}
-                  className="max-w-72 whitespace-pre-wrap align-top [overflow-wrap:anywhere]"
-                >
-                  {value || "—"}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {rows.some((row) => row.sourceIds.length) ? (
-        <div className="space-y-3 border-t border-border p-4">
-          {rows
-            .filter((row) => row.sourceIds.length)
-            .map((row, index) => (
-              <div key={index}>
-                <span
-                  className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                <TableHead
+                  scope="row"
+                  className="min-w-32 whitespace-normal align-top py-3 text-foreground"
                 >
                   {row.label}
-                </span>
-                <Sources ids={row.sourceIds} />
-              </div>
-            ))}
-        </div>
-      ) : null}
+                </TableHead>
+                {row.values.map((value, i) => (
+                  <TableCell
+                    key={i}
+                    className="max-w-72 whitespace-pre-wrap align-top [overflow-wrap:anywhere]"
+                  >
+                    {value || "—"}
+                  </TableCell>
+                ))}
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
     </OperationalPanel>
   );
 }

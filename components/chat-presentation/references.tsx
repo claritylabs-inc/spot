@@ -5,6 +5,7 @@ import { useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { PresentationReference } from "@/lib/chat-presentation";
+import { REQUIREMENT_SOURCE_TYPE_LABELS } from "@/convex/lib/complianceTypes";
 import { getOperatorBrokerHref } from "@/lib/operator-navigation";
 import { useEntityPreview } from "@/hooks/use-entity-preview";
 import { usePdf } from "@/components/pdf-context";
@@ -18,6 +19,8 @@ export function referenceHref(
 ): string | undefined {
   if (reference.kind === "file" || reference.kind === "source")
     return undefined;
+  if (reference.kind === "vendor")
+    return `/connect/vendors/${encodeURIComponent(reference.recordId)}/policies`;
   const href = reference.href;
   if (href && !/[\\\s%#]/.test(href)) {
     const id = reference.recordId;
@@ -27,7 +30,7 @@ export function referenceHref(
     const query = new URLSearchParams(parts[1]);
     if (
       reference.kind === "policy" &&
-      /^(?:\/operator\/clients\/[a-zA-Z0-9_-]+)?\/policies\/[a-zA-Z0-9_-]+$/.test(
+      /^(?:\/(?:operator\/clients|connect\/vendors)\/[a-zA-Z0-9_-]+)?\/policies\/[a-zA-Z0-9_-]+$/.test(
         path,
       ) &&
       path.endsWith(`/${id}`) &&
@@ -47,8 +50,10 @@ export function referenceHref(
     if (
       reference.kind === "requirement" &&
       /^(?:\/operator\/clients\/[a-zA-Z0-9_-]+)?\/compliance$/.test(path) &&
-      query.size === 1 &&
-      query.get("requirement") === id
+      ((query.size === 1 && query.get("tab") === "requirements") ||
+        (query.size === 2 &&
+          query.get("tab") === "requirements" &&
+          query.get("requirement") === id))
     )
       return href;
     if (reference.kind === "provider" && href === getOperatorBrokerHref(id))
@@ -58,9 +63,8 @@ export function referenceHref(
       /^\/operator\/clients\/[a-zA-Z0-9_-]+\/procurement\/[a-zA-Z0-9_-]+$/.test(
         path,
       ) &&
-      query.size === 2 &&
       query.get("view") === "proposals" &&
-      query.get("proposal") === id
+      (query.size === 1 || (query.size === 2 && query.get("proposal") === id))
     )
       return href;
   }
@@ -188,6 +192,92 @@ function FileLink({
   );
 }
 
+function RequirementSourceLink({
+  reference,
+  label,
+}: {
+  reference: PresentationReference;
+  label: string;
+}) {
+  const convex = useConvex();
+  const { organizationId, openEvidence } = usePresentation();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const pending = useRef(false);
+  const path = reference.href?.split("?")[0];
+  const match = path?.match(
+    /^(?:\/operator\/clients\/([a-zA-Z0-9_-]+))?\/compliance$/,
+  );
+  const orgId = match?.[1] ?? organizationId;
+  const inspect = async () => {
+    if (pending.current) return;
+    if (!orgId) {
+      setError(true);
+      return;
+    }
+    pending.current = true;
+    setLoading(true);
+    setError(false);
+    try {
+      const sources = await convex.query(
+        api.compliance.listRequirementSources,
+        { orgId: orgId as Id<"organizations"> },
+      );
+      const source = sources.find((item) => item._id === reference.recordId);
+      if (!source) {
+        setError(true);
+        return;
+      }
+      openEvidence?.({
+        title: source.title,
+        values: [
+          {
+            label: "Source type",
+            value: REQUIREMENT_SOURCE_TYPE_LABELS[source.sourceType],
+          },
+          ...(source.fileName
+            ? [{ label: "File", value: source.fileName }]
+            : []),
+          {
+            label: "Source excerpt",
+            value: source.sourceTextExcerpt || "No text excerpt available.",
+          },
+        ],
+        sourceIds: [],
+      });
+    } catch {
+      setError(true);
+    } finally {
+      pending.current = false;
+      setLoading(false);
+    }
+  };
+  if (!match) return <span>{label}</span>;
+  return (
+    <span className="inline-flex max-w-full flex-col items-start gap-1">
+      <PillButton
+        type="button"
+        variant="ghost"
+        size="compact"
+        className="max-w-full"
+        title={label}
+        disabled={loading}
+        onClick={() => void inspect()}
+      >
+        <span className="truncate">{loading ? "Loading source…" : label}</span>
+      </PillButton>
+      {error ? (
+        <span
+          role="alert"
+          className={`text-destructive ${typeStyle("caption.default")}`}
+        >
+          Source unavailable. Try again.
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function ReferenceLink({
   referenceId,
   label,
@@ -202,6 +292,20 @@ export function ReferenceLink({
   const name = label ?? reference.label;
   if (reference.kind === "file")
     return <FileLink reference={reference} label={name} />;
+  if (reference.kind === "source" && reference.sourceUrl)
+    return (
+      <PillButton
+        href={reference.sourceUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        size="compact"
+        variant="ghost"
+        className="max-w-full"
+        title={name}
+      >
+        <span className="truncate">{name}</span>
+      </PillButton>
+    );
   const policyId =
     reference.kind === "policy"
       ? reference.recordId
@@ -246,11 +350,7 @@ export function ReferenceLink({
       </PillButton>
     );
   if (reference.kind === "source")
-    return (
-      <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-        {name}
-      </span>
-    );
+    return <RequirementSourceLink reference={reference} label={name} />;
   return (
     <PillButton
       type="button"
