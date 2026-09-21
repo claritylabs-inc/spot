@@ -104,7 +104,9 @@ function formatRequirementDetails(requirement: Requirement) {
     requirement.lineOfBusiness
       ? `lineOfBusiness: ${requirement.lineOfBusiness} (${lobLabel(requirement.lineOfBusiness)})`
       : undefined,
-    requirement.limits?.length ? `limits: ${formatLimits(requirement)}` : undefined,
+    requirement.limits?.length
+      ? `limits: ${formatLimits(requirement)}`
+      : undefined,
     requirement.maxDeductible
       ? `maxDeductible: ${requirement.maxDeductible.label ?? requirement.maxDeductible.amount}`
       : undefined,
@@ -148,7 +150,9 @@ function formatRequirementDetails(requirement: Requirement) {
           requirement.complianceCheck.matchedPolicy.policyNumber,
           requirement.complianceCheck.matchedPolicy.coverageName,
           requirement.complianceCheck.matchedPolicy.coverageLimit,
-        ].filter(Boolean).join(" · ")}`
+        ]
+          .filter(Boolean)
+          .join(" · ")}`
       : undefined,
     requirement.complianceCheck?.matchedSummary
       ? `complianceSummary: ${requirement.complianceCheck.matchedSummary}`
@@ -187,6 +191,32 @@ export function filterComplianceRequirements(
     );
     return queryTerms.some((term) => haystack.includes(term));
   });
+}
+
+export function complianceRequirementForTool(requirement: Requirement) {
+  return {
+    requirementId: requirement._id,
+    title: requirement.title,
+    scope: requirement.scope,
+    requirementText: requirement.requirementText,
+    lineOfBusiness: requirement.lineOfBusiness,
+    limits: requirement.limits,
+    maxDeductible: requirement.maxDeductible,
+    coverageForm: requirement.coverageForm,
+    retroactiveDateOnOrBefore: requirement.retroactiveDateOnOrBefore,
+    provisions: requirement.provisions,
+    requiredForms: requirement.requiredForms,
+    requirementSourceDocumentId: requirement.sourceDocumentId,
+    sourceDocumentName: requirement.sourceDocumentName,
+    sourceExcerpt: requirement.sourceExcerpt,
+    sourcePageStart: requirement.sourcePageStart,
+    sourcePageEnd: requirement.sourcePageEnd,
+    currentComplianceStatus:
+      requirement.complianceCheck?.status ?? "unverified",
+    currentComplianceReasons: requirement.complianceCheck?.reasons ?? [],
+    matchedPolicyIds: requirement.complianceCheck?.matchedPolicyIds ?? [],
+    matchedSummary: requirement.complianceCheck?.matchedSummary,
+  };
 }
 
 export function formatComplianceRequirement(requirement: Requirement) {

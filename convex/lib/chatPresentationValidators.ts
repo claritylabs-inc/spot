@@ -23,6 +23,7 @@ export const presentationReferenceValidator = v.object({
   label: v.string(),
   href: v.optional(v.string()),
   policyId: v.optional(v.string()),
+  requestId: v.optional(v.string()),
   sourceSpanIds: v.optional(v.array(v.string())),
   page: v.optional(v.number()),
 });
