@@ -102,7 +102,9 @@ describe("Conductor iMessage worker environment", () => {
     "",
   ].join("\n");
 
-  function withWorkspace(callback) {
+  function withWorkspace(
+    callback: (paths: { envPath: string; templatePath: string }) => void,
+  ) {
     const workspace = mkdtempSync(path.join(tmpdir(), "spot-conductor-"));
     const templatePath = path.join(workspace, ".env.template");
     const envPath = path.join(workspace, ".env.local");
