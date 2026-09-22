@@ -62,11 +62,29 @@ const modelRouteValidator = v.object({
 
 const extractionTraceRoutingValidator = v.object({
   decision: v.string(),
-  candidatesConsidered: v.array(modelRouteValidator),
-  policyVersion: v.union(v.string(), v.null()),
-  cacheStickinessApplied: v.boolean(),
-  routeSource: v.optional(v.string()),
   attemptCount: v.optional(v.number()),
+  primitive: v.optional(v.string()),
+  difficulty: v.optional(
+    v.union(
+      v.literal("simple"),
+      v.literal("standard"),
+      v.literal("complex"),
+      v.null(),
+    ),
+  ),
+  requiredTier: v.optional(
+    v.union(v.literal(1), v.literal(2), v.literal(3)),
+  ),
+  selectedTier: v.optional(
+    v.union(v.literal(1), v.literal(2), v.literal(3)),
+  ),
+  route: v.optional(modelRouteValidator),
+  source: v.optional(v.string()),
+  // Legacy router-owned selection fields remain readable for stored traces.
+  candidatesConsidered: v.optional(v.array(modelRouteValidator)),
+  policyVersion: v.optional(v.union(v.string(), v.null())),
+  cacheStickinessApplied: v.optional(v.boolean()),
+  routeSource: v.optional(v.string()),
   shadowMode: v.optional(v.boolean()),
   wouldHaveChosen: v.optional(
     v.object({
@@ -4554,6 +4572,7 @@ export default defineSchema({
     invocationKey: v.string(),
     operation: v.union(
       v.literal("generate"),
+      v.literal("manual"),
       v.literal("embed"),
       v.literal("retrieve"),
       v.literal("transcribe"),

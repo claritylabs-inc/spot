@@ -3,5 +3,7 @@
   "sourcePath": "openapi/cl-router-v1.json",
   "sourceRevision": "3898c73c5207bd61dfd5ca5090e67d4591319f56",
   "sourceWorktreeDirty": false,
-  "sha256": "6221ef49d10d6439965492491725cd1795b46a6adef3d24c297968a5bb424a33"
+  "sha256": "1cad34346e951ffa04803b602d9dc426a2c893c8f884c05452cfdf0d7ee2378e",
+  "spotLocalFrozenContract": true,
+  "notes": "TODO(cl-router-policy): replace this Spot-local OpenAPI overlay and SHA with the published cl-router snapshot after the primitive-router PR lands. sourceRevision remains the last imported cl-router commit; the bytes here implement the frozen HTTP contract (primitives, /v1/manual, no admin freeze/pin/policy/rollups/score)."
 }

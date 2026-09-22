@@ -17,8 +17,8 @@ import {
   ClRouterRequestError,
   MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
-  clRouterGenerate,
-  clRouterGenerateStream,
+  clRouterGenerateMaybeManual,
+  clRouterGenerateMaybeManualStream,
   isClRouterFailureCode,
   type ClRouterClientOptions,
   type ClRouterAssetReference,
@@ -31,6 +31,10 @@ import {
   type ClRouterToolDefinition,
   type ClRouterUsage,
 } from "./clRouterClient";
+import {
+  clRouterContentHasVision,
+  mapSpotCallToClRouterPrimitive,
+} from "./clRouterPrimitive";
 import type { ModelRoute, ModelTask } from "./modelCatalog";
 import { settleRouterAssetCleanups } from "../actions/routerAssets";
 
@@ -330,8 +334,6 @@ async function requestForCall(
   adapter: ClRouterLanguageModelOptions,
   options: LanguageModelV3CallOptions,
   parentRequestId?: string,
-  selectedRoute?: ModelRoute,
-  allowFallback = true,
   assetState?: StagedAssetState,
 ): Promise<ClRouterGenerateRequest> {
   const responseFormat = options.responseFormat;
@@ -340,20 +342,31 @@ async function requestForCall(
       ? (responseFormat.schema as Record<string, unknown>)
       : undefined;
   const tools = clRouterTools(options.tools);
-  return {
+  const messages = await clRouterMessagesFromPromptWithState(
+    options.prompt,
+    adapter.client?.fetch ?? globalThis.fetch,
+    adapter.client?.environment ?? process.env,
+    assetState ?? {
+      count: 0,
+      decodedBytes: 0,
+    },
+  );
+  const mapping = mapSpotCallToClRouterPrimitive({
     task: adapter.task,
-    ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
-    ...(adapter.orgId ? { orgId: adapter.orgId } : {}),
-    settings: adapter.settings,
-    messages: await clRouterMessagesFromPromptWithState(
-      options.prompt,
-      adapter.client?.fetch ?? globalThis.fetch,
-      adapter.client?.environment ?? process.env,
-      assetState ?? {
-        count: 0,
-        decodedBytes: 0,
-      },
+    taskKind: adapter.taskKind,
+    hasTools: tools.length > 0,
+    hasVision: clRouterContentHasVision(
+      messages.flatMap((message) =>
+        Array.isArray(message.content) ? message.content : [],
+      ),
     ),
+    hasStructuredOutput: Boolean(schema),
+  });
+  return {
+    primitive: mapping.primitive,
+    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
+    ...(adapter.orgId ? { orgId: adapter.orgId } : {}),
+    messages,
     ...(schema
       ? {
           schema,
@@ -362,17 +375,13 @@ async function requestForCall(
         }
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
-    sessionKey: adapter.sessionKey,
     tools,
-    routing: {
-      ...(selectedRoute ? { pin: selectedRoute } : {}),
-      allowFallback: adapter.allowFallback ?? allowFallback,
-    },
     ...(adapter.trace || parentRequestId
       ? {
           trace: {
             ...adapter.trace,
             ...(parentRequestId ? { parentRequestId } : {}),
+            ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
           },
         }
       : {}),
@@ -646,15 +655,14 @@ export function createClRouterLanguageModel(
             adapter,
             options,
             parentRequestId,
-            selectedRoute,
-            successfulRouterSteps === 0,
             assetState,
           ),
           adapter.assetStager,
           cleanups,
         );
-        const response = await clRouterGenerate(
+        const response = await clRouterGenerateMaybeManual(
           request,
+          selectedRoute,
           clientOptions(options.abortSignal),
         );
         let content: LanguageModelV3Content[];
@@ -701,15 +709,14 @@ export function createClRouterLanguageModel(
             adapter,
             options,
             parentRequestId,
-            selectedRoute,
-            successfulRouterSteps === 0,
             assetState,
           ),
           adapter.assetStager,
           cleanups,
         );
-        response = await clRouterGenerateStream(
+        response = await clRouterGenerateMaybeManualStream(
           request,
+          selectedRoute,
           clientOptions(options.abortSignal),
         );
       } catch (error) {

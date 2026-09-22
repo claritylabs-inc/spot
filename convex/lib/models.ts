@@ -15,16 +15,21 @@ import {
 } from "../actions/routerAssets";
 import {
   ClRouterRequestError,
-  clRouterGenerate,
+  clRouterGenerateMaybeManual,
   clRouterTranscribe,
   type ClRouterAssetReference,
   type ClRouterGenerateRequest,
+  type ClRouterGenerateResponse,
   type ClRouterFailureAttempt,
   type ClRouterMessage,
   type ClRouterResponseMetadata,
   type ClRouterSettingsSnapshot,
   type ClRouterUsage,
 } from "./clRouterClient";
+import {
+  clRouterMessagesHaveVision,
+  mapSpotCallToClRouterPrimitive,
+} from "./clRouterPrimitive";
 import {
   createClRouterLanguageModel,
   type ClRouterLanguageModelOptions,
@@ -172,7 +177,15 @@ type RoutedGenerateObjectResult<T> = Omit<
 };
 
 export type ModelTransport = "cl-router";
-export type ModelRouteSource = "broker" | "global" | "static" | "default";
+export type ModelRouteSource =
+  | "broker"
+  | "global"
+  | "static"
+  | "default"
+  | "routed"
+  | "manual"
+  | "jev"
+  | "fallback";
 
 export function generatedTextFromResult(result: unknown): string {
   if (!result || typeof result !== "object") return "";
@@ -307,6 +320,12 @@ function clRouterGenerateInputForEnabledTask(
   ClRouterGenerateRequest,
   "system" | "messages" | "prompt" | "maxTokens"
 > {
+  if (task === "classification" || taskKind?.endsWith("_classify")) {
+    throw new ClRouterRequestError(
+      "configuration",
+      "Classification requires typed questions through clRouterDecide (/v1/decide).",
+    );
+  }
   const input = clRouterGenerateInput(options);
   if (input) return input;
 
@@ -314,6 +333,48 @@ function clRouterGenerateInputForEnabledTask(
     "configuration",
     `cl-router generation for ${taskKind ?? task} uses options that the non-streaming adapter cannot preserve; route this call through the Spot-owned cl-router language-model tool loop`,
   );
+}
+
+function routedMetadataSource(
+  routing: ClRouterResponseMetadata["routing"],
+): string {
+  return routing.source ?? routing.decision;
+}
+
+function spotGenerateRequest(options: {
+  task: ModelTask;
+  taskKind?: ModelCallTaskKind;
+  orgId?: string;
+  input: Pick<
+    ClRouterGenerateRequest,
+    "system" | "messages" | "prompt" | "maxTokens"
+  >;
+  schema?: Record<string, unknown>;
+  label: string;
+}): ClRouterGenerateRequest {
+  const mapping = mapSpotCallToClRouterPrimitive({
+    task: options.task,
+    taskKind: options.taskKind,
+    hasStructuredOutput: Boolean(options.schema),
+    hasVision: clRouterMessagesHaveVision(options.input.messages),
+  });
+  return {
+    primitive: mapping.primitive,
+    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
+    ...(options.orgId ? { orgId: options.orgId } : {}),
+    ...options.input,
+    ...(options.schema
+      ? {
+          schema: options.schema,
+          schemaDialect:
+            "https://json-schema.org/draft/2020-12/schema" as const,
+        }
+      : {}),
+    trace: {
+      label: options.label,
+      ...(options.taskKind ? { taskKind: options.taskKind } : {}),
+    },
+  };
 }
 
 function languageModelUsageFromClRouter(
@@ -439,7 +500,6 @@ export async function transcribeAudioForOrg(
   orgId: Id<"organizations">,
   input: AudioTranscriptionInput,
 ): Promise<AudioTranscriptionResult> {
-  const settings = await resolveClRouterSettingsForOrg(ctx, orgId);
   return withTemporaryAudioReference(
     ctx,
     input,
@@ -451,7 +511,6 @@ export async function transcribeAudioForOrg(
       const response = await clRouterTranscribe(
         {
           orgId,
-          settings,
           audio,
           prompt: input.prompt,
           trace: { label: "convex.models.transcribeAudioForOrg" },
@@ -473,17 +532,11 @@ function audioTranscriptionResult(
       "cl-router audio transcription returned no text",
     );
   }
-  const routeSource = response.routing.routeSource;
+  const routeSource = routedMetadataSource(response.routing);
   return {
     text,
     route: response.model,
-    routeSource:
-      routeSource === "broker" ||
-      routeSource === "global" ||
-      routeSource === "static" ||
-      routeSource === "default"
-        ? routeSource
-        : "default",
+    routeSource,
     transport: "cl-router",
     clRouter: response,
   };
@@ -494,7 +547,6 @@ async function transcribeAudioForGlobalTask(
   input: AudioTranscriptionInput,
   traceLabel: string,
 ): Promise<AudioTranscriptionResult> {
-  const settings = await clRouterSettingsForPublicTask(ctx);
   return withTemporaryAudioReference(
     ctx,
     input,
@@ -504,7 +556,6 @@ async function transcribeAudioForGlobalTask(
     async (audio) => {
       const response = await clRouterTranscribe(
         {
-          settings,
           audio,
           prompt: input.prompt,
           trace: { label: traceLabel },
@@ -792,7 +843,7 @@ export function getModelAndRouteForPublicSettingsSnapshot(
 }
 
 function routedTextResultFromClRouter(
-  response: Awaited<ReturnType<typeof clRouterGenerate>>,
+  response: ClRouterGenerateResponse,
 ): RoutedGenerateTextResult {
   if (typeof response.output !== "string") {
     throw new ClRouterRequestError(
@@ -808,14 +859,14 @@ function routedTextResultFromClRouter(
     usage,
     totalUsage: usage,
     route: response.model,
-    routeSource: response.routing.routeSource,
+    routeSource: routedMetadataSource(response.routing),
     transport: "cl-router",
     clRouter: response,
   } as unknown as RoutedGenerateTextResult;
 }
 
 function routedObjectResultFromClRouter<T>(
-  response: Awaited<ReturnType<typeof clRouterGenerate>>,
+  response: ClRouterGenerateResponse,
   schema: z.ZodType<T>,
 ): RoutedGenerateObjectResult<T> {
   const parsed = schema.safeParse(response.output);
@@ -835,7 +886,7 @@ function routedObjectResultFromClRouter<T>(
     usage,
     totalUsage: usage,
     route: response.model,
-    routeSource: response.routing.routeSource,
+    routeSource: routedMetadataSource(response.routing),
     transport: "cl-router",
     clRouter: response,
   } as unknown as RoutedGenerateObjectResult<T>;
@@ -857,26 +908,15 @@ function modelSettingsRouteIdForCall(
   return modelTaskForCall(task, taskKind);
 }
 
-function clRouterRoutingForCall(
+function clRouterPinForCall(
   settings: ClRouterSettingsSnapshot | null,
   task: ModelTask,
   taskKind?: ModelCallTaskKind,
-  fallbackContext?: Omit<
-    ModelFallbackContext,
-    "task" | "primaryRoute" | "fallbackRoute"
-  >,
-): ClRouterGenerateRequest["routing"] {
+): ModelRoute | undefined {
   const routeId = modelSettingsRouteIdForCall(task, taskKind);
-  const globalOverride =
-    settings?.routeSources?.[routeId] === "global"
-      ? settings.routes?.[routeId]
-      : undefined;
-  const allowFallback = fallbackContext?.allowFallback;
-  if (!globalOverride && allowFallback === undefined) return undefined;
-  return {
-    ...(globalOverride ? { pin: globalOverride } : {}),
-    ...(allowFallback === undefined ? {} : { allowFallback }),
-  };
+  return settings?.routeSources?.[routeId] === "global"
+    ? settings.routes?.[routeId]
+    : undefined;
 }
 
 export async function resolveClRouterSettingsForOrg(
@@ -1257,7 +1297,9 @@ async function generateAgentTextForResolvedModel(
   return {
     ...result,
     route: routerResponse?.model ?? resolved.route,
-    routeSource: routerResponse?.routing.routeSource ?? resolved.routeSource,
+    routeSource: routerResponse
+      ? routedMetadataSource(routerResponse.routing)
+      : resolved.routeSource,
     transport: "cl-router",
     ...(routerResponse ? { clRouter: routerResponse } : {}),
   };
@@ -1476,26 +1518,15 @@ export async function generateTextForOrg(
   );
   const settings = await resolveClRouterSettingsForOrg(ctx, orgId);
   return routedTextResultFromClRouter(
-    await clRouterGenerate(
-      {
+    await clRouterGenerateMaybeManual(
+      spotGenerateRequest({
         task,
         taskKind: fallbackContext?.taskKind,
         orgId,
-        settings,
-        ...input,
-        routing: clRouterRoutingForCall(
-          settings,
-          task,
-          fallbackContext?.taskKind,
-          fallbackContext,
-        ),
-        trace: {
-          label: "convex.models.generateTextForOrg",
-          ...(fallbackContext?.taskKind
-            ? { taskKind: fallbackContext.taskKind }
-            : {}),
-        },
-      },
+        input,
+        label: "convex.models.generateTextForOrg",
+      }),
+      clRouterPinForCall(settings, task, fallbackContext?.taskKind),
       durableRouterClientOptions(ctx, undefined, options.abortSignal),
     ),
   );
@@ -1519,28 +1550,16 @@ export async function generateObjectForOrg<T>(
   );
   const settings = await resolveClRouterSettingsForOrg(ctx, orgId);
   return routedObjectResultFromClRouter(
-    await clRouterGenerate(
-      {
+    await clRouterGenerateMaybeManual(
+      spotGenerateRequest({
         task,
         taskKind: fallbackContext?.taskKind,
         orgId,
-        settings,
-        ...input,
+        input,
         schema: z.toJSONSchema(schema) as Record<string, unknown>,
-        schemaDialect: "https://json-schema.org/draft/2020-12/schema",
-        routing: clRouterRoutingForCall(
-          settings,
-          task,
-          fallbackContext?.taskKind,
-          fallbackContext,
-        ),
-        trace: {
-          label: "convex.models.generateObjectForOrg",
-          ...(fallbackContext?.taskKind
-            ? { taskKind: fallbackContext.taskKind }
-            : {}),
-        },
-      },
+        label: "convex.models.generateObjectForOrg",
+      }),
+      clRouterPinForCall(settings, task, fallbackContext?.taskKind),
       durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
     ),
     schema,
@@ -1563,25 +1582,14 @@ export async function generateTextForPublicTask(
   );
   const settings = await clRouterSettingsForPublicTask(ctx);
   return routedTextResultFromClRouter(
-    await clRouterGenerate(
-      {
+    await clRouterGenerateMaybeManual(
+      spotGenerateRequest({
         task,
         taskKind: fallbackContext?.taskKind,
-        settings,
-        ...input,
-        routing: clRouterRoutingForCall(
-          settings,
-          task,
-          fallbackContext?.taskKind,
-          fallbackContext,
-        ),
-        trace: {
-          label: "convex.models.generateTextForPublicTask",
-          ...(fallbackContext?.taskKind
-            ? { taskKind: fallbackContext.taskKind }
-            : {}),
-        },
-      },
+        input,
+        label: "convex.models.generateTextForPublicTask",
+      }),
+      clRouterPinForCall(settings, task, fallbackContext?.taskKind),
       durableRouterClientOptions(ctx, undefined, options.abortSignal),
     ),
   );
@@ -1604,27 +1612,15 @@ export async function generateObjectForPublicTask<T>(
   );
   const settings = await clRouterSettingsForPublicTask(ctx);
   return routedObjectResultFromClRouter(
-    await clRouterGenerate(
-      {
+    await clRouterGenerateMaybeManual(
+      spotGenerateRequest({
         task,
         taskKind: fallbackContext?.taskKind,
-        settings,
-        ...input,
+        input,
         schema: z.toJSONSchema(schema) as Record<string, unknown>,
-        schemaDialect: "https://json-schema.org/draft/2020-12/schema",
-        routing: clRouterRoutingForCall(
-          settings,
-          task,
-          fallbackContext?.taskKind,
-          fallbackContext,
-        ),
-        trace: {
-          label: "convex.models.generateObjectForPublicTask",
-          ...(fallbackContext?.taskKind
-            ? { taskKind: fallbackContext.taskKind }
-            : {}),
-        },
-      },
+        label: "convex.models.generateObjectForPublicTask",
+      }),
+      clRouterPinForCall(settings, task, fallbackContext?.taskKind),
       durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
     ),
     schema,

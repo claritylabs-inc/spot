@@ -7,8 +7,6 @@ import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
 import {
   parseDecideRequest,
   parseDecideResponse,
-  parseRoutingSelectionMetadata,
-  type RoutingSelectionMetadata,
   type DecideRequest,
   type DecideResponse,
 } from "@claritylabs/cl-router-policy";
@@ -18,8 +16,15 @@ import {
   MODEL_TASKS,
   type ModelProvider,
   type ModelRoute,
-  type ModelTask,
 } from "./modelCatalog";
+import type {
+  ClRouterPrimitive,
+  ClRouterRequirements,
+  ClRouterRoutingDecision,
+  ClRouterRoutingSource,
+  ClRouterDifficulty,
+  ClRouterQualityTier,
+} from "./clRouterPrimitive";
 
 // Preserve Spot's original opaque routing key so production policy history,
 // controls, ratings, affinity, and telemetry remain one continuous tenant.
@@ -39,6 +44,11 @@ export type ClRouterSettingsSnapshot = {
   routeSources?: Record<string, string>;
 };
 
+export type {
+  ClRouterPrimitive,
+  ClRouterRequirements,
+} from "./clRouterPrimitive";
+
 export type ClRouterTraceMetadata = {
   traceId?: string;
   parentRequestId?: string;
@@ -57,16 +67,14 @@ export type ClRouterUsage = {
 };
 
 export type ClRouterRoutingMetadata = {
-  decision: string;
-  candidatesConsidered: ModelRoute[];
-  policyVersion: string | null;
-  cacheStickinessApplied: boolean;
-  routeSource?: string;
+  decision: ClRouterRoutingDecision;
+  primitive?: string;
+  difficulty?: ClRouterDifficulty | null;
+  requiredTier?: ClRouterQualityTier;
+  selectedTier?: ClRouterQualityTier;
+  route: ModelRoute;
+  source?: ClRouterRoutingSource;
   attemptCount: number;
-  shadowMode?: boolean;
-  wouldHaveChosen?: ModelRoute & { decision: string };
-  wouldHaveMatched?: boolean;
-  selection?: RoutingSelectionMetadata;
 };
 
 export type ClRouterResponseMetadata = {
@@ -229,11 +237,10 @@ export type ClRouterMessage = {
 };
 
 export type ClRouterGenerateRequest = {
-  task: ModelTask;
-  taskKind?: string;
   tenantId?: string;
   orgId?: string;
-  settings?: ClRouterSettingsSnapshot | null;
+  primitive: ClRouterPrimitive;
+  requirements?: ClRouterRequirements;
   system?: string;
   messages?: ClRouterMessage[];
   prompt?: string;
@@ -241,10 +248,12 @@ export type ClRouterGenerateRequest = {
   schemaDialect?: "https://json-schema.org/draft/2020-12/schema";
   maxTokens?: number;
   executionBudgetMs?: number;
-  sessionKey?: string;
   tools?: ClRouterToolDefinition[];
-  routing?: { pin?: ModelRoute; allowFallback?: boolean };
   trace?: ClRouterTraceMetadata;
+};
+
+export type ClRouterManualGenerateRequest = ClRouterGenerateRequest & {
+  route: ModelRoute;
 };
 
 export type ClRouterToolDefinition = {
@@ -287,7 +296,6 @@ export type ClRouterGenerateStreamResponse = {
 export type ClRouterEmbedRequest = {
   tenantId?: string;
   orgId?: string;
-  settings?: ClRouterSettingsSnapshot | null;
   texts: string[];
   dimensions?: number;
   trace?: ClRouterTraceMetadata;
@@ -300,7 +308,6 @@ export type ClRouterEmbedResponse = ClRouterResponseMetadata & {
 export type ClRouterTranscribeRequest = {
   tenantId?: string;
   orgId?: string;
-  settings?: ClRouterSettingsSnapshot | null;
   audio: ClRouterAssetReference;
   prompt?: string;
   trace?: ClRouterTraceMetadata;
@@ -457,7 +464,7 @@ export type ClRouterClientOptions = {
   fetch?: typeof fetch;
   abortSignal?: AbortSignal;
   executeJob?: (
-    operation: "generate" | "embed" | "retrieve" | "transcribe",
+    operation: "generate" | "manual" | "embed" | "retrieve" | "transcribe",
     payload: unknown,
     abortSignal?: AbortSignal,
   ) => Promise<unknown>;
@@ -641,68 +648,63 @@ function readUsage(value: unknown): ClRouterUsage | null {
   };
 }
 
+const ROUTING_DECISIONS = new Set<ClRouterRoutingDecision>(["routed", "manual"]);
+const ROUTING_SOURCES = new Set<ClRouterRoutingSource>([
+  "jev",
+  "fallback",
+  "manual",
+]);
+const ROUTING_DIFFICULTIES = new Set<ClRouterDifficulty>([
+  "simple",
+  "standard",
+  "complex",
+]);
+
+function isQualityTier(value: unknown): value is ClRouterQualityTier {
+  return value === 1 || value === 2 || value === 3;
+}
+
 function readRouting(value: unknown): ClRouterRoutingMetadata | null {
   if (!isRecord(value)) return null;
-  const candidates = value.candidatesConsidered;
   if (
-    typeof value.decision !== "string" ||
-    !Array.isArray(candidates) ||
-    !candidates.every(isModelRoute) ||
-    !(
-      typeof value.policyVersion === "string" || value.policyVersion === null
-    ) ||
-    typeof value.cacheStickinessApplied !== "boolean" ||
+    !ROUTING_DECISIONS.has(value.decision as ClRouterRoutingDecision) ||
+    !isModelRoute(value.route) ||
     !isNonNegativeInteger(value.attemptCount) ||
     value.attemptCount < 1
   ) {
     return null;
   }
-  const wouldHaveChosen = value.wouldHaveChosen;
-  const wouldHaveChosenDecision =
-    isRecord(wouldHaveChosen) && typeof wouldHaveChosen.decision === "string"
-      ? wouldHaveChosen.decision
-      : undefined;
   if (
-    (value.shadowMode !== undefined && typeof value.shadowMode !== "boolean") ||
-    (value.wouldHaveMatched !== undefined &&
-      typeof value.wouldHaveMatched !== "boolean") ||
-    (wouldHaveChosen !== undefined &&
-      (!isModelRoute(wouldHaveChosen) || wouldHaveChosenDecision === undefined))
+    (value.primitive !== undefined && typeof value.primitive !== "string") ||
+    (value.difficulty !== undefined &&
+      value.difficulty !== null &&
+      !ROUTING_DIFFICULTIES.has(value.difficulty as ClRouterDifficulty)) ||
+    (value.requiredTier !== undefined && !isQualityTier(value.requiredTier)) ||
+    (value.selectedTier !== undefined && !isQualityTier(value.selectedTier)) ||
+    (value.source !== undefined &&
+      !ROUTING_SOURCES.has(value.source as ClRouterRoutingSource))
   ) {
     return null;
   }
-  let selection: RoutingSelectionMetadata | undefined;
-  if (value.selection !== undefined) {
-    try {
-      selection = parseRoutingSelectionMetadata(value.selection);
-    } catch {
-      return null;
-    }
-  }
   return {
-    decision: value.decision,
-    ...(selection ? { selection } : {}),
-    candidatesConsidered: candidates,
-    policyVersion: value.policyVersion,
-    cacheStickinessApplied: value.cacheStickinessApplied,
+    decision: value.decision as ClRouterRoutingDecision,
+    route: { provider: value.route.provider, model: value.route.model },
     attemptCount: value.attemptCount,
-    ...(typeof value.routeSource === "string"
-      ? { routeSource: value.routeSource }
+    ...(typeof value.primitive === "string"
+      ? { primitive: value.primitive }
       : {}),
-    ...(typeof value.shadowMode === "boolean"
-      ? { shadowMode: value.shadowMode }
+    ...(value.difficulty === null ||
+    ROUTING_DIFFICULTIES.has(value.difficulty as ClRouterDifficulty)
+      ? { difficulty: value.difficulty as ClRouterDifficulty | null }
       : {}),
-    ...(wouldHaveChosen !== undefined
-      ? {
-          wouldHaveChosen: {
-            provider: wouldHaveChosen.provider,
-            model: wouldHaveChosen.model,
-            decision: wouldHaveChosenDecision!,
-          },
-        }
+    ...(isQualityTier(value.requiredTier)
+      ? { requiredTier: value.requiredTier }
       : {}),
-    ...(typeof value.wouldHaveMatched === "boolean"
-      ? { wouldHaveMatched: value.wouldHaveMatched }
+    ...(isQualityTier(value.selectedTier)
+      ? { selectedTier: value.selectedTier }
+      : {}),
+    ...(ROUTING_SOURCES.has(value.source as ClRouterRoutingSource)
+      ? { source: value.source as ClRouterRoutingSource }
       : {}),
   };
 }
@@ -712,10 +714,13 @@ function readResponseMetadata(
 ): ClRouterResponseMetadata | null {
   const usage = readUsage(value.usage);
   const routing = readRouting(value.routing);
+  const model = isModelRoute(value.model)
+    ? value.model
+    : routing?.route;
   if (
     typeof value.requestId !== "string" ||
     value.requestId.length === 0 ||
-    !isModelRoute(value.model) ||
+    !model ||
     !usage ||
     !routing ||
     !(
@@ -730,7 +735,7 @@ function readResponseMetadata(
   }
   return {
     requestId: value.requestId,
-    model: value.model,
+    model,
     usage,
     routing,
     costUsd: value.costUsd,
@@ -795,13 +800,20 @@ async function postJson(
 ): Promise<unknown> {
   validateRouterAssets(body, options.environment ?? process.env);
   const serialized = serializeRouterRequest(body);
-  const operation = path.slice("/v1/".length);
+  const operation = path.replace(/^\/v1\//, "").split("/")[0];
   if (
     options.executeJob &&
-    ["generate", "embed", "retrieve", "transcribe"].includes(operation)
+    ["generate", "manual", "embed", "retrieve", "transcribe"].includes(
+      operation,
+    )
   ) {
     return options.executeJob(
-      operation as "generate" | "embed" | "retrieve" | "transcribe",
+      operation as
+        | "generate"
+        | "manual"
+        | "embed"
+        | "retrieve"
+        | "transcribe",
       body,
       options.abortSignal,
     );
@@ -913,22 +925,12 @@ function validateRouterAssets(
   }
 }
 
-function requestPayload<
-  T extends {
-    tenantId?: string;
-    settings?: ClRouterSettingsSnapshot | null;
-  },
->(
+function requestPayload<T extends { tenantId?: string }>(
   request: T,
-): Omit<T, "settings"> & {
-  tenantId: string;
-  settings?: ClRouterSettingsSnapshot;
-} {
-  const { settings, ...rest } = request;
+): T & { tenantId: string } {
   return {
-    ...rest,
+    ...request,
     tenantId: request.tenantId ?? CL_ROUTER_TENANT_ID,
-    ...(settings ? { settings } : {}),
   };
 }
 
@@ -1040,25 +1042,78 @@ function parseStreamEventBlock(block: string): ClRouterStreamEvent | null {
   }
 }
 
-function assertGenerationTask(request: ClRouterGenerateRequest) {
-  if (
-    request.task === "classification" ||
-    request.taskKind?.endsWith("_classify")
-  ) {
+function parseGenerateResponse(payload: unknown): ClRouterGenerateResponse {
+  if (!isRecord(payload)) {
     throw new ClRouterRequestError(
-      "configuration",
-      "Classification requires typed questions through clRouterDecide (/v1/decide).",
+      "invalid_response",
+      "cl-router generate response is invalid",
     );
   }
+  const metadata = readResponseMetadata(payload);
+  if (!metadata || !("output" in payload)) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router generate response is invalid",
+    );
+  }
+  return {
+    ...metadata,
+    output: payload.output,
+    ...(typeof payload.finishReason === "string"
+      ? { finishReason: payload.finishReason }
+      : {}),
+  };
 }
 
 export async function clRouterGenerateStream(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateStreamResponse> {
-  assertGenerationTask(request);
+  return clRouterGenerationStream(
+    "/v1/generate/stream",
+    request,
+    options,
+    (payload, clientOptions) => clRouterGenerate(payload, clientOptions),
+  );
+}
+
+export async function clRouterGenerateManualStream(
+  request: ClRouterManualGenerateRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterGenerateStreamResponse> {
+  return clRouterGenerationStream(
+    "/v1/manual/stream",
+    request,
+    options,
+    (payload, clientOptions) =>
+      clRouterGenerateManual(
+        payload as ClRouterManualGenerateRequest,
+        clientOptions,
+      ),
+  );
+}
+
+export async function clRouterGenerateMaybeManualStream(
+  request: ClRouterGenerateRequest,
+  route: ModelRoute | undefined,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterGenerateStreamResponse> {
+  return route
+    ? clRouterGenerateManualStream({ ...request, route }, options)
+    : clRouterGenerateStream(request, options);
+}
+
+async function clRouterGenerationStream(
+  path: "/v1/generate/stream" | "/v1/manual/stream",
+  request: ClRouterGenerateRequest | ClRouterManualGenerateRequest,
+  options: ClRouterClientOptions,
+  complete: (
+    request: ClRouterGenerateRequest | ClRouterManualGenerateRequest,
+    options: ClRouterClientOptions,
+  ) => Promise<ClRouterGenerateResponse>,
+): Promise<ClRouterGenerateStreamResponse> {
   if (options.executeJob) {
-    const response = await clRouterGenerate(request, options);
+    const response = await complete(request, options);
     const events = (async function* (): AsyncIterable<ClRouterStreamEvent> {
       const output = response.output;
       if (isRecord(output) && Array.isArray(output.toolCalls)) {
@@ -1118,7 +1173,7 @@ export async function clRouterGenerateStream(
   try {
     const payload = requestPayload(request);
     validateRouterAssets(payload, environment);
-    response = await fetchImplementation(`${config.url}/v1/generate/stream`, {
+    response = await fetchImplementation(`${config.url}${path}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.secret}`,
@@ -1251,32 +1306,28 @@ export async function clRouterGenerate(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateResponse> {
-  assertGenerationTask(request);
-  const payload = await postJson(
-    "/v1/generate",
-    requestPayload(request),
-    options,
+  return parseGenerateResponse(
+    await postJson("/v1/generate", requestPayload(request), options),
   );
-  if (!isRecord(payload)) {
-    throw new ClRouterRequestError(
-      "invalid_response",
-      "cl-router generate response is invalid",
-    );
-  }
-  const metadata = readResponseMetadata(payload);
-  if (!metadata || !("output" in payload)) {
-    throw new ClRouterRequestError(
-      "invalid_response",
-      "cl-router generate response is invalid",
-    );
-  }
-  return {
-    ...metadata,
-    output: payload.output,
-    ...(typeof payload.finishReason === "string"
-      ? { finishReason: payload.finishReason }
-      : {}),
-  };
+}
+
+export async function clRouterGenerateManual(
+  request: ClRouterManualGenerateRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterGenerateResponse> {
+  return parseGenerateResponse(
+    await postJson("/v1/manual", requestPayload(request), options),
+  );
+}
+
+export async function clRouterGenerateMaybeManual(
+  request: ClRouterGenerateRequest,
+  route: ModelRoute | undefined,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterGenerateResponse> {
+  return route
+    ? clRouterGenerateManual({ ...request, route }, options)
+    : clRouterGenerate(request, options);
 }
 
 const MODEL_PROVIDER_SET = new Set<ModelProvider>(MODEL_PROVIDERS);

@@ -15,6 +15,7 @@ export const ROUTER_JOB_RESULT_BYTES = 18 * 1024 * 1024;
 const TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const operation = v.union(
   v.literal("generate"),
+  v.literal("manual"),
   v.literal("embed"),
   v.literal("retrieve"),
   v.literal("transcribe"),

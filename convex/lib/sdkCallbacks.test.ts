@@ -11,11 +11,13 @@ function response(output: unknown) {
     requestId: "request-1",
     model: { provider: "openai", model: "gpt-5.4-mini" },
     routing: {
-      decision: "static",
-      candidatesConsidered: [{ provider: "openai", model: "gpt-5.4-mini" }],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: false,
-      routeSource: "static",
+      decision: "routed",
+      primitive: "reasoning",
+      difficulty: "standard",
+      requiredTier: 2,
+      selectedTier: 2,
+      route: { provider: "openai", model: "gpt-5.4-mini" },
+      source: "jev",
       attemptCount: 1,
     },
     usage: {

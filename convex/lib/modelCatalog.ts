@@ -346,7 +346,7 @@ export const MODEL_ROUTE_LABELS: Record<ModelRouteId, string> = {
 export const MODEL_ROUTE_DESCRIPTIONS: Record<ModelRouteId, string> = {
   ...MODEL_TASK_DESCRIPTIONS,
   operator_agent:
-    "Required router-pinned route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support rich attachment input and never uses automated fallback.",
+    "Required manually selected route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support rich attachment input and is always submitted through /v1/manual, never auto-routed.",
   extraction_quality:
     "Proactive primary route for source-tree generation and operational-profile extraction before any failure occurs.",
   extraction_coverage_cleanup:
@@ -420,7 +420,7 @@ export const OPERATOR_MODEL_ROUTE_GROUPS = [
     id: "internal_operations",
     label: "Internal operations",
     description:
-      "Required manually selected router-pinned routes for Clarity Labs operator workflows.",
+      "Required manually selected /v1/manual routes for Clarity Labs operator workflows.",
     tasks: [OPERATOR_AGENT_MODEL_ROUTE_ID],
   },
   MODEL_TASK_GROUPS[0],

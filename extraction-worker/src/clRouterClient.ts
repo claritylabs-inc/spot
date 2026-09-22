@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import {
-  parseRoutingSelectionMetadata,
-  type RoutingSelectionMetadata,
-} from "@claritylabs/cl-router-policy";
+  clRouterMessagesHaveVision,
+  mapSpotCallToClRouterPrimitive,
+  type ClRouterPrimitive,
+  type ClRouterRequirements,
+} from "./clRouterPrimitive.js";
 
 export type ClRouterModelRoute = {
   provider: string;
@@ -51,11 +53,10 @@ export const CL_ROUTER_MAX_ASSETS = 8;
 export const CL_ROUTER_MAX_JSON_BYTES = 4 * 1024 * 1024;
 
 export type ClRouterGenerateRequest = {
-  task: string;
-  taskKind?: string;
   tenantId: string;
   orgId?: string;
-  settings?: ClRouterSettingsSnapshot;
+  primitive: ClRouterPrimitive;
+  requirements?: ClRouterRequirements;
   system?: string;
   messages?: ClRouterMessage[];
   prompt?: string;
@@ -63,22 +64,19 @@ export type ClRouterGenerateRequest = {
   schemaDialect?: "https://json-schema.org/draft/2020-12/schema";
   maxTokens?: number;
   executionBudgetMs?: number;
-  sessionKey?: string;
-  routing?: { pin?: ClRouterModelRoute; allowFallback?: boolean };
+  route?: ClRouterModelRoute;
   trace?: Record<string, unknown>;
 };
 
 export type ClRouterRoutingMetadata = {
-  decision: string;
-  candidatesConsidered: ClRouterModelRoute[];
-  policyVersion: string | null;
-  cacheStickinessApplied: boolean;
-  routeSource?: string;
+  decision: "routed" | "manual";
+  primitive?: string;
+  difficulty?: "simple" | "standard" | "complex" | null;
+  requiredTier?: 1 | 2 | 3;
+  selectedTier?: 1 | 2 | 3;
+  route: ClRouterModelRoute;
+  source?: "jev" | "fallback" | "manual";
   attemptCount: number;
-  shadowMode?: boolean;
-  wouldHaveChosen?: ClRouterModelRoute & { decision: string };
-  wouldHaveMatched?: boolean;
-  selection?: RoutingSelectionMetadata;
 };
 
 export type ClRouterGenerateResponse = {
@@ -107,9 +105,11 @@ export type ClRouterClient = {
 
 export type ClRouterGenerateInput = Omit<
   ClRouterGenerateRequest,
-  "messages" | "prompt"
+  "messages" | "prompt" | "primitive" | "requirements"
 > & {
   prompt: string;
+  task?: string;
+  taskKind?: string;
   assets?: ClRouterProviderAssets;
 };
 
@@ -240,12 +240,7 @@ function isModelRoute(value: unknown): value is ClRouterModelRoute {
 }
 
 function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
-  if (
-    !isRecord(value) ||
-    !isModelRoute(value.model) ||
-    !isRecord(value.usage) ||
-    !isRecord(value.routing)
-  ) {
+  if (!isRecord(value) || !isRecord(value.usage) || !isRecord(value.routing)) {
     throw new ClRouterProtocolError(
       "cl-router returned an invalid generate response",
     );
@@ -253,7 +248,13 @@ function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
   const usage = value.usage;
   const routing = value.routing;
   const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+  const model = isModelRoute(value.model)
+    ? value.model
+    : isModelRoute(routing.route)
+      ? routing.route
+      : null;
   if (
+    !model ||
     !isNonNegativeInteger(usage.inputTokens) ||
     !isNonNegativeInteger(usage.outputTokens) ||
     !isNonNegativeInteger(usage.cachedInputTokens) ||
@@ -268,47 +269,46 @@ function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
     (value.costStatus !== "priced" && value.costStatus !== "unpriced") ||
     typeof value.requestId !== "string" ||
     value.requestId.length === 0 ||
-    typeof routing.decision !== "string" ||
-    !Array.isArray(routing.candidatesConsidered) ||
-    !routing.candidatesConsidered.every(isModelRoute) ||
-    !(
-      routing.policyVersion === null ||
-      typeof routing.policyVersion === "string"
-    ) ||
-    typeof routing.cacheStickinessApplied !== "boolean" ||
+    (routing.decision !== "routed" && routing.decision !== "manual") ||
+    !isModelRoute(routing.route) ||
     !isNonNegativeInteger(routing.attemptCount) ||
-    routing.attemptCount < 1 ||
-    (routing.routeSource !== undefined &&
-      typeof routing.routeSource !== "string") ||
-    (routing.shadowMode !== undefined &&
-      typeof routing.shadowMode !== "boolean") ||
-    (routing.wouldHaveMatched !== undefined &&
-      typeof routing.wouldHaveMatched !== "boolean") ||
-    (routing.wouldHaveChosen !== undefined &&
-      (!isRecord(routing.wouldHaveChosen) ||
-        !isModelRoute(routing.wouldHaveChosen) ||
-        typeof (routing.wouldHaveChosen as Record<string, unknown>).decision !==
-          "string"))
+    routing.attemptCount < 1
   ) {
     throw new ClRouterProtocolError(
       "cl-router returned invalid generate metadata",
     );
   }
-  let selection: RoutingSelectionMetadata | undefined;
-  if (routing.selection !== undefined) {
-    try {
-      selection = parseRoutingSelectionMetadata(routing.selection);
-    } catch {
-      throw new ClRouterProtocolError(
-        "cl-router returned invalid selection metadata",
-      );
-    }
-  }
   return {
     ...(value as ClRouterGenerateResponse),
+    model,
     routing: {
-      ...(routing as ClRouterRoutingMetadata),
-      ...(selection ? { selection } : {}),
+      decision: routing.decision,
+      route: routing.route,
+      attemptCount: routing.attemptCount,
+      ...(typeof routing.primitive === "string"
+        ? { primitive: routing.primitive }
+        : {}),
+      ...(routing.difficulty === null ||
+      routing.difficulty === "simple" ||
+      routing.difficulty === "standard" ||
+      routing.difficulty === "complex"
+        ? { difficulty: routing.difficulty }
+        : {}),
+      ...(routing.requiredTier === 1 ||
+      routing.requiredTier === 2 ||
+      routing.requiredTier === 3
+        ? { requiredTier: routing.requiredTier }
+        : {}),
+      ...(routing.selectedTier === 1 ||
+      routing.selectedTier === 2 ||
+      routing.selectedTier === 3
+        ? { selectedTier: routing.selectedTier }
+        : {}),
+      ...(routing.source === "jev" ||
+      routing.source === "fallback" ||
+      routing.source === "manual"
+        ? { source: routing.source }
+        : {}),
     },
     usage: {
       ...(usage as ClRouterGenerateResponse["usage"]),
@@ -512,23 +512,44 @@ export function buildClRouterGenerateRequest(
   input: ClRouterGenerateInput,
   executionBudgetMs?: number,
 ): ClRouterGenerateRequest {
-  const { assets, prompt, settings, ...rest } = input;
+  const inputFields = requestInput(input.prompt, input.assets);
+  const mapping = mapSpotCallToClRouterPrimitive({
+    task: input.task,
+    taskKind: input.taskKind,
+    hasStructuredOutput: true,
+    hasVision:
+      Boolean(
+        input.assets?.pdfUrl ||
+          input.assets?.pdfBase64 ||
+          input.assets?.pdfBytes,
+      ) ||
+      (input.assets?.images?.length ?? 0) > 0 ||
+      clRouterMessagesHaveVision(inputFields.messages),
+  });
   const request: ClRouterGenerateRequest = {
-    ...rest,
-    ...(settings
+    tenantId: input.tenantId,
+    ...(input.orgId ? { orgId: input.orgId } : {}),
+    primitive: mapping.primitive,
+    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
+    ...(input.system ? { system: input.system } : {}),
+    ...inputFields,
+    schema: input.schema,
+    ...(input.schemaDialect ? { schemaDialect: input.schemaDialect } : {}),
+    ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+    ...(input.executionBudgetMs !== undefined
+      ? { executionBudgetMs: input.executionBudgetMs }
+      : executionBudgetMs !== undefined
+        ? { executionBudgetMs }
+        : {}),
+    ...(input.route ? { route: input.route } : {}),
+    ...(input.trace || input.taskKind
       ? {
-          settings: {
-            ...(settings.routes ? { routes: settings.routes } : {}),
-            ...(settings.routeSources
-              ? { routeSources: settings.routeSources }
-              : {}),
+          trace: {
+            ...input.trace,
+            ...(input.taskKind ? { taskKind: input.taskKind } : {}),
           },
         }
       : {}),
-    ...(rest.executionBudgetMs === undefined && executionBudgetMs !== undefined
-      ? { executionBudgetMs }
-      : {}),
-    ...requestInput(prompt, assets),
   };
   assertRequestLimits(request);
   return request;
@@ -549,16 +570,17 @@ export function createClRouterClient(
   }
   if (!options.secret.trim()) throw new Error("CL_ROUTER_SECRET is required");
   const fetchImpl = options.fetch ?? fetch;
-  const generateUrl = new URL(
-    "v1/generate",
-    `${baseUrl.toString().replace(/\/$/, "")}/`,
-  );
+  const origin = `${baseUrl.toString().replace(/\/$/, "")}/`;
   return {
     async generate(input, executeJob) {
       const request = buildClRouterGenerateRequest(input);
       if (!executeJob) assertRouterCanFetchAssets(request, baseUrl);
       const requestBody = JSON.stringify(request);
       if (executeJob) return parseGenerateResponse(await executeJob(request));
+      const generateUrl = new URL(
+        request.route ? "v1/manual" : "v1/generate",
+        origin,
+      );
       let response: Response;
       try {
         response = await fetchImpl(generateUrl, {

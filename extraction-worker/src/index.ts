@@ -1218,7 +1218,7 @@ function clRouterTraceRoute(
   return {
     task,
     route: response.model,
-    routeSource: response.routing.routeSource ?? response.routing.decision,
+    routeSource: response.routing.source ?? response.routing.decision,
     transport: "cl-router",
   };
 }
@@ -1236,19 +1236,9 @@ function clRouterTraceDetails(response: ClRouterGenerateResponse) {
   };
 }
 
-function routerSettingsSnapshot(settings?: WorkerModelSettings) {
-  if (!settings) return undefined;
-  return {
-    ...(settings.routes ? { routes: settings.routes } : {}),
-    ...(settings.routeSources ? { routeSources: settings.routeSources } : {}),
-  };
-}
-
-function explicitRouterPin(route: ResolvedWorkerModelRoute) {
-  return route.routeSource === "broker" ||
-    route.routeSource === "global" ||
-    route.routeSource === "configured"
-    ? { pin: route.route, allowFallback: true }
+function explicitRouterRoute(route: ResolvedWorkerModelRoute) {
+  return route.routeSource === "global" || route.routeSource === "configured"
+    ? route.route
     : undefined;
 }
 
@@ -1287,23 +1277,23 @@ async function generateObjectWithClRouter<T>(opts: {
       schemaBytes: Buffer.byteLength(JSON.stringify(opts.schema)),
     }),
   });
-  const settings = routerSettingsSnapshot(opts.modelSettings);
-  const routing = explicitRouterPin(opts.route);
+  const pinnedRoute = explicitRouterRoute(opts.route);
+  const mappingHint = {
+    task: opts.route.task,
+    taskKind: opts.taskKind,
+  };
   const baseEnvelopeBytes =
     Buffer.byteLength(
       JSON.stringify(
         stripUndefined({
-          task: opts.route.task,
-          taskKind: opts.taskKind,
+          primitive: "reasoning",
           tenantId: CL_ROUTER_TENANT_ID,
           orgId: opts.job.state.orgId,
-          settings,
           system: opts.system,
           prompt: opts.prompt,
           schema: opts.schema,
           maxTokens: opts.maxOutputTokens,
-          sessionKey: opts.job.state.traceId ?? opts.job.policyId,
-          routing,
+          route: pinnedRoute,
         }),
       ),
     ) + 8_192;
@@ -1315,18 +1305,15 @@ async function generateObjectWithClRouter<T>(opts: {
   try {
     const response = await clRouter.generate(
       {
-        task: opts.route.task,
-        taskKind: opts.taskKind,
+        ...mappingHint,
         tenantId: CL_ROUTER_TENANT_ID,
         orgId: opts.job.state.orgId,
-        settings,
         system: opts.system,
         prompt: opts.prompt,
         schema: opts.schema,
         maxTokens: opts.maxOutputTokens,
-        sessionKey: opts.job.state.traceId ?? opts.job.policyId,
         assets: preparedAssets.assets,
-        routing,
+        route: pinnedRoute,
         trace: stripUndefined({
           traceId: opts.job.state.traceId,
           label: opts.label,

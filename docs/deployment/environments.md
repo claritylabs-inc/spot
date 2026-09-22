@@ -398,7 +398,7 @@ Every deployed lane needs matching values:
 
 | Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL`, `CL_ROUTER_SECRET`; configure `CL_ROUTER_ADMIN_SECRET` only when the authenticated `/operator/routing` control surface is enabled. |
+| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. |
 | Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state)                                                                                                                                                                                                |
 | cl-router         | `SPOT_ENV`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, exact comma-separated `CL_ROUTER_ASSET_HOSTS`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, and provider/retrieval credentials. Do not set `DATABASE_URL`, `PORT`, Railway variables, or the retired Fastify refresh/scoring interval variables on the Convex router deployments. |
 
@@ -407,15 +407,14 @@ Production callers use the canonical origin
 be used as an external diagnostic when the custom domain is inaccessible from a
 particular network, but it is not a product-config fallback.
 
-The inference, admin, and session-HMAC secrets must be distinct within each
-lane and different between shared dev and production. The admin secret may
-be copied only to Convex for the operator-authenticated, server-side
-`clRouterOperations.getDashboard` and `setGlobalFreeze` actions. They call the
-read-only policy and rollup endpoints and the versioned `/admin/freeze`
-control. Never expose the secret to browsers or configure it on extraction,
-iMessage, or mailbox workers. AI provider, Parallel, and Exa credentials live
-only in the router environment. Spot settings snapshots, Convex, workers, and
-browser payloads never contain provider credentials.
+The inference and session-HMAC secrets must be distinct within each
+lane and different between shared dev and production. Spot callers use only
+`CL_ROUTER_URL` and `CL_ROUTER_SECRET`. There is no operator freeze/pin admin
+surface and no `CL_ROUTER_ADMIN_SECRET` on Convex. Never expose provider
+credentials to browsers or configure them on extraction, iMessage, or mailbox
+workers. AI provider, Parallel, and Exa credentials live only in the router
+environment. Spot settings snapshots, Convex, workers, and browser payloads
+never contain provider credentials.
 
 `CL_ROUTER_URL` and `CL_ROUTER_SECRET` are required for every Spot AI and
 credentialed retrieval call. There is no task gate, consumer-side direct path,
@@ -526,11 +525,9 @@ the router:
 AGENT_HEALTH_ATTEMPTS=1 npm run check:agent-health -- --env=production
 ```
 
-The router must report the matching environment, a live database, and an
-active or bootstrap-ready policy store. Before increasing production traffic,
-exercise the operator global freeze toggle in both directions, inspect
-`/admin/policy` and `/admin/rollups`, then run `/admin/score` against shared dev
-or during an explicitly controlled production rollout.
+The router must report the matching environment and a live database.
+Spot no longer calls `/admin/policy`, `/admin/rollups`, `/admin/score`, or
+`/admin/freeze`. Operator model picks and call history live in Spot.
 
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.

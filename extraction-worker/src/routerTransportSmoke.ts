@@ -140,7 +140,6 @@ function defaultAdapters(): WorkerRouterTransportSmokeAdapters {
           additionalProperties: false,
         },
         maxTokens: 32,
-        sessionKey: `worker-router-transport:${requestId}`,
         assets: { images: [{ source: reference }] },
         trace: {
           label: "extraction-worker.routerTransportSmoke",

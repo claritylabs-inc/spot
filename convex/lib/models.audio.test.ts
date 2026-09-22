@@ -8,13 +8,7 @@ const route = {
 };
 
 function context() {
-  const runQuery = vi
-    .fn()
-    .mockResolvedValueOnce({
-      routes: { voice_transcription: route },
-      routeSources: { voice_transcription: "broker" },
-    })
-    .mockResolvedValueOnce({ storageId: "storage-audio-1" });
+  const runQuery = vi.fn().mockResolvedValueOnce({ storageId: "storage-audio-1" });
   const runMutation = vi
     .fn()
     .mockResolvedValueOnce("router-asset-1")
@@ -31,11 +25,13 @@ function routerResponse() {
     requestId: "request-1",
     model: route,
     routing: {
-      decision: "snapshot",
-      candidatesConsidered: [route],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: false,
-      routeSource: "broker",
+      decision: "routed",
+      primitive: "transcription",
+      difficulty: "simple",
+      requiredTier: 1,
+      selectedTier: 1,
+      route,
+      source: "jev",
       attemptCount: 1,
     },
     usage: {
@@ -80,7 +76,7 @@ describe("audio transcription routing", () => {
     expect(result).toMatchObject({
       text: "Router transcript.",
       route,
-      routeSource: "broker",
+      routeSource: "jev",
       transport: "cl-router",
       clRouter: { requestId: "request-1", costUsd: 0.001 },
     });
@@ -102,7 +98,9 @@ describe("audio transcription routing", () => {
       /^https:\/\/actions\.spot\.insure\/router-assets\?/,
     );
     expect(request.audio.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(request.settings).not.toHaveProperty("providerKeys");
+    expect(request).not.toHaveProperty("settings");
+    expect(request).not.toHaveProperty("task");
+    expect(JSON.stringify(request)).not.toContain("providerKeys");
     expect(ctx.storage.delete).toHaveBeenCalledWith("storage-audio-1");
   });
 
@@ -152,10 +150,12 @@ vi.mock("./routerJobClient", async (importOriginal) => ({
     operation: string,
     payload: unknown,
   ) => {
-    const client = await import("./clRouterClient");
-    if (operation !== "generate") throw new Error("Unexpected test operation");
-    return client.clRouterGenerate(
-      payload as Parameters<typeof client.clRouterGenerate>[0],
-    );
+    if (operation === "transcribe") {
+      const client = await import("./clRouterClient");
+      return client.clRouterTranscribe(
+        payload as Parameters<typeof client.clRouterTranscribe>[0],
+      );
+    }
+    throw new Error("Unexpected test operation");
   },
 }));
