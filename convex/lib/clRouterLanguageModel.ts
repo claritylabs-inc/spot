@@ -20,6 +20,7 @@ import {
   clRouterGenerateMaybeManual,
   clRouterGenerateMaybeManualStream,
   isClRouterFailureCode,
+  normalizeClRouterTrace,
   type ClRouterClientOptions,
   type ClRouterAssetReference,
   type ClRouterGenerateRequest,
@@ -362,6 +363,12 @@ async function requestForCall(
     ),
     hasStructuredOutput: Boolean(schema),
   });
+  const trace = normalizeClRouterTrace({
+    ...adapter.trace,
+    ...(parentRequestId ? { parentRequestId } : {}),
+    task: adapter.task,
+    ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
+  });
   return {
     primitive: mapping.primitive,
     ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
@@ -375,16 +382,8 @@ async function requestForCall(
         }
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
-    tools,
-    ...(adapter.trace || parentRequestId
-      ? {
-          trace: {
-            ...adapter.trace,
-            ...(parentRequestId ? { parentRequestId } : {}),
-            ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
-          },
-        }
-      : {}),
+    ...(tools.length > 0 ? { tools } : {}),
+    ...(trace ? { trace } : {}),
   };
 }
 
@@ -702,7 +701,7 @@ export function createClRouterLanguageModel(
         count: 0,
         decodedBytes: 0,
       };
-      let response: Awaited<ReturnType<typeof clRouterGenerateStream>>;
+      let response: Awaited<ReturnType<typeof clRouterGenerateMaybeManualStream>>;
       try {
         const request = await stageOversizedInlineAssets(
           await requestForCall(

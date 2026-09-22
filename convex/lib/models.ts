@@ -17,6 +17,7 @@ import {
   ClRouterRequestError,
   clRouterGenerateMaybeManual,
   clRouterTranscribe,
+  normalizeClRouterTrace,
   type ClRouterAssetReference,
   type ClRouterGenerateRequest,
   type ClRouterGenerateResponse,
@@ -337,7 +338,7 @@ function clRouterGenerateInputForEnabledTask(
 
 function routedMetadataSource(
   routing: ClRouterResponseMetadata["routing"],
-): string {
+): ModelRouteSource {
   return routing.source ?? routing.decision;
 }
 
@@ -358,6 +359,11 @@ function spotGenerateRequest(options: {
     hasStructuredOutput: Boolean(options.schema),
     hasVision: clRouterMessagesHaveVision(options.input.messages),
   });
+  const trace = normalizeClRouterTrace({
+    label: options.label,
+    task: options.task,
+    ...(options.taskKind ? { taskKind: options.taskKind } : {}),
+  });
   return {
     primitive: mapping.primitive,
     ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
@@ -370,10 +376,7 @@ function spotGenerateRequest(options: {
             "https://json-schema.org/draft/2020-12/schema" as const,
         }
       : {}),
-    trace: {
-      label: options.label,
-      ...(options.taskKind ? { taskKind: options.taskKind } : {}),
-    },
+    ...(trace ? { trace } : {}),
   };
 }
 
@@ -513,7 +516,9 @@ export async function transcribeAudioForOrg(
           orgId,
           audio,
           prompt: input.prompt,
-          trace: { label: "convex.models.transcribeAudioForOrg" },
+          trace: normalizeClRouterTrace({
+            label: "convex.models.transcribeAudioForOrg",
+          }),
         },
         durableRouterClientOptions(ctx),
       );
@@ -558,7 +563,7 @@ async function transcribeAudioForGlobalTask(
         {
           audio,
           prompt: input.prompt,
-          trace: { label: traceLabel },
+          trace: normalizeClRouterTrace({ label: traceLabel }),
         },
         durableRouterClientOptions(ctx),
       );

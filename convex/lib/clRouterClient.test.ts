@@ -9,6 +9,9 @@ import {
   clRouterGenerateManual,
   clRouterGenerateStream,
   clRouterRetrieve,
+  normalizeClRouterTrace,
+  type ClRouterGenerateRequest,
+  type ClRouterManualGenerateRequest,
 } from "./clRouterClient";
 import { routerAssetSigningConfiguration } from "./routerAssetSignature";
 
@@ -140,6 +143,87 @@ describe("cl-router requests", () => {
     expect(body).not.toHaveProperty("settings");
     expect(body).not.toHaveProperty("routing");
     expect(JSON.stringify(body)).not.toContain("providerKeys");
+  });
+
+  test("folds Spot labels into trace.tags and omits extra generate keys and empty tools", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        ...responseMetadata(),
+        output: "ok",
+        finishReason: "stop",
+      }),
+    );
+    await clRouterGenerate(
+      {
+        primitive: "text",
+        orgId: "org-1",
+        prompt: "Reply.",
+        tools: [],
+        trace: {
+          label: "spot.chat",
+          taskKind: "chat",
+          phase: "reply",
+          channel: "web",
+          nested: { ignored: true },
+        },
+        settings: { temperature: 0 },
+        task: "chat",
+        taskKind: "chat",
+        sessionKey: "session-1",
+        routing: { pin: { provider: "openai", model: "gpt-5.5" } },
+        toolChoice: "auto",
+      } as ClRouterGenerateRequest,
+      { environment, fetch: fetchMock },
+    );
+
+    const body = JSON.parse(
+      String(
+        (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body,
+      ),
+    );
+    expect(Object.keys(body).sort()).toEqual(
+      ["orgId", "primitive", "prompt", "tenantId", "trace"].sort(),
+    );
+    expect(body.trace).toEqual({
+      caller: "spot.chat",
+      tags: {
+        label: "spot.chat",
+        taskKind: "chat",
+        phase: "reply",
+        channel: "web",
+      },
+    });
+    expect(body).not.toHaveProperty("tools");
+    expect(body).not.toHaveProperty("settings");
+    expect(body).not.toHaveProperty("task");
+    expect(body).not.toHaveProperty("taskKind");
+    expect(body).not.toHaveProperty("sessionKey");
+    expect(body).not.toHaveProperty("routing");
+    expect(body).not.toHaveProperty("toolChoice");
+  });
+
+  test("normalizes Spot trace extras into caller and tags", () => {
+    expect(
+      normalizeClRouterTrace({
+        traceId: "t-1",
+        parentRequestId: "p-1",
+        label: "spot.agent",
+        taskKind: "operator_agent",
+        phase: "query_reason",
+        channel: "web",
+        nested: { ignored: true },
+      }),
+    ).toEqual({
+      traceId: "t-1",
+      parentRequestId: "p-1",
+      caller: "spot.agent",
+      tags: {
+        label: "spot.agent",
+        taskKind: "operator_agent",
+        phase: "query_reason",
+        channel: "web",
+      },
+    });
   });
 
   test("preserves typed router failure metadata without another transport", async () => {
@@ -401,8 +485,21 @@ test("manual generation posts the explicit route without settings or pins", asyn
     {
       primitive: "tool_use",
       prompt: "Inspect.",
+      maxTokens: 512,
       route: { provider: "openai", model: "gpt-5.5" },
-    },
+      trace: {
+        traceId: "trace-1",
+        parentRequestId: "parent-1",
+        label: "spot.operator",
+        taskKind: "operator_agent",
+      },
+      settings: { temperature: 0 },
+      task: "operator_agent",
+      taskKind: "operator_agent",
+      sessionKey: "session-1",
+      routing: { pin: { provider: "openai", model: "gpt-5.5" } },
+      toolChoice: "auto",
+    } as ClRouterManualGenerateRequest,
     { environment, fetch: fetchMock },
   );
   const [url, init] = fetchMock.mock.calls[0] as unknown as [
@@ -411,14 +508,19 @@ test("manual generation posts the explicit route without settings or pins", asyn
   ];
   const body = JSON.parse(String(init.body));
   expect(url).toBe("https://router.example.test/v1/manual");
-  expect(body).toMatchObject({
+  expect(body).toEqual({
     tenantId: "glass",
     primitive: "tool_use",
+    prompt: "Inspect.",
+    maxTokens: 512,
     route: { provider: "openai", model: "gpt-5.5" },
+    trace: {
+      traceId: "trace-1",
+      parentRequestId: "parent-1",
+      caller: "spot.operator",
+      tags: { label: "spot.operator", taskKind: "operator_agent" },
+    },
   });
-  expect(body).not.toHaveProperty("task");
-  expect(body).not.toHaveProperty("settings");
-  expect(body).not.toHaveProperty("routing");
 });
 
 test.each([false, true])(

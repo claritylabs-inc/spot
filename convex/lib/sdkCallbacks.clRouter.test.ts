@@ -152,13 +152,22 @@ describe("cl-router embedding callbacks", () => {
       ([, init]) =>
         JSON.parse((init as RequestInit).body as string) as {
           texts: string[];
-          trace: { batchIndex: number; batchCount: number };
+          trace: {
+            caller?: string;
+            tags?: { batchIndex: number; batchCount: number };
+          };
         },
     );
     expect(requests.map((request) => request.texts.length)).toEqual([130, 1]);
     expect(requests.map((request) => request.trace)).toEqual([
-      expect.objectContaining({ batchIndex: 1, batchCount: 2 }),
-      expect.objectContaining({ batchIndex: 2, batchCount: 2 }),
+      expect.objectContaining({
+        caller: "convex.sdkCallbacks.makeEmbedTexts",
+        tags: expect.objectContaining({ batchIndex: 1, batchCount: 2 }),
+      }),
+      expect.objectContaining({
+        caller: "convex.sdkCallbacks.makeEmbedTexts",
+        tags: expect.objectContaining({ batchIndex: 2, batchCount: 2 }),
+      }),
     ]);
   });
 });
@@ -228,11 +237,15 @@ describe("cl-router generation callbacks", () => {
       maxTokens: 4_096,
       trace: {
         traceId: "trace-1",
-        label: "Build source tree",
-        phase: "source_tree",
-        taskKind: "extraction_source_tree",
-        policyId: "policy-1",
-        channel: "convex",
+        caller: "Build source tree",
+        tags: {
+          label: "Build source tree",
+          phase: "source_tree",
+          task: "extraction",
+          taskKind: "extraction_source_tree",
+          policyId: "policy-1",
+          channel: "convex",
+        },
       },
     });
     expect(request).not.toHaveProperty("task");
@@ -240,6 +253,11 @@ describe("cl-router generation callbacks", () => {
     expect(request).not.toHaveProperty("sessionKey");
     expect(request).not.toHaveProperty("settings");
     expect(request).not.toHaveProperty("routing");
+    expect(request).not.toHaveProperty("toolChoice");
+    expect(request.trace).not.toHaveProperty("taskKind");
+    expect(request.trace).not.toHaveProperty("label");
+    expect(request.trace).not.toHaveProperty("phase");
+    expect(request.trace).not.toHaveProperty("channel");
     expect(request.schema).toMatchObject({
       type: "object",
       properties: { ok: { type: "boolean" } },

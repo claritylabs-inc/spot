@@ -45,17 +45,20 @@ export function modelCallContext(payload: unknown, operation = "generate") {
   const route = record(p.route);
   const pin = record(record(p.routing).pin);
   const trace = record(p.trace);
+  const tags = record(trace.tags);
   const selectedModel = text(route.model) ?? text(pin.model);
+  const tagged = (key: string) => text(tags[key]) ?? text(trace[key]);
   return {
-    task: text(p.primitive) ?? text(p.task) ?? operation,
+    task: tagged("task") ?? text(p.task) ?? text(p.primitive) ?? operation,
     taskKind:
-      text(trace.taskKind) ??
+      tagged("taskKind") ??
       text(p.taskKind) ??
-      text(trace.label) ??
+      tagged("label") ??
+      text(trace.caller) ??
       text(p.primitive) ??
       text(p.task) ??
       operation,
-    channel: text(trace.channel) ?? text(p.channel) ?? "system",
+    channel: tagged("channel") ?? text(p.channel) ?? "system",
     sessionKey: text(p.sessionKey) ?? text(trace.traceId) ?? "",
     runId: text(trace.traceId),
     orgId: text(p.orgId),

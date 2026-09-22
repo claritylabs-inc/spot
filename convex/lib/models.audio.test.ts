@@ -100,6 +100,12 @@ describe("audio transcription routing", () => {
     expect(request.audio.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(request).not.toHaveProperty("settings");
     expect(request).not.toHaveProperty("task");
+    expect(request).not.toHaveProperty("taskKind");
+    expect(request).not.toHaveProperty("sessionKey");
+    expect(request.trace).toEqual({
+      caller: "convex.models.transcribeAudioForOrg",
+      tags: { label: "convex.models.transcribeAudioForOrg" },
+    });
     expect(JSON.stringify(request)).not.toContain("providerKeys");
     expect(ctx.storage.delete).toHaveBeenCalledWith("storage-audio-1");
   });

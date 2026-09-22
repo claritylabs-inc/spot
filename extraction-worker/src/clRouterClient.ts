@@ -47,6 +47,25 @@ export type ClRouterProviderAssets = {
   >;
 };
 
+export type ClRouterTraceTagValue = string | number | boolean | null;
+
+/** Trace metadata as cl-router accepts it; the router validates it strictly. */
+export type ClRouterTraceMetadata = {
+  traceId?: string;
+  parentRequestId?: string;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
+};
+
+/** Worker-side trace input; extra keys are folded into `tags` on the wire. */
+export type ClRouterTraceInput = {
+  traceId?: string;
+  parentRequestId?: string;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
+  [key: string]: unknown;
+};
+
 export const CL_ROUTER_MAX_ASSET_BYTES = 12 * 1024 * 1024;
 export const CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES = 16 * 1024 * 1024;
 export const CL_ROUTER_MAX_ASSETS = 8;
@@ -65,7 +84,7 @@ export type ClRouterGenerateRequest = {
   maxTokens?: number;
   executionBudgetMs?: number;
   route?: ClRouterModelRoute;
-  trace?: Record<string, unknown>;
+  trace?: ClRouterTraceMetadata;
 };
 
 export type ClRouterRoutingMetadata = {
@@ -110,6 +129,7 @@ export type ClRouterGenerateInput = Omit<
   prompt: string;
   task?: string;
   taskKind?: string;
+  trace?: ClRouterTraceInput;
   assets?: ClRouterProviderAssets;
 };
 
@@ -177,6 +197,84 @@ export class ClRouterProtocolError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function traceTagValue(value: unknown): ClRouterTraceTagValue | undefined {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+export function normalizeClRouterTrace(
+  trace: ClRouterTraceInput | undefined,
+): ClRouterTraceMetadata | undefined {
+  if (!trace) return undefined;
+  const normalized: ClRouterTraceMetadata = {};
+  const tags: Record<string, ClRouterTraceTagValue> = {};
+  for (const [key, value] of Object.entries(trace)) {
+    if (value === undefined) continue;
+    if (key === "tags") {
+      if (!isRecord(value)) continue;
+      for (const [tagKey, tagValue] of Object.entries(value)) {
+        const tag = traceTagValue(tagValue);
+        if (tag !== undefined) tags[tagKey] = tag;
+      }
+      continue;
+    }
+    if (
+      (key === "traceId" || key === "parentRequestId" || key === "caller") &&
+      typeof value === "string"
+    ) {
+      normalized[key] = value;
+      continue;
+    }
+    if (key === "label" && typeof value === "string" && !normalized.caller) {
+      normalized.caller = value;
+    }
+    const tag = traceTagValue(value);
+    if (tag !== undefined) tags[key] = tag;
+  }
+  if (Object.keys(tags).length > 0) normalized.tags = tags;
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+const GENERATE_WIRE_KEYS = [
+  "orgId",
+  "primitive",
+  "requirements",
+  "system",
+  "messages",
+  "prompt",
+  "schema",
+  "schemaDialect",
+  "maxTokens",
+  "executionBudgetMs",
+] as const;
+
+export function wireClRouterGenerateRequest(
+  request: ClRouterGenerateRequest,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    tenantId: request.tenantId,
+  };
+  for (const key of GENERATE_WIRE_KEYS) {
+    if (request[key] !== undefined) body[key] = request[key];
+  }
+  const trace = normalizeClRouterTrace(request.trace);
+  if (trace) body.trace = trace;
+  if (request.route) {
+    body.route = {
+      provider: request.route.provider,
+      model: request.route.model,
+    };
+  }
+  return body;
 }
 
 export const CL_ROUTER_FAILURE_CODES = [
@@ -526,6 +624,15 @@ export function buildClRouterGenerateRequest(
       (input.assets?.images?.length ?? 0) > 0 ||
       clRouterMessagesHaveVision(inputFields.messages),
   });
+  const trace = normalizeClRouterTrace(
+    input.trace || input.task || input.taskKind
+      ? {
+          ...input.trace,
+          ...(input.task ? { task: input.task } : {}),
+          ...(input.taskKind ? { taskKind: input.taskKind } : {}),
+        }
+      : undefined,
+  );
   const request: ClRouterGenerateRequest = {
     tenantId: input.tenantId,
     ...(input.orgId ? { orgId: input.orgId } : {}),
@@ -542,14 +649,7 @@ export function buildClRouterGenerateRequest(
         ? { executionBudgetMs }
         : {}),
     ...(input.route ? { route: input.route } : {}),
-    ...(input.trace || input.taskKind
-      ? {
-          trace: {
-            ...input.trace,
-            ...(input.taskKind ? { taskKind: input.taskKind } : {}),
-          },
-        }
-      : {}),
+    ...(trace ? { trace } : {}),
   };
   assertRequestLimits(request);
   return request;
@@ -575,8 +675,13 @@ export function createClRouterClient(
     async generate(input, executeJob) {
       const request = buildClRouterGenerateRequest(input);
       if (!executeJob) assertRouterCanFetchAssets(request, baseUrl);
-      const requestBody = JSON.stringify(request);
-      if (executeJob) return parseGenerateResponse(await executeJob(request));
+      const body = wireClRouterGenerateRequest(request);
+      const requestBody = JSON.stringify(body);
+      if (executeJob) {
+        return parseGenerateResponse(
+          await executeJob(body as ClRouterGenerateRequest),
+        );
+      }
       const generateUrl = new URL(
         request.route ? "v1/manual" : "v1/generate",
         origin,
@@ -595,15 +700,15 @@ export function createClRouterClient(
         throw new ClRouterConnectionError("connection", error);
       }
       if (!response.ok) throw await httpError(response);
-      let body: unknown;
+      let payload: unknown;
       try {
-        body = await response.json();
+        payload = await response.json();
       } catch (error) {
         throw new ClRouterProtocolError(
           `cl-router returned non-JSON success response: ${error instanceof Error ? error.name : "unknown"}`,
         );
       }
-      return parseGenerateResponse(body);
+      return parseGenerateResponse(payload);
     },
   };
 }

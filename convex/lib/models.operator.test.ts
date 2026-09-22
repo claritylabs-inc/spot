@@ -144,7 +144,19 @@ describe("operator model execution boundary", () => {
         primitive: "tool_use",
         route: selectedRoute,
       });
-      expect(request.trace).toMatchObject({ taskKind: "operator_agent" });
+      expect(request.trace).toMatchObject({
+        caller: "operator-agent",
+        tags: expect.objectContaining({
+          taskKind: "operator_agent",
+          label: "operator-agent",
+          phase: "query_reason",
+          channel: "web",
+        }),
+      });
+      expect(request.trace).not.toHaveProperty("taskKind");
+      expect(request.trace).not.toHaveProperty("label");
+      expect(request.trace).not.toHaveProperty("phase");
+      expect(request.trace).not.toHaveProperty("channel");
       expect(request).not.toHaveProperty("task");
       expect(request).not.toHaveProperty("taskKind");
       expect(request).not.toHaveProperty("sessionKey");

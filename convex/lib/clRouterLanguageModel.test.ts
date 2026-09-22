@@ -137,11 +137,30 @@ describe("cl-router LanguageModelV3 adapter", () => {
           inputSchema: expect.objectContaining({ type: "object" }),
         }),
       ]);
+      expect(request.trace).toMatchObject({
+        traceId: "agent-message-1",
+        tags: { channel: "web", task: "chat", taskKind: "query_reason" },
+      });
+      expect(request.trace).not.toHaveProperty("channel");
+      expect(request.trace).not.toHaveProperty("taskKind");
+      expect(request.trace).not.toHaveProperty("label");
     }
     expect(requests[0]).not.toHaveProperty("routing");
     expect(requests[0]).not.toHaveProperty("task");
+    expect(requests[0]).not.toHaveProperty("taskKind");
     expect(requests[0]).not.toHaveProperty("settings");
+    expect(requests[0]).not.toHaveProperty("sessionKey");
+    expect(requests[0]).not.toHaveProperty("toolChoice");
     expect(requests[0].primitive).toBe("tool_use");
+    expect(requests[0].trace).toEqual({
+      traceId: "agent-message-1",
+      tags: {
+        channel: "web",
+        task: "chat",
+        taskKind: "query_reason",
+      },
+    });
+    expect(Object.keys(requests[0].trace).sort()).toEqual(["tags", "traceId"]);
     expect(requests[0].requirements).toBeUndefined();
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
       "https://router.example.test/v1/generate/stream",
@@ -190,13 +209,17 @@ describe("cl-router LanguageModelV3 adapter", () => {
       });
       const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
       expect(request).not.toHaveProperty("toolChoice");
-      expect(request.tools).toEqual(
-        definitions.map(({ name, description, inputSchema }) => ({
-          name,
-          description,
-          inputSchema,
-        })),
-      );
+      if (definitions.length === 0) {
+        expect(request).not.toHaveProperty("tools");
+      } else {
+        expect(request.tools).toEqual(
+          definitions.map(({ name, description, inputSchema }) => ({
+            name,
+            description,
+            inputSchema,
+          })),
+        );
+      }
     },
   );
 

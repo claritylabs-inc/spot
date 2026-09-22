@@ -90,10 +90,21 @@ describe("router-only model calls", () => {
       primitive: "text",
       prompt: "Hello",
       route,
+      trace: {
+        caller: "convex.models.generateTextForOrg",
+        tags: {
+          label: "convex.models.generateTextForOrg",
+          task: "chat",
+        },
+      },
     });
     expect(request).not.toHaveProperty("task");
+    expect(request).not.toHaveProperty("taskKind");
     expect(request).not.toHaveProperty("settings");
+    expect(request).not.toHaveProperty("sessionKey");
     expect(request).not.toHaveProperty("routing");
+    expect(request).not.toHaveProperty("toolChoice");
+    expect(request.trace).not.toHaveProperty("label");
     expect(JSON.stringify(request)).not.toContain("providerKeys");
   });
 

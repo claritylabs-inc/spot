@@ -51,6 +51,7 @@ import {
   clRouterAssetReferenceFromUrl,
   clRouterEmbed,
   clRouterGenerateMaybeManual,
+  normalizeClRouterTrace,
   type ClRouterGenerateResponse,
   type ClRouterMessage,
   type ClRouterMessagePart,
@@ -539,19 +540,21 @@ async function withClRouterPromptInput<T>(
 function clRouterTrace(
   routing: ModelRoutingContext | undefined,
   label: string,
+  task: ModelTask,
   taskKind: ModelCallTaskKind | undefined,
   trace: ModelCallTraceDetails | undefined,
-): ClRouterTraceMetadata {
-  return stripUndefined({
+): ClRouterTraceMetadata | undefined {
+  return normalizeClRouterTrace({
     traceId: routing?.traceId,
     label,
     phase: trace?.phase,
+    task,
     taskKind,
     policyId: routing?.tracePolicyId
       ? String(routing.tracePolicyId)
       : undefined,
     channel: "convex",
-  }) as ClRouterTraceMetadata;
+  });
 }
 
 function mapClRouterUsage(response: ClRouterGenerateResponse): TokenUsage {
@@ -717,7 +720,13 @@ export function makeGenerateText(
                 system,
                 ...input,
                 maxTokens: effectiveMaxTokens,
-                trace: clRouterTrace(routing, label, taskKind, trace),
+                trace: clRouterTrace(
+                  routing,
+                  label,
+                  effectiveTask,
+                  taskKind,
+                  trace,
+                ),
               },
               plan.routeSource === "global" ? plan.primaryRoute : undefined,
               routing?.ctx
@@ -897,7 +906,13 @@ export function makeGenerateObject(
                 schema: z.toJSONSchema(schema) as Record<string, unknown>,
                 schemaDialect: "https://json-schema.org/draft/2020-12/schema",
                 maxTokens: effectiveMaxTokens,
-                trace: clRouterTrace(routing, label, taskKind, trace),
+                trace: clRouterTrace(
+                  routing,
+                  label,
+                  effectiveTask,
+                  taskKind,
+                  trace,
+                ),
               },
               plan.routeSource === "global" ? plan.primaryRoute : undefined,
               routing?.ctx

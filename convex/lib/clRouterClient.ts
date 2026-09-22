@@ -49,14 +49,76 @@ export type {
   ClRouterRequirements,
 } from "./clRouterPrimitive";
 
+export type ClRouterTraceTagValue = string | number | boolean | null;
+
+/**
+ * Trace metadata as cl-router accepts it. The router validates this shape with
+ * a strict schema, so anything outside these four keys has to travel in `tags`.
+ */
 export type ClRouterTraceMetadata = {
   traceId?: string;
   parentRequestId?: string;
-  label?: string;
-  phase?: string;
-  channel?: string;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
+};
+
+/**
+ * What Spot call sites may hand the client. Spot labels (`label`, `phase`,
+ * `channel`, `taskKind`, ...) are folded into `tags` before the request is
+ * serialized so the router never sees an unknown key.
+ */
+export type ClRouterTraceInput = {
+  traceId?: string;
+  parentRequestId?: string;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
   [key: string]: unknown;
 };
+
+function traceTagValue(value: unknown): ClRouterTraceTagValue | undefined {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+export function normalizeClRouterTrace(
+  trace: ClRouterTraceInput | undefined,
+): ClRouterTraceMetadata | undefined {
+  if (!trace) return undefined;
+  const normalized: ClRouterTraceMetadata = {};
+  const tags: Record<string, ClRouterTraceTagValue> = {};
+  for (const [key, value] of Object.entries(trace)) {
+    if (value === undefined) continue;
+    if (key === "tags") {
+      if (!isRecord(value)) continue;
+      for (const [tagKey, tagValue] of Object.entries(value)) {
+        const tag = traceTagValue(tagValue);
+        if (tag !== undefined) tags[tagKey] = tag;
+      }
+      continue;
+    }
+    if (
+      (key === "traceId" || key === "parentRequestId" || key === "caller") &&
+      typeof value === "string"
+    ) {
+      normalized[key] = value;
+      continue;
+    }
+    if (key === "label" && typeof value === "string" && !normalized.caller) {
+      normalized.caller = value;
+    }
+    const tag = traceTagValue(value);
+    if (tag !== undefined) tags[key] = tag;
+  }
+  if (Object.keys(tags).length > 0) normalized.tags = tags;
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
 
 export type ClRouterUsage = {
   inputTokens: number;
@@ -249,7 +311,7 @@ export type ClRouterGenerateRequest = {
   maxTokens?: number;
   executionBudgetMs?: number;
   tools?: ClRouterToolDefinition[];
-  trace?: ClRouterTraceMetadata;
+  trace?: ClRouterTraceInput;
 };
 
 export type ClRouterManualGenerateRequest = ClRouterGenerateRequest & {
@@ -298,7 +360,7 @@ export type ClRouterEmbedRequest = {
   orgId?: string;
   texts: string[];
   dimensions?: number;
-  trace?: ClRouterTraceMetadata;
+  trace?: ClRouterTraceInput;
 };
 
 export type ClRouterEmbedResponse = ClRouterResponseMetadata & {
@@ -310,7 +372,7 @@ export type ClRouterTranscribeRequest = {
   orgId?: string;
   audio: ClRouterAssetReference;
   prompt?: string;
-  trace?: ClRouterTraceMetadata;
+  trace?: ClRouterTraceInput;
 };
 
 export type ClRouterTranscribeResponse = ClRouterResponseMetadata & {
@@ -396,7 +458,7 @@ export type ClRouterFeedbackRequest = {
     editedFieldCount?: number;
     qualityScore?: number;
   };
-  trace?: ClRouterTraceMetadata;
+  trace?: ClRouterTraceInput;
 };
 
 export type ClRouterErrorKind =
@@ -648,7 +710,10 @@ function readUsage(value: unknown): ClRouterUsage | null {
   };
 }
 
-const ROUTING_DECISIONS = new Set<ClRouterRoutingDecision>(["routed", "manual"]);
+const ROUTING_DECISIONS = new Set<ClRouterRoutingDecision>([
+  "routed",
+  "manual",
+]);
 const ROUTING_SOURCES = new Set<ClRouterRoutingSource>([
   "jev",
   "fallback",
@@ -714,9 +779,7 @@ function readResponseMetadata(
 ): ClRouterResponseMetadata | null {
   const usage = readUsage(value.usage);
   const routing = readRouting(value.routing);
-  const model = isModelRoute(value.model)
-    ? value.model
-    : routing?.route;
+  const model = isModelRoute(value.model) ? value.model : routing?.route;
   if (
     typeof value.requestId !== "string" ||
     value.requestId.length === 0 ||
@@ -808,12 +871,7 @@ async function postJson(
     )
   ) {
     return options.executeJob(
-      operation as
-        | "generate"
-        | "manual"
-        | "embed"
-        | "retrieve"
-        | "transcribe",
+      operation as "generate" | "manual" | "embed" | "retrieve" | "transcribe",
       body,
       options.abortSignal,
     );
@@ -925,13 +983,109 @@ function validateRouterAssets(
   }
 }
 
-function requestPayload<T extends { tenantId?: string }>(
+function pickDefined<T extends object, K extends keyof T>(
   request: T,
-): T & { tenantId: string } {
+  keys: readonly K[],
+): Partial<Pick<T, K>> {
+  const picked: Partial<Pick<T, K>> = {};
+  for (const key of keys) {
+    if (request[key] !== undefined) picked[key] = request[key];
+  }
+  return picked;
+}
+
+// cl-router validates generate/manual bodies with a strict schema, so the wire
+// body is built from an explicit key list instead of spreading the request.
+const GENERATE_BODY_KEYS = [
+  "orgId",
+  "primitive",
+  "requirements",
+  "system",
+  "messages",
+  "prompt",
+  "schema",
+  "schemaDialect",
+  "maxTokens",
+  "executionBudgetMs",
+  "tools",
+] as const satisfies readonly (keyof ClRouterGenerateRequest)[];
+
+const EMBED_BODY_KEYS = [
+  "orgId",
+  "texts",
+  "dimensions",
+] as const satisfies readonly (keyof ClRouterEmbedRequest)[];
+
+const TRANSCRIBE_BODY_KEYS = [
+  "orgId",
+  "audio",
+  "prompt",
+] as const satisfies readonly (keyof ClRouterTranscribeRequest)[];
+
+const RETRIEVE_BODY_KEYS = [
+  "orgId",
+  "input",
+  "config",
+  "executionBudgetMs",
+] as const satisfies readonly (keyof ClRouterRetrieveRequest)[];
+
+const FEEDBACK_BODY_KEYS = [
+  "requestId",
+  "idempotencyKey",
+  "source",
+  "signals",
+] as const satisfies readonly (keyof ClRouterFeedbackRequest)[];
+
+function requestBody<
+  T extends { tenantId?: string; trace?: ClRouterTraceInput },
+  K extends keyof T,
+>(
+  request: T,
+  keys: readonly K[],
+): Partial<Pick<T, K>> & { tenantId: string; trace?: ClRouterTraceMetadata } {
+  const trace = normalizeClRouterTrace(request.trace);
   return {
-    ...request,
     tenantId: request.tenantId ?? CL_ROUTER_TENANT_ID,
+    ...pickDefined(request, keys),
+    ...(trace ? { trace } : {}),
   };
+}
+
+function omitEmptyTools<T extends { tools?: unknown[] }>(
+  body: T,
+): T | Omit<T, "tools"> {
+  if (!Array.isArray(body.tools) || body.tools.length === 0) {
+    const { tools: _tools, ...rest } = body;
+    return rest;
+  }
+  return body;
+}
+
+function generateBody(request: ClRouterGenerateRequest) {
+  return omitEmptyTools(requestBody(request, GENERATE_BODY_KEYS));
+}
+
+function manualBody(request: ClRouterManualGenerateRequest) {
+  return {
+    ...generateBody(request),
+    route: {
+      provider: request.route.provider,
+      model: request.route.model,
+    },
+  };
+}
+
+function generationBody(
+  path:
+    | "/v1/generate"
+    | "/v1/manual"
+    | "/v1/generate/stream"
+    | "/v1/manual/stream",
+  request: ClRouterGenerateRequest | ClRouterManualGenerateRequest,
+) {
+  return path.startsWith("/v1/manual")
+    ? manualBody(request as ClRouterManualGenerateRequest)
+    : generateBody(request);
 }
 
 function invalidStreamResponse(
@@ -1171,7 +1325,7 @@ async function clRouterGenerationStream(
 
   let response: Response;
   try {
-    const payload = requestPayload(request);
+    const payload = generationBody(path, request);
     validateRouterAssets(payload, environment);
     response = await fetchImplementation(`${config.url}${path}`, {
       method: "POST",
@@ -1307,7 +1461,7 @@ export async function clRouterGenerate(
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateResponse> {
   return parseGenerateResponse(
-    await postJson("/v1/generate", requestPayload(request), options),
+    await postJson("/v1/generate", generateBody(request), options),
   );
 }
 
@@ -1316,7 +1470,7 @@ export async function clRouterGenerateManual(
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateResponse> {
   return parseGenerateResponse(
-    await postJson("/v1/manual", requestPayload(request), options),
+    await postJson("/v1/manual", manualBody(request), options),
   );
 }
 
@@ -1386,7 +1540,7 @@ export async function clRouterRetrieve(
 ): Promise<ClRouterRetrieveResponse> {
   const payload = await postJson(
     "/v1/retrieve",
-    { ...request, tenantId: request.tenantId ?? CL_ROUTER_TENANT_ID },
+    requestBody(request, RETRIEVE_BODY_KEYS),
     options,
   );
   if (
@@ -1427,7 +1581,11 @@ export async function clRouterEmbed(
   request: ClRouterEmbedRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterEmbedResponse> {
-  const payload = await postJson("/v1/embed", requestPayload(request), options);
+  const payload = await postJson(
+    "/v1/embed",
+    requestBody(request, EMBED_BODY_KEYS),
+    options,
+  );
   if (!isRecord(payload)) {
     throw new ClRouterRequestError(
       "invalid_response",
@@ -1471,7 +1629,7 @@ export async function clRouterTranscribe(
 ): Promise<ClRouterTranscribeResponse> {
   const payload = await postJson(
     "/v1/transcribe",
-    requestPayload(request),
+    requestBody(request, TRANSCRIBE_BODY_KEYS),
     options,
   );
   if (!isRecord(payload)) {
@@ -1502,7 +1660,7 @@ export async function sendClRouterFeedback(
 ): Promise<{ accepted: true; duplicate: boolean }> {
   const payload = await postJson(
     "/v1/feedback",
-    { ...request, tenantId: request.tenantId ?? CL_ROUTER_TENANT_ID },
+    requestBody(request, FEEDBACK_BODY_KEYS),
     options,
   );
   if (

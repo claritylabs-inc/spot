@@ -68,6 +68,13 @@ test("request builder maps extraction to a primitive request and never sends set
   assert.equal("settings" in request, false);
   assert.equal("sessionKey" in request, false);
   assert.equal("routing" in request, false);
+  assert.deepEqual(request.trace, {
+    tags: {
+      task: "extraction",
+      taskKind: "extraction_focused",
+    },
+  });
+  assert.equal("taskKind" in (request.trace ?? {}), false);
   assert.deepEqual(request.route, {
     provider: "openai",
     model: "gpt-5.4-mini",
@@ -202,9 +209,15 @@ test("client authenticates and preserves routing lineage", async () => {
   });
   const result = await client.generate({
     task: "extraction_preview",
+    taskKind: "extraction_preview",
     tenantId: "spot",
     prompt: "Extract preview.",
     schema: { type: "object" },
+    trace: {
+      label: "Extract preview",
+      phase: "preview",
+      workerId: "worker-1",
+    },
   });
   assert.equal(
     new Headers(request?.headers).get("authorization"),
@@ -217,6 +230,20 @@ test("client authenticates and preserves routing lineage", async () => {
   assert.equal("task" in body, false);
   assert.equal("settings" in body, false);
   assert.equal("routing" in body, false);
+  assert.equal("sessionKey" in body, false);
+  assert.equal("toolChoice" in body, false);
+  assert.deepEqual(body.trace, {
+    caller: "Extract preview",
+    tags: {
+      label: "Extract preview",
+      phase: "preview",
+      workerId: "worker-1",
+      task: "extraction_preview",
+      taskKind: "extraction_preview",
+    },
+  });
+  assert.equal("label" in body.trace, false);
+  assert.equal("taskKind" in body.trace, false);
   assert.equal(result.requestId, "router-request-1");
   assert.equal(result.model.provider, "fireworks");
   assert.equal(result.routing.decision, "routed");

@@ -211,7 +211,9 @@
         "maxTokens": 1200,
         "trace": {
           "traceId": "trace_contract_fixture",
-          "label": "contract fixture"
+          "tags": {
+            "label": "contract fixture"
+          }
         }
       }
     },
@@ -231,8 +233,10 @@
           "model": "gpt-5.6-terra"
         },
         "trace": {
-          "label": "operator_agent",
-          "channel": "web"
+          "tags": {
+            "label": "operator_agent",
+            "channel": "web"
+          }
         }
       }
     },
@@ -318,7 +322,9 @@
         ],
         "dimensions": 3,
         "trace": {
-          "label": "embedding contract fixture"
+          "tags": {
+            "label": "embedding contract fixture"
+          }
         }
       }
     },
@@ -371,7 +377,9 @@
         "filename": "voice-note.m4a",
         "mediaType": "audio/mp4",
         "trace": {
-          "channel": "imessage"
+          "tags": {
+            "channel": "imessage"
+          }
         }
       }
     },
@@ -425,7 +433,9 @@
           "qualityScore": 0.95
         },
         "trace": {
-          "policyId": "policy_fixture"
+          "tags": {
+            "policyId": "policy_fixture"
+          }
         }
       }
     },
@@ -458,7 +468,9 @@
         "filename": "voice.wav",
         "mediaType": "audio/wav",
         "trace": {
-          "surface": "imessage"
+          "tags": {
+            "surface": "imessage"
+          }
         },
         "audio": {
           "url": "https://actions.spot.insure/router-assets?assetId=asset_123&expiresAt=1893456000000&signature=test",

@@ -47,13 +47,13 @@ export type ClRouterRoutingMetadata = {
   attemptCount: number;
 };
 
+export type ClRouterTraceTagValue = string | number | boolean | null;
+
 export type ClRouterTraceMetadata = {
   traceId?: string;
   parentRequestId?: string;
-  label?: string;
-  phase?: string;
-  channel?: string;
-  [key: string]: unknown;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
 };
 
 export type ClRouterGenerateBody = {
@@ -62,11 +62,13 @@ export type ClRouterGenerateBody = {
   primitive: ClRouterPrimitive;
   requirements?: ClRouterRequirements;
   system?: string;
+  messages?: unknown;
   prompt?: string;
   schema?: Record<string, unknown>;
   schemaDialect?: "https://json-schema.org/draft/2020-12/schema";
   maxTokens?: number;
   executionBudgetMs?: number;
+  tools?: unknown[];
   trace?: ClRouterTraceMetadata;
 };
 
