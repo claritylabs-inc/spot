@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { DecideResponse } from "@claritylabs/cl-router-policy";
+import type { DecideResponse } from "../../contracts/cl-router/policy";
 import {
   applyMailboxAutomationJudgments,
   canAutoExecuteMailboxDecision,

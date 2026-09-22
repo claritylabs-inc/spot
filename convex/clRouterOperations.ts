@@ -2,9 +2,10 @@
 
 import dayjs from "dayjs";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { DIRECT_MODEL_PROVIDERS } from "@claritylabs/cl-router-policy";
+import { DIRECT_MODEL_PROVIDERS } from "../contracts/cl-router/policy";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { parseRouterModels } from "./lib/routerCapabilities";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const ROUTER_MODEL_PROVIDERS = new Set<string>(DIRECT_MODEL_PROVIDERS);
@@ -71,11 +72,14 @@ export function parseRouterCapabilities(value: unknown) {
     ROUTER_WEB_RETRIEVAL_PROVIDERS,
   );
   if (!providers || !webRetrievalProviders) return null;
+  const models = parseRouterModels(value.models);
+  if (models === undefined) return null;
   return {
     apiVersion: "v1" as const,
     credentialMode: "router" as const,
     providers,
     webRetrieval: { providers: webRetrievalProviders },
+    ...(models ? { models } : {}),
   };
 }
 

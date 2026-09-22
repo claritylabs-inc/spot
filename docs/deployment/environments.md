@@ -476,9 +476,7 @@ Router asset host allowlists are exact. Shared dev permits permanent storage on
 `merry-platypus-82.convex.cloud` and expiry-enforced references on the canonical
 `actions.spot.insure` host. Do not add wildcard or underlying-site fallbacks.
 
-The exact-pinned `@claritylabs/cl-router-policy` package owns primitive,
-provider, model capability, and price metadata. Spot uses it only to validate
-operator pins; cl-router selects models for unpinned calls and clamps
+The vendored `/v1/decide` and primitive vocabulary in `contracts/cl-router/policy.ts` is shared with the extraction worker. Spot uses authenticated `GET /v1/capabilities` `models` to constrain operator pins; cl-router selects models for unpinned calls and clamps
 `maxTokens` to the selected model. Spot validates function-tool schemas and
 fails closed on unsupported adapter inputs.
 

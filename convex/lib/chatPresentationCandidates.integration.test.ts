@@ -4,7 +4,7 @@ import {
   JEV_MODEL,
   parseDecideRequest,
   parseDecideResponse,
-} from "@claritylabs/cl-router-policy";
+} from "../../contracts/cl-router/policy";
 import { capturePresentationTool } from "../chatPresentations";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";

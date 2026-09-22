@@ -50,7 +50,6 @@
     "@auth/core": "^0.37.4",
     "@base-ui/react": "^1.4.1",
     "@claritylabs/cl-pipelines": "0.1.0",
-    "@claritylabs/cl-router-policy": "1.0.0",
     "@claritylabs/cl-sdk": "4.6.0",
     "@claritylabs/cl-sync": "^0.1.1",
     "@codemirror/lang-markdown": "^6.5.2",

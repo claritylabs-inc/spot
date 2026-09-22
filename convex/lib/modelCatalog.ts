@@ -1,17 +1,13 @@
 import {
-  FIREWORKS_MODEL_IDS as POLICY_FIREWORKS_MODEL_IDS,
-  MODEL_CAPABILITIES as POLICY_MODEL_CAPABILITIES,
-  directProviderModelForRoute as policyDirectProviderModelForRoute,
-  modelCapabilitiesForRoute as policyModelCapabilitiesForRoute,
-  modelSupportsAudioInput as policyModelSupportsAudioInput,
-  modelSupportsImageInput as policyModelSupportsImageInput,
-  priceForRoute,
-  type ModelCapabilityConfig,
-  type ModelProvider,
-  type ModelRoute,
-} from "@claritylabs/cl-router-policy";
+  DIRECT_MODEL_PROVIDERS,
+  type DirectModelProvider,
+} from "../../contracts/cl-router/policy";
 
-export type { ModelCapabilityConfig, ModelProvider, ModelRoute };
+export type ModelProvider = DirectModelProvider | "moonshot";
+export type ModelRoute = {
+  provider: ModelProvider;
+  model: string;
+};
 
 /**
  * Spot-owned internal task names. They label telemetry, prompts, and operator
@@ -81,8 +77,6 @@ export type WebRetrievalRoute = {
   primary: WebRetrievalProvider;
   route?: ModelRoute;
 };
-
-export const FIREWORKS_MODEL_IDS = POLICY_FIREWORKS_MODEL_IDS;
 
 const RETIRED_MODEL_IDS = new Set<string>([
   "accounts/fireworks/models/kimi-k2p6",
@@ -163,149 +157,6 @@ export const MODEL_TASK_DESCRIPTIONS: Record<ModelTask, string> = {
     "Vector embedding route for policies and source chunks. Must stay compatible with the configured Convex vector dimensions.",
 };
 
-export const LANGUAGE_MODEL_CATALOG: Record<ModelProvider, string[]> = {
-  openai: [
-    "gpt-5.6",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "gpt-5.5-pro",
-    "gpt-5.4",
-    "gpt-5.4-mini",
-    "gpt-5.4-nano",
-    "gpt-5.4-pro",
-    "gpt-5.3-chat",
-    "gpt-5.3-codex",
-    "gpt-5.2",
-    "gpt-5.2-chat",
-    "gpt-5.2-codex",
-    "gpt-5.2-pro",
-    "gpt-5.1-instant",
-    "gpt-5.1-thinking",
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-mini",
-    "gpt-5.1-codex-max",
-    "gpt-5",
-    "gpt-5-chat",
-    "gpt-5-mini",
-    "gpt-5-nano",
-    "gpt-5-pro",
-    "gpt-5-codex",
-    "gpt-oss-120b",
-    "gpt-oss-20b",
-    "gpt-oss-safeguard-20b",
-    "gpt-4.1",
-    "gpt-4.1-mini",
-    "gpt-4.1-nano",
-    "gpt-4o",
-    "gpt-4o-mini",
-    "o4-mini",
-    "o3",
-    "o3-mini",
-    "o3-pro",
-  ],
-  anthropic: [
-    "claude-opus-4.7",
-    "claude-opus-4.6",
-    "claude-opus-4.5",
-    "claude-opus-4.1",
-    "claude-opus-4",
-    "claude-sonnet-4.6",
-    "claude-sonnet-4.5",
-    "claude-sonnet-4",
-    "claude-haiku-4.5",
-    "claude-haiku-4-5-20251001",
-    "claude-3.5-haiku",
-    "claude-3-haiku",
-  ],
-  google: [
-    "gemini-3.5-flash",
-    "gemini-3.1-pro-preview",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-flash-image-preview",
-    "gemini-3-pro-preview",
-    "gemini-3-pro-image",
-    "gemini-3-flash",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash-image",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemma-4-31b-it",
-    "gemma-4-26b-a4b-it",
-  ],
-  xai: [
-    "grok-4.3",
-    "grok-4.20-reasoning",
-    "grok-4.20-non-reasoning",
-    "grok-4.20-multi-agent",
-    "grok-4.20-reasoning-beta",
-    "grok-4.20-non-reasoning-beta",
-    "grok-4.20-multi-agent-beta",
-    "grok-4.1-fast-reasoning",
-    "grok-4.1-fast-non-reasoning",
-    "grok-build-0.1",
-  ],
-  mistral: [
-    "mistral-large-3",
-    "mistral-medium-3.5",
-    "mistral-medium",
-    "mistral-small",
-    "mistral-nemo",
-    "magistral-medium",
-    "magistral-small",
-    "ministral-14b",
-    "ministral-8b",
-    "ministral-3b",
-    "devstral-2",
-    "devstral-small-2",
-    "devstral-small",
-    "codestral",
-    "pixtral-large",
-    "pixtral-12b",
-  ],
-  cohere: ["command-a"],
-  fireworks: [
-    FIREWORKS_MODEL_IDS.glm52,
-    FIREWORKS_MODEL_IDS.qwen37Plus,
-    FIREWORKS_MODEL_IDS.deepseekV4Pro,
-    FIREWORKS_MODEL_IDS.deepseekV4Flash,
-    FIREWORKS_MODEL_IDS.museGlimmer30B,
-    FIREWORKS_MODEL_IDS.inkling,
-    FIREWORKS_MODEL_IDS.gptOssSafeguard20B,
-  ],
-  moonshot: [],
-  deepseek: [
-    "deepseek-v4-pro",
-    "deepseek-v4-flash",
-    "deepseek-v3.2-thinking",
-    "deepseek-v3.2",
-    "deepseek-v3.1-terminus",
-    "deepseek-v3.1",
-    "deepseek-v3",
-    "deepseek-r1",
-  ],
-};
-
-export const EMBEDDING_MODEL_CATALOG: Partial<Record<ModelProvider, string[]>> =
-  {
-    openai: ["text-embedding-3-small", "text-embedding-3-large"],
-    google: ["gemini-embedding-001"],
-    fireworks: [
-      FIREWORKS_MODEL_IDS.qwen3Embedding8B,
-      FIREWORKS_MODEL_IDS.nomicEmbedText15,
-    ],
-  };
-
-export const AUDIO_TRANSCRIPTION_MODEL_CATALOG: Partial<
-  Record<ModelProvider, string[]>
-> = {
-  openai: ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
-};
-
 export const MODEL_TASKS = ALL_MODEL_TASKS.filter(
   (task) => task !== "extraction_coverage_recovery",
 );
@@ -326,10 +177,6 @@ export const MODEL_ROUTE_DESCRIPTIONS: Record<ModelRouteId, string> = {
   operator_agent:
     "Required manually selected route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support rich attachment input and is always submitted through /v1/manual, never auto-routed.",
 };
-
-export function directProviderModelForRoute(route: ModelRoute): string | null {
-  return policyDirectProviderModelForRoute(route);
-}
 
 export type ModelRouteGroup<RouteId extends string = string> = {
   id: string;
@@ -376,8 +223,7 @@ export const MODEL_TASK_GROUPS = [
   {
     id: "platform_utilities",
     label: "Platform utilities",
-    description:
-      "Routes used for enrichment and vector indexing.",
+    description: "Routes used for enrichment and vector indexing.",
     tasks: ["triage", "embeddings"],
   },
 ] as const satisfies readonly ModelRouteGroup<ModelTask>[];
@@ -396,10 +242,11 @@ export const OPERATOR_MODEL_ROUTE_GROUPS = [
   MODEL_TASK_GROUPS[3],
 ] as const satisfies readonly ModelRouteGroup<ModelRouteId>[];
 
-export const MODEL_PROVIDERS = Object.keys(PROVIDER_LABELS) as ModelProvider[];
-export const CONFIGURABLE_MODEL_PROVIDERS = MODEL_PROVIDERS.filter(
-  (provider) => provider !== "moonshot",
-) as Exclude<ModelProvider, "moonshot">[];
+export const MODEL_PROVIDERS = [
+  ...DIRECT_MODEL_PROVIDERS,
+  "moonshot",
+] as const satisfies readonly ModelProvider[];
+export const CONFIGURABLE_MODEL_PROVIDERS = DIRECT_MODEL_PROVIDERS;
 
 export const WEB_RETRIEVAL_LABELS: Record<WebRetrievalProvider, string> = {
   parallel: "Parallel",
@@ -419,17 +266,6 @@ export const OPERATOR_WEB_RETRIEVAL_PROVIDERS = [
 
 export const WEB_RETRIEVAL_DEFAULT: WebRetrievalRoute = { primary: "parallel" };
 
-export const WEB_RETRIEVAL_MODEL_CATALOG: Partial<
-  Record<NativeWebRetrievalProvider, string[]>
-> = {
-  openai: LANGUAGE_MODEL_CATALOG.openai,
-  google: LANGUAGE_MODEL_CATALOG.google.filter((model) =>
-    model.startsWith("gemini-"),
-  ),
-  anthropic: LANGUAGE_MODEL_CATALOG.anthropic,
-  xai: LANGUAGE_MODEL_CATALOG.xai,
-};
-
 export const WEB_RETRIEVAL_DEFAULT_ROUTES: Record<
   NativeWebRetrievalProvider,
   ModelRoute
@@ -441,15 +277,15 @@ export const WEB_RETRIEVAL_DEFAULT_ROUTES: Record<
 };
 
 export const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  [FIREWORKS_MODEL_IDS.deepseekV4Pro]: "DeepSeek V4 Pro",
-  [FIREWORKS_MODEL_IDS.deepseekV4Flash]: "DeepSeek V4 Flash",
-  [FIREWORKS_MODEL_IDS.glm52]: "GLM 5.2",
-  [FIREWORKS_MODEL_IDS.qwen37Plus]: "Qwen 3.7 Plus",
-  [FIREWORKS_MODEL_IDS.museGlimmer30B]: "Muse Glimmer 30B",
-  [FIREWORKS_MODEL_IDS.inkling]: "Inkling",
-  [FIREWORKS_MODEL_IDS.gptOssSafeguard20B]: "GPT-OSS Safeguard 20B",
-  [FIREWORKS_MODEL_IDS.qwen3Embedding8B]: "Qwen3 Embedding 8B",
-  [FIREWORKS_MODEL_IDS.nomicEmbedText15]: "Nomic Embed Text v1.5",
+  "accounts/fireworks/models/deepseek-v4-pro": "DeepSeek V4 Pro",
+  "accounts/fireworks/models/deepseek-v4-flash-0731": "DeepSeek V4 Flash",
+  "accounts/fireworks/models/glm-5p2": "GLM 5.2",
+  "accounts/fireworks/models/qwen3p7-plus": "Qwen 3.7 Plus",
+  "accounts/fireworks/models/muse-glimmer-30b": "Muse Glimmer 30B",
+  "accounts/fireworks/models/inkling": "Inkling",
+  "accounts/fireworks/models/gpt-oss-safeguard-20b": "GPT-OSS Safeguard 20B",
+  "accounts/fireworks/models/qwen3-embedding-8b": "Qwen3 Embedding 8B",
+  "nomic-ai/nomic-embed-text-v1.5": "Nomic Embed Text v1.5",
   "gpt-5.6": "GPT 5.6 Sol",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
@@ -469,8 +305,6 @@ export const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "deepseek-v4-pro": "DeepSeek V4 Pro",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
 };
-
-export const MODEL_CAPABILITIES = POLICY_MODEL_CAPABILITIES;
 
 /**
  * Model-independent cl-sdk output budgets. cl-sdk prefers these over its
@@ -500,31 +334,10 @@ export const EXTRACTION_MODEL_CAPABILITIES = {
   },
 };
 
-export function modelCapabilitiesForRoute(
-  route: ModelRoute,
-): ModelCapabilityConfig {
-  const capabilities = policyModelCapabilitiesForRoute(route);
-  return capabilities.defaultOutputTokens === undefined
-    ? { ...capabilities, defaultOutputTokens: 4_096 }
-    : capabilities;
-}
-
-export function modelSupportsImageInput(route: ModelRoute): boolean {
-  return policyModelSupportsImageInput(route);
-}
-
-export function modelSupportsAudioInput(route: ModelRoute): boolean {
-  return policyModelSupportsAudioInput(route);
-}
-
-export function modelRouteSupportsTask(task: ModelTask, route: ModelRoute) {
-  if (task === "chat_vision") return modelSupportsImageInput(route);
-  if (task === "voice_transcription") return modelSupportsAudioInput(route);
-  const price = priceForRoute(route);
-  if (task === "embeddings") {
-    return price.status === "priced" && price.price.modality === "embedding";
-  }
-  return price.status !== "priced" || price.price.modality === "text";
+export function isConfigurableModelProvider(
+  value: string,
+): value is DirectModelProvider {
+  return (DIRECT_MODEL_PROVIDERS as readonly string[]).includes(value);
 }
 
 export function isRetiredModelRoute(

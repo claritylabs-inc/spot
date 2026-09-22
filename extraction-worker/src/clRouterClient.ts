@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Difficulty, QualityTier } from "@claritylabs/cl-router-policy";
+import type { Difficulty, QualityTier } from "./clRouterPolicy.js";
 import {
   clRouterMessagesHaveVision,
   mapSpotCallToClRouterPrimitive,

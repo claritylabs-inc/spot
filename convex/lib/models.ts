@@ -32,10 +32,8 @@ import {
   type ClRouterLanguageModelOptions,
 } from "./clRouterLanguageModel";
 import {
-  FIREWORKS_MODEL_IDS,
   WEB_RETRIEVAL_DEFAULT,
   WEB_RETRIEVAL_DEFAULT_ROUTES,
-  modelRouteSupportsTask,
   type ModelProvider,
   type ModelRoute,
   type ModelTask,
@@ -50,7 +48,6 @@ import {
 /** Spot delegates every AI execution to cl-router. */
 
 export {
-  FIREWORKS_MODEL_IDS,
   WEB_RETRIEVAL_DEFAULT,
   WEB_RETRIEVAL_DEFAULT_ROUTES,
   type ModelProvider,
@@ -1224,16 +1221,6 @@ export async function getAgentLanguageModelForOperatorTask(
   const route: ModelRoute =
     run.durable?.route ??
     (await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}));
-  if (!modelRouteSupportsTask("chat_vision", route)) {
-    throw new Error(
-      "The manually selected operator-agent model must support image input",
-    );
-  }
-  if (!modelRouteSupportsTask(task, route)) {
-    throw new Error(
-      `The manually selected operator-agent model cannot run ${task}`,
-    );
-  }
   return agentLanguageModel(
     ctx,
     task,

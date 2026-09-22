@@ -1,7 +1,9 @@
 # cl-router API contract snapshot
 
 Spot validates its representative cl-router payloads against the checked-in
-OpenAPI 3.1 snapshot in this directory. `npm run check:cl-router-contract` is
+OpenAPI 3.1 snapshot in this directory. `policy.ts` vendors the `/v1/decide`
+request/response parsers and primitive vocabulary used by Convex and the
+extraction worker. `npm run check:cl-router-contract` is
 offline: CI does not clone the private router repository, call a deployed
 service, or require router credentials.
 

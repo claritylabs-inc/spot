@@ -91,6 +91,94 @@ describe("cl-router operator capabilities", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  test("parses the optional models catalog when the router advertises it", async () => {
+    const t = convexTest(schema, modules);
+    const operatorUserId = await seedOperator(t);
+    vi.stubEnv("CL_ROUTER_SECRET", "router-inference-secret");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          apiVersion: "v1",
+          credentialMode: "router",
+          providers: [{ provider: "openai", configured: true }],
+          models: [
+            {
+              provider: "openai",
+              model: "gpt-5.5",
+              primitives: ["text", "reasoning", "multimodal", "tool_use"],
+              configured: true,
+              capabilities: {
+                vision: true,
+                tools: true,
+                structuredOutput: true,
+                embedding: false,
+                audioInput: false,
+                maxOutputTokens: 16384,
+              },
+            },
+          ],
+          webRetrieval: {
+            providers: [{ provider: "parallel", configured: true }],
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      t
+        .withIdentity({ subject: `${operatorUserId}|session` })
+        .action(getCapabilitiesFn, {}),
+    ).resolves.toMatchObject({
+      availability: "available",
+      models: [
+        {
+          provider: "openai",
+          model: "gpt-5.5",
+          primitives: ["text", "reasoning", "multimodal", "tool_use"],
+          configured: true,
+          capabilities: {
+            vision: true,
+            tools: true,
+            structuredOutput: true,
+            embedding: false,
+            audioInput: false,
+            maxOutputTokens: 16384,
+          },
+        },
+      ],
+    });
+  });
+
+  test("rejects a malformed models catalog without crashing", async () => {
+    const t = convexTest(schema, modules);
+    const operatorUserId = await seedOperator(t);
+    vi.stubEnv("CL_ROUTER_SECRET", "router-inference-secret");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          apiVersion: "v1",
+          credentialMode: "router",
+          providers: [{ provider: "openai", configured: true }],
+          models: [{ provider: "openai" }],
+          webRetrieval: {
+            providers: [{ provider: "parallel", configured: true }],
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      t
+        .withIdentity({ subject: `${operatorUserId}|session` })
+        .action(getCapabilitiesFn, {}),
+    ).resolves.toMatchObject({
+      availability: "unavailable",
+      message: "Router returned an invalid capabilities response.",
+    });
+  });
+
   test("returns a sanitized unavailable state without router inference configuration", async () => {
     const t = convexTest(schema, modules);
     const operatorUserId = await seedOperator(t);
