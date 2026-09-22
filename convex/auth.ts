@@ -5,6 +5,7 @@ import { getBrandingContext } from "./lib/branding";
 import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
 import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
+import { generateOtpCode } from "./lib/otp";
 
 const sendVerificationRequest = async function (this: unknown, ...args: any[]) {
   const [{ identifier: email, token }] = args as [
@@ -30,7 +31,7 @@ const ResendOTP = Email({
   id: "resend-otp",
   maxAge: 60 * 15, // 15 minutes
   async generateVerificationToken() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return generateOtpCode();
   },
 
   sendVerificationRequest: sendVerificationRequest as any,

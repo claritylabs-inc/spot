@@ -277,6 +277,7 @@ import type * as lib_orgWiki from "../lib/orgWiki.js";
 import type * as lib_orgWikiDocument from "../lib/orgWikiDocument.js";
 import type * as lib_orgWikiExtraction from "../lib/orgWikiExtraction.js";
 import type * as lib_orgWikiPolicy from "../lib/orgWikiPolicy.js";
+import type * as lib_otp from "../lib/otp.js";
 import type * as lib_packetDocuments from "../lib/packetDocuments.js";
 import type * as lib_pdfFiller from "../lib/pdfFiller.js";
 import type * as lib_pdfSourceSpans from "../lib/pdfSourceSpans.js";
@@ -682,6 +683,7 @@ declare const fullApi: ApiFromModules<{
   "lib/orgWikiDocument": typeof lib_orgWikiDocument;
   "lib/orgWikiExtraction": typeof lib_orgWikiExtraction;
   "lib/orgWikiPolicy": typeof lib_orgWikiPolicy;
+  "lib/otp": typeof lib_otp;
   "lib/packetDocuments": typeof lib_packetDocuments;
   "lib/pdfFiller": typeof lib_pdfFiller;
   "lib/pdfSourceSpans": typeof lib_pdfSourceSpans;
