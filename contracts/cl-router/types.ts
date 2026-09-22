@@ -1,33 +1,21 @@
 /**
- * Frozen cl-router HTTP contract types for the primitive-router cutover.
- *
- * TODO(cl-router-policy): replace this Spot-owned overlay with the published
- * `@claritylabs/cl-router-policy` package once it exports primitive/registry
- * vocabulary. The published package is still 0.8.0 (task-family catalog).
- * Spot compiles against these local types so the app can ship without waiting
- * for that publish.
+ * cl-router HTTP wire types for Spot callers. Primitive, requirement,
+ * difficulty, and quality-tier vocabulary comes from the published
+ * `@claritylabs/cl-router-policy` package; the request/response shapes mirror
+ * the checked-in `openapi.v1.json` snapshot.
  */
 
-export const CL_ROUTER_PRIMITIVES = [
-  "text",
-  "reasoning",
-  "multimodal",
-  "tool_use",
-  "embedding",
-  "transcription",
-] as const;
+import type {
+  Difficulty,
+  Primitive,
+  PrimitiveRequirements,
+  QualityTier,
+} from "@claritylabs/cl-router-policy";
 
-export type ClRouterPrimitive = (typeof CL_ROUTER_PRIMITIVES)[number];
-
-export type ClRouterRequirements = {
-  vision?: boolean;
-  tools?: boolean;
-  structuredOutput?: boolean;
-  minInputTokens?: number;
-};
-
-export type ClRouterDifficulty = "simple" | "standard" | "complex";
-export type ClRouterQualityTier = 1 | 2 | 3;
+export type ClRouterPrimitive = Primitive;
+export type ClRouterRequirements = PrimitiveRequirements;
+export type ClRouterDifficulty = Difficulty;
+export type ClRouterQualityTier = QualityTier;
 export type ClRouterRoutingDecision = "routed" | "manual";
 export type ClRouterRoutingSource = "jev" | "fallback" | "manual";
 

@@ -20,7 +20,7 @@ export { insuranceDocToPolicy, policyToInsuranceDoc } from "./documentMapping";
 import { createExtractor } from "@claritylabs/cl-sdk";
 import type { LogFn, TokenUsage } from "@claritylabs/cl-sdk";
 import { makeGenerateObject } from "./sdkCallbacks";
-import { modelCapabilitiesForTask } from "./modelCatalog";
+import { EXTRACTION_MODEL_CAPABILITIES } from "./modelCatalog";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { PageScreenshot } from "./liteparsePreprocessor";
@@ -97,6 +97,6 @@ export function buildExtractor(opts?: {
     log: opts?.log,
     onProgress: opts?.onProgress,
     onTokenUsage: opts?.onTokenUsage,
-    modelCapabilities: modelCapabilitiesForTask("extraction"),
+    modelCapabilities: EXTRACTION_MODEL_CAPABILITIES,
   });
 }

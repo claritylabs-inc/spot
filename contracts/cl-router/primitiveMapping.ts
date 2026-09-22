@@ -1,9 +1,8 @@
 /**
  * Locked Spot → cl-router primitive mapping.
  *
- * Internal task names stay in Spot for telemetry, prompts, output-token
- * ceilings, and `/operator/routing` history labels. The wire field is
- * `primitive` (+ `requirements`), never `task`.
+ * Internal task names stay in Spot for telemetry, prompts, and `/operator/logs`
+ * labels. The wire field is `primitive` (+ `requirements`), never `task`.
  *
  * Keep in sync with `convex/lib/clRouterPrimitive.ts` and
  * `extraction-worker/src/clRouterPrimitive.ts`.

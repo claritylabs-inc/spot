@@ -1,26 +1,45 @@
 import {
-  COVERAGE_CLEANUP_MODEL as POLICY_COVERAGE_CLEANUP_MODEL,
-  EXTRACTION_QUALITY_MODEL as POLICY_EXTRACTION_QUALITY_MODEL,
-  FALLBACK_MODEL as POLICY_FALLBACK_MODEL,
   FIREWORKS_MODEL_IDS as POLICY_FIREWORKS_MODEL_IDS,
   MODEL_CAPABILITIES as POLICY_MODEL_CAPABILITIES,
-  MODEL_ROUTING as POLICY_MODEL_ROUTING,
-  MODEL_TASKS as POLICY_MODEL_TASKS,
-  QUALITY_ESCALATION_TASK_KINDS as POLICY_QUALITY_ESCALATION_TASK_KINDS,
-  QUALITY_PRIMARY_TASK_KINDS as POLICY_QUALITY_PRIMARY_TASK_KINDS,
-  defaultModelRouteForId as policyDefaultModelRouteForId,
   directProviderModelForRoute as policyDirectProviderModelForRoute,
   modelCapabilitiesForRoute as policyModelCapabilitiesForRoute,
-  modelRouteSupportsTask as policyModelRouteSupportsTask,
   modelSupportsAudioInput as policyModelSupportsAudioInput,
   modelSupportsImageInput as policyModelSupportsImageInput,
+  priceForRoute,
   type ModelCapabilityConfig,
   type ModelProvider,
   type ModelRoute,
-  type ModelTask,
 } from "@claritylabs/cl-router-policy";
 
-export type { ModelCapabilityConfig, ModelProvider, ModelRoute, ModelTask };
+export type { ModelCapabilityConfig, ModelProvider, ModelRoute };
+
+/**
+ * Spot-owned internal task names. They label telemetry, prompts, and operator
+ * settings; cl-router only sees the mapped primitive.
+ */
+const ALL_MODEL_TASKS = [
+  "chat",
+  "chat_vision",
+  "voice_transcription",
+  "email_draft",
+  "email_reply",
+  "extraction",
+  "extraction_preview",
+  "extraction_coverage_recovery",
+  "classification",
+  "requirement_extraction",
+  "org_memory_extraction",
+  "analysis",
+  "summary",
+  "triage",
+  "email_extraction",
+  "document_extraction",
+  "security",
+  "mailbox_coordinator",
+  "embeddings",
+] as const;
+
+export type ModelTask = (typeof ALL_MODEL_TASKS)[number];
 
 export type WebRetrievalProvider =
   | "parallel"
@@ -287,78 +306,26 @@ export const AUDIO_TRANSCRIPTION_MODEL_CATALOG: Partial<
   openai: ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
 };
 
-export const MODEL_ROUTING = POLICY_MODEL_ROUTING satisfies Record<
-  ModelTask,
-  ModelRoute
->;
-
-export const FALLBACK_MODEL = POLICY_FALLBACK_MODEL satisfies ModelRoute;
-
-export const EXTRACTION_QUALITY_MODEL =
-  POLICY_EXTRACTION_QUALITY_MODEL satisfies ModelRoute;
-
-export const COVERAGE_CLEANUP_MODEL =
-  POLICY_COVERAGE_CLEANUP_MODEL satisfies ModelRoute;
-
-export const QUALITY_PRIMARY_TASK_KINDS = POLICY_QUALITY_PRIMARY_TASK_KINDS;
-
-export const QUALITY_ESCALATION_TASK_KINDS =
-  POLICY_QUALITY_ESCALATION_TASK_KINDS;
-
-export const MODEL_TASKS = POLICY_MODEL_TASKS.filter(
+export const MODEL_TASKS = ALL_MODEL_TASKS.filter(
   (task) => task !== "extraction_coverage_recovery",
 );
-export const EXTRACTION_QUALITY_MODEL_ROUTE_ID = "extraction_quality" as const;
-export const EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID =
-  "extraction_coverage_cleanup" as const;
-export const FALLBACK_MODEL_ROUTE_ID = "fallback" as const;
 export const OPERATOR_AGENT_MODEL_ROUTE_ID = "operator_agent" as const;
-export type ModelRouteId =
-  | ModelTask
-  | typeof OPERATOR_AGENT_MODEL_ROUTE_ID
-  | typeof EXTRACTION_QUALITY_MODEL_ROUTE_ID
-  | typeof EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID
-  | typeof FALLBACK_MODEL_ROUTE_ID;
+export type ModelRouteId = ModelTask | typeof OPERATOR_AGENT_MODEL_ROUTE_ID;
 export const MODEL_ROUTE_IDS = [
   ...MODEL_TASKS,
   OPERATOR_AGENT_MODEL_ROUTE_ID,
-  EXTRACTION_QUALITY_MODEL_ROUTE_ID,
-  EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID,
-  FALLBACK_MODEL_ROUTE_ID,
 ] as ModelRouteId[];
-export type RouterModelRouteId = Exclude<
-  ModelRouteId,
-  typeof OPERATOR_AGENT_MODEL_ROUTE_ID
->;
-export const ROUTER_MODEL_ROUTE_IDS = MODEL_ROUTE_IDS.filter(
-  (routeId): routeId is RouterModelRouteId =>
-    routeId !== OPERATOR_AGENT_MODEL_ROUTE_ID,
-);
 
 export const MODEL_ROUTE_LABELS: Record<ModelRouteId, string> = {
   ...MODEL_TASK_LABELS,
   operator_agent: "Operator agent",
-  extraction_quality: "Source tree and profile extraction",
-  extraction_coverage_cleanup: "Coverage schedule cleanup",
-  fallback: "Fallback model",
 };
 
 export const MODEL_ROUTE_DESCRIPTIONS: Record<ModelRouteId, string> = {
   ...MODEL_TASK_DESCRIPTIONS,
   operator_agent:
     "Required manually selected route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support rich attachment input and is always submitted through /v1/manual, never auto-routed.",
-  extraction_quality:
-    "Proactive primary route for source-tree generation and operational-profile extraction before any failure occurs.",
-  extraction_coverage_cleanup:
-    "Source-span review route for repairing malformed policy and endorsement coverage schedule rows before persistence.",
-  fallback:
-    "Retry route after failed high-risk or non-low-cost model calls. Cheap classification and extraction paths do not automatically escalate here.",
 };
-
-export function defaultModelRouteForId(id: ModelRouteId): ModelRoute {
-  if (id === OPERATOR_AGENT_MODEL_ROUTE_ID) return MODEL_ROUTING.chat_vision;
-  return policyDefaultModelRouteForId(id);
-}
 
 export function directProviderModelForRoute(route: ModelRoute): string | null {
   return policyDirectProviderModelForRoute(route);
@@ -425,22 +392,7 @@ export const OPERATOR_MODEL_ROUTE_GROUPS = [
   },
   MODEL_TASK_GROUPS[0],
   MODEL_TASK_GROUPS[1],
-  {
-    id: "document_ingestion",
-    label: "Document ingestion",
-    description:
-      "Routes used to extract structured facts from policies, files, and email text.",
-    tasks: [
-      "requirement_extraction",
-      "org_memory_extraction",
-      "extraction",
-      "extraction_quality",
-      "extraction_coverage_cleanup",
-      "fallback",
-      "document_extraction",
-      "email_extraction",
-    ],
-  },
+  MODEL_TASK_GROUPS[2],
   MODEL_TASK_GROUPS[3],
 ] as const satisfies readonly ModelRouteGroup<ModelRouteId>[];
 
@@ -518,9 +470,35 @@ export const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "deepseek-v4-flash": "DeepSeek V4 Flash",
 };
 
-export const MODEL_CAPABILITIES = POLICY_MODEL_CAPABILITIES satisfies Readonly<
-  Record<string, ModelCapabilityConfig>
->;
+export const MODEL_CAPABILITIES = POLICY_MODEL_CAPABILITIES;
+
+/**
+ * Model-independent cl-sdk output budgets. cl-sdk prefers these over its
+ * built-in hint tokens; cl-router clamps each request to the selected model's
+ * output limit.
+ */
+export const EXTRACTION_MODEL_CAPABILITIES = {
+  defaultOutputTokens: 8_192,
+  longListOutputTokens: 24_576,
+  taskOutputTokens: {
+    extraction_classify: 2_048,
+    extraction_source_tree: 4_096,
+    extraction_page_map: 8_192,
+    extraction_focused: 16_384,
+    extraction_long_list: 24_576,
+    extraction_operational_profile: 32_768,
+    extraction_coverage_recovery: 16_384,
+    extraction_coverage_cleanup: 4_096,
+    extraction_review: 12_288,
+    extraction_referential_lookup: 12_288,
+    query_classify: 2_048,
+    query_reason: 8_192,
+    query_verify: 4_096,
+    query_respond: 8_192,
+    pce_impact_analysis: 8_192,
+    pce_packet_generation: 8_192,
+  },
+};
 
 export function modelCapabilitiesForRoute(
   route: ModelRoute,
@@ -529,12 +507,6 @@ export function modelCapabilitiesForRoute(
   return capabilities.defaultOutputTokens === undefined
     ? { ...capabilities, defaultOutputTokens: 4_096 }
     : capabilities;
-}
-
-export function modelCapabilitiesForTask(
-  task: ModelTask,
-): ModelCapabilityConfig {
-  return modelCapabilitiesForRoute(MODEL_ROUTING[task]);
 }
 
 export function modelSupportsImageInput(route: ModelRoute): boolean {
@@ -546,7 +518,13 @@ export function modelSupportsAudioInput(route: ModelRoute): boolean {
 }
 
 export function modelRouteSupportsTask(task: ModelTask, route: ModelRoute) {
-  return policyModelRouteSupportsTask(task, route);
+  if (task === "chat_vision") return modelSupportsImageInput(route);
+  if (task === "voice_transcription") return modelSupportsAudioInput(route);
+  const price = priceForRoute(route);
+  if (task === "embeddings") {
+    return price.status === "priced" && price.price.modality === "embedding";
+  }
+  return price.status !== "priced" || price.price.modality === "text";
 }
 
 export function isRetiredModelRoute(

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Difficulty, QualityTier } from "@claritylabs/cl-router-policy";
 import {
   clRouterMessagesHaveVision,
   mapSpotCallToClRouterPrimitive,
@@ -90,9 +91,9 @@ export type ClRouterGenerateRequest = {
 export type ClRouterRoutingMetadata = {
   decision: "routed" | "manual";
   primitive?: string;
-  difficulty?: "simple" | "standard" | "complex" | null;
-  requiredTier?: 1 | 2 | 3;
-  selectedTier?: 1 | 2 | 3;
+  difficulty?: Difficulty | null;
+  requiredTier?: QualityTier;
+  selectedTier?: QualityTier;
   route: ClRouterModelRoute;
   source?: "jev" | "fallback" | "manual";
   attemptCount: number;

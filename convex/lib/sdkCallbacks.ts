@@ -14,19 +14,11 @@ import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 import {
   modelTaskForCall,
-  MODEL_ROUTING,
-  primaryRouteForCall,
   resolveClRouterSettingsForOrg,
   type ModelCallTaskKind,
   type ModelRoute,
   type ModelTask,
 } from "./models";
-import {
-  COVERAGE_CLEANUP_MODEL,
-  EXTRACTION_QUALITY_MODEL,
-  modelCapabilitiesForRoute,
-  modelCapabilitiesForTask,
-} from "./modelCatalog";
 import { applyCarrierIdentityGuidance } from "./extractionPromptGuidance";
 import type {
   GenerateText,
@@ -266,7 +258,6 @@ function modelTraceDetails(params: {
   prompt: string;
   system?: string;
   maxOutputTokens: number;
-  routePurpose?: string;
   providerOptions?: ProviderOptions;
   trace?: ModelCallTraceDetails;
   output?: unknown;
@@ -279,7 +270,6 @@ function modelTraceDetails(params: {
     taskKind: params.taskKind,
     trace: params.trace,
     maxOutputTokens: params.maxOutputTokens,
-    routePurpose: params.routePurpose,
     systemPreview: traceTextPreview(params.system),
     promptPreview: traceTextPreview(params.prompt),
     inputSummary: providerInputSummary(params.providerOptions),
@@ -294,46 +284,6 @@ function modelTraceDetails(params: {
 const SECTIONS_EXTRACTOR_PROMPT_MARKER =
   "Build a compact source-backed section index for this document";
 
-function getEffectiveMaxTokens(
-  task: ModelTask,
-  taskKind: ModelCallTaskKind | undefined,
-  maxTokens: number,
-  route?: ModelRoute,
-): number {
-  const routeCapabilities = route
-    ? modelCapabilitiesForRoute(route)
-    : modelCapabilitiesForTask(task);
-  const routeMax = taskKind
-    ? (routeCapabilities?.taskOutputTokens?.[taskKind] ??
-      routeCapabilities?.maxOutputTokens)
-    : routeCapabilities?.maxOutputTokens;
-  return routeMax ? Math.min(maxTokens, routeMax) : maxTokens;
-}
-
-function coverageCleanupRouteOverride(
-  taskKind: ModelCallTaskKind | undefined,
-  trace: ModelCallTraceDetails | undefined,
-  coverageCleanupRoute: ModelRoute | undefined,
-): ModelRoute | null {
-  if (
-    taskKind !== "extraction_coverage_cleanup" &&
-    trace?.phase !== "coverage_cleanup"
-  ) {
-    return null;
-  }
-  return coverageCleanupRoute ?? COVERAGE_CLEANUP_MODEL;
-}
-
-type GenerationRoutePlan = {
-  primaryRoute: ModelRoute;
-  qualityRoute?: ModelRoute;
-  coverageCleanupRoute?: ModelRoute;
-  fallbackRoute?: ModelRoute;
-  routeSource: string;
-  routePurpose?: string;
-  transport?: string;
-};
-
 type TextGenerationResult = {
   text: string;
   usage: TokenUsage;
@@ -346,51 +296,14 @@ type ObjectGenerationResult = {
   router?: ClRouterGenerateResponse;
 };
 
-function resolveRouterGenerationPlan(
+/** Operator pin for the effective task; unpinned calls are routed by cl-router. */
+function pinnedRouteForCall(
   effectiveTask: ModelTask,
-  taskKind: ModelCallTaskKind | undefined,
-  trace: ModelCallTraceDetails | undefined,
   settings: ClRouterSettingsSnapshot | null,
-): GenerationRoutePlan {
-  const primaryRoute =
-    settings?.routes?.[effectiveTask] ?? MODEL_ROUTING[effectiveTask];
-  const qualityRoute =
-    settings?.routes?.extraction_quality ?? EXTRACTION_QUALITY_MODEL;
-  const coverageCleanupRoute =
-    settings?.routes?.extraction_coverage_cleanup ?? COVERAGE_CLEANUP_MODEL;
-  const fallbackRoute = settings?.routes?.fallback;
-  const plan: GenerationRoutePlan = {
-    primaryRoute,
-    qualityRoute,
-    coverageCleanupRoute,
-    fallbackRoute,
-    routeSource: settings?.routeSources?.[effectiveTask] ?? "static",
-    transport: "cl-router",
-  };
-  const qualityOverride = primaryRouteForCall({
-    task: effectiveTask,
-    taskKind,
-    primaryRoute,
-    qualityRoute,
-  });
-  if (qualityOverride) {
-    plan.primaryRoute = qualityOverride;
-    plan.routeSource =
-      settings?.routeSources?.extraction_quality ?? plan.routeSource;
-    plan.routePurpose = "extraction_quality";
-  }
-  const coverageOverride = coverageCleanupRouteOverride(
-    taskKind,
-    trace,
-    coverageCleanupRoute,
-  );
-  if (coverageOverride) {
-    plan.primaryRoute = coverageOverride;
-    plan.routeSource =
-      settings?.routeSources?.extraction_coverage_cleanup ?? plan.routeSource;
-    plan.routePurpose = "extraction_coverage_cleanup";
-  }
-  return plan;
+): ModelRoute | undefined {
+  return settings?.routeSources?.[effectiveTask] === "global"
+    ? settings.routes?.[effectiveTask]
+    : undefined;
 }
 
 function knownPdfSize(
@@ -668,11 +581,9 @@ export function makeGenerateText(
       );
     }
     const effectiveTask = modelTaskForCall(task, taskKind);
-    let traceRoute: ModelRoute = MODEL_ROUTING[effectiveTask];
-    let routeSource = "static";
-    let routePurpose: string | undefined;
+    let traceRoute: ModelRoute | undefined;
+    let routeSource: string | undefined;
     let transport: string | undefined;
-    let effectiveMaxTokens = maxTokens;
     const startedAt = nowMs();
     const label = modelTraceLabel(
       "generateText",
@@ -683,22 +594,12 @@ export function makeGenerateText(
     try {
       const result = await (async () => {
         const settings = await getRouterSettings();
-        const plan = resolveRouterGenerationPlan(
-          effectiveTask,
-          taskKind,
-          trace,
-          settings,
-        );
-        traceRoute = plan.primaryRoute;
-        routeSource = plan.routeSource;
-        routePurpose = plan.routePurpose;
+        const pin = pinnedRouteForCall(effectiveTask, settings);
+        if (pin) {
+          traceRoute = pin;
+          routeSource = "global";
+        }
         transport = "cl-router";
-        effectiveMaxTokens = getEffectiveMaxTokens(
-          effectiveTask,
-          taskKind,
-          maxTokens,
-          plan.primaryRoute,
-        );
         return withClRouterPromptInput(
           routing,
           prompt,
@@ -719,7 +620,7 @@ export function makeGenerateText(
                 orgId: routing?.orgId ? String(routing.orgId) : undefined,
                 system,
                 ...input,
-                maxTokens: effectiveMaxTokens,
+                maxTokens,
                 trace: clRouterTrace(
                   routing,
                   label,
@@ -728,7 +629,7 @@ export function makeGenerateText(
                   trace,
                 ),
               },
-              plan.routeSource === "global" ? plan.primaryRoute : undefined,
+              pin,
               routing?.ctx
                 ? durableRouterClientOptions(routing.ctx)
                 : undefined,
@@ -742,7 +643,6 @@ export function makeGenerateText(
             traceRoute = response.model;
             routeSource =
               response.routing.source ?? response.routing.decision;
-            routePurpose = plan.routePurpose;
             transport = "cl-router";
             return {
               text: response.output,
@@ -776,8 +676,7 @@ export function makeGenerateText(
           taskKind,
           prompt,
           system,
-          maxOutputTokens: effectiveMaxTokens,
-          routePurpose,
+          maxOutputTokens: maxTokens,
           providerOptions: providerOptions as ProviderOptions,
           trace,
           output: result.text,
@@ -806,8 +705,7 @@ export function makeGenerateText(
           taskKind,
           prompt,
           system,
-          maxOutputTokens: effectiveMaxTokens,
-          routePurpose,
+          maxOutputTokens: maxTokens,
           providerOptions: providerOptions as ProviderOptions,
           trace,
         }),
@@ -852,11 +750,9 @@ export function makeGenerateObject(
       );
     }
     const effectiveTask = modelTaskForCall(task, taskKind);
-    let traceRoute: ModelRoute = MODEL_ROUTING[effectiveTask];
-    let routeSource = "static";
-    let routePurpose: string | undefined;
+    let traceRoute: ModelRoute | undefined;
+    let routeSource: string | undefined;
     let transport: string | undefined;
-    let effectiveMaxTokens = maxTokens;
     const startedAt = nowMs();
     const label = modelTraceLabel(
       "generateObject",
@@ -867,22 +763,12 @@ export function makeGenerateObject(
     try {
       const result = await (async () => {
         const settings = await getRouterSettings();
-        const plan = resolveRouterGenerationPlan(
-          effectiveTask,
-          taskKind,
-          trace,
-          settings,
-        );
-        traceRoute = plan.primaryRoute;
-        routeSource = plan.routeSource;
-        routePurpose = plan.routePurpose;
+        const pin = pinnedRouteForCall(effectiveTask, settings);
+        if (pin) {
+          traceRoute = pin;
+          routeSource = "global";
+        }
         transport = "cl-router";
-        effectiveMaxTokens = getEffectiveMaxTokens(
-          effectiveTask,
-          taskKind,
-          maxTokens,
-          plan.primaryRoute,
-        );
         return withClRouterPromptInput(
           routing,
           prompt,
@@ -905,7 +791,7 @@ export function makeGenerateObject(
                 ...input,
                 schema: z.toJSONSchema(schema) as Record<string, unknown>,
                 schemaDialect: "https://json-schema.org/draft/2020-12/schema",
-                maxTokens: effectiveMaxTokens,
+                maxTokens,
                 trace: clRouterTrace(
                   routing,
                   label,
@@ -914,7 +800,7 @@ export function makeGenerateObject(
                   trace,
                 ),
               },
-              plan.routeSource === "global" ? plan.primaryRoute : undefined,
+              pin,
               routing?.ctx
                 ? durableRouterClientOptions(routing.ctx)
                 : undefined,
@@ -930,7 +816,6 @@ export function makeGenerateObject(
             traceRoute = response.model;
             routeSource =
               response.routing.source ?? response.routing.decision;
-            routePurpose = plan.routePurpose;
             transport = "cl-router";
             return {
               object: parsed.data,
@@ -964,8 +849,7 @@ export function makeGenerateObject(
           taskKind,
           prompt,
           system,
-          maxOutputTokens: effectiveMaxTokens,
-          routePurpose,
+          maxOutputTokens: maxTokens,
           providerOptions: providerOptions as ProviderOptions,
           trace,
           output: result.object,
@@ -1000,9 +884,8 @@ export function makeGenerateObject(
             taskKind,
             prompt,
             system,
-            maxOutputTokens: effectiveMaxTokens,
-            routePurpose,
-            providerOptions: providerOptions as ProviderOptions,
+            maxOutputTokens: maxTokens,
+              providerOptions: providerOptions as ProviderOptions,
             trace,
             output: { sections: [] },
             outputKind: "object",
@@ -1031,29 +914,13 @@ export function makeGenerateObject(
           taskKind,
           prompt,
           system,
-          maxOutputTokens: effectiveMaxTokens,
-          routePurpose,
+          maxOutputTokens: maxTokens,
           providerOptions: providerOptions as ProviderOptions,
           trace,
         }),
       });
       throw error;
     }
-  };
-}
-
-async function resolveClRouterEmbeddingSettings(
-  ctx?: ActionCtx,
-  orgId?: Id<"organizations">,
-): Promise<ClRouterSettingsSnapshot | null> {
-  if (!ctx || !orgId) return null;
-  const settings = await ctx.runQuery(internal.modelSettings.resolveForOrg, {
-    orgId,
-  });
-  if (!settings) return null;
-  return {
-    routes: settings.routes,
-    routeSources: settings.routeSources,
   };
 }
 
@@ -1100,7 +967,7 @@ export function makeEmbedTexts(
 }
 
 /**
- * Create an EmbedText callback using the resolved global/static route.
+ * Create an EmbedText callback routed by cl-router.
  */
 export function makeEmbedText(
   ctx?: ActionCtx,

@@ -4,7 +4,6 @@ import type { Id } from "../_generated/dataModel";
 import {
   generateObjectForPublicTask,
   generateTextForOrg,
-  getModelAndRouteForSettingsSnapshot,
 } from "./models";
 
 const route = {
@@ -171,20 +170,32 @@ describe("router-only model calls", () => {
     );
   });
 
-  test("validates configured routes from static capabilities, not environment keys", () => {
-    const resolved = getModelAndRouteForSettingsSnapshot(
-      {
-        routes: { chat: route },
-        routeSources: { chat: "global" },
-      },
-      "chat",
+  test("auto-routes source-tree extraction instead of a retired special pin", async () => {
+    vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    const runQuery = vi.fn(async () => ({
+      routes: { extraction_quality: route },
+      routeSources: { extraction_quality: "global" },
+    }));
+    const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+      response("Router answer."),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateTextForOrg(
+      { runQuery } as never,
+      "org-1" as Id<"organizations">,
+      "extraction",
+      { prompt: "Build the source tree", maxOutputTokens: 9_000 },
+      { taskKind: "extraction_source_tree" },
     );
 
-    expect(resolved).toMatchObject({
-      route,
-      routeSource: "global",
-      transport: "cl-router",
-    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://router.example.test/v1/generate",
+    );
+    const request = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(request).not.toHaveProperty("route");
+    expect(request.maxTokens).toBe(9_000);
   });
 });
 

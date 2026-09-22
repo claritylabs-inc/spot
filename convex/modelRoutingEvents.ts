@@ -117,54 +117,6 @@ export const recordResponseInternal = internalMutation({
   },
 });
 
-export const recordFallbackInternal = internalMutation({
-  args: {
-    run: runValidator,
-    step: v.number(),
-    hasTools: v.boolean(),
-    hasToolResults: v.boolean(),
-    error: v.string(),
-    provider: v.optional(modelProviderValidator),
-    model: v.optional(v.string()),
-    fallbackProvider: v.optional(modelProviderValidator),
-    fallbackModel: v.optional(v.string()),
-    routeSource: v.optional(v.string()),
-    transport: v.optional(v.union(v.literal("direct"), v.literal("cl-router"))),
-    requestId: v.optional(v.string()),
-    routerCode: v.optional(v.string()),
-    routerStatus: v.optional(v.number()),
-    routerRetryable: v.optional(v.boolean()),
-    routerExecutionStarted: v.optional(v.boolean()),
-    failureAttempts: v.optional(v.array(failureAttemptValidator)),
-  },
-  handler: async (ctx, args) => {
-    const timestamp = dayjs().valueOf();
-    await ctx.db.insert("modelRoutingEvents", {
-      kind: "direct_fallback",
-      ...args.run,
-      step: args.step,
-      hasTools: args.hasTools,
-      hasToolResults: args.hasToolResults,
-      status: "fallback",
-      error: args.error,
-      provider: args.provider,
-      model: args.model,
-      fallbackProvider: args.fallbackProvider,
-      fallbackModel: args.fallbackModel,
-      routeSource: args.routeSource,
-      transport: args.transport,
-      requestId: args.requestId,
-      routerCode: args.routerCode,
-      routerStatus: args.routerStatus,
-      routerRetryable: args.routerRetryable,
-      routerExecutionStarted: args.routerExecutionStarted,
-      failureAttempts: args.failureAttempts,
-      timestamp,
-      expiresAt: expiresAt(timestamp),
-    });
-  },
-});
-
 export const recordRunInternal = internalMutation({
   args: {
     run: runValidator,
@@ -178,9 +130,6 @@ export const recordRunInternal = internalMutation({
     model: v.optional(v.string()),
     routeSource: v.optional(v.string()),
     transport: v.optional(v.union(v.literal("direct"), v.literal("cl-router"))),
-    fallbackProvider: v.optional(modelProviderValidator),
-    fallbackModel: v.optional(v.string()),
-    fallbackReason: v.optional(v.string()),
     routerCode: v.optional(v.string()),
     routerStatus: v.optional(v.number()),
     routerRetryable: v.optional(v.boolean()),
@@ -220,9 +169,6 @@ export const recordRunInternal = internalMutation({
       model: args.model,
       routeSource: args.routeSource,
       transport: args.transport,
-      fallbackProvider: args.fallbackProvider,
-      fallbackModel: args.fallbackModel,
-      fallbackReason: args.fallbackReason,
       routerCode: args.routerCode,
       routerStatus: args.routerStatus,
       routerRetryable: args.routerRetryable,
@@ -259,35 +205,6 @@ export const recordRunInternal = internalMutation({
       timestamp,
       expiresAt: expiresAt(timestamp),
     });
-  },
-});
-
-export const listRecent = query({
-  args: {
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    await requireOperator(ctx);
-    const limit = Math.max(1, Math.min(Math.floor(args.limit ?? 200), 500));
-    return await ctx.db
-      .query("modelRoutingEvents")
-      .withIndex("time")
-      .order("desc")
-      .take(limit);
-  },
-});
-
-export const listPaginated = query({
-  args: {
-    paginationOpts: paginationOptsValidator,
-  },
-  handler: async (ctx, args) => {
-    await requireOperator(ctx);
-    return await ctx.db
-      .query("modelRoutingEvents")
-      .withIndex("time")
-      .order("desc")
-      .paginate(args.paginationOpts);
   },
 });
 
@@ -461,22 +378,7 @@ export const listCalls = query({
                   .includes(args.model.toLowerCase()))) &&
           (!args.channel || call.channel === args.channel) &&
           (!args.orgId || call.orgId === args.orgId) &&
-          (!args.routeSource ||
-            (args.routeSource === "automatic"
-              ? ["autonomous", "automatic", "static"].includes(
-                  call.routeSource ?? "",
-                )
-              : args.routeSource === "override"
-                ? [
-                    "global",
-                    "org",
-                    "broker",
-                    "override",
-                    "pin",
-                    "pinned",
-                    "request_pin",
-                  ].includes(call.routeSource ?? "")
-                : call.routeSource === args.routeSource)) &&
+          (!args.routeSource || call.routeSource === args.routeSource) &&
           (!needle ||
             [
               call.task,

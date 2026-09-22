@@ -58,7 +58,6 @@ export function callStatusPresentation(status: ModelCall["status"]): StatusPrese
     case "running": return { tone: "neutral", indicator: "progress" };
     case "cancelled": return { tone: "neutral", indicator: "cancelled" };
     case "error": return { tone: "danger", indicator: "error" };
-    case "fallback": return { tone: "neutral", indicator: "warning" };
     default: return { tone: "warning", indicator: "warning" };
   }
 }
