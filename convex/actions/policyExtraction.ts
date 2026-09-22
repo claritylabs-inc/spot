@@ -2745,13 +2745,30 @@ export const recordExternalTraceEvent = action({
     routing: v.optional(
       v.object({
         decision: v.string(),
-        candidatesConsidered: v.array(
-          v.object({ provider: v.string(), model: v.string() }),
-        ),
-        policyVersion: v.union(v.string(), v.null()),
-        cacheStickinessApplied: v.boolean(),
-        routeSource: v.optional(v.string()),
         attemptCount: v.optional(v.number()),
+        primitive: v.optional(v.string()),
+        difficulty: v.optional(
+          v.union(
+            v.literal("simple"),
+            v.literal("standard"),
+            v.literal("complex"),
+            v.null(),
+          ),
+        ),
+        requiredTier: v.optional(
+          v.union(v.literal(1), v.literal(2), v.literal(3)),
+        ),
+        selectedTier: v.optional(
+          v.union(v.literal(1), v.literal(2), v.literal(3)),
+        ),
+        route: v.optional(v.object({ provider: v.string(), model: v.string() })),
+        source: v.optional(v.string()),
+        candidatesConsidered: v.optional(
+          v.array(v.object({ provider: v.string(), model: v.string() })),
+        ),
+        policyVersion: v.optional(v.union(v.string(), v.null())),
+        cacheStickinessApplied: v.optional(v.boolean()),
+        routeSource: v.optional(v.string()),
         shadowMode: v.optional(v.boolean()),
         wouldHaveChosen: v.optional(
           v.object({

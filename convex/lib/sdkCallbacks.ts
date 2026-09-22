@@ -50,13 +50,18 @@ import {
   MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
   clRouterEmbed,
-  clRouterGenerate,
+  clRouterGenerateMaybeManual,
+  normalizeClRouterTrace,
   type ClRouterGenerateResponse,
   type ClRouterMessage,
   type ClRouterMessagePart,
   type ClRouterSettingsSnapshot,
   type ClRouterTraceMetadata,
 } from "./clRouterClient";
+import {
+  clRouterMessagesHaveVision,
+  mapSpotCallToClRouterPrimitive,
+} from "./clRouterPrimitive";
 
 type ExtractionImage = {
   imageBase64: string;
@@ -406,7 +411,10 @@ async function withClRouterPromptInput<T>(
   prompt: string,
   providerOptions: Record<string, unknown> | undefined,
   execute: (
-    input: Pick<Parameters<typeof clRouterGenerate>[0], "messages" | "prompt">,
+    input: Pick<
+      Parameters<typeof clRouterGenerateMaybeManual>[0],
+      "messages" | "prompt"
+    >,
   ) => Promise<T>,
 ): Promise<T> {
   const options = providerOptions as ExtractionProviderOptions | undefined;
@@ -532,19 +540,21 @@ async function withClRouterPromptInput<T>(
 function clRouterTrace(
   routing: ModelRoutingContext | undefined,
   label: string,
+  task: ModelTask,
   taskKind: ModelCallTaskKind | undefined,
   trace: ModelCallTraceDetails | undefined,
-): ClRouterTraceMetadata {
-  return stripUndefined({
+): ClRouterTraceMetadata | undefined {
+  return normalizeClRouterTrace({
     traceId: routing?.traceId,
     label,
     phase: trace?.phase,
+    task,
     taskKind,
     policyId: routing?.tracePolicyId
       ? String(routing.tracePolicyId)
       : undefined,
     channel: "convex",
-  }) as ClRouterTraceMetadata;
+  });
 }
 
 function mapClRouterUsage(response: ClRouterGenerateResponse): TokenUsage {
@@ -694,28 +704,31 @@ export function makeGenerateText(
           prompt,
           providerOptions as Record<string, unknown> | undefined,
           async (input): Promise<TextGenerationResult> => {
-            const response = await clRouterGenerate(
+            const mapping = mapSpotCallToClRouterPrimitive({
+              task: effectiveTask,
+              taskKind,
+              hasStructuredOutput: false,
+              hasVision: clRouterMessagesHaveVision(input.messages),
+            });
+            const response = await clRouterGenerateMaybeManual(
               {
-                task: effectiveTask,
-                taskKind,
+                primitive: mapping.primitive,
+                ...(mapping.requirements
+                  ? { requirements: mapping.requirements }
+                  : {}),
                 orgId: routing?.orgId ? String(routing.orgId) : undefined,
-                settings,
                 system,
                 ...input,
                 maxTokens: effectiveMaxTokens,
-                sessionKey:
-                  routing?.traceId ??
-                  (routing?.tracePolicyId
-                    ? String(routing.tracePolicyId)
-                    : undefined),
-                routing: {
-                  ...(plan.routeSource === "global"
-                    ? { pin: plan.primaryRoute }
-                    : {}),
-                  allowFallback: true,
-                },
-                trace: clRouterTrace(routing, label, taskKind, trace),
+                trace: clRouterTrace(
+                  routing,
+                  label,
+                  effectiveTask,
+                  taskKind,
+                  trace,
+                ),
               },
+              plan.routeSource === "global" ? plan.primaryRoute : undefined,
               routing?.ctx
                 ? durableRouterClientOptions(routing.ctx)
                 : undefined,
@@ -728,7 +741,7 @@ export function makeGenerateText(
             }
             traceRoute = response.model;
             routeSource =
-              response.routing.routeSource ?? response.routing.decision;
+              response.routing.source ?? response.routing.decision;
             routePurpose = plan.routePurpose;
             transport = "cl-router";
             return {
@@ -875,30 +888,33 @@ export function makeGenerateObject(
           prompt,
           providerOptions as Record<string, unknown> | undefined,
           async (input): Promise<ObjectGenerationResult> => {
-            const response = await clRouterGenerate(
+            const mapping = mapSpotCallToClRouterPrimitive({
+              task: effectiveTask,
+              taskKind,
+              hasStructuredOutput: true,
+              hasVision: clRouterMessagesHaveVision(input.messages),
+            });
+            const response = await clRouterGenerateMaybeManual(
               {
-                task: effectiveTask,
-                taskKind,
+                primitive: mapping.primitive,
+                ...(mapping.requirements
+                  ? { requirements: mapping.requirements }
+                  : {}),
                 orgId: routing?.orgId ? String(routing.orgId) : undefined,
-                settings,
                 system,
                 ...input,
                 schema: z.toJSONSchema(schema) as Record<string, unknown>,
                 schemaDialect: "https://json-schema.org/draft/2020-12/schema",
                 maxTokens: effectiveMaxTokens,
-                sessionKey:
-                  routing?.traceId ??
-                  (routing?.tracePolicyId
-                    ? String(routing.tracePolicyId)
-                    : undefined),
-                routing: {
-                  ...(plan.routeSource === "global"
-                    ? { pin: plan.primaryRoute }
-                    : {}),
-                  allowFallback: true,
-                },
-                trace: clRouterTrace(routing, label, taskKind, trace),
+                trace: clRouterTrace(
+                  routing,
+                  label,
+                  effectiveTask,
+                  taskKind,
+                  trace,
+                ),
               },
+              plan.routeSource === "global" ? plan.primaryRoute : undefined,
               routing?.ctx
                 ? durableRouterClientOptions(routing.ctx)
                 : undefined,
@@ -913,7 +929,7 @@ export function makeGenerateObject(
             }
             traceRoute = response.model;
             routeSource =
-              response.routing.routeSource ?? response.routing.decision;
+              response.routing.source ?? response.routing.decision;
             routePurpose = plan.routePurpose;
             transport = "cl-router";
             return {
@@ -1054,17 +1070,8 @@ export function makeEmbedTexts(
   orgId?: Id<"organizations">,
   _options?: { maxParallelCalls?: number },
 ): EmbedTexts {
-  let routerSettingsPromise: ReturnType<
-    typeof resolveClRouterEmbeddingSettings
-  > | null = null;
-  const getRouterSettings = () => {
-    routerSettingsPromise ??= resolveClRouterEmbeddingSettings(ctx, orgId);
-    return routerSettingsPromise;
-  };
-
   return async (texts: string[]) => {
     if (!texts.length) return [];
-    const settings = await getRouterSettings();
     const maxTextsPerRequest = Math.max(
       1,
       Math.floor(MAX_CL_ROUTER_EMBEDDING_VALUES / EMBEDDING_DIMENSIONS),
@@ -1076,7 +1083,6 @@ export function makeEmbedTexts(
       const response = await clRouterEmbed(
         {
           orgId,
-          settings,
           texts: texts.slice(offset, offset + maxTextsPerRequest),
           dimensions: EMBEDDING_DIMENSIONS,
           trace: {
@@ -1100,20 +1106,10 @@ export function makeEmbedText(
   ctx?: ActionCtx,
   orgId?: Id<"organizations">,
 ): EmbedText {
-  let routerSettingsPromise: ReturnType<
-    typeof resolveClRouterEmbeddingSettings
-  > | null = null;
-  const getRouterSettings = () => {
-    routerSettingsPromise ??= resolveClRouterEmbeddingSettings(ctx, orgId);
-    return routerSettingsPromise;
-  };
-
   return async (text: string) => {
-    const settings = await getRouterSettings();
     const response = await clRouterEmbed(
       {
         orgId,
-        settings,
         texts: [text],
         dimensions: EMBEDDING_DIMENSIONS,
         trace: { label: "convex.sdkCallbacks.makeEmbedText" },

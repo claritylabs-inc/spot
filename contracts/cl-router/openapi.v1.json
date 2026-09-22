@@ -3,7 +3,7 @@
   "info": {
     "title": "cl-router API",
     "version": "1.0.0",
-    "description": "Canonical Convex router API with legacy Fastify compatibility. Provider credentials belong exclusively to the router deployment. Runtime validation additionally enforces relational limits, asset host policy, and routing safety requirements."
+    "description": "Primitive-routed inference API. Provider credentials belong exclusively to the router deployment. Runtime validation additionally enforces relational limits and asset host policy."
   },
   "paths": {
     "/health": {
@@ -328,87 +328,6 @@
         }
       }
     },
-    "/admin/selection": {
-      "post": {
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SelectionControlRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SelectionControlResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Legacy Fastify admin validation failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacyValidationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid bearer credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal router failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/capabilities": {
       "get": {
         "security": [
@@ -554,6 +473,148 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE events; each data frame conforms to StreamEvent.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/manual": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/manual/stream": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualRequest"
               }
             }
           }
@@ -936,432 +997,6 @@
           }
         }
       }
-    },
-    "/admin/freeze": {
-      "post": {
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FreezeRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FreezeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Legacy Fastify admin validation failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacyValidationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid bearer credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal router failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/admin/pin": {
-      "post": {
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PinRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PinResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Legacy Fastify admin validation failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacyValidationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid bearer credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal router failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/admin/policy": {
-      "get": {
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminPolicyResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Legacy Fastify admin validation failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacyValidationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid bearer credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal router failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "tenantId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "glass"
-            }
-          },
-          {
-            "name": "taskFamily",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "description": "Returns one policy or null with taskFamily; otherwise returns an array of policies."
-      }
-    },
-    "/admin/rollups": {
-      "get": {
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminRollupResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Legacy Fastify admin validation failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacyValidationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid bearer credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal router failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "tenantId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "glass"
-            }
-          },
-          {
-            "name": "taskFamily",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "description": "Returns task rollups from the 28-day window. Convex timestamps are milliseconds and include _id/_creationTime; legacy timestamps are ISO 8601. Integer token and monetary totals are decimal strings."
-      }
-    },
-    "/admin/score": {
-      "post": {
-        "security": [
-          {
-            "adminBearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ScoreRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminScoreResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Legacy Fastify admin validation failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacyValidationResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid bearer credential",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal router failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RouterFailureResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Router unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUnavailableResponse"
-                }
-              }
-            }
-          }
-        },
-        "description": "Returns scoring decisions per task family, including full scored candidate details on incumbent and replacement."
-      }
     }
   },
   "components": {
@@ -1370,882 +1005,9 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Consumer inference credential (CL_ROUTER_SECRET)."
-      },
-      "adminBearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "Independent operator credential (CL_ROUTER_ADMIN_SECRET); never distributed to inference consumers."
       }
     },
     "schemas": {
-      "AdminPolicyResponse": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "version": {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              "taskFamily": {
-                "type": "string"
-              },
-              "explorationPct": {
-                "type": "number"
-              },
-              "frozen": {
-                "type": "boolean"
-              },
-              "frozenRoute": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "provider": {
-                        "type": "string"
-                      },
-                      "model": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "model"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "candidates": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string"
-                    },
-                    "model": {
-                      "type": "string"
-                    },
-                    "rank": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "primary",
-                        "challenger",
-                        "fallback",
-                        "quarantined"
-                      ]
-                    },
-                    "trafficPct": {
-                      "type": "number"
-                    },
-                    "ratingScore": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "ratingCount": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "projectedCostNanoUsd": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "pattern": "^\\d+$",
-                          "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model",
-                    "rank",
-                    "role",
-                    "trafficPct",
-                    "ratingScore",
-                    "ratingCount",
-                    "projectedCostNanoUsd"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "required": [
-              "id",
-              "version",
-              "taskFamily",
-              "explorationPct",
-              "frozen",
-              "frozenRoute",
-              "candidates"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "version": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "taskFamily": {
-                  "type": "string"
-                },
-                "explorationPct": {
-                  "type": "number"
-                },
-                "frozen": {
-                  "type": "boolean"
-                },
-                "frozenRoute": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "provider": {
-                          "type": "string"
-                        },
-                        "model": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "provider",
-                        "model"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "candidates": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "provider": {
-                        "type": "string"
-                      },
-                      "model": {
-                        "type": "string"
-                      },
-                      "rank": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "role": {
-                        "type": "string",
-                        "enum": [
-                          "primary",
-                          "challenger",
-                          "fallback",
-                          "quarantined"
-                        ]
-                      },
-                      "trafficPct": {
-                        "type": "number"
-                      },
-                      "ratingScore": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "ratingCount": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "projectedCostNanoUsd": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "pattern": "^\\d+$",
-                            "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "model",
-                      "rank",
-                      "role",
-                      "trafficPct",
-                      "ratingScore",
-                      "ratingCount",
-                      "projectedCostNanoUsd"
-                    ],
-                    "additionalProperties": false
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "version",
-                "taskFamily",
-                "explorationPct",
-                "frozen",
-                "frozenRoute",
-                "candidates"
-              ],
-              "additionalProperties": false
-            }
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "AdminRollupResponse": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "provider": {
-              "type": "string"
-            },
-            "model": {
-              "type": "string"
-            },
-            "_id": {
-              "type": "string"
-            },
-            "_creationTime": {
-              "type": "number"
-            },
-            "hourStart": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string",
-                  "format": "date-time",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                }
-              ],
-              "description": "Unix milliseconds in Convex; ISO 8601 in the legacy PostgreSQL runtime."
-            },
-            "tenantId": {
-              "type": "string"
-            },
-            "taskFamily": {
-              "type": "string"
-            },
-            "callCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "successCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "schemaCheckedCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "schemaValidCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "softFailCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "fallbackCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "providerErrorCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "truncatedCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "cacheHitCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "feedbackCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "positiveRatingCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "negativeRatingCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "reviewFeedbackCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "reviewPassCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "correctionCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "reviewedFieldCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "ungroundedStripCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "sensitiveFieldCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "escalationCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "humanEditCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "editedFieldCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "latencyP50Ms": {
-              "type": "number"
-            },
-            "latencyP95Ms": {
-              "type": "number"
-            },
-            "inputTokens": {
-              "type": "string",
-              "pattern": "^\\d+$",
-              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-            },
-            "outputTokens": {
-              "type": "string",
-              "pattern": "^\\d+$",
-              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-            },
-            "cachedInputTokens": {
-              "type": "string",
-              "pattern": "^\\d+$",
-              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-            },
-            "cacheWriteTokens": {
-              "type": "string",
-              "pattern": "^\\d+$",
-              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-            },
-            "pricedCallCount": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "costNanoUsd": {
-              "type": "string",
-              "pattern": "^\\d+$",
-              "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-            },
-            "rolledUpAt": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "string",
-                  "format": "date-time",
-                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                }
-              ],
-              "description": "Unix milliseconds in Convex; ISO 8601 in the legacy PostgreSQL runtime."
-            }
-          },
-          "required": [
-            "provider",
-            "model",
-            "hourStart",
-            "tenantId",
-            "taskFamily",
-            "callCount",
-            "successCount",
-            "schemaCheckedCount",
-            "schemaValidCount",
-            "softFailCount",
-            "fallbackCount",
-            "providerErrorCount",
-            "truncatedCount",
-            "cacheHitCount",
-            "feedbackCount",
-            "positiveRatingCount",
-            "negativeRatingCount",
-            "reviewFeedbackCount",
-            "reviewPassCount",
-            "correctionCount",
-            "reviewedFieldCount",
-            "ungroundedStripCount",
-            "sensitiveFieldCount",
-            "escalationCount",
-            "humanEditCount",
-            "editedFieldCount",
-            "latencyP50Ms",
-            "latencyP95Ms",
-            "inputTokens",
-            "outputTokens",
-            "cachedInputTokens",
-            "cacheWriteTokens",
-            "pricedCallCount",
-            "costNanoUsd",
-            "rolledUpAt"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "AdminScoreResponse": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "none",
-                "promote_challenger",
-                "frozen"
-              ]
-            },
-            "incumbent": {
-              "type": "object",
-              "properties": {
-                "provider": {
-                  "type": "string"
-                },
-                "model": {
-                  "type": "string"
-                },
-                "rank": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "role": {
-                  "type": "string",
-                  "enum": [
-                    "primary",
-                    "challenger",
-                    "fallback",
-                    "quarantined"
-                  ]
-                },
-                "trafficPct": {
-                  "type": "number"
-                },
-                "ratingScore": {
-                  "anyOf": [
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "ratingCount": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "projectedCostNanoUsd": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "pattern": "^\\d+$",
-                      "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "score": {
-                  "type": "object",
-                  "properties": {
-                    "score": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 1
-                    },
-                    "ratingCount": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "positiveRatingCount": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "negativeRatingCount": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    }
-                  },
-                  "required": [
-                    "score",
-                    "ratingCount",
-                    "positiveRatingCount",
-                    "negativeRatingCount"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "required": [
-                "provider",
-                "model",
-                "rank",
-                "role",
-                "trafficPct",
-                "ratingScore",
-                "ratingCount",
-                "projectedCostNanoUsd",
-                "score"
-              ],
-              "additionalProperties": false
-            },
-            "replacement": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string"
-                    },
-                    "model": {
-                      "type": "string"
-                    },
-                    "rank": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "primary",
-                        "challenger",
-                        "fallback",
-                        "quarantined"
-                      ]
-                    },
-                    "trafficPct": {
-                      "type": "number"
-                    },
-                    "ratingScore": {
-                      "anyOf": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "ratingCount": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "projectedCostNanoUsd": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "pattern": "^\\d+$",
-                          "description": "Integer serialized as a decimal string; monetary values are nano-USD."
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "score": {
-                      "type": "object",
-                      "properties": {
-                        "score": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "ratingCount": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "positiveRatingCount": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "negativeRatingCount": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        }
-                      },
-                      "required": [
-                        "score",
-                        "ratingCount",
-                        "positiveRatingCount",
-                        "negativeRatingCount"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model",
-                    "rank",
-                    "role",
-                    "trafficPct",
-                    "ratingScore",
-                    "ratingCount",
-                    "projectedCostNanoUsd",
-                    "score"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "reason": {
-              "type": "string"
-            },
-            "scores": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "score": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  "ratingCount": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "positiveRatingCount": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "negativeRatingCount": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "required": [
-                  "score",
-                  "ratingCount",
-                  "positiveRatingCount",
-                  "negativeRatingCount"
-                ],
-                "additionalProperties": false
-              }
-            }
-          },
-          "required": [
-            "kind",
-            "incumbent",
-            "replacement",
-            "reason",
-            "scores"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "AdminUnavailableResponse": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "error": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "enum": [
-                      "router_unavailable",
-                      "router_candidates_exhausted",
-                      "router_budget_exhausted",
-                      "router_rejected",
-                      "router_internal"
-                    ]
-                  },
-                  "message": {
-                    "type": "string"
-                  },
-                  "retryable": {
-                    "type": "boolean"
-                  },
-                  "executionStarted": {
-                    "type": "boolean"
-                  },
-                  "requestId": {
-                    "type": "string"
-                  },
-                  "attempts": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "provider": {
-                          "type": "string"
-                        },
-                        "model": {
-                          "type": "string"
-                        },
-                        "attempt": {
-                          "type": "integer",
-                          "exclusiveMinimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "outcome": {
-                          "type": "string",
-                          "enum": [
-                            "error",
-                            "timeout"
-                          ]
-                        },
-                        "errorCode": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "provider",
-                        "model",
-                        "attempt",
-                        "outcome"
-                      ],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "required": [
-                  "code",
-                  "message",
-                  "retryable",
-                  "executionStarted"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "error"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "error": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "const": "router_unavailable"
-                  },
-                  "message": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "code",
-                  "message"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "error"
-            ],
-            "additionalProperties": false
-          }
-        ]
-      },
       "AssetReference": {
         "type": "object",
         "properties": {
@@ -2296,27 +1058,11 @@
               },
               "configured": {
                 "type": "boolean"
-              },
-              "selectorVersion": {
-                "type": "string"
-              },
-              "modes": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "legacy",
-                    "jev_shadow",
-                    "jev_active"
-                  ]
-                }
               }
             },
             "required": [
               "model",
-              "configured",
-              "selectorVersion",
-              "modes"
+              "configured"
             ],
             "additionalProperties": false
           },
@@ -2398,68 +1144,13 @@
         "type": "object",
         "properties": {
           "tenantId": {
+            "default": "glass",
             "type": "string",
             "minLength": 1
           },
           "orgId": {
             "type": "string",
             "minLength": 1
-          },
-          "settings": {
-            "type": "object",
-            "properties": {
-              "routes": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ]
-                }
-              },
-              "routeSources": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "enum": [
-                    "broker",
-                    "global",
-                    "static"
-                  ]
-                }
-              },
-              "providerKeys": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-              }
-            }
           },
           "texts": {
             "minItems": 1,
@@ -2477,16 +1168,46 @@
           },
           "trace": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "traceId": {
+                "type": "string"
+              },
+              "parentRequestId": {
+                "type": "string"
+              },
+              "caller": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
             },
-            "additionalProperties": {}
+            "additionalProperties": false
           }
         },
         "required": [
-          "tenantId",
           "texts"
         ],
+        "additionalProperties": false,
         "description": "The product of texts.length and dimensions (default 1536) must not exceed 200000. Chunk larger batches before sending them."
       },
       "EmbedResponse": {
@@ -2590,188 +1311,64 @@
           "routing": {
             "type": "object",
             "properties": {
-              "selection": {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "legacy",
-                      "jev_shadow",
-                      "jev_active"
-                    ]
-                  },
-                  "selectorVersion": {
-                    "type": "string"
-                  },
-                  "outcome": {
-                    "type": "string",
-                    "enum": [
-                      "bypass",
-                      "default",
-                      "accepted"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  },
-                  "durationMs": {
-                    "type": "number"
-                  },
-                  "costNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "requestId": {
-                    "type": "string"
-                  },
-                  "proposedRoute": {
-                    "type": "object",
-                    "properties": {
-                      "provider": {
-                        "type": "string"
-                      },
-                      "model": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "model"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "generationAttemptsCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "totalCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "estimatedInputTokens": {
-                    "type": "number"
-                  },
-                  "estimatedOutputTokens": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "expectedFallbackCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "mode",
-                  "selectorVersion",
-                  "outcome",
-                  "reason",
-                  "durationMs",
-                  "costNanoUsd",
-                  "estimatedInputTokens",
-                  "estimatedOutputTokens",
-                  "expectedFallbackCostNanoUsd"
-                ],
-                "additionalProperties": false
-              },
               "decision": {
+                "type": "string",
+                "enum": [
+                  "routed",
+                  "manual"
+                ]
+              },
+              "primitive": {
                 "type": "string"
               },
-              "candidatesConsidered": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "policyVersion": {
+              "difficulty": {
                 "anyOf": [
                   {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
                   },
                   {
                     "type": "null"
                   }
                 ]
               },
-              "cacheStickinessApplied": {
-                "type": "boolean"
-              },
-              "routeSource": {
-                "type": "string",
-                "enum": [
-                  "broker",
-                  "global",
-                  "static",
-                  "fallback",
-                  "request_pin",
-                  "operator_pin",
-                  "autonomous"
+              "requiredTier": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
                 ]
               },
-              "attemptCount": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
+              "selectedTier": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
               },
-              "shadowMode": {
-                "default": false,
-                "type": "boolean"
-              },
-              "wouldHaveChosen": {
+              "route": {
                 "type": "object",
                 "properties": {
                   "provider": {
@@ -2790,30 +1387,37 @@
                   "model": {
                     "type": "string",
                     "minLength": 1
-                  },
-                  "decision": {
-                    "type": "string",
-                    "minLength": 1
                   }
                 },
                 "required": [
                   "provider",
-                  "model",
-                  "decision"
+                  "model"
                 ],
                 "additionalProperties": false
               },
-              "wouldHaveMatched": {
-                "type": "boolean"
+              "source": {
+                "type": "string",
+                "enum": [
+                  "jev",
+                  "fallback",
+                  "manual"
+                ]
+              },
+              "attemptCount": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": [
               "decision",
-              "candidatesConsidered",
-              "policyVersion",
-              "cacheStickinessApplied",
-              "attemptCount",
-              "shadowMode"
+              "primitive",
+              "difficulty",
+              "requiredTier",
+              "selectedTier",
+              "route",
+              "source",
+              "attemptCount"
             ],
             "additionalProperties": false
           },
@@ -2840,6 +1444,7 @@
             "minLength": 1
           },
           "tenantId": {
+            "default": "glass",
             "type": "string",
             "minLength": 1
           },
@@ -2986,18 +1591,48 @@
           },
           "trace": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "traceId": {
+                "type": "string"
+              },
+              "parentRequestId": {
+                "type": "string"
+              },
+              "caller": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
             },
-            "additionalProperties": {}
+            "additionalProperties": false
           }
         },
         "required": [
           "requestId",
-          "tenantId",
           "idempotencyKey",
           "signals"
-        ]
+        ],
+        "additionalProperties": false
       },
       "FeedbackResponse": {
         "type": "object",
@@ -3016,7 +1651,7 @@
         ],
         "additionalProperties": false
       },
-      "FreezeRequest": {
+      "GenerateRequest": {
         "type": "object",
         "properties": {
           "tenantId": {
@@ -3024,137 +1659,40 @@
             "type": "string",
             "minLength": 1
           },
-          "taskFamily": {
-            "type": "string",
-            "minLength": 1
-          },
-          "frozen": {
-            "type": "boolean"
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "frozen",
-          "reason"
-        ]
-      },
-      "FreezeResponse": {
-        "type": "object",
-        "properties": {
-          "frozen": {
-            "type": "boolean"
-          },
-          "policyVersion": {
-            "type": "string"
-          },
-          "controlVersion": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "frozen",
-          "policyVersion",
-          "controlVersion"
-        ],
-        "additionalProperties": false
-      },
-      "GenerateRequest": {
-        "type": "object",
-        "properties": {
-          "task": {
-            "type": "string",
-            "enum": [
-              "chat",
-              "chat_vision",
-              "voice_transcription",
-              "email_draft",
-              "email_reply",
-              "extraction",
-              "extraction_preview",
-              "extraction_coverage_recovery",
-              "classification",
-              "requirement_extraction",
-              "org_memory_extraction",
-              "analysis",
-              "summary",
-              "triage",
-              "email_extraction",
-              "document_extraction",
-              "security",
-              "mailbox_coordinator",
-              "embeddings"
-            ]
-          },
-          "taskKind": {
-            "type": "string",
-            "minLength": 1
-          },
-          "tenantId": {
-            "type": "string",
-            "minLength": 1
-          },
           "orgId": {
             "type": "string",
             "minLength": 1
           },
-          "settings": {
+          "primitive": {
+            "type": "string",
+            "enum": [
+              "text",
+              "reasoning",
+              "multimodal",
+              "tool_use",
+              "embedding",
+              "transcription"
+            ]
+          },
+          "requirements": {
             "type": "object",
             "properties": {
-              "routes": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ]
-                }
+              "vision": {
+                "type": "boolean"
               },
-              "routeSources": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "enum": [
-                    "broker",
-                    "global",
-                    "static"
-                  ]
-                }
+              "tools": {
+                "type": "boolean"
               },
-              "providerKeys": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
+              "structuredOutput": {
+                "type": "boolean"
+              },
+              "minInputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
-            }
+            },
+            "additionalProperties": false
           },
           "system": {
             "type": "string"
@@ -3421,10 +1959,6 @@
             "minimum": 100,
             "maximum": 900000
           },
-          "sessionKey": {
-            "type": "string",
-            "minLength": 1
-          },
           "tools": {
             "type": "array",
             "items": {
@@ -3451,40 +1985,6 @@
               ]
             }
           },
-          "routing": {
-            "type": "object",
-            "properties": {
-              "pin": {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "google",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek"
-                    ]
-                  },
-                  "model": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "provider",
-                  "model"
-                ]
-              },
-              "allowFallback": {
-                "type": "boolean"
-              }
-            }
-          },
           "trace": {
             "type": "object",
             "properties": {
@@ -3494,22 +1994,37 @@
               "parentRequestId": {
                 "type": "string"
               },
-              "label": {
+              "caller": {
                 "type": "string"
               },
-              "phase": {
-                "type": "string"
-              },
-              "channel": {
-                "type": "string"
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
               }
             },
-            "additionalProperties": {}
+            "additionalProperties": false
           }
         },
         "required": [
-          "task",
-          "tenantId"
+          "primitive"
         ],
         "additionalProperties": false,
         "oneOf": [
@@ -3626,188 +2141,64 @@
           "routing": {
             "type": "object",
             "properties": {
-              "selection": {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "legacy",
-                      "jev_shadow",
-                      "jev_active"
-                    ]
-                  },
-                  "selectorVersion": {
-                    "type": "string"
-                  },
-                  "outcome": {
-                    "type": "string",
-                    "enum": [
-                      "bypass",
-                      "default",
-                      "accepted"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  },
-                  "durationMs": {
-                    "type": "number"
-                  },
-                  "costNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "requestId": {
-                    "type": "string"
-                  },
-                  "proposedRoute": {
-                    "type": "object",
-                    "properties": {
-                      "provider": {
-                        "type": "string"
-                      },
-                      "model": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "model"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "generationAttemptsCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "totalCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "estimatedInputTokens": {
-                    "type": "number"
-                  },
-                  "estimatedOutputTokens": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "expectedFallbackCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "mode",
-                  "selectorVersion",
-                  "outcome",
-                  "reason",
-                  "durationMs",
-                  "costNanoUsd",
-                  "estimatedInputTokens",
-                  "estimatedOutputTokens",
-                  "expectedFallbackCostNanoUsd"
-                ],
-                "additionalProperties": false
-              },
               "decision": {
+                "type": "string",
+                "enum": [
+                  "routed",
+                  "manual"
+                ]
+              },
+              "primitive": {
                 "type": "string"
               },
-              "candidatesConsidered": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "policyVersion": {
+              "difficulty": {
                 "anyOf": [
                   {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
                   },
                   {
                     "type": "null"
                   }
                 ]
               },
-              "cacheStickinessApplied": {
-                "type": "boolean"
-              },
-              "routeSource": {
-                "type": "string",
-                "enum": [
-                  "broker",
-                  "global",
-                  "static",
-                  "fallback",
-                  "request_pin",
-                  "operator_pin",
-                  "autonomous"
+              "requiredTier": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
                 ]
               },
-              "attemptCount": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
+              "selectedTier": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
               },
-              "shadowMode": {
-                "default": false,
-                "type": "boolean"
-              },
-              "wouldHaveChosen": {
+              "route": {
                 "type": "object",
                 "properties": {
                   "provider": {
@@ -3826,30 +2217,37 @@
                   "model": {
                     "type": "string",
                     "minLength": 1
-                  },
-                  "decision": {
-                    "type": "string",
-                    "minLength": 1
                   }
                 },
                 "required": [
                   "provider",
-                  "model",
-                  "decision"
+                  "model"
                 ],
                 "additionalProperties": false
               },
-              "wouldHaveMatched": {
-                "type": "boolean"
+              "source": {
+                "type": "string",
+                "enum": [
+                  "jev",
+                  "fallback",
+                  "manual"
+                ]
+              },
+              "attemptCount": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": [
               "decision",
-              "candidatesConsidered",
-              "policyVersion",
-              "cacheStickinessApplied",
-              "attemptCount",
-              "shadowMode"
+              "primitive",
+              "difficulty",
+              "requiredTier",
+              "selectedTier",
+              "route",
+              "source",
+              "attemptCount"
             ],
             "additionalProperties": false
           },
@@ -4105,7 +2503,7 @@
         ],
         "additionalProperties": false
       },
-      "PinRequest": {
+      "ManualRequest": {
         "type": "object",
         "properties": {
           "tenantId": {
@@ -4113,69 +2511,421 @@
             "type": "string",
             "minLength": 1
           },
-          "taskFamily": {
+          "orgId": {
             "type": "string",
             "minLength": 1
           },
-          "route": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "google",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek"
-                    ]
-                  },
-                  "model": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "provider",
-                  "model"
-                ]
-              },
-              {
-                "type": "null"
-              }
+          "primitive": {
+            "type": "string",
+            "enum": [
+              "text",
+              "reasoning",
+              "multimodal",
+              "tool_use",
+              "embedding",
+              "transcription"
             ]
           },
-          "reason": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "taskFamily",
-          "route",
-          "reason"
-        ]
-      },
-      "PinResponse": {
-        "type": "object",
-        "properties": {
-          "pinned": {
-            "type": "boolean"
+          "requirements": {
+            "type": "object",
+            "properties": {
+              "vision": {
+                "type": "boolean"
+              },
+              "tools": {
+                "type": "boolean"
+              },
+              "structuredOutput": {
+                "type": "boolean"
+              },
+              "minInputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
           },
-          "controlVersion": {
+          "system": {
             "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant",
+                    "tool"
+                  ]
+                },
+                "content": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "text"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "text"
+                            ]
+                          },
+                          {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "image"
+                                  },
+                                  "image": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "mediaType": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "image"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "image"
+                                  },
+                                  "source": {
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string",
+                                        "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/)"
+                                      },
+                                      "mediaType": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "filename": {
+                                        "type": "string"
+                                      },
+                                      "sizeBytes": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 12582912
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "url",
+                                      "mediaType",
+                                      "sizeBytes"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "source"
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "file"
+                                  },
+                                  "data": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "mediaType": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "filename": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "data",
+                                  "mediaType"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "file"
+                                  },
+                                  "source": {
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string",
+                                        "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/)"
+                                      },
+                                      "mediaType": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "filename": {
+                                        "type": "string"
+                                      },
+                                      "sizeBytes": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 12582912
+                                      },
+                                      "sha256": {
+                                        "type": "string",
+                                        "pattern": "^[a-f0-9]{64}$"
+                                      }
+                                    },
+                                    "required": [
+                                      "url",
+                                      "mediaType",
+                                      "sizeBytes"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "source"
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "tool-call"
+                              },
+                              "toolCallId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "toolName": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "input": {}
+                            },
+                            "required": [
+                              "type",
+                              "toolCallId",
+                              "toolName",
+                              "input"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "tool-result"
+                              },
+                              "toolCallId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "toolName": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "output": {}
+                            },
+                            "required": [
+                              "type",
+                              "toolCallId",
+                              "toolName",
+                              "output"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "role",
+                "content"
+              ]
+            }
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "schemaDialect": {
+            "type": "string",
+            "const": "https://json-schema.org/draft/2020-12/schema"
+          },
+          "maxTokens": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 900000
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": {
+                  "type": "string"
+                },
+                "inputSchema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "name",
+                "inputSchema"
+              ]
+            }
+          },
+          "trace": {
+            "type": "object",
+            "properties": {
+              "traceId": {
+                "type": "string"
+              },
+              "parentRequestId": {
+                "type": "string"
+              },
+              "caller": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "route": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "google",
+                  "xai",
+                  "mistral",
+                  "cohere",
+                  "fireworks",
+                  "deepseek"
+                ]
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "provider",
+              "model"
+            ]
           }
         },
         "required": [
-          "pinned",
-          "controlVersion"
+          "primitive",
+          "route"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "prompt": {},
+              "messages": false
+            },
+            "required": [
+              "prompt"
+            ]
+          },
+          {
+            "properties": {
+              "messages": {},
+              "prompt": false
+            },
+            "required": [
+              "messages"
+            ]
+          }
+        ]
       },
       "RetrieveRequest": {
         "type": "object",
@@ -4468,229 +3218,6 @@
         ],
         "additionalProperties": false
       },
-      "ScoreRequest": {
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "default": "glass",
-            "type": "string",
-            "minLength": 1
-          },
-          "taskFamily": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "SelectionControlRequest": {
-        "type": "object",
-        "properties": {
-          "tenantId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "taskFamily": {
-            "type": "string",
-            "minLength": 1
-          },
-          "expectedHeadId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
-          },
-          "selection": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "number",
-                "const": 1
-              },
-              "mode": {
-                "type": "string",
-                "enum": [
-                  "legacy",
-                  "jev_shadow",
-                  "jev_active"
-                ]
-              },
-              "threshold": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "evaluation": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 256
-                  },
-                  "taskFamily": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 256
-                  },
-                  "risk": {
-                    "type": "string",
-                    "enum": [
-                      "reversible",
-                      "consequential"
-                    ]
-                  },
-                  "heldOutSamples": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "accuracyDelta": {
-                    "type": "number",
-                    "minimum": -1,
-                    "maximum": 1
-                  },
-                  "threshold": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  "candidates": {
-                    "minItems": 1,
-                    "maxItems": 32,
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "model": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "strengths": {
-                          "minItems": 1,
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "maxLength": 512
-                          }
-                        },
-                        "limitations": {
-                          "maxItems": 12,
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "maxLength": 512
-                          }
-                        },
-                        "supportsTools": {
-                          "type": "boolean"
-                        },
-                        "supportsStructuredOutput": {
-                          "type": "boolean"
-                        },
-                        "quality": {
-                          "anyOf": [
-                            {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "qualitySamples": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "latencyMs": {
-                          "anyOf": [
-                            {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        }
-                      },
-                      "required": [
-                        "provider",
-                        "model",
-                        "strengths",
-                        "limitations",
-                        "supportsTools",
-                        "supportsStructuredOutput",
-                        "quality",
-                        "qualitySamples",
-                        "latencyMs"
-                      ],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "required": [
-                  "id",
-                  "taskFamily",
-                  "risk",
-                  "heldOutSamples",
-                  "accuracyDelta",
-                  "threshold",
-                  "candidates"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "version",
-              "mode"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "tenantId",
-          "expectedHeadId",
-          "reason",
-          "selection"
-        ],
-        "additionalProperties": false
-      },
-      "SelectionControlResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "version": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "id",
-          "version"
-        ],
-        "additionalProperties": false
-      },
       "StreamEvent": {
         "oneOf": [
           {
@@ -4836,188 +3363,64 @@
               "routing": {
                 "type": "object",
                 "properties": {
-                  "selection": {
-                    "type": "object",
-                    "properties": {
-                      "mode": {
-                        "type": "string",
-                        "enum": [
-                          "legacy",
-                          "jev_shadow",
-                          "jev_active"
-                        ]
-                      },
-                      "selectorVersion": {
-                        "type": "string"
-                      },
-                      "outcome": {
-                        "type": "string",
-                        "enum": [
-                          "bypass",
-                          "default",
-                          "accepted"
-                        ]
-                      },
-                      "reason": {
-                        "type": "string"
-                      },
-                      "durationMs": {
-                        "type": "number"
-                      },
-                      "costNanoUsd": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "requestId": {
-                        "type": "string"
-                      },
-                      "proposedRoute": {
-                        "type": "object",
-                        "properties": {
-                          "provider": {
-                            "type": "string"
-                          },
-                          "model": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "provider",
-                          "model"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "generationAttemptsCostNanoUsd": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "totalCostNanoUsd": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "estimatedInputTokens": {
-                        "type": "number"
-                      },
-                      "estimatedOutputTokens": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "expectedFallbackCostNanoUsd": {
-                        "anyOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "mode",
-                      "selectorVersion",
-                      "outcome",
-                      "reason",
-                      "durationMs",
-                      "costNanoUsd",
-                      "estimatedInputTokens",
-                      "estimatedOutputTokens",
-                      "expectedFallbackCostNanoUsd"
-                    ],
-                    "additionalProperties": false
-                  },
                   "decision": {
+                    "type": "string",
+                    "enum": [
+                      "routed",
+                      "manual"
+                    ]
+                  },
+                  "primitive": {
                     "type": "string"
                   },
-                  "candidatesConsidered": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "provider": {
-                          "type": "string",
-                          "enum": [
-                            "openai",
-                            "anthropic",
-                            "google",
-                            "xai",
-                            "mistral",
-                            "cohere",
-                            "fireworks",
-                            "deepseek"
-                          ]
-                        },
-                        "model": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "provider",
-                        "model"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "policyVersion": {
+                  "difficulty": {
                     "anyOf": [
                       {
-                        "type": "string"
+                        "type": "string",
+                        "enum": [
+                          "simple",
+                          "standard",
+                          "complex"
+                        ]
                       },
                       {
                         "type": "null"
                       }
                     ]
                   },
-                  "cacheStickinessApplied": {
-                    "type": "boolean"
-                  },
-                  "routeSource": {
-                    "type": "string",
-                    "enum": [
-                      "broker",
-                      "global",
-                      "static",
-                      "fallback",
-                      "request_pin",
-                      "operator_pin",
-                      "autonomous"
+                  "requiredTier": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
                     ]
                   },
-                  "attemptCount": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 9007199254740991
+                  "selectedTier": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
                   },
-                  "shadowMode": {
-                    "default": false,
-                    "type": "boolean"
-                  },
-                  "wouldHaveChosen": {
+                  "route": {
                     "type": "object",
                     "properties": {
                       "provider": {
@@ -5036,30 +3439,37 @@
                       "model": {
                         "type": "string",
                         "minLength": 1
-                      },
-                      "decision": {
-                        "type": "string",
-                        "minLength": 1
                       }
                     },
                     "required": [
                       "provider",
-                      "model",
-                      "decision"
+                      "model"
                     ],
                     "additionalProperties": false
                   },
-                  "wouldHaveMatched": {
-                    "type": "boolean"
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "jev",
+                      "fallback",
+                      "manual"
+                    ]
+                  },
+                  "attemptCount": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
                   "decision",
-                  "candidatesConsidered",
-                  "policyVersion",
-                  "cacheStickinessApplied",
-                  "attemptCount",
-                  "shadowMode"
+                  "primitive",
+                  "difficulty",
+                  "requiredTier",
+                  "selectedTier",
+                  "route",
+                  "source",
+                  "attemptCount"
                 ],
                 "additionalProperties": false
               },
@@ -5181,68 +3591,13 @@
         "type": "object",
         "properties": {
           "tenantId": {
+            "default": "glass",
             "type": "string",
             "minLength": 1
           },
           "orgId": {
             "type": "string",
             "minLength": 1
-          },
-          "settings": {
-            "type": "object",
-            "properties": {
-              "routes": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ]
-                }
-              },
-              "routeSources": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "enum": [
-                    "broker",
-                    "global",
-                    "static"
-                  ]
-                }
-              },
-              "providerKeys": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-              }
-            }
           },
           "prompt": {
             "type": "string"
@@ -5255,82 +3610,55 @@
           },
           "trace": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "traceId": {
+                "type": "string"
+              },
+              "parentRequestId": {
+                "type": "string"
+              },
+              "caller": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
             },
-            "additionalProperties": {}
+            "additionalProperties": false
           }
         },
-        "required": [
-          "tenantId"
-        ]
+        "additionalProperties": false
       },
       "TranscribeRequest": {
         "type": "object",
         "properties": {
           "tenantId": {
+            "default": "glass",
             "type": "string",
             "minLength": 1
           },
           "orgId": {
             "type": "string",
             "minLength": 1
-          },
-          "settings": {
-            "type": "object",
-            "properties": {
-              "routes": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ]
-                }
-              },
-              "routeSources": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "string",
-                  "enum": [
-                    "broker",
-                    "global",
-                    "static"
-                  ]
-                }
-              },
-              "providerKeys": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-              }
-            }
           },
           "prompt": {
             "type": "string"
@@ -5343,10 +3671,40 @@
           },
           "trace": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "traceId": {
+                "type": "string"
+              },
+              "parentRequestId": {
+                "type": "string"
+              },
+              "caller": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
             },
-            "additionalProperties": {}
+            "additionalProperties": false
           },
           "audio": {
             "type": "object",
@@ -5380,9 +3738,9 @@
           }
         },
         "required": [
-          "tenantId",
           "audio"
-        ]
+        ],
+        "additionalProperties": false
       },
       "TranscribeResponse": {
         "type": "object",
@@ -5483,188 +3841,64 @@
           "routing": {
             "type": "object",
             "properties": {
-              "selection": {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "enum": [
-                      "legacy",
-                      "jev_shadow",
-                      "jev_active"
-                    ]
-                  },
-                  "selectorVersion": {
-                    "type": "string"
-                  },
-                  "outcome": {
-                    "type": "string",
-                    "enum": [
-                      "bypass",
-                      "default",
-                      "accepted"
-                    ]
-                  },
-                  "reason": {
-                    "type": "string"
-                  },
-                  "durationMs": {
-                    "type": "number"
-                  },
-                  "costNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "requestId": {
-                    "type": "string"
-                  },
-                  "proposedRoute": {
-                    "type": "object",
-                    "properties": {
-                      "provider": {
-                        "type": "string"
-                      },
-                      "model": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "model"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "generationAttemptsCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "totalCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "estimatedInputTokens": {
-                    "type": "number"
-                  },
-                  "estimatedOutputTokens": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "expectedFallbackCostNanoUsd": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "mode",
-                  "selectorVersion",
-                  "outcome",
-                  "reason",
-                  "durationMs",
-                  "costNanoUsd",
-                  "estimatedInputTokens",
-                  "estimatedOutputTokens",
-                  "expectedFallbackCostNanoUsd"
-                ],
-                "additionalProperties": false
-              },
               "decision": {
+                "type": "string",
+                "enum": [
+                  "routed",
+                  "manual"
+                ]
+              },
+              "primitive": {
                 "type": "string"
               },
-              "candidatesConsidered": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "enum": [
-                        "openai",
-                        "anthropic",
-                        "google",
-                        "xai",
-                        "mistral",
-                        "cohere",
-                        "fireworks",
-                        "deepseek"
-                      ]
-                    },
-                    "model": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "model"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "policyVersion": {
+              "difficulty": {
                 "anyOf": [
                   {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
                   },
                   {
                     "type": "null"
                   }
                 ]
               },
-              "cacheStickinessApplied": {
-                "type": "boolean"
-              },
-              "routeSource": {
-                "type": "string",
-                "enum": [
-                  "broker",
-                  "global",
-                  "static",
-                  "fallback",
-                  "request_pin",
-                  "operator_pin",
-                  "autonomous"
+              "requiredTier": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
                 ]
               },
-              "attemptCount": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
+              "selectedTier": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
               },
-              "shadowMode": {
-                "default": false,
-                "type": "boolean"
-              },
-              "wouldHaveChosen": {
+              "route": {
                 "type": "object",
                 "properties": {
                   "provider": {
@@ -5683,30 +3917,37 @@
                   "model": {
                     "type": "string",
                     "minLength": 1
-                  },
-                  "decision": {
-                    "type": "string",
-                    "minLength": 1
                   }
                 },
                 "required": [
                   "provider",
-                  "model",
-                  "decision"
+                  "model"
                 ],
                 "additionalProperties": false
               },
-              "wouldHaveMatched": {
-                "type": "boolean"
+              "source": {
+                "type": "string",
+                "enum": [
+                  "jev",
+                  "fallback",
+                  "manual"
+                ]
+              },
+              "attemptCount": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": [
               "decision",
-              "candidatesConsidered",
-              "policyVersion",
-              "cacheStickinessApplied",
-              "attemptCount",
-              "shadowMode"
+              "primitive",
+              "difficulty",
+              "requiredTier",
+              "selectedTier",
+              "route",
+              "source",
+              "attemptCount"
             ],
             "additionalProperties": false
           },

@@ -8,13 +8,13 @@ function embeddingResponse(embeddings: number[][]) {
     requestId: "embed-request-1",
     model: { provider: "openai", model: "text-embedding-3-small" },
     routing: {
-      decision: "snapshot",
-      candidatesConsidered: [
-        { provider: "openai", model: "text-embedding-3-small" },
-      ],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: false,
-      routeSource: "global",
+      decision: "routed",
+      primitive: "embedding",
+      difficulty: "simple",
+      requiredTier: 1,
+      selectedTier: 1,
+      route: { provider: "openai", model: "text-embedding-3-small" },
+      source: "jev",
       attemptCount: 1,
     },
     usage: { inputTokens: 4, outputTokens: 0, cachedInputTokens: 0 },
@@ -43,17 +43,13 @@ function generationResponse(output: unknown) {
     requestId: "generate-request-1",
     model: { provider: "openai", model: "gpt-5.4-mini" },
     routing: {
-      decision: "pinned",
-      candidatesConsidered: [
-        { provider: "openai", model: "gpt-5.4-mini" },
-        {
-          provider: "fireworks",
-          model: "accounts/fireworks/models/deepseek-v4-pro",
-        },
-      ],
-      policyVersion: "policy-v2",
-      cacheStickinessApplied: false,
-      routeSource: "org",
+      decision: "routed",
+      primitive: "multimodal",
+      difficulty: "standard",
+      requiredTier: 2,
+      selectedTier: 2,
+      route: { provider: "openai", model: "gpt-5.4-mini" },
+      source: "jev",
       attemptCount: 2,
     },
     usage: {
@@ -156,15 +152,23 @@ describe("cl-router embedding callbacks", () => {
       ([, init]) =>
         JSON.parse((init as RequestInit).body as string) as {
           texts: string[];
-          trace: { batchIndex: number; batchCount: number };
+          trace: {
+            caller?: string;
+            tags?: { batchIndex: number; batchCount: number };
+          };
         },
     );
     expect(requests.map((request) => request.texts.length)).toEqual([130, 1]);
     expect(requests.map((request) => request.trace)).toEqual([
-      expect.objectContaining({ batchIndex: 1, batchCount: 2 }),
-      expect.objectContaining({ batchIndex: 2, batchCount: 2 }),
+      expect.objectContaining({
+        caller: "convex.sdkCallbacks.makeEmbedTexts",
+        tags: expect.objectContaining({ batchIndex: 1, batchCount: 2 }),
+      }),
+      expect.objectContaining({
+        caller: "convex.sdkCallbacks.makeEmbedTexts",
+        tags: expect.objectContaining({ batchIndex: 2, batchCount: 2 }),
+      }),
     ]);
-    expect(ctx.runQuery).toHaveBeenCalledOnce();
   });
 });
 
@@ -227,25 +231,33 @@ describe("cl-router generation callbacks", () => {
     expect(request).toMatchObject({
       tenantId: "glass",
       orgId: "org-1",
-      task: "extraction",
-      taskKind: "extraction_source_tree",
+      primitive: "multimodal",
+      requirements: { structuredOutput: true },
       system: "Extract only sourced values.",
       maxTokens: 4_096,
-      sessionKey: "trace-1",
-      settings: ctx.settings,
-      routing: {
-        allowFallback: true,
-      },
       trace: {
         traceId: "trace-1",
-        label: "Build source tree",
-        phase: "source_tree",
-        taskKind: "extraction_source_tree",
-        policyId: "policy-1",
-        channel: "convex",
+        caller: "Build source tree",
+        tags: {
+          label: "Build source tree",
+          phase: "source_tree",
+          task: "extraction",
+          taskKind: "extraction_source_tree",
+          policyId: "policy-1",
+          channel: "convex",
+        },
       },
     });
-    expect(request.routing).not.toHaveProperty("pin");
+    expect(request).not.toHaveProperty("task");
+    expect(request).not.toHaveProperty("taskKind");
+    expect(request).not.toHaveProperty("sessionKey");
+    expect(request).not.toHaveProperty("settings");
+    expect(request).not.toHaveProperty("routing");
+    expect(request).not.toHaveProperty("toolChoice");
+    expect(request.trace).not.toHaveProperty("taskKind");
+    expect(request.trace).not.toHaveProperty("label");
+    expect(request.trace).not.toHaveProperty("phase");
+    expect(request.trace).not.toHaveProperty("channel");
     expect(request.schema).toMatchObject({
       type: "object",
       properties: { ok: { type: "boolean" } },
@@ -285,7 +297,7 @@ describe("cl-router generation callbacks", () => {
       taskKind: "extraction_source_tree",
       provider: "openai",
       model: "gpt-5.4-mini",
-      routeSource: "org",
+      routeSource: "jev",
       transport: "cl-router",
       attempt: 2,
       inputTokens: 41,
@@ -294,7 +306,7 @@ describe("cl-router generation callbacks", () => {
       routerRequestId: "generate-request-1",
       costUsd: 0.00125,
       costStatus: "priced",
-      routingDecision: "pinned",
+      routingDecision: "routed",
       routing: generationResponse(null).routing,
       status: "complete",
     });
@@ -515,9 +527,16 @@ vi.mock("./routerJobClient", async (importOriginal) => ({
     payload: unknown,
   ) => {
     const client = await import("./clRouterClient");
-    if (operation !== "generate") throw new Error("Unexpected test operation");
-    return client.clRouterGenerate(
-      payload as Parameters<typeof client.clRouterGenerate>[0],
-    );
+    if (operation === "manual") {
+      return client.clRouterGenerateManual(
+        payload as Parameters<typeof client.clRouterGenerateManual>[0],
+      );
+    }
+    if (operation === "generate") {
+      return client.clRouterGenerate(
+        payload as Parameters<typeof client.clRouterGenerate>[0],
+      );
+    }
+    throw new Error("Unexpected test operation");
   },
 }));

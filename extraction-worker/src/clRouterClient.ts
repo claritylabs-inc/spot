@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import {
-  parseRoutingSelectionMetadata,
-  type RoutingSelectionMetadata,
-} from "@claritylabs/cl-router-policy";
+  clRouterMessagesHaveVision,
+  mapSpotCallToClRouterPrimitive,
+  type ClRouterPrimitive,
+  type ClRouterRequirements,
+} from "./clRouterPrimitive.js";
 
 export type ClRouterModelRoute = {
   provider: string;
@@ -45,17 +47,35 @@ export type ClRouterProviderAssets = {
   >;
 };
 
+export type ClRouterTraceTagValue = string | number | boolean | null;
+
+/** Trace metadata as cl-router accepts it; the router validates it strictly. */
+export type ClRouterTraceMetadata = {
+  traceId?: string;
+  parentRequestId?: string;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
+};
+
+/** Worker-side trace input; extra keys are folded into `tags` on the wire. */
+export type ClRouterTraceInput = {
+  traceId?: string;
+  parentRequestId?: string;
+  caller?: string;
+  tags?: Record<string, ClRouterTraceTagValue>;
+  [key: string]: unknown;
+};
+
 export const CL_ROUTER_MAX_ASSET_BYTES = 12 * 1024 * 1024;
 export const CL_ROUTER_MAX_AGGREGATE_ASSET_BYTES = 16 * 1024 * 1024;
 export const CL_ROUTER_MAX_ASSETS = 8;
 export const CL_ROUTER_MAX_JSON_BYTES = 4 * 1024 * 1024;
 
 export type ClRouterGenerateRequest = {
-  task: string;
-  taskKind?: string;
   tenantId: string;
   orgId?: string;
-  settings?: ClRouterSettingsSnapshot;
+  primitive: ClRouterPrimitive;
+  requirements?: ClRouterRequirements;
   system?: string;
   messages?: ClRouterMessage[];
   prompt?: string;
@@ -63,22 +83,19 @@ export type ClRouterGenerateRequest = {
   schemaDialect?: "https://json-schema.org/draft/2020-12/schema";
   maxTokens?: number;
   executionBudgetMs?: number;
-  sessionKey?: string;
-  routing?: { pin?: ClRouterModelRoute; allowFallback?: boolean };
-  trace?: Record<string, unknown>;
+  route?: ClRouterModelRoute;
+  trace?: ClRouterTraceMetadata;
 };
 
 export type ClRouterRoutingMetadata = {
-  decision: string;
-  candidatesConsidered: ClRouterModelRoute[];
-  policyVersion: string | null;
-  cacheStickinessApplied: boolean;
-  routeSource?: string;
+  decision: "routed" | "manual";
+  primitive?: string;
+  difficulty?: "simple" | "standard" | "complex" | null;
+  requiredTier?: 1 | 2 | 3;
+  selectedTier?: 1 | 2 | 3;
+  route: ClRouterModelRoute;
+  source?: "jev" | "fallback" | "manual";
   attemptCount: number;
-  shadowMode?: boolean;
-  wouldHaveChosen?: ClRouterModelRoute & { decision: string };
-  wouldHaveMatched?: boolean;
-  selection?: RoutingSelectionMetadata;
 };
 
 export type ClRouterGenerateResponse = {
@@ -107,9 +124,12 @@ export type ClRouterClient = {
 
 export type ClRouterGenerateInput = Omit<
   ClRouterGenerateRequest,
-  "messages" | "prompt"
+  "messages" | "prompt" | "primitive" | "requirements"
 > & {
   prompt: string;
+  task?: string;
+  taskKind?: string;
+  trace?: ClRouterTraceInput;
   assets?: ClRouterProviderAssets;
 };
 
@@ -179,6 +199,84 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function traceTagValue(value: unknown): ClRouterTraceTagValue | undefined {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+export function normalizeClRouterTrace(
+  trace: ClRouterTraceInput | undefined,
+): ClRouterTraceMetadata | undefined {
+  if (!trace) return undefined;
+  const normalized: ClRouterTraceMetadata = {};
+  const tags: Record<string, ClRouterTraceTagValue> = {};
+  for (const [key, value] of Object.entries(trace)) {
+    if (value === undefined) continue;
+    if (key === "tags") {
+      if (!isRecord(value)) continue;
+      for (const [tagKey, tagValue] of Object.entries(value)) {
+        const tag = traceTagValue(tagValue);
+        if (tag !== undefined) tags[tagKey] = tag;
+      }
+      continue;
+    }
+    if (
+      (key === "traceId" || key === "parentRequestId" || key === "caller") &&
+      typeof value === "string"
+    ) {
+      normalized[key] = value;
+      continue;
+    }
+    if (key === "label" && typeof value === "string" && !normalized.caller) {
+      normalized.caller = value;
+    }
+    const tag = traceTagValue(value);
+    if (tag !== undefined) tags[key] = tag;
+  }
+  if (Object.keys(tags).length > 0) normalized.tags = tags;
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+const GENERATE_WIRE_KEYS = [
+  "orgId",
+  "primitive",
+  "requirements",
+  "system",
+  "messages",
+  "prompt",
+  "schema",
+  "schemaDialect",
+  "maxTokens",
+  "executionBudgetMs",
+] as const;
+
+export function wireClRouterGenerateRequest(
+  request: ClRouterGenerateRequest,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    tenantId: request.tenantId,
+  };
+  for (const key of GENERATE_WIRE_KEYS) {
+    if (request[key] !== undefined) body[key] = request[key];
+  }
+  const trace = normalizeClRouterTrace(request.trace);
+  if (trace) body.trace = trace;
+  if (request.route) {
+    body.route = {
+      provider: request.route.provider,
+      model: request.route.model,
+    };
+  }
+  return body;
+}
+
 export const CL_ROUTER_FAILURE_CODES = [
   "router_unavailable",
   "router_candidates_exhausted",
@@ -240,12 +338,7 @@ function isModelRoute(value: unknown): value is ClRouterModelRoute {
 }
 
 function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
-  if (
-    !isRecord(value) ||
-    !isModelRoute(value.model) ||
-    !isRecord(value.usage) ||
-    !isRecord(value.routing)
-  ) {
+  if (!isRecord(value) || !isRecord(value.usage) || !isRecord(value.routing)) {
     throw new ClRouterProtocolError(
       "cl-router returned an invalid generate response",
     );
@@ -253,7 +346,13 @@ function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
   const usage = value.usage;
   const routing = value.routing;
   const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+  const model = isModelRoute(value.model)
+    ? value.model
+    : isModelRoute(routing.route)
+      ? routing.route
+      : null;
   if (
+    !model ||
     !isNonNegativeInteger(usage.inputTokens) ||
     !isNonNegativeInteger(usage.outputTokens) ||
     !isNonNegativeInteger(usage.cachedInputTokens) ||
@@ -268,47 +367,46 @@ function parseGenerateResponse(value: unknown): ClRouterGenerateResponse {
     (value.costStatus !== "priced" && value.costStatus !== "unpriced") ||
     typeof value.requestId !== "string" ||
     value.requestId.length === 0 ||
-    typeof routing.decision !== "string" ||
-    !Array.isArray(routing.candidatesConsidered) ||
-    !routing.candidatesConsidered.every(isModelRoute) ||
-    !(
-      routing.policyVersion === null ||
-      typeof routing.policyVersion === "string"
-    ) ||
-    typeof routing.cacheStickinessApplied !== "boolean" ||
+    (routing.decision !== "routed" && routing.decision !== "manual") ||
+    !isModelRoute(routing.route) ||
     !isNonNegativeInteger(routing.attemptCount) ||
-    routing.attemptCount < 1 ||
-    (routing.routeSource !== undefined &&
-      typeof routing.routeSource !== "string") ||
-    (routing.shadowMode !== undefined &&
-      typeof routing.shadowMode !== "boolean") ||
-    (routing.wouldHaveMatched !== undefined &&
-      typeof routing.wouldHaveMatched !== "boolean") ||
-    (routing.wouldHaveChosen !== undefined &&
-      (!isRecord(routing.wouldHaveChosen) ||
-        !isModelRoute(routing.wouldHaveChosen) ||
-        typeof (routing.wouldHaveChosen as Record<string, unknown>).decision !==
-          "string"))
+    routing.attemptCount < 1
   ) {
     throw new ClRouterProtocolError(
       "cl-router returned invalid generate metadata",
     );
   }
-  let selection: RoutingSelectionMetadata | undefined;
-  if (routing.selection !== undefined) {
-    try {
-      selection = parseRoutingSelectionMetadata(routing.selection);
-    } catch {
-      throw new ClRouterProtocolError(
-        "cl-router returned invalid selection metadata",
-      );
-    }
-  }
   return {
     ...(value as ClRouterGenerateResponse),
+    model,
     routing: {
-      ...(routing as ClRouterRoutingMetadata),
-      ...(selection ? { selection } : {}),
+      decision: routing.decision,
+      route: routing.route,
+      attemptCount: routing.attemptCount,
+      ...(typeof routing.primitive === "string"
+        ? { primitive: routing.primitive }
+        : {}),
+      ...(routing.difficulty === null ||
+      routing.difficulty === "simple" ||
+      routing.difficulty === "standard" ||
+      routing.difficulty === "complex"
+        ? { difficulty: routing.difficulty }
+        : {}),
+      ...(routing.requiredTier === 1 ||
+      routing.requiredTier === 2 ||
+      routing.requiredTier === 3
+        ? { requiredTier: routing.requiredTier }
+        : {}),
+      ...(routing.selectedTier === 1 ||
+      routing.selectedTier === 2 ||
+      routing.selectedTier === 3
+        ? { selectedTier: routing.selectedTier }
+        : {}),
+      ...(routing.source === "jev" ||
+      routing.source === "fallback" ||
+      routing.source === "manual"
+        ? { source: routing.source }
+        : {}),
     },
     usage: {
       ...(usage as ClRouterGenerateResponse["usage"]),
@@ -512,23 +610,46 @@ export function buildClRouterGenerateRequest(
   input: ClRouterGenerateInput,
   executionBudgetMs?: number,
 ): ClRouterGenerateRequest {
-  const { assets, prompt, settings, ...rest } = input;
-  const request: ClRouterGenerateRequest = {
-    ...rest,
-    ...(settings
+  const inputFields = requestInput(input.prompt, input.assets);
+  const mapping = mapSpotCallToClRouterPrimitive({
+    task: input.task,
+    taskKind: input.taskKind,
+    hasStructuredOutput: true,
+    hasVision:
+      Boolean(
+        input.assets?.pdfUrl ||
+          input.assets?.pdfBase64 ||
+          input.assets?.pdfBytes,
+      ) ||
+      (input.assets?.images?.length ?? 0) > 0 ||
+      clRouterMessagesHaveVision(inputFields.messages),
+  });
+  const trace = normalizeClRouterTrace(
+    input.trace || input.task || input.taskKind
       ? {
-          settings: {
-            ...(settings.routes ? { routes: settings.routes } : {}),
-            ...(settings.routeSources
-              ? { routeSources: settings.routeSources }
-              : {}),
-          },
+          ...input.trace,
+          ...(input.task ? { task: input.task } : {}),
+          ...(input.taskKind ? { taskKind: input.taskKind } : {}),
         }
-      : {}),
-    ...(rest.executionBudgetMs === undefined && executionBudgetMs !== undefined
-      ? { executionBudgetMs }
-      : {}),
-    ...requestInput(prompt, assets),
+      : undefined,
+  );
+  const request: ClRouterGenerateRequest = {
+    tenantId: input.tenantId,
+    ...(input.orgId ? { orgId: input.orgId } : {}),
+    primitive: mapping.primitive,
+    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
+    ...(input.system ? { system: input.system } : {}),
+    ...inputFields,
+    schema: input.schema,
+    ...(input.schemaDialect ? { schemaDialect: input.schemaDialect } : {}),
+    ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+    ...(input.executionBudgetMs !== undefined
+      ? { executionBudgetMs: input.executionBudgetMs }
+      : executionBudgetMs !== undefined
+        ? { executionBudgetMs }
+        : {}),
+    ...(input.route ? { route: input.route } : {}),
+    ...(trace ? { trace } : {}),
   };
   assertRequestLimits(request);
   return request;
@@ -549,16 +670,22 @@ export function createClRouterClient(
   }
   if (!options.secret.trim()) throw new Error("CL_ROUTER_SECRET is required");
   const fetchImpl = options.fetch ?? fetch;
-  const generateUrl = new URL(
-    "v1/generate",
-    `${baseUrl.toString().replace(/\/$/, "")}/`,
-  );
+  const origin = `${baseUrl.toString().replace(/\/$/, "")}/`;
   return {
     async generate(input, executeJob) {
       const request = buildClRouterGenerateRequest(input);
       if (!executeJob) assertRouterCanFetchAssets(request, baseUrl);
-      const requestBody = JSON.stringify(request);
-      if (executeJob) return parseGenerateResponse(await executeJob(request));
+      const body = wireClRouterGenerateRequest(request);
+      const requestBody = JSON.stringify(body);
+      if (executeJob) {
+        return parseGenerateResponse(
+          await executeJob(body as ClRouterGenerateRequest),
+        );
+      }
+      const generateUrl = new URL(
+        request.route ? "v1/manual" : "v1/generate",
+        origin,
+      );
       let response: Response;
       try {
         response = await fetchImpl(generateUrl, {
@@ -573,15 +700,15 @@ export function createClRouterClient(
         throw new ClRouterConnectionError("connection", error);
       }
       if (!response.ok) throw await httpError(response);
-      let body: unknown;
+      let payload: unknown;
       try {
-        body = await response.json();
+        payload = await response.json();
       } catch (error) {
         throw new ClRouterProtocolError(
           `cl-router returned non-JSON success response: ${error instanceof Error ? error.name : "unknown"}`,
         );
       }
-      return parseGenerateResponse(body);
+      return parseGenerateResponse(payload);
     },
   };
 }

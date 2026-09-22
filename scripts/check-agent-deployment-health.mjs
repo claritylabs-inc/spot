@@ -191,7 +191,10 @@ const checks = [
             ) {
               throw new Error("policyVersion is invalid");
             }
-            if (typeof payload.frozen !== "boolean") {
+            if (
+              payload.frozen !== undefined &&
+              typeof payload.frozen !== "boolean"
+            ) {
               throw new Error("frozen state is invalid");
             }
           },

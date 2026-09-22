@@ -44,11 +44,13 @@ function routerResponse(
     requestId,
     model: selectedRoute,
     routing: {
-      decision: "pin",
-      candidatesConsidered: [selectedRoute],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: true,
-      routeSource: "global",
+      decision: "manual",
+      primitive: "tool_use",
+      difficulty: "standard",
+      requiredTier: 2,
+      selectedTier: 2,
+      route: selectedRoute,
+      source: "manual",
       attemptCount: 1,
     },
     usage: {
@@ -132,20 +134,35 @@ describe("operator model execution boundary", () => {
     expect(result.transport).toBe("cl-router");
     expect(execute).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://router.example.test/v1/manual",
+    );
     for (const [, init] of fetchMock.mock.calls) {
       const request = JSON.parse(init?.body as string);
       expect(request).toMatchObject({
         tenantId: "glass",
-        task: "chat_vision",
-        taskKind: "operator_agent",
-        sessionKey: "operator:user:thread",
-        routing: { pin: selectedRoute, allowFallback: false },
-        settings: {
-          routes: { operator_agent: selectedRoute },
-          routeSources: { operator_agent: "global" },
-        },
+        primitive: "tool_use",
+        route: selectedRoute,
       });
-      expect(request.settings).not.toHaveProperty("providerKeys");
+      expect(request.trace).toMatchObject({
+        caller: "operator-agent",
+        tags: expect.objectContaining({
+          taskKind: "operator_agent",
+          label: "operator-agent",
+          phase: "query_reason",
+          channel: "web",
+        }),
+      });
+      expect(request.trace).not.toHaveProperty("taskKind");
+      expect(request.trace).not.toHaveProperty("label");
+      expect(request.trace).not.toHaveProperty("phase");
+      expect(request.trace).not.toHaveProperty("channel");
+      expect(request).not.toHaveProperty("task");
+      expect(request).not.toHaveProperty("taskKind");
+      expect(request).not.toHaveProperty("sessionKey");
+      expect(request).not.toHaveProperty("settings");
+      expect(request).not.toHaveProperty("routing");
+      expect(JSON.stringify(request)).not.toContain("providerKeys");
     }
   });
 
@@ -256,7 +273,7 @@ describe("operator model execution boundary", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "https://router.example.test/v1/generate",
+      "https://router.example.test/v1/manual",
     );
   });
 
@@ -294,11 +311,17 @@ vi.mock("./routerJobClient", async (importOriginal) => ({
   executeDurableRouterRequest: vi.fn(
     async (_ctx: unknown, operation: string, payload: unknown) => {
       const client = await import("./clRouterClient");
-      if (operation !== "generate")
-        throw new Error("Unexpected test operation");
-      return client.clRouterGenerate(
-        payload as Parameters<typeof client.clRouterGenerate>[0],
-      );
+      if (operation === "manual") {
+        return client.clRouterGenerateManual(
+          payload as Parameters<typeof client.clRouterGenerateManual>[0],
+        );
+      }
+      if (operation === "generate") {
+        return client.clRouterGenerate(
+          payload as Parameters<typeof client.clRouterGenerate>[0],
+        );
+      }
+      throw new Error("Unexpected test operation");
     },
   ),
 }));

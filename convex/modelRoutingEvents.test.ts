@@ -114,6 +114,24 @@ test("metadata logging never stores request bodies, asset URLs, or response cont
     routeSource: "override",
   });
   expect(JSON.stringify(ctx)).not.toMatch(/private|secret/);
+  expect(
+    modelCallContext({
+      primitive: "multimodal",
+      trace: {
+        traceId: "trace-1",
+        tags: {
+          task: "extraction",
+          taskKind: "extraction_focused",
+          channel: "worker",
+        },
+      },
+    }),
+  ).toMatchObject({
+    task: "extraction",
+    taskKind: "extraction_focused",
+    channel: "worker",
+    runId: "trace-1",
+  });
   const result = modelCallResult({
     output: "private",
     costUsd: null,

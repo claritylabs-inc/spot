@@ -13,6 +13,7 @@ const ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
 const CONTROL_WAIT_MS = 5_000;
 export type RouterJobOperation =
   | "generate"
+  | "manual"
   | "embed"
   | "retrieve"
   | "transcribe";

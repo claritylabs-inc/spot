@@ -25,69 +25,59 @@ const responseBody = {
     model: "accounts/fireworks/models/deepseek-v3p2",
   },
   routing: {
-    decision: "autonomous",
-    candidatesConsidered: [
-      {
-        provider: "fireworks",
-        model: "accounts/fireworks/models/deepseek-v3p2",
-      },
-    ],
-    policyVersion: "policy-v1",
-    cacheStickinessApplied: false,
-    routeSource: "autonomous",
-    attemptCount: 1,
-    shadowMode: true,
-    wouldHaveChosen: {
-      provider: "openai",
-      model: "gpt-5-mini",
-      decision: "autonomous_primary",
+    decision: "routed",
+    primitive: "reasoning",
+    difficulty: "standard",
+    requiredTier: 2,
+    selectedTier: 2,
+    route: {
+      provider: "fireworks",
+      model: "accounts/fireworks/models/deepseek-v3p2",
     },
-    wouldHaveMatched: false,
+    source: "jev",
+    attemptCount: 1,
   },
   requestId: "router-request-1",
 };
 
-test("request builder strips provider keys and references the signed PDF with integrity", () => {
+test("request builder maps extraction to a primitive request and never sends settings, pins, or provider keys", () => {
   const schema = {
     type: "object",
     properties: { policyNumber: { type: "string" } },
-  };
-  const settings: {
-    routes: Record<string, { provider: string; model: string }>;
-    routeSources: Record<string, string>;
-    providerKeys?: Record<string, string>;
-  } = {
-    routes: { extraction: { provider: "openai", model: "gpt-5.4-mini" } },
-    routeSources: { extraction: "broker" },
-    providerKeys: { openai: "broker-secret" },
   };
   const request = buildClRouterGenerateRequest({
     task: "extraction",
     taskKind: "extraction_focused",
     tenantId: "spot",
     orgId: "org-1",
-    settings,
     prompt: "Extract the policy.",
     schema,
     maxTokens: 4096,
-    routing: {
-      pin: { provider: "openai", model: "gpt-5.4-mini" },
-      allowFallback: true,
-    },
+    route: { provider: "openai", model: "gpt-5.4-mini" },
     assets: {
       pdfUrl: "https://storage.example.test/policy.pdf",
       pdfBytes: Uint8Array.from([1, 2, 3]),
       images: [{ imageBase64: "image-data", mimeType: "image/png" }],
     },
   });
-  assert.deepEqual(request.settings, {
-    routes: settings.routes,
-    routeSources: settings.routeSources,
+  assert.equal(request.primitive, "multimodal");
+  assert.deepEqual(request.requirements, {
+    structuredOutput: true,
   });
-  assert.equal("providerKeys" in (request.settings ?? {}), false);
-  assert.deepEqual(request.routing, {
-    pin: { provider: "openai", model: "gpt-5.4-mini" },
-    allowFallback: true,
+  assert.equal("task" in request, false);
+  assert.equal("settings" in request, false);
+  assert.equal("sessionKey" in request, false);
+  assert.equal("routing" in request, false);
+  assert.deepEqual(request.trace, {
+    tags: {
+      task: "extraction",
+      taskKind: "extraction_focused",
+    },
+  });
+  assert.equal("taskKind" in (request.trace ?? {}), false);
+  assert.deepEqual(request.route, {
+    provider: "openai",
+    model: "gpt-5.4-mini",
   });
   assert.deepEqual(request.schema, schema);
   assert.equal(request.prompt, undefined);
@@ -206,29 +196,58 @@ test("request builder enforces fetchable references and exact router payload lim
 
 test("client authenticates and preserves routing lineage", async () => {
   let request: RequestInit | undefined;
+  let url: string | undefined;
   const client = createClRouterClient({
     baseUrl: "https://router.internal/",
     secret: "shared-secret",
 
-    fetch: async (_input, init) => {
+    fetch: async (input, init) => {
+      url = String(input);
       request = init;
       return Response.json(responseBody);
     },
   });
   const result = await client.generate({
     task: "extraction_preview",
+    taskKind: "extraction_preview",
     tenantId: "spot",
     prompt: "Extract preview.",
     schema: { type: "object" },
+    trace: {
+      label: "Extract preview",
+      phase: "preview",
+      workerId: "worker-1",
+    },
   });
   assert.equal(
     new Headers(request?.headers).get("authorization"),
     "Bearer shared-secret",
   );
-  assert.equal(JSON.parse(String(request?.body)).executionBudgetMs, undefined);
+  assert.match(String(url), /\/v1\/generate$/);
+  const body = JSON.parse(String(request?.body));
+  assert.equal(body.executionBudgetMs, undefined);
+  assert.equal(body.primitive, "reasoning");
+  assert.equal("task" in body, false);
+  assert.equal("settings" in body, false);
+  assert.equal("routing" in body, false);
+  assert.equal("sessionKey" in body, false);
+  assert.equal("toolChoice" in body, false);
+  assert.deepEqual(body.trace, {
+    caller: "Extract preview",
+    tags: {
+      label: "Extract preview",
+      phase: "preview",
+      workerId: "worker-1",
+      task: "extraction_preview",
+      taskKind: "extraction_preview",
+    },
+  });
+  assert.equal("label" in body.trace, false);
+  assert.equal("taskKind" in body.trace, false);
   assert.equal(result.requestId, "router-request-1");
   assert.equal(result.model.provider, "fireworks");
-  assert.equal(result.routing.policyVersion, "policy-v1");
+  assert.equal(result.routing.decision, "routed");
+  assert.equal(result.routing.source, "jev");
 });
 
 test("client permits plaintext only for loopback hosts", async () => {
@@ -421,48 +440,29 @@ test("invalid 2xx responses fail closed", async () => {
   );
 });
 
-test("selection metadata survives inline and durable responses with unknown costs intact", async () => {
-  const selection = {
-    mode: "jev_shadow",
-    selectorVersion: "jev-1.13.0",
-    outcome: "default",
-    reason: "shadow",
-    durationMs: 30,
-    costNanoUsd: null,
-    requestId: "decision-1",
-    estimatedInputTokens: 100,
-    estimatedOutputTokens: null,
-    expectedFallbackCostNanoUsd: null,
-    totalCostNanoUsd: null,
-  };
-  const response = {
-    ...responseBody,
-    routing: { ...responseBody.routing, selection },
-  };
+test("pinned extraction uses /v1/manual", async () => {
+  let url: string | undefined;
   const client = createClRouterClient({
-    baseUrl: "https://router.internal",
+    baseUrl: "https://router.internal/",
     secret: "shared-secret",
-    fetch: async () => Response.json(response),
+    fetch: async (input) => {
+      url = String(input);
+      return Response.json({
+        ...responseBody,
+        routing: {
+          ...responseBody.routing,
+          decision: "manual",
+          source: "manual",
+        },
+      });
+    },
   });
-  const input = {
+  await client.generate({
     task: "extraction",
     tenantId: "glass",
-    prompt: "Extract",
+    prompt: "Extract.",
     schema: { type: "object" },
-  };
-  assert.deepEqual((await client.generate(input)).routing.selection, selection);
-  assert.deepEqual(
-    (await client.generate(input, async () => response)).routing.selection,
-    selection,
-  );
-  await assert.rejects(
-    client.generate(input, async () => ({
-      ...response,
-      routing: {
-        ...response.routing,
-        selection: { ...selection, durationMs: -1 },
-      },
-    })),
-    ClRouterProtocolError,
-  );
+    route: { provider: "openai", model: "gpt-5.4-mini" },
+  });
+  assert.match(String(url), /\/v1\/manual$/);
 });

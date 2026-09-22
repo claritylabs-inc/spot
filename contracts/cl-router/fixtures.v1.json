@@ -52,6 +52,40 @@
       ]
     },
     {
+      "name": "manual generation",
+      "method": "post",
+      "path": "/v1/manual",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "ManualRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "GenerateResponse"
+        }
+      ]
+    },
+    {
+      "name": "streaming manual generation",
+      "method": "post",
+      "path": "/v1/manual/stream",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "ManualRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "text/event-stream",
+          "schema": "StreamEvent"
+        }
+      ]
+    },
+    {
       "name": "embedding",
       "method": "post",
       "path": "/v1/embed",
@@ -132,81 +166,6 @@
       ]
     },
     {
-      "name": "admin freeze",
-      "method": "post",
-      "path": "/admin/freeze",
-      "request": {
-        "required": true,
-        "mediaType": "application/json",
-        "schema": "FreezeRequest"
-      },
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "FreezeResponse"
-        }
-      ]
-    },
-    {
-      "name": "admin pin",
-      "method": "post",
-      "path": "/admin/pin",
-      "request": {
-        "required": true,
-        "mediaType": "application/json",
-        "schema": "PinRequest"
-      },
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "PinResponse"
-        }
-      ]
-    },
-    {
-      "name": "admin policy",
-      "method": "get",
-      "path": "/admin/policy",
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "AdminPolicyResponse"
-        }
-      ]
-    },
-    {
-      "name": "admin rollups",
-      "method": "get",
-      "path": "/admin/rollups",
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "AdminRollupResponse"
-        }
-      ]
-    },
-    {
-      "name": "admin score",
-      "method": "post",
-      "path": "/admin/score",
-      "request": {
-        "required": true,
-        "mediaType": "application/json",
-        "schema": "ScoreRequest"
-      },
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "AdminScoreResponse"
-        }
-      ]
-    },
-    {
       "name": "structured decision",
       "method": "post",
       "path": "/v1/decide",
@@ -229,20 +188,11 @@
       "name": "Spot structured generation request",
       "schema": "GenerateRequest",
       "value": {
-        "task": "extraction",
-        "taskKind": "extraction_operational_profile",
         "tenantId": "glass",
         "orgId": "org_contract_fixture",
-        "settings": {
-          "routes": {
-            "extraction": {
-              "provider": "fireworks",
-              "model": "accounts/fireworks/models/glm-5p2"
-            }
-          },
-          "routeSources": {
-            "extraction": "broker"
-          }
+        "primitive": "reasoning",
+        "requirements": {
+          "structuredOutput": true
         },
         "prompt": "Extract the source-backed policy fields.",
         "schema": {
@@ -259,13 +209,34 @@
         },
         "schemaDialect": "https://json-schema.org/draft/2020-12/schema",
         "maxTokens": 1200,
-        "sessionKey": "trace_contract_fixture",
-        "routing": {
-          "allowFallback": true
-        },
         "trace": {
           "traceId": "trace_contract_fixture",
-          "label": "contract fixture"
+          "tags": {
+            "label": "contract fixture"
+          }
+        }
+      }
+    },
+    {
+      "name": "Spot manual generation request",
+      "schema": "ManualRequest",
+      "value": {
+        "tenantId": "glass",
+        "orgId": "org_contract_fixture",
+        "primitive": "multimodal",
+        "requirements": {
+          "tools": true
+        },
+        "prompt": "Read the attached certificate.",
+        "route": {
+          "provider": "openai",
+          "model": "gpt-5.6-terra"
+        },
+        "trace": {
+          "tags": {
+            "label": "operator_agent",
+            "channel": "web"
+          }
         }
       }
     },
@@ -290,24 +261,17 @@
           "model": "accounts/fireworks/models/glm-5p2"
         },
         "routing": {
-          "decision": "broker_override",
-          "candidatesConsidered": [
-            {
-              "provider": "fireworks",
-              "model": "accounts/fireworks/models/glm-5p2"
-            }
-          ],
-          "policyVersion": null,
-          "cacheStickinessApplied": false,
-          "routeSource": "broker",
-          "attemptCount": 1,
-          "shadowMode": true,
-          "wouldHaveChosen": {
-            "provider": "openai",
-            "model": "gpt-5-mini",
-            "decision": "autonomous_primary"
+          "decision": "routed",
+          "primitive": "reasoning",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "fireworks",
+            "model": "accounts/fireworks/models/glm-5p2"
           },
-          "wouldHaveMatched": false
+          "source": "jev",
+          "attemptCount": 1
         },
         "finishReason": "stop",
         "requestId": "router_request_generation_fixture"
@@ -332,18 +296,17 @@
           "model": "accounts/fireworks/models/deepseek-v4-flash"
         },
         "routing": {
-          "decision": "autonomous_primary",
-          "candidatesConsidered": [
-            {
-              "provider": "fireworks",
-              "model": "accounts/fireworks/models/deepseek-v4-flash"
-            }
-          ],
-          "policyVersion": "policy_fixture_v1",
-          "cacheStickinessApplied": true,
-          "routeSource": "autonomous",
-          "attemptCount": 1,
-          "shadowMode": false
+          "decision": "routed",
+          "primitive": "tool_use",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "fireworks",
+            "model": "accounts/fireworks/models/deepseek-v4-flash"
+          },
+          "source": "jev",
+          "attemptCount": 1
         },
         "requestId": "router_request_stream_fixture"
       }
@@ -354,23 +317,14 @@
       "value": {
         "tenantId": "glass",
         "orgId": "org_contract_fixture",
-        "settings": {
-          "routes": {
-            "embeddings": {
-              "provider": "openai",
-              "model": "text-embedding-3-small"
-            }
-          },
-          "routeSources": {
-            "embeddings": "static"
-          }
-        },
         "texts": [
           "commercial general liability"
         ],
         "dimensions": 3,
         "trace": {
-          "label": "embedding contract fixture"
+          "tags": {
+            "label": "embedding contract fixture"
+          }
         }
       }
     },
@@ -391,25 +345,24 @@
           "cachedInputTokens": 0,
           "cacheWriteTokens": 0
         },
-        "costUsd": 1e-06,
+        "costUsd": 0.000001,
         "costStatus": "priced",
         "model": {
           "provider": "openai",
           "model": "text-embedding-3-small"
         },
         "routing": {
-          "decision": "static_seed",
-          "candidatesConsidered": [
-            {
-              "provider": "openai",
-              "model": "text-embedding-3-small"
-            }
-          ],
-          "policyVersion": "policy_fixture_v1",
-          "cacheStickinessApplied": false,
-          "routeSource": "static",
-          "attemptCount": 1,
-          "shadowMode": false
+          "decision": "routed",
+          "primitive": "embedding",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "openai",
+            "model": "text-embedding-3-small"
+          },
+          "source": "jev",
+          "attemptCount": 1
         },
         "requestId": "router_request_embedding_fixture"
       }
@@ -420,22 +373,13 @@
       "value": {
         "tenantId": "glass",
         "orgId": "org_contract_fixture",
-        "settings": {
-          "routes": {
-            "voice_transcription": {
-              "provider": "openai",
-              "model": "gpt-4o-mini-transcribe"
-            }
-          },
-          "routeSources": {
-            "voice_transcription": "global"
-          }
-        },
         "prompt": "Insurance terminology may be present.",
         "filename": "voice-note.m4a",
         "mediaType": "audio/mp4",
         "trace": {
-          "channel": "imessage"
+          "tags": {
+            "channel": "imessage"
+          }
         }
       }
     },
@@ -458,18 +402,17 @@
           "model": "gpt-4o-mini-transcribe"
         },
         "routing": {
-          "decision": "global_seed",
-          "candidatesConsidered": [
-            {
-              "provider": "openai",
-              "model": "gpt-4o-mini-transcribe"
-            }
-          ],
-          "policyVersion": "policy_fixture_v1",
-          "cacheStickinessApplied": false,
-          "routeSource": "global",
-          "attemptCount": 1,
-          "shadowMode": false
+          "decision": "manual",
+          "primitive": "transcription",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "openai",
+            "model": "gpt-4o-mini-transcribe"
+          },
+          "source": "manual",
+          "attemptCount": 1
         },
         "requestId": "router_request_transcription_fixture"
       }
@@ -490,7 +433,9 @@
           "qualityScore": 0.95
         },
         "trace": {
-          "policyId": "policy_fixture"
+          "tags": {
+            "policyId": "policy_fixture"
+          }
         }
       }
     },
@@ -514,75 +459,18 @@
       }
     },
     {
-      "name": "Admin freeze request",
-      "schema": "FreezeRequest",
-      "value": {
-        "tenantId": "glass",
-        "taskFamily": "extraction_operational_profile",
-        "frozen": true,
-        "reason": "dev freeze drill"
-      }
-    },
-    {
-      "name": "Admin freeze response",
-      "schema": "FreezeResponse",
-      "value": {
-        "frozen": true,
-        "policyVersion": "policy_fixture_v2",
-        "controlVersion": "control_fixture_v2"
-      }
-    },
-    {
-      "name": "Admin pin request",
-      "schema": "PinRequest",
-      "value": {
-        "tenantId": "glass",
-        "taskFamily": "classification",
-        "route": {
-          "provider": "fireworks",
-          "model": "accounts/fireworks/models/glm-5p2"
-        },
-        "reason": "dev rollback drill"
-      }
-    },
-    {
-      "name": "Admin pin response",
-      "schema": "PinResponse",
-      "value": {
-        "pinned": true,
-        "controlVersion": "control_fixture_v1"
-      }
-    },
-    {
-      "name": "Admin score request",
-      "schema": "ScoreRequest",
-      "value": {
-        "tenantId": "glass",
-        "taskFamily": "classification"
-      }
-    },
-    {
       "name": "Spot JSON transcription request",
       "schema": "TranscribeRequest",
       "value": {
         "tenantId": "glass",
         "orgId": "org_123",
-        "settings": {
-          "routes": {
-            "voice_transcription": {
-              "provider": "openai",
-              "model": "gpt-4o-transcribe"
-            }
-          },
-          "routeSources": {
-            "voice_transcription": "static"
-          }
-        },
         "prompt": "Transcribe faithfully.",
         "filename": "voice.wav",
         "mediaType": "audio/wav",
         "trace": {
-          "surface": "imessage"
+          "tags": {
+            "surface": "imessage"
+          }
         },
         "audio": {
           "url": "https://actions.spot.insure/router-assets?assetId=asset_123&expiresAt=1893456000000&signature=test",
@@ -663,108 +551,6 @@
         ],
         "warnings": []
       }
-    },
-    {
-      "name": "Admin policy response",
-      "schema": "AdminPolicyResponse",
-      "value": {
-        "id": "policy_1",
-        "version": 1,
-        "taskFamily": "chat",
-        "explorationPct": 0,
-        "frozen": false,
-        "frozenRoute": null,
-        "candidates": [
-          {
-            "provider": "openai",
-            "model": "gpt-5.6-terra",
-            "rank": 0,
-            "role": "primary",
-            "trafficPct": 1,
-            "ratingScore": null,
-            "ratingCount": 0,
-            "projectedCostNanoUsd": "10"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Admin rollup response",
-      "schema": "AdminRollupResponse",
-      "value": [
-        {
-          "provider": "openai",
-          "model": "gpt-5.6-terra",
-          "hourStart": 1893456000000,
-          "tenantId": "glass",
-          "taskFamily": "chat",
-          "callCount": 1,
-          "successCount": 1,
-          "schemaCheckedCount": 0,
-          "schemaValidCount": 0,
-          "softFailCount": 0,
-          "fallbackCount": 0,
-          "providerErrorCount": 0,
-          "truncatedCount": 0,
-          "cacheHitCount": 0,
-          "feedbackCount": 1,
-          "positiveRatingCount": 1,
-          "negativeRatingCount": 0,
-          "reviewFeedbackCount": 0,
-          "reviewPassCount": 0,
-          "correctionCount": 0,
-          "reviewedFieldCount": 0,
-          "ungroundedStripCount": 0,
-          "sensitiveFieldCount": 0,
-          "escalationCount": 0,
-          "humanEditCount": 0,
-          "editedFieldCount": 0,
-          "latencyP50Ms": 120,
-          "latencyP95Ms": 120,
-          "inputTokens": "10",
-          "outputTokens": "5",
-          "cachedInputTokens": "0",
-          "cacheWriteTokens": "0",
-          "pricedCallCount": 1,
-          "costNanoUsd": "10",
-          "rolledUpAt": 1893456000100
-        }
-      ]
-    },
-    {
-      "name": "Admin score response",
-      "schema": "AdminScoreResponse",
-      "value": [
-        {
-          "kind": "none",
-          "incumbent": {
-            "provider": "openai",
-            "model": "gpt-5.6-terra",
-            "rank": 0,
-            "role": "primary",
-            "trafficPct": 1,
-            "ratingScore": null,
-            "ratingCount": 0,
-            "projectedCostNanoUsd": "10",
-            "score": {
-              "score": 0.5,
-              "ratingCount": 0,
-              "positiveRatingCount": 0,
-              "negativeRatingCount": 0
-            }
-          },
-          "replacement": null,
-          "reason": "Incumbent retained.",
-          "scores": {
-            "openai:gpt-5.6-terra": {
-              "score": 0.5,
-              "ratingCount": 0,
-              "positiveRatingCount": 0,
-              "negativeRatingCount": 0
-            }
-          }
-        }
-      ]
     },
     {
       "name": "Spot typed decision request",

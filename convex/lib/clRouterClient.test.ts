@@ -6,8 +6,12 @@ import {
   clRouterCapabilities,
   clRouterDecide,
   clRouterGenerate,
+  clRouterGenerateManual,
   clRouterGenerateStream,
   clRouterRetrieve,
+  normalizeClRouterTrace,
+  type ClRouterGenerateRequest,
+  type ClRouterManualGenerateRequest,
 } from "./clRouterClient";
 import { routerAssetSigningConfiguration } from "./routerAssetSignature";
 
@@ -22,11 +26,13 @@ function responseMetadata() {
     requestId: "request-1",
     model: { provider: "openai", model: "gpt-5-mini" },
     routing: {
-      decision: "policy",
-      candidatesConsidered: [{ provider: "openai", model: "gpt-5-mini" }],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: false,
-      routeSource: "org",
+      decision: "routed" as const,
+      primitive: "text",
+      difficulty: "standard" as const,
+      requiredTier: 2 as const,
+      selectedTier: 2 as const,
+      route: { provider: "openai", model: "gpt-5-mini" },
+      source: "jev" as const,
       attemptCount: 1,
     },
     usage: {
@@ -36,7 +42,7 @@ function responseMetadata() {
       cacheWriteTokens: 1,
     },
     costUsd: 0.0001,
-    costStatus: "priced",
+    costStatus: "priced" as const,
   };
 }
 
@@ -46,7 +52,7 @@ test("a long active request has no elapsed-time abort but accepts explicit cance
     const controller = new AbortController();
     await expect(
       clRouterGenerate(
-        { task: "chat", prompt: "Think carefully" },
+        { primitive: "text", prompt: "Think carefully" },
         {
           environment,
           abortSignal: controller.signal,
@@ -86,7 +92,7 @@ test("stream consumers read the durable result without opening a synchronous str
     finishReason: "tool-calls",
   }));
   const result = await clRouterGenerateStream(
-    { task: "chat", prompt: "Inspect" },
+    { primitive: "text", prompt: "Inspect" },
     { environment, fetch: fetchMock, executeJob },
   );
   const events = [];
@@ -101,7 +107,7 @@ test("stream consumers read the durable result without opening a synchronous str
 });
 
 describe("cl-router requests", () => {
-  test("sends only route metadata and preserves router lineage", async () => {
+  test("sends a primitive generate request without settings, pins, or provider keys", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
         ...responseMetadata(),
@@ -111,14 +117,8 @@ describe("cl-router requests", () => {
     );
     await clRouterGenerate(
       {
-        task: "analysis",
+        primitive: "reasoning",
         orgId: "org-1",
-        settings: {
-          routes: {
-            analysis: { provider: "openai", model: "gpt-5-mini" },
-          },
-          routeSources: { analysis: "org" },
-        },
         prompt: "Classify.",
       },
       { environment, fetch: fetchMock },
@@ -134,8 +134,96 @@ describe("cl-router requests", () => {
       Authorization: "Bearer router-secret",
       "Content-Type": "application/json",
     });
-    expect(body).toMatchObject({ tenantId: "glass", orgId: "org-1" });
+    expect(body).toMatchObject({
+      tenantId: "glass",
+      orgId: "org-1",
+      primitive: "reasoning",
+    });
+    expect(body).not.toHaveProperty("task");
+    expect(body).not.toHaveProperty("settings");
+    expect(body).not.toHaveProperty("routing");
     expect(JSON.stringify(body)).not.toContain("providerKeys");
+  });
+
+  test("folds Spot labels into trace.tags and omits extra generate keys and empty tools", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        ...responseMetadata(),
+        output: "ok",
+        finishReason: "stop",
+      }),
+    );
+    await clRouterGenerate(
+      {
+        primitive: "text",
+        orgId: "org-1",
+        prompt: "Reply.",
+        tools: [],
+        trace: {
+          label: "spot.chat",
+          taskKind: "chat",
+          phase: "reply",
+          channel: "web",
+          nested: { ignored: true },
+        },
+        settings: { temperature: 0 },
+        task: "chat",
+        taskKind: "chat",
+        sessionKey: "session-1",
+        routing: { pin: { provider: "openai", model: "gpt-5.5" } },
+        toolChoice: "auto",
+      } as ClRouterGenerateRequest,
+      { environment, fetch: fetchMock },
+    );
+
+    const body = JSON.parse(
+      String(
+        (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body,
+      ),
+    );
+    expect(Object.keys(body).sort()).toEqual(
+      ["orgId", "primitive", "prompt", "tenantId", "trace"].sort(),
+    );
+    expect(body.trace).toEqual({
+      caller: "spot.chat",
+      tags: {
+        label: "spot.chat",
+        taskKind: "chat",
+        phase: "reply",
+        channel: "web",
+      },
+    });
+    expect(body).not.toHaveProperty("tools");
+    expect(body).not.toHaveProperty("settings");
+    expect(body).not.toHaveProperty("task");
+    expect(body).not.toHaveProperty("taskKind");
+    expect(body).not.toHaveProperty("sessionKey");
+    expect(body).not.toHaveProperty("routing");
+    expect(body).not.toHaveProperty("toolChoice");
+  });
+
+  test("normalizes Spot trace extras into caller and tags", () => {
+    expect(
+      normalizeClRouterTrace({
+        traceId: "t-1",
+        parentRequestId: "p-1",
+        label: "spot.agent",
+        taskKind: "operator_agent",
+        phase: "query_reason",
+        channel: "web",
+        nested: { ignored: true },
+      }),
+    ).toEqual({
+      traceId: "t-1",
+      parentRequestId: "p-1",
+      caller: "spot.agent",
+      tags: {
+        label: "spot.agent",
+        taskKind: "operator_agent",
+        phase: "query_reason",
+        channel: "web",
+      },
+    });
   });
 
   test("preserves typed router failure metadata without another transport", async () => {
@@ -156,7 +244,7 @@ describe("cl-router requests", () => {
     );
     await expect(
       clRouterGenerate(
-        { task: "extraction", prompt: "Extract." },
+        { primitive: "reasoning", prompt: "Extract." },
         { environment, fetch: fetchMock },
       ),
     ).rejects.toMatchObject({
@@ -171,7 +259,7 @@ describe("cl-router requests", () => {
     const fetchMock = vi.fn();
     await expect(
       clRouterGenerate(
-        { task: "chat", prompt: "x".repeat(4 * 1024 * 1024) },
+        { primitive: "text", prompt: "x".repeat(4 * 1024 * 1024) },
         { environment, fetch: fetchMock },
       ),
     ).rejects.toMatchObject({ kind: "configuration" });
@@ -187,7 +275,7 @@ describe("cl-router requests", () => {
     await expect(
       clRouterGenerateStream(
         {
-          task: "chat",
+          primitive: "text",
           messages: [{ role: "user", content: nineAssets }],
         },
         { environment, fetch: fetchMock },
@@ -200,7 +288,7 @@ describe("cl-router requests", () => {
       await expect(
         clRouterGenerate(
           {
-            task: "chat",
+            primitive: "text",
             messages: [
               {
                 role: "user",
@@ -380,41 +468,65 @@ test("decisions use the authenticated Jev endpoint and validate exact question c
   ).rejects.toMatchObject({ kind: "invalid_response" });
 });
 
-test("classification cannot silently use generation routing", async () => {
-  const fetchMock = vi.fn();
-  for (const generate of [clRouterGenerate, clRouterGenerateStream]) {
-    await expect(
-      generate(
-        { task: "classification", prompt: "Classify" },
-        { environment, fetch: fetchMock },
-      ),
-    ).rejects.toMatchObject({ kind: "configuration" });
-  }
-  expect(fetchMock).not.toHaveBeenCalled();
+test("manual generation posts the explicit route without settings or pins", async () => {
+  const fetchMock = vi.fn(async () =>
+    Response.json({
+      ...responseMetadata(),
+      routing: {
+        ...responseMetadata().routing,
+        decision: "manual",
+        source: "manual",
+      },
+      output: "ok",
+      finishReason: "stop",
+    }),
+  );
+  await clRouterGenerateManual(
+    {
+      primitive: "tool_use",
+      prompt: "Inspect.",
+      maxTokens: 512,
+      route: { provider: "openai", model: "gpt-5.5" },
+      trace: {
+        traceId: "trace-1",
+        parentRequestId: "parent-1",
+        label: "spot.operator",
+        taskKind: "operator_agent",
+      },
+      settings: { temperature: 0 },
+      task: "operator_agent",
+      taskKind: "operator_agent",
+      sessionKey: "session-1",
+      routing: { pin: { provider: "openai", model: "gpt-5.5" } },
+      toolChoice: "auto",
+    } as ClRouterManualGenerateRequest,
+    { environment, fetch: fetchMock },
+  );
+  const [url, init] = fetchMock.mock.calls[0] as unknown as [
+    string,
+    RequestInit,
+  ];
+  const body = JSON.parse(String(init.body));
+  expect(url).toBe("https://router.example.test/v1/manual");
+  expect(body).toEqual({
+    tenantId: "glass",
+    primitive: "tool_use",
+    prompt: "Inspect.",
+    maxTokens: 512,
+    route: { provider: "openai", model: "gpt-5.5" },
+    trace: {
+      traceId: "trace-1",
+      parentRequestId: "parent-1",
+      caller: "spot.operator",
+      tags: { label: "spot.operator", taskKind: "operator_agent" },
+    },
+  });
 });
 
 test.each([false, true])(
-  "preserves validated Jev selection metadata (stream=%s)",
+  "preserves primitive routing metadata (stream=%s)",
   async (stream) => {
-    const selection = {
-      mode: "jev_active",
-      selectorVersion: "jev-1.13.0",
-      outcome: "accepted",
-      reason: "selected",
-      durationMs: 30,
-      costNanoUsd: 4200,
-      requestId: "decision-1",
-      proposedRoute: { provider: "openai", model: "gpt-5-mini" },
-      estimatedInputTokens: 100,
-      estimatedOutputTokens: null,
-      expectedFallbackCostNanoUsd: null,
-      generationAttemptsCostNanoUsd: 1000,
-      totalCostNanoUsd: null,
-    };
-    const metadata = {
-      ...responseMetadata(),
-      routing: { ...responseMetadata().routing, selection },
-    };
+    const metadata = responseMetadata();
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
       stream
         ? new Response(
@@ -425,36 +537,45 @@ test.each([false, true])(
     );
     if (stream) {
       const response = await clRouterGenerateStream(
-        { task: "chat", prompt: "Hello" },
+        { primitive: "text", prompt: "Hello" },
         { environment, fetch: fetchMock },
       );
       const events = [];
       for await (const event of response.events) events.push(event);
       expect(events).toEqual([
         expect.objectContaining({
-          routing: expect.objectContaining({ selection }),
+          routing: expect.objectContaining({
+            decision: "routed",
+            primitive: "text",
+            source: "jev",
+            route: { provider: "openai", model: "gpt-5-mini" },
+          }),
         }),
       ]);
     } else {
       const response = await clRouterGenerate(
-        { task: "chat", prompt: "Hello" },
+        { primitive: "text", prompt: "Hello" },
         { environment, fetch: fetchMock },
       );
-      expect(response.routing.selection).toEqual(selection);
+      expect(response.routing).toMatchObject({
+        decision: "routed",
+        primitive: "text",
+        source: "jev",
+      });
     }
     fetchMock.mockResolvedValueOnce(
       Response.json({
         ...metadata,
         routing: {
           ...metadata.routing,
-          selection: { ...selection, costNanoUsd: -1 },
+          decision: "policy",
         },
         output: "done",
       }),
     );
     await expect(
       clRouterGenerate(
-        { task: "chat", prompt: "Hello" },
+        { primitive: "text", prompt: "Hello" },
         { environment, fetch: fetchMock },
       ),
     ).rejects.toMatchObject({ kind: "invalid_response" });

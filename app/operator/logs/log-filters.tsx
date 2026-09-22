@@ -193,6 +193,10 @@ export function LogSidebar({
         </div>
         {select("routeSource", "Route source", [
           ["all", "All routes"],
+          ["routed", "Routed"],
+          ["manual", "Manual"],
+          ["jev", "Jev"],
+          ["fallback", "Fallback"],
           ["automatic", "Automatic"],
           ["override", "Override"],
         ])}

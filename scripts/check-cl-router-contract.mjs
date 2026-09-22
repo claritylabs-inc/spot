@@ -14,20 +14,18 @@ const REQUIRED_OPERATION_KEYS = [
   "get /health",
   "post /v1/generate",
   "post /v1/generate/stream",
+  "post /v1/manual",
+  "post /v1/manual/stream",
   "post /v1/embed",
   "post /v1/transcribe",
   "get /v1/capabilities",
   "post /v1/retrieve",
   "post /v1/feedback",
-  "post /admin/freeze",
-  "post /admin/pin",
-  "get /admin/policy",
-  "get /admin/rollups",
-  "post /admin/score",
 ];
 const REQUIRED_FIXTURE_SCHEMAS = [
   "GenerateRequest",
   "GenerateResponse",
+  "ManualRequest",
   "StreamEvent",
   "EmbedRequest",
   "EmbedResponse",
@@ -40,14 +38,6 @@ const REQUIRED_FIXTURE_SCHEMAS = [
   "FeedbackRequest",
   "FeedbackResponse",
   "HealthResponse",
-  "FreezeRequest",
-  "FreezeResponse",
-  "PinRequest",
-  "PinResponse",
-  "ScoreRequest",
-  "AdminPolicyResponse",
-  "AdminRollupResponse",
-  "AdminScoreResponse",
 ];
 
 function fail(message) {
@@ -213,7 +203,11 @@ function hasExactSecurityBinding(operation, schemeName) {
 function checkSecurityBindings(openapi) {
   const securitySchemes = openapi.components?.securitySchemes;
   assert(isRecord(securitySchemes), "components.securitySchemes is missing");
-  for (const schemeName of ["inferenceBearerAuth", "adminBearerAuth"]) {
+  const requiredSchemes = ["inferenceBearerAuth"];
+  if (Object.keys(openapi.paths ?? {}).some((path) => path.startsWith("/admin/"))) {
+    requiredSchemes.push("adminBearerAuth");
+  }
+  for (const schemeName of requiredSchemes) {
     const scheme = securitySchemes[schemeName];
     assert(
       isRecord(scheme) && scheme.type === "http" && scheme.scheme === "bearer",

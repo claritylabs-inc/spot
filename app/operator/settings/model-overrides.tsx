@@ -355,7 +355,7 @@ export function useModelOverrides(disabled: boolean) {
                     {settings.routes[task.id]?.model ?? "Choose a model"}
                   </TableCell>
                   <TableCell>
-                    {task.manualRequired ? "Required pin" : "Override"}
+                    {task.manualRequired ? "Manual route" : "Manual override"}
                   </TableCell>
                 </TableRow>
               ))}
@@ -386,7 +386,9 @@ export function useModelOverrides(disabled: boolean) {
           </Table>
         </OperationalPanel>
         <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          Other tasks use router defaults.
+          Unset tasks are auto-routed by primitive and difficulty. Saved
+          operator or global picks are submitted as explicit `/v1/manual`
+          routes. Brokers have no model-routing or provider-key controls.
         </p>
       </div>
     ),

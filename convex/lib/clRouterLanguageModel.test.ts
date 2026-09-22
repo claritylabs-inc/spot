@@ -24,11 +24,13 @@ function doneEvent(finishReason: string) {
     requestId: "request-1",
     model: { provider: "openai", model: "gpt-5.5" },
     routing: {
-      decision: "policy",
-      candidatesConsidered: [{ provider: "openai", model: "gpt-5.5" }],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: true,
-      routeSource: "org",
+      decision: "routed",
+      primitive: "text",
+      difficulty: "standard",
+      requiredTier: 2,
+      selectedTier: 2,
+      route: { provider: "openai", model: "gpt-5.5" },
+      source: "jev",
       attemptCount: 1,
     },
     usage: {
@@ -135,12 +137,42 @@ describe("cl-router LanguageModelV3 adapter", () => {
           inputSchema: expect.objectContaining({ type: "object" }),
         }),
       ]);
+      expect(request.trace).toMatchObject({
+        traceId: "agent-message-1",
+        tags: { channel: "web", task: "chat", taskKind: "query_reason" },
+      });
+      expect(request.trace).not.toHaveProperty("channel");
+      expect(request.trace).not.toHaveProperty("taskKind");
+      expect(request.trace).not.toHaveProperty("label");
     }
-    expect(requests[0].routing).toEqual({ allowFallback: true });
-    expect(requests[1].routing).toEqual({
-      pin: { provider: "openai", model: "gpt-5.5" },
-      allowFallback: false,
+    expect(requests[0]).not.toHaveProperty("routing");
+    expect(requests[0]).not.toHaveProperty("task");
+    expect(requests[0]).not.toHaveProperty("taskKind");
+    expect(requests[0]).not.toHaveProperty("settings");
+    expect(requests[0]).not.toHaveProperty("sessionKey");
+    expect(requests[0]).not.toHaveProperty("toolChoice");
+    expect(requests[0].primitive).toBe("tool_use");
+    expect(requests[0].trace).toEqual({
+      traceId: "agent-message-1",
+      tags: {
+        channel: "web",
+        task: "chat",
+        taskKind: "query_reason",
+      },
     });
+    expect(Object.keys(requests[0].trace).sort()).toEqual(["tags", "traceId"]);
+    expect(requests[0].requirements).toBeUndefined();
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://router.example.test/v1/generate/stream",
+    );
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "https://router.example.test/v1/manual/stream",
+    );
+    expect(requests[1].route).toEqual({
+      provider: "openai",
+      model: "gpt-5.5",
+    });
+    expect(requests[1]).not.toHaveProperty("routing");
     expect(JSON.stringify(requests)).not.toContain("providerKeys");
   });
 
@@ -177,13 +209,17 @@ describe("cl-router LanguageModelV3 adapter", () => {
       });
       const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
       expect(request).not.toHaveProperty("toolChoice");
-      expect(request.tools).toEqual(
-        definitions.map(({ name, description, inputSchema }) => ({
-          name,
-          description,
-          inputSchema,
-        })),
-      );
+      if (definitions.length === 0) {
+        expect(request).not.toHaveProperty("tools");
+      } else {
+        expect(request.tools).toEqual(
+          definitions.map(({ name, description, inputSchema }) => ({
+            name,
+            description,
+            inputSchema,
+          })),
+        );
+      }
     },
   );
 
@@ -377,7 +413,8 @@ describe("cl-router LanguageModelV3 adapter", () => {
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(request.task).toBe("chat_vision");
+    expect(request.primitive).toBe("multimodal");
+    expect(request).not.toHaveProperty("task");
     expect(request.messages[0].content).toContainEqual({
       type: "file",
       source: expect.objectContaining({
@@ -399,10 +436,15 @@ describe("cl-router LanguageModelV3 adapter", () => {
     });
     await expect(model.doGenerate(rawCallOptions())).resolves.toBeDefined();
     const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(request.routing).toEqual({
-      pin: { provider: "openai", model: "gpt-5.5" },
-      allowFallback: false,
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://router.example.test/v1/manual",
+    );
+    expect(request.route).toEqual({
+      provider: "openai",
+      model: "gpt-5.5",
     });
+    expect(request).not.toHaveProperty("routing");
+    expect(request).not.toHaveProperty("task");
   });
 
   test("stages byte-backed assets only when the exact request exceeds 4 MiB", async () => {

@@ -12,16 +12,21 @@ const route = {
   model: "gpt-5.6-terra",
 };
 
-function response(output: unknown) {
-  return Response.json({
+function routedMetadata(
+  route: { provider: string; model: string },
+  extras: Record<string, unknown> = {},
+) {
+  return {
     requestId: "request-1",
     model: route,
     routing: {
-      decision: "snapshot",
-      candidatesConsidered: [route],
-      policyVersion: "policy-v1",
-      cacheStickinessApplied: false,
-      routeSource: "global",
+      decision: extras.decision ?? "manual",
+      primitive: extras.primitive ?? "text",
+      difficulty: "standard",
+      requiredTier: 2,
+      selectedTier: 2,
+      route,
+      source: extras.source ?? "manual",
       attemptCount: 1,
     },
     usage: {
@@ -32,6 +37,13 @@ function response(output: unknown) {
     },
     costUsd: 0.001,
     costStatus: "priced",
+    ...extras,
+  };
+}
+
+function response(output: unknown) {
+  return Response.json({
+    ...routedMetadata(route),
     output,
     finishReason: "stop",
   });
@@ -68,15 +80,32 @@ describe("router-only model calls", () => {
       transport: "cl-router",
     });
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://router.example.test/v1/manual",
+    );
     const request = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
     expect(request).toMatchObject({
       tenantId: "glass",
       orgId: "org-1",
-      task: "chat",
+      primitive: "text",
       prompt: "Hello",
-      routing: { pin: route },
+      route,
+      trace: {
+        caller: "convex.models.generateTextForOrg",
+        tags: {
+          label: "convex.models.generateTextForOrg",
+          task: "chat",
+        },
+      },
     });
-    expect(request.settings).not.toHaveProperty("providerKeys");
+    expect(request).not.toHaveProperty("task");
+    expect(request).not.toHaveProperty("taskKind");
+    expect(request).not.toHaveProperty("settings");
+    expect(request).not.toHaveProperty("sessionKey");
+    expect(request).not.toHaveProperty("routing");
+    expect(request).not.toHaveProperty("toolChoice");
+    expect(request.trace).not.toHaveProperty("label");
+    expect(JSON.stringify(request)).not.toContain("providerKeys");
   });
 
   test("sends and validates structured output through the router", async () => {
@@ -168,9 +197,16 @@ vi.mock("./routerJobClient", async (importOriginal) => ({
     payload: unknown,
   ) => {
     const client = await import("./clRouterClient");
-    if (operation !== "generate") throw new Error("Unexpected test operation");
-    return client.clRouterGenerate(
-      payload as Parameters<typeof client.clRouterGenerate>[0],
-    );
+    if (operation === "manual") {
+      return client.clRouterGenerateManual(
+        payload as Parameters<typeof client.clRouterGenerateManual>[0],
+      );
+    }
+    if (operation === "generate") {
+      return client.clRouterGenerate(
+        payload as Parameters<typeof client.clRouterGenerate>[0],
+      );
+    }
+    throw new Error("Unexpected test operation");
   },
 }));

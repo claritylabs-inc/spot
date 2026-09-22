@@ -17,9 +17,10 @@ import {
   ClRouterRequestError,
   MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
-  clRouterGenerate,
-  clRouterGenerateStream,
+  clRouterGenerateMaybeManual,
+  clRouterGenerateMaybeManualStream,
   isClRouterFailureCode,
+  normalizeClRouterTrace,
   type ClRouterClientOptions,
   type ClRouterAssetReference,
   type ClRouterGenerateRequest,
@@ -31,6 +32,10 @@ import {
   type ClRouterToolDefinition,
   type ClRouterUsage,
 } from "./clRouterClient";
+import {
+  clRouterContentHasVision,
+  mapSpotCallToClRouterPrimitive,
+} from "./clRouterPrimitive";
 import type { ModelRoute, ModelTask } from "./modelCatalog";
 import { settleRouterAssetCleanups } from "../actions/routerAssets";
 
@@ -330,8 +335,6 @@ async function requestForCall(
   adapter: ClRouterLanguageModelOptions,
   options: LanguageModelV3CallOptions,
   parentRequestId?: string,
-  selectedRoute?: ModelRoute,
-  allowFallback = true,
   assetState?: StagedAssetState,
 ): Promise<ClRouterGenerateRequest> {
   const responseFormat = options.responseFormat;
@@ -340,20 +343,37 @@ async function requestForCall(
       ? (responseFormat.schema as Record<string, unknown>)
       : undefined;
   const tools = clRouterTools(options.tools);
-  return {
+  const messages = await clRouterMessagesFromPromptWithState(
+    options.prompt,
+    adapter.client?.fetch ?? globalThis.fetch,
+    adapter.client?.environment ?? process.env,
+    assetState ?? {
+      count: 0,
+      decodedBytes: 0,
+    },
+  );
+  const mapping = mapSpotCallToClRouterPrimitive({
+    task: adapter.task,
+    taskKind: adapter.taskKind,
+    hasTools: tools.length > 0,
+    hasVision: clRouterContentHasVision(
+      messages.flatMap((message) =>
+        Array.isArray(message.content) ? message.content : [],
+      ),
+    ),
+    hasStructuredOutput: Boolean(schema),
+  });
+  const trace = normalizeClRouterTrace({
+    ...adapter.trace,
+    ...(parentRequestId ? { parentRequestId } : {}),
     task: adapter.task,
     ...(adapter.taskKind ? { taskKind: adapter.taskKind } : {}),
+  });
+  return {
+    primitive: mapping.primitive,
+    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
     ...(adapter.orgId ? { orgId: adapter.orgId } : {}),
-    settings: adapter.settings,
-    messages: await clRouterMessagesFromPromptWithState(
-      options.prompt,
-      adapter.client?.fetch ?? globalThis.fetch,
-      adapter.client?.environment ?? process.env,
-      assetState ?? {
-        count: 0,
-        decodedBytes: 0,
-      },
-    ),
+    messages,
     ...(schema
       ? {
           schema,
@@ -362,20 +382,8 @@ async function requestForCall(
         }
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
-    sessionKey: adapter.sessionKey,
-    tools,
-    routing: {
-      ...(selectedRoute ? { pin: selectedRoute } : {}),
-      allowFallback: adapter.allowFallback ?? allowFallback,
-    },
-    ...(adapter.trace || parentRequestId
-      ? {
-          trace: {
-            ...adapter.trace,
-            ...(parentRequestId ? { parentRequestId } : {}),
-          },
-        }
-      : {}),
+    ...(tools.length > 0 ? { tools } : {}),
+    ...(trace ? { trace } : {}),
   };
 }
 
@@ -646,15 +654,14 @@ export function createClRouterLanguageModel(
             adapter,
             options,
             parentRequestId,
-            selectedRoute,
-            successfulRouterSteps === 0,
             assetState,
           ),
           adapter.assetStager,
           cleanups,
         );
-        const response = await clRouterGenerate(
+        const response = await clRouterGenerateMaybeManual(
           request,
+          selectedRoute,
           clientOptions(options.abortSignal),
         );
         let content: LanguageModelV3Content[];
@@ -694,22 +701,21 @@ export function createClRouterLanguageModel(
         count: 0,
         decodedBytes: 0,
       };
-      let response: Awaited<ReturnType<typeof clRouterGenerateStream>>;
+      let response: Awaited<ReturnType<typeof clRouterGenerateMaybeManualStream>>;
       try {
         const request = await stageOversizedInlineAssets(
           await requestForCall(
             adapter,
             options,
             parentRequestId,
-            selectedRoute,
-            successfulRouterSteps === 0,
             assetState,
           ),
           adapter.assetStager,
           cleanups,
         );
-        response = await clRouterGenerateStream(
+        response = await clRouterGenerateMaybeManualStream(
           request,
+          selectedRoute,
           clientOptions(options.abortSignal),
         );
       } catch (error) {

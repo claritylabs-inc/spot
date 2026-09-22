@@ -79,7 +79,7 @@ export const recordResponseInternal = internalMutation({
       requestId: response.requestId,
       provider: response.model.provider,
       model: response.model.model,
-      routeSource: response.routing.routeSource,
+      routeSource: response.routing.source ?? response.routing.decision,
       transport: "cl-router",
       routing: response.routing,
       inputTokens: response.usage.inputTokens,

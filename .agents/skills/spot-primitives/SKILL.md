@@ -11,9 +11,9 @@ Spot AI execution is router-only. Convex and workers keep no provider,
 retrieval, gateway, or Moonshot keys and never call those providers directly.
 All generation, tool-loop steps, structured output, embeddings, voice,
 extraction callbacks, and credentialed retrieval use cl-router; explicit
-operator routes are router pins, and router failures fail closed without a
-consumer transport fallback. Runtime settings, schema, and worker claims do not
-contain `providerKeys`. Availability comes from the
+operator and global model picks are submitted through `/v1/manual`, and router
+failures fail closed without a consumer transport fallback. Runtime settings,
+schema, and worker claims do not contain `providerKeys`. Availability comes from the
 authenticated router capabilities action rather than process environment keys.
 Emitted rich binary assets preserve the 12 MiB per-asset, 16 MiB aggregate,
 eight-asset, and 4 MiB serialized-JSON limits after parsing/selection; general
@@ -24,7 +24,7 @@ deleted after use or by bounded cleanup.
 
 Spot supplies every available tool on each router step in `request.tools`; an empty array means no tools. Definitions carry name, description, and JSON input schema. Before each operator step, `getRunContextInternal` validates the active operator/thread and filters the registry by role, impersonation, and configured Google Workspace, Slack, Mapbox, and MCP access. Exact target authorization and approval are rechecked at execution; a tool's availability cannot authorize an arbitrary target. Spot does not send `toolChoice` or preselect tools for relevance. Router-owned Jev selects one offered tool or abstains, the generation model fills arguments, and Spot executes the call.
 
-`clRouterDecide` uses authenticated `/v1/decide` for typed Jev Choice/Noul decisions, with native probabilities and request-bound response validation. Decisions use inline JSON, never generation SSE or durable jobs. Both Convex and worker generation clients validate and preserve `routing.selection` through the shared policy parser, including unknown cost values. `extractionTraceRouterFields.ts` owns the optional selection validator used by trace ingestion and storage; selector controls remain router-owned. Classifications for forwarded-email direction, requirement import intent, certificate-holder matching, policy intake, mailbox automation, Workspace PDF acceptance, and prompt-injection screening use this path. Extraction and prose remain generation tasks; legacy classification/security generation settings remain schema-compatible but are not active UI routes. SDK generation callbacks reject classification instead of silently using generation. The chat policy-evidence classifier, deterministic completed-lookup check, and recovery generation are removed. Normal tool selection handles evidence retrieval; incomplete tool responses may still receive a tool-free final synthesis that cannot replay actions.
+`clRouterDecide` uses authenticated `/v1/decide` for typed Jev Choice/Noul decisions, with native probabilities and request-bound response validation. Decisions use inline JSON, never generation SSE or durable jobs. Generation clients send a primitive plus optional requirements and preserve response `routing` metadata (`decision`, `primitive`, `difficulty`, tiers, `source`, `attemptCount`). Stored extraction traces still accept legacy selection fields. Classifications for forwarded-email direction, requirement import intent, certificate-holder matching, policy intake, mailbox automation, Workspace PDF acceptance, and prompt-injection screening use `/v1/decide`. Extraction and prose remain generation tasks; legacy classification/security generation settings remain schema-compatible but are not active UI routes. SDK generation callbacks reject classification instead of silently using generation. The chat policy-evidence classifier, deterministic completed-lookup check, and recovery generation are removed. Normal tool selection handles evidence retrieval; incomplete tool responses may still receive a tool-free final synthesis that cannot replay actions.
 
 ## Generated chat presentations
 
@@ -208,7 +208,7 @@ Certificate holder edits in the shared detail drawer target the selected certifi
 - Operator channel settings: `/operator/channels` owns the Clarity Slack installation, each operator's Slack identity, and the authenticated operator iMessage contact-number/status display. The iMessage number comes from Convex `OPERATOR_IMESSAGE_CONTACT_PHONE`, never a public browser variable; the page shows the current operator's linked sender phone and directs missing phone setup to `/operator/profile`.
 - Slack channel membership controls may join or leave only visible non-shared public channels. Private and Slack Connect membership is managed in Slack. This inventory supports setup, display, and proactive destination selection; it is never an invocation allowlist. The designated client support channel is one joined Slack Connect channel with additional no-mention capture and human-handoff behavior.
 
-Global router freeze control lives on `/operator/routing` through `clRouterOperations.setGlobalFreeze`. Keep the admin secret server-side, require an active operator, include the operator ID in the router's immutable reason, and target the healthy router configured by `CL_ROUTER_URL` without a separate Spot/router environment lock. Normal deployments keep `CL_ROUTER_FROZEN` and `CL_ROUTER_SHADOW` off; the environment freeze remains a panic switch that the UI cannot override.
+Operator global model picks live on `/operator/settings?section=models` and are submitted through `/v1/manual`. There is no router admin freeze/pin/policy/rollup/score surface. Call history comes from Spot `modelRoutingEvents`. Brokers have no model-routing or provider-key controls.
 
 - Email-address syntax: `convex/lib/emailAddress.ts` owns shared address extraction, validation, and normalization for inbound and outbound mail paths.
 

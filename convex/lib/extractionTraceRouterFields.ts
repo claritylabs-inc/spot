@@ -24,11 +24,17 @@ export type ExtractionTraceRouterRoute = {
 
 export type ExtractionTraceRouting = {
   decision: string;
-  candidatesConsidered: ExtractionTraceRouterRoute[];
-  policyVersion: string | null;
-  cacheStickinessApplied: boolean;
-  routeSource?: string;
   attemptCount?: number;
+  primitive?: string;
+  difficulty?: "simple" | "standard" | "complex" | null;
+  requiredTier?: 1 | 2 | 3;
+  selectedTier?: 1 | 2 | 3;
+  route?: ExtractionTraceRouterRoute;
+  source?: string;
+  candidatesConsidered?: ExtractionTraceRouterRoute[];
+  policyVersion?: string | null;
+  cacheStickinessApplied?: boolean;
+  routeSource?: string;
   shadowMode?: boolean;
   wouldHaveChosen?: ExtractionTraceRouterRoute & { decision: string };
   wouldHaveMatched?: boolean;
@@ -75,52 +81,63 @@ function route(value: unknown): ExtractionTraceRouterRoute | null {
 }
 
 function routing(value: unknown): ExtractionTraceRouting | undefined {
-  if (
-    !isRecord(value)
-    || typeof value.decision !== "string"
-    || !Array.isArray(value.candidatesConsidered)
-    || (typeof value.policyVersion !== "string" && value.policyVersion !== null)
-    || typeof value.cacheStickinessApplied !== "boolean"
-  ) {
+  if (!isRecord(value) || typeof value.decision !== "string") {
     return undefined;
   }
-  const candidatesConsidered = value.candidatesConsidered.map(route);
-  if (candidatesConsidered.some((candidate) => candidate === null)) return undefined;
-  const routeSource = typeof value.routeSource === "string" ? value.routeSource : undefined;
   const attemptCount = nonNegativeInteger(value.attemptCount);
-  const wouldHaveChosenRoute = route(value.wouldHaveChosen);
-  const wouldHaveChosen = wouldHaveChosenRoute && isRecord(value.wouldHaveChosen)
-    && typeof value.wouldHaveChosen.decision === "string"
-    ? { ...wouldHaveChosenRoute, decision: value.wouldHaveChosen.decision }
+  const selectedRoute = route(value.route);
+  const candidatesConsidered = Array.isArray(value.candidatesConsidered)
+    ? value.candidatesConsidered.map(route)
     : undefined;
-  if (
-    (value.shadowMode !== undefined && typeof value.shadowMode !== "boolean")
-    || (value.wouldHaveMatched !== undefined && typeof value.wouldHaveMatched !== "boolean")
-    || (value.wouldHaveChosen !== undefined && !wouldHaveChosen)
-  ) {
+  if (candidatesConsidered?.some((candidate) => candidate === null)) {
     return undefined;
   }
+  const routeSource =
+    typeof value.source === "string"
+      ? value.source
+      : typeof value.routeSource === "string"
+        ? value.routeSource
+        : undefined;
   let selection: RoutingSelectionMetadata | undefined;
   if (value.selection !== undefined) {
     try {
       selection = parseRoutingSelectionMetadata(value.selection);
     } catch {
-      return undefined;
+      selection = undefined;
     }
   }
   return {
     decision: value.decision,
-    ...(selection ? { selection } : {}),
-    candidatesConsidered: candidatesConsidered as ExtractionTraceRouterRoute[],
-    policyVersion: value.policyVersion,
-    cacheStickinessApplied: value.cacheStickinessApplied,
-    ...(routeSource ? { routeSource } : {}),
     ...(attemptCount !== undefined ? { attemptCount } : {}),
-    ...(typeof value.shadowMode === "boolean" ? { shadowMode: value.shadowMode } : {}),
-    ...(wouldHaveChosen ? { wouldHaveChosen } : {}),
-    ...(typeof value.wouldHaveMatched === "boolean"
-      ? { wouldHaveMatched: value.wouldHaveMatched }
+    ...(typeof value.primitive === "string" ? { primitive: value.primitive } : {}),
+    ...(value.difficulty === null ||
+    value.difficulty === "simple" ||
+    value.difficulty === "standard" ||
+    value.difficulty === "complex"
+      ? { difficulty: value.difficulty }
       : {}),
+    ...(value.requiredTier === 1 ||
+    value.requiredTier === 2 ||
+    value.requiredTier === 3
+      ? { requiredTier: value.requiredTier }
+      : {}),
+    ...(value.selectedTier === 1 ||
+    value.selectedTier === 2 ||
+    value.selectedTier === 3
+      ? { selectedTier: value.selectedTier }
+      : {}),
+    ...(selectedRoute ? { route: selectedRoute } : {}),
+    ...(routeSource ? { source: routeSource, routeSource } : {}),
+    ...(candidatesConsidered
+      ? { candidatesConsidered: candidatesConsidered as ExtractionTraceRouterRoute[] }
+      : {}),
+    ...(typeof value.policyVersion === "string" || value.policyVersion === null
+      ? { policyVersion: value.policyVersion }
+      : {}),
+    ...(typeof value.cacheStickinessApplied === "boolean"
+      ? { cacheStickinessApplied: value.cacheStickinessApplied }
+      : {}),
+    ...(selection ? { selection } : {}),
   };
 }
 

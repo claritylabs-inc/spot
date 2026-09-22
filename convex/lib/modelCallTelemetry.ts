@@ -42,24 +42,33 @@ const number = (value: unknown) =>
 // Only metadata crosses this boundary; prompts, assets and capability URLs do not.
 export function modelCallContext(payload: unknown, operation = "generate") {
   const p = record(payload);
-  const settings = record(p.settings);
-  const pin = record(
-    record(p.routing).pin ?? record(settings.routes)[String(p.task)],
-  );
+  const route = record(p.route);
+  const pin = record(record(p.routing).pin);
   const trace = record(p.trace);
+  const tags = record(trace.tags);
+  const selectedModel = text(route.model) ?? text(pin.model);
+  const tagged = (key: string) => text(tags[key]) ?? text(trace[key]);
   return {
-    task: text(p.task) ?? operation,
+    task: tagged("task") ?? text(p.task) ?? text(p.primitive) ?? operation,
     taskKind:
-      text(p.taskKind) ?? text(trace.label) ?? text(p.task) ?? operation,
-    channel: text(trace.channel) ?? text(p.channel) ?? "system",
-    sessionKey: text(p.sessionKey) ?? "",
+      tagged("taskKind") ??
+      text(p.taskKind) ??
+      tagged("label") ??
+      text(trace.caller) ??
+      text(p.primitive) ??
+      text(p.task) ??
+      operation,
+    channel: tagged("channel") ?? text(p.channel) ?? "system",
+    sessionKey: text(p.sessionKey) ?? text(trace.traceId) ?? "",
     runId: text(trace.traceId),
     orgId: text(p.orgId),
-    model: text(pin.model),
-    callProvider: text(pin.provider),
-    routeSource:
-      text(record(settings.routeSources)[String(p.task)]) ??
-      (text(pin.model) ? "override" : "automatic"),
+    model: selectedModel,
+    callProvider: text(route.provider) ?? text(pin.provider),
+    routeSource: p.route
+      ? "manual"
+      : selectedModel
+        ? "override"
+        : "automatic",
   };
 }
 export function modelCallResult(payload: unknown) {
@@ -75,27 +84,24 @@ export function modelCallResult(payload: unknown) {
       (!Array.isArray(output.toolCalls) || output.toolCalls.length === 0));
   const usage = record(p.usage);
   const routing = record(p.routing);
+  const route = record(routing.route);
   const selection = record(routing.selection);
   const decisionCost = record(p.cost);
   const nanoCost = number(decisionCost.costNanoUsd);
   const totalNanoCost = number(selection.totalCostNanoUsd);
-  const selectorNanoCost = number(selection.costNanoUsd);
   const generationCost = number(p.costUsd);
   const costUsd =
     "totalCostNanoUsd" in selection
       ? totalNanoCost === undefined
         ? null
         : totalNanoCost / 1e9
-      : Object.keys(selection).length
-        ? generationCost !== undefined && selectorNanoCost !== undefined
-          ? generationCost + selectorNanoCost / 1e9
-          : null
-        : (generationCost ?? (nanoCost === undefined ? null : nanoCost / 1e9));
+      : (generationCost ?? (nanoCost === undefined ? null : nanoCost / 1e9));
   return {
     requestId: text(p.requestId),
-    model: text(model.model) ?? text(p.model),
-    callProvider: text(model.provider) ?? text(p.provider),
-    routeSource: text(routing.routeSource),
+    model: text(model.model) ?? text(route.model) ?? text(p.model),
+    callProvider:
+      text(model.provider) ?? text(route.provider) ?? text(p.provider),
+    routeSource: text(routing.source) ?? text(routing.decision),
     inputTokens: number(usage.inputTokens),
     outputTokens: number(usage.outputTokens),
     cachedInputTokens: number(usage.cachedInputTokens),
@@ -108,7 +114,7 @@ export function modelCallResult(payload: unknown) {
     reasoningTokens: number(usage.reasoningTokens),
     costUsd,
     routingSummary:
-      [text(routing.decision), text(selection.reason)]
+      [text(routing.decision), text(routing.source), text(routing.primitive)]
         .filter(Boolean)
         .join(" · ") || undefined,
     finishReason: text(p.finishReason),
