@@ -1,16 +1,15 @@
 /**
  * Spot → cl-router primitive mapping. The primitive and requirement vocabulary
- * comes from `@claritylabs/cl-router-policy`; the internal task/taskKind
+ * comes from `clRouterPolicy.ts`; the internal task/taskKind
  * mapping below is Spot-owned.
  *
- * Keep in sync with `contracts/cl-router/primitiveMapping.ts` and
- * `convex/lib/clRouterPrimitive.ts`.
+ * Keep in sync with `convex/lib/clRouterPrimitive.ts`.
  */
 
 import type {
   Primitive,
   PrimitiveRequirements,
-} from "@claritylabs/cl-router-policy";
+} from "./clRouterPolicy.js";
 
 export type ClRouterPrimitive = Primitive;
 export type ClRouterRequirements = PrimitiveRequirements;

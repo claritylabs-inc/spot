@@ -19,7 +19,7 @@ import {
 import {
   DIRECT_MODEL_PROVIDERS,
   type DirectModelProvider,
-} from "@claritylabs/cl-router-policy";
+} from "./clRouterPolicy.js";
 import { EXTRACTION_MODEL_CAPABILITIES } from "./modelCapabilities.js";
 import {
   buildPdfSourceSpans,

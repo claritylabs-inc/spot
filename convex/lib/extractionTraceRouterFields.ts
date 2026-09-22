@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { parseRoutingSelectionMetadata, type RoutingSelectionMetadata } from "@claritylabs/cl-router-policy";
+import { parseRoutingSelectionMetadata, type RoutingSelectionMetadata } from "../../contracts/cl-router/policy";
 
 export const routingSelectionValidator = v.object({
   mode: v.union(v.literal("legacy"), v.literal("jev_shadow"), v.literal("jev_active")),

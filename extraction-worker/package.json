@@ -18,7 +18,6 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@claritylabs/cl-router-policy": "1.0.0",
     "@claritylabs/cl-sdk": "4.6.0",
     "@llamaindex/liteparse": "^2.0.3",
     "convex": "^1.32.0",

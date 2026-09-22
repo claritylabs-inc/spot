@@ -2,7 +2,7 @@
 
 import dayjs from "dayjs";
 import { z } from "zod";
-import type { DecisionQuestion } from "@claritylabs/cl-router-policy";
+import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { clRouterDecide } from "../lib/clRouterClient";
 import { createHash } from "node:crypto";
 import type {

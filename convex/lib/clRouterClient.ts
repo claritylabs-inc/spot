@@ -11,7 +11,7 @@ import {
   parseDecideResponse,
   type DecideRequest,
   type DecideResponse,
-} from "@claritylabs/cl-router-policy";
+} from "../../contracts/cl-router/policy";
 
 import {
   MODEL_PROVIDERS,

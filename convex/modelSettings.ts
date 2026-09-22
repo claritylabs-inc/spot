@@ -9,32 +9,28 @@ import {
 import type { Doc } from "./_generated/dataModel";
 import { requireOperator } from "./lib/operatorIdentity";
 import {
-  AUDIO_TRANSCRIPTION_MODEL_CATALOG,
   CONFIGURABLE_MODEL_PROVIDERS,
-  EMBEDDING_MODEL_CATALOG,
-  LANGUAGE_MODEL_CATALOG,
   MODEL_ROUTE_DESCRIPTIONS,
   MODEL_ROUTE_IDS,
   MODEL_ROUTE_LABELS,
   MODEL_TASKS,
-  MODEL_TASK_LABELS,
   OPERATOR_MODEL_ROUTE_GROUPS,
   OPERATOR_AGENT_MODEL_ROUTE_ID,
   OPERATOR_WEB_RETRIEVAL_PROVIDERS,
-  MODEL_CAPABILITIES,
   PROVIDER_LABELS,
   WEB_RETRIEVAL_DEFAULT,
   WEB_RETRIEVAL_LABELS,
-  directProviderModelForRoute,
+  isConfigurableModelProvider,
   isRetiredModelRoute,
-  modelCapabilitiesForRoute,
-  modelRouteSupportsTask,
-  type ModelProvider,
   type ModelRoute,
   type ModelRouteId,
   type ModelTask,
   type WebRetrievalRoute,
 } from "./lib/modelCatalog";
+import {
+  routerModelSupportsTask,
+  type RouterModelEntry,
+} from "./lib/routerCapabilities";
 
 type GlobalRoutes = Partial<Record<ModelRouteId, ModelRoute>>;
 
@@ -89,74 +85,58 @@ const globalRoutesValidator = v.object({
   embeddings: v.optional(routeUpdateValidator),
 });
 
-function isModelTask(value: string): value is ModelTask {
-  return (MODEL_TASKS as string[]).includes(value);
-}
-
 function isModelRouteId(value: string): value is ModelRouteId {
   return (MODEL_ROUTE_IDS as string[]).includes(value);
 }
 
-function assertSupportedRoute(routeId: ModelRouteId, route: ModelRoute) {
+function assertSupportedRoute(
+  routeId: ModelRouteId,
+  route: ModelRoute,
+  models: RouterModelEntry[] | null,
+) {
   if (isRetiredModelRoute(route)) {
     throw new Error(`Retired model ${route.model} is no longer selectable`);
   }
-  if (!directProviderModelForRoute(route)) {
+  if (!isConfigurableModelProvider(route.provider) || route.model.length === 0) {
     throw new Error(
-      `${PROVIDER_LABELS[route.provider]} model ${route.model} is not available in the routing catalog`,
+      `${PROVIDER_LABELS[route.provider] ?? route.provider} model ${route.model} is not available`,
     );
   }
-  const models =
-    routeId === "embeddings"
-      ? EMBEDDING_MODEL_CATALOG[route.provider]
-      : routeId === "voice_transcription"
-        ? AUDIO_TRANSCRIPTION_MODEL_CATALOG[route.provider]
-        : LANGUAGE_MODEL_CATALOG[route.provider];
-  if (!models?.includes(route.model)) {
+  if (!models) return;
+  const entry = models.find(
+    (item) => item.provider === route.provider && item.model === route.model,
+  );
+  if (!entry) {
     throw new Error(
-      `Unsupported model ${route.model} for ${PROVIDER_LABELS[route.provider]}`,
+      `${PROVIDER_LABELS[route.provider]} model ${route.model} is not available in the router catalog`,
     );
   }
-  if (
-    routeId === OPERATOR_AGENT_MODEL_ROUTE_ID &&
-    !modelRouteSupportsTask("chat_vision", route)
-  ) {
-    throw new Error("Operator agent requires an image-capable language model");
-  }
-  if (isModelTask(routeId) && !modelRouteSupportsTask(routeId, route)) {
+  if (!routerModelSupportsTask(routeId, entry)) {
     throw new Error(
       routeId === "voice_transcription"
-        ? `${MODEL_TASK_LABELS[routeId]} requires an audio transcription model`
-        : `${MODEL_TASK_LABELS[routeId]} requires an image-capable model`,
+        ? "Voice transcription requires an audio transcription model"
+        : routeId === "embeddings"
+          ? "Embeddings requires an embedding model"
+          : routeId === OPERATOR_AGENT_MODEL_ROUTE_ID || routeId === "chat_vision"
+            ? "This route requires an image-capable language model"
+            : `${routeId} is not supported by ${route.model}`,
     );
   }
 }
 
-function routeStaticallySupported(routeId: ModelRouteId, route: ModelRoute) {
-  if (isRetiredModelRoute(route) || !directProviderModelForRoute(route)) {
-    return false;
-  }
-  const models =
-    routeId === "embeddings"
-      ? EMBEDDING_MODEL_CATALOG[route.provider]
-      : routeId === "voice_transcription"
-        ? AUDIO_TRANSCRIPTION_MODEL_CATALOG[route.provider]
-        : LANGUAGE_MODEL_CATALOG[route.provider];
-  if (!models?.includes(route.model)) return false;
-  if (
-    routeId === OPERATOR_AGENT_MODEL_ROUTE_ID &&
-    !modelRouteSupportsTask("chat_vision", route)
-  ) {
-    return false;
-  }
-  return !isModelTask(routeId) || modelRouteSupportsTask(routeId, route);
+function routeStaticallySupported(route: ModelRoute) {
+  return (
+    !isRetiredModelRoute(route) &&
+    isConfigurableModelProvider(route.provider) &&
+    route.model.length > 0
+  );
 }
 
 function nullableGlobalRoutes(routes: GlobalRoutes | undefined) {
   return Object.fromEntries(
     MODEL_ROUTE_IDS.map((id) => {
       const route = routes?.[id];
-      return [id, route && routeStaticallySupported(id, route) ? route : null];
+      return [id, route && routeStaticallySupported(route) ? route : null];
     }),
   ) as Record<ModelRouteId, ModelRoute | null>;
 }
@@ -190,24 +170,6 @@ export function explicitOperatorAgentRoute(
     : null;
 }
 
-function availableLanguageModels(provider: ModelProvider) {
-  return (LANGUAGE_MODEL_CATALOG[provider] ?? []).filter((model) =>
-    directProviderModelForRoute({ provider, model }),
-  );
-}
-
-function availableEmbeddingModels(provider: ModelProvider) {
-  return (EMBEDDING_MODEL_CATALOG[provider] ?? []).filter((model) =>
-    directProviderModelForRoute({ provider, model }),
-  );
-}
-
-function availableAudioModels(provider: ModelProvider) {
-  return (AUDIO_TRANSCRIPTION_MODEL_CATALOG[provider] ?? []).filter((model) =>
-    directProviderModelForRoute({ provider, model }),
-  );
-}
-
 function normalizeWebRetrieval(
   config: WebRetrievalRoute | undefined,
 ): WebRetrievalRoute {
@@ -230,30 +192,6 @@ function assertSupportedWebRetrieval(config: WebRetrievalRoute) {
   }
 }
 
-function modelCapabilityCatalog() {
-  return Object.fromEntries(
-    CONFIGURABLE_MODEL_PROVIDERS.flatMap((provider) =>
-      [
-        ...(LANGUAGE_MODEL_CATALOG[provider] ?? []),
-        ...(AUDIO_TRANSCRIPTION_MODEL_CATALOG[provider] ?? []),
-        ...(EMBEDDING_MODEL_CATALOG[provider] ?? []),
-      ].map((model) => {
-        const capabilities = modelCapabilitiesForRoute({ provider, model });
-        return [
-          `${provider}:${model}`,
-          {
-            ...capabilities,
-            known: Object.prototype.hasOwnProperty.call(
-              MODEL_CAPABILITIES,
-              model,
-            ),
-          },
-        ];
-      }),
-    ),
-  );
-}
-
 export const getGlobal = query({
   args: {},
   handler: async (ctx) => {
@@ -267,9 +205,6 @@ export const getGlobal = query({
       providers: CONFIGURABLE_MODEL_PROVIDERS.map((id) => ({
         id,
         label: PROVIDER_LABELS[id],
-        languageModels: availableLanguageModels(id),
-        audioModels: availableAudioModels(id),
-        embeddingModels: availableEmbeddingModels(id),
       })),
       tasks: MODEL_ROUTE_IDS.map((id) => ({
         id,
@@ -286,7 +221,6 @@ export const getGlobal = query({
         id,
         label: WEB_RETRIEVAL_LABELS[id],
       })),
-      modelCapabilities: modelCapabilityCatalog(),
       updatedAt: settings?.updatedAt ?? null,
     };
   },
@@ -309,7 +243,11 @@ export const updateGlobalRoutes = mutation({
       }
       if (!route) continue;
       if (!isModelRouteId(task)) throw new Error(`Unknown model route ${task}`);
-      assertSupportedRoute(task, route);
+      // Mutations cannot fetch the router. When GET /v1/capabilities includes
+      // `models`, the operator UI fail-closes against that list. Older routers
+      // omit `models`; pins remain unvalidated-but-allowed here and the router
+      // rejects unknown /v1/manual routes.
+      assertSupportedRoute(task, route, null);
     }
 
     const now = dayjs().valueOf();
@@ -358,7 +296,7 @@ export const resolveOperatorAgentRoute = internalQuery({
         "Operator agent model is not configured. Select a provider and image-capable model in Operator routing.",
       );
     }
-    assertSupportedRoute(OPERATOR_AGENT_MODEL_ROUTE_ID, route);
+    assertSupportedRoute(OPERATOR_AGENT_MODEL_ROUTE_ID, route, null);
     return route;
   },
 });
@@ -418,7 +356,7 @@ export async function resolvePublicModelDefaults(ctx: QueryCtx) {
     if (
       route &&
       route.provider !== "moonshot" &&
-      routeStaticallySupported(task, route)
+      routeStaticallySupported(route)
     ) {
       routes[task] = route;
       routeSources[task] = "global";

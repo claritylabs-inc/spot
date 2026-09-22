@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { typeStyle } from "@/lib/typography";
 import { useOperatorRouterCapabilities } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { routerModelSupportsTask } from "@/convex/lib/routerCapabilities";
 import { modelDefaultRetrievalConfigured } from "./retrieval-availability";
 
 type Settings = FunctionReturnType<typeof api.modelSettings.getGlobal>;
@@ -66,24 +67,25 @@ function OverrideEditor({
   );
   const { capabilities } = useOperatorRouterCapabilities();
   const unavailable = capabilities?.availability !== "available";
+  const routerModels =
+    capabilities?.availability === "available" ? capabilities.models : undefined;
   const providerAvailable = (provider: string) =>
     capabilities?.availability !== "available" ||
     capabilities.providers.some(
       (item) => item.provider === provider && item.configured,
     );
   function models(provider: Settings["providers"][number]) {
-    const values = task?.isEmbedding
-      ? provider.embeddingModels
-      : task?.isAudio
-        ? provider.audioModels
-        : provider.languageModels;
-    return task?.manualRequired
-      ? values.filter(
-          (model) =>
-            settings.modelCapabilities[`${provider.id}:${model}`]
-              ?.supportsImageInput,
+    if (!task) return [];
+    if (routerModels) {
+      return routerModels
+        .filter(
+          (entry) =>
+            entry.provider === provider.id &&
+            routerModelSupportsTask(task.id, entry),
         )
-      : values;
+        .map((entry) => entry.model);
+    }
+    return route?.provider === provider.id ? [route.model] : [];
   }
   async function save() {
     setSaving(true);
@@ -143,6 +145,11 @@ function OverrideEditor({
         {unavailable ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
             Provider availability could not be checked.
+          </p>
+        ) : routerModels === undefined && task ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            Router did not return a model catalog. Existing pins can be kept;
+            new pins are unvalidated until cl-router advertises `models`.
           </p>
         ) : null}
         {task ? (

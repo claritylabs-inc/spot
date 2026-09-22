@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DecideResponse } from "@claritylabs/cl-router-policy";
+import type { DecideResponse } from "../../contracts/cl-router/policy";
 
 export type ConnectedEmailAutomation = {
   policyImports: boolean;
