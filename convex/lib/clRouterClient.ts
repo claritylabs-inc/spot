@@ -5,6 +5,8 @@ import type { Id } from "../_generated/dataModel";
 import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
 
 import {
+  DIFFICULTIES,
+  QUALITY_TIERS,
   parseDecideRequest,
   parseDecideResponse,
   type DecideRequest,
@@ -719,14 +721,10 @@ const ROUTING_SOURCES = new Set<ClRouterRoutingSource>([
   "fallback",
   "manual",
 ]);
-const ROUTING_DIFFICULTIES = new Set<ClRouterDifficulty>([
-  "simple",
-  "standard",
-  "complex",
-]);
+const ROUTING_DIFFICULTIES = new Set<ClRouterDifficulty>(DIFFICULTIES);
 
 function isQualityTier(value: unknown): value is ClRouterQualityTier {
-  return value === 1 || value === 2 || value === 3;
+  return QUALITY_TIERS.includes(value as ClRouterQualityTier);
 }
 
 function readRouting(value: unknown): ClRouterRoutingMetadata | null {

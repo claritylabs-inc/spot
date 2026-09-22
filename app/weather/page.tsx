@@ -33,10 +33,10 @@ type WeatherProviderId = ModelProviderId | "moonshot";
 type WeatherRoute = {
   task: string;
   taskLabel?: string;
-  model: string;
-  provider: WeatherProviderId;
+  model?: string;
+  provider?: WeatherProviderId;
   providerLabel?: string;
-  routing?: "automatic" | "manual";
+  routing: "automatic" | "manual";
 };
 
 const TASK_LABELS: Record<string, string> = MODEL_ROUTE_LABELS;
@@ -129,27 +129,7 @@ function WeatherTableSkeleton() {
 
 export default function WeatherPage() {
   const config = useCachedQuery("modelConfig.list", api.modelConfig.list, {});
-  const compatibleConfig = config as
-    | {
-        routes: WeatherRoute[];
-        fallback?: Pick<WeatherRoute, "model" | "provider">;
-      }
-    | undefined;
-  const routes = compatibleConfig
-    ? [
-        ...compatibleConfig.routes,
-        ...(compatibleConfig.fallback &&
-        !compatibleConfig.routes.some((route) => route.task === "fallback")
-          ? [
-              {
-                task: "fallback",
-                ...compatibleConfig.fallback,
-                routing: "automatic" as const,
-              },
-            ]
-          : []),
-      ]
-    : [];
+  const routes: WeatherRoute[] = config?.routes ?? [];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -197,27 +177,35 @@ export default function WeatherPage() {
                         TASK_LABELS[route.task] ??
                         humanizeIdentifier(route.task)}
                     </TableCell>
+                    {route.provider && route.model ? (
+                      <>
+                        <TableCell>
+                          <span className="flex items-center gap-2 text-foreground">
+                            <ProviderMark provider={route.provider} />
+                            {route.providerLabel ??
+                              PROVIDER_NAMES[route.provider] ??
+                              humanizeIdentifier(route.provider)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-2 text-foreground">
+                            <ModelMark
+                              provider={route.provider}
+                              model={route.model}
+                            />
+                            <span title={route.model}>
+                              {getModelDisplayName(route.model)}
+                            </span>
+                          </span>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <TableCell colSpan={2} className="text-muted-foreground">
+                        Chosen per request
+                      </TableCell>
+                    )}
                     <TableCell>
-                      <span className="flex items-center gap-2 text-foreground">
-                        <ProviderMark provider={route.provider} />
-                        {route.providerLabel ??
-                          PROVIDER_NAMES[route.provider] ??
-                          humanizeIdentifier(route.provider)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2 text-foreground">
-                        <ModelMark
-                          provider={route.provider}
-                          model={route.model}
-                        />
-                        <span title={route.model}>
-                          {getModelDisplayName(route.model)}
-                        </span>
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <RoutingBadge routing={route.routing ?? "automatic"} />
+                      <RoutingBadge routing={route.routing} />
                     </TableCell>
                   </TableRow>
                 ))}

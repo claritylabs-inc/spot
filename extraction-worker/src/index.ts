@@ -15,17 +15,12 @@ import {
   type ExtractionResult,
   type ExtractionSectionResult,
   type ExtractionSectionStore,
-  type ModelCapabilities,
-  type ModelTaskKind,
 } from "@claritylabs/cl-sdk";
 import {
   DIRECT_MODEL_PROVIDERS,
-  MODEL_ROUTING,
-  SPECIAL_MODEL_ROUTES,
-  primaryRouteForCall,
   type DirectModelProvider,
 } from "@claritylabs/cl-router-policy";
-import { modelCapabilitiesForRoute } from "./modelCapabilities.js";
+import { EXTRACTION_MODEL_CAPABILITIES } from "./modelCapabilities.js";
 import {
   buildPdfSourceSpans,
   buildPdfTextSupplements,
@@ -111,34 +106,28 @@ type WorkerModelRoute = {
   model: string;
 };
 
-type WorkerRouteSource =
-  | "broker"
-  | "global"
-  | "static"
-  | "configured"
-  | "default"
-  | "fallback";
-
+/** Operator pins from Convex; tasks without a "global" source are auto-routed. */
 type WorkerModelSettings = {
   routes?: Partial<Record<ModelTask | string, WorkerModelRoute>>;
-  routeSources?: Partial<
-    Record<ModelTask | string, WorkerRouteSource | string>
-  >;
+  routeSources?: Partial<Record<ModelTask | string, string>>;
 };
 
 type ResolvedWorkerModelRoute = {
   task: ModelTask;
-  route: WorkerModelRoute;
-  routeSource: WorkerRouteSource;
+  route?: WorkerModelRoute;
+  routeSource?: "global";
   transport: "cl-router";
-  capabilities: ModelCapabilities;
 };
 
 type TraceableModelRoute = {
   task: ModelTask;
-  route: { provider: string; model: string };
-  routeSource: string;
+  route?: { provider: string; model: string };
+  routeSource?: string;
   transport: string;
+};
+
+type RouterSelectedModelRoute = TraceableModelRoute & {
+  route: { provider: string; model: string };
 };
 
 type ModelCallTrace = {
@@ -680,17 +669,6 @@ function readSourceKind(
   return "policy_pdf";
 }
 
-const WORKER_STATIC_ROUTES: Record<ModelTask, WorkerModelRoute> = {
-  extraction: MODEL_ROUTING.extraction,
-  extraction_preview: MODEL_ROUTING.extraction_preview,
-};
-
-const WORKER_COVERAGE_CLEANUP_ROUTE: WorkerModelRoute =
-  SPECIAL_MODEL_ROUTES.extraction_coverage_cleanup;
-
-const WORKER_QUALITY_ROUTE: WorkerModelRoute =
-  SPECIAL_MODEL_ROUTES.extraction_quality;
-
 const WORKER_MODEL_PROVIDERS = new Set<ModelProvider>(DIRECT_MODEL_PROVIDERS);
 
 function isModelProvider(value: string): value is ModelProvider {
@@ -708,20 +686,6 @@ function isWorkerModelRoute(value: unknown): value is WorkerModelRoute {
   );
 }
 
-function readRouteSource(value: unknown): WorkerRouteSource | undefined {
-  if (
-    value === "broker" ||
-    value === "global" ||
-    value === "static" ||
-    value === "configured" ||
-    value === "default" ||
-    value === "fallback"
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
 function modelTaskForTaskKind(taskKind?: string): ModelTask {
   if (taskKind === "extraction_preview") return "extraction_preview";
   if (taskKind?.endsWith("_classify")) {
@@ -735,97 +699,22 @@ function modelTaskForTaskKind(taskKind?: string): ModelTask {
   return "extraction";
 }
 
-function resolveConfiguredRoute(
-  routeId: string,
-  defaultRoute: WorkerModelRoute,
-  defaultRouteSource: WorkerRouteSource,
-  settings?: WorkerModelSettings,
-): {
-  route: WorkerModelRoute;
-  routeSource: WorkerRouteSource;
-} {
-  const settingsRoute = settings?.routes?.[routeId];
-  const configuredRoute = isWorkerModelRoute(settingsRoute)
-    ? settingsRoute
-    : undefined;
-  const configuredRouteSource = readRouteSource(
-    settings?.routeSources?.[routeId],
-  );
-  const routeSource = configuredRouteSource ?? "configured";
-  if (configuredRoute) {
-    return {
-      route: configuredRoute,
-      routeSource,
-    };
-  }
-  return { route: defaultRoute, routeSource: defaultRouteSource };
-}
-
-function resolveConfiguredQualityRoute(settings?: WorkerModelSettings) {
-  return resolveConfiguredRoute(
-    "extraction_quality",
-    WORKER_QUALITY_ROUTE,
-    "static",
-    settings,
-  );
-}
-
-function resolveConfiguredCoverageCleanupRoute(settings?: WorkerModelSettings) {
-  return resolveConfiguredRoute(
-    "extraction_coverage_cleanup",
-    WORKER_COVERAGE_CLEANUP_ROUTE,
-    "static",
-    settings,
-  );
-}
-
 function resolveModelForTaskKind(
   taskKind: string | undefined,
   settings?: WorkerModelSettings,
 ): ResolvedWorkerModelRoute {
   const task = modelTaskForTaskKind(taskKind);
-  const settingsRoute = settings?.routes?.[task];
-  const configuredRoute = isWorkerModelRoute(settingsRoute)
-    ? settingsRoute
-    : undefined;
-  const configuredRouteSource = readRouteSource(settings?.routeSources?.[task]);
-  const configuredSource = configuredRouteSource ?? "configured";
-  const baseRoute = configuredRoute
-    ? configuredRoute
-    : WORKER_STATIC_ROUTES[task];
-  const quality = resolveConfiguredQualityRoute(settings);
-  const useQualityPrimary =
-    primaryRouteForCall({
-      task,
-      taskKind,
-      qualityRoute: quality.route,
-    }) !== null;
-  const coverageCleanup =
-    taskKind === "extraction_coverage_cleanup"
-      ? resolveConfiguredCoverageCleanupRoute(settings)
-      : null;
-  const route =
-    coverageCleanup?.route ?? (useQualityPrimary ? quality.route : baseRoute);
-  const routeSource =
-    coverageCleanup?.routeSource ??
-    (useQualityPrimary
-      ? quality.routeSource
-      : configuredRoute
-        ? configuredSource
-        : "default");
-  return {
-    task,
-    route,
-    routeSource,
-    transport: "cl-router",
-    capabilities: modelCapabilitiesForRoute(route.model),
-  };
+  const pinnedRoute = settings?.routes?.[task];
+  return settings?.routeSources?.[task] === "global" &&
+    isWorkerModelRoute(pinnedRoute)
+    ? { task, route: pinnedRoute, routeSource: "global", transport: "cl-router" }
+    : { task, transport: "cl-router" };
 }
 
 function modelRouteTrace(route: TraceableModelRoute) {
   return {
-    provider: route.route.provider,
-    model: route.route.model,
+    provider: route.route?.provider,
+    model: route.route?.model,
     routeSource: route.routeSource,
     transport: route.transport,
   };
@@ -884,18 +773,6 @@ function shouldReturnEmptySections(prompt: string, error: unknown): boolean {
     prompt.includes(SECTIONS_EXTRACTOR_PROMPT_MARKER) &&
     errorMessage(error).includes("No output generated")
   );
-}
-
-function maxOutputTokensForRoute(
-  maxTokens: number,
-  route: ResolvedWorkerModelRoute,
-  taskKind?: string,
-): number {
-  const routeMax = taskKind
-    ? (route.capabilities.taskOutputTokens?.[taskKind as ModelTaskKind] ??
-      route.capabilities.maxOutputTokens)
-    : route.capabilities.maxOutputTokens;
-  return routeMax ? Math.min(maxTokens, routeMax) : maxTokens;
 }
 
 function readTraceDetails(params: {
@@ -1214,7 +1091,7 @@ async function prepareClRouterAssets(
 function clRouterTraceRoute(
   task: ModelTask,
   response: ClRouterGenerateResponse,
-): TraceableModelRoute {
+): RouterSelectedModelRoute {
   return {
     task,
     route: response.model,
@@ -1236,12 +1113,6 @@ function clRouterTraceDetails(response: ClRouterGenerateResponse) {
   };
 }
 
-function explicitRouterRoute(route: ResolvedWorkerModelRoute) {
-  return route.routeSource === "global" || route.routeSource === "configured"
-    ? route.route
-    : undefined;
-}
-
 async function generateObjectWithClRouter<T>(opts: {
   job: ClaimedJob;
   route: ResolvedWorkerModelRoute;
@@ -1253,12 +1124,11 @@ async function generateObjectWithClRouter<T>(opts: {
   maxOutputTokens: number;
   providerOptions: Record<string, unknown>;
   trace?: ModelCallTrace;
-  modelSettings?: WorkerModelSettings;
   validate: (output: unknown) => T;
 }): Promise<{
   object: T;
   usage: ReturnType<typeof mapUsage>;
-  route: TraceableModelRoute;
+  route: RouterSelectedModelRoute;
 }> {
   const startedAt = nowMs();
   await recordTraceEvent(opts.job, {
@@ -1277,7 +1147,7 @@ async function generateObjectWithClRouter<T>(opts: {
       schemaBytes: Buffer.byteLength(JSON.stringify(opts.schema)),
     }),
   });
-  const pinnedRoute = explicitRouterRoute(opts.route);
+  const pinnedRoute = opts.route.route;
   const mappingHint = {
     task: opts.route.task,
     taskKind: opts.taskKind,
@@ -1451,11 +1321,7 @@ function buildWorkerExtractor(opts: {
       route.task,
       trace,
     );
-    const maxOutputTokens = maxOutputTokensForRoute(
-      params.maxTokens,
-      route,
-      taskKind,
-    );
+    const maxOutputTokens = params.maxTokens;
     const startedAt = nowMs();
     try {
       const routerSchema = z.toJSONSchema(params.schema);
@@ -1470,7 +1336,6 @@ function buildWorkerExtractor(opts: {
         maxOutputTokens,
         providerOptions,
         trace,
-        modelSettings: opts.modelSettings,
         validate: (output) => {
           const parsed = params.schema.safeParse(output);
           if (!parsed.success) {
@@ -1511,31 +1376,12 @@ function buildWorkerExtractor(opts: {
     }
   };
 
-  const extractionRoute = resolveModelForTaskKind(
-    "extraction_focused",
-    opts.modelSettings,
-  );
-  const modelCapabilitiesByTaskKind = Object.fromEntries(
-    (
-      [
-        "extraction_source_tree",
-        "extraction_operational_profile",
-        "extraction_coverage_cleanup",
-        "extraction_review",
-        "extraction_referential_lookup",
-      ] satisfies ModelTaskKind[]
-    ).map((taskKind) => [
-      taskKind,
-      resolveModelForTaskKind(taskKind, opts.modelSettings).capabilities,
-    ]),
-  ) as Partial<Record<ModelTaskKind, ModelCapabilities>>;
   return {
     extractor: createExtractor({
       generateObject,
       log: opts.log,
       onProgress: opts.log,
-      modelCapabilities: extractionRoute.capabilities,
-      modelCapabilitiesByTaskKind,
+      modelCapabilities: EXTRACTION_MODEL_CAPABILITIES,
     }),
     generateObject,
   };
@@ -2337,10 +2183,7 @@ async function extractPreviewFields(
     "extraction_preview",
     job.modelSettings,
   );
-  const maxOutputTokens = Math.min(
-    maxOutputTokensForRoute(4096, route, "extraction_preview"),
-    8192,
-  );
+  const maxOutputTokens = 4_096;
   const system = `You extract a fast provisional first read from already-bound insurance policy text.
 Return only fields that are explicitly present or strongly implied by the document text.
 Leave unknown fields null or empty. Do not invent carriers, dates, limits, policy numbers, insured names, or coverages.
@@ -2370,7 +2213,6 @@ ${sourceText}`,
     maxOutputTokens,
     providerOptions: {},
     trace: { phase: "preview", label },
-    modelSettings: job.modelSettings,
     validate: (output) => {
       if (!output || typeof output !== "object" || Array.isArray(output)) {
         throw new ClRouterProtocolError(

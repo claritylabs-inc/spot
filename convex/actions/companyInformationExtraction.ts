@@ -247,10 +247,7 @@ export const extractClientFile = internalAction({
           messages,
           maxOutputTokens: 4_000,
         },
-        {
-          taskKind: "company_information_document_extraction",
-          allowFallback: false,
-        },
+        { taskKind: "company_information_document_extraction" },
       );
       const extraction = sanitizeCompanyInformationExtraction(result.object);
       return await ctx.runMutation(
@@ -298,10 +295,7 @@ export const extractProcurementEmailThread = internalAction({
           prompt: emailThreadText(source.requestTitle, source.messages),
           maxOutputTokens: 4_000,
         },
-        {
-          taskKind: "company_information_email_extraction",
-          allowFallback: false,
-        },
+        { taskKind: "company_information_email_extraction" },
       );
       const extraction = sanitizeCompanyInformationExtraction(result.object);
       return await ctx.runMutation(

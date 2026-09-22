@@ -4,33 +4,44 @@ import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
 
 import { api, internal } from "./_generated/api";
-import { defaultModelRouteForId } from "./lib/modelCatalog";
-import { isExplicitGlobalRouteOverride } from "./modelSettings";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
 describe("global model route overrides", () => {
-  it.each([
-    { route: defaultModelRouteForId("chat"), explicit: [], expected: false },
-    {
-      route: defaultModelRouteForId("chat"),
-      explicit: ["chat"],
-      expected: true,
-    },
-    {
-      route: { provider: "openai" as const, model: "gpt-5.5" },
-      explicit: [],
-      expected: true,
-    },
-  ])(
-    "returns $expected for route $route.model",
-    ({ route, explicit, expected }) => {
-      expect(isExplicitGlobalRouteOverride("chat", route, explicit)).toBe(
-        expected,
-      );
-    },
-  );
+  it("pins only explicitly selected routes", async () => {
+    const t = convexTest(schema, modules);
+    const now = dayjs().valueOf();
+    const orgId = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        email: "pin-operator@example.com",
+        accountKind: "operator",
+      });
+      await ctx.db.insert("globalModelSettings", {
+        key: "default",
+        routes: {
+          chat: { provider: "openai", model: "gpt-5.4-mini" },
+          extraction: { provider: "openai", model: "gpt-5.5" },
+          fallback: { provider: "openai", model: "gpt-5.4" },
+        },
+        explicitRouteOverrides: ["extraction", "fallback"],
+        updatedBy: userId,
+        updatedAt: now,
+      });
+      return await ctx.db.insert("organizations", {
+        name: "Pinned Routes Client",
+        type: "client",
+      });
+    });
+
+    const snapshot = await t.query(internal.modelSettings.resolveForOrg, {
+      orgId,
+    });
+    expect(snapshot?.routes).toEqual({
+      extraction: { provider: "openai", model: "gpt-5.5" },
+    });
+    expect(snapshot?.routeSources).toEqual({ extraction: "global" });
+  });
 
   it("resolves statically valid routes without consumer provider keys", async () => {
     const t = convexTest(schema, modules);
@@ -51,7 +62,7 @@ describe("global model route overrides", () => {
       await ctx.db.insert("globalModelSettings", {
         key: "default",
         routes: {
-          operator_agent: defaultModelRouteForId("operator_agent"),
+          operator_agent: { provider: "openai", model: "gpt-5.6-terra" },
         },
         explicitRouteOverrides: [],
         updatedBy: userId,
@@ -85,6 +96,7 @@ describe("global model route overrides", () => {
       t.query(internal.modelSettings.resolveForOrg, { orgId }),
       t.query(internal.modelSettings.resolvePublicDefaults, {}),
     ]);
+    expect(orgSnapshot?.routes).toEqual({});
     expect(orgSnapshot?.routes).not.toHaveProperty("operator_agent");
     expect(orgSnapshot?.routeSources).not.toHaveProperty("operator_agent");
     expect(orgSnapshot).not.toHaveProperty("providerKeys");

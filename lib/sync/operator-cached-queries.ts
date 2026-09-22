@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import type { FunctionArgs, FunctionReturnType } from "convex/server";
+import type { FunctionReturnType } from "convex/server";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -15,21 +15,9 @@ import {
 type OperatorCurrent = FunctionReturnType<typeof api.operator.current>;
 type OperatorClientList = FunctionReturnType<typeof api.operator.listClients>;
 type OperatorClientRow = OperatorClientList[number];
-type OperatorGlobalModelSettings = FunctionReturnType<
-  typeof api.modelSettings.getGlobal
->;
 export type OperatorRouterCapabilities = FunctionReturnType<
   typeof api.clRouterOperations.getCapabilities
 >;
-type GlobalWebRetrieval = FunctionArgs<
-  typeof api.modelSettings.updateGlobalWebRetrieval
->["webRetrieval"];
-type OperatorGlobalToolSettings = {
-  webRetrieval: GlobalWebRetrieval;
-  webRetrievalProviders: OperatorGlobalModelSettings["webRetrievalProviders"];
-  routes: OperatorGlobalModelSettings["routes"];
-  tasks: OperatorGlobalModelSettings["tasks"];
-};
 type OperatorExtractionTraceList = FunctionReturnType<
   typeof api.operator.listExtractionTraces
 >;
@@ -42,7 +30,6 @@ type OperatorDemoSalesTranscriptList = FunctionReturnType<
 type OperatorDemoSalesTranscriptDetail = FunctionReturnType<
   typeof api.operator.getPublicDemoSalesTranscript
 >;
-type GlobalRoutes = OperatorGlobalModelSettings["routes"];
 type EmptyArgs = Record<string, never>;
 type OperatorStatus = OperatorClientRow["operatorStatus"];
 type TraceStatus = "running" | "complete" | "error" | "cancelled";
@@ -64,7 +51,6 @@ type ExtractionTraceFilters = {
 type DemoSalesTranscriptListArgs = {
   limit?: number;
 };
-type GlobalRoute = GlobalRoutes[keyof GlobalRoutes];
 type OptimisticClientInput = {
   clientOrgId: Id<"organizations">;
   name: string;
@@ -132,22 +118,6 @@ export function useCachedOperatorClients() {
     api.operator.listClients,
     {},
   ) as OperatorClientList | undefined;
-}
-
-export function useCachedOperatorGlobalModelSettings() {
-  return useCachedQuery(
-    "operator.modelSettings.getGlobal",
-    api.modelSettings.getGlobal,
-    {},
-  ) as OperatorGlobalModelSettings | undefined;
-}
-
-export function useCachedOperatorGlobalToolSettings() {
-  return useCachedQuery(
-    "operator.modelSettings.getGlobal",
-    api.modelSettings.getGlobal,
-    {},
-  ) as OperatorGlobalToolSettings | undefined;
 }
 
 export function useOperatorRouterCapabilities() {
@@ -310,45 +280,3 @@ export function useOperatorClientCacheActions() {
   return { seedClient, patchClientStatus, patchClientSettings };
 }
 
-export function useOperatorGlobalModelRouteCacheActions() {
-  const updateSettings = useUpdateCachedQuery<
-    OperatorGlobalModelSettings,
-    EmptyArgs
-  >("operator.modelSettings.getGlobal");
-
-  const patchRoute = useCallback(
-    async (taskId: string, route: GlobalRoute) => {
-      await updateSettings({}, (current) => ({
-        ...current,
-        routes: {
-          ...current.routes,
-          [taskId]: route,
-        },
-        updatedAt: dayjs().valueOf(),
-      }));
-    },
-    [updateSettings],
-  );
-
-  return { patchRoute };
-}
-
-export function useOperatorGlobalToolSettingsCacheActions() {
-  const updateSettings = useUpdateCachedQuery<
-    OperatorGlobalModelSettings,
-    EmptyArgs
-  >("operator.modelSettings.getGlobal");
-
-  const patchWebRetrieval = useCallback(
-    async (webRetrieval: GlobalWebRetrieval) => {
-      await updateSettings({}, (current) => ({
-        ...current,
-        webRetrieval,
-        updatedAt: dayjs().valueOf(),
-      }));
-    },
-    [updateSettings],
-  );
-
-  return { patchWebRetrieval };
-}

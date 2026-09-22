@@ -105,13 +105,13 @@ test("metadata logging never stores request bodies, asset URLs, or response cont
     task: "extraction",
     prompt: "private",
     trace: { channel: "worker" },
-    routing: { pin: { provider: "google", model: "example" } },
+    route: { provider: "google", model: "example" },
     audio: { url: "secret" },
   });
   expect(ctx).toMatchObject({
     channel: "worker",
     model: "example",
-    routeSource: "override",
+    routeSource: "manual",
   });
   expect(JSON.stringify(ctx)).not.toMatch(/private|secret/);
   expect(
@@ -179,7 +179,7 @@ test("search follows cursors past nonmatching calls and rejects non-operator lis
   expect(second.isDone).toBe(true);
 });
 
-test("prices decision nano-dollars and uses inclusive router totals without adding selector cost twice", () => {
+test("prices decision nano-dollars and summarizes the router's selection", () => {
   expect(
     modelCallResult({
       model: "jev-1",
@@ -191,16 +191,17 @@ test("prices decision nano-dollars and uses inclusive router totals without addi
     modelCallResult({
       costUsd: 0.1,
       routing: {
-        selection: { costNanoUsd: 1000000, totalCostNanoUsd: 101000000 },
+        decision: "routed",
+        source: "jev",
+        primitive: "reasoning",
+        difficulty: "complex",
+        selectedTier: 3,
       },
-    }).costUsd,
-  ).toBe(0.101);
-  expect(
-    modelCallResult({
-      costUsd: 0.1,
-      routing: { selection: { costNanoUsd: null, totalCostNanoUsd: null } },
-    }).costUsd,
-  ).toBeNull();
+    }),
+  ).toMatchObject({
+    costUsd: 0.1,
+    routingSummary: "routed · jev · reasoning · complex · tier 3",
+  });
 });
 
 test("payload previews omit assets and credentials and remain bounded", async () => {

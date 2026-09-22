@@ -1,33 +1,23 @@
 /**
- * Locked Spot → cl-router primitive mapping.
+ * Spot → cl-router primitive mapping. The primitive and requirement vocabulary
+ * comes from `@claritylabs/cl-router-policy`; the internal task/taskKind
+ * mapping below is Spot-owned.
  *
  * Keep in sync with `contracts/cl-router/primitiveMapping.ts` and
  * `extraction-worker/src/clRouterPrimitive.ts`.
- *
- * TODO(cl-router-policy): delete this Spot-owned copy when the published
- * `@claritylabs/cl-router-policy` package exports primitive mapping helpers.
  */
 
-export const CL_ROUTER_PRIMITIVES = [
-  "text",
-  "reasoning",
-  "multimodal",
-  "tool_use",
-  "embedding",
-  "transcription",
-] as const;
+import type {
+  Difficulty,
+  Primitive,
+  PrimitiveRequirements,
+  QualityTier,
+} from "@claritylabs/cl-router-policy";
 
-export type ClRouterPrimitive = (typeof CL_ROUTER_PRIMITIVES)[number];
-
-export type ClRouterRequirements = {
-  vision?: boolean;
-  tools?: boolean;
-  structuredOutput?: boolean;
-  minInputTokens?: number;
-};
-
-export type ClRouterDifficulty = "simple" | "standard" | "complex";
-export type ClRouterQualityTier = 1 | 2 | 3;
+export type ClRouterPrimitive = Primitive;
+export type ClRouterRequirements = PrimitiveRequirements;
+export type ClRouterDifficulty = Difficulty;
+export type ClRouterQualityTier = QualityTier;
 export type ClRouterRoutingDecision = "routed" | "manual";
 export type ClRouterRoutingSource = "jev" | "fallback" | "manual";
 

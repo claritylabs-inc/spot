@@ -28,7 +28,6 @@ import {
   type ClRouterMessage,
   type ClRouterMessagePart,
   type ClRouterResponseMetadata,
-  type ClRouterSettingsSnapshot,
   type ClRouterToolDefinition,
   type ClRouterUsage,
 } from "./clRouterClient";
@@ -54,11 +53,9 @@ export type ClRouterLanguageModelOptions = {
   task: ModelTask;
   taskKind?: string;
   orgId?: string;
-  settings: ClRouterSettingsSnapshot | null;
   sessionKey: string;
   trace?: ClRouterGenerateRequest["trace"];
   initialRoutePin?: ModelRoute;
-  allowFallback?: boolean;
   assetStager?: (asset: {
     bytes: Uint8Array;
     mediaType: string;

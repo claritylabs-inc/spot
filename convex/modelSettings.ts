@@ -11,20 +11,15 @@ import { requireOperator } from "./lib/operatorIdentity";
 import {
   AUDIO_TRANSCRIPTION_MODEL_CATALOG,
   CONFIGURABLE_MODEL_PROVIDERS,
-  EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID,
   EMBEDDING_MODEL_CATALOG,
-  EXTRACTION_QUALITY_MODEL_ROUTE_ID,
-  FALLBACK_MODEL_ROUTE_ID,
   LANGUAGE_MODEL_CATALOG,
   MODEL_ROUTE_DESCRIPTIONS,
   MODEL_ROUTE_IDS,
   MODEL_ROUTE_LABELS,
-  MODEL_ROUTING,
   MODEL_TASKS,
   MODEL_TASK_LABELS,
   OPERATOR_MODEL_ROUTE_GROUPS,
   OPERATOR_AGENT_MODEL_ROUTE_ID,
-  type RouterModelRouteId,
   OPERATOR_WEB_RETRIEVAL_PROVIDERS,
   MODEL_CAPABILITIES,
   PROVIDER_LABELS,
@@ -39,11 +34,9 @@ import {
   type ModelRouteId,
   type ModelTask,
   type WebRetrievalRoute,
-  defaultModelRouteForId,
 } from "./lib/modelCatalog";
 
 type GlobalRoutes = Partial<Record<ModelRouteId, ModelRoute>>;
-type RouteSource = "global" | "static";
 
 const configurableProviderValidator = v.union(
   v.literal("openai"),
@@ -94,9 +87,6 @@ const globalRoutesValidator = v.object({
   security: v.optional(routeUpdateValidator),
   mailbox_coordinator: v.optional(routeUpdateValidator),
   embeddings: v.optional(routeUpdateValidator),
-  extraction_quality: v.optional(routeUpdateValidator),
-  extraction_coverage_cleanup: v.optional(routeUpdateValidator),
-  fallback: v.optional(routeUpdateValidator),
 });
 
 function isModelTask(value: string): value is ModelTask {
@@ -171,36 +161,19 @@ function nullableGlobalRoutes(routes: GlobalRoutes | undefined) {
   ) as Record<ModelRouteId, ModelRoute | null>;
 }
 
-function sameRoute(left: ModelRoute | undefined, right: ModelRoute) {
-  return left?.provider === right.provider && left.model === right.model;
-}
-
-export function isExplicitGlobalRouteOverride(
-  id: ModelRouteId,
-  route: ModelRoute | undefined,
-  explicitRouteOverrides: readonly string[],
-) {
-  if (!route) return false;
-  return (
-    explicitRouteOverrides.includes(id) ||
-    !sameRoute(route, defaultModelRouteForId(id))
-  );
-}
-
+/**
+ * Only routes an operator explicitly selected are pins. Legacy stored routes
+ * without an explicit marker are ignored so cl-router chooses the model.
+ */
 function explicitGlobalRoutes(
   settings: Doc<"globalModelSettings"> | null,
 ): GlobalRoutes {
   const storedRoutes = settings?.routes as GlobalRoutes | undefined;
+  const explicit = settings?.explicitRouteOverrides ?? [];
   return Object.fromEntries(
     MODEL_ROUTE_IDS.flatMap((id) => {
       const route = storedRoutes?.[id];
-      return isExplicitGlobalRouteOverride(
-        id,
-        route,
-        settings?.explicitRouteOverrides ?? [],
-      )
-        ? [[id, route]]
-        : [];
+      return route && explicit.includes(id) ? [[id, route]] : [];
     }),
   ) as GlobalRoutes;
 }
@@ -304,11 +277,7 @@ export const getGlobal = query({
         description: MODEL_ROUTE_DESCRIPTIONS[id],
         isEmbedding: id === "embeddings",
         isAudio: id === "voice_transcription",
-        automatedRouting:
-          id !== FALLBACK_MODEL_ROUTE_ID &&
-          id !== OPERATOR_AGENT_MODEL_ROUTE_ID,
         manualRequired: id === OPERATOR_AGENT_MODEL_ROUTE_ID,
-        defaultRoute: defaultModelRouteForId(id),
       })),
       groups: OPERATOR_MODEL_ROUTE_GROUPS,
       routes: nullableGlobalRoutes(explicitGlobalRoutes(settings)),
@@ -344,16 +313,8 @@ export const updateGlobalRoutes = mutation({
     }
 
     const now = dayjs().valueOf();
-    const routes = { ...(existing?.routes ?? {}) } as GlobalRoutes;
-    const explicitRouteOverrides = new Set(
-      MODEL_ROUTE_IDS.filter((id) =>
-        isExplicitGlobalRouteOverride(
-          id,
-          routes[id],
-          existing?.explicitRouteOverrides ?? [],
-        ),
-      ),
-    );
+    const routes = explicitGlobalRoutes(existing);
+    const explicitRouteOverrides = new Set<string>(Object.keys(routes));
     for (const [task, route] of Object.entries(args.routes)) {
       if (!isModelRouteId(task)) continue;
       if (route === null) {
@@ -436,96 +397,31 @@ export const resolveForOrg = internalQuery({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
     if (!(await ctx.db.get(args.orgId))) return null;
-
-    const globalSettings = await ctx.db
-      .query("globalModelSettings")
-      .withIndex("key", (q) => q.eq("key", "default"))
-      .first();
-    const globalRoutes = explicitGlobalRoutes(globalSettings);
-    const routes = {} as Record<RouterModelRouteId, ModelRoute>;
-    const routeSources = {} as Record<RouterModelRouteId, RouteSource>;
-    for (const task of MODEL_TASKS) {
-      const globalRoute = globalRoutes?.[task];
-      if (
-        globalRoute &&
-        globalRoute.provider !== "moonshot" &&
-        routeStaticallySupported(task, globalRoute)
-      ) {
-        routes[task] = globalRoute;
-        routeSources[task] = "global";
-        continue;
-      }
-      routes[task] = MODEL_ROUTING[task];
-      routeSources[task] = "static";
-    }
-    for (const routeId of [
-      EXTRACTION_QUALITY_MODEL_ROUTE_ID,
-      EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID,
-      FALLBACK_MODEL_ROUTE_ID,
-    ]) {
-      const globalRoute = globalRoutes?.[routeId];
-      if (
-        globalRoute &&
-        globalRoute.provider !== "moonshot" &&
-        routeStaticallySupported(routeId, globalRoute)
-      ) {
-        routes[routeId] = globalRoute;
-        routeSources[routeId] = "global";
-      } else {
-        routes[routeId] = defaultModelRouteForId(routeId);
-        routeSources[routeId] = "static";
-      }
-    }
-
-    return {
-      routes,
-      routeSources,
-      webRetrieval: normalizeWebRetrieval(globalSettings?.webRetrieval),
-    };
+    return await resolvePublicModelDefaults(ctx);
   },
 });
 
+/**
+ * Operator-pinned task routes. Unpinned tasks are absent and go to cl-router's
+ * automatic primitive routing; pinned tasks are submitted through /v1/manual.
+ */
 export async function resolvePublicModelDefaults(ctx: QueryCtx) {
   const globalSettings = await ctx.db
     .query("globalModelSettings")
     .withIndex("key", (q) => q.eq("key", "default"))
     .first();
   const globalRoutes = explicitGlobalRoutes(globalSettings);
-  const routes = {} as Record<RouterModelRouteId, ModelRoute>;
-  const routeSources = {} as Record<
-    RouterModelRouteId,
-    Extract<RouteSource, "global" | "static">
-  >;
+  const routes: Partial<Record<ModelTask, ModelRoute>> = {};
+  const routeSources: Partial<Record<ModelTask, "global">> = {};
   for (const task of MODEL_TASKS) {
-    const globalRoute = globalRoutes?.[task];
+    const route = globalRoutes[task];
     if (
-      globalRoute &&
-      globalRoute.provider !== "moonshot" &&
-      routeStaticallySupported(task, globalRoute)
+      route &&
+      route.provider !== "moonshot" &&
+      routeStaticallySupported(task, route)
     ) {
-      routes[task] = globalRoute;
+      routes[task] = route;
       routeSources[task] = "global";
-    } else {
-      routes[task] = MODEL_ROUTING[task];
-      routeSources[task] = "static";
-    }
-  }
-  for (const routeId of [
-    EXTRACTION_QUALITY_MODEL_ROUTE_ID,
-    EXTRACTION_COVERAGE_CLEANUP_MODEL_ROUTE_ID,
-    FALLBACK_MODEL_ROUTE_ID,
-  ]) {
-    const globalRoute = globalRoutes?.[routeId];
-    if (
-      globalRoute &&
-      globalRoute.provider !== "moonshot" &&
-      routeStaticallySupported(routeId, globalRoute)
-    ) {
-      routes[routeId] = globalRoute;
-      routeSources[routeId] = "global";
-    } else {
-      routes[routeId] = defaultModelRouteForId(routeId);
-      routeSources[routeId] = "static";
     }
   }
 

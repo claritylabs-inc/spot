@@ -872,7 +872,7 @@ function TimelineWaterfall({
           </span>
           <span>
             <span className="mr-1 inline-block size-2 rounded-sm bg-chart-4" />
-            model fallback
+            soft failure
           </span>
           <span>
             <span className="mr-1 inline-block size-2 rounded-sm bg-destructive" />
@@ -1022,10 +1022,19 @@ function TraceEventDetails({ event }: { event: ExtractionTraceEvent }) {
     event.provider || event.model
       ? ["Model", [event.provider, event.model].filter(Boolean).join(" / ")]
       : null,
-    event.routeSource || event.transport
+    event.routeSource ? ["Route", event.routeSource] : null,
+    event.routing?.primitive || event.routing?.difficulty
       ? [
-          "Route",
-          [event.routeSource, event.transport].filter(Boolean).join(" · "),
+          "Selection",
+          [
+            event.routing.primitive,
+            event.routing.difficulty,
+            event.routing.selectedTier
+              ? `tier ${event.routing.selectedTier}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(" · "),
         ]
       : null,
   ].filter((row): row is [string, string] => Boolean(row));

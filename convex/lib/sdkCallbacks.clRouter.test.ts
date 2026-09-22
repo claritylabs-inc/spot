@@ -68,48 +68,12 @@ function generationResponse(output: unknown) {
 function generationContext() {
   const settings = {
     routes: {
-      extraction: {
-        provider: "fireworks",
-        model: "accounts/fireworks/models/deepseek-v4-flash",
-      },
-      extraction_quality: { provider: "openai", model: "gpt-5.4-mini" },
-      extraction_coverage_cleanup: {
-        provider: "openai",
-        model: "gpt-5.4-mini",
-      },
-      classification: {
-        provider: "fireworks",
-        model: "accounts/fireworks/models/deepseek-v4-flash",
-      },
-      extraction_coverage_recovery: {
-        provider: "openai",
-        model: "gpt-5.4-mini",
-      },
-      chat: {
-        provider: "fireworks",
-        model: "accounts/fireworks/models/deepseek-v4-flash",
-      },
-      chat_vision: { provider: "openai", model: "gpt-5.6-terra" },
       analysis: {
         provider: "fireworks",
         model: "accounts/fireworks/models/glm-5p2",
       },
-      fallback: {
-        provider: "fireworks",
-        model: "accounts/fireworks/models/deepseek-v4-pro",
-      },
     },
-    routeSources: {
-      extraction: "global",
-      extraction_quality: "broker",
-      extraction_coverage_cleanup: "broker",
-      classification: "global",
-      extraction_coverage_recovery: "global",
-      chat: "broker",
-      chat_vision: "org",
-      analysis: "global",
-      fallback: "static",
-    },
+    routeSources: { analysis: "global" },
   };
   return {
     settings,
@@ -178,7 +142,7 @@ describe("cl-router generation callbacks", () => {
     vi.unstubAllEnvs();
   });
 
-  test("preserves quality-primary extraction inputs and records actual router trace metadata", async () => {
+  test("auto-routes unpinned extraction with the requested budget and records router trace metadata", async () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
     vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
@@ -234,7 +198,7 @@ describe("cl-router generation callbacks", () => {
       primitive: "multimodal",
       requirements: { structuredOutput: true },
       system: "Extract only sourced values.",
-      maxTokens: 4_096,
+      maxTokens: 9_000,
       trace: {
         traceId: "trace-1",
         caller: "Build source tree",

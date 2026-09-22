@@ -987,7 +987,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_routing_status: defineOperatorTool({
     version: 2,
     description:
-      "Read model-call logs and usage metadata, or inspect one exact callId from the operator Logs page. Includes errors, incomplete responses, unknown outcomes and route freshness; excludes prompts, response content and credentials.",
+      "Read model-call logs and usage metadata, or inspect one exact callId from the operator Logs page. Includes errors, incomplete responses, unknown outcomes and operator-pinned routes; excludes prompts, response content and credentials.",
     inputSchema: z.object({
       callId: omittable(z.string().min(1).max(100)),
       task: omittable(z.string().min(1).max(100)),

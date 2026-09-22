@@ -61,10 +61,6 @@ function adapterOptions(fetch: typeof globalThis.fetch) {
     task: "chat" as const,
     taskKind: "query_reason",
     orgId: "org-1",
-    settings: {
-      routes: { chat: { provider: "openai" as const, model: "gpt-5.5" } },
-      routeSources: { chat: "org" },
-    },
     sessionKey: "thread-1",
     trace: { traceId: "agent-message-1", channel: "web" },
     client: { environment, fetch },
@@ -424,7 +420,7 @@ describe("cl-router LanguageModelV3 adapter", () => {
     });
   });
 
-  test("keeps an explicit operator route pinned without router fallback", async () => {
+  test("keeps an explicit operator route pinned through /v1/manual", async () => {
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({ ...doneEvent("stop"), output: "done" }),
     );
@@ -432,7 +428,6 @@ describe("cl-router LanguageModelV3 adapter", () => {
       ...adapterOptions(fetchMock),
       taskKind: "operator_agent",
       initialRoutePin: { provider: "openai", model: "gpt-5.5" },
-      allowFallback: false,
     });
     await expect(model.doGenerate(rawCallOptions())).resolves.toBeDefined();
     const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));

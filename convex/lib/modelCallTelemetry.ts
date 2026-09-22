@@ -43,10 +43,8 @@ const number = (value: unknown) =>
 export function modelCallContext(payload: unknown, operation = "generate") {
   const p = record(payload);
   const route = record(p.route);
-  const pin = record(record(p.routing).pin);
   const trace = record(p.trace);
   const tags = record(trace.tags);
-  const selectedModel = text(route.model) ?? text(pin.model);
   const tagged = (key: string) => text(tags[key]) ?? text(trace[key]);
   return {
     task: tagged("task") ?? text(p.task) ?? text(p.primitive) ?? operation,
@@ -62,13 +60,9 @@ export function modelCallContext(payload: unknown, operation = "generate") {
     sessionKey: text(p.sessionKey) ?? text(trace.traceId) ?? "",
     runId: text(trace.traceId),
     orgId: text(p.orgId),
-    model: selectedModel,
-    callProvider: text(route.provider) ?? text(pin.provider),
-    routeSource: p.route
-      ? "manual"
-      : selectedModel
-        ? "override"
-        : "automatic",
+    model: text(route.model),
+    callProvider: text(route.provider),
+    routeSource: p.route ? "manual" : "automatic",
   };
 }
 export function modelCallResult(payload: unknown) {
@@ -85,17 +79,10 @@ export function modelCallResult(payload: unknown) {
   const usage = record(p.usage);
   const routing = record(p.routing);
   const route = record(routing.route);
-  const selection = record(routing.selection);
-  const decisionCost = record(p.cost);
-  const nanoCost = number(decisionCost.costNanoUsd);
-  const totalNanoCost = number(selection.totalCostNanoUsd);
-  const generationCost = number(p.costUsd);
+  const nanoCost = number(record(p.cost).costNanoUsd);
   const costUsd =
-    "totalCostNanoUsd" in selection
-      ? totalNanoCost === undefined
-        ? null
-        : totalNanoCost / 1e9
-      : (generationCost ?? (nanoCost === undefined ? null : nanoCost / 1e9));
+    number(p.costUsd) ?? (nanoCost === undefined ? null : nanoCost / 1e9);
+  const selectedTier = number(routing.selectedTier);
   return {
     requestId: text(p.requestId),
     model: text(model.model) ?? text(route.model) ?? text(p.model),
@@ -114,7 +101,13 @@ export function modelCallResult(payload: unknown) {
     reasoningTokens: number(usage.reasoningTokens),
     costUsd,
     routingSummary:
-      [text(routing.decision), text(routing.source), text(routing.primitive)]
+      [
+        text(routing.decision),
+        text(routing.source),
+        text(routing.primitive),
+        text(routing.difficulty),
+        selectedTier === undefined ? undefined : `tier ${selectedTier}`,
+      ]
         .filter(Boolean)
         .join(" · ") || undefined,
     finishReason: text(p.finishReason),

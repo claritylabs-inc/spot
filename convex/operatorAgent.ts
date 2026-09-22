@@ -2202,24 +2202,23 @@ async function executeToolDomain(
       incomplete: events.filter((event) => event.status === "incomplete")
         .length,
       error: events.filter((event) => event.status === "error").length,
-      fallback: events.filter(
-        (event) =>
-          event.kind === "direct_fallback" || event.status === "fallback",
-      ).length,
     };
     return {
       task,
       counts,
-      configuredRoutes: Object.keys(settings?.routes ?? {}),
+      pinnedRoutes: (settings?.explicitRouteOverrides ?? []).filter(
+        (routeId) =>
+          (settings?.routes as Record<string, unknown> | undefined)?.[
+            routeId
+          ] !== undefined,
+      ),
       settingsUpdatedAt: settings?.updatedAt,
       recentIssues: events
         .filter(
           (event) =>
             event.status === "unknown" ||
             event.status === "error" ||
-            event.status === "incomplete" ||
-            event.status === "fallback" ||
-            event.kind === "direct_fallback",
+            event.status === "incomplete",
         )
         .slice(0, 20)
         .map((event) => ({
@@ -2233,8 +2232,6 @@ async function executeToolDomain(
           status: event.status,
           provider: event.callProvider ?? event.provider,
           model: event.model,
-          transport: event.transport,
-          fallbackReason: event.fallbackReason,
           routerCode: event.routerCode,
           error: event.error,
         })),

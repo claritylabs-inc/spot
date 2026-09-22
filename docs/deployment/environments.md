@@ -424,15 +424,13 @@ typed unavailable state or failure for that operation.
 Typed classification decisions use `clRouterDecide` and authenticated
 `POST /v1/decide`, with the router-owned Jev pin and native Choice/Noul answers.
 Spot keeps no TypeSafe key. The app and extraction worker consume router-policy
-0.8.0; the checked-in API snapshot includes decision request/response fixtures.
+1.0.0; the checked-in API snapshot includes decision request/response fixtures.
 Deploy the router decision endpoint before this Spot version. Classification
 and security generation-route settings no longer control these decisions.
 Decision calls remain inline JSON even when a caller has a durable generation
-transport. Both generation clients validate and retain additive
-`routing.selection` metadata, including nullable cost fields, using the shared
-policy parser. Trace ingestion and storage retain the same optional metadata,
-including worker-delivered events and legacy nested trace envelopes. This consumer
-migration does not activate or change router model-selector controls.
+transport. Generation responses report `routing` metadata (decision, source,
+primitive, difficulty, and tiers); trace storage keeps legacy selection fields
+readable for older events.
 
 Before each operator model step, Spot filters tool definitions by current role,
 impersonation, and known integration configuration. It sends all remaining tools
@@ -447,9 +445,7 @@ Tool-bearing agent loops use `getAgentLanguageModelForOrg`,
 once, and pin the chosen route for the remaining steps. Routed generation has no default elapsed-time deadline. Explicit caller budgets
 apply to the complete generation request. The router may select its configured
 fallback inside the same request before visible output or tool execution.
-`query_reason` always retains
-a cross-provider router candidate even when a stale static settings snapshot
-contains a same-provider fallback. A blank or truncated
+Spot sends no default model and has no fallback route. A blank or truncated
 turn that already completed tools instead receives one tool-free continuation
 over the existing results, so imports and other actions are not replayed.
 Generic text/object helpers still fail closed when passed tool-loop-only options.
@@ -480,20 +476,11 @@ Router asset host allowlists are exact. Shared dev permits permanent storage on
 `merry-platypus-82.convex.cloud` and expiry-enforced references on the canonical
 `actions.spot.insure` host. Do not add wildcard or underlying-site fallbacks.
 
-The exact-pinned `@claritylabs/cl-router-policy` contract owns model and task
-capability metadata. Spot validates function-tool schemas and fails closed on
-unsupported adapter inputs; do not duplicate a model capability allowlist in
-Spot. Review the active candidates for tool and structured-output compatibility
-before enabling autonomous selection for those task families.
-
-Normal deployed operation leaves `CL_ROUTER_FROZEN=0` and
-`CL_ROUTER_SHADOW=0` (or omits both variables). Authenticated operators use the
-global freeze toggle on `/operator/routing`, which writes an immutable router
-control version with the Spot operator ID in its reason. `CL_ROUTER_FROZEN=1`
-is an environment-level panic switch for incidents where the operator surface
-or admin API is unavailable; it deliberately cannot be overridden by the UI.
-`CL_ROUTER_SHADOW=1` is a separate diagnostic override and is not controlled by
-the freeze toggle.
+The exact-pinned `@claritylabs/cl-router-policy` package owns primitive,
+provider, model capability, and price metadata. Spot uses it only to validate
+operator pins; cl-router selects models for unpinned calls and clamps
+`maxTokens` to the selected model. Spot validates function-tool schemas and
+fails closed on unsupported adapter inputs.
 
 `CL_ROUTER_MIGRATION_MODE=1` is a temporary state-import guard only. Set it on
 an otherwise idle destination immediately before export/import,
@@ -507,14 +494,10 @@ and every failure after a successful step all fail closed at the consumer
 boundary. Chat preserves the first successful router route pin across later
 steps and never replays completed business tools after visible output.
 
-`/operator/routing` combines router health, policy and hourly rollups with
-30-day Spot routing events. It shows actual versus shadow routes, router-owned
-request IDs, sanitized failed provider attempts, cost and failure aggregates,
-and agent workflow outcomes, and owns the
-authenticated global freeze toggle. An active operator can control the healthy
-router configured by `CL_ROUTER_URL` from any Spot environment; the admin
-secret remains server-side. Workflow feedback is submitted only when tool
-results contain concrete workflow outcomes; an HTTP 200 by itself is never
+`/operator/logs` shows 30-day Spot `modelRoutingEvents` call history with
+router-owned request IDs, the router's selection summary, sanitized failed
+provider attempts, cost, and usage. Workflow feedback is submitted only when
+tool results contain concrete workflow outcomes; an HTTP 200 by itself is never
 scored as success.
 
 The production router health URL is configured through

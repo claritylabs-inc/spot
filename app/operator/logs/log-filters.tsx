@@ -198,7 +198,6 @@ export function LogSidebar({
           ["jev", "Jev"],
           ["fallback", "Fallback"],
           ["automatic", "Automatic"],
-          ["override", "Override"],
         ])}
       </div>
       <div className="border-t border-border p-4">

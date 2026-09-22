@@ -106,10 +106,7 @@ function OverrideEditor({
     (retrieval === "model_default"
       ? modelDefaultRetrievalConfigured(
           capabilities.providers,
-          settings.routes.chat?.provider ??
-            settings.tasks.find((task) => task.id === "chat")?.defaultRoute
-              .provider ??
-            null,
+          settings.routes.chat?.provider ?? null,
         )
       : capabilities.webRetrieval.providers.some(
           (item) => item.provider === retrieval && item.configured,

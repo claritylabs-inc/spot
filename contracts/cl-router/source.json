@@ -1,9 +1,7 @@
 {
   "sourceRepository": "claritylabs-inc/cl-router",
   "sourcePath": "openapi/cl-router-v1.json",
-  "sourceRevision": "f75db614130d57c7bd2fbab9c5f5e7712665ca0f",
+  "sourceRevision": "f4874a6950ed7cad3e4ec94d7b61c6936619f3ba",
   "sourceWorktreeDirty": false,
-  "sha256": "2b5077bb7e34891cd8be481cce7a072669503b600741b49aa38a6b77406474f1",
-  "spotLocalFrozenContract": false,
-  "notes": "Verbatim snapshot of openapi/cl-router-v1.json from cl-router draft PR #44 head (conductor/cl-router-primitive-routing). TODO(cl-router-policy): re-import from the merged cl-router commit once PR #44 lands."
+  "sha256": "2b5077bb7e34891cd8be481cce7a072669503b600741b49aa38a6b77406474f1"
 }
