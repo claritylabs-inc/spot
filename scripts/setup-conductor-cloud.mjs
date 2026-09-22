@@ -5,20 +5,17 @@
 // source machine to copy from, so this script materializes the same two files
 // from the Cloud Computer environment and then runs the shared worktree setup.
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import {
-  convexDeploymentNameFromDeployKey,
+  ensureImessageEnvFile,
   ensureNode24,
   repoRoot,
+  resolveConductorSourceDeployment,
 } from "./lib/conductor-workspace.mjs";
 
 ensureNode24();
 process.chdir(repoRoot);
-
-// Setup only reads this deployment to clone its Convex environment variables;
-// the workspace still runs its own native local database.
-const defaultSourceDeployment = "dev:acoustic-caiman-755";
 
 const rootEnvPath = path.join(repoRoot, ".env.local");
 const imessageEnvPath = path.join(repoRoot, "imessage-worker", ".env.local");
@@ -34,19 +31,17 @@ function environmentValue(name) {
 }
 
 function sourceDeploymentSelector() {
-  const configured = environmentValue("CONDUCTOR_CONVEX_SOURCE_DEPLOYMENT");
-  if (configured) return configured;
-  for (const name of [
+  const deployKeyCandidate = [
     "CONDUCTOR_CONVEX_SOURCE_DEPLOY_KEY",
     "CONVEX_DEPLOY_KEY",
     "CONVEX_DEPLOYMENT_TOKEN",
-  ]) {
-    const deployment = convexDeploymentNameFromDeployKey(
-      environmentValue(name),
-    );
-    if (deployment) return `dev:${deployment}`;
-  }
-  return defaultSourceDeployment;
+  ]
+    .map(environmentValue)
+    .find(Boolean);
+  return resolveConductorSourceDeployment({
+    explicit: environmentValue("CONDUCTOR_CONVEX_SOURCE_DEPLOYMENT"),
+    copied: deployKeyCandidate,
+  });
 }
 
 function writeRootEnv() {
@@ -77,16 +72,11 @@ function writeRootEnv() {
 function writeImessageEnv() {
   // The template already carries local-safe terminal defaults, so only the
   // broker sender is worth overriding from the Cloud Computer environment.
-  const phone = environmentValue("CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE");
-  const template = readFileSync(imessageTemplatePath, "utf8");
-  const contents = phone
-    ? template.replace(
-        /^IMESSAGE_TERMINAL_FROM_PHONE=.*$/m,
-        `IMESSAGE_TERMINAL_FROM_PHONE=${phone}`,
-      )
-    : template;
-  writeFileSync(imessageEnvPath, contents, { mode: 0o600 });
-  chmodSync(imessageEnvPath, 0o600);
+  ensureImessageEnvFile({
+    envPath: imessageEnvPath,
+    templatePath: imessageTemplatePath,
+    phone: environmentValue("CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE"),
+  });
   console.log("Generated imessage-worker/.env.local from .env.template");
 }
 

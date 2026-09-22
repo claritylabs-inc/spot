@@ -1,6 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -126,6 +132,36 @@ export function parseEnvFile(filePath) {
   return parseEnvText(readFileSync(filePath, "utf8"));
 }
 
+/**
+ * Local workspaces copy `imessage-worker/.env.local` from the developer checkout
+ * through `.worktreeinclude`, but a fresh or incomplete source checkout may not
+ * have one. Cloud workspaces have no checkout to copy from at all. Both cases
+ * materialize the terminal-safe template instead of failing setup. The template
+ * already carries local-safe terminal defaults, so only an operator-provided
+ * broker phone is worth overriding.
+ *
+ * @param {{ envPath?: string; templatePath?: string; phone?: string }} [options]
+ * @returns {boolean} true when a new file was written
+ */
+export function ensureImessageEnvFile({
+  envPath = path.join(repoRoot, "imessage-worker", ".env.local"),
+  templatePath = path.join(repoRoot, "imessage-worker", ".env.template"),
+  phone,
+} = {}) {
+  if (existsSync(envPath)) return false;
+  const override = phone?.trim();
+  const template = readFileSync(templatePath, "utf8");
+  const contents = override
+    ? template.replace(
+        /^IMESSAGE_TERMINAL_FROM_PHONE=.*$/m,
+        `IMESSAGE_TERMINAL_FROM_PHONE=${override}`,
+      )
+    : template;
+  writeFileSync(envPath, contents, { mode: 0o600 });
+  chmodSync(envPath, 0o600);
+  return true;
+}
+
 const convexSelectionKeys = new Set([
   "CONVEX_DEPLOYMENT",
   "CONVEX_SELF_HOSTED_ADMIN_KEY",
@@ -229,6 +265,44 @@ export function convexDeploymentNameFromDeployKey(deployKey) {
   const selector = deployKey?.trim().split("|", 1)[0];
   const match = selector?.match(/^(?:dev|prod):([^:|]+)$/);
   return match?.[1];
+}
+
+// Shared Conductor worktrees clone their Convex environment variables from this
+// deployment. The name is a historical artifact: it was created for the Glass
+// product that Spot was rebranded from. `dev:kindhearted-labrador-258` was the
+// retired `sms-experiment` project (the pre-rebrand Spot); cloning from it would
+// import the old product's environment.
+export const conductorSourceDeployment = "dev:acoustic-caiman-755";
+
+const retiredConductorSourceDeployments = new Set([
+  "kindhearted-labrador-258",
+]);
+
+export function conductorSourceDeploymentName(selector) {
+  const trimmed = selector?.trim();
+  if (!trimmed) return undefined;
+  const fromKey = convexDeploymentNameFromDeployKey(trimmed);
+  if (fromKey) return fromKey;
+  return trimmed.match(/^(?:dev|prod):([^:|]+)$/)?.[1];
+}
+
+/**
+ * Resolve the cloud dev deployment a fresh worktree clones its Convex
+ * environment variables from. An explicit `CONDUCTOR_CONVEX_SOURCE_DEPLOYMENT`
+ * wins, then the copied `.env.local` selection, and finally the canonical shared
+ * dev deployment. Retired deployments and anonymous/local selections are
+ * ignored so a stale copied `.env.local` cannot redirect setup at the wrong
+ * product.
+ *
+ * @param {{ explicit?: string; copied?: string }} [options]
+ */
+export function resolveConductorSourceDeployment({ explicit, copied } = {}) {
+  for (const candidate of [explicit, copied]) {
+    const name = conductorSourceDeploymentName(candidate);
+    if (!name || retiredConductorSourceDeployments.has(name)) continue;
+    return `dev:${name}`;
+  }
+  return conductorSourceDeployment;
 }
 
 export function isMissingConvexAccessToken(output) {

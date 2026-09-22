@@ -16,10 +16,13 @@ import {
   conductorImageTag,
   conductorPorts,
   conductorLocalRuntimeOverrides,
+  conductorSourceDeployment,
+  ensureImessageEnvFile,
   repairLocalConvexSelection,
   repoRoot,
   resolveConductorClRouterConfig,
   resolveConductorMapboxAccessToken,
+  resolveConductorSourceDeployment,
   workspaceSlug,
   withoutCloudConvexSelection,
   withoutConsumerAiCredentials,
@@ -45,6 +48,108 @@ describe("Conductor workspace identity", () => {
     }
   });
 });
+describe("Conductor source deployment", () => {
+  it("defaults to the canonical shared dev deployment", () => {
+    expect(conductorSourceDeployment).toBe("dev:acoustic-caiman-755");
+    expect(resolveConductorSourceDeployment()).toBe(conductorSourceDeployment);
+  });
+
+  it("never clones from the retired sms-experiment deployment", () => {
+    expect(
+      resolveConductorSourceDeployment({
+        copied: "dev:kindhearted-labrador-258",
+      }),
+    ).toBe(conductorSourceDeployment);
+  });
+
+  it("prefers an explicit selector over the copied .env.local value", () => {
+    expect(
+      resolveConductorSourceDeployment({
+        explicit: "dev:acoustic-caiman-755",
+        copied: "dev:kindhearted-labrador-258",
+      }),
+    ).toBe("dev:acoustic-caiman-755");
+  });
+
+  it("keeps a non-retired copied deployment and normalizes deploy keys", () => {
+    expect(
+      resolveConductorSourceDeployment({ copied: "dev:some-other-dev" }),
+    ).toBe("dev:some-other-dev");
+    expect(
+      resolveConductorSourceDeployment({
+        copied: "dev:some-other-dev|secret-token-material",
+      }),
+    ).toBe("dev:some-other-dev");
+  });
+
+  it("ignores anonymous and local selections", () => {
+    expect(
+      resolveConductorSourceDeployment({
+        copied: "anonymous:anonymous-agent",
+      }),
+    ).toBe(conductorSourceDeployment);
+    expect(
+      resolveConductorSourceDeployment({ copied: "local:local-agent" }),
+    ).toBe(conductorSourceDeployment);
+  });
+});
+
+describe("Conductor iMessage worker environment", () => {
+  const template = [
+    "IMESSAGE_ENABLED=false",
+    "IMESSAGE_TERMINAL_FROM_PHONE=+12025550123",
+    "IMESSAGE_TERMINAL_CLIENT_PHONE=+12025550102",
+    "",
+  ].join("\n");
+
+  function withWorkspace(
+    callback: (paths: { envPath: string; templatePath: string }) => void,
+  ) {
+    const workspace = mkdtempSync(path.join(tmpdir(), "spot-conductor-"));
+    const templatePath = path.join(workspace, ".env.template");
+    const envPath = path.join(workspace, ".env.local");
+    try {
+      writeFileSync(templatePath, template);
+      callback({ envPath, templatePath });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+
+  it("generates a missing env file from the template without requiring a phone", () => {
+    withWorkspace(({ envPath, templatePath }) => {
+      expect(ensureImessageEnvFile({ envPath, templatePath })).toBe(true);
+      expect(readFileSync(envPath, "utf8")).toBe(template);
+    });
+  });
+
+  it("overrides only the terminal broker phone when the environment supplies one", () => {
+    withWorkspace(({ envPath, templatePath }) => {
+      ensureImessageEnvFile({
+        envPath,
+        templatePath,
+        phone: " +12025550177 ",
+      });
+      expect(readFileSync(envPath, "utf8")).toBe(
+        template.replace(
+          "IMESSAGE_TERMINAL_FROM_PHONE=+12025550123",
+          "IMESSAGE_TERMINAL_FROM_PHONE=+12025550177",
+        ),
+      );
+    });
+  });
+
+  it("preserves an existing env file", () => {
+    withWorkspace(({ envPath, templatePath }) => {
+      writeFileSync(envPath, "IMESSAGE_TERMINAL_FROM_PHONE=+12025550999\n");
+      expect(ensureImessageEnvFile({ envPath, templatePath })).toBe(false);
+      expect(readFileSync(envPath, "utf8")).toBe(
+        "IMESSAGE_TERMINAL_FROM_PHONE=+12025550999\n",
+      );
+    });
+  });
+});
+
 describe("Conductor local Convex selection", () => {
   const localConfig = {
     deploymentName: "anonymous-agent",

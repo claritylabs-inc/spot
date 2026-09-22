@@ -17,6 +17,7 @@ import {
   conductorImageTag,
   conductorPorts,
   convexDeploymentNameFromDeployKey,
+  ensureImessageEnvFile,
   ensureNode24,
   generateLocalAuthKeys,
   localConvexUrls,
@@ -26,6 +27,7 @@ import {
   repoRoot,
   resolveConductorClRouterConfig,
   resolveConductorMapboxAccessToken,
+  resolveConductorSourceDeployment,
   workspaceSlug,
   withoutCloudConvexSelection,
   withoutConsumerAiCredentials,
@@ -37,6 +39,11 @@ process.chdir(repoRoot);
 const contextDirectory = path.join(repoRoot, ".context");
 const rootEnvPath = path.join(repoRoot, ".env.local");
 const imessageEnvPath = path.join(repoRoot, "imessage-worker", ".env.local");
+const imessageTemplatePath = path.join(
+  repoRoot,
+  "imessage-worker",
+  ".env.template",
+);
 const localConfigPath = path.join(
   repoRoot,
   ".convex",
@@ -229,9 +236,15 @@ if (!existsSync(rootEnvPath)) {
     ".env.local is missing. Add it to the repository root so Conductor Files to copy can seed new workspaces.",
   );
 }
-if (!existsSync(imessageEnvPath)) {
-  throw new Error(
-    "imessage-worker/.env.local is missing. Copy imessage-worker/.env.template and set IMESSAGE_TERMINAL_FROM_PHONE.",
+if (
+  ensureImessageEnvFile({
+    envPath: imessageEnvPath,
+    templatePath: imessageTemplatePath,
+    phone: process.env.CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE,
+  })
+) {
+  console.log(
+    "Generated imessage-worker/.env.local from .env.template for this workspace.",
   );
 }
 
@@ -291,14 +304,10 @@ let cloudEnvironment;
 let sourceEnvironmentRead = false;
 
 if (createdLocalDeployment) {
-  const sourceSelector =
-    process.env.CONDUCTOR_CONVEX_SOURCE_DEPLOYMENT?.trim() ||
-    initialRootEnv.get("CONVEX_DEPLOYMENT")?.trim();
-  if (!sourceSelector || /^(anonymous|local):/.test(sourceSelector)) {
-    throw new Error(
-      "A fresh worktree needs a cloud dev CONVEX_DEPLOYMENT in the copied .env.local (or CONDUCTOR_CONVEX_SOURCE_DEPLOYMENT) so setup can clone its environment variables.",
-    );
-  }
+  const sourceSelector = resolveConductorSourceDeployment({
+    explicit: process.env.CONDUCTOR_CONVEX_SOURCE_DEPLOYMENT,
+    copied: initialRootEnv.get("CONVEX_DEPLOYMENT"),
+  });
   const sourceDeployment = deploymentNameFromSelector(sourceSelector);
   const deployKey = sourceDeploymentKey(sourceDeployment);
   console.log(
