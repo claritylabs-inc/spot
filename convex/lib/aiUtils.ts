@@ -19,7 +19,6 @@ export { hasConfidenceMarkers, stripConfidenceMarkers } from "./confidence";
 export {
   buildConversationMemoryContext,
   buildConversationMemoryFromList,
-  buildDocumentContext,
 } from "./agentPrompts";
 
 /* ── Markdown processing ── */

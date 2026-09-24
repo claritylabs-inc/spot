@@ -26,22 +26,12 @@ const LINE_CONTEXT_AFTER_CHARS = 300;
 export const MIN_RELEVANCE = 2;
 /** Results kept, by relevance, when no candidate reaches MIN_RELEVANCE. */
 export const FALLBACK_RESULT_COUNT = 3;
-/** Orgs with more policies than this get a Jev policy pre-selection before search. */
-export const POLICY_PRESELECTION_THRESHOLD = 8;
-const MAX_PRESELECTED_POLICIES = 5;
-const MIN_POLICY_RELEVANCE = 1;
 
 export const RELEVANCE_CRITERIA = [
   "Irrelevant: the passage does not concern the question.",
   "Related topic: the passage is about the same subject but does not help answer the question.",
   "Partially answers: the passage contains some of the wording or values needed to answer the question.",
   "Directly answers: the passage contains the specific wording or value that answers the question.",
-];
-
-const POLICY_RELEVANCE_CRITERIA = [
-  "Unrelated: this policy cannot contain the answer.",
-  "Possibly relevant: this policy might contain the answer.",
-  "Likely relevant: this policy's lines of business, coverages, or terms match the question.",
 ];
 
 const QUERY_STOP_WORDS = new Set([
@@ -70,8 +60,6 @@ export type SearchablePolicy = {
   linesOfBusiness?: string[];
   effectiveDate?: string;
   expirationDate?: string;
-  insuredName?: string;
-  summary?: string;
 };
 
 export type PolicySearchSpan = {
@@ -110,7 +98,6 @@ export type PolicySearchResult = PolicySearchCandidate & {
 export type PolicySearchOutcome = {
   results: PolicySearchResult[];
   ranking: "jev" | "search";
-  searchedPolicyIds: Id<"policies">[];
 };
 
 export type PolicySearchHits = {
@@ -225,18 +212,15 @@ function spanCandidateText(
  */
 export function buildPolicySearchCandidates(
   hits: PolicySearchHits,
-  options: { allowedPolicyIds?: ReadonlySet<string>; searchText?: string } = {},
+  searchText = "",
 ): PolicySearchCandidate[] {
-  const { allowedPolicyIds } = options;
-  const queryTerms = tokenizeSearchText(options.searchText ?? "", { minimumLength: 3 });
-  const allowed = (policyId: Id<"policies"> | undefined): policyId is Id<"policies"> =>
-    Boolean(policyId) && (!allowedPolicyIds || allowedPolicyIds.has(String(policyId)));
+  const queryTerms = tokenizeSearchText(searchText, { minimumLength: 3 });
   const candidates: PolicySearchCandidate[] = [];
   const nodeCandidateBySpan = new Map<string, PolicySearchCandidate>();
   const seenNodes = new Set<string>();
 
   hits.nodes.forEach((node, rank) => {
-    if (!allowed(node.policyId) || node.kind === "document") return;
+    if (!node.policyId || node.kind === "document") return;
     const key = `node:${node.policyId}:${node.nodeId}`;
     if (seenNodes.has(key)) return;
     seenNodes.add(key);
@@ -271,7 +255,7 @@ export function buildPolicySearchCandidates(
 
   for (const { span, rank } of spanHits) {
     const policyId = span.policyId;
-    if (!allowed(policyId)) continue;
+    if (!policyId) continue;
     const spanKey = `${policyId}:${span.spanId}`;
     const textKey = `${policyId}:${span.pageStart ?? ""}:${normalizedSearchText(span.text)}`;
     if (seenSpans.has(spanKey) || seenTexts.has(textKey)) continue;
@@ -355,11 +339,11 @@ export async function rankPolicySearchCandidates(
     orgId: Id<"organizations">;
     query: string;
     candidates: PolicySearchCandidate[];
-    policyLabels: Map<string, string>;
+    policyLabel: string;
     maxResults: number;
     traceId?: string;
   },
-): Promise<{ results: PolicySearchResult[]; ranking: "jev" | "search" }> {
+): Promise<PolicySearchOutcome> {
   const { candidates } = args;
   if (candidates.length === 0) return { results: [], ranking: "search" };
   const questions: Record<string, DecisionQuestion> = {};
@@ -378,9 +362,9 @@ export async function rankPolicySearchCandidates(
         task: "policy_source_search",
         state: {
           question: args.query,
+          policy: args.policyLabel,
           passages: candidates.map((candidate, index) => ({
             id: `passage_${index}`,
-            policy: args.policyLabels.get(String(candidate.policyId)) ?? null,
             title: candidate.title,
             pages: candidatePages(candidate) ?? null,
             text: truncate(candidate.text, JEV_PASSAGE_CHARS),
@@ -404,89 +388,24 @@ export async function rankPolicySearchCandidates(
   }
 }
 
-/** Jev pick of the policies worth searching in a large org; null when the router fails. */
-export async function preselectPoliciesForQuery(
-  ctx: ActionCtx,
-  args: {
-    orgId: Id<"organizations">;
-    query: string;
-    policies: SearchablePolicy[];
-    traceId?: string;
-  },
-): Promise<SearchablePolicy[] | null> {
-  const questions: Record<string, DecisionQuestion> = {};
-  args.policies.forEach((_, index) => {
-    questions[`policy_${index}`] = {
-      type: "score",
-      instructions: `How likely is policy policy_${index} in state.policies to contain the answer to state.question?`,
-      criteria: POLICY_RELEVANCE_CRITERIA,
-    };
-  });
-  try {
-    const result = await clRouterDecide(
-      {
-        orgId: String(args.orgId),
-        task: "policy_search_scope",
-        state: {
-          question: args.query,
-          policies: args.policies.map((policy, index) => ({
-            id: `policy_${index}`,
-            policy: policySearchLabel(policy),
-            insured: policy.insuredName ?? null,
-            summary: policy.summary ? truncate(policy.summary, 300) : null,
-          })),
-        },
-        questions,
-        trace: args.traceId ? { traceId: args.traceId } : undefined,
-      },
-      { telemetry: ctx },
-    );
-    const ordered = args.policies
-      .map((policy, index) => {
-        const answer = result.answers[`policy_${index}`];
-        return { policy, index, score: answer?.type === "score" ? answer.score : 0 };
-      })
-      .sort((left, right) => right.score - left.score || left.index - right.index);
-    const likely = ordered.filter((entry) => entry.score >= MIN_POLICY_RELEVANCE);
-    return (likely.length > 0 ? likely : ordered.slice(0, FALLBACK_RESULT_COUNT))
-      .slice(0, MAX_PRESELECTED_POLICIES)
-      .map((entry) => entry.policy);
-  } catch {
-    return null;
-  }
-}
-
-function interleave<T>(lists: T[][]): T[] {
-  const merged: T[] = [];
-  const longest = Math.max(0, ...lists.map((list) => list.length));
-  for (let index = 0; index < longest; index += 1) {
-    for (const list of lists) if (index < list.length) merged.push(list[index]);
-  }
-  return merged;
-}
-
 async function searchHits(
   ctx: ActionCtx,
-  orgId: Id<"organizations">,
-  policyId: Id<"policies"> | undefined,
+  policyId: Id<"policies">,
   query: string,
 ): Promise<PolicySearchHits> {
   const [lines, others, nodes] = await Promise.all([
     ctx.runQuery(internal.sourceSpans.searchInternal, {
-      orgId,
       policyId,
       sourceUnit: "line",
       query,
       limit: LINE_SPAN_LIMIT,
     }),
     ctx.runQuery(internal.sourceSpans.searchInternal, {
-      orgId,
       policyId,
       query,
       limit: OTHER_SPAN_LIMIT,
     }),
     ctx.runQuery(internal.sourceNodes.searchInternal, {
-      orgId,
       policyId,
       query,
       limit: NODE_LIMIT,
@@ -501,68 +420,29 @@ async function searchHits(
 }
 
 /**
- * Searches the given policies' source evidence for `query` and returns the
+ * Searches one policy's source evidence for `query` and returns the
  * Jev-ranked, source-backed results. Never throws on router failure.
  */
 export async function searchPolicySources(
   ctx: ActionCtx,
   args: {
     orgId: Id<"organizations">;
-    policies: SearchablePolicy[];
+    policy: SearchablePolicy;
     query: string;
     maxResults: number;
     traceId?: string;
   },
 ): Promise<PolicySearchOutcome> {
   const searchText = normalizePolicySearchQuery(args.query);
-  if (!searchText || args.policies.length === 0) {
-    return { results: [], ranking: "search", searchedPolicyIds: [] };
-  }
+  if (!searchText) return { results: [], ranking: "search" };
 
-  const preselected =
-    args.policies.length > POLICY_PRESELECTION_THRESHOLD
-      ? await preselectPoliciesForQuery(ctx, {
-          orgId: args.orgId,
-          query: args.query,
-          policies: args.policies,
-          traceId: args.traceId,
-        })
-      : null;
-  const scope = preselected ?? args.policies;
-  const allowedPolicyIds = new Set(scope.map((policy) => String(policy._id)));
-
-  let hits: PolicySearchHits;
-  if (scope.length === 1 || preselected) {
-    const perPolicy = await Promise.all(
-      scope.map((policy) => searchHits(ctx, args.orgId, policy._id, searchText)),
-    );
-    hits = {
-      lineSpans: interleave(perPolicy.map((entry) => entry.lineSpans)),
-      otherSpans: interleave(perPolicy.map((entry) => entry.otherSpans)),
-      parents: perPolicy.flatMap((entry) => entry.parents),
-      nodes: interleave(perPolicy.map((entry) => entry.nodes)),
-    };
-  } else {
-    hits = await searchHits(ctx, args.orgId, undefined, searchText);
-  }
-
-  const candidates = buildPolicySearchCandidates(hits, {
-    allowedPolicyIds,
-    searchText,
-  });
-  const { results, ranking } = await rankPolicySearchCandidates(ctx, {
+  const hits = await searchHits(ctx, args.policy._id, searchText);
+  return rankPolicySearchCandidates(ctx, {
     orgId: args.orgId,
     query: args.query,
-    candidates,
-    policyLabels: new Map(
-      scope.map((policy) => [String(policy._id), policySearchLabel(policy)]),
-    ),
+    candidates: buildPolicySearchCandidates(hits, searchText),
+    policyLabel: policySearchLabel(args.policy),
     maxResults: args.maxResults,
     traceId: args.traceId,
   });
-  return {
-    results,
-    ranking,
-    searchedPolicyIds: scope.map((policy) => policy._id),
-  };
 }

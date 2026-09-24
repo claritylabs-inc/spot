@@ -82,28 +82,26 @@ async function seed() {
     await insertNode(orgId, policyA, "a-exclusions", "Exclusions | section | Expected or intended injury");
     await insertNode(orgId, policyB, "b-exclusions", "Exclusions | section | Contractual liability");
     await insertNode(otherOrgId, otherPolicy, "x-exclusions", "Exclusions | section | Pollution");
-    return { orgId, policyA, policyB };
+    return { policyA, policyB };
   });
   return { t, ...ids };
 }
 
 describe("source search indexes", () => {
-  test("span search is scoped to the org and optionally one policy and source unit", async () => {
-    const { t, orgId, policyA } = await seed();
+  test("span search is scoped to one policy and optionally a source unit", async () => {
+    const { t, policyA } = await seed();
 
-    const orgWide = await t.query(internal.sourceSpans.searchInternal, {
-      orgId,
+    const policySpans = await t.query(internal.sourceSpans.searchInternal, {
+      policyId: policyA,
       query: "occurrence limit",
       limit: 10,
     });
-    expect(orgWide.spans.map((span) => span.spanId).sort()).toEqual([
+    expect(policySpans.spans.map((span) => span.spanId).sort()).toEqual([
       "a-line-1",
       "a-page-2",
-      "b-line-1",
     ]);
 
     const policyLines = await t.query(internal.sourceSpans.searchInternal, {
-      orgId,
       policyId: policyA,
       sourceUnit: "line",
       query: "occurrence limit",
@@ -118,25 +116,21 @@ describe("source search indexes", () => {
     ]);
   });
 
-  test("node search matches descriptions within the org or one policy", async () => {
-    const { t, orgId, policyB } = await seed();
+  test("node search matches descriptions within one policy", async () => {
+    const { t, policyA, policyB } = await seed();
 
-    const orgWide = await t.query(internal.sourceNodes.searchInternal, {
-      orgId,
+    const policyNodes = await t.query(internal.sourceNodes.searchInternal, {
+      policyId: policyB,
       query: "exclusions",
       limit: 10,
     });
-    expect(orgWide.map((node) => node.nodeId).sort()).toEqual([
-      "a-exclusions",
-      "b-exclusions",
-    ]);
+    expect(policyNodes.map((node) => node.nodeId)).toEqual(["b-exclusions"]);
 
-    const onePolicy = await t.query(internal.sourceNodes.searchInternal, {
-      orgId,
-      policyId: policyB,
+    const noMatch = await t.query(internal.sourceNodes.searchInternal, {
+      policyId: policyA,
       query: "contractual",
       limit: 10,
     });
-    expect(onePolicy.map((node) => node.nodeId)).toEqual(["b-exclusions"]);
+    expect(noMatch).toEqual([]);
   });
 });
