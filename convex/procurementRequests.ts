@@ -638,7 +638,7 @@ export async function createProcurementRequestByOperator(
     completionOutcome: args.completionOutcome
       ? normalizeCompletionOutcome(args.completionOutcome)
       : undefined,
-    clientVisible: args.clientVisible ?? false,
+    clientVisible: args.clientVisible ?? true,
     replacingPolicyId: args.replacingPolicyId,
     resultingPolicyId: args.resultingPolicyId,
     inboxToken,
