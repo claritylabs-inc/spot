@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useState, type KeyboardEvent } from "react";
+import { useAction } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -175,10 +175,21 @@ function SectionFacts({
   section: ExtractionRunSectionView;
   fileUrl?: string | null;
 }) {
-  const detail = useQuery(api.operator.getExtractionRunSection, {
-    runId,
-    sectionId: section.sectionId,
-  });
+  const loadSection = useAction(api.operator.getExtractionRunSection);
+  const [detail, setDetail] = useState<
+    Awaited<ReturnType<typeof loadSection>> | undefined
+  >(undefined);
+  useEffect(() => {
+    let active = true;
+    void loadSection({ runId, sectionId: section.sectionId })
+      .catch(() => null)
+      .then((next) => {
+        if (active) setDetail(next);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadSection, runId, section.sectionId]);
   const title = `${humanize(section.kind)} · ${formatPages(section)}`;
 
   if (detail === undefined) {
@@ -247,6 +258,11 @@ function RunDetail({
     (section) => section.sectionId === selectedSectionId,
   );
   const logsHref = modelCallsHref(run);
+  // Section timing and cost are not recorded yet; hide empty columns.
+  const showTiming = run.sections?.some(
+    (section) =>
+      section.durationMs !== undefined || section.costUsd !== undefined,
+  );
 
   return (
     <div className="space-y-4">
@@ -271,7 +287,9 @@ function RunDetail({
           <OperationalPanelBody
             className={`text-muted-foreground ${typeStyle("body.default")}`}
           >
-            No sections planned yet.
+            {run.sectionTotal
+              ? `0 of ${run.sectionTotal} sections finished.`
+              : "No sections planned yet."}
           </OperationalPanelBody>
         ) : (
           <Table>
@@ -280,8 +298,10 @@ function RunDetail({
                 <TableHead className="px-4">Kind</TableHead>
                 <TableHead>Pages</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead className="px-4 text-right">Cost</TableHead>
+                {showTiming ? <TableHead>Duration</TableHead> : null}
+                {showTiming ? (
+                  <TableHead className="px-4 text-right">Cost</TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -306,20 +326,34 @@ function RunDetail({
                   <TableCell>
                     <StatusCell status={SECTION_STATUS[section.status]} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatDuration(section.durationMs)}
-                  </TableCell>
-                  <TableCell className="px-4 text-right text-muted-foreground">
-                    {formatCost(section.costUsd)}
-                  </TableCell>
+                  {showTiming ? (
+                    <TableCell className="text-muted-foreground">
+                      {formatDuration(section.durationMs)}
+                    </TableCell>
+                  ) : null}
+                  {showTiming ? (
+                    <TableCell className="px-4 text-right text-muted-foreground">
+                      {formatCost(section.costUsd)}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
+        {run.sections?.length && run.sectionTotal ? (
+          <OperationalPanelBody
+            className={`border-t border-border text-muted-foreground ${typeStyle("caption.default")}`}
+          >
+            {run.sections.filter((section) => section.status === "succeeded")
+              .length}{" "}
+            of {run.sectionTotal} sections finished.
+          </OperationalPanelBody>
+        ) : null}
       </OperationalPanel>
       {selectedSection ? (
         <SectionFacts
+          key={selectedSection.sectionId}
           runId={run.runId}
           section={selectedSection}
           fileUrl={fileUrl}

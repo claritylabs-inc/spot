@@ -40,10 +40,7 @@ export function useReextractControl(policyId: Id<"policies"> | undefined) {
     if (!policyId) return;
     setStarting(true);
     try {
-      const result = await retryExtraction({ policyId, mode: "full" });
-      if (result && typeof result === "object" && "error" in result) {
-        throw new Error(String(result.error));
-      }
+      await retryExtraction({ policyId });
       setConfirming(false);
       toast.success("Re-extraction started");
     } catch (error) {

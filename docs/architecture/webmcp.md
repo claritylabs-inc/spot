@@ -84,7 +84,7 @@ actions a client cannot perform in the UI today.
 | Policies | List active/archived, detail, coverages, source evidence, PDF, history, certificates tab | `list_policies`, `get_policy`, `get_policy_source_evidence`, `get_policy_document_url`, `list_policy_versions`, `list_certificates` (`policy_id`) |
 | Policies | Upload PDFs from the header drawer or empty state, combined or separate, with duplicate warning | `upload_policy` (`mode`, `allow_duplicates`) |
 | Policies | Archive, restore, or cancel extraction of a policy the client uploaded | `archive_policy`, `restore_policy`, `cancel_policy_extraction` |
-| Policies | Resume/restart failed extraction | `retry_policy_extraction` |
+| Policies | Re-extract a policy Spot couldn't read | `retry_policy_extraction` |
 | Policies | Edit fields, answer extraction review questions, archive policies Spot staff added | Not exposed: operator-only (`assertCanEditPolicyExtractedFields`, `assertCanReviewPolicyExtraction`, `assertCanManageUploadedPolicy`) |
 | Certificates | List active/archived, versions, downloads | `list_certificates` |
 | Certificates | Review jobs tab | `list_certificate_review_jobs` |

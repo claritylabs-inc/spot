@@ -45,9 +45,9 @@ import {
 } from "./lib/userFacingErrors";
 import {
   extractionRunStatus,
+  readRunProgress,
   readRunSections,
   readSectionFacts,
-  sectionRunForAttempt,
   type ExtractionRunSectionView,
   type ExtractionRunView,
   type ExtractionSectionFactView,
@@ -369,29 +369,32 @@ export const listExtractionRuns = query({
         .first(),
     ]);
     return await Promise.all(
-      sessions.map(async (session, index) => ({
-        runId: session._id,
-        traceId: session.traceId,
-        startedAt: session.startedAt,
-        finishedAt: session.completedAt,
-        trigger: session.trigger ?? "extraction",
-        status: extractionRunStatus(session),
-        durationMs:
-          session.totalDurationMs ??
-          (session.completedAt !== undefined
-            ? session.completedAt - session.startedAt
-            : undefined),
-        costUsd: await extractionRunCostUsd(ctx, session.traceId),
-        sections:
-          index === 0 && sectionRun
-            ? await readRunSections(ctx, sectionRun._id)
-            : null,
-      })),
+      sessions.map(async (session, index) => {
+        const latestRun = index === 0 ? sectionRun : null;
+        return {
+          runId: session._id,
+          traceId: session.traceId,
+          startedAt: session.startedAt,
+          finishedAt: session.completedAt,
+          trigger: session.trigger ?? "extraction",
+          status: extractionRunStatus(session),
+          durationMs:
+            session.totalDurationMs ??
+            (session.completedAt !== undefined
+              ? session.completedAt - session.startedAt
+              : undefined),
+          costUsd: await extractionRunCostUsd(ctx, session.traceId),
+          sections: latestRun ? await readRunSections(ctx, latestRun._id) : null,
+          sectionTotal: latestRun
+            ? (await readRunProgress(ctx, latestRun._id))?.total
+            : undefined,
+        };
+      }),
     );
   },
 });
 
-export const getExtractionRunSection = query({
+export const getExtractionRunSection = action({
   args: { runId: v.string(), sectionId: v.string() },
   handler: async (
     ctx,
@@ -400,25 +403,12 @@ export const getExtractionRunSection = query({
     section: ExtractionRunSectionView;
     facts: ExtractionSectionFactView[];
   } | null> => {
-    await requireOperator(ctx);
-    const sessionId = ctx.db.normalizeId(
-      "policyExtractionTraceSessions",
-      args.runId,
-    );
-    const session = sessionId ? await ctx.db.get(sessionId) : null;
-    if (!session) return null;
-    const sectionRun = await sectionRunForAttempt(ctx, session);
-    if (!sectionRun) return null;
-    const section = (await readRunSections(ctx, sectionRun._id))?.find(
-      (row) => row.sectionId === args.sectionId,
-    );
-    if (!section) return null;
-    const facts = await readSectionFacts(
-      ctx,
-      sectionRun._id,
-      section.sectionId,
-    );
-    return { section, facts: facts ?? [] };
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
+    await ctx.runQuery(internalApi.operator.requireOperatorForUserInternal, {
+      userId,
+    });
+    return await readSectionFacts(ctx, args.runId, args.sectionId);
   },
 });
 
@@ -936,7 +926,10 @@ export const recordPolicyExtractionOperationInternal = internalMutation({
   args: {
     operatorUserId: v.id("users"),
     policyId: v.id("policies"),
-    operation: v.literal("supplementary_extraction"),
+    operation: v.union(
+      v.literal("full_extraction"),
+      v.literal("supplementary_extraction"),
+    ),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {

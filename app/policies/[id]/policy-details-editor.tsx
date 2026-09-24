@@ -25,6 +25,7 @@ import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
 import {
   cachedQueryArgsKey,
   cachedQueryCollectionFor,
+  cachedQueryResult,
 } from "@/lib/sync/use-cached-query";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { typeStyle } from "@/lib/typography";
@@ -488,11 +489,7 @@ export function PolicyDetailsEditor({
         const current = store.getCollection(collection, argsKey)?.[0]?.value;
         if (!current || typeof current !== "object") continue;
         void store.upsertCollection(collection, argsKey, [
-          {
-            _id: "result",
-            value: applyUpdateToPolicy(current, args.update),
-            updatedAt: dayjs().valueOf(),
-          },
+          cachedQueryResult(argsKey, applyUpdateToPolicy(current, args.update)),
         ]);
       }
     },

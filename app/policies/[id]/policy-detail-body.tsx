@@ -8,7 +8,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { useMutation, useAction } from "convex/react";
+import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -464,9 +464,19 @@ export function PolicyDetailBody({
   const canEditExtractedFields =
     operatorMode ||
     (viewerOrg?.org as { type?: "broker" } | undefined)?.type === "broker";
+  const extractionProgress = useQuery(
+    api.extractionProgress.get,
+    policy && extractionState(policy).kind === "extracting"
+      ? { policyId: policy._id }
+      : "skip",
+  );
   const state = useMemo(
-    () => extractionState((policy ?? {}) as Record<string, unknown>),
-    [policy],
+    () =>
+      extractionState({
+        ...((policy ?? {}) as Record<string, unknown>),
+        extractionProgress,
+      }),
+    [policy, extractionProgress],
   );
   const isRejectedDocument = state.kind === "not_a_policy";
   const breadcrumbLabel =
@@ -910,8 +920,7 @@ export function PolicyDetailBody({
 
       {reextractDialog}
 
-      {/* The local cache can briefly hold another policy; toasts outlive renders. */}
-      {!operatorMode && policy._id === id ? (
+      {!operatorMode ? (
         <PolicyExtractionBanner
           policyId={policy._id}
           state={state}

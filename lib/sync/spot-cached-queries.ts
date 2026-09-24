@@ -8,6 +8,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   cachedQueryArgsKey,
   cachedQueryCollectionFor,
+  cachedQueryResult,
   useCachedQuery,
   useSetCachedQuery,
   useUpdateCachedQuery,
@@ -117,14 +118,10 @@ export function patchCachedViewer(
     const current = store.getCollection(collection, argsKey)?.[0]?.value;
     if (!current) continue;
     void store.upsertCollection(collection, argsKey, [
-      {
-        _id: "result",
-        value: {
-          ...current,
-          ...patch,
-        },
-        updatedAt: dayjs().valueOf(),
-      },
+      cachedQueryResult(argsKey, {
+        ...current,
+        ...patch,
+      }),
     ]);
   }
 }
@@ -139,17 +136,13 @@ export function patchCachedViewerOrg(
     const current = store.getCollection(collection, argsKey)?.[0]?.value;
     if (!current?.org) continue;
     void store.upsertCollection(collection, argsKey, [
-      {
-        _id: "result",
-        value: {
-          ...current,
-          org: {
-            ...current.org,
-            ...patch,
-          },
+      cachedQueryResult(argsKey, {
+        ...current,
+        org: {
+          ...current.org,
+          ...patch,
         },
-        updatedAt: dayjs().valueOf(),
-      },
+      }),
     ]);
   }
 }
@@ -159,11 +152,7 @@ export function setCachedViewerOrg(store: SyncStore, next: NonNullable<ViewerOrg
     const collection = cachedQueryCollectionFor<ViewerOrg>(cacheName);
     const argsKey = cachedQueryArgsKey({});
     void store.upsertCollection(collection, argsKey, [
-      {
-        _id: "result",
-        value: next,
-        updatedAt: dayjs().valueOf(),
-      },
+      cachedQueryResult(argsKey, next),
     ]);
   }
 }
