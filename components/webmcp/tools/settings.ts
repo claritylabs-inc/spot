@@ -96,6 +96,13 @@ export function settingsToolImplementations(ctx: ClientToolContext): ToolMap {
       await convex.mutation(api.orgs.updateOrg, compact({ name, website }));
       return { status: "updated" };
     },
+    research_company: async (input) => {
+      const result = await convex.action(
+        api.actions.extractCompanyInfo.extractCompanyInfo,
+        compact({ url: text(input, "website"), orgId }),
+      );
+      return { status: result.status ?? (result.queued ? "queued" : "ok") };
+    },
     upload_organization_logo: async (input) => {
       const file = await uploadBase64File(input, () =>
         convex.mutation(api.organizations.generateOrgLogoUploadUrl, { orgId }),

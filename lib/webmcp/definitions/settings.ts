@@ -37,7 +37,7 @@ export const settingsTools = {
   }),
   update_organization: imperative({
     title: "Update organization",
-    description: "Change the organization's name or website.",
+    description: "Change the organization's name or website. Changing either refreshes company research.",
     readOnly: false,
     adminOnly: true,
     pages: SETTINGS_PAGES,
@@ -45,6 +45,15 @@ export const settingsTools = {
       name: param.string("Optional new organization name."),
       website: param.string("Optional new website."),
     }),
+  }),
+  research_company: imperative({
+    title: "Research company",
+    description: "Queue Spot's web research of the company website to refresh the company profile.",
+    readOnly: false,
+    consequential: true,
+    adminOnly: true,
+    pages: SETTINGS_PAGES,
+    inputSchema: schema({ website: param.string("Optional website; defaults to the saved one.") }),
   }),
   upload_organization_logo: imperative({
     title: "Upload organization logo",

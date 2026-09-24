@@ -680,6 +680,8 @@ try {
     check("cancel_member_email_change", (await call(page, "cancel_member_email_change", { membership_id: teammate.membership_id, request_id: memberEmailChange.request_id })).status === "cancelled");
     check("remove_team_member", (await call(page, "remove_team_member", { membership_id: teammate.membership_id })).status === "removed");
   }
+  const research = await call(page, "research_company", { website: "https://example.com" });
+  check("research_company queues research", research.status !== "error", research);
 
   await openPage(page, { page: "profile" }, /\/profile/, ["update_profile"]);
   auditTools("/profile", await registeredTools(page));
