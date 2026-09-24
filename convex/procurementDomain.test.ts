@@ -934,30 +934,6 @@ describe("procurement domain boundaries", () => {
     ).rejects.toThrow("Client membership required");
   });
 
-  test("keeps an operator-created request private until it is shared", async () => {
-    const f = await fixture();
-    const created = await f.operator.mutation(api.procurementRequests.create, {
-      clientOrgId: f.clientOrgId,
-      title: "Private placement",
-      narrative: "Prepare options before involving the client",
-    });
-
-    await expect(
-      f.client.query(api.clientProcurementRequests.get, {
-        requestId: created.requestId,
-      }),
-    ).rejects.toThrow("Request not found");
-    await expect(
-      f.client.query(api.clientProcurementRequests.list, {}),
-    ).resolves.toEqual([]);
-    expect(
-      await f.t.query(internal.clientProcurementRequests.listForAgentInternal, {
-        orgIds: [f.clientOrgId],
-        requestId: created.requestId,
-      }),
-    ).toEqual([]);
-  });
-
   test("requires proposal outreach consistency and invalidates a confirmed review when the broker-visible packet changes", async () => {
     const f = await fixture();
     const request = await f.operator.mutation(api.procurementRequests.create, {

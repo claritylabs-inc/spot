@@ -43,7 +43,7 @@ try {
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await page.waitForURL(/\/operator(?:\/threads)?$/);
   const email = `invite-qa-${dayjs().valueOf()}@spot.insure`;
-  await page.goto(`${base}/operator/settings`);
+  await page.goto(`${base}/operator/settings?section=team`);
   await check("Settings invitation sends captured email", async () => {
     await page.getByRole("button", { name: "Invite operator", exact: true }).click();
     await page.getByLabel("Email address", { exact: true }).fill(email);

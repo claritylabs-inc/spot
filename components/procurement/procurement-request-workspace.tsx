@@ -121,6 +121,7 @@ type RequestSummary = {
   status: ProcurementRequestStatus;
   replacingPolicyId?: Id<"policies">;
   resultingPolicyId?: Id<"policies">;
+  clientVisible?: boolean;
   forwardingAddress: string;
   brokerCount: number;
   quoteCount: number;
@@ -566,6 +567,9 @@ export function RequestEditor({
   const [resultingPolicyId, setResultingPolicyId] = useState(
     request.resultingPolicyId ?? NONE,
   );
+  const [clientVisible, setClientVisible] = useState(
+    request.clientVisible ?? true,
+  );
 
   const policyOptions = [
     { value: NONE, label: "No policy" },
@@ -581,6 +585,7 @@ export function RequestEditor({
     status,
     replacingPolicyId,
     resultingPolicyId,
+    clientVisible,
   };
   const saved = useRef(values);
   const autoSave = useLocalFirstAutoSave({
@@ -607,6 +612,10 @@ export function RequestEditor({
             ? next.resultingPolicyId === NONE
               ? null
               : (next.resultingPolicyId as Id<"policies">)
+            : undefined,
+        clientVisible:
+          next.clientVisible !== saved.current.clientVisible
+            ? next.clientVisible
             : undefined,
       });
       saved.current = next;
@@ -704,6 +713,23 @@ export function RequestEditor({
             onChange={setResultingPolicyId}
           />
         </label>
+        <div className="space-y-1.5">
+          <p className={`text-muted-foreground ${typeStyle("label.field")}`}>
+            Sharing
+          </p>
+          <OperationalPanel aria-label="Request sharing">
+            <OperationalItem className="flex items-center justify-between gap-4">
+              <span className={typeStyle("body.default")}>
+                Client visibility
+              </span>
+              <SettingsSwitch
+                label="Client visibility"
+                checked={clientVisible}
+                onCheckedChange={() => setClientVisible(!clientVisible)}
+              />
+            </OperationalItem>
+          </OperationalPanel>
+        </div>
       </div>
     </SettingsDrawer>
   );
