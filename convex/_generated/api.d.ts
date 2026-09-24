@@ -30,7 +30,6 @@ import type * as actions_extractCompanyInfo from "../actions/extractCompanyInfo.
 import type * as actions_extractFromUpload from "../actions/extractFromUpload.js";
 import type * as actions_extractSupplementary from "../actions/extractSupplementary.js";
 import type * as actions_extractionIntegrityAudit from "../actions/extractionIntegrityAudit.js";
-import type * as actions_extractionReviews from "../actions/extractionReviews.js";
 import type * as actions_generateCoi from "../actions/generateCoi.js";
 import type * as actions_handleInboundEmail from "../actions/handleInboundEmail.js";
 import type * as actions_handleInboundImessage from "../actions/handleInboundImessage.js";
@@ -109,7 +108,6 @@ import type * as externalExtractionPayload from "../externalExtractionPayload.js
 import type * as extractionAccess from "../extractionAccess.js";
 import type * as extractionIntegrityAudit from "../extractionIntegrityAudit.js";
 import type * as extractionProgress from "../extractionProgress.js";
-import type * as extractionReviews from "../extractionReviews.js";
 import type * as extractionTraces from "../extractionTraces.js";
 import type * as http from "../http.js";
 import type * as imessageChats from "../imessageChats.js";
@@ -432,7 +430,6 @@ declare const fullApi: ApiFromModules<{
   "actions/extractFromUpload": typeof actions_extractFromUpload;
   "actions/extractSupplementary": typeof actions_extractSupplementary;
   "actions/extractionIntegrityAudit": typeof actions_extractionIntegrityAudit;
-  "actions/extractionReviews": typeof actions_extractionReviews;
   "actions/generateCoi": typeof actions_generateCoi;
   "actions/handleInboundEmail": typeof actions_handleInboundEmail;
   "actions/handleInboundImessage": typeof actions_handleInboundImessage;
@@ -511,7 +508,6 @@ declare const fullApi: ApiFromModules<{
   extractionAccess: typeof extractionAccess;
   extractionIntegrityAudit: typeof extractionIntegrityAudit;
   extractionProgress: typeof extractionProgress;
-  extractionReviews: typeof extractionReviews;
   extractionTraces: typeof extractionTraces;
   http: typeof http;
   imessageChats: typeof imessageChats;
