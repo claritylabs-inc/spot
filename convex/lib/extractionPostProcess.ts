@@ -1,16 +1,17 @@
 "use node";
 
-import { z } from "zod";
 import dayjs from "dayjs";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { applyCoverageDeclarationScoping } from "./coverageScoping";
+import { scopeCoveragesWithClassifier } from "./coverageScoping";
 import { insuranceDocToPolicy } from "./documentMapping";
-import { reviewExtractionFields, type FieldReviewApplication } from "./extractionFieldReview";
-import { generateObjectForOrg } from "./models";
 import { applyPolicyPeriodFallback } from "./policyPeriodExtraction";
-import { sendClRouterFeedback, type ClRouterFeedbackRequest } from "./clRouterClient";
+import {
+  clRouterDecide,
+  sendClRouterFeedback,
+  type ClRouterFeedbackRequest,
+} from "./clRouterClient";
 
 type SourceSpanLike = {
   text?: string;
@@ -28,8 +29,17 @@ type ExtractionPostProcessOptions = {
   sourceSpans: SourceSpanLike[];
   traceId?: string;
   policyId?: Id<"policies"> | string;
+  /** Accepted for compatibility; model review passes were removed. */
   runModelReview?: boolean;
   log?: (message: string, level?: "info" | "warn" | "error") => Promise<void> | void;
+};
+
+/** Retained result shape; post-extraction model review no longer runs. */
+export type FieldReviewApplication = {
+  document: Record<string, unknown>;
+  applied: Array<{ field: string }>;
+  skipped: Array<{ field: string }>;
+  reviewedFieldCount: number;
 };
 
 export type ExtractionPostProcessResult = {
@@ -39,22 +49,11 @@ export type ExtractionPostProcessResult = {
   coverageReviewQuestionCount: number;
 };
 
-const orgNameNormalizationSchema = z.object({
-  carrier: z.string().nullable(),
-  security: z.string().nullable(),
-  broker: z.string().nullable(),
-  brokerAgency: z.string().nullable(),
-  generalAgentName: z.string().nullable(),
-});
-
-const coverageReviewCopySchema = z.object({
-  questions: z.array(z.object({
-    id: z.string(),
-    question: z.string(),
-    reason: z.string(),
-    recommendation: z.string(),
-  })),
-});
+const GROUNDING_SUPPORT_MIN_PROBABILITY = 0.8;
+const ORG_NAME_MIN_CONFIDENCE = 0.6;
+const MAX_GROUNDING_QUESTIONS = 40;
+const MAX_CITED_TEXT_CHARS = 1_400;
+const MAX_ORG_NAME_CANDIDATES = 6;
 
 const SOURCE_GROUNDED_IDENTITY_FIELDS = [
   "carrier",
@@ -120,38 +119,22 @@ type RemovedSourceSensitiveValue = {
   value: string;
 };
 
-type SourceGroundingStats = {
-  sensitiveFieldCount: number;
+/** A critical value that failed exact matching, with the source text it cites. */
+export type GroundingClaim = {
+  key: string;
+  field: string;
+  value: string;
+  citedText: string;
 };
 
-function compactCoverageReviewForPrompt(fields: Record<string, unknown>) {
-  const review = fields.extractionReview as { questions?: Array<Record<string, unknown>> } | undefined;
-  const questions = Array.isArray(review?.questions) ? review.questions : [];
-  return questions.map((question) => ({
-    id: question.id,
-    coverageName: question.coverageName,
-    limitType: question.limitType,
-    currentValue: question.currentValue,
-    reason: question.reason,
-    options: Array.isArray(question.options)
-      ? question.options.map((option) => {
-        const item = option as Record<string, unknown>;
-        const coverage = typeof item.coverage === "object" && item.coverage
-          ? item.coverage as Record<string, unknown>
-          : {};
-        return {
-          id: item.id,
-          label: item.label,
-          value: item.value,
-          limitType: item.limitType ?? coverage.limitType,
-          source: item.sourceLabel,
-          extractedAs: coverage.name,
-          originalText: coverage.originalContent,
-          reason: item.reason,
-        };
-      })
-      : [],
-  }));
+type SourceGroundingStats = {
+  sensitiveFieldCount: number;
+  verified: ReadonlySet<string>;
+  claims: GroundingClaim[];
+};
+
+export function groundingClaimKey(field: string, value: unknown) {
+  return `${field}\u0000${String(value)}`;
 }
 
 function normalizedSourceEvidence(value: string) {
@@ -371,13 +354,25 @@ function sourceGroundedPartyObject(
   const primaryField = allowedFields[0];
   const primaryValue = record[primaryField];
   const recordCorpus = sourceCorpusForProvenance(record, sourceTextById) || corpus;
+  const primaryKey = groundingClaimKey(`${field}.${primaryField}`, primaryValue);
   if (
     typeof primaryValue !== "string" ||
     !primaryValue.trim() ||
-    !sourceSupportsScalarValue(primaryValue, recordCorpus)
+    !(sourceSupportsScalarValue(primaryValue, recordCorpus) || stats.verified.has(primaryKey))
   ) {
     stats.sensitiveFieldCount += 1;
     removed.push({ field, value: displayRemovedValue(record[primaryField] ?? value) });
+    if (typeof primaryValue === "string" && primaryValue.trim()) {
+      stats.claims.push({
+        key: primaryKey,
+        field: `${field}.${primaryField}`,
+        value: primaryValue,
+        citedText: provenanceSourceSpanIds(record)
+          .map((id) => sourceTextById.get(id) ?? "")
+          .join("\n")
+          .slice(0, MAX_CITED_TEXT_CHARS),
+      });
+    }
     return undefined;
   }
 
@@ -437,24 +432,70 @@ function sourceBackedIdentityValue(
   return undefined;
 }
 
+/** The source span that best covers the value's words, windowed around them. */
+function nearestSourceText(sourceSpans: SourceSpanLike[], value: string) {
+  const tokens = [...new Set(normalizedSourceEvidence(value).split(" "))]
+    .filter((token) => token.length >= 2);
+  if (tokens.length === 0) return "";
+  let best: { text: string; score: number } | undefined;
+  for (const span of sourceSpans) {
+    const text = typeof span.text === "string" ? span.text : "";
+    const words = new Set(normalizedSourceEvidence(text).split(" "));
+    const score = tokens.filter((token) => words.has(token)).length;
+    if (
+      score > 0 &&
+      (!best || score > best.score || (score === best.score && text.length < best.text.length))
+    ) {
+      best = { text, score };
+    }
+  }
+  if (!best || best.score < Math.ceil(tokens.length / 2)) return "";
+  const anchor = [...tokens].sort((left, right) => right.length - left.length)[0]!;
+  const index = Math.max(0, best.text.toLowerCase().indexOf(anchor));
+  return best.text.slice(
+    Math.max(0, index - MAX_CITED_TEXT_CHARS / 2),
+    index + MAX_CITED_TEXT_CHARS / 2,
+  );
+}
+
+/**
+ * Removes critical identity values that the source text does not contain. Values
+ * in `verified` (confirmed by the grounding classifier) are kept; unsupported
+ * critical values with nearby source text are returned as `claims` to verify.
+ */
 export function stripUngroundedSourceSensitiveValues<T extends Record<string, unknown>>(
   value: T,
   sourceSpans: SourceSpanLike[],
-): { value: T; removed: RemovedSourceSensitiveValue[]; sensitiveFieldCount: number } {
+  verified: ReadonlySet<string> = new Set(),
+): {
+  value: T;
+  removed: RemovedSourceSensitiveValue[];
+  sensitiveFieldCount: number;
+  claims: GroundingClaim[];
+} {
   const corpus = sourceTextCorpus(sourceSpans);
   const sourceSpanIds = knownSourceSpanIds(sourceSpans);
   const sourceTextById = sourceSpanTextById(sourceSpans);
   const next: Record<string, unknown> = { ...value };
   const removed: RemovedSourceSensitiveValue[] = [];
-  const stats: SourceGroundingStats = { sensitiveFieldCount: 0 };
+  const stats: SourceGroundingStats = { sensitiveFieldCount: 0, verified, claims: [] };
 
   for (const field of SOURCE_GROUNDED_IDENTITY_FIELDS) {
     const raw = next[field];
     if (raw === undefined || raw === null) continue;
     stats.sensitiveFieldCount += 1;
-    if (sourceSupportsScalarValue(raw, corpus)) continue;
+    const key = groundingClaimKey(field, raw);
+    if (sourceSupportsScalarValue(raw, corpus) || verified.has(key)) continue;
     removed.push({ field, value: displayRemovedValue(raw) });
     delete next[field];
+    if (typeof raw === "string" || typeof raw === "number") {
+      stats.claims.push({
+        key,
+        field,
+        value: String(raw),
+        citedText: nearestSourceText(sourceSpans, String(raw)),
+      });
+    }
   }
 
   for (const field of SOURCE_BACKED_IDENTITY_FIELDS) {
@@ -477,7 +518,12 @@ export function stripUngroundedSourceSensitiveValues<T extends Record<string, un
     }
   }
 
-  return { value: next as T, removed, sensitiveFieldCount: stats.sensitiveFieldCount };
+  return {
+    value: next as T,
+    removed,
+    sensitiveFieldCount: stats.sensitiveFieldCount,
+    claims: stats.claims.filter((claim) => claim.citedText.trim()),
+  };
 }
 
 async function logRemovedSourceSensitiveValues(
@@ -496,130 +542,158 @@ async function logRemovedSourceSensitiveValues(
   }
 }
 
-async function refineCoverageReviewCopyWithLlm(
-  ctx: ActionCtx,
-  orgId: Id<"organizations">,
-  fields: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const review = fields.extractionReview as { questions?: Array<Record<string, unknown>> } | undefined;
-  const questions = Array.isArray(review?.questions) ? review.questions : [];
-  if (questions.length === 0) return fields;
-
+async function verifyGroundingClaims(
+  options: ExtractionPostProcessOptions,
+  claims: GroundingClaim[],
+): Promise<Set<string>> {
+  const batch = claims.slice(0, MAX_GROUNDING_QUESTIONS);
+  if (batch.length === 0) return new Set();
   try {
-    const result = await generateObjectForOrg(ctx, orgId, "extraction", {
-      schema: coverageReviewCopySchema,
-      prompt: `Rewrite coverage extraction review questions for a broker or client reviewing an insurance policy.
-
-Rules:
-- Keep each id unchanged.
-- Write clear, plain questions. Avoid duplicated words like "limit limit".
-- Do not ask users to choose between terms that can all be true. If options are a deductible, retroactive date, aggregate, and per-occurrence/per-claim limit, explain that the recommendation is the actual coverage limit and the others are separate policy terms.
-- Use "per occurrence" in user-facing wording instead of "per claim" unless quoting source text.
-- Include a short reason that explains why review is needed.
-- Include a short recommendation sentence that names the recommended option and why source evidence supports it.
-- Do not use jargon like extraction slot, candidate, or model.
-- Keep question under 120 characters and reason/recommendation under 180 characters.
-
-Review JSON:
-${JSON.stringify(compactCoverageReviewForPrompt(fields))}`,
-    });
-
-    const copyById = new Map(result.object.questions.map((question) => [question.id, question]));
-    return {
-      ...fields,
-      extractionReview: {
-        ...(review ?? {}),
-        questions: questions.map((question) => {
-          const copy = typeof question.id === "string" ? copyById.get(question.id) : undefined;
-          return copy
-            ? {
-              ...question,
-              question: copy.question,
-              reason: copy.reason,
-              recommendation: copy.recommendation,
-            }
-            : question;
-        }),
+    const result = await clRouterDecide({
+      orgId: String(options.orgId),
+      task: "policy_extraction_grounding",
+      state: {
+        claims: Object.fromEntries(batch.map((claim, index) => [`claim_${index}`, {
+          field: claim.field,
+          value: claim.value,
+          citedText: claim.citedText,
+        }])),
       },
-    };
-  } catch (err) {
-    console.warn(
-      `LLM coverage-review copy failed: ${err instanceof Error ? err.message : String(err)}`,
+      questions: Object.fromEntries(batch.map((claim, index) => [`claim_${index}`, {
+        type: "noul" as const,
+        instructions: `Does claims.claim_${index}.citedText state claims.claim_${index}.value as the policy's ${claim.field}? Formatting, casing, abbreviation, punctuation, or OCR differences are acceptable; a different, partial, or merely implied value is not.`,
+        criteria: {
+          true: "The cited text supports the value.",
+          false: "The cited text does not support the value.",
+        },
+      }])),
+      trace: options.traceId ? { traceId: options.traceId } : undefined,
+    }, { telemetry: options.ctx });
+    return new Set(batch.flatMap((claim, index) => {
+      const answer = result.answers[`claim_${index}`];
+      return answer?.type === "noul" && answer.noul >= GROUNDING_SUPPORT_MIN_PROBABILITY
+        ? [claim.key]
+        : [];
+    }));
+  } catch (error) {
+    await options.log?.(
+      `Grounding classifier unavailable; dropping unmatched values (${error instanceof Error ? error.message : String(error)})`,
+      "warn",
     );
-    return fields;
+    return new Set();
   }
 }
 
-async function normalizeOrgNamesWithLlm(
-  ctx: ActionCtx,
-  orgId: Id<"organizations">,
+/**
+ * Distinct verbatim spellings in the source text that match a shortened form of
+ * the name, or a mixed-case form of an all-caps name.
+ */
+export function sourceNameSpellings(value: string, sourceSpans: SourceSpanLike[]) {
+  const extracted = value.replace(/\s+/g, " ").trim();
+  const extractedIsUpperCase = extracted === extracted.toUpperCase();
+  const spellings = new Set<string>();
+  for (const variant of sourceEvidenceCandidates(value)) {
+    const body = variant
+      .split(" ")
+      .map((token) => (token === "and" ? "(?:and|&)" : token))
+      .join("[^A-Za-z0-9]*");
+    const pattern = new RegExp(`(?<![A-Za-z0-9])${body}(?![A-Za-z0-9])`, "gi");
+    for (const span of sourceSpans) {
+      for (const match of (span.text ?? "").matchAll(pattern)) {
+        const spelling = match[0].replace(/\s+/g, " ").trim();
+        const shorter = normalizedSourceEvidence(spelling) !== normalizedSourceEvidence(extracted);
+        const recased = extractedIsUpperCase && spelling !== spelling.toUpperCase();
+        if (shorter || recased) spellings.add(spelling);
+      }
+    }
+  }
+  return [...spellings].slice(0, MAX_ORG_NAME_CANDIDATES);
+}
+
+const ORG_NAME_FIELDS = [
+  { key: "carrier", role: "insurance carrier" },
+  { key: "security", role: "security (risk-bearing insurer)" },
+  { key: "broker", role: "broker" },
+  { key: "brokerAgency", role: "broker agency" },
+  { key: "generalAgent.agencyName", role: "general agent" },
+] as const;
+
+function orgNameValue(fields: Record<string, unknown>, key: string) {
+  const [field, child] = key.split(".");
+  const value = child
+    ? (fields[field!] && typeof fields[field!] === "object" && !Array.isArray(fields[field!])
+      ? (fields[field!] as Record<string, unknown>)[child]
+      : undefined)
+    : fields[field!];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
+ * Jev picks a concise display spelling for organization names among spellings
+ * found verbatim in the source text; low confidence keeps the extracted value.
+ */
+async function normalizeOrgNamesWithClassifier(
+  options: ExtractionPostProcessOptions,
   fields: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const candidates = {
-    carrier: typeof fields.carrier === "string" ? fields.carrier : undefined,
-    security: typeof fields.security === "string" ? fields.security : undefined,
-    broker: typeof fields.broker === "string" ? fields.broker : undefined,
-    brokerAgency: typeof fields.brokerAgency === "string" ? fields.brokerAgency : undefined,
-    generalAgentName:
-      fields.generalAgent && typeof fields.generalAgent === "object" && !Array.isArray(fields.generalAgent)
-        ? typeof (fields.generalAgent as Record<string, unknown>).agencyName === "string"
-          ? (fields.generalAgent as Record<string, unknown>).agencyName as string
-          : undefined
-        : undefined,
-  };
-  if (!Object.values(candidates).some(Boolean)) return fields;
-
+  const pending = ORG_NAME_FIELDS.flatMap(({ key, role }, index) => {
+    const extracted = orgNameValue(fields, key);
+    const candidates = extracted ? sourceNameSpellings(extracted, options.sourceSpans) : [];
+    return extracted && candidates.length > 0
+      ? [{ key, role, extracted, candidates, question: `organization_${index}` }]
+      : [];
+  });
+  if (pending.length === 0) return fields;
   try {
-    const result = await generateObjectForOrg(ctx, orgId, "extraction", {
-      schema: orgNameNormalizationSchema,
-      prompt: `Normalize insurance organization display names.
-
-Rules:
-- Return concise user-facing names only.
-- Remove legal/disclaimer suffixes, "administered by" clauses, and parenthetical metadata.
-- Keep the canonical brand/entity name.
-- If input is already concise, keep it unchanged.
-- Return every schema key. Use null for missing input keys.
-
-Input JSON:
-${JSON.stringify(candidates)}`,
-    });
-
-    const normalized = result.object;
-    const generalAgent = fields.generalAgent && typeof fields.generalAgent === "object" && !Array.isArray(fields.generalAgent)
-      ? fields.generalAgent as Record<string, unknown>
-      : undefined;
-    return {
-      ...fields,
-      carrier: normalized.carrier ?? fields.carrier,
-      security: normalized.security ?? fields.security,
-      broker: normalized.broker ?? fields.broker,
-      brokerAgency: normalized.brokerAgency ?? fields.brokerAgency,
-      ...(generalAgent
-        ? {
-            generalAgent: {
-              ...generalAgent,
-              agencyName: normalized.generalAgentName ?? generalAgent.agencyName,
-            },
-          }
-        : {}),
-    };
-  } catch (err) {
-    console.warn(
-      `LLM org-name normalization failed: ${err instanceof Error ? err.message : String(err)}`,
+    const result = await clRouterDecide({
+      orgId: String(options.orgId),
+      task: "policy_extraction_org_name",
+      state: {
+        organizations: Object.fromEntries(pending.map((item) => [item.question, {
+          role: item.role,
+          extracted: item.extracted,
+        }])),
+      },
+      questions: Object.fromEntries(pending.map((item) => [item.question, {
+        type: "choice" as const,
+        instructions: `Choose the concise user-facing display name for the ${item.role} in organizations.${item.question}. Candidates are spellings found verbatim in the policy text. Prefer the canonical entity or brand name without legal disclaimers, "administered by" clauses, or parenthetical metadata. Choose keep_extracted when the extracted name is already the best display name.`,
+        criteria: {
+          keep_extracted: item.extracted,
+          ...Object.fromEntries(item.candidates.map((candidate, index) => [
+            `spelling_${index}`,
+            candidate,
+          ])),
+        },
+      }])),
+      trace: options.traceId ? { traceId: options.traceId } : undefined,
+    }, { telemetry: options.ctx });
+    let next = fields;
+    for (const item of pending) {
+      const answer = result.answers[item.question];
+      if (answer?.type !== "choice") continue;
+      const confidence = Math.min(answer.confidence, answer.probabilities[answer.choice] ?? 0);
+      const spelling = item.candidates[Number(answer.choice.replace("spelling_", ""))];
+      if (confidence < ORG_NAME_MIN_CONFIDENCE || answer.choice === "keep_extracted" || !spelling) {
+        continue;
+      }
+      const [field, child] = item.key.split(".");
+      next = child
+        ? { ...next, [field!]: { ...(next[field!] as Record<string, unknown>), [child]: spelling } }
+        : { ...next, [field!]: spelling };
+      await options.log?.(`Normalized ${item.role} name to "${spelling}" from source text`, "info");
+    }
+    return next;
+  } catch (error) {
+    await options.log?.(
+      `Organization name classifier unavailable; keeping extracted names (${error instanceof Error ? error.message : String(error)})`,
+      "warn",
     );
     return fields;
   }
 }
 
 function openReviewQuestionCount(fields: Record<string, unknown>) {
-  const review = fields.extractionReview as { questions?: Array<Record<string, unknown>> } | undefined;
-  if (!Array.isArray(review?.questions)) return 0;
-  return review.questions.filter((question) =>
-    typeof question.id === "string" &&
-    question.status !== "confirmed" &&
-    question.status !== "dismissed"
-  ).length;
+  return openExtractionReviewQuestions(fields.extractionReview).length;
 }
 
 async function findOperationalProfileFeedbackOrigin(
@@ -643,30 +717,18 @@ async function findOperationalProfileFeedbackOrigin(
 
 export function postProcessFeedbackRequest(args: {
   originRequestId: string;
-  fieldReview: FieldReviewApplication;
   ungroundedStripCount: number;
   sensitiveFieldCount: number;
   escalationCount: number;
   traceId?: string;
   policyId?: string;
 }): ClRouterFeedbackRequest | null {
-  const hasReviewSignal = args.fieldReview.reviewedFieldCount > 0;
   const hasGroundingSignal = args.sensitiveFieldCount > 0;
-  const correctedFieldCount = Math.min(
-    new Set(args.fieldReview.applied.map((correction) => correction.field)).size,
-    args.fieldReview.reviewedFieldCount,
-  );
-  if (!hasReviewSignal && !hasGroundingSignal && args.escalationCount === 0) return null;
+  if (!hasGroundingSignal && args.escalationCount === 0) return null;
   return {
     requestId: args.originRequestId,
     idempotencyKey: "extraction-postprocess-v1",
     signals: {
-      ...(hasReviewSignal
-        ? {
-            reviewCorrectionCount: correctedFieldCount,
-            reviewedFieldCount: args.fieldReview.reviewedFieldCount,
-          }
-        : {}),
       ...(hasGroundingSignal
         ? {
             ungroundedStripCount: args.ungroundedStripCount,
@@ -684,34 +746,10 @@ export function postProcessFeedbackRequest(args: {
   };
 }
 
-function sendPostProcessFeedback(args: {
-  options: ExtractionPostProcessOptions;
-  originRequestId: string;
-  fieldReview: FieldReviewApplication;
-  ungroundedStripCount: number;
-  sensitiveFieldCount: number;
-  escalationCount: number;
-}) {
-  const request = postProcessFeedbackRequest({
-    originRequestId: args.originRequestId,
-    fieldReview: args.fieldReview,
-    ungroundedStripCount: args.ungroundedStripCount,
-    sensitiveFieldCount: args.sensitiveFieldCount,
-    escalationCount: args.escalationCount,
-    traceId: args.options.traceId,
-    policyId: args.options.policyId ? String(args.options.policyId) : undefined,
-  });
-  if (!request) return;
-  void sendClRouterFeedback(request).catch(() => {
-    // Feedback is best-effort and must never fail extraction.
-  });
-}
-
 export async function postProcessExtractionDocument(
   options: ExtractionPostProcessOptions,
 ): Promise<ExtractionPostProcessResult> {
   let document = options.document;
-  const runModelReview = options.runModelReview ?? true;
   const feedbackOrigin = await findOperationalProfileFeedbackOrigin(options, dayjs().valueOf());
 
   const periodFallback = applyPolicyPeriodFallback(
@@ -729,68 +767,77 @@ export async function postProcessExtractionDocument(
     );
   }
 
-  const fieldReview = runModelReview
-    ? await reviewExtractionFields({
-      ctx: options.ctx,
-      orgId: options.orgId,
-      document,
-      sourceSpans: options.sourceSpans,
-      log: options.log,
-    })
-    : { document, applied: [], skipped: [], reviewedFieldCount: 0 };
-  document = fieldReview.document;
-  // Never attribute these checks to the later review/copy calls. Feedback below
-  // uses only the operational-profile request captured before review began. Later
-  // human edits still lack durable request lineage and remain intentionally unwired.
-  const groundedDocument = stripUngroundedSourceSensitiveValues(document, options.sourceSpans);
-  document = groundedDocument.value;
-  await logRemovedSourceSensitiveValues(groundedDocument.removed, options.log);
+  // Exact/normalized matching first; the classifier only sees values that fail
+  // it, and each value is asked about at most once across both passes.
+  const verified = new Set<string>();
+  const asked = new Set<string>();
+  const ground = async <T extends Record<string, unknown>>(value: T) => {
+    let grounded = stripUngroundedSourceSensitiveValues(value, options.sourceSpans, verified);
+    const claims = grounded.claims.filter((claim) => !asked.has(claim.key));
+    for (const claim of claims) asked.add(claim.key);
+    const confirmed = await verifyGroundingClaims(options, claims);
+    if (confirmed.size > 0) {
+      for (const claim of claims) {
+        if (!confirmed.has(claim.key)) continue;
+        verified.add(claim.key);
+        await options.log?.(
+          `Kept ${claim.field} "${displayRemovedValue(claim.value)}": classifier verified it against cited source text`,
+          "info",
+        );
+      }
+      grounded = stripUngroundedSourceSensitiveValues(value, options.sourceSpans, verified);
+    }
+    await logRemovedSourceSensitiveValues(grounded.removed, options.log);
+    return grounded;
+  };
 
-  const mappedFields = insuranceDocToPolicy(document as never);
-  const scopedCoverage = applyCoverageDeclarationScoping({
-    fields: mappedFields,
+  const groundedDocument = await ground(document);
+  document = groundedDocument.value;
+
+  const scopedCoverage = await scopeCoveragesWithClassifier({
+    ctx: options.ctx,
+    orgId: options.orgId,
+    fields: insuranceDocToPolicy(document as never),
     sourceSpans: options.sourceSpans,
     nowMs: dayjs().valueOf(),
+    traceId: options.traceId,
   });
-  if (scopedCoverage.changed && scopedCoverage.review.questions.length > 0) {
+  if (scopedCoverage.classifiedCount > 0) {
     await options.log?.(
-      `Coverage scoping found ${scopedCoverage.review.questions.length} limit question${scopedCoverage.review.questions.length === 1 ? "" : "s"} for declaration review`,
+      `Coverage scoping assigned ${scopedCoverage.classifiedCount} coverage${scopedCoverage.classifiedCount === 1 ? "" : "s"} to a line of business`,
+      "info",
+    );
+  }
+  if (scopedCoverage.review.questions.length > 0) {
+    await options.log?.(
+      `Coverage scoping found ${scopedCoverage.review.questions.length} line-of-business question${scopedCoverage.review.questions.length === 1 ? "" : "s"} for review`,
       "warn",
     );
   }
 
-  const reviewCopyFields = runModelReview
-    ? await refineCoverageReviewCopyWithLlm(
-      options.ctx,
-      options.orgId,
-      scopedCoverage.fields,
-    )
-    : scopedCoverage.fields;
-  const fields = runModelReview
-    ? await normalizeOrgNamesWithLlm(
-      options.ctx,
-      options.orgId,
-      reviewCopyFields,
-    )
-    : reviewCopyFields;
-  const groundedFields = stripUngroundedSourceSensitiveValues(fields, options.sourceSpans);
-  await logRemovedSourceSensitiveValues(groundedFields.removed, options.log);
+  const fields = await normalizeOrgNamesWithClassifier(options, scopedCoverage.fields);
+  const groundedFields = await ground(fields);
   const coverageReviewQuestionCount = openReviewQuestionCount(groundedFields.value);
   if (feedbackOrigin) {
-    sendPostProcessFeedback({
-      options,
+    const request = postProcessFeedbackRequest({
       originRequestId: feedbackOrigin.requestId,
-      fieldReview,
       ungroundedStripCount: groundedDocument.removed.length + groundedFields.removed.length,
       sensitiveFieldCount: groundedDocument.sensitiveFieldCount + groundedFields.sensitiveFieldCount,
       escalationCount: coverageReviewQuestionCount,
+      traceId: options.traceId,
+      policyId: options.policyId ? String(options.policyId) : undefined,
     });
+    if (request) {
+      void sendClRouterFeedback(request).catch(() => {
+        // Feedback is best-effort and must never fail extraction.
+      });
+    }
   }
 
   return {
     document,
     fields: groundedFields.value,
-    fieldReview,
+    fieldReview: { document, applied: [], skipped: [], reviewedFieldCount: 0 },
     coverageReviewQuestionCount,
   };
 }
