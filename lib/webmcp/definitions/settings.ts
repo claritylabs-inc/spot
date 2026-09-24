@@ -48,7 +48,8 @@ export const settingsTools = {
   }),
   research_company: imperative({
     title: "Research company",
-    description: "Queue Spot's web research of the company website to refresh the company profile.",
+    description:
+      "Queue Spot's web research of the company. Research writes sourced company facts to the company wiki (read it with get_company_wiki) and fills in the website if it is missing.",
     readOnly: false,
     consequential: true,
     adminOnly: true,
