@@ -17,9 +17,8 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { chunkDocument, toStrictSchema, withRetry, getPdfPageCount } from "@claritylabs/cl-sdk";
-import { policyToInsuranceDoc } from "../lib/documentMapping";
-import { makeGenerateObject, makeEmbedText } from "../lib/sdkCallbacks";
+import { toStrictSchema, withRetry, getPdfPageCount } from "@claritylabs/cl-sdk";
+import { makeGenerateObject } from "../lib/sdkCallbacks";
 import type { Doc, Id } from "../_generated/dataModel";
 import { extractPdfPlainText } from "../lib/pdfText";
 import { buildSupplementaryPrompt, SupplementarySchema, SUPPLEMENTARY_MAX_TOKENS } from "../lib/supplementaryExtraction";
@@ -97,7 +96,7 @@ export const extractOne = internalAction({
     policyId: v.id("policies"),
     force: v.optional(v.boolean()),
   },
-  handler: async (ctx, args): Promise<{ skipped?: boolean; reason?: string; policyId?: string; facts: number; chunks?: number }> => {
+  handler: async (ctx, args): Promise<{ skipped?: boolean; reason?: string; policyId?: string; facts: number }> => {
 
     const policy = await ctx.runQuery(internal.policies.getInternal, {
       id: args.policyId,
@@ -152,50 +151,7 @@ export const extractOne = internalAction({
       fields: { supplementaryFacts: facts },
     });
 
-    // Re-chunk to include supplementary chunks in vector search
-    if (policy.orgId) {
-      // Delete existing supplementary chunks (if any from a prior run)
-      const existingChunks = await ctx.runQuery(
-        internal.documentChunks.listByPolicy,
-        { policyId: args.policyId },
-      );
-      const supplementaryChunkIds = existingChunks
-        .filter((c: { chunkType?: string }) => c.chunkType === "supplementary")
-        .map((c: { _id: Id<"documentChunks"> }) => c._id);
-      for (const id of supplementaryChunkIds) {
-        await ctx.runMutation(internal.documentChunks.deleteOne, { id });
-      }
-
-      // Generate and embed new supplementary chunks
-      const doc = policyToInsuranceDoc({
-        ...policy,
-        supplementaryFacts: facts,
-
-      } as any);
-      const allChunks = chunkDocument(doc);
-      const newChunks = allChunks.filter((c) => c.type === "supplementary");
-
-      if (newChunks.length > 0) {
-        const embed = makeEmbedText(ctx, policy.orgId as Id<"organizations">);
-        for (const chunk of newChunks) {
-          const embedding = await embed(chunk.text);
-          await ctx.runMutation(internal.documentChunks.insert, {
-            orgId: policy.orgId as Id<"organizations">,
-            policyId: args.policyId,
-            chunkId: chunk.id,
-            chunkType: chunk.type,
-            text: chunk.text,
-            metadata: chunk.metadata,
-            embedding,
-            createdAt: Date.now(),
-          });
-        }
-      }
-
-      return { policyId: args.policyId, facts: facts.length, chunks: newChunks.length };
-    }
-
-    return { policyId: args.policyId, facts: facts.length, chunks: 0 };
+    return { policyId: args.policyId, facts: facts.length };
   },
 });
 

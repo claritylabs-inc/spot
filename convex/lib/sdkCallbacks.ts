@@ -6,7 +6,7 @@ import { durableRouterClientOptions } from "./routerJobClient";
  * Provider-agnostic callback adapters for cl-sdk.
  *
  * Wraps Spot's existing AI SDK model routing (lib/models.ts) into the
- * simple callback interfaces the new SDK expects: GenerateText, GenerateObject, EmbedText.
+ * simple callback interfaces the new SDK expects: GenerateText, GenerateObject.
  */
 
 import dayjs from "dayjs";
@@ -23,7 +23,6 @@ import { applyCarrierIdentityGuidance } from "./extractionPromptGuidance";
 import type {
   GenerateText,
   GenerateObject,
-  EmbedText,
   TokenUsage,
 } from "@claritylabs/cl-sdk";
 import { internal } from "../_generated/api";
@@ -963,29 +962,6 @@ export function makeEmbedTexts(
       embeddings.push(...response.embeddings);
     }
     return embeddings;
-  };
-}
-
-/**
- * Create an EmbedText callback routed by cl-router.
- */
-export function makeEmbedText(
-  ctx?: ActionCtx,
-  orgId?: Id<"organizations">,
-): EmbedText {
-  return async (text: string) => {
-    const response = await clRouterEmbed(
-      {
-        orgId,
-        texts: [text],
-        dimensions: EMBEDDING_DIMENSIONS,
-        trace: { label: "convex.sdkCallbacks.makeEmbedText" },
-      },
-      ctx ? durableRouterClientOptions(ctx) : undefined,
-    );
-    const embedding = response.embeddings[0];
-    if (!embedding) throw new Error("cl-router returned no embedding");
-    return embedding;
   };
 }
 

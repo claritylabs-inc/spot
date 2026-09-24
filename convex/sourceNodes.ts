@@ -616,3 +616,22 @@ export const deleteByPolicy = internalMutation({
     return { deleted: nodes.length };
   },
 });
+
+/** Full-text source-node hits for agent policy search. */
+export const searchInternal = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    policyId: v.optional(v.id("policies")),
+    query: v.string(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return ctx.db
+      .query("sourceNodes")
+      .withSearchIndex("search_description", (q) => {
+        const search = q.search("description", args.query).eq("orgId", args.orgId);
+        return args.policyId ? search.eq("policyId", args.policyId) : search;
+      })
+      .take(Math.max(1, Math.min(Math.floor(args.limit), 100)));
+  },
+});
