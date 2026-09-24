@@ -14,6 +14,7 @@ import {
 } from "@claritylabs/cl-pipelines/convex";
 import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
+import { cancelDurableRouterRequest } from "../lib/routerJobClient";
 import { makeGenerateObject } from "../lib/sdkCallbacks";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -467,6 +468,34 @@ async function isExtractionCancelled(
     id: policyId as Id<"policies">,
   });
   return policy?.pipelineError === CANCELLED_BY_USER;
+}
+
+/**
+ * Best effort: a cancelled run's section router jobs that cannot be cancelled
+ * finish, and their results are never read.
+ */
+async function cancelSectionRouterJobs(ctx: ActionCtx, jobId: string) {
+  const invocationKeys: string[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const result: { page: string[]; isDone: boolean; continueCursor: string } =
+      await ctx.runQuery(internal.policies.pipelineListCancelledSectionJobs, {
+        jobId,
+        paginationOpts: { numItems: 100, cursor },
+      });
+    invocationKeys.push(...result.page);
+    if (result.isDone) break;
+    cursor = result.continueCursor;
+  }
+  await runBounded(invocationKeys, SECTION_POLL_CONCURRENCY, async (invocationKey) => {
+    try {
+      await cancelDurableRouterRequest(ctx, invocationKey);
+    } catch (error) {
+      console.warn(
+        `Could not cancel section router job ${invocationKey}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  });
 }
 
 async function loadPdfBytes(
@@ -1289,12 +1318,16 @@ async function advanceLeasedPhase(
     const reconciled = (await ctx.runMutation(
       (internal as any).policies.pipelineReconcileTerminalState,
       { jobId },
-    )) as { terminal?: boolean } | null;
+    )) as { terminal?: boolean; error?: string } | null;
     if (reconciled?.terminal) {
       await ctx.runMutation(
         (internal as any).extractionTraces.reconcileTerminalPolicy,
         { policyId: jobId },
       );
+      // Operator stops cancel the run without scheduling cancelSectionJobs.
+      if (reconciled.error === CANCELLED_BY_USER) {
+        await cancelSectionRouterJobs(ctx, jobId);
+      }
     }
     return;
   }
@@ -1790,8 +1823,14 @@ export function makePhases(
       const unsubmitted = pending.filter(
         (section) => outcomes.get(section.sectionId)?.status === "not_submitted",
       );
-      for (const section of unsubmitted.slice(0, SECTION_SUBMISSIONS_PER_ADVANCE)) {
+      const toSubmit = unsubmitted.slice(0, SECTION_SUBMISSIONS_PER_ADVANCE);
+      for (const section of toSubmit) {
         outcomes.set(section.sectionId, await runJob(section, true));
+      }
+      // A cancel that landed during these submissions could not see their jobs.
+      if (toSubmit.length > 0 && (await isExtractionCancelled(convexCtx, policyId))) {
+        await cancelSectionRouterJobs(convexCtx, policyId);
+        return { kind: "error", error: CANCELLED_BY_USER };
       }
 
       let waiting = 0;
@@ -2475,6 +2514,14 @@ export const advance = internalAction({
   handler: async (ctx, { jobId }) => {
     const phases = makePhases(ctx);
     await advanceLeasedPhase(ctx, jobId, phases);
+  },
+});
+
+/** Scheduled by cancelExtraction once the run is marked cancelled. */
+export const cancelSectionJobs = internalAction({
+  args: { jobId: v.string() },
+  handler: async (ctx, { jobId }) => {
+    await cancelSectionRouterJobs(ctx, jobId);
   },
 });
 
