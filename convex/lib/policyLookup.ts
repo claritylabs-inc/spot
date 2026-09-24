@@ -5,7 +5,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { searchPolicyDocument } from "./aiUtils";
 import type { SpotSourceSpan } from "./pdfSourceSpans";
-import { preparePdfTextWithParserFallback } from "./liteparsePreprocessor";
+import { extractPdfText } from "./pdfText";
 import { formatSourceSpanLabel } from "./policyDocumentStructure";
 import {
   normalizedSearchText,
@@ -285,7 +285,7 @@ async function loadOriginalPdfSpans(
   if (!blob) return [];
 
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  const { sourceSpans } = await preparePdfTextWithParserFallback({
+  const { sourceSpans } = await extractPdfText({
     pdfBytes: bytes,
     documentId: policyId,
     sourceKind: "policy_pdf",

@@ -13,10 +13,7 @@ import {
   accountRouterAttachment,
   assertAgentAttachmentLimits,
 } from "./agentAttachmentLimits";
-import {
-  preparePdfTextWithPdfJs,
-  tryBuildParsedPdfText,
-} from "./liteparsePreprocessor";
+import { extractPdfPlainText } from "./pdfText";
 import {
   isUnsupportedSpreadsheetAttachment,
   isXlsxSpreadsheetAttachment,
@@ -283,33 +280,21 @@ export async function buildAgentAttachmentParts(
 
       if (isPdfAttachment(attachment.filename, attachment.contentType)) {
         if (!options.includeRichParts) continue;
-        let parsedPdfText = await tryBuildParsedPdfText({
+        const parsedPdfText = await extractPdfPlainText({
           pdfBytes: buffer,
           documentId: attachment.fileId,
           sourceKind: "attachment",
-          timeoutMs: 20_000,
+        }).catch((error) => {
+          console.warn(
+            `[agent-attachment] PDF text extraction failed for ${attachment.filename}`,
+            error,
+          );
+          return null;
         });
-        let parserLabel = "LiteParse text";
-        if (!parsedPdfText) {
-          try {
-            const fallback = await preparePdfTextWithPdfJs({
-              pdfBytes: buffer,
-              documentId: attachment.fileId,
-              sourceKind: "attachment",
-            });
-            parsedPdfText = fallback.text.trim() || null;
-            parserLabel = "PDF.js text";
-          } catch (error) {
-            console.warn(
-              `[agent-attachment] PDF text fallback failed for ${attachment.filename}`,
-              error,
-            );
-          }
-        }
         if (parsedPdfText) {
           const part = boundedTextPart({
             filename: attachment.filename,
-            label: `PDF attachment (${parserLabel})`,
+            label: "PDF attachment (PDF text)",
             endLabel: "End PDF attachment",
             text: parsedPdfText,
             truncationLabel: "PDF attachment truncated for context",

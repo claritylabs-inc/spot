@@ -11,7 +11,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { generateObjectForOrg } from "../lib/models";
 import { ClRouterRequestError } from "../lib/clRouterClient";
-import { tryBuildParsedPdfText } from "../lib/liteparsePreprocessor";
+import { extractPdfPlainText } from "../lib/pdfText";
 import {
   REQUIREMENT_LIMIT_KINDS,
   REQUIREMENT_PROVISIONS,
@@ -151,7 +151,6 @@ type ExtractedFileText = {
 };
 
 const MAX_SOURCE_CHARS = 40_000;
-const PDF_REQUIREMENT_WORKER_TIMEOUT_MS = 20_000;
 const REQUIREMENT_EXTRACTION_TIMEOUT_MS = 90_000;
 
 function truncateSource(value: string) {
@@ -248,19 +247,18 @@ async function extractPdfRequirementText(
   fileName?: string,
 ): Promise<ExtractedFileText> {
   const pdfBytes = new Uint8Array(buffer);
-  const liteParsedText = await tryBuildParsedPdfText({
+  const parsedText = await extractPdfPlainText({
     pdfBytes,
     documentId: fileName || "requirement-document",
     sourceKind: "attachment",
     maxChars: MAX_SOURCE_CHARS,
-    timeoutMs: PDF_REQUIREMENT_WORKER_TIMEOUT_MS,
   });
-  if (!liteParsedText) {
+  if (!parsedText) {
     throw new Error("Could not extract text from the requirement PDF");
   }
   return {
-    text: liteParsedText,
-    parserBackend: "liteparse",
+    text: parsedText,
+    parserBackend: "pdfjs",
     parsedAt: dayjs().valueOf(),
   };
 }
