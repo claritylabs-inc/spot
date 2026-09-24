@@ -53,10 +53,10 @@ the final packet rewrites `AGENTS.md` to match.
   chooses among candidates that deterministic code or the model already produced.
   Low-confidence answers route to operator review rather than guessing.
 - Spot stops using cl-sdk's extraction engine (`createExtractor`, `getExtractor`,
-  `runSourceTreeExtraction`, coverage recovery). New extractions produce no
-  `documentChunks` (the current pipeline already produces none; agent retrieval
-  uses source nodes). The legacy re-chunk, backfill and supplementary-facts paths
-  keep using cl-sdk's shared `chunkDocument` until legacy chunks are retired. Spot keeps cl-sdk
+  `runSourceTreeExtraction`, `chunkDocument`, coverage recovery). Chunking is
+  removed entirely: no `documentChunks` writes, no chunk embeddings, no re-chunk or
+  backfill tools; agent retrieval ranks source nodes and uses each policy's
+  operational profile. Spot keeps cl-sdk
   schemas, source-tree helpers, ACORD taxonomy, PDF form filling and agent prompts.
   cl-sdk marks the engine `@deprecated` separately.
 
