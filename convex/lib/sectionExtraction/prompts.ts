@@ -1,3 +1,5 @@
+"use node";
+
 import { CARRIER_IDENTITY_GUIDANCE } from "../extractionPromptGuidance";
 import { ACORD_LOB_CODES } from "../linesOfBusiness";
 import type { PolicySection, PolicySectionKind } from "../policySectioning";

@@ -1,3 +1,5 @@
+"use node";
+
 import { z } from "zod";
 import type { PolicySectionKind } from "../policySectioning";
 

@@ -1,3 +1,5 @@
+"use node";
+
 import { resolveCitation, type ResolvedCitation } from "../citationResolver";
 import { mergeCoverageRows, type CoverageLike } from "../coverageScoping";
 import { toLobCodes } from "../linesOfBusiness";
