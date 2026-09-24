@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ThreadMessageBubble } from "@/components/agent-thread/message-bubble";
+import { ChatMessageBubble } from "@/components/chat/message-bubble";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import {
   OperationalPanel,
@@ -112,7 +112,7 @@ export function OperatorEmailMessage({
 
   return (
     <div className="min-w-0 space-y-3">
-      <ThreadMessageBubble
+      <ChatMessageBubble
         role="user"
         channel="email"
         isOwnMessage
@@ -131,7 +131,7 @@ export function OperatorEmailMessage({
           ) : null}
         </div>
         {attachments}
-      </ThreadMessageBubble>
+      </ChatMessageBubble>
       {sections.map((section, index) => (
         <OperationalPanel
           key={index}

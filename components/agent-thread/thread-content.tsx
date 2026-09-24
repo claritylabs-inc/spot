@@ -1,86 +1,39 @@
 "use client";
 
-import type { PresentationFollowUp } from "@/components/chat-presentation/context";
-import type { PresentationReference } from "@/lib/chat-presentation";
-import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
-
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
-import { stableHash } from "@claritylabs/cl-sync";
-import { useStickToBottom } from "use-stick-to-bottom";
-import dayjs from "dayjs";
-import JSZip from "jszip";
 import { toast } from "sonner";
-import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   Archive,
   ArchiveRestore,
-  Check,
-  CheckCheck,
-  FileText,
+  Clock,
+  Copy,
   ExternalLink,
   LockKeyhole,
-  Mail as MailIcon,
-  MessageCircle,
-  Copy,
-  RotateCcw,
   X,
-  Clock,
-  Download,
-  Paperclip,
 } from "lucide-react";
 import { SiSlack } from "react-icons/si";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  useCachedQuery,
-  useUpdateCachedQuery,
-} from "@/lib/sync/use-cached-query";
+import type { PresentationReference } from "@/lib/chat-presentation";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { createClientMutationId } from "@/lib/sync/client-mutation-id";
 import { useMediaQuery } from "@/components/app-sidebar/utils";
 import { stripConfidenceMarkers } from "@/lib/confidence";
 import {
   useArchivedThreadCacheActions,
-  useCachedAgentTargets,
   useThreadCacheActions,
 } from "@/lib/sync/spot-cached-queries";
-import { MessageMetaTag } from "@claritylabs-inc/ui/components/message-meta-tag";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
-import { QuotedContent } from "@/components/conversation-message";
 import { EditableBreadcrumbTitle } from "@/components/editable-breadcrumb-title";
-import {
-  ContextReferenceCard,
-  PolicyReferenceCard,
-  PolicySourcePill,
-} from "@/components/context-reference-card";
-import {
-  ChatInputOverlay,
-  SpotPromptInput,
-  type SpotPromptInputHandle,
-} from "@/components/spot-prompt-input";
+import { ChatComposer, type ChatComposerHandle } from "@/components/chat/chat-composer";
+import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { ChatErrorNotice } from "@/components/chat/chat-message";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import { ProseMarkdown } from "@/components/prose-markdown";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
-import { LogoIcon } from "@/components/ui/logo-icon";
-import {
-  PromptReferenceText,
-  type PromptReference,
-  type PromptReferenceTagKind,
-} from "@/components/prompt-reference-tag";
-import { ThreadAttachmentChip } from "@/components/agent-thread/thread-attachment-chip";
+import { PromptReferenceText } from "@/components/prompt-reference-tag";
 import { usePdf } from "@/components/pdf-context";
-import { ThreadMessageBubble } from "@/components/agent-thread/message-bubble";
-import { ThinkingSummary } from "@/components/agent-thread/thinking-summary";
-import { useChatDisplayPreferences } from "@/components/profile/streaming-preference";
-import { AgentThinkingBubble } from "@/components/agent-thread/agent-thinking-bubble";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   optimisticPromptAttachments,
@@ -90,758 +43,40 @@ import {
 import { getThreadDisplayLabel } from "@/lib/thread-display";
 import type {
   MailboxArtifactRef,
-  ThreadAttachment,
   ThreadMessage,
   ToolArtifactData,
   VendorComplianceArtifactRef,
-} from "@/components/agent-thread/types";
+} from "./types";
 import {
-  CertificateHoldArtifacts,
-  EmailStackCard,
-  EmailSummaryCard,
   EmailThreadSidebar,
   MailboxTaskSidebar,
-  VendorComplianceArtifacts,
   VendorComplianceSidebar,
-  mailboxTaskDisplayName,
-  normalizeMailboxTask,
-} from "@/components/agent-thread/artifacts";
+} from "./artifacts";
+import { ThreadContextLink, UnifiedMessageBubble } from "./thread-message";
+import {
+  assistantPdfAttachments,
+  buildThreadMessageRenderPlan,
+  isMessageFromViewer,
+  latestOwnWebMessageReceipt,
+  messageSenderName,
+  threadMessageGroupingFingerprint,
+  useStableMessages,
+  type AssistantPdfAttachment,
+} from "./thread-messages";
 import { typeStyle } from "@/lib/typography";
 
-/* ═══════════════════════════════════════════════════
-   Unified Thread View (new threads table)
-   ═══════════════════════════════════════════════════ */
+export {
+  assistantPdfAttachments,
+  latestOwnWebMessageReceipt,
+  threadMessageGroupingFingerprint,
+  type AssistantPdfAttachment,
+} from "./thread-messages";
+export {
+  UnifiedMessageBubble,
+  ThreadContextLink,
+  WebMessageReceipt,
+} from "./thread-message";
 
-export type AssistantPdfAttachment = {
-  key: string;
-  messageId: Id<"threadMessages">;
-  fileId: Id<"_storage">;
-};
-
-// This cache only interns immutable query records; it never drives rendering.
-/* eslint-disable react-hooks/refs */
-function useStableMessages(messages: ThreadMessage[] | undefined) {
-  const cacheRef = useRef(
-    new Map<string, { hash: string; message: ThreadMessage }>(),
-  );
-  const stableMessagesRef = useRef<ThreadMessage[] | undefined>(undefined);
-
-  return useMemo(() => {
-    if (!messages) {
-      cacheRef.current = new Map();
-      stableMessagesRef.current = undefined;
-      return undefined;
-    }
-
-    const previousMessages = stableMessagesRef.current;
-    const nextCache = new Map<
-      string,
-      { hash: string; message: ThreadMessage }
-    >();
-    let changed = previousMessages?.length !== messages.length;
-    const nextMessages = messages.map((message, index) => {
-      const hash = stableHash(message);
-      const cached = cacheRef.current.get(message._id);
-      const stableMessage = cached?.hash === hash ? cached.message : message;
-      nextCache.set(message._id, { hash, message: stableMessage });
-      if (previousMessages?.[index] !== stableMessage) changed = true;
-      return stableMessage;
-    });
-
-    cacheRef.current = nextCache;
-    if (!changed && previousMessages) return previousMessages;
-    stableMessagesRef.current = nextMessages;
-    return nextMessages;
-  }, [messages]);
-}
-/* eslint-enable react-hooks/refs */
-
-export function assistantPdfAttachments(
-  messages: ThreadMessage[] | undefined,
-): AssistantPdfAttachment[] {
-  return (messages ?? []).flatMap((message) => {
-    if (message.role !== "agent" || message.channel === "email") return [];
-    return (message.attachments ?? []).flatMap((attachment) =>
-      attachment.fileId && attachment.contentType === "application/pdf"
-        ? [{
-            key: `${message._id}:${attachment.fileId}`,
-            messageId: message._id,
-            fileId: attachment.fileId,
-          }]
-        : [],
-    );
-  });
-}
-
-function uniqueZipFilename(filename: string, usedNames: Set<string>) {
-  const trimmed = filename.trim() || "attachment";
-  if (!usedNames.has(trimmed)) {
-    usedNames.add(trimmed);
-    return trimmed;
-  }
-
-  const dotIndex = trimmed.lastIndexOf(".");
-  const hasExtension = dotIndex > 0;
-  const basename = hasExtension ? trimmed.slice(0, dotIndex) : trimmed;
-  const extension = hasExtension ? trimmed.slice(dotIndex) : "";
-  let index = 2;
-  let candidate = `${basename} (${index})${extension}`;
-  while (usedNames.has(candidate)) {
-    index += 1;
-    candidate = `${basename} (${index})${extension}`;
-  }
-  usedNames.add(candidate);
-  return candidate;
-}
-
-function messageSenderName(message: ThreadMessage) {
-  if (message.operatorInitiated) {
-    return message.operatorInitiated.displayLabel;
-  }
-  if (message.channel === "imessage") {
-    return (
-      message.imessageParticipantLabel ??
-      message.userName ??
-      message.imessageSenderAddress ??
-      "iMessage participant"
-    );
-  }
-  return message.userName ?? message.fromName ?? message.fromEmail ?? "User";
-}
-
-type AgentTargets = NonNullable<ReturnType<typeof useCachedAgentTargets>>;
-
-function targetLabel(
-  targets: AgentTargets | undefined,
-  kind: PromptReferenceTagKind,
-  id: string,
-) {
-  if (!targets) return undefined;
-  if (kind === "policy") {
-    return targets.policies.find((target) => target.id === id)?.label;
-  }
-  if (kind === "requirement") {
-    return targets.requirements.find((target) => target.id === id)?.label;
-  }
-  return targets.mailboxes.find((target) => target.id === id)?.label;
-}
-
-function threadContextReferenceLabel(
-  context: { pageType: string; entityId?: string; summary?: string } | undefined,
-  kind: PromptReferenceTagKind,
-  id: string,
-) {
-  if (!context?.entityId || context.entityId !== id) return undefined;
-  if (kind === "policy" && context.pageType === "policy") {
-    return context.summary ?? "Current policy";
-  }
-  if (kind === "requirement" && context.pageType === "requirement") {
-    return context.summary ?? "Current requirement";
-  }
-  return undefined;
-}
-
-function messagePromptReferences(
-  message: ThreadMessage,
-  targets: AgentTargets | undefined,
-  context?: { pageType: string; entityId?: string; summary?: string },
-) {
-  const references: PromptReference[] = [];
-  const seen = new Set<string>();
-  const add = (kind: PromptReferenceTagKind, ids?: string[]) => {
-    ids?.forEach((id) => {
-      const key = `${kind}:${id}`;
-      if (seen.has(key)) return;
-      const label =
-        threadContextReferenceLabel(context, kind, id) ??
-        targetLabel(targets, kind, id);
-      if (!label) return;
-      seen.add(key);
-      references.push({ kind, id, label });
-    });
-  };
-
-  add("policy", message.referencedPolicyIds);
-  add("requirement", message.referencedRequirementIds);
-  add("mailbox", message.referencedMailboxIds);
-
-  return references;
-}
-
-function ThreadAttachmentList({
-  attachments,
-  threadId,
-  rightAligned,
-}: {
-  attachments: ThreadAttachment[];
-  threadId: Id<"threads">;
-  rightAligned?: boolean;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  const fileIds = useMemo(
-    () =>
-      attachments
-        .map((attachment) => attachment.fileId)
-        .filter((fileId): fileId is Id<"_storage"> => Boolean(fileId)),
-    [attachments],
-  );
-  const urls = useCachedQuery(
-    "threads.getAttachmentUrls.list",
-    api.threads.getAttachmentUrls,
-    fileIds.length > 1 ? { threadId, fileIds } : "skip",
-  );
-
-  const handleDownloadAll = useCallback(async () => {
-    if (!urls?.length) return;
-    setIsDownloadingAll(true);
-    try {
-      const zip = new JSZip();
-      const usedNames = new Set<string>();
-      for (const entry of urls) {
-        const attachment = attachments.find(
-          (att) => att.fileId === entry.fileId,
-        );
-        const filename = uniqueZipFilename(
-          attachment?.filename ?? "attachment",
-          usedNames,
-        );
-        const response = await fetch(entry.url);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to download ${attachment?.filename ?? entry.fileId}`,
-          );
-        }
-        zip.file(filename, await response.blob());
-      }
-      const blob = await zip.generateAsync({ type: "blob" });
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = "thread-attachments.zip";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    } catch {
-      toast.error("Failed to download attachments");
-    } finally {
-      setIsDownloadingAll(false);
-    }
-  }, [attachments, urls]);
-
-  if (attachments.length === 0) return null;
-
-  if (attachments.length === 1) {
-    return (
-      <ThreadAttachmentChip
-        attachment={attachments[0]}
-        threadId={threadId}
-        className="w-fit"
-      />
-    );
-  }
-
-  return (
-    <>
-      <MessageMetaTag
-        icon={<Paperclip />}
-        label="Files"
-        count={attachments.length}
-        isActive={isExpanded}
-        onClick={() => setIsExpanded((value) => !value)}
-      />
-      {isExpanded ? (
-        <div
-          className={`flex min-w-0 basis-full flex-wrap items-start gap-1.5 ${
-            rightAligned ? "justify-end" : ""
-          }`}
-        >
-          {attachments.map((att, i) => (
-            <span
-              key={`${att.fileId ?? att.filename}-${i}`}
-              className="min-w-0"
-            >
-              <ThreadAttachmentChip
-                attachment={att}
-                threadId={threadId}
-                className="w-fit"
-              />
-            </span>
-          ))}
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            onClick={handleDownloadAll}
-            disabled={!urls?.length || isDownloadingAll}
-          >
-            <Download className="h-3.5 w-3.5" />
-            {isDownloadingAll ? "Preparing..." : "Download all"}
-          </PillButton>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function findRelatedEmailMessages(
-  messages: ThreadMessage[],
-  message: ThreadMessage,
-  attachedEmailMessageIds: Set<string>,
-) {
-  if (
-    message.role !== "agent" ||
-    message.pendingEmailId === undefined ||
-    message.messageKind === "channel_sync"
-  ) {
-    return [];
-  }
-
-  const linked = messages.find(
-    (candidate) =>
-      candidate.channel === "email" &&
-      candidate.role === "agent" &&
-      candidate.pendingEmailId === message.pendingEmailId &&
-      candidate._id !== message._id,
-  );
-  return linked && !attachedEmailMessageIds.has(linked._id) ? [linked] : [];
-}
-
-type ThreadMessageRenderPlan = {
-  attachedEmailMessageIds: Set<string>;
-  firstUserMessageId?: string;
-  hiddenStatusMessageIds: Set<string>;
-  relatedEmailsByMessageId: Map<string, ThreadMessage[]>;
-};
-
-type WebMessageReceiptStatus = "delivered" | "read";
-
-function isMessageFromViewer(
-  message: ThreadMessage,
-  viewerId?: string,
-  viewerEmail?: string,
-) {
-  return Boolean(
-    (viewerId && message.userId === viewerId) ||
-      (viewerEmail &&
-        message.fromEmail?.toLowerCase() === viewerEmail.toLowerCase()),
-  );
-}
-
-export function latestOwnWebMessageReceipt(
-  messages: ThreadMessage[],
-  viewerId?: string,
-  viewerEmail?: string,
-): { messageId: Id<"threadMessages">; status: WebMessageReceiptStatus } | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      message.role !== "user" ||
-      message.channel !== "chat" ||
-      !isMessageFromViewer(message, viewerId, viewerEmail)
-    ) {
-      continue;
-    }
-
-    const reply = messages.find(
-      (candidate) => candidate.replyToMessageId === message._id,
-    );
-    const isOptimistic = String(message._id).includes(":local:");
-    if (isOptimistic) return null;
-
-    const status: WebMessageReceiptStatus =
-      reply?.agentRunStartedAt != null ||
-      (reply != null && reply.status !== "processing")
-        ? "read"
-        : "delivered";
-    return { messageId: message._id, status };
-  }
-  return null;
-}
-
-function buildThreadMessageRenderPlan(
-  messages: ThreadMessage[],
-): ThreadMessageRenderPlan {
-  const attachedEmailMessageIds = new Set<string>();
-  const hiddenStatusMessageIds = new Set<string>();
-  const relatedEmailsByMessageId = new Map<string, ThreadMessage[]>();
-
-  messages.forEach((message) => {
-    if (message.status === "processing") return;
-    // Email cards already own review and send; keep their confirmation cue persisted without duplicating it in the thread.
-    if (
-      message.messageKind === "channel_sync" ||
-      (message.messageKind === "workflow_status" && message.pendingEmailId)
-    ) {
-      hiddenStatusMessageIds.add(message._id);
-      return;
-    }
-
-    const relatedEmailMessages = findRelatedEmailMessages(
-      messages,
-      message,
-      attachedEmailMessageIds,
-    );
-    if (relatedEmailMessages.length === 0) return;
-    relatedEmailsByMessageId.set(message._id, relatedEmailMessages);
-    relatedEmailMessages.forEach((emailMessage) =>
-      attachedEmailMessageIds.add(emailMessage._id),
-    );
-  });
-
-  return {
-    attachedEmailMessageIds,
-    firstUserMessageId: messages.find((message) => message.role === "user")
-      ?._id,
-    hiddenStatusMessageIds,
-    relatedEmailsByMessageId,
-  };
-}
-
-export function threadMessageGroupingFingerprint(
-  threadId: Id<"threads">,
-  messages: ThreadMessage[],
-) {
-  return `${threadId}:${messages
-    .map((message) => {
-      if (message.status === "processing") {
-        return `${message._id}:processing`;
-      }
-      if (message.channel === "email") {
-        return `${message._id}:${stableHash(message)}`;
-      }
-      return `${message._id}:${stableHash({
-        channel: message.channel,
-        content: message.content,
-        creationTime: message._creationTime,
-        pendingEmailId: message.pendingEmailId,
-        role: message.role,
-        status: message.status,
-        toAddresses: message.toAddresses,
-      })}`;
-    })
-    .join("|")}`;
-}
-
-const EMPTY_RELATED_EMAIL_MESSAGES: ThreadMessage[] = [];
-
-function EmailRecipientMeta({
-  toAddresses,
-  ccAddresses,
-}: {
-  toAddresses?: string[];
-  ccAddresses?: string[];
-}) {
-  if (!toAddresses?.length) return null;
-  const ccCount = ccAddresses?.length ?? 0;
-
-  return (
-    <span className={`min-w-0 truncate text-muted-foreground/30 ${typeStyle("caption.default")}`}>
-      <span className="text-muted-foreground/22">to</span>{" "}
-      <span className="text-muted-foreground/38">{toAddresses.join(", ")}</span>
-      {ccCount > 0 ? (
-        <span className="text-muted-foreground/28"> +{ccCount} cc</span>
-      ) : null}
-    </span>
-  );
-}
-
-function MessageFooterActions({
-  refs,
-  citedSections,
-  citedCoverageNames,
-  citedSourceSpanIds,
-  attachments,
-  threadId,
-  mailboxArtifacts,
-  messageId,
-  onOpenMailboxArtifact,
-  openMailboxArtifactRef,
-  copyContent,
-  retryMessageId,
-  rightAligned,
-}: {
-  refs: { type: "policy"; id: string; page?: number }[];
-  citedSections?: string[];
-  citedCoverageNames?: string[];
-  citedSourceSpanIds?: string[];
-  attachments?: ThreadAttachment[];
-  threadId: Id<"threads">;
-  mailboxArtifacts?: ToolArtifactData[];
-  messageId?: Id<"threadMessages">;
-  onOpenMailboxArtifact?: (ref: MailboxArtifactRef) => void;
-  openMailboxArtifactRef?: MailboxArtifactRef | null;
-  copyContent?: string;
-  retryMessageId?: Id<"threadMessages">;
-  rightAligned?: boolean;
-}) {
-  const [isMailboxExpanded, setIsMailboxExpanded] = useState(false);
-  const [isSourcesExpanded, setIsSourcesExpanded] = useState(true);
-  const [isAttachmentExpanded, setIsAttachmentExpanded] = useState(false);
-  const [isDownloadingAttachments, setIsDownloadingAttachments] =
-    useState(false);
-  const attachmentList = useMemo(() => attachments ?? [], [attachments]);
-  const hasAttachments = attachmentList.length > 0;
-  const attachmentFileIds = useMemo(
-    () =>
-      attachmentList
-        .map((attachment) => attachment.fileId)
-        .filter((fileId): fileId is Id<"_storage"> => Boolean(fileId)),
-    [attachmentList],
-  );
-  const attachmentUrls = useCachedQuery(
-    "threads.getAttachmentUrls.message",
-    api.threads.getAttachmentUrls,
-    attachmentFileIds.length > 1
-      ? { threadId, fileIds: attachmentFileIds }
-      : "skip",
-  );
-  const mailboxTasks =
-    mailboxArtifacts?.filter((artifact) => artifact.type === "mailbox_task") ??
-    [];
-  const mailboxTaskEntries = mailboxTasks.map((artifact, index) => ({
-    artifact,
-    index,
-    task: normalizeMailboxTask(artifact.data),
-  }));
-  const mailboxReviewEmails = mailboxTaskEntries.flatMap(({ index, task }) =>
-    task.status === "needs_review"
-      ? task.emails.map((email, emailIndex) => ({ index, emailIndex, email }))
-      : [],
-  );
-  const backgroundMailboxIndexes = mailboxTaskEntries
-    .filter(({ task }) => task.status !== "needs_review")
-    .map(({ index }) => index);
-  const hasMailboxTasks = mailboxTasks.length > 0;
-  const selectedMailboxIndex =
-    openMailboxArtifactRef?.messageId === messageId
-      ? (openMailboxArtifactRef?.index ?? null)
-      : null;
-  const selectedMailboxEmailIndex =
-    openMailboxArtifactRef?.messageId === messageId
-      ? (openMailboxArtifactRef?.emailIndex ?? null)
-      : null;
-  if (
-    refs.length === 0 &&
-    !hasAttachments &&
-    !hasMailboxTasks &&
-    !copyContent?.trim() &&
-    !retryMessageId &&
-    !messageId
-  )
-    return null;
-
-  const handleDownloadAttachments = async () => {
-    if (!attachmentUrls?.length) return;
-    setIsDownloadingAttachments(true);
-    try {
-      const zip = new JSZip();
-      const usedNames = new Set<string>();
-      for (const entry of attachmentUrls) {
-        const attachment = attachmentList.find(
-          (att) => att.fileId === entry.fileId,
-        );
-        const filename = uniqueZipFilename(
-          attachment?.filename ?? "attachment",
-          usedNames,
-        );
-        const response = await fetch(entry.url);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to download ${attachment?.filename ?? entry.fileId}`,
-          );
-        }
-        zip.file(filename, await response.blob());
-      }
-      const blob = await zip.generateAsync({ type: "blob" });
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = "thread-attachments.zip";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    } catch {
-      toast.error("Failed to download attachments");
-    } finally {
-      setIsDownloadingAttachments(false);
-    }
-  };
-
-  const renderMailboxAgentPill = (index: number) => {
-    const label = mailboxTaskDisplayName(
-      normalizeMailboxTask(mailboxTasks[index].data),
-    );
-    const isSelected = selectedMailboxIndex === index;
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          if (!messageId) return;
-          onOpenMailboxArtifact?.({ messageId, index });
-        }}
-        className={`inline-flex h-6 max-w-52 items-center justify-center gap-1.5 rounded-full border bg-transparent px-2 transition-colors ${typeStyle("label.tag")} ${
-          isSelected
-            ? "border-border-focus bg-foreground/[0.04] text-foreground/75"
-            : "border-input text-muted-foreground/60 hover:border-border-emphasized hover:bg-foreground/3 hover:text-foreground/75"
-        }`}
-      >
-        <span className="text-muted-foreground/35">{index + 1}</span>
-        <span className="truncate">{label}</span>
-      </button>
-    );
-  };
-
-  const renderMailboxReviewPill = ({
-    index,
-    emailIndex,
-    email,
-  }: (typeof mailboxReviewEmails)[number]) => {
-    const isSelected =
-      selectedMailboxIndex === index && selectedMailboxEmailIndex === emailIndex;
-    return (
-      <PillButton
-        size="compact"
-        variant="secondary"
-        label={`Review ${email.subject}`}
-        title={email.subject}
-        onClick={() => {
-          if (!messageId) return;
-          onOpenMailboxArtifact?.({ messageId, index, emailIndex });
-        }}
-        className={`max-w-64 ${
-          isSelected
-            ? "border-border-focus bg-foreground/[0.04] text-foreground/75"
-            : "text-muted-foreground/60"
-        }`}
-      >
-        <MailIcon className="h-3 w-3" />
-        <span className="truncate">{email.subject}</span>
-      </PillButton>
-    );
-  };
-
-  return (
-    <div className="mt-1.5 min-w-0">
-      <div className="flex items-start gap-2">
-        <div
-          className={`flex min-w-0 flex-1 flex-wrap items-center gap-1.5 ${rightAligned ? "justify-end" : ""}`}
-        >
-          {refs.length > 0 && (
-            <>
-              <MessageMetaTag
-                icon={<FileText />}
-                label={refs.length === 1 ? "Source" : "Sources"}
-                count={refs.length}
-                isActive={isSourcesExpanded}
-                onClick={() => setIsSourcesExpanded((value) => !value)}
-              />
-              {isSourcesExpanded
-                ? refs.map((ref) => (
-                    <span key={`${ref.type}:${ref.id}`}>
-                      <PolicySourcePill
-                        id={ref.id}
-                        page={ref.page}
-                        citedSections={citedSections}
-                        citedCoverageNames={citedCoverageNames}
-                        citedSourceSpanIds={citedSourceSpanIds}
-                      />
-                    </span>
-                  ))
-                : null}
-            </>
-          )}
-          {attachmentList.length === 1 ? (
-            <ThreadAttachmentChip
-              attachment={attachmentList[0]}
-              threadId={threadId}
-              className="w-fit"
-            />
-          ) : attachmentList.length > 1 ? (
-            <MessageMetaTag
-              icon={<Paperclip />}
-              label="Files"
-              count={attachmentList.length}
-              isActive={isAttachmentExpanded}
-              onClick={() => setIsAttachmentExpanded((value) => !value)}
-            />
-          ) : null}
-          {mailboxReviewEmails.map((entry) => (
-            <span key={`mailbox-review-${entry.index}-${entry.emailIndex}`}>
-              {renderMailboxReviewPill(entry)}
-            </span>
-          ))}
-          {backgroundMailboxIndexes.length === 1 ? (
-            renderMailboxAgentPill(backgroundMailboxIndexes[0])
-          ) : backgroundMailboxIndexes.length > 1 ? (
-            <>
-              <MessageMetaTag
-                icon={<LogoIcon size={12} className="h-3 w-3" />}
-                label="Mailbox tasks"
-                count={backgroundMailboxIndexes.length}
-                isActive={isMailboxExpanded}
-                onClick={() => setIsMailboxExpanded((value) => !value)}
-              />
-              {isMailboxExpanded ? (
-                <div className="flex flex-wrap items-start gap-1.5">
-                  {backgroundMailboxIndexes.map((index) => {
-                    return (
-                      <span key={`mailbox-footer-${index}`}>
-                        {renderMailboxAgentPill(index)}
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {retryMessageId ? (
-            <TryAgainMessageButton messageId={retryMessageId} />
-          ) : null}
-          {copyContent?.trim() ? (
-            <CopyMessageButton content={copyContent} />
-          ) : null}
-        </div>
-      </div>
-      {attachmentList.length > 1 && isAttachmentExpanded ? (
-        <div
-          className={`mt-1.5 flex w-full min-w-0 flex-wrap items-start gap-1.5 ${
-            rightAligned ? "justify-end" : ""
-          }`}
-        >
-          {attachmentList.map((att, i) => (
-            <span
-              key={`${att.fileId ?? att.filename}-${i}`}
-              className="min-w-0"
-            >
-              <ThreadAttachmentChip
-                attachment={att}
-                threadId={threadId}
-                className="w-fit"
-              />
-            </span>
-          ))}
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            onClick={handleDownloadAttachments}
-            disabled={!attachmentUrls?.length || isDownloadingAttachments}
-          >
-            <Download className="h-3.5 w-3.5" />
-            {isDownloadingAttachments ? "Preparing..." : "Download all"}
-          </PillButton>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/* ── Unified thread actions ── */
 function UnifiedThreadActions({
   threadId,
   thread,
@@ -950,17 +185,6 @@ function UnifiedThreadActions({
 }
 
 /* ── Shared markdown container styles ── */
-const MARKDOWN_STYLES = "[&_a]:text-primary-light [&_a]:underline";
-const IMESSAGE_MARKDOWN_STYLES =
-  `${MARKDOWN_STYLES} ${typeStyle("body.large")} ` +
-  "[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-4 [&_ol]:pl-4 " +
-  `[&_li]:my-0.5 ${typeStyle("prose.default")} ` +
-  `${typeStyle("prose.default")}`;
-
-function markdownStylesForChannel(channel?: ThreadMessage["channel"]) {
-  return channel === "imessage" ? IMESSAGE_MARKDOWN_STYLES : MARKDOWN_STYLES;
-}
-
 function slackConversationUrl(thread: {
   slackChannelId?: string;
   slackThreadTs?: string;
@@ -974,624 +198,6 @@ function slackConversationUrl(thread: {
     return `https://slack.com/app_redirect?channel=${encodeURIComponent(thread.slackChannelId)}`;
   }
   return `https://slack.com/archives/${encodeURIComponent(thread.slackChannelId)}/p${thread.slackThreadTs.replace(".", "")}`;
-}
-
-const markdownComponents = {
-  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-    if (href?.startsWith("/policies/")) {
-      return (
-        <ContextReferenceCard href={href}>{children}</ContextReferenceCard>
-      );
-    }
-    return (
-      <a
-        href={href}
-        className="text-primary-light underline"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {children}
-      </a>
-    );
-  },
-};
-
-/* ── Pending email countdown + cancel ── */
-function PendingSendCountdown({
-  pendingEmailId,
-}: {
-  pendingEmailId: Id<"pendingEmails">;
-}) {
-  const pendingEmail = useCachedQuery(
-    "pendingEmails.get.countdown",
-    api.pendingEmails.get,
-    { id: pendingEmailId },
-  );
-  const updatePendingEmail = useUpdateCachedQuery<
-    typeof pendingEmail,
-    { id: Id<"pendingEmails"> }
-  >("pendingEmails.get.countdown");
-  const cancelMutation = useMutation(api.pendingEmails.cancel);
-  const [remaining, setRemaining] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!pendingEmail || pendingEmail.status !== "pending") {
-      return;
-    }
-    function tick() {
-      const left = Math.max(
-        0,
-        Math.ceil((pendingEmail!.scheduledSendTime - dayjs().valueOf()) / 1000),
-      );
-      setRemaining(left);
-    }
-    tick();
-    const interval = setInterval(tick, 200);
-    return () => {
-      clearInterval(interval);
-      setRemaining(null);
-    };
-  }, [pendingEmail]);
-
-  if (
-    !pendingEmail ||
-    pendingEmail.status !== "pending" ||
-    remaining === null
-  ) {
-    return null;
-  }
-
-  return (
-    <div className="flex items-center gap-2 mt-1.5">
-      <span className={`text-muted-foreground/50 ${typeStyle("caption.default")}`}>
-        Sending in {remaining}s...
-      </span>
-      <PillButton
-        type="button"
-        variant="destructive"
-        size="compact"
-        onClick={async () => {
-          try {
-            await cancelMutation({ id: pendingEmailId });
-            await updatePendingEmail({ id: pendingEmailId }, (current) =>
-              current ? { ...current, status: "cancelled" } : current,
-            );
-            toast.success("Email cancelled");
-          } catch {
-            toast.error("Failed to cancel");
-          }
-        }}
-      >
-        Cancel
-      </PillButton>
-    </div>
-  );
-}
-
-export function WebMessageReceipt({
-  status,
-}: {
-  status: WebMessageReceiptStatus;
-}) {
-  const isRead = status === "read";
-  return (
-    <div
-      className={`mt-1 flex items-center justify-end gap-1 text-muted-foreground/45 ${typeStyle("caption.default")}`}
-      aria-label={isRead ? "Read by Spot" : "Delivered to Spot"}
-    >
-      {isRead ? (
-        <CheckCheck className="h-3 w-3" aria-hidden="true" />
-      ) : (
-        <Check className="h-3 w-3" aria-hidden="true" />
-      )}
-      <span>{isRead ? "Read" : "Delivered"}</span>
-    </div>
-  );
-}
-
-/* ── Unified message bubble ── */
-export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
-  msg,
-  relatedEmailMessages = EMPTY_RELATED_EMAIL_MESSAGES,
-  viewerId,
-  viewerEmail,
-  receiptStatus,
-  mirroredToImessage,
-  threadContext,
-  brokerPerspective,
-  collapseEmailMessages,
-  onOpenEmail,
-  openEmailMessageId,
-  onOpenVendorCompliance,
-  openVendorComplianceArtifactRef,
-  onOpenMailboxArtifact,
-  openMailboxArtifactRef,
-  onPresentationFollowUp,
-  presentationDisabled = true,
-}: {
-  onPresentationFollowUp?: PresentationFollowUp;
-  presentationDisabled?: boolean;
-  msg: ThreadMessage;
-  relatedEmailMessages?: ThreadMessage[];
-  viewerId?: string;
-  viewerEmail?: string;
-  receiptStatus?: WebMessageReceiptStatus;
-  mirroredToImessage?: boolean;
-  threadContext?: { pageType: string; entityId?: string; summary?: string };
-  /** When true, render agent messages as if sent "by the broker" — right-aligned. */
-  brokerPerspective?: boolean;
-  collapseEmailMessages?: boolean;
-  onOpenEmail?: (message: ThreadMessage) => void;
-  openEmailMessageId?: Id<"threadMessages"> | null;
-  onOpenVendorCompliance?: (ref: VendorComplianceArtifactRef) => void;
-  openVendorComplianceArtifactRef?: VendorComplianceArtifactRef | null;
-  onOpenMailboxArtifact?: (ref: MailboxArtifactRef) => void;
-  openMailboxArtifactRef?: MailboxArtifactRef | null;
-}) {
-  const { streamResponses, showThinking: showThinkingSummary } =
-    useChatDisplayPreferences();
-  const [showQuoted, setShowQuoted] = useState(false);
-  const time = dayjs(msg._creationTime);
-  const channelIcon =
-    msg.channel === "email" ? (
-      <MailIcon className="h-3 w-3 text-muted-foreground/45" />
-    ) : msg.channel === "imessage" || mirroredToImessage ? (
-      <MessageCircle className="h-3 w-3 text-muted-foreground/45" />
-    ) : msg.channel === "slack" ? (
-      <SiSlack className="h-3 w-3 text-muted-foreground/45" />
-    ) : null;
-  const agentTargets = useCachedAgentTargets(msg.orgId);
-  const promptReferences = useMemo(
-    () => messagePromptReferences(msg, agentTargets, threadContext),
-    [agentTargets, msg, threadContext],
-  );
-
-  if (msg.role === "agent" && msg.status === "processing") {
-    return (
-      <div className="w-full">
-        {showThinkingSummary ? (
-          <ThinkingSummary tools={msg.usedTools} working />
-        ) : null}
-        <div className="flex items-start gap-2">
-          {streamResponses && msg.content ? (
-            <ThreadMessageBubble role="agent">
-              <ProseMarkdown gfm breaks>{msg.content}</ProseMarkdown>
-            </ThreadMessageBubble>
-          ) : (
-            <AgentThinkingBubble />
-          )}
-          <CancelButton messageId={msg._id} show />
-        </div>
-        <VendorComplianceArtifacts
-          messageId={msg._id}
-          artifacts={msg.toolArtifacts}
-          openArtifactRef={openVendorComplianceArtifactRef}
-          onOpenArtifact={onOpenVendorCompliance}
-        />
-        <CertificateHoldArtifacts artifacts={msg.toolArtifacts} />
-        {relatedEmailMessages.length > 0 ? (
-          <div className="mt-3">
-            <EmailStackCard
-              messages={relatedEmailMessages}
-              onOpen={onOpenEmail}
-              isOpenMessageId={openEmailMessageId}
-            />
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (msg.messageKind === "workflow_status") {
-    return (
-      <div
-        role="status"
-        className="w-full rounded-lg border border-border/50 bg-muted/25 px-3 py-2"
-      >
-        <p className={`min-w-0 text-muted-foreground ${typeStyle("body.default")}`}>
-          {msg.content}
-        </p>
-      </div>
-    );
-  }
-
-  // Error state
-  if (msg.status === "error" && msg.role !== "agent") {
-    return (
-      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-        <p className={`text-destructive ${typeStyle("caption.default")}`}>
-          {msg.error ?? "An error occurred processing this message."}
-        </p>
-        <RetryButton messageId={msg._id} />
-      </div>
-    );
-  }
-
-  // Agent message
-  if (msg.role === "agent") {
-    const isError = msg.status === "error";
-    const storedContent = msg.content?.trim()
-      ? msg.content
-      : isError
-        ? (msg.error ?? "An error occurred processing this message.")
-        : msg.content;
-    const displayContent = stripConfidenceMarkers(storedContent);
-
-    // Cited sections from tool results (stored on message by processThreadChat)
-    const citedSections = msg.citedSections;
-    const citedCoverageNames = msg.citedCoverageNames;
-    const citedSourceSpanIds = msg.citedSourceSpanIds;
-    const mailboxArtifacts =
-      msg.toolArtifacts?.filter(
-        (artifact) => artifact.type === "mailbox_task",
-      ) ?? [];
-
-    // Policy references are intentional presentation selections, not retrieval evidence.
-    const allRefs: { type: "policy"; id: string; page?: number }[] = [];
-    const referencedPolicyIds = msg.referencedPolicyIds ?? [];
-    const seenRefKeys = new Set<string>();
-    for (const pid of referencedPolicyIds) {
-      const key = `policy:${pid}`;
-      if (!seenRefKeys.has(key)) {
-        seenRefKeys.add(key);
-        allRefs.push({ type: "policy", id: pid as string });
-      }
-    }
-    return (
-      <div className={brokerPerspective ? "ml-auto w-full max-w-lg" : "w-full"}>
-        {showThinkingSummary ? (
-          <ThinkingSummary tools={msg.usedTools} working={false} />
-        ) : null}
-        {collapseEmailMessages && msg.channel === "email" ? (
-          <EmailSummaryCard
-            message={msg}
-            onOpen={onOpenEmail}
-            isOpen={openEmailMessageId === msg._id}
-          />
-        ) : (
-          <>
-            <ThreadMessageBubble
-              role="agent"
-              channel={msg.channel}
-              isError={isError}
-            >
-              <ChatPresentationView
-                organizationId={msg.orgId}
-                presentation={isError ? undefined : msg.presentation}
-                onFollowUp={onPresentationFollowUp}
-                structuredReferences
-                disabled={presentationDisabled}
-                answer={
-                  <ProseMarkdown
-                    gfm
-                    breaks
-                    compact={msg.channel === "imessage"}
-                    className={markdownStylesForChannel(msg.channel)}
-                    components={markdownComponents}
-                  >
-                    {displayContent}
-                  </ProseMarkdown>
-                }
-              />
-            </ThreadMessageBubble>
-            {msg.channel === "slack" &&
-            msg.slackDeliveryStatus !== undefined &&
-            msg.slackDeliveryStatus !== "sent" ? (
-              <StatusTag
-                tone={
-                  msg.slackDeliveryStatus === "failed" ? "danger" : "info"
-                }
-                className="mt-2"
-              >
-                {msg.slackDeliveryStatus === "failed"
-                  ? "Not delivered to Slack"
-                  : "Delivering to Slack"}
-              </StatusTag>
-            ) : null}
-            <MessageFooterActions
-              refs={allRefs}
-              citedSections={citedSections}
-              citedCoverageNames={citedCoverageNames}
-              citedSourceSpanIds={citedSourceSpanIds}
-              attachments={msg.attachments}
-              threadId={msg.threadId}
-              mailboxArtifacts={mailboxArtifacts}
-              messageId={msg._id}
-              onOpenMailboxArtifact={onOpenMailboxArtifact}
-              openMailboxArtifactRef={openMailboxArtifactRef}
-              copyContent={stripConfidenceMarkers(displayContent)}
-              retryMessageId={
-                msg.channel === "chat" || msg.channel === "imessage"
-                  ? msg._id
-                  : undefined
-              }
-              rightAligned={brokerPerspective}
-            />
-            <VendorComplianceArtifacts
-              messageId={msg._id}
-              artifacts={msg.toolArtifacts}
-              openArtifactRef={openVendorComplianceArtifactRef}
-              onOpenArtifact={onOpenVendorCompliance}
-            />
-            <CertificateHoldArtifacts artifacts={msg.toolArtifacts} />
-            {relatedEmailMessages.length > 0 ? (
-              <div className="mt-4">
-                <EmailStackCard
-                  messages={relatedEmailMessages}
-                  onOpen={onOpenEmail}
-                  isOpenMessageId={openEmailMessageId}
-                />
-              </div>
-            ) : null}
-          </>
-        )}
-        {msg.status === "pending_send" && msg.pendingEmailId && (
-          <PendingSendCountdown pendingEmailId={msg.pendingEmailId} />
-        )}
-      </div>
-    );
-  }
-
-  // User message
-  const isOwnMessage = isMessageFromViewer(msg, viewerId, viewerEmail);
-
-  const displayName = messageSenderName(msg);
-  const isOperatorInitiated = Boolean(msg.operatorInitiated);
-
-  const isEmail = msg.channel === "email";
-  const cleanContent = msg.content;
-  const quoted = isEmail ? (msg.emailContent?.quotedText ?? null) : null;
-
-  const initials = displayName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-
-  return (
-    <div
-      className={`flex items-start gap-2.5 max-w-[min(32rem,100%)] w-fit ${isOwnMessage ? "ml-auto flex-row-reverse" : ""}`}
-    >
-      <div
-        className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-          isOperatorInitiated
-            ? "border border-border-emphasized bg-background"
-            : "bg-foreground/8"
-        }`}
-        title={isOperatorInitiated ? "Clarity Labs" : undefined}
-      >
-        {isOperatorInitiated ? (
-          <LogoIcon
-            size={15}
-            className="h-[15px] w-[15px]"
-          />
-        ) : (
-          <span className={`text-foreground/60 ${typeStyle("caption.medium")}`}>
-            {initials}
-          </span>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div
-          className={`flex items-center gap-2 mb-1 ${isOwnMessage ? "justify-end" : ""}`}
-        >
-          <p
-            className={`min-w-0 max-w-[min(24rem,70vw)] truncate text-muted-foreground/50 ${typeStyle("caption.medium")}`}
-            title={
-              msg.operatorInitiated?.operatorEmail
-                ? `${displayName} (${msg.operatorInitiated.operatorEmail})`
-                : displayName
-            }
-          >
-            {displayName}
-          </p>
-          {isEmail && !collapseEmailMessages ? (
-            <EmailRecipientMeta
-              toAddresses={msg.toAddresses}
-              ccAddresses={msg.ccAddresses}
-            />
-          ) : null}
-          {channelIcon}
-          <span className="text-muted-foreground/30">·</span>
-          <span className={`text-muted-foreground/45 ${typeStyle("caption.default")}`}>
-            {formatDisplayDateTime(time)}
-          </span>
-        </div>
-        {collapseEmailMessages && isEmail ? (
-          <EmailSummaryCard
-            message={msg}
-            onOpen={onOpenEmail}
-            isOpen={openEmailMessageId === msg._id}
-          />
-        ) : (
-          <ThreadMessageBubble
-            role="user"
-            channel={msg.channel}
-            isOwnMessage={Boolean(isOwnMessage)}
-          >
-            {msg.channel === "slack" ? (
-              <ProseMarkdown
-                sourceFormat="slack-mrkdwn"
-                gfm
-                breaks
-                className={MARKDOWN_STYLES}
-                components={markdownComponents}
-              >
-                {cleanContent}
-              </ProseMarkdown>
-            ) : (
-              <PromptReferenceText
-                content={cleanContent}
-                references={promptReferences}
-                className="block"
-              />
-            )}
-            {quoted && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowQuoted(!showQuoted)}
-                  className={`mt-1.5 text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors ${typeStyle("control.buttonCompact")}`}
-                >
-                  {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
-                </button>
-                {showQuoted && <QuotedContent text={quoted} />}
-              </>
-            )}
-            {msg.attachments && msg.attachments.length > 0 && (
-              <div className="mt-2">
-                <ThreadAttachmentList
-                  attachments={msg.attachments}
-                  threadId={msg.threadId}
-                />
-              </div>
-            )}
-          </ThreadMessageBubble>
-        )}
-        {isOwnMessage && receiptStatus ? (
-          <WebMessageReceipt status={receiptStatus} />
-        ) : null}
-      </div>
-    </div>
-  );
-});
-
-/* ── Cancel button for stuck processing messages ── */
-function CancelButton({
-  messageId,
-  show,
-}: {
-  messageId: string;
-  show: boolean;
-}) {
-  const cancel = useMutation(api.threads.cancelProcessing);
-  const [cancelling, setCancelling] = useState(false);
-  if (!show) return null;
-
-  return (
-    <PillButton
-      type="button"
-      disabled={cancelling}
-      onClick={async () => {
-        setCancelling(true);
-        try {
-          await cancel({ messageId: messageId as Id<"threadMessages"> });
-        } catch {
-          toast.error("Failed to cancel");
-        } finally {
-          setCancelling(false);
-        }
-      }}
-      variant="ghost"
-      size="compact"
-    >
-      {cancelling ? "Cancelling..." : "Cancel"}
-    </PillButton>
-  );
-}
-
-/* ── Copy button for agent messages ── */
-function CopyMessageButton({ content }: { content: string }) {
-  const [copied, setCopied] = useState(false);
-
-  if (!content?.trim()) return null;
-
-  return (
-    <PillButton
-      type="button"
-      onClick={async () => {
-        await navigator.clipboard.writeText(content);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-      variant="icon"
-      size="compact"
-      label="Copy response"
-    >
-      {copied ? (
-        <Check className="w-3 h-3 text-emerald-500" />
-      ) : (
-        <Copy className="w-3 h-3" />
-      )}
-    </PillButton>
-  );
-}
-
-function TryAgainMessageButton({
-  messageId,
-}: {
-  messageId: Id<"threadMessages">;
-}) {
-  const retry = useMutation(api.threads.retryAgentResponse);
-  const [retrying, setRetrying] = useState(false);
-
-  return (
-    <PillButton
-      type="button"
-      disabled={retrying}
-      onClick={async () => {
-        setRetrying(true);
-        try {
-          await retry({ messageId });
-        } catch {
-          toast.error("Failed to retry");
-        } finally {
-          setRetrying(false);
-        }
-      }}
-      variant="icon"
-      size="compact"
-      label="Try again"
-    >
-      <RotateCcw className={`h-3 w-3 ${retrying ? "animate-spin" : ""}`} />
-    </PillButton>
-  );
-}
-
-/* ── Retry button for failed/blank agent messages ── */
-function RetryButton({ messageId }: { messageId: string }) {
-  const retry = useMutation(api.threads.retryAgentResponse);
-  const [retrying, setRetrying] = useState(false);
-
-  return (
-    <PillButton
-      type="button"
-      disabled={retrying}
-      onClick={async () => {
-        setRetrying(true);
-        try {
-          await retry({ messageId: messageId as Id<"threadMessages"> });
-        } catch {
-          toast.error("Failed to retry");
-        } finally {
-          setRetrying(false);
-        }
-      }}
-      variant="ghost"
-      size="compact"
-      className="mt-2 ml-9.5"
-    >
-      <RotateCcw className={`w-3 h-3 ${retrying ? "animate-spin" : ""}`} />
-      {retrying ? "Retrying..." : "Retry response"}
-    </PillButton>
-  );
-}
-
-/* ── Initial context link (shows which entity the chat was started from) ── */
-export function ThreadContextLink({
-  context,
-}: {
-  context: { pageType: string; entityId?: string; summary?: string };
-}) {
-  if (!context.entityId) return null;
-
-  // Policy: delegate to the unified PolicyReferenceCard (opens preview side panel).
-  if (context.pageType === "policy") {
-    return <PolicyReferenceCard id={context.entityId} />;
-  }
-
-  return null;
 }
 
 function QueuedThreadMessage({
@@ -1732,11 +338,7 @@ export function UnifiedThreadContent({
     useThreadCacheActions();
   const updateTitle = useMutation(api.threads.updateTitle);
   const generateUploadUrl = useMutation(api.threads.generateUploadUrl);
-  const { contentRef, scrollRef, scrollToBottom } = useStickToBottom({
-    initial: "instant",
-    resize: "instant",
-  });
-  const chatInputRef = useRef<SpotPromptInputHandle>(null);
+  const chatInputRef = useRef<ChatComposerHandle>(null);
   const lastAutoOpenedEmailId = useRef<string | null>(null);
   const autoOpenPdfThreadId = useRef<string | null>(null);
   const seenAssistantPdfKeys = useRef<Set<string>>(new Set());
@@ -1917,17 +519,16 @@ export function UnifiedThreadContent({
     openMailboxArtifactRef?.index,
   ]);
 
-  // Reset thread-local panels and anchor the newly selected thread at bottom.
+  // Reset thread-local panels when the selected thread changes.
   useEffect(() => {
     lastAutoOpenedEmailId.current = null;
     const frame = window.requestAnimationFrame(() => {
       setOpenEmailMessageId(null);
       setOpenVendorComplianceArtifactRef(null);
       setOpenMailboxArtifactRef(null);
-      void scrollToBottom({ animation: "instant" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [scrollToBottom, threadId]);
+  }, [threadId]);
 
   useEffect(() => {
     const latestDraftEmail = messages
@@ -2151,13 +752,64 @@ export function UnifiedThreadContent({
   const slackUrl = slackConversationUrl(thread);
 
   return (
-    <div className="relative h-full">
-      {/* Messages — full height, content scrolls under the input overlay */}
-      <div
-        ref={scrollRef}
-        className="absolute inset-0 overflow-y-auto scrollbar-hide p-4 pr-5"
-      >
-        <div ref={contentRef} className="mx-auto w-full max-w-3xl space-y-4">
+    <ChatMessageList
+      className="h-full"
+      anchorKey={threadId}
+      clearanceClassName={
+        messages && messages.length > 0
+          ? thread.originChannel === "slack" ? "h-24" : "h-40"
+          : undefined
+      }
+      composer={
+        thread.originChannel === "slack" ? (
+          <div className="flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="min-w-0">
+              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+                Continue this conversation in Slack.
+              </p>
+              {thread.visibility !== "user_private" ? (
+                <p className={`mt-0.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+                  New Slack replies stay synced to this client record.
+                </p>
+              ) : null}
+            </div>
+            {slackUrl ? (
+              <PillButton
+                href={slackUrl}
+                target="_blank"
+                rel="noreferrer"
+                size="compact"
+                variant="secondary"
+                className="self-start sm:self-auto"
+              >
+                <SiSlack className="h-3.5 w-3.5" />
+                Open in Slack
+                <ExternalLink className="h-3 w-3" />
+              </PillButton>
+            ) : null}
+          </div>
+        ) : (
+          <ChatComposer
+            ref={chatInputRef}
+            onSubmit={handleSend}
+            placeholder="Reply to this thread..."
+            showAttach
+            disabled={isInputBusy}
+            busy={isInputBusy}
+            busyLabel={inputBusyLabel}
+            orgId={thread.orgId}
+            banner={queuedMessage ? (
+              <QueuedThreadMessage
+                message={queuedMessage}
+                sending={sendingQueuedNow}
+                onSendNow={sendQueuedNow}
+                onCancel={() => setQueuedMessage(null)}
+              />
+            ) : undefined}
+          />
+        )
+      }
+    >
           {messages && messages.length === 0 && (
             <NewChatEmptyState
               orgId={thread.orgId}
@@ -2223,68 +875,10 @@ export function UnifiedThreadContent({
             );
           })}
           {chatError && (
-            <div className={`mx-4 mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-destructive ${typeStyle("body.default")}`}>
+            <ChatErrorNotice className={`mx-4 mb-4 px-4 py-3 ${typeStyle("body.default")}`}>
               {chatError}
-            </div>
+            </ChatErrorNotice>
           )}
-          {/* Padding so last message clears the input overlay */}
-          {messages && messages.length > 0 ? (
-            <div className={thread.originChannel === "slack" ? "h-24" : "h-40"} />
-          ) : null}
-        </div>
-      </div>
-      {/* Input — overlaid at bottom, content scrolls under it */}
-      <ChatInputOverlay>
-        {thread.originChannel === "slack" ? (
-          <div className="flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="min-w-0">
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-                Continue this conversation in Slack.
-              </p>
-              {thread.visibility !== "user_private" ? (
-                <p className={`mt-0.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                  New Slack replies stay synced to this client record.
-                </p>
-              ) : null}
-            </div>
-            {slackUrl ? (
-              <PillButton
-                href={slackUrl}
-                target="_blank"
-                rel="noreferrer"
-                size="compact"
-                variant="secondary"
-                className="self-start sm:self-auto"
-              >
-                <SiSlack className="h-3.5 w-3.5" />
-                Open in Slack
-                <ExternalLink className="h-3 w-3" />
-              </PillButton>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            {queuedMessage ? (
-              <QueuedThreadMessage
-                message={queuedMessage}
-                sending={sendingQueuedNow}
-                onSendNow={sendQueuedNow}
-                onCancel={() => setQueuedMessage(null)}
-              />
-            ) : null}
-            <SpotPromptInput
-              ref={chatInputRef}
-              onSubmit={handleSend}
-              placeholder="Reply to this thread..."
-              showAttach
-              disabled={isInputBusy}
-              status={isInputBusy ? "submitted" : undefined}
-              submittedLabel={inputBusyLabel}
-              orgId={thread.orgId}
-            />
-          </>
-        )}
-      </ChatInputOverlay>
-    </div>
+    </ChatMessageList>
   );
 }
