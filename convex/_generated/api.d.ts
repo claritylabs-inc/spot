@@ -60,7 +60,6 @@ import type * as actions_renderEmailPreview from "../actions/renderEmailPreview.
 import type * as actions_retryExtraction from "../actions/retryExtraction.js";
 import type * as actions_routerAssets from "../actions/routerAssets.js";
 import type * as actions_routerJobs from "../actions/routerJobs.js";
-import type * as actions_sendCertificateWorkflowJob from "../actions/sendCertificateWorkflowJob.js";
 import type * as actions_sendNotificationEmail from "../actions/sendNotificationEmail.js";
 import type * as actions_sendNotificationImessage from "../actions/sendNotificationImessage.js";
 import type * as actions_sendNotificationSlack from "../actions/sendNotificationSlack.js";
@@ -232,6 +231,7 @@ import type * as lib_imessageOutbound from "../lib/imessageOutbound.js";
 import type * as lib_imessageSlashCommands from "../lib/imessageSlashCommands.js";
 import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmailDeterministicControls.js";
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
+import type * as lib_jevThreshold from "../lib/jevThreshold.js";
 import type * as lib_linesOfBusiness from "../lib/linesOfBusiness.js";
 import type * as lib_liteparsePreprocessor from "../lib/liteparsePreprocessor.js";
 import type * as lib_localSeedData from "../lib/localSeedData.js";
@@ -352,7 +352,6 @@ import type * as lib_workspaceScanDomain from "../lib/workspaceScanDomain.js";
 import type * as markdownDocuments from "../markdownDocuments.js";
 import type * as memoryMaintenance from "../memoryMaintenance.js";
 import type * as migrations from "../migrations.js";
-import type * as modelConfig from "../modelConfig.js";
 import type * as modelRoutingEvents from "../modelRoutingEvents.js";
 import type * as modelSettings from "../modelSettings.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
@@ -470,7 +469,6 @@ declare const fullApi: ApiFromModules<{
   "actions/retryExtraction": typeof actions_retryExtraction;
   "actions/routerAssets": typeof actions_routerAssets;
   "actions/routerJobs": typeof actions_routerJobs;
-  "actions/sendCertificateWorkflowJob": typeof actions_sendCertificateWorkflowJob;
   "actions/sendNotificationEmail": typeof actions_sendNotificationEmail;
   "actions/sendNotificationImessage": typeof actions_sendNotificationImessage;
   "actions/sendNotificationSlack": typeof actions_sendNotificationSlack;
@@ -642,6 +640,7 @@ declare const fullApi: ApiFromModules<{
   "lib/imessageSlashCommands": typeof lib_imessageSlashCommands;
   "lib/inboundEmailDeterministicControls": typeof lib_inboundEmailDeterministicControls;
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
+  "lib/jevThreshold": typeof lib_jevThreshold;
   "lib/linesOfBusiness": typeof lib_linesOfBusiness;
   "lib/liteparsePreprocessor": typeof lib_liteparsePreprocessor;
   "lib/localSeedData": typeof lib_localSeedData;
@@ -762,7 +761,6 @@ declare const fullApi: ApiFromModules<{
   markdownDocuments: typeof markdownDocuments;
   memoryMaintenance: typeof memoryMaintenance;
   migrations: typeof migrations;
-  modelConfig: typeof modelConfig;
   modelRoutingEvents: typeof modelRoutingEvents;
   modelSettings: typeof modelSettings;
   notificationPreferences: typeof notificationPreferences;
