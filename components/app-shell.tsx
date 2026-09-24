@@ -12,10 +12,10 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from "@claritylabs-inc/ui/components/sheet";
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@claritylabs-inc/ui/components/dialog";
 import { PanelRightClose } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppShellPanelLayout } from "@/components/app-shell-panel-layout";
@@ -232,7 +232,10 @@ function ShellContent({
             }
             breadcrumbDetail={breadcrumbDetail}
             presenceUsers={presenceUsers}
-            onMobileMenuToggle={() => setMobileOpen((v) => !v)}
+            onMobileMenuToggle={() => {
+              if (!mobileOpen) operatorAgent?.close();
+              setMobileOpen((value) => !value);
+            }}
             mobileMenuRef={mobileMenuRef}
             mobileMenuOpen={mobileOpen}
           />
@@ -271,11 +274,11 @@ function ShellContent({
             >
               {panelLayout}
             </AppShellSidebarLayout>
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <SheetContent
-                side="left"
+            <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+              <DialogContent
                 showCloseButton={false}
-                className="w-[260px]! gap-0 bg-background lg:hidden"
+                overlayClassName="bg-black/20 duration-120 lg:hidden"
+                className="inset-y-0 left-0 flex h-full w-sidebar-mobile max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r border-border bg-background p-0 ring-0 duration-120 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-x-full data-ending-style:scale-100 data-starting-style:-translate-x-full data-starting-style:scale-100 sm:max-w-none lg:hidden"
                 finalFocus={mobileMenuRef}
                 onClick={(event) => {
                   if (
@@ -294,10 +297,10 @@ function ShellContent({
                   }
                 }}
               >
-                <SheetTitle className="sr-only">Navigation</SheetTitle>
+                <DialogTitle className="sr-only">Navigation</DialogTitle>
                 {renderedMobileCustomSidebar}
-              </SheetContent>
-            </Sheet>
+              </DialogContent>
+            </Dialog>
           </>
         ) : (
           <>

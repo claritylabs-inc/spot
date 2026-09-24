@@ -21,6 +21,7 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
 const results = [];
 async function shot(page, name) {
+  await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(out, `${name}.png`) });
 }
 async function login(page, email) {
@@ -52,208 +53,217 @@ async function login(page, email) {
 }
 try {
   if (!process.env.SHELL_OPERATOR_ONLY) {
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    colorScheme: "dark",
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(30000);
-  await login(page, "adyan@cove.dev");
-  await page.goto(`${baseUrl}/`);
-  await page
-    .getByRole("button", { name: "Collapse navigation", exact: true })
-    .waitFor();
-  const original = await page.evaluate(() => ({
-    sidebar: localStorage.getItem("sidebar-collapsed"),
-    theme: localStorage.getItem("theme"),
-  }));
-  try {
-    await page.evaluate(() => {
-      localStorage.setItem("sidebar-collapsed", "1");
-      localStorage.setItem("theme", "dark");
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      colorScheme: "dark",
     });
-    await page.reload();
-    await page
-      .getByRole("button", { name: "Expand navigation", exact: true })
-      .waitFor();
-    assert.deepEqual(
-      await page.evaluate(() =>
-        JSON.parse(localStorage.getItem("sidebar-collapsed")),
-      ),
-      { collapsed: true, width: 220 },
-    );
-    await shot(page, "client-legacy-collapsed-dark");
-    await page
-      .getByRole("button", { name: "Expand navigation", exact: true })
-      .click();
-    await page.reload();
+    const page = await context.newPage();
+    page.setDefaultTimeout(30000);
+    await login(page, "adyan@cove.dev");
+    await page.goto(`${baseUrl}/`);
     await page
       .getByRole("button", { name: "Collapse navigation", exact: true })
       .waitFor();
-    assert.equal(
-      await page.evaluate(
-        () => JSON.parse(localStorage.getItem("sidebar-collapsed")).collapsed,
-      ),
-      false,
-    );
-    await page
-      .getByRole("button", { name: "Collapse navigation", exact: true })
-      .click();
-    await page.reload();
-    await page
-      .getByRole("button", { name: "Expand navigation", exact: true })
-      .waitFor();
-    assert.equal(
-      await page.evaluate(
-        () => JSON.parse(localStorage.getItem("sidebar-collapsed")).collapsed,
-      ),
-      true,
-    );
-    results.push(
-      "client legacy collapsed migration and both toggle directions survive reload",
-    );
-    await page.evaluate(() => localStorage.setItem("sidebar-collapsed", ""));
-    await page.reload();
-    await page
-      .getByRole("button", { name: "Collapse navigation", exact: true })
-      .waitFor();
-    assert.deepEqual(
-      await page.evaluate(() =>
-        JSON.parse(localStorage.getItem("sidebar-collapsed")),
-      ),
-      { collapsed: false, width: 220 },
-    );
-    results.push("legacy expanded empty value migrates with default width");
-    await page.setViewportSize({ width: 390, height: 844 });
-    const toggle = page.getByRole("button", {
-      name: "Toggle navigation",
-      exact: true,
-    });
-    await toggle.click();
-    const dialog = page.getByRole("dialog");
-    await dialog.waitFor();
-    assert(
-      await dialog.evaluate((el) => el.contains(document.activeElement)),
-      "Mobile navigation receives focus",
-    );
-    await shot(page, "client-mobile-navigation-dark");
-    await page.keyboard.press("Escape");
-    await dialog.waitFor({ state: "hidden" });
-    assert(
-      await toggle.evaluate((el) => el === document.activeElement),
-      "Escape restores trigger focus",
-    );
-    await toggle.click();
-    await page.evaluate(() => (window.__shellNavigation = true));
-    await dialog.getByRole("link", { name: "Policies", exact: true }).click();
-    await page.waitForURL(/\/policies/);
-    await dialog.waitFor({ state: "hidden" });
-    await toggle.click();
-    await dialog.getByRole("link", { name: "Files", exact: true }).click();
-    await page.waitForURL(/\/files/);
-    await dialog.waitFor({ state: "hidden" });
-    assert(
-      await page.evaluate(() => window.__shellNavigation),
-      "Navigation stays client-side",
-    );
-    await shot(page, "client-mobile-policies-dark");
-    results.push(
-      "mobile focus entry, Escape restoration, route close and Next navigation",
-    );
-    await page.goto(`${baseUrl}/profile`);
-    await page
-      .getByRole("button", { name: "Use light theme", exact: true })
-      .click();
-    assert(
-      await page
-        .locator("html")
-        .evaluate((el) => !el.classList.contains("dark")),
-    );
-    await page.reload();
-    await page
-      .getByRole("button", { name: "Use light theme", exact: true })
-      .waitFor();
-    assert(
-      await page
-        .locator("html")
-        .evaluate((el) => !el.classList.contains("dark")),
-    );
-    await page
-      .getByRole("button", { name: "Use dark theme", exact: true })
-      .click();
-    assert(
-      await page
-        .locator("html")
-        .evaluate((el) => el.classList.contains("dark")),
-    );
-    await shot(page, "client-mobile-theme-dark");
-    results.push("controlled theme options and light persistence");
-    const fixtureClient = new ConvexHttpClient("http://127.0.0.1:3210");
-    fixtureClient.setAuth(
-      await page.evaluate(() =>
-        localStorage.getItem("__convexAuthJWT_http1270013210"),
-      ),
-    );
-    const threadId = await fixtureClient.mutation(
-      makeFunctionReference("threads:create"),
-      { title: "Shell QA title" },
-    );
+    const original = await page.evaluate(() => ({
+      sidebar: localStorage.getItem("sidebar-collapsed"),
+      theme: localStorage.getItem("theme"),
+    }));
     try {
-      await page.setViewportSize({ width: 1440, height: 900 });
-      await page.goto(`${baseUrl}/agent/thread/${threadId}`);
-      const title = page.locator('button[title="Rename"]');
-      await title.waitFor();
-      await title.click();
-      const input = page.getByRole("textbox", { name: "Title", exact: true });
-      assert(
-        await input.evaluate((el) => el === document.activeElement),
-        "Title focuses on edit",
-      );
-      await input.fill("Discard this title");
-      await input.press("Escape");
-      assert.equal(await title.innerText(), "Shell QA title");
-      await title.click();
-      await input.fill("   ");
-      await input.press("Enter");
-      assert.equal(await title.innerText(), "Shell QA title");
-      await context.setOffline(true);
-      await title.click();
-      await input.fill("Shell QA first edit");
-      await input.press("Enter");
-      await title.click();
-      await input.fill("Shell QA queued edit");
-      await input.press("Enter");
-      await page.getByText("Still saving…", { exact: true }).waitFor();
-      await shot(page, "client-title-pending-dark");
-      await context.setOffline(false);
-      await page
-        .getByText("Still saving…", { exact: true })
-        .waitFor({ state: "hidden" });
-      await page.reload();
-      await title.waitFor();
-      assert.equal(await title.innerText(), "Shell QA queued edit");
-      await shot(page, "client-title-restored-dark");
-      results.push(
-        "controlled title focus, Escape/empty rejection, editing while pending, status and serialized save/reload",
-      );
-    } finally {
-      await context.setOffline(false);
-      await fixtureClient.mutation(makeFunctionReference("threads:archive"), {
-        id: threadId,
+      await page.evaluate(() => {
+        localStorage.setItem("sidebar-collapsed", "1");
+        localStorage.setItem("theme", "dark");
       });
-    }
-  } finally {
-    await page.evaluate((original) => {
-      for (const [key, value] of [
-        ["sidebar-collapsed", original.sidebar],
-        ["theme", original.theme],
-      ]) {
-        if (value === null) localStorage.removeItem(key);
-        else localStorage.setItem(key, value);
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Expand navigation", exact: true })
+        .waitFor();
+      assert.deepEqual(
+        await page.evaluate(() =>
+          JSON.parse(localStorage.getItem("sidebar-collapsed")),
+        ),
+        { collapsed: true, width: 220 },
+      );
+      await shot(page, "client-legacy-collapsed-dark");
+      await page
+        .getByRole("button", { name: "Expand navigation", exact: true })
+        .click();
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Collapse navigation", exact: true })
+        .waitFor();
+      assert.equal(
+        await page.evaluate(
+          () => JSON.parse(localStorage.getItem("sidebar-collapsed")).collapsed,
+        ),
+        false,
+      );
+      await page
+        .getByRole("button", { name: "Collapse navigation", exact: true })
+        .click();
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Expand navigation", exact: true })
+        .waitFor();
+      assert.equal(
+        await page.evaluate(
+          () => JSON.parse(localStorage.getItem("sidebar-collapsed")).collapsed,
+        ),
+        true,
+      );
+      results.push(
+        "client legacy collapsed migration and both toggle directions survive reload",
+      );
+      await page.evaluate(() => localStorage.setItem("sidebar-collapsed", ""));
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Collapse navigation", exact: true })
+        .waitFor();
+      assert.deepEqual(
+        await page.evaluate(() =>
+          JSON.parse(localStorage.getItem("sidebar-collapsed")),
+        ),
+        { collapsed: false, width: 220 },
+      );
+      results.push("legacy expanded empty value migrates with default width");
+      await page.setViewportSize({ width: 390, height: 844 });
+      const toggle = page.getByRole("button", {
+        name: "Toggle navigation",
+        exact: true,
+      });
+      await toggle.click();
+      const dialog = page.getByRole("dialog");
+      await dialog.waitFor();
+      assert(
+        await dialog.evaluate((el) => el.contains(document.activeElement)),
+        "Mobile navigation receives focus",
+      );
+      await shot(page, "client-mobile-navigation-dark");
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      assert(
+        await toggle.evaluate((el) => el === document.activeElement),
+        "Escape restores trigger focus",
+      );
+      await toggle.click();
+      await dialog.waitFor();
+      await page.waitForTimeout(200);
+      await page.mouse.click(380, 420);
+      await dialog.waitFor({ state: "hidden" });
+      assert(
+        await toggle.evaluate((el) => el === document.activeElement),
+        "Outside click restores client menu focus",
+      );
+      await toggle.click();
+      await page.evaluate(() => (window.__shellNavigation = true));
+      await dialog.getByRole("link", { name: "Policies", exact: true }).click();
+      await page.waitForURL(/\/policies/);
+      await dialog.waitFor({ state: "hidden" });
+      await toggle.click();
+      await dialog.getByRole("link", { name: "Files", exact: true }).click();
+      await page.waitForURL(/\/files/);
+      await dialog.waitFor({ state: "hidden" });
+      assert(
+        await page.evaluate(() => window.__shellNavigation),
+        "Navigation stays client-side",
+      );
+      await shot(page, "client-mobile-policies-dark");
+      results.push(
+        "mobile focus entry, Escape/outside restoration, route close and Next navigation",
+      );
+      await page.goto(`${baseUrl}/profile`);
+      await page
+        .getByRole("button", { name: "Use light theme", exact: true })
+        .click();
+      assert(
+        await page
+          .locator("html")
+          .evaluate((el) => !el.classList.contains("dark")),
+      );
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Use light theme", exact: true })
+        .waitFor();
+      assert(
+        await page
+          .locator("html")
+          .evaluate((el) => !el.classList.contains("dark")),
+      );
+      await page
+        .getByRole("button", { name: "Use dark theme", exact: true })
+        .click();
+      assert(
+        await page
+          .locator("html")
+          .evaluate((el) => el.classList.contains("dark")),
+      );
+      await shot(page, "client-mobile-theme-dark");
+      results.push("controlled theme options and light persistence");
+      const fixtureClient = new ConvexHttpClient("http://127.0.0.1:3210");
+      fixtureClient.setAuth(
+        await page.evaluate(() =>
+          localStorage.getItem("__convexAuthJWT_http1270013210"),
+        ),
+      );
+      const threadId = await fixtureClient.mutation(
+        makeFunctionReference("threads:create"),
+        { title: "Shell QA title" },
+      );
+      try {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(`${baseUrl}/agent/thread/${threadId}`);
+        const title = page.locator('button[title="Rename"]');
+        await title.waitFor();
+        await title.click();
+        const input = page.getByRole("textbox", { name: "Title", exact: true });
+        assert(
+          await input.evaluate((el) => el === document.activeElement),
+          "Title focuses on edit",
+        );
+        await input.fill("Discard this title");
+        await input.press("Escape");
+        assert.equal(await title.innerText(), "Shell QA title");
+        await title.click();
+        await input.fill("   ");
+        await input.press("Enter");
+        assert.equal(await title.innerText(), "Shell QA title");
+        await context.setOffline(true);
+        await title.click();
+        await input.fill("Shell QA first edit");
+        await input.press("Enter");
+        await title.click();
+        await input.fill("Shell QA queued edit");
+        await input.press("Enter");
+        await page.getByText("Still saving…", { exact: true }).waitFor();
+        await shot(page, "client-title-pending-dark");
+        await context.setOffline(false);
+        await page
+          .getByText("Still saving…", { exact: true })
+          .waitFor({ state: "hidden" });
+        await page.reload();
+        await title.waitFor();
+        assert.equal(await title.innerText(), "Shell QA queued edit");
+        await shot(page, "client-title-restored-dark");
+        results.push(
+          "controlled title focus, Escape/empty rejection, editing while pending, status and serialized save/reload",
+        );
+      } finally {
+        await context.setOffline(false);
+        await fixtureClient.mutation(makeFunctionReference("threads:archive"), {
+          id: threadId,
+        });
       }
-    }, original);
-  }
-  await context.close();
+    } finally {
+      await page.evaluate((original) => {
+        for (const [key, value] of [
+          ["sidebar-collapsed", original.sidebar],
+          ["theme", original.theme],
+        ]) {
+          if (value === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, value);
+        }
+      }, original);
+    }
+    await context.close();
   }
   const operatorContext = await browser.newContext({
     viewport: { width: 1440, height: 900 },
@@ -292,7 +302,7 @@ try {
     await operator.waitForTimeout(400);
     const changed = await navigation.boundingBox();
     await shot(operator, "operator-resize-attempt");
-    console.log("navigation resize", {before,changed});
+    console.log("navigation resize", { before, changed });
     assert(changed.x > before.x + 40, "Navigation resize changes width");
     await operator.reload();
     await navigation.waitFor();
@@ -329,13 +339,67 @@ try {
     await operator.locator("table tbody tr").first().click();
     await detail.waitFor();
     await operator.waitForTimeout(300);
-    console.log("detail resize", {detailBefore,detailChanged,restored:await detail.boundingBox(),storage:await operator.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([k])=>k.includes("spot:app-shell-panels:"))))});
-    await shot(operator,"operator-detail-restored-attempt");
+    console.log("detail resize", {
+      detailBefore,
+      detailChanged,
+      restored: await detail.boundingBox(),
+      storage: await operator.evaluate(() =>
+        Object.fromEntries(
+          Object.entries(localStorage).filter(([k]) =>
+            k.includes("spot:app-shell-panels:"),
+          ),
+        ),
+      ),
+    });
+    await shot(operator, "operator-detail-restored-attempt");
     assert(
       Math.abs((await detail.boundingBox()).x - detailChanged.x) < 3,
       "Detail width survives reload",
     );
     await shot(operator, "operator-resize-restored");
+    await operator.reload();
+    await operator.locator("table tbody tr").first().waitFor();
+    await operator.waitForTimeout(500);
+    await operator.setViewportSize({ width: 390, height: 844 });
+    const menu = operator.getByRole("button", {
+      name: "Toggle navigation",
+      exact: true,
+    });
+    await menu.click();
+    const menuDialog = operator.getByRole("dialog", {
+      name: "Navigation",
+      exact: true,
+    });
+    await menuDialog.waitFor();
+    assert(
+      await menuDialog.evaluate((el) => el.contains(document.activeElement)),
+      "Operator menu receives focus",
+    );
+    await shot(operator, "operator-mobile-navigation");
+    await operator.keyboard.press("Escape");
+    await menuDialog.waitFor({ state: "hidden" });
+    assert(
+      await menu.evaluate((el) => el === document.activeElement),
+      "Operator menu restores focus",
+    );
+    await menu.click();
+    await menuDialog.waitFor();
+    await operator.waitForTimeout(200);
+    await operator.mouse.click(380, 420);
+    await menuDialog.waitFor({ state: "hidden" });
+    assert(
+      await menu.evaluate((el) => el === document.activeElement),
+      "Outside click restores operator menu focus",
+    );
+    await menu.click();
+    await menuDialog
+      .getByRole("link", { name: "Clients", exact: true })
+      .click();
+    await menuDialog.waitFor({ state: "hidden" });
+    results.push(
+      "custom operator mobile navigation focus, Escape/outside and same-route close",
+    );
+
     results.push(
       "operator navigation resize/collapse persistence and detail keyboard resize persistence",
     );

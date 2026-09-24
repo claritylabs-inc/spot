@@ -72,7 +72,8 @@ owns auth/org/operator/entity/PDF orchestration, title autosave/status, user sto
 keys and toast insets. PillButton's `preset="spot"` owns its product styling;
 the local adapter only maps legacy props and Next navigation. The legacy
 `sidebar-collapsed` scalar migrates once to the shared JSON preference before
-restoration; all subsequent state and persistence use the shared hook.
+restoration; all subsequent state and persistence use the shared hook. Gate dependent layouts
+on the hook’s `ready` value so saved widths restore before nested panels mount.
 
 | Concern                                         | Owner                                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -264,7 +265,7 @@ wrapping, and truncation local.
 
 ## Actions and controls
 
-Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement files have a label and independent Client visibility and Broker visibility switches in an `OperationalPanel` with divided `OperationalItem` rows. Both switches work before upload. Uploads link the underlying stored file automatically; purpose, status, broker outreach, and a client-file selector are not editable fields. Broker visibility immediately includes an available attachment on existing shared packet links. Legacy outreach-bound files retain their scoped access until migration or an explicit broker visibility edit. `components/ui/file-download-button.tsx` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
+Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement files have a label and independent Client visibility and Broker visibility switches in an `OperationalPanel` with divided `OperationalItem` rows. Both switches work before upload. Uploads link the underlying stored file automatically; purpose, status, broker outreach, and a client-file selector are not editable fields. Broker visibility immediately includes an available attachment on existing shared packet links. Legacy outreach-bound files retain their scoped access until migration or an explicit broker visibility edit. `@claritylabs-inc/ui/components/file-download-button` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
 
 - Use `PillButton` for pill-shaped product actions, including primary, secondary,
   destructive, footer, link, download, and icon-only actions.
@@ -311,7 +312,7 @@ Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save
 
 ## Status indicators
 
-Use `StatusTag` from `components/ui/status-tag.tsx` for compact status pills
+Use `StatusTag` from `@claritylabs-inc/ui/components/status-tag` for compact status pills
 throughout the operator and client portals and browser artifacts. Its continuous
 ring preserves the existing semantic colors. `StatusLabel` renders the same
 indicator with an unboxed label for status menu options and selected values;
