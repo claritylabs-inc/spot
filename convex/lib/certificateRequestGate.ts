@@ -1,3 +1,7 @@
+import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
+import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import {
   formatDocumentStructureForPrompt,
   formatSourceSpanLabel,
@@ -164,11 +168,17 @@ export function isEvidenceGatedOnly(kinds: CertificateEndorsementKind[]) {
 const NEGATIVE_PATTERN =
   /\b(not automatically|no automatic|must be endorsed|only by endorsement|requires endorsement|not included|excluded|no coverage|does not apply|not shown|not listed)\b/i;
 
-export function inferCertificateEndorsements(params: {
+export type CertificateEndorsementRequest = {
   certificateHolder?: string;
   requestText?: string;
   requestedEndorsements?: string[];
-}): CertificateEndorsementKind[] {
+  /** Kinds Jev detected (`decideCertificateEndorsements`); always unioned in. */
+  detectedEndorsements?: CertificateEndorsementKind[];
+};
+
+export function inferCertificateEndorsements(
+  params: CertificateEndorsementRequest,
+): CertificateEndorsementKind[] {
   const text = [
     params.certificateHolder,
     params.requestText,
@@ -176,7 +186,9 @@ export function inferCertificateEndorsements(params: {
   ]
     .filter(Boolean)
     .join("\n");
-  const kinds = new Set<CertificateEndorsementKind>();
+  const kinds = new Set<CertificateEndorsementKind>(
+    params.detectedEndorsements ?? [],
+  );
   for (const item of params.requestedEndorsements ?? []) {
     const normalized = normalizeKind(item);
     if (normalized) kinds.add(normalized);
@@ -185,6 +197,85 @@ export function inferCertificateEndorsements(params: {
     if (rule.pattern.test(text)) kinds.add(rule.kind);
   }
   return [...kinds];
+}
+
+export const CERTIFICATE_ENDORSEMENT_DETECTION_TASK =
+  "certificate_endorsement_detection";
+
+const ENDORSEMENT_QUESTIONS: Record<CertificateEndorsementKind, string> = {
+  additional_insured:
+    "Does the request ask for the certificate holder or another party to be added, named, listed, or covered as an additional insured?",
+  named_insured:
+    "Does the request ask to change, correct, or add a named insured on the policy?",
+  waiver_of_subrogation:
+    "Does the request ask for a waiver of subrogation, or for the insurer to give up recovery rights against the holder?",
+  primary_non_contributory:
+    "Does the request ask for coverage to be primary and non-contributory, or to apply before the holder's own insurance?",
+  loss_payee:
+    "Does the request ask for a loss payee or loss payable designation?",
+  mortgagee:
+    "Does the request ask for a mortgagee, mortgage holder, or lender clause?",
+  special_wording:
+    "Does the request ask for specific wording, language, or description-of-operations text on the certificate?",
+  policy_change:
+    "Does the request ask for an endorsement, amendment, or other change to the policy itself, beyond issuing a certificate?",
+};
+
+/**
+ * Regex kinds are a fast positive signal; Jev adds the paraphrases the regex
+ * misses. The result is the union, so this is never less strict than the
+ * regex alone, and a router failure falls back to the regex result.
+ */
+export async function decideCertificateEndorsements(
+  ctx: Pick<ActionCtx, "runMutation">,
+  params: CertificateEndorsementRequest & { orgId: Id<"organizations"> },
+): Promise<CertificateEndorsementKind[]> {
+  const inferred = inferCertificateEndorsements(params);
+  const requestText = [
+    params.certificateHolder,
+    params.requestText,
+    ...(params.requestedEndorsements ?? []),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!requestText) return inferred;
+  try {
+    const result = await clRouterDecide(
+      {
+        orgId: String(params.orgId),
+        task: CERTIFICATE_ENDORSEMENT_DETECTION_TASK,
+        state: { requestText },
+        questions: Object.fromEntries(
+          (
+            Object.entries(ENDORSEMENT_QUESTIONS) as Array<
+              [CertificateEndorsementKind, string]
+            >
+          ).map(([kind, instructions]) => [
+            kind,
+            {
+              type: "noul" as const,
+              instructions: `${instructions} Only the request text counts; a plain certificate request with holder details is no.`,
+            },
+          ]),
+        ),
+      },
+      { telemetry: ctx },
+    );
+    const kinds = new Set(inferred);
+    for (const kind of Object.keys(
+      ENDORSEMENT_QUESTIONS,
+    ) as CertificateEndorsementKind[]) {
+      const answer = result.answers[kind];
+      if (answer?.type === "noul" && jevProceeds(answer.noul)) kinds.add(kind);
+    }
+    return [...kinds];
+  } catch (error) {
+    console.warn("[certificateRequestGate] endorsement decision failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return inferred;
+  }
 }
 
 export function evaluateCertificateRequestGate(params: {

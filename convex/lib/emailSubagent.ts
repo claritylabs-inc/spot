@@ -13,7 +13,7 @@ import { extractEmailAddress, normalizeEmailAddress } from "./emailAddress";
 import {
   isActorBoundExplicitEmailSendSource,
   sourceExplicitlyNamesEmailAddress,
-} from "./emailSendIntent";
+} from "./emailSendAuthorization";
 import { cleanAgentMarkdownForTransport } from "./transportRenderers";
 import {
   queueEmailDraftArtifact,

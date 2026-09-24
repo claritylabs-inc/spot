@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   IMESSAGE_LINKED_SENDER_REQUIRED,
   runImessageSlashCommand,
-} from "../convex/lib/imessageSlashCommands";
+  TEXT_CHANNEL_COMMAND_HELP,
+} from "../convex/lib/channelControls";
 import type { Id } from "../convex/_generated/dataModel";
-import { TEXT_CHANNEL_COMMAND_HELP } from "../convex/lib/textChannelCommands";
 
 const commandCtx = {} as Parameters<typeof runImessageSlashCommand>[0];
 

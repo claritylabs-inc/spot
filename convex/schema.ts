@@ -3947,6 +3947,16 @@ export default defineSchema({
     agentRunStartedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     pendingEmailId: v.optional(v.id("pendingEmails")),
+    // Jev decision on whether this user message explicitly authorizes sending
+    // the pending/draft email now (convex/lib/emailSendAuthorization.ts).
+    emailSendAuthorization: v.optional(
+      v.object({
+        sendProbability: v.number(),
+        negatedProbability: v.number(),
+        model: v.string(),
+        decidedAt: v.number(),
+      }),
+    ),
   })
     .index("thread", ["threadId"])
     .index("organization_mutation", ["orgId", "clientMutationId"])

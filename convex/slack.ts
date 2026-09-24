@@ -245,6 +245,9 @@ function withoutMention(content: string, botUserId: string | undefined) {
   return content.replace(new RegExp(`<@${botUserId}>`, "gi"), "").trim();
 }
 
+// Exact-phrase fast paths. Paraphrases come from the Jev pair in
+// convex/lib/channelControls.ts (`decideSlackControlIntent`), which the inbound
+// action passes to `prepareBatch` as `controlIntents`.
 function isResolveCommand(content: string, botUserId: string | undefined) {
   return /^(resolve|resolved|close|closed)[.!]?$/i.test(
     withoutMention(content, botUserId),
@@ -256,6 +259,12 @@ function isHumanRequest(content: string, botUserId: string | undefined) {
     withoutMention(content, botUserId),
   );
 }
+
+export const slackControlIntentValidator = v.object({
+  eventId: v.id("slackInboundEvents"),
+  resolve: v.boolean(),
+  humanRequest: v.boolean(),
+});
 
 async function primaryBinding(
   ctx: MutationCtx,
@@ -876,8 +885,12 @@ export const prepareBatch = internalMutation({
   args: {
     eventIds: v.array(v.id("slackInboundEvents")),
     slackThreadContext: v.optional(slackThreadContextSnapshotValidator),
+    controlIntents: v.optional(v.array(slackControlIntentValidator)),
   },
   handler: async (ctx, args) => {
+    const controlIntents = new Map(
+      (args.controlIntents ?? []).map((intent) => [intent.eventId, intent]),
+    );
     const events = (
       await Promise.all(args.eventIds.map((eventId) => ctx.db.get(eventId)))
     ).filter((event): event is Doc<"slackInboundEvents"> => Boolean(event));
@@ -1123,7 +1136,8 @@ export const prepareBatch = internalMutation({
       } else if (
         authorizedCustomer &&
         (isDirectMessage || event.mentionsSpot) &&
-        isResolveCommand(event.content, mentionedBotUserId)
+        (isResolveCommand(event.content, mentionedBotUserId) ||
+          controlIntents.get(event._id)?.resolve)
       ) {
         if (trigger) await ctx.db.delete(trigger.agentMessageId);
         trigger = undefined;
@@ -1131,7 +1145,8 @@ export const prepareBatch = internalMutation({
       } else if (
         authorizedCustomer &&
         !isDirectMessage &&
-        isHumanRequest(event.content, mentionedBotUserId)
+        (isHumanRequest(event.content, mentionedBotUserId) ||
+          controlIntents.get(event._id)?.humanRequest)
       ) {
         if (trigger) await ctx.db.delete(trigger.agentMessageId);
         trigger = undefined;

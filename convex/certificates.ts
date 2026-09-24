@@ -23,6 +23,7 @@ import {
 } from "./lib/certificateIdentity";
 import {
   buildCertificateGateEvidencePacket,
+  decideCertificateEndorsements,
   inferCertificateEndorsements,
   isEvidenceGatedOnly,
   type CertificateEndorsementKind,
@@ -152,6 +153,7 @@ async function evaluateCertificateRequestGateWithLlm(params: {
   certificateHolder?: string;
   requestText?: string;
   requestedEndorsements?: string[];
+  detectedEndorsements?: CertificateEndorsementKind[];
   policy?: Record<string, unknown> | null;
   sourceSpans?: any[];
   sourceNodes?: any[];
@@ -543,6 +545,7 @@ export function resolveCertificateRequestMetadata(args: {
   certificateHolder?: string;
   requestText?: string;
   requestedEndorsements?: string[];
+  detectedEndorsements?: CertificateEndorsementKind[];
   additionalInsuredName?: string;
   descriptionOfOperations?: string;
   requirementSignature?: string;
@@ -551,6 +554,7 @@ export function resolveCertificateRequestMetadata(args: {
     certificateHolder: args.certificateHolder,
     requestText: args.requestText,
     requestedEndorsements: args.requestedEndorsements,
+    detectedEndorsements: args.detectedEndorsements,
   });
   const requiredChanges = cleanOptionalText(args.additionalInsuredName)
     ? Array.from(new Set([...inferredChanges, "additional_insured" as const]))
@@ -1154,11 +1158,18 @@ export const generateForOrg = internalAction({
           "COI generation is available after Spot finishes full source-backed extraction for this policy.",
       };
     }
+    const detectedEndorsements = await decideCertificateEndorsements(ctx, {
+      orgId: args.orgId,
+      certificateHolder,
+      requestText: args.requestText,
+      requestedEndorsements: args.requestedEndorsements,
+    });
     const requestMetadata = resolveCertificateRequestMetadata({
       holderName,
       certificateHolder,
       requestText: args.requestText,
       requestedEndorsements: args.requestedEndorsements,
+      detectedEndorsements,
       additionalInsuredName: args.additionalInsuredName,
       descriptionOfOperations: args.descriptionOfOperations,
       requirementSignature: certificateRequirementSignature(
@@ -1317,6 +1328,7 @@ export const generateForOrg = internalAction({
         certificateHolder,
         requestText: args.requestText,
         requestedEndorsements: args.requestedEndorsements,
+        detectedEndorsements,
         policy: policy as Record<string, unknown> | null,
       });
     }
