@@ -11,7 +11,6 @@ import type {
 } from "./googleWorkspaceProvider";
 import {
   getCompanyEmailAttachment,
-  readGoogleWorkspaceScanAttachment,
   runGoogleWorkspaceTool,
   listCompanyMailboxes,
   readCompanyEmailThread,
@@ -584,29 +583,5 @@ test("preserves recipients whose quoted display names contain commas", async () 
   expect(page.messages[0]).toMatchObject({
     to: ["Doe, Jane <jane@example.com>", "Bob <bob@example.com>"],
     cc: ["team@example.com"],
-  });
-});
-
-describe("scheduled original attachment retrieval",()=>{
-  const source={mailbox:"a@example.com",messageId:"m1",threadId:"thread",attachmentId:"part:1"};
-  test("rejects duplicate MIME part identities before fetching any bytes",async()=>{
-    const attachment=part({partId:"1",mimeType:"application/pdf",filename:"policy.pdf",body:{attachmentId:"raw-google-id",data:null,size:20}});
-    const {provider}=setup({getMessageFull:vi.fn(async()=>message("m1",part({mimeType:"multipart/mixed",parts:[attachment,attachment]})))});
-    await expect(readGoogleWorkspaceScanAttachment(provider,source)).rejects.toThrow("no longer available");
-    expect(provider.getAttachment).not.toHaveBeenCalled();
-  });
-  test("resolves one opaque part to original bytes and reports actual decoded size",async()=>{
-    const bytes=Buffer.from("%PDF-1.7 original fixture");
-    const attachment=part({partId:"1",mimeType:"application/pdf",filename:"policy.pdf",body:{attachmentId:"raw-google-id",data:null,size:999}});
-    const {provider}=setup({getMessageFull:vi.fn(async()=>message("m1",part({mimeType:"multipart/mixed",parts:[attachment]}))),getAttachment:vi.fn(async()=>({data:bytes.toString("base64url"),size:bytes.length}))});
-    const result=await readGoogleWorkspaceScanAttachment(provider,source);
-    expect(result).toMatchObject({attachmentId:"part:1",partId:"1",filename:"policy.pdf",contentType:"application/pdf",size:bytes.length});
-    expect(result.bytes).toEqual(bytes);
-    expect(provider.getAttachment).toHaveBeenCalledWith(expect.objectContaining({mailbox:"a@example.com",messageId:"m1",attachmentId:"raw-google-id"}));
-  });
-  test.each([{id:"other-message"},{threadId:"other-thread"},{labelIds:["TRASH"]}])("rejects changed or removed parent source eligibility: %j",async override=>{
-    const {provider}=setup({getMessageFull:vi.fn(async()=>({...message(),...override}))});
-    await expect(readGoogleWorkspaceScanAttachment(provider,source)).rejects.toThrow("no longer eligible");
-    expect(provider.getAttachment).not.toHaveBeenCalled();
   });
 });

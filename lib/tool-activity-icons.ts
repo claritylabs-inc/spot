@@ -68,6 +68,7 @@ const operatorToolCategories = {
   list_company_mailboxes: "email",
   search_company_email: "email",
   read_company_email_thread: "email",
+  scan_workspace_mailbox: "email",
   get_procurement_forwarding_address: "email",
   list_procurement_email_threads: "email",
   get_procurement_email_thread: "email",
