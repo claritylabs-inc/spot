@@ -1239,13 +1239,12 @@ export async function getCompanyEmailAttachment(
 
 function scanDate(value: string | undefined, label: string) {
   if (value === undefined) return undefined;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const time = match
-    ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? dayjs(`${value}T00:00:00Z`).valueOf()
     : Number.NaN;
   if (
-    Number.isNaN(time) ||
-    new Date(time).toISOString().slice(0, 10) !== value
+    !Number.isFinite(time) ||
+    dayjs(time).toISOString().slice(0, 10) !== value
   ) {
     throw new Error(`${label} must be a YYYY-MM-DD date.`);
   }
@@ -1367,9 +1366,17 @@ export async function scanWorkspaceMailbox(
   const deadline = dayjs().valueOf() + TOOL_WORK_BUDGET_MS;
   const candidates: OperatorGoogleWorkspaceScanCandidate[] = [];
   const errors: OperatorGoogleWorkspaceScanMailboxResult["errors"] = [];
-  for (let offset = 0; offset < page.messages.length; offset += 5) {
+  for (
+    let offset = 0;
+    offset < Math.min(page.messages.length, limit);
+    offset += 5
+  ) {
+    const references = page.messages.slice(
+      offset,
+      Math.min(offset + 5, limit),
+    );
     const batch = await Promise.all(
-      page.messages.slice(offset, offset + 5).map(async (reference) => {
+      references.map(async (reference) => {
         if (dayjs().valueOf() >= deadline) {
           errors.push({
             messageId: reference.id,
@@ -1382,6 +1389,23 @@ export async function scanWorkspaceMailbox(
             mailbox,
             messageId: reference.id,
           });
+          const receivedAt = Number(message.internalDate);
+          if (
+            message.id !== reference.id ||
+            message.threadId !== reference.threadId ||
+            !Number.isFinite(receivedAt) ||
+            receivedAt < start ||
+            receivedAt >= end + DAY_MS ||
+            message.labelIds?.some((label) =>
+              ["DRAFT", "SPAM", "TRASH"].includes(label),
+            )
+          ) {
+            errors.push({
+              messageId: reference.id,
+              error: "Message is outside the eligible scan window.",
+            });
+            return null;
+          }
           return await scanCandidate(mailbox, message);
         } catch (error) {
           errors.push({
@@ -1401,8 +1425,11 @@ export async function scanWorkspaceMailbox(
     dateTo: dayjs(end).toISOString().slice(0, 10),
     candidates,
     errors,
-    hasMoreMatches: Boolean(page.nextPageToken),
-    completeness: page.nextPageToken || errors.length ? "partial" : "complete",
+    hasMoreMatches: Boolean(page.nextPageToken) || page.messages.length > limit,
+    completeness:
+      page.nextPageToken || page.messages.length > limit || errors.length
+        ? "partial"
+        : "complete",
   };
 }
 

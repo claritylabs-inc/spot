@@ -98,7 +98,7 @@ describe("scan_workspace_mailbox authorization", () => {
     provider.getMessageFull.mockResolvedValue({
       id: "m1",
       threadId: "thread-1",
-      internalDate: "1000",
+      internalDate: String(dayjs().subtract(1, "day").valueOf()),
       snippet: "COI attached",
       payload: null,
     });

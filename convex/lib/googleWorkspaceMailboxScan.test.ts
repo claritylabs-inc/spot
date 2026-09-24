@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import dayjs from "dayjs";
 import type { Id } from "../_generated/dataModel";
 import {
   availableOperatorAgentToolNames,
@@ -62,7 +63,7 @@ function message(
   return {
     id,
     threadId: `thread-${id}`,
-    internalDate: "1000",
+    internalDate: String(dayjs("2026-09-15T10:00:00Z").valueOf()),
     snippet: "Attached is the renewal policy",
     payload,
   };
@@ -139,7 +140,7 @@ describe("scan_workspace_mailbox result shape", () => {
 
     expect(result).toEqual({
       mailbox: "a@example.com",
-      query: `(Acme policy) -in:drafts after:${Date.UTC(2026, 7, 26) / 1000} before:${Date.UTC(2026, 8, 25) / 1000}`,
+      query: `(Acme policy) -in:drafts after:${dayjs("2026-08-26T00:00:00Z").valueOf() / 1000} before:${dayjs("2026-09-25T00:00:00Z").valueOf() / 1000}`,
       dateFrom: "2026-08-26",
       dateTo: "2026-09-24",
       candidates: [
@@ -235,6 +236,42 @@ describe("scan_workspace_mailbox result shape", () => {
     ]);
   });
 
+  test("does not return messages outside the date window or from excluded labels", async () => {
+    const deps = setup({
+      listMessages: vi.fn(async () => ({
+        messages: [
+          { id: "old", threadId: "thread-old" },
+          { id: "draft", threadId: "thread-draft" },
+        ],
+        nextPageToken: null,
+      })),
+      getMessageFull: vi.fn(async ({ messageId }) => ({
+        ...withAttachments,
+        id: messageId,
+        threadId: `thread-${messageId}`,
+        internalDate: String(
+          dayjs(messageId === "old" ? "2026-08-01" : "2026-09-15").valueOf(),
+        ),
+        labelIds: messageId === "draft" ? ["DRAFT"] : [],
+      })),
+    });
+    const result = await scanWorkspaceMailbox(deps, { query: "policy" });
+    expect(result).toMatchObject({
+      candidates: [],
+      completeness: "partial",
+      errors: [
+        {
+          messageId: "old",
+          error: "Message is outside the eligible scan window.",
+        },
+        {
+          messageId: "draft",
+          error: "Message is outside the eligible scan window.",
+        },
+      ],
+    });
+  });
+
   test("dispatches through the shared Google Workspace tool runner", async () => {
     const deps = setup();
     const input = parseOperatorAgentToolInput("scan_workspace_mailbox", {
@@ -325,6 +362,7 @@ describe("scan_workspace_mailbox authorization", () => {
   test("is a read-only company email tool gated on the Workspace integration", () => {
     expect(getOperatorAgentToolSpec("scan_workspace_mailbox")).toMatchObject({
       capability: "operator.company_email.read",
+      family: "company_email",
       effect: "read",
       confirmation: "none",
       requiredRole: "operator",
