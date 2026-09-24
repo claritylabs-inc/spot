@@ -4,10 +4,8 @@ import localFont from "next/font/local";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { ConvexClientProvider } from "@/components/providers";
 import { AuthGuard } from "@/components/auth-guard";
-import {
-  ClientWebMcpTools,
-  PublicWebMcpTools,
-} from "@/components/webmcp/client-webmcp-tools";
+import { webmcpEnabled } from "@/lib/flags";
+import { WebMcpProvider, WebMcpToolsLoader } from "@/lib/webmcp/runtime";
 import { AutoSaveStatusProvider } from "@/components/ui/auto-save-status";
 import { AppToaster } from "@/components/ui/toaster";
 import { SmoothCornersProvider } from "@claritylabs-inc/ui/components/smooth-corners-provider";
@@ -105,11 +103,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const webMcpEnabled = await webmcpEnabled();
   return (
     <ConvexAuthNextjsServerProvider>
       <html lang="en" suppressHydrationWarning>
@@ -128,9 +127,10 @@ export default function RootLayout({
           <ConvexClientProvider>
             <AutoSaveStatusProvider>
               <BrandThemeApplier />
-              <AuthGuard>{children}</AuthGuard>
-              <ClientWebMcpTools />
-              <PublicWebMcpTools />
+              <WebMcpProvider enabled={webMcpEnabled}>
+                <AuthGuard>{children}</AuthGuard>
+                {webMcpEnabled && <WebMcpToolsLoader />}
+              </WebMcpProvider>
               <AppToaster />
             </AutoSaveStatusProvider>
           </ConvexClientProvider>

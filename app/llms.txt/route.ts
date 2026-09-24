@@ -1,11 +1,12 @@
 import { getClientPortalUrl } from "@/convex/lib/domains";
+import { webmcpEnabled } from "@/lib/flags";
 import {
   describeRegistration,
   WEBMCP_TOOLS,
   type WebMcpToolDefinition,
 } from "@/lib/webmcp/catalog";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 function toolLine(name: string, tool: WebMcpToolDefinition) {
   const flags = [
@@ -29,7 +30,8 @@ function sections(include: (tool: WebMcpToolDefinition) => boolean) {
     .join("\n\n");
 }
 
-export function GET() {
+export async function GET() {
+  const enabled = await webmcpEnabled();
   const appUrl = getClientPortalUrl();
   const body = `# Spot
 
@@ -45,7 +47,7 @@ This is the Spot web app (${appUrl}). The marketing site and product overview li
 - After verification, onboarding has three steps: your profile, your company, finish. The client workspace then opens at ${appUrl}/policies.
 - Existing accounts sign in at ${appUrl}/login.
 
-## WebMCP tools
+${enabled ? `## WebMCP tools
 
 Spot registers WebMCP tools in Chrome (see https://developer.chrome.com/docs/ai/webmcp). Anything a signed-in client can do in the app is a tool, and every tool runs the action directly with that person's normal Spot permissions. There is no extra confirmation step. Tools marked consequential send email, spend AI extraction time, or cannot be undone. Tools appear only on the page and for the role where they work: open another page with \`open_spot_page\`. Admin tools register only for organization admins. Each result is JSON with a \`status\` field and often \`next_tool\` or \`next_url\`.
 
@@ -64,6 +66,8 @@ ${sections((tool) => tool.surface === "imperative" && tool.audience === "client"
 
 ${sections((tool) => tool.surface === "imperative" && tool.audience === "public")}
 
+` : ""}
+
 ## What clients cannot do
 
 - Upload, edit, archive, or re-extract policies, or manage shared files: Spot staff do this. Clients share documents through insurance requests (\`attach_request_document\`).
@@ -73,12 +77,12 @@ ${sections((tool) => tool.surface === "imperative" && tool.audience === "public"
 ## Other agent interfaces
 
 - Remote MCP server for signed-in organizations (OAuth): ${appUrl}/mcp. Discovery: ${appUrl}/.well-known/mcp.json.
-- Tool catalog source: https://github.com/claritylabs-inc/spot/blob/main/docs/architecture/webmcp.md
+${enabled ? "- Tool catalog source: https://github.com/claritylabs-inc/spot/blob/main/docs/architecture/webmcp.md" : ""}
 `;
   return new Response(body, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "private, no-store",
     },
   });
 }

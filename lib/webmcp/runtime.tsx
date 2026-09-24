@@ -1,11 +1,44 @@
 "use client";
 
-import { useEffect, useRef, type FormEvent } from "react";
-import {
-  getWebMcpTool,
-  type WebMcpJsonSchema,
-  type WebMcpToolName,
-} from "@/lib/webmcp/catalog";
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import type { WebMcpJsonSchema, WebMcpToolName } from "@/lib/webmcp/catalog";
+import type * as Catalog from "@/lib/webmcp/catalog";
+
+let catalog: typeof Catalog | null = null;
+const WebMcpContext = createContext(false);
+
+export function WebMcpProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let mounted = true;
+    import("@/lib/webmcp/catalog").then((loaded) => {
+      catalog = loaded;
+      if (mounted) setReady(true);
+    });
+    return () => { mounted = false; };
+  }, [enabled]);
+  return <WebMcpContext.Provider value={enabled && ready}>{children}</WebMcpContext.Provider>;
+}
+
+export function useWebMcpEnabled() {
+  return useContext(WebMcpContext);
+}
+
+export function WebMcpToolsLoader() {
+  const enabled = useWebMcpEnabled();
+  const [tools, setTools] = useState<typeof import("@/components/webmcp/client-webmcp-tools") | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let mounted = true;
+    import("@/components/webmcp/client-webmcp-tools").then((loaded) => {
+      if (mounted) setTools(loaded);
+    });
+    return () => { mounted = false; };
+  }, [enabled]);
+  if (!enabled || !tools) return null;
+  return <><tools.ClientWebMcpTools /><tools.PublicWebMcpTools /></>;
+}
 
 declare module "react" {
   interface FormHTMLAttributes<T> extends HTMLAttributes<T> {
@@ -72,12 +105,12 @@ function registerTools(
   resolve: (name: WebMcpToolName) => WebMcpToolImplementation | undefined,
 ): () => void {
   const modelContext = getModelContext();
-  if (!modelContext) return () => {};
+  if (!modelContext || !catalog) return () => {};
   const controller = new AbortController();
   const registered: string[] = [];
   for (const { name } of implementations) {
-    const definition = getWebMcpTool(name);
-    if (definition.surface !== "imperative") continue;
+    const definition = catalog?.getWebMcpTool(name);
+    if (!definition || definition.surface !== "imperative") continue;
     try {
       const pending = modelContext.registerTool(
         {
@@ -136,11 +169,12 @@ export function useWebMcpTools(
   implementations: readonly WebMcpToolImplementation[],
   enabled: boolean,
 ) {
+  const featureEnabled = useWebMcpEnabled();
   const latest = useRef(implementations);
   useEffect(() => {
     latest.current = implementations;
   });
-  const key = enabled ? implementations.map((tool) => tool.name).join("|") : "";
+  const key = enabled && featureEnabled ? implementations.map((tool) => tool.name).join("|") : "";
   useEffect(() => {
     if (!key) return;
     return registerTools(latest.current, (name) =>
@@ -151,7 +185,8 @@ export function useWebMcpTools(
 
 /** Declarative form attributes for a catalog tool. */
 export function webMcpFormAttributes(name: WebMcpToolName) {
-  const definition = getWebMcpTool(name);
+  const definition = catalog?.getWebMcpTool(name);
+  if (!definition) return {};
   return {
     toolname: name,
     tooldescription: definition.description,
@@ -161,7 +196,8 @@ export function webMcpFormAttributes(name: WebMcpToolName) {
 
 /** Declarative parameter attributes for one named field of a catalog tool. */
 export function webMcpParamAttributes(name: WebMcpToolName, param: string) {
-  const definition = getWebMcpTool(name);
+  const definition = catalog?.getWebMcpTool(name);
+  if (!definition) return {};
   return {
     name: param,
     toolparamdescription:
@@ -204,11 +240,13 @@ export function useWebMcpToolActivated(
   name: WebMcpToolName,
   onActivated: () => void,
 ) {
+  const enabled = useWebMcpEnabled();
   const latest = useRef(onActivated);
   useEffect(() => {
     latest.current = onActivated;
   });
   useEffect(() => {
+    if (!enabled) return;
     const listener = (event: Event) => {
       if ((event as Event & { toolName?: string }).toolName === name) {
         latest.current();
@@ -216,5 +254,5 @@ export function useWebMcpToolActivated(
     };
     window.addEventListener("toolactivated", listener);
     return () => window.removeEventListener("toolactivated", listener);
-  }, [name]);
+  }, [enabled, name]);
 }

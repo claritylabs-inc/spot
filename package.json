@@ -95,6 +95,7 @@
     "email-reply-parser": "^2.3.9",
     "embla-carousel-react": "^8.6.0",
     "fast-png": "8.0.0",
+    "flags": "4.3.1",
     "framer-motion": "^12.35.0",
     "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",
