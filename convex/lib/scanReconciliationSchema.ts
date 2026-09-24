@@ -12,14 +12,13 @@ export const scanInsuredAddressValidator = v.object({
   zip: v.string(),
 });
 export const scanReconciliationTables = {
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanFindingSources: defineTable({
     findingId: v.id("operatorWorkspaceScanFindings"),
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     excerpt: v.string(),
-  })
-    .index("finding", ["findingId"])
-    .index("source", ["sourceId"])
-    .index("pair", ["findingId", "sourceId"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanInventories: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     operationKey: v.string(),
@@ -29,7 +28,8 @@ export const scanReconciliationTables = {
     organizationIds: v.array(v.id("organizations")),
     requestIds: v.array(v.id("procurementRequests")),
     orgId: v.optional(v.id("organizations")),
-  }).index("operation", ["sourceId", "operationKey"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanContexts: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     body: v.string(),
@@ -42,7 +42,8 @@ export const scanReconciliationTables = {
       }),
     ),
     createdAt: v.number(),
-  }).index("source", ["sourceId"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanImports: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     attachmentId: v.string(),
@@ -58,9 +59,8 @@ export const scanReconciliationTables = {
     boundPolicy: v.boolean(),
     policyId: v.optional(v.id("policies")),
     createdAt: v.number(),
-  })
-    .index("attachment", ["sourceId", "attachmentId"])
-    .index("policy", ["policyId"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanFindings: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     operationKey: v.string(),
@@ -81,19 +81,8 @@ export const scanReconciliationTables = {
     resolvedAt: v.optional(v.number()),
     resolution: v.optional(v.string()),
     authorizingOperatorId: v.id("users"),
-  })
-    .index("source", ["sourceId"])
-    .index("operation", ["operationKey"])
-    .index("status", ["status", "createdAt"])
-    .index("entity", ["entityId", "createdAt"])
-    .index("entity_status", ["entityId", "status", "createdAt"])
-    .index("record", ["recordId", "createdAt"])
-    .index("record_status", ["recordId", "status", "createdAt"])
-    .index("request", ["requestId", "createdAt"])
-    .index("request_status", ["requestId", "status", "createdAt"])
-    .index("broker", ["brokerId", "createdAt"])
-    .index("broker_status", ["brokerId", "status", "createdAt"])
-    .index("recent", ["createdAt"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanChanges: defineTable({
     findingId: v.id("operatorWorkspaceScanFindings"),
     entityId: v.string(),
@@ -113,14 +102,11 @@ export const scanReconciliationTables = {
     effectiveAt: v.number(),
     appliedAt: v.number(),
     correctedAt: v.optional(v.number()),
-  })
-    .index("finding", ["findingId"])
-    .index("entity", ["entityId", "appliedAt"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorWorkspaceScanIdentities: defineTable({
     identityKey: v.string(),
     orgId: v.id("organizations"),
     createdAt: v.number(),
-  })
-    .index("identity", ["identityKey"])
-    .index("organization", ["orgId"]),
+  }),
 };

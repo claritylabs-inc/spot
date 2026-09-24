@@ -285,7 +285,8 @@ function isOperatorGoogleWorkspaceTool(
     toolName === "list_company_mailboxes" ||
     toolName === "search_company_email" ||
     toolName === "read_company_email_thread" ||
-    toolName === "get_company_email_attachment"
+    toolName === "get_company_email_attachment" ||
+    toolName === "scan_workspace_mailbox"
   );
 }
 

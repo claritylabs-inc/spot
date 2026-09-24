@@ -6,7 +6,6 @@ import { useState, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
-import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { ProcurementRequestWorkspace } from "@/components/procurement/procurement-request-workspace";
@@ -145,12 +144,6 @@ export default function OperatorProcurementRequestPage() {
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
           />
-          {!activeImpersonation && view === "notes" ? (
-            <WorkspaceScanActivity
-              entityId={requestId}
-              onRightPanel={setRightPanel}
-            />
-          ) : null}
         </main>
       )}
     </AppShell>

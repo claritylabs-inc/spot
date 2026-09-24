@@ -234,7 +234,7 @@ describe("operator Google Workspace settings", () => {
         threadId: ids.threadId,
         channel: "mcp",
       }),
-    ).resolves.toEqual({ config: null });
+    ).resolves.toEqual({ config: null, operatorEmail: "operator@example.com" });
     await expect(
       t.query(internal.operatorGoogleWorkspace.getActionContextInternal, {
         operatorUserId: ids.otherOperatorUserId,

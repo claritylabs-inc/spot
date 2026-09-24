@@ -15,7 +15,6 @@ import {
   setFeatureFlagPatch,
   type FeatureFlagId,
 } from "@/convex/lib/featureFlags";
-import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
@@ -331,13 +330,6 @@ function ClientWorkspace({
                   </div>
                 </OperationalPanelBody>
               </OperationalPanel>
-
-              {current && !current.activeImpersonation ? (
-                <WorkspaceScanActivity
-                  entityId={clientOrgId}
-                  onRightPanel={setRightPanel}
-                />
-              ) : null}
             </TabsContent>
             <TabsContent value="channels">
               <AgentChannelsSection

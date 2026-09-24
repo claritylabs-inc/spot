@@ -38,6 +38,7 @@ const toolNames = new Set<OperatorGoogleWorkspaceToolName>([
   "search_company_email",
   "read_company_email_thread",
   "get_company_email_attachment",
+  "scan_workspace_mailbox",
 ]);
 
 function toolName(value: string): OperatorGoogleWorkspaceToolName {
@@ -178,6 +179,7 @@ export const runToolInternal = internalAction({
           delete: (fileId) => ctx.storage.delete(fileId),
           read: (file) => readStoredAgentFile(ctx, file),
         },
+        operatorMailbox: context.operatorEmail ?? undefined,
       },
       toolName(args.toolName),
       args.input,

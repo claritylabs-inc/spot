@@ -455,7 +455,9 @@ const certificateHolderRelationshipKindValidator = v.union(
 );
 
 export default defineSchema({
+  // Deprecated: workspace scan removed; drop after data cleanup.
   ...googleWorkspaceScanTables,
+  // Deprecated: workspace scan removed; drop after data cleanup.
   ...scanReconciliationTables,
   ...authTables,
   ...markdownDocumentTables,
@@ -615,6 +617,7 @@ export default defineSchema({
     ),
     agentDisplayName: v.optional(v.string()),
   })
+    // Deprecated: workspace scan removed; drop after data cleanup.
     .index("scan_contact", ["primaryContactEmail"])
     .index("name", ["name"])
     .index("handle", ["agentHandle"])

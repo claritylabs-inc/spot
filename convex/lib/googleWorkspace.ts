@@ -18,6 +18,10 @@ export const GOOGLE_WORKSPACE_LIMITS = {
   maxAttachmentIdChars: 4_000,
   maxVerificationMailboxes: 100,
   maxAttachmentBytes: 15 * 1024 * 1024,
+  maxScanDays: 30,
+  maxScanQueryChars: 500,
+  defaultScanCandidates: 20,
+  maxScanCandidates: 25,
 } as const;
 
 export type OperatorGoogleWorkspaceMailboxMode = "manual" | "directory";
@@ -99,7 +103,8 @@ export type OperatorGoogleWorkspaceToolName =
   | "list_company_mailboxes"
   | "search_company_email"
   | "read_company_email_thread"
-  | "get_company_email_attachment";
+  | "get_company_email_attachment"
+  | "scan_workspace_mailbox";
 
 export type OperatorGoogleWorkspaceToolChannel =
   | "chat"
@@ -131,6 +136,16 @@ export type OperatorGoogleWorkspaceGetAttachmentInput = {
   mailbox: string;
   messageId: string;
   attachmentId: string;
+};
+
+export type OperatorGoogleWorkspaceScanMailboxInput = {
+  /** Defaults to the calling operator's own mailbox. */
+  mailbox?: string;
+  query: string;
+  /** Inclusive UTC dates in YYYY-MM-DD format. */
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
 };
 
 export type OperatorGoogleWorkspaceMailbox = {
@@ -242,4 +257,43 @@ export type OperatorGoogleWorkspaceGetAttachmentResult = {
   status: "attached";
   source: OperatorGoogleWorkspaceAttachmentSource;
   extracted: unknown;
+};
+
+/** A read-only pointer to the tool that should perform the next step. */
+export type OperatorGoogleWorkspaceSuggestedAction = {
+  tool:
+    | "read_company_email_thread"
+    | "get_company_email_attachment"
+    | "import_policy_files";
+  /** Exact inputs when the scan already knows them; writes still need the tool's own inputs and confirmation. */
+  input?: Record<string, string>;
+  reason: string;
+};
+
+export type OperatorGoogleWorkspaceScanCandidate = {
+  messageId: string;
+  threadId: string;
+  subject: string | null;
+  from: string | null;
+  date: string | null;
+  snippet: string | null;
+  attachments: Array<
+    OperatorGoogleWorkspaceThreadAttachment & {
+      suggestedActions: OperatorGoogleWorkspaceSuggestedAction[];
+    }
+  >;
+  suggestedActions: OperatorGoogleWorkspaceSuggestedAction[];
+};
+
+export type OperatorGoogleWorkspaceScanMailboxResult = {
+  mailbox: string;
+  /** Effective Gmail query, including the date bounds. */
+  query: string;
+  dateFrom: string;
+  dateTo: string;
+  candidates: OperatorGoogleWorkspaceScanCandidate[];
+  errors: Array<{ messageId: string; error: string }>;
+  /** Gmail has more matches than this bounded scan returned. */
+  hasMoreMatches: boolean;
+  completeness: "complete" | "partial";
 };

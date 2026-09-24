@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -8,7 +8,6 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
 import { TokenListField } from "@/components/broker-network/token-list-field";
@@ -227,7 +226,6 @@ function BrokerDrawer({
   onCreated: (brokerOrgId: Id<"organizations">) => void;
   onClose: () => void;
 }) {
-  const [activityPanel, setActivityPanel] = useState<ReactNode>(null);
   const create = useMutation(api.brokerProfiles.createStandalone);
   const update = useMutation(api.brokerProfiles.upsert);
   const generateLogoUploadUrl = useMutation(
@@ -398,8 +396,6 @@ function BrokerDrawer({
       setSaving(false);
     }
   }
-
-  if (activityPanel) return activityPanel;
 
   return (
     <SettingsDrawer
@@ -603,20 +599,6 @@ function BrokerDrawer({
           {row ? (
             <TabsContent value="activity">
               <BrokerActivity brokerOrgId={row.broker._id} />
-              {row ? (
-                <div className="mt-4">
-                  <WorkspaceScanActivity
-                    entityId={row.broker._id}
-                    onRightPanel={(panel) => {
-                      if (!panel) setActivityPanel(null);
-                      else
-                        void autoSave.saveNow().then((saved) => {
-                          if (saved) setActivityPanel(panel);
-                        });
-                    }}
-                  />
-                </div>
-              ) : null}
             </TabsContent>
           ) : null}
         </Tabs>
