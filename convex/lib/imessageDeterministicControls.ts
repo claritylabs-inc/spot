@@ -4,19 +4,22 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { AgentScope } from "./agentScope";
-import { isPendingEmailCancelConfirmation } from "./emailCancelIntent";
-import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
+import {
+  emailCancelConfirmationPayload,
+  resolveChannelEmailControl,
+  resolvePendingActionConfirmation,
+  runImessageSlashCommand,
+} from "./channelControls";
 import { executeEmailCommand } from "./emailCommandExecutor";
+import {
+  emailSendDecisionAuthorizesSend,
+  ensureEmailSendAuthorizationDecision,
+} from "./emailSendAuthorization";
 import type { ImessageHistoryMessage } from "./imessageAgentContext";
-import { runImessageSlashCommand } from "./imessageSlashCommands";
 import {
   confirmedRequirementImportMessage,
   importConfirmedRequirementSources,
 } from "./requirementAttachmentIntent";
-import {
-  isContextualConfirmation,
-  resolveTextChannelEmailControl,
-} from "./textChannelControls";
 
 export type ImessageDeterministicControlResult = {
   response: string;
@@ -89,15 +92,7 @@ export async function runImessageDeterministicControls(
         threadId: args.threadId,
         actor: { kind: "user", userId: args.userId },
         promptMessageId,
-        payload: {
-          kind: "email_cancel",
-          pendingEmailIds: options.cancelTargets.map((target) => target._id),
-          draftFingerprints: await Promise.all(
-            options.cancelTargets.map((target) =>
-              pendingEmailDraftFingerprint(target),
-            ),
-          ),
-        },
+        payload: await emailCancelConfirmationPayload(options.cancelTargets),
       });
     }
     return { response, leaveGroup: options?.leaveGroup };
@@ -130,106 +125,92 @@ export async function runImessageDeterministicControls(
     });
   }
 
-  const confirmation = await ctx.runQuery(
-    internal.threadActionConfirmations.latestPendingInternal,
-    { threadId: args.threadId },
+  if (!args.currentSenderIsLinked) return null;
+
+  const { confirmation, resolution } = await resolvePendingActionConfirmation(
+    ctx,
+    {
+      messageText: args.messageText,
+      orgId: args.orgId,
+      threadId: args.threadId,
+      userId: args.userId,
+      currentMessageId: args.currentMessageId,
+      draftEmailIds: args.draftEmails.map((draft) => draft._id),
+    },
   );
-  const isCancelConfirmationContext =
-    confirmation?.payload.kind === "email_cancel";
-  const confirmationRequested =
-    confirmation?.payload.kind === "email_cancel"
-      ? isPendingEmailCancelConfirmation(args.messageText)
-      : isContextualConfirmation(args.messageText);
-  if (args.currentSenderIsLinked && confirmationRequested) {
-    if (
-      confirmation &&
-      confirmation.orgId === args.orgId &&
-      confirmation.actor.kind === "user" &&
-      confirmation.actor.userId === args.userId &&
-      confirmation.payload.kind !== "draft_snapshot"
-    ) {
-      const outcome = await ctx.runMutation(
-        internal.threadActionConfirmations.consumeInternal,
-        {
-          id: confirmation._id,
-          actor: { kind: "user", userId: args.userId },
-          currentMessageId: args.currentMessageId,
-          requireAdjacentPrompt: true,
-        },
+  switch (resolution.kind) {
+    case "stale":
+      return reply(
+        resolution.outcome === "expired"
+          ? "That confirmation expired. Use /drafts and confirm again."
+          : "That draft changed or is no longer the latest confirmation. Use /drafts and confirm again.",
       );
-      if (outcome !== "completed") {
-        return reply(
-          outcome === "expired"
-            ? "That confirmation expired. Use /drafts and confirm again."
-            : "That draft changed or is no longer the latest confirmation. Use /drafts and confirm again.",
-        );
-      }
-      if (confirmation.payload.kind === "coi_batch_delivery") {
-        return reply(
-          "The exact COI attachment set is authorized. Use /send 1 to deliver it.",
-        );
-      }
-      if (confirmation.payload.kind === "requirement_import") {
-        const imported = await importConfirmedRequirementSources(ctx, {
-          orgId: args.orgId,
-          userId: args.userId,
-          payload: confirmation.payload,
-        });
-        return reply(confirmedRequirementImportMessage(imported));
-      }
-      if (confirmation.payload.kind === "email_send") {
-        const result = await executeEmailCommand(
-          ctx,
-          {
-            kind: "send_draft_emails",
-            emailIds: confirmation.payload.pendingEmailIds,
-          },
-          {
-            draftEmails: args.draftEmails,
-            sendConfirmationId: confirmation._id,
-          },
-        );
-        return reply(result.responseBody);
-      }
-      if (confirmation.payload.kind === "email_cancel") {
-        const draftIds = new Set(args.draftEmails.map((draft) => draft._id));
-        const emailIds = confirmation.payload.pendingEmailIds;
-        const result = await executeEmailCommand(
-          ctx,
-          emailIds.every((id) => draftIds.has(id))
-            ? { kind: "cancel_draft_emails", emailIds }
-            : { kind: "cancel_pending_emails", emailIds },
-          { draftEmails: args.draftEmails },
-        );
-        return reply(result.responseBody);
-      }
+    case "coi_batch_delivery":
+      return reply(
+        "The exact COI attachment set is authorized. Use /send 1 to deliver it.",
+      );
+    case "requirement_import": {
+      const imported = await importConfirmedRequirementSources(ctx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        payload: resolution.payload,
+      });
+      return reply(confirmedRequirementImportMessage(imported));
     }
+    case "email_send": {
+      const result = await executeEmailCommand(ctx, resolution.command, {
+        draftEmails: args.draftEmails,
+        sendConfirmationId: resolution.sendConfirmationId,
+      });
+      return reply(result.responseBody);
+    }
+    case "email_cancel": {
+      const result = await executeEmailCommand(ctx, resolution.command, {
+        draftEmails: args.draftEmails,
+      });
+      return reply(result.responseBody);
+    }
+    case "none":
+      break;
   }
-  const emailControl = args.currentSenderIsLinked
-    ? resolveTextChannelEmailControl({
-        messageText: args.messageText,
-        isCancelConfirmationContext,
-        latestCancelledEmailId: args.latestCancelledEmail?._id,
-        draftEmailIds: args.draftEmails.map((draftEmail) => draftEmail._id),
-        pendingEmailIds: args.pendingEmails.map(
-          (pendingEmail) => pendingEmail._id,
-        ),
-        allowDraftList: false,
-      })
-    : null;
 
-  if (emailControl) {
-    const result = await executeEmailCommand(ctx, emailControl, {
-      draftEmails: args.draftEmails,
+  const sourceMessage = {
+    _id: args.currentMessageId,
+    orgId: args.orgId,
+    threadId: args.threadId,
+    content: args.messageText,
+  };
+  const ensureSendDecision = () =>
+    ensureEmailSendAuthorizationDecision(ctx, {
+      message: sourceMessage,
+      pendingDrafts: [...args.draftEmails, ...args.pendingEmails],
     });
-    const cancelTargets =
-      result.kind === "request_draft_cancel_confirmation"
-        ? args.draftEmails
-        : result.kind === "request_pending_cancel_confirmation"
-          ? args.pendingEmails
-          : undefined;
-    return reply(result.responseBody, { cancelTargets });
+  const emailControl = await resolveChannelEmailControl(ctx, {
+    orgId: args.orgId,
+    messageText: args.messageText,
+    isCancelConfirmationContext: confirmation?.payload.kind === "email_cancel",
+    latestCancelledEmailId: args.latestCancelledEmail?._id,
+    draftEmailIds: args.draftEmails.map((draftEmail) => draftEmail._id),
+    pendingEmailIds: args.pendingEmails.map((pendingEmail) => pendingEmail._id),
+    allowDraftList: false,
+    authorizeSend: async () =>
+      emailSendDecisionAuthorizesSend(await ensureSendDecision()),
+  });
+
+  if (!emailControl) {
+    // The agent turn may send email; decide authorization at ingest.
+    await ensureSendDecision();
+    return null;
   }
 
-  return null;
+  const result = await executeEmailCommand(ctx, emailControl, {
+    draftEmails: args.draftEmails,
+  });
+  const cancelTargets =
+    result.kind === "request_draft_cancel_confirmation"
+      ? args.draftEmails
+      : result.kind === "request_pending_cancel_confirmation"
+        ? args.pendingEmails
+        : undefined;
+  return reply(result.responseBody, { cancelTargets });
 }

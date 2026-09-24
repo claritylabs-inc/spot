@@ -28,6 +28,7 @@ import {
   MAX_SLACK_THREAD_CONTEXT_MESSAGES,
   type SlackThreadContextSnapshot,
 } from "../lib/slackThreadContext";
+import { decideSlackControlIntent } from "../lib/channelControls";
 import { operatorSlackConversationKey } from "../lib/operatorSlackConfig";
 
 const WORKER_TIMEOUT_MS = 30_000;
@@ -688,9 +689,21 @@ export const processDebounced = internalAction({
         ? await fetchThreadContext(authorized.at(-1)!)
         : undefined;
       await Promise.all(authorized.map((event) => fetchAttachment(ctx, event)));
+      const controlIntents = await Promise.all(
+        authorized
+          .filter((event) => event.eventType === "message")
+          .map(async (event) => ({
+            eventId: event._id,
+            ...(await decideSlackControlIntent(ctx, {
+              messageText: event.content,
+              botUserId: event.mentionedBotUserId,
+            })),
+          })),
+      );
       const prepared = await ctx.runMutation(internalApi.slack.prepareBatch, {
         eventIds: authorized.map((event) => event._id),
         slackThreadContext,
+        controlIntents,
       });
       if (!prepared) return;
       presentationMessageId = prepared.agentMessageId;

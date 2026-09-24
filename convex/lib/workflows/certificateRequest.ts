@@ -46,9 +46,18 @@ export const CERTIFICATE_FORBIDDEN_CLAIMS = [
   "certificate_emailed_without_send_side_effect",
 ];
 
+/**
+ * The certificate action classifies endorsements with regex plus Jev and
+ * reports them as `requiredChanges`; the regex alone is the fallback when the
+ * outcome has no generation result.
+ */
 export function certificateRequestRequiresEndorsementReview(
   params: CertificateRequestWorkflowParams,
+  generated?: Record<string, unknown>,
 ) {
+  if (Array.isArray(generated?.requiredChanges)) {
+    return generated.requiredChanges.length > 0;
+  }
   return inferCertificateEndorsements({
     certificateHolder: params.certificateHolder,
     requestText: params.requestText,
@@ -56,7 +65,10 @@ export function certificateRequestRequiresEndorsementReview(
   }).length > 0;
 }
 
-function baseAudit(params: CertificateRequestWorkflowParams): WorkflowAuditEntry[] {
+function baseAudit(
+  params: CertificateRequestWorkflowParams,
+  generated?: Record<string, unknown>,
+): WorkflowAuditEntry[] {
   return [
     {
       step: "intake_received",
@@ -65,7 +77,7 @@ function baseAudit(params: CertificateRequestWorkflowParams): WorkflowAuditEntry
     },
     {
       step: "endorsement_intent_classified",
-      decision: certificateRequestRequiresEndorsementReview(params)
+      decision: certificateRequestRequiresEndorsementReview(params, generated)
         ? "endorsement_review_required"
         : "holder_only",
     },
@@ -121,7 +133,7 @@ export function certificateGeneratedOutcome(args: {
       nextActionLabel: existing ? "Return existing certificate" : "Attach generated certificate",
     }),
     audit: [
-      ...baseAudit(args.params),
+      ...baseAudit(args.params, args.generated),
       {
         step: "existing_certificate_checked",
         decision: existing ? "existing_returned" : "no_reusable_certificate",
@@ -162,7 +174,7 @@ export function certificateHeldOutcome(args: {
       nextActionLabel: "Broker follow-up required",
     }),
     audit: [
-      ...baseAudit(args.params),
+      ...baseAudit(args.params, args.generated),
       {
         step: "endorsement_evidence_reviewed",
         decision: "held_for_broker_follow_up",
