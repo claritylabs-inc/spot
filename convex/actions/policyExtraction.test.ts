@@ -13,6 +13,7 @@ import {
   type EndorsementSectionOutput,
   type ScheduleSectionOutput,
 } from "../lib/sectionExtraction/schemas";
+import type { SourceSpanLike } from "../lib/sourceTree";
 
 const { executeDurableRouterRequest, slicePdfPages, generateObjectForOrg } =
   vi.hoisted(() => ({
@@ -32,29 +33,13 @@ vi.mock("../lib/models", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/models")>()),
   generateObjectForOrg,
 }));
-// P1 owns the resolver; this fake matches quotes against spans on the page.
-vi.mock("../lib/citationResolver", () => ({
-  resolveCitation: (
-    citation: { page: number; quote: string },
-    spans: Array<{ id: string; pageStart: number; sourceUnit?: string; text: string }>,
-  ) => {
-    const match = spans.find(
-      (span) =>
-        span.pageStart === citation.page &&
-        span.sourceUnit !== "page" &&
-        span.text.includes(citation.quote),
-    );
-    return match
-      ? { ...citation, sourceSpanIds: [match.id], bbox: [], match: "exact" }
-      : { ...citation, sourceSpanIds: [], bbox: [], match: "unresolved" };
-  },
-}));
 
 // Root-anchored so this directory's modules resolve as actions/*.
 const modules = import.meta.glob("/convex/**/*.ts");
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   executeDurableRouterRequest.mockReset();
   slicePdfPages.mockReset();
   generateObjectForOrg.mockReset();
@@ -170,15 +155,25 @@ async function seedExtraction(
   });
 }
 
+type ParsedSource = {
+  version: "parsed-source-v1";
+  pageCount: number;
+  pages: Array<{ page: number; text: string }>;
+  sourceSpans: SourceSpanLike[];
+  textLayerMissing: boolean;
+};
+
 async function seedSectionExtraction(
   t: TestConvex<typeof schema>,
   sectionPlan: typeof plan = plan,
-  parsedSource?: Record<string, unknown>,
+  parsedSource?: ParsedSource,
 ) {
   const ids = await seedExtraction(t, {
     nextPhase: "extract_sections",
     state: {
-      sourceFingerprint: "fingerprint-1",
+      sourceFingerprint: parsedSource
+        ? extractionSourceFingerprint(parsedSource.sourceSpans)
+        : "fingerprint-1",
       sectionPlanHash: sectionPlan.planHash,
       pageCount: sectionPlan.pageCount,
       sectionAttempts: {},
@@ -568,24 +563,6 @@ describe("merge", () => {
       sourceSpans,
       textLayerMissing: false,
     });
-    await t.run((ctx) =>
-      ctx.db.patch(ids.runId, {
-        pipelineCheckpoint: {
-          nextPhase: "extract_sections",
-          state: {
-            sourceKind: "upload",
-            fileId: ids.fileId,
-            orgId: ids.orgId,
-            userId: ids.userId,
-            traceId: "trace-1",
-            sourceFingerprint: extractionSourceFingerprint(sourceSpans),
-            sectionPlanHash: "plan-2",
-            pageCount: 2,
-          },
-          createdAt: dayjs().valueOf(),
-        },
-      }),
-    );
     executeDurableRouterRequest
       .mockResolvedValueOnce(routerResponse(citedDeclarations))
       .mockResolvedValueOnce(routerResponse(schedule));
@@ -629,5 +606,61 @@ describe("merge", () => {
       sourceSpans.map((span) => span.id).sort(),
     );
     expect(stored.chunks).toEqual([]);
+  });
+
+  test("promotes declarations from a scanned PDF on transcribed page evidence", async () => {
+    vi.stubEnv("EXTRACTION_PROMOTION_GATE_MODE", "enforce");
+    slicePdfPages.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
+    generateObjectForOrg.mockRejectedValue(new Error("No model calls in tests"));
+    const t = convexTest(schema, modules);
+    const ids = await seedSectionExtraction(
+      t,
+      { ...plan, pageCount: 1, sections: [plan.sections[0]!], planHash: "plan-scanned" },
+      {
+        version: "parsed-source-v1",
+        pageCount: 1,
+        pages: [{ page: 1, text: "" }],
+        sourceSpans: [],
+        textLayerMissing: true,
+      },
+    );
+    executeDurableRouterRequest.mockResolvedValueOnce(routerResponse(citedDeclarations));
+
+    for (let advance = 0; advance < 2; advance += 1) {
+      await t.action(internal.actions.policyExtraction.advance, { jobId: ids.jobId });
+    }
+
+    let state = await readState(t, ids);
+    const transcriptionId = expect.stringMatching(
+      new RegExp(`^${ids.policyId}:span:1:transcription:[0-9a-f]{12}$`),
+    );
+    expect(state.run?.pipelineCheckpoint).toMatchObject({ nextPhase: "store_sources" });
+    expect(state.policy).toMatchObject({
+      extractionDataStage: "final",
+      policyNumber: "GL-100",
+      coverages: [expect.objectContaining({ name: "General Liability", limit: "$1,000,000" })],
+      extractionPromotion: { allowed: true, reasons: [], mode: "enforce" },
+    });
+    expect(state.policy?.operationalProfile.policyNumber.sourceSpanIds).toEqual([transcriptionId]);
+    expect(state.run?.completionManifest.sections).toEqual([
+      expect.objectContaining({ id: "declarations-1-1", sourceSpanIds: [transcriptionId] }),
+    ]);
+
+    await t.action(internal.actions.policyExtraction.advance, { jobId: ids.jobId });
+
+    state = await readState(t, ids);
+    expect(state.run?.pipelineCheckpoint).toMatchObject({ nextPhase: "post_process" });
+    const stored = await t.run((ctx) =>
+      ctx.db.query("sourceSpans").withIndex("policy", (q) => q.eq("policyId", ids.policyId)).collect(),
+    );
+    expect(stored).toEqual([
+      expect.objectContaining({
+        spanId: transcriptionId,
+        pageStart: 1,
+        sourceUnit: "page",
+        text: "Policy Number: GL-100 | Named Insured: Acme Corp | Example Insurance Company | Insurer: Example Insurance Company | Each Occurrence $1,000,000 | General Liability",
+        metadata: { sourceUnit: "page", textSource: "model_transcription" },
+      }),
+    ]);
   });
 });

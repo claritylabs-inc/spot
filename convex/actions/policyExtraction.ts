@@ -57,6 +57,7 @@ import type { ModelRoute } from "../lib/modelCatalog";
 import {
   declarationsPreviewFields,
   mergeSectionResults,
+  modelTranscriptionSpans,
   parseSectionResult,
   type SectionResult,
 } from "../lib/sectionExtraction/merge";
@@ -2015,17 +2016,33 @@ export function makePhases(
         await pCtx.log(message, level);
       };
       const orgId = state.orgId as Id<"organizations">;
-      const sourceSpans = parsed.sourceSpans;
+      const results = sections.map(({ result }) => result);
+      const transcriptions = modelTranscriptionSpans({
+        documentId: policyId,
+        results,
+        sourceSpans: parsed.sourceSpans,
+      });
+      const sourceSpans = canonicalSourceSpans([
+        ...parsed.sourceSpans,
+        ...transcriptions,
+      ]);
       const sourceNodes = normalizeSourceTree([], sourceSpans, policyId);
       const merged = mergeSectionResults({
         policyId,
-        results: sections.map(({ result }) => result),
+        results,
         sourceSpans,
         sourceTree: sourceNodes,
       });
       const matches = merged.citationMatches;
       await pCtx.log(
-        `Merged ${sections.length} sections. Citations: ${matches.exact} exact, ${matches.normalized} normalized, ${matches.page_only} page-level, ${matches.unresolved} unresolved; ${merged.uncitedFactCount} uncited facts dropped`,
+        [
+          transcriptions.length > 0
+            ? `Transcribed cited quotes on ${transcriptions.length} ${transcriptions.length === 1 ? "page" : "pages"} without a text layer.`
+            : undefined,
+          `Merged ${sections.length} sections. Citations: ${matches.exact} exact, ${matches.normalized} normalized, ${matches.page_only} page-level, ${matches.unresolved} unresolved; ${merged.uncitedFactCount} uncited facts dropped`,
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
 
       const processed = await postProcessExtractionDocument({

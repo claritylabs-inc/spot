@@ -1,7 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { PolicySection } from "../policySectioning";
-import type { DocumentSourceNode, SourceSpanLike } from "../sourceTree";
-import { declarationsPreviewFields, mergeSectionResults, type SectionResult } from "./merge";
+import { normalizeSourceTree, type DocumentSourceNode, type SourceSpanLike } from "../sourceTree";
+import {
+  declarationsPreviewFields,
+  mergeSectionResults,
+  modelTranscriptionSpans,
+  type SectionResult,
+} from "./merge";
 import type {
   CitedValue,
   DeclarationsSectionOutput,
@@ -10,25 +15,6 @@ import type {
   ScheduleSectionOutput,
   SectionCoverage,
 } from "./schemas";
-
-// P1 owns the resolver; this fake matches quotes against spans on the page and
-// falls back to the page span.
-vi.mock("../citationResolver", () => ({
-  resolveCitation: (
-    citation: { page: number; quote: string },
-    spans: Array<{ id: string; pageStart: number; sourceUnit?: string; text: string }>,
-  ) => {
-    const onPage = spans.filter((span) => span.pageStart === citation.page);
-    const exact = onPage.find(
-      (span) => span.sourceUnit !== "page" && span.text.includes(citation.quote),
-    );
-    if (exact) return { ...citation, sourceSpanIds: [exact.id], bbox: [], match: "exact" };
-    const page = onPage.find((span) => span.sourceUnit === "page");
-    return page
-      ? { ...citation, sourceSpanIds: [page.id], bbox: [], match: "page_only" }
-      : { ...citation, sourceSpanIds: [], bbox: [], match: "unresolved" };
-  },
-}));
 
 function span(id: string, page: number, text: string, sourceUnit = "line"): SourceSpanLike {
   return { id, documentId: "policy-1", sourceKind: "policy_pdf", pageStart: page, pageEnd: page, sourceUnit, text };
@@ -43,6 +29,7 @@ const spans = [
   span("d-gl", 1, "General Liability Each Occurrence $1,000,000"),
   span("d-auto", 1, "Hired Auto Liability $500,000"),
   span("d-building", 1, "Building $500,000"),
+  span("d-premium", 1, "Total Premium $1,000"),
   span("p2", 2, "SCHEDULE", "page"),
   span("s-vehicle", 2, "1 2022 Ford F-150 VIN 1FTFW1E50NFA00001"),
   span("s-building", 2, "Building $750,000"),
@@ -385,15 +372,112 @@ describe("section merge", () => {
       {
         kind: "declarations",
         section: sectionFor("declarations", 1),
-        output: { ...declarations, premium: cited("$1,000", 1, "DECLARATIONS") },
+        output: { ...declarations, premium: cited("$1,000", 1, "Total Premium $1,000") },
       },
       allSections[3]!,
     ]);
     expect(withDeclaredPremium.operationalProfile.premium).toMatchObject({
       value: "$1,000",
-      confidence: "medium",
-      sourceSpanIds: ["p1"],
+      sourceSpanIds: ["d-premium"],
     });
+  });
+});
+
+describe("model transcription spans", () => {
+  // Pages 1 and 2 have a pdf.js text layer; page 3 is a scanned image.
+  const textLayer = [
+    span("t-policy", 1, "Policy Number: GL-100"),
+    span("t-schedule", 2, "VEHICLE SCHEDULE"),
+  ];
+  const results: SectionResult[] = [
+    { kind: "declarations", section: sectionFor("declarations", 1), output: declarations },
+    {
+      kind: "schedule",
+      section: { sectionId: "schedule-2-3", kind: "schedule", pageStart: 2, pageEnd: 3, confidence: 1 },
+      output: {
+        schedules: [
+          {
+            name: "Vehicle Schedule",
+            kind: "vehicle",
+            description: null,
+            items: [
+              {
+                label: "1",
+                description: null,
+                values: [{ label: "Vehicle", value: "2022 Ford F-150" }],
+                citations: [
+                  { page: 3, quote: "1 2022 Ford F-150" },
+                  { page: 3, quote: " 1 2022 Ford F-150 " },
+                ],
+              },
+              {
+                label: "2",
+                description: null,
+                values: [{ label: "Vehicle", value: "2023 Honda Civic" }],
+                // Page 2 has text without this quote, so it must not move to page 3.
+                citations: [{ page: 2, quote: "2 2023 Honda Civic" }],
+              },
+            ],
+          },
+        ],
+        coverages: [
+          coverage({
+            name: "Hired Auto Physical Damage",
+            limit: "$50,000",
+            citations: [{ page: 3, quote: "Hired Auto Physical Damage $50,000" }],
+          }),
+        ],
+      },
+    },
+  ];
+
+  test("transcribes cited quotes only on pages without pdf.js text", () => {
+    const transcriptions = modelTranscriptionSpans({
+      documentId: "policy-1",
+      results,
+      sourceSpans: textLayer,
+    });
+
+    expect(transcriptions).toEqual([
+      expect.objectContaining({
+        documentId: "policy-1",
+        pageStart: 3,
+        pageEnd: 3,
+        sourceUnit: "page",
+        text: "1 2022 Ford F-150 | Hired Auto Physical Damage $50,000",
+        metadata: { sourceUnit: "page", textSource: "model_transcription" },
+      }),
+    ]);
+    expect(transcriptions[0]!.id).toMatch(/^policy-1:span:3:transcription:[0-9a-f]{12}$/);
+    expect(
+      modelTranscriptionSpans({ documentId: "policy-1", results, sourceSpans: textLayer }),
+    ).toEqual(transcriptions);
+  });
+
+  test("resolves scanned-page citations exactly while text pages keep pdf.js evidence", () => {
+    const transcription = modelTranscriptionSpans({
+      documentId: "policy-1",
+      results,
+      sourceSpans: textLayer,
+    })[0]!;
+    const sourceSpans = [...textLayer, transcription];
+    const sourceTree = normalizeSourceTree([], sourceSpans, "policy-1");
+    const merged = mergeSectionResults({ policyId: "policy-1", results, sourceSpans, sourceTree });
+    const profile = merged.operationalProfile;
+    const pageNode = sourceTree.find((node) => node.kind === "page" && node.pageStart === 3);
+
+    expect(profile.policyNumber?.sourceSpanIds).toEqual(["t-policy"]);
+    // Page 1 quotes missing from its text layer are dropped, not transcribed.
+    expect(profile.namedInsured).toBeUndefined();
+    expect(profile.coverageSchedules?.[0]?.items).toEqual([
+      expect.objectContaining({ label: "1", sourceSpanIds: [transcription.id] }),
+    ]);
+    expect(coverageNamed(profile.coverages, "Hired Auto Physical Damage")).toMatchObject({
+      limit: "$50,000",
+      sourceSpanIds: [transcription.id],
+      sourceNodeIds: [pageNode!.id],
+    });
+    expect(merged.citationMatches.exact).toBe(4);
   });
 });
 
