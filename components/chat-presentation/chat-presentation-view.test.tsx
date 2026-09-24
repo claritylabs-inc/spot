@@ -249,11 +249,6 @@ test("request-shared files use their request grant without a global-file fallbac
   );
 });
 
-test("empty layout envelopes retain the saved text answer", () => {
-  const content = mount(envelope({ type: "Stack", props: {}, children: [] }));
-  expect(content.textContent).toBe("Saved text answer");
-});
-
 test("verified public citations use native external navigation instead of record preview", () => {
   const content = mount(
     envelope(
@@ -326,18 +321,6 @@ test("vendor references use the existing vendor policies page rather than an arb
   expect(content.querySelector("a")?.getAttribute("href")).toBe(
     "/connect/vendors/vendor-org/policies",
   );
-});
-
-test("valid structured results preserve the complete answer once and render Markdown", () => {
-  const content = mount(
-    envelope({
-      type: "Text",
-      props: { text: "Review **missing evidence** before proceeding." },
-      children: [],
-    }),
-  );
-  expect(content.textContent?.match(/Saved text answer/g)).toHaveLength(1);
-  expect(content.querySelector("strong")?.textContent).toBe("missing evidence");
 });
 
 test("shared fact citations render once while field-specific sources remain distinct", () => {

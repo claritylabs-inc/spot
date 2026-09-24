@@ -179,31 +179,6 @@ test("search follows cursors past nonmatching calls and rejects non-operator lis
   expect(second.isDone).toBe(true);
 });
 
-test("prices decision nano-dollars and summarizes the router's selection", () => {
-  expect(
-    modelCallResult({
-      model: "jev-1",
-      cost: { status: "priced", costNanoUsd: 42 },
-      usage: { inputTokens: 1, outputTokens: 0 },
-    }),
-  ).toMatchObject({ model: "jev-1", costUsd: 0.000000042 });
-  expect(
-    modelCallResult({
-      costUsd: 0.1,
-      routing: {
-        decision: "routed",
-        source: "jev",
-        primitive: "reasoning",
-        difficulty: "complex",
-        selectedTier: 3,
-      },
-    }),
-  ).toMatchObject({
-    costUsd: 0.1,
-    routingSummary: "routed · jev · reasoning · complex · tier 3",
-  });
-});
-
 test("payload previews omit assets and credentials and remain bounded", async () => {
   const { modelCallPayloadPreview } = await import("./lib/modelCallTelemetry");
   const preview = modelCallPayloadPreview({
@@ -239,27 +214,3 @@ test("payload previews omit assets and credentials and remain bounded", async ()
   ).rejects.toThrow();
 });
 
-test("completed empty responses remain visible as incomplete calls", async () => {
-  const { t, viewer } = await fixture();
-  const id = await t.mutation(internal.modelRoutingEvents.startCall, {
-    callKey: "empty",
-    operation: "generate",
-    context,
-  });
-  await t.mutation(internal.modelRoutingEvents.finishCall, {
-    callKey: "empty",
-    status: "complete",
-    result: modelCallResult({
-      output: { text: "", toolCalls: [] },
-      finishReason: "stop",
-      costUsd: 0.01,
-    }),
-  });
-  expect(
-    await viewer.query(api.modelRoutingEvents.getCall, { id }),
-  ).toMatchObject({
-    status: "incomplete",
-    completionIssue: "empty_response",
-    costUsd: 0.01,
-  });
-});

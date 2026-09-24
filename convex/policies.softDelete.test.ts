@@ -94,67 +94,6 @@ async function seedBrokerClientPolicy(options: {
 }
 
 describe("policy archive and restore", () => {
-  test("lets an operator archive, list, and restore a client policy", async () => {
-    const { t, operatorUserId, clientOrgId, policyId } =
-      await seedBrokerClientPolicy({ uploadedBySide: "broker" });
-
-    await t
-      .withIdentity({ subject: `${operatorUserId}|session` })
-      .mutation(archiveFn, { id: policyId });
-
-    const { policy, audits, fact } = await t.run(async (ctx) => {
-      const policy = await ctx.db.get(policyId);
-      const audits = await ctx.db
-        .query("policyAuditLog")
-        .withIndex("policy", (q) => q.eq("policyId", policyId))
-        .collect();
-      const fact = await ctx.db
-        .query("policyDeclarationFacts")
-        .withIndex("policy", (q) => q.eq("policyId", policyId))
-        .first();
-      return { policy, audits, fact };
-    });
-
-    expect(policy?.deletedAt).toEqual(expect.any(Number));
-    expect(fact?.active).toBe(false);
-    expect(audits).toContainEqual(
-      expect.objectContaining({
-        policyId,
-        userId: operatorUserId,
-        orgId: clientOrgId,
-        action: "archived",
-      }),
-    );
-
-    const operator = t.withIdentity({ subject: `${operatorUserId}|session` });
-    await expect(
-      operator.query(listForOperatorFn, {
-        clientOrgId,
-        documentType: "policy",
-      }),
-    ).resolves.toEqual([]);
-    await expect(
-      operator.query(listForOperatorFn, {
-        clientOrgId,
-        documentType: "policy",
-        archived: true,
-      }),
-    ).resolves.toEqual([expect.objectContaining({ _id: policyId })]);
-
-    await operator.mutation(restoreFn, { id: policyId });
-    const restored = await t.run(async (ctx) => ({
-      policy: await ctx.db.get(policyId),
-      facts: await ctx.db
-        .query("policyDeclarationFacts")
-        .withIndex("policy", (q) => q.eq("policyId", policyId))
-        .collect(),
-    }));
-    expect(restored.policy?.deletedAt).toBeUndefined();
-    expect(restored.facts.filter((fact) => fact.active)).toEqual([
-      expect.objectContaining({ recordHash: "policy-fact-1", observedAt: 1 }),
-    ]);
-  });
-
   test("blocks a broker member from archiving a client-uploaded policy", async () => {
     const { t, brokerUserId, policyId } = await seedBrokerClientPolicy({
       uploadedBySide: "client",

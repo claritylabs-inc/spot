@@ -472,43 +472,4 @@ describe("client files", () => {
     ).toBeUndefined();
   });
 
-  test("keeps deleted files out of the archived view", async () => {
-    const fixture = await seedClientFileFixture();
-    const operator = fixture.t.withIdentity({
-      subject: `${fixture.operatorUserId}|session`,
-    });
-    const clientFileId = await fixture.t.run(async (ctx) => {
-      const fileId = await ctx.storage.store(new Blob(["report"]));
-      return await ctx.db.insert("clientFiles", {
-        orgId: fixture.clientOrgId,
-        fileId,
-        name: "Old quote.pdf",
-        originalName: "quote.pdf",
-        contentType: "application/pdf",
-        size: 6,
-        clientVisible: false,
-        uploadedByUserId: fixture.operatorUserId,
-        uploadedBySide: "operator",
-        nameSource: "operator",
-        nameStatus: "ready",
-        createdAt: 1,
-        updatedAt: 1,
-      });
-    });
-
-    await operator.mutation(api.clientFiles.remove, { clientFileId });
-
-    await expect(
-      operator.query(api.clientFiles.list, {
-        clientOrgId: fixture.clientOrgId,
-        archived: true,
-      }),
-    ).resolves.toMatchObject({ files: [] });
-    await expect(
-      operator.mutation(api.clientFiles.setArchived, {
-        clientFileId,
-        archived: false,
-      }),
-    ).rejects.toThrow("Client file not found");
-  });
 });

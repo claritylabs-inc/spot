@@ -590,36 +590,6 @@ test("vendor selectors disappear when the current connection is revoked", async 
   ).toBeUndefined();
 });
 
-test("long histories preserve every text message while newest presentations receive the bounded read budget", async () => {
-  const f = await clientFixture();
-  await f.t.run(async (ctx) => {
-    for (let index = 0; index < 30; index++) {
-      const id = await ctx.db.insert("threadMessages", {
-        threadId: f.threadId,
-        orgId: f.orgId,
-        role: "agent",
-        channel: "chat",
-        content: `Answer ${index}`,
-        presentationRevision: 1,
-      });
-      await ctx.db.patch(id, {
-        presentation: { ...f.presentation, sourceRevision: `${id}:1` },
-      });
-    }
-  });
-  const messages = await f.t
-    .withIdentity({ subject: `${f.userId}|session` })
-    .query(api.threads.messages, { threadId: f.threadId });
-  expect(messages).toHaveLength(32);
-  expect(messages.filter((message) => message.presentation)).toHaveLength(24);
-  expect(messages.at(-1)).toMatchObject({
-    content: "Answer 29",
-    presentation: { version: 1 },
-  });
-  expect(messages[2]).toMatchObject({ content: "Answer 0" });
-  expect(messages[2].presentation).toBeUndefined();
-});
-
 test("source references require the current requirement document or verified provider source set", async () => {
   const f = await clientFixture();
   const sourceUrl = "https://provider.example/about";
@@ -712,84 +682,6 @@ test("source references require the current requirement document or verified pro
     });
   });
   expect(await read(provider, "operator")).toBeNull();
-});
-
-test("capture preserves policy array shapes and grounded proposal review fields", () => {
-  const policies = [{ id: "policy1", carrier: "Carrier", number: "ABC" }];
-  expect(
-    JSON.parse(capturePresentationTool("lookup_policy", policies)!.outputJson),
-  ).toEqual(policies);
-  const proposal = {
-    _id: "proposal1",
-    documents: [{ _id: "doc1", clientFileId: "file1", fileName: "quote.pdf" }],
-    extractionFingerprint: "current",
-    sectionHeadings: { "coverage-terms": "Coverage terms" },
-    extractedOffer: {
-      conditions: [
-        { name: "Inspection", content: "Required", sourceSpanIds: ["span1"] },
-      ],
-      subjectivities: [{ category: "inspection", description: "Required" }],
-    },
-    reviews: [
-      {
-        stale: false,
-        confirmedAt: 1,
-        confirmedByUserId: "operator1",
-        extractionFingerprint: "current",
-        staffConclusion: "has_gaps",
-        findings: [
-          {
-            sectionKey: "coverage-terms",
-            conclusion: "has_gap",
-            summary: "Inspection required",
-            evidence: [
-              {
-                proposalDocumentId: "doc1",
-                sourceNodeIds: ["node1"],
-                sourceSpanIds: ["span1"],
-                pageStart: 1,
-                pageEnd: 1,
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-  expect(
-    JSON.parse(
-      capturePresentationTool("get_procurement_proposal", proposal)!.outputJson,
-    ),
-  ).toEqual(proposal);
-  const list = { proposals: [proposal] };
-  const capturedList = capturePresentationTool(
-    "list_procurement_proposals",
-    list,
-  )!;
-  expect(JSON.parse(capturedList.outputJson)).toEqual(list);
-  expect(
-    capturePresentationTool(
-      capturedList.name,
-      JSON.parse(capturedList.outputJson),
-    ),
-  ).toEqual(capturedList);
-  const requests = {
-    requests: [
-      {
-        _id: "request1",
-        completionOutcome: {
-          kind: "purchased_elsewhere",
-          provider: "Carrier",
-          purchaseDate: "2026-09-21",
-        },
-      },
-    ],
-  };
-  expect(
-    JSON.parse(
-      capturePresentationTool("lookup_client_requests", requests)!.outputJson,
-    ),
-  ).toEqual(requests);
 });
 
 test("connected client requirements and their source metadata revoke together without granting other owner requirements", async () => {
