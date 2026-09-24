@@ -608,3 +608,15 @@ before testing the mobile profile. Evidence and scripts are in
 `.context/qa/streaming/`. This VM has no visible desktop. Live provider-to-browser
 streaming, inline approvals, and completion cards were not exercised by this
 profile check; durable callback ordering and cancellation have backend coverage.
+
+## Client onboarding logo import — September 24, 2026
+
+Headless Chrome against the native-local Convex deployment used fresh captured
+local OTP sign-ups for three synthetic client users. A new client entering
+`vercel.com` in onboarding step 1 received a stored logo with no extra click.
+An org that already had an uploaded logo kept that exact storage ID after step 1
+set its website. An unreachable website produced no logo, no error toast, and a
+server warning; reloading onboarding and entering a reachable website retried and
+stored a logo. Settings → Organization showed no Research company action, and
+Pull from website replaced the logo. Evidence, `results.json`, and the repeatable
+script (`run.mjs`) are in `.context/qa/logo-onboarding/`.

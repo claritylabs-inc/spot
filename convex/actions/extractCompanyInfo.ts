@@ -119,6 +119,34 @@ export const importOrgLogoForOrgInternal = internalAction({
   },
 });
 
+/** Onboarding logo import: never replaces an existing logo and never throws. */
+export const importMissingOrgLogoInternal = internalAction({
+  args: { url: v.string(), orgId: v.id("organizations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    try {
+      const org = await ctx.runQuery(internal.organizations.getInternal, {
+        id: args.orgId,
+      });
+      if (!org || org.iconStorageId || org.website?.trim() !== args.url) return null;
+      const url = normalizePublicWebsiteUrl(args.url);
+      const iconStorageId = url ? await storeWebsiteFavicon(ctx, url) : null;
+      if (!iconStorageId) {
+        console.warn(`No logo found for org ${args.orgId} at ${args.url}`);
+        return null;
+      }
+      await ctx.runMutation(internal.orgs.setMissingIconInternal, {
+        orgId: args.orgId,
+        website: args.url,
+        iconStorageId,
+      });
+    } catch (error) {
+      console.warn(`Automatic logo import failed for org ${args.orgId}`, error);
+    }
+    return null;
+  },
+});
+
 export const extractCompanyInfoForOrgInternal = internalAction({
   args: { url: v.optional(v.string()), orgId: v.id("organizations") },
   returns: v.any(),
