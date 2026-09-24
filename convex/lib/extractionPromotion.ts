@@ -224,13 +224,22 @@ function eligibleSpans(sourceSpans: readonly SourceSpanLike[]) {
     .map(({ span }) => span);
 }
 
+/** metadata.textSource of a page span transcribed from the model's cited quotes. */
+export const MODEL_TRANSCRIPTION_TEXT_SOURCE = "model_transcription";
+
+/**
+ * Fingerprint of the parsed PDF text layer. Model transcriptions are derived
+ * from section results, which the manifest binds by result hash instead.
+ */
 export function extractionSourceFingerprint(sourceSpans: readonly SourceSpanLike[]): string {
-  return stableHash(eligibleSpans(sourceSpans).map((span) => ({
-    id: spanId(span),
-    hash: clean(span.textHash) || clean(span.hash) || stableHash(clean(span.text)),
-    pageStart: spanPageStart(span),
-    pageEnd: spanPageEnd(span),
-  })));
+  return stableHash(eligibleSpans(sourceSpans)
+    .filter((span) => span.metadata?.textSource !== MODEL_TRANSCRIPTION_TEXT_SOURCE)
+    .map((span) => ({
+      id: spanId(span),
+      hash: clean(span.textHash) || clean(span.hash) || stableHash(clean(span.text)),
+      pageStart: spanPageStart(span),
+      pageEnd: spanPageEnd(span),
+    })));
 }
 
 function normalizedValue(field: PromotionEvidenceField, value: string) {

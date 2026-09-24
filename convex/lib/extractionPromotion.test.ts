@@ -1,13 +1,16 @@
 import { describe, expect, test } from "vitest";
 import { buildDocumentSourceTree, buildSourceSpan } from "@claritylabs/cl-sdk";
 import {
+  MODEL_TRANSCRIPTION_TEXT_SOURCE,
   buildExtractionCompletionManifest,
   buildPromotionEvidenceLedger,
   evaluateExtractionPromotion,
+  extractionSourceFingerprint,
   sectionPageCoverageReasons,
   sectionResultArtifactReasons,
   type PromotionEvidenceLedger,
 } from "./extractionPromotion";
+import { normalizeSourceTree } from "./sourceTree";
 
 function evidence(texts: string[]) {
   const sourceSpans = texts.map((text, index) => buildSourceSpan({
@@ -108,6 +111,31 @@ describe("extraction promotion evidence", () => {
     expect(decision.reasons).toContain(
       "policy_number evidence is present but the extracted profile omitted a cited value",
     );
+  });
+
+  test("fingerprints the text layer while model transcriptions stay evidence", () => {
+    const source = evidence(["Policy Number: GL-100"]);
+    const transcription = {
+      id: "policy-1:span:2:transcription:0123456789ab",
+      documentId: "policy-1",
+      sourceKind: "policy_pdf",
+      pageStart: 2,
+      pageEnd: 2,
+      sourceUnit: "page",
+      text: "Named Insured: Example Corp.",
+      metadata: { sourceUnit: "page", textSource: MODEL_TRANSCRIPTION_TEXT_SOURCE },
+    };
+    const sourceSpans = [...source.sourceSpans, transcription];
+    const ledger = buildPromotionEvidenceLedger({
+      sourceSpans,
+      sourceTree: normalizeSourceTree([], sourceSpans, "policy-1"),
+    });
+
+    expect(ledger.sourceFingerprint).toBe(extractionSourceFingerprint(source.sourceSpans));
+    expect(ledger.completeSourceCoverage).toBe(true);
+    expect(ledger.fields.named_insured.candidates).toEqual([
+      expect.objectContaining({ value: "Example Corp.", sourceSpanIds: [transcription.id] }),
+    ]);
   });
 });
 

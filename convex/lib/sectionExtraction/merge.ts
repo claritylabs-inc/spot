@@ -1,7 +1,9 @@
 "use node";
 
+import { createHash } from "crypto";
 import { resolveCitation, type ResolvedCitation } from "../citationResolver";
 import { mergeCoverageRows, type CoverageLike } from "../coverageScoping";
+import { MODEL_TRANSCRIPTION_TEXT_SOURCE } from "../extractionPromotion";
 import { toLobCodes } from "../linesOfBusiness";
 import type { PolicySection, PolicySectionKind } from "../policySectioning";
 import type { DocumentSourceNode, SourceSpanLike } from "../sourceTree";
@@ -156,14 +158,78 @@ function moneyAmount(value: string): number | undefined {
   return /\d/.test(value) && Number.isFinite(amount) ? amount : undefined;
 }
 
+function spanPages(span: SourceSpanLike): number[] {
+  if (typeof span.pageStart !== "number") return [];
+  const pages: number[] = [];
+  for (let page = span.pageStart; page <= (span.pageEnd ?? span.pageStart); page += 1) {
+    pages.push(page);
+  }
+  return pages;
+}
+
+function citationsIn(value: unknown): SectionCitation[] {
+  if (Array.isArray(value)) return value.flatMap(citationsIn);
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, child]) =>
+    key === "citations" ? (child as SectionCitation[]) : citationsIn(child),
+  );
+}
+
+/**
+ * pdf.js has no text for scanned pages, so citations there cannot resolve even
+ * though the model read those pages from its PDF slice. Each page without
+ * pdf.js spans gets one page span whose text is the verbatim quotes its section
+ * cited there, so those citations resolve to page-level evidence. Pages with
+ * pdf.js text never get one.
+ */
+export function modelTranscriptionSpans(args: {
+  documentId: string;
+  results: SectionResult[];
+  sourceSpans: SourceSpanLike[];
+}): SourceSpanLike[] {
+  const textPages = new Set(args.sourceSpans.flatMap(spanPages));
+  const quotesByPage = new Map<number, Set<string>>();
+  for (const { section, output } of args.results) {
+    for (const citation of citationsIn(output)) {
+      // Models cite original pages; the slice-relative reading is only a fallback.
+      const page = citationPageCandidates(citation.page, section)[0];
+      const quote = citation.quote.trim();
+      if (page === undefined || !quote || textPages.has(page)) continue;
+      const quotes = quotesByPage.get(page) ?? new Set<string>();
+      quotes.add(quote);
+      quotesByPage.set(page, quotes);
+    }
+  }
+  return [...quotesByPage]
+    .sort(([left], [right]) => left - right)
+    .map(([page, quotes]) => {
+      // "|" ends the evidence ledger's value captures at quote boundaries.
+      const text = [...quotes].join(" | ");
+      const textHash = createHash("sha256").update(text).digest("hex");
+      return {
+        id: `${args.documentId}:span:${page}:transcription:${textHash.slice(0, 12)}`,
+        documentId: args.documentId,
+        sourceKind: "policy_pdf",
+        kind: "pdf_text",
+        pageStart: page,
+        pageEnd: page,
+        sourceUnit: "page",
+        text,
+        textHash,
+        hash: textHash,
+        location: { page, startPage: page, endPage: page },
+        metadata: { sourceUnit: "page", textSource: MODEL_TRANSCRIPTION_TEXT_SOURCE },
+      };
+    });
+}
+
 function createEvidenceResolver(
   sourceSpans: SourceSpanLike[],
   sourceTree: DocumentSourceNode[],
 ) {
   const spansByPage = new Map<number, SourceSpanLike[]>();
   for (const span of sourceSpans) {
-    if (typeof span.pageStart !== "number") continue;
-    for (let page = span.pageStart; page <= (span.pageEnd ?? span.pageStart); page += 1) {
+    for (const page of spanPages(span)) {
       spansByPage.set(page, [...(spansByPage.get(page) ?? []), span]);
     }
   }
