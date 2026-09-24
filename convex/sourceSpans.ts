@@ -181,27 +181,6 @@ export const listSpansByPolicyAndSpanIds = query({
   },
 });
 
-export const listSpansByPolicyInternal = internalQuery({
-  args: { policyId: v.id("policies") },
-  handler: async (ctx, args) => {
-    return ctx.db
-      .query("sourceSpans")
-      .withIndex("policy", (q) => q.eq("policyId", args.policyId))
-      .collect();
-  },
-});
-
-export const hasSpansForOrg = internalQuery({
-  args: { orgId: v.id("organizations") },
-  handler: async (ctx, args) => {
-    const first = await ctx.db
-      .query("sourceSpans")
-      .withIndex("organization", (q) => q.eq("orgId", args.orgId))
-      .first();
-    return first !== null;
-  },
-});
-
 export const insertSpansBatch = internalMutation({
   args: {
     spans: v.array(v.object(sourceSpanInsertFields)),
@@ -227,11 +206,10 @@ export const deleteByPolicy = internalMutation({
   },
 });
 
-/** Full-text span hits for agent policy search, plus the parent span text of each hit for context. */
+/** Full-text span hits within one policy, plus the parent span text of each hit for context. */
 export const searchInternal = internalQuery({
   args: {
-    orgId: v.id("organizations"),
-    policyId: v.optional(v.id("policies")),
+    policyId: v.id("policies"),
     sourceUnit: v.optional(v.string()),
     query: v.string(),
     limit: v.number(),
@@ -240,10 +218,8 @@ export const searchInternal = internalQuery({
     const spans = await ctx.db
       .query("sourceSpans")
       .withSearchIndex("search_text", (q) => {
-        let search = q.search("text", args.query).eq("orgId", args.orgId);
-        if (args.policyId) search = search.eq("policyId", args.policyId);
-        if (args.sourceUnit) search = search.eq("sourceUnit", args.sourceUnit);
-        return search;
+        const search = q.search("text", args.query).eq("policyId", args.policyId);
+        return args.sourceUnit ? search.eq("sourceUnit", args.sourceUnit) : search;
       })
       .take(Math.max(1, Math.min(Math.floor(args.limit), 100)));
 
@@ -251,12 +227,12 @@ export const searchInternal = internalQuery({
     const seenParents = new Set<string>();
     for (const span of spans) {
       const parentSpanId = span.parentSpanId;
-      if (!span.policyId || !parentSpanId || seenParents.has(parentSpanId)) continue;
+      if (!parentSpanId || seenParents.has(parentSpanId)) continue;
       seenParents.add(parentSpanId);
       const parent = await ctx.db
         .query("sourceSpans")
         .withIndex("policy_span", (q) =>
-          q.eq("policyId", span.policyId).eq("spanId", parentSpanId),
+          q.eq("policyId", args.policyId).eq("spanId", parentSpanId),
         )
         .first();
       if (parent) parents.push({ spanId: parent.spanId, text: parent.text });

@@ -64,7 +64,7 @@ export async function searchPolicySourceEvidence(
 ): Promise<Array<Record<string, unknown>> | string> {
   const { results } = await searchPolicySources(ctx, {
     orgId: policy.orgId,
-    policies: [policy],
+    policy,
     query,
     maxResults,
   });

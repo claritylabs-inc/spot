@@ -3564,7 +3564,7 @@ export default defineSchema({
     .index("policy_parent", ["policyId", "parentSpanId"])
     .searchIndex("search_text", {
       searchField: "text",
-      filterFields: ["orgId", "policyId", "sourceUnit"],
+      filterFields: ["policyId", "sourceUnit"],
     }),
 
   // Source-tree hierarchy over raw source spans. This is the canonical
@@ -3596,7 +3596,7 @@ export default defineSchema({
     .index("policy_parent", ["policyId", "parentNodeId"])
     .searchIndex("search_description", {
       searchField: "description",
-      filterFields: ["orgId", "policyId"],
+      filterFields: ["policyId"],
     }),
 
   policyDeclarationFacts: defineTable({

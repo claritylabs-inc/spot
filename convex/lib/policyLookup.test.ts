@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { buildDocumentContext, formatSourceResultTag } from "./agentPrompts";
 import { searchPolicySourceEvidence } from "./policyLookup";
 import { searchPolicySources, type PolicySearchResult } from "./policySearch";
 
@@ -61,11 +60,7 @@ beforeEach(() => {
 
 describe("searchPolicySourceEvidence", () => {
   it("keeps policy lookup result shapes and citation ids", async () => {
-    search.mockResolvedValueOnce({
-      results: [nodeResult, spanResult],
-      ranking: "jev",
-      searchedPolicyIds: [policyId],
-    });
+    search.mockResolvedValueOnce({ results: [nodeResult, spanResult], ranking: "jev" });
 
     const evidence = await searchPolicySourceEvidence(
       ctx,
@@ -76,7 +71,7 @@ describe("searchPolicySourceEvidence", () => {
 
     expect(search).toHaveBeenCalledWith(ctx, {
       orgId,
-      policies: [{ _id: policyId, orgId, policyNumber: "GL-1" }],
+      policy: { _id: policyId, orgId, policyNumber: "GL-1" },
       query: "occurrence limit",
       maxResults: 4,
     });
@@ -130,74 +125,8 @@ describe("searchPolicySourceEvidence", () => {
   });
 
   it("returns a no-match message instead of an empty list", async () => {
-    search.mockResolvedValueOnce({ results: [], ranking: "search", searchedPolicyIds: [policyId] });
+    search.mockResolvedValueOnce({ results: [], ranking: "search" });
     const evidence = await searchPolicySourceEvidence(ctx, { _id: policyId, orgId }, "flood");
     expect(evidence).toMatch(/^No source evidence in this policy matched "flood"/);
-  });
-});
-
-describe("buildDocumentContext", () => {
-  const policy = {
-    _id: policyId,
-    orgId,
-    carrier: "Hartford",
-    policyNumber: "GL-1",
-    insuredName: "Cove",
-    linesOfBusiness: ["CGL"],
-    effectiveDate: "2026-01-01",
-    expirationDate: "2027-01-01",
-    coverages: [],
-    operationalProfile: { coverages: [{ name: "General Liability" }] },
-  } as unknown as Doc<"policies">;
-  const otherPolicy = {
-    ...policy,
-    _id: "policy_b" as Id<"policies">,
-    policyNumber: "AU-2",
-    operationalProfile: undefined,
-  } as unknown as Doc<"policies">;
-
-  it("groups ranked source evidence per policy with its operational profile and citation tags", async () => {
-    search.mockResolvedValueOnce({
-      results: [nodeResult, spanResult],
-      ranking: "jev",
-      searchedPolicyIds: [policyId, otherPolicy._id],
-    });
-
-    const { context, relevantPolicyIds } = await buildDocumentContext(
-      ctx,
-      orgId,
-      [policy, otherPolicy],
-      "What is the occurrence limit?",
-    );
-
-    expect(relevantPolicyIds).toEqual([policyId]);
-    expect(context).toContain("POLICY INDEX (2 bound policies):");
-    expect(context).toContain("--- POLICY SOURCE TREE: Hartford #GL-1 (ID:policy_a) ---");
-    expect(context).toContain('"name": "General Liability"');
-    expect(context).toContain(
-      '[sourceNode:limits kind:section path:1.2 title:"Limits of Insurance" pages:3-4 sourceSpanIds:line-1,page-3 score:2.80]\nEach Occurrence Limit $1,000,000',
-    );
-    expect(context).toContain(
-      '[sourceSpan:line-9 title:"Page 7" pages:7 sourceSpanIds:line-9]\nCancellation: 30 days notice.',
-    );
-    expect(context).not.toContain("#AU-2 (ID:");
-  });
-
-  it("falls back to the pre-selected policies when nothing matched", async () => {
-    search.mockResolvedValueOnce({ results: [], ranking: "jev", searchedPolicyIds: [policyId] });
-    const { context, relevantPolicyIds } = await buildDocumentContext(
-      ctx,
-      orgId,
-      [policy, otherPolicy],
-      "flood",
-    );
-    expect(relevantPolicyIds).toEqual([policyId]);
-    expect(context).toContain("Operational profile:");
-  });
-
-  it("formats span-only results without a node id", () => {
-    expect(formatSourceResultTag({ ...spanResult, relevance: 2 })).toBe(
-      '[sourceSpan:line-9 title:"Page 7" pages:7 sourceSpanIds:line-9 score:2.00]',
-    );
   });
 });
