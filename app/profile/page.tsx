@@ -9,15 +9,15 @@ import dayjs from "dayjs";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
-import { FadeIn } from "@/components/ui/fade-in";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { Loader2, Mail } from "lucide-react";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Label } from "@/components/ui/label";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import { SelfEmailChangeDrawer } from "@/components/settings/change-email-drawer";
 import {
   Select,
@@ -25,9 +25,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import { useCurrentOrg } from "@/hooks/use-current-org";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";

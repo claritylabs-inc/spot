@@ -1,88 +1,13 @@
 import type { CSSProperties } from "react";
 
-/**
- * Browser typography is owned here. Callers choose meaning; this registry
- * owns every font, size, weight, line-height, tracking, casing, style, and
- * numeric-variant decision for that meaning.
- */
-export const typographyRoles = {
-  "heading.display":
-    "font-sans text-3xl font-medium leading-[1.1] tracking-tight normal-case not-italic normal-nums sm:text-4xl",
-  "heading.page":
-    "font-sans text-2xl font-semibold leading-[1.35] tracking-tight normal-case not-italic normal-nums",
-  "heading.section":
-    "font-sans text-lg font-medium leading-[1.35] tracking-[-0.025em] normal-case not-italic normal-nums",
-  "heading.item":
-    "font-sans text-[1.05rem] font-medium leading-[1.35] tracking-[-0.025em] normal-case not-italic normal-nums md:text-[1.1rem]",
-  "heading.micro":
-    "font-sans text-base font-medium leading-5 tracking-[-0.025em] normal-case not-italic normal-nums",
+import {
+  typeStyle,
+  typographyRoles,
+  type TypographyRole,
+} from "@claritylabs-inc/ui/lib/typography";
 
-  "body.root":
-    "font-sans text-[1rem] font-normal leading-[1.5rem] tracking-normal normal-case not-italic normal-nums antialiased",
-  "body.default":
-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums",
-  "body.medium":
-    "font-sans text-base font-medium leading-normal tracking-normal normal-case not-italic normal-nums",
-  "body.strong":
-    "font-sans text-base font-semibold leading-normal tracking-normal normal-case not-italic normal-nums",
-  "body.large":
-    "font-sans text-sm font-normal leading-5 tracking-normal normal-case not-italic normal-nums",
-
-  "caption.default":
-    "font-sans text-label font-normal leading-normal tracking-normal normal-case not-italic normal-nums",
-  "caption.medium":
-    "font-sans text-label font-medium leading-normal tracking-normal normal-case not-italic normal-nums",
-
-  "label.field":
-    "font-sans text-label font-medium leading-none tracking-normal normal-case not-italic normal-nums",
-  "label.table":
-    "font-sans text-label font-medium leading-normal tracking-normal normal-case not-italic normal-nums",
-  "label.eyebrow":
-    "font-sans text-label font-medium leading-normal tracking-[0.08em] uppercase not-italic normal-nums",
-  "label.metadata":
-    "font-sans text-label font-normal leading-[1.5rem] tracking-normal normal-case not-italic normal-nums sm:text-base sm:leading-normal",
-  "label.tag":
-    "font-sans text-tag font-medium leading-none tracking-normal normal-case not-italic normal-nums",
-
-  "control.button":
-    "font-sans text-base font-medium leading-normal tracking-normal normal-case not-italic normal-nums",
-  "control.buttonCompact":
-    "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
-  "control.input":
-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-base file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
-  "control.tab":
-    "font-sans text-label font-normal leading-normal tracking-normal normal-case not-italic normal-nums data-active:font-medium",
-  "control.menu":
-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums",
-
-  "data.numeric":
-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic tabular-nums",
-  "technical.code":
-    "font-mono text-base font-normal leading-normal tracking-normal normal-case not-italic tabular-nums",
-  "technical.codeCompact":
-    "font-mono text-label font-normal leading-4 tracking-normal normal-case not-italic tabular-nums",
-  "technical.numeric":
-    "font-mono text-base font-normal leading-normal tracking-normal normal-case not-italic tabular-nums",
-  "technical.shortcut":
-    "font-mono text-label font-normal leading-none tracking-normal normal-case not-italic tabular-nums",
-  "technical.otp":
-    "font-mono text-xl font-medium leading-none tracking-normal normal-case not-italic tabular-nums",
-
-  "brand.display":
-    "font-brand text-3xl font-normal leading-[1.1] tracking-tight normal-case not-italic normal-nums sm:text-4xl",
-  "brand.wordmark":
-    "font-brand text-xl font-normal leading-none tracking-tight normal-case not-italic normal-nums",
-
-  "prose.default":
-    "font-sans text-base font-normal leading-relaxed tracking-normal normal-case not-italic normal-nums [&_strong]:font-semibold [&_h1:not([data-prose-heading])]:text-2xl [&_h1:not([data-prose-heading])]:font-semibold [&_h2:not([data-prose-heading])]:text-xl [&_h2:not([data-prose-heading])]:font-semibold [&_h3:not([data-prose-heading])]:text-lg [&_h3:not([data-prose-heading])]:font-semibold [&_h4:not([data-prose-heading])]:text-base [&_h4:not([data-prose-heading])]:font-semibold [&_h5:not([data-prose-heading])]:text-base [&_h5:not([data-prose-heading])]:font-semibold [&_h6:not([data-prose-heading])]:text-base [&_h6:not([data-prose-heading])]:font-semibold [&_code]:font-mono [&_code]:text-label [&_table]:text-label [&_th]:text-label [&_th]:font-semibold",
-  "prose.compact":
-    "font-sans text-base font-normal leading-relaxed tracking-normal normal-case not-italic normal-nums [&_strong]:font-semibold [&_h1:not([data-prose-heading])]:text-base [&_h1:not([data-prose-heading])]:font-semibold [&_h2:not([data-prose-heading])]:text-base [&_h2:not([data-prose-heading])]:font-semibold [&_h3:not([data-prose-heading])]:text-base [&_h3:not([data-prose-heading])]:font-semibold [&_h4:not([data-prose-heading])]:text-base [&_h4:not([data-prose-heading])]:font-semibold [&_h5:not([data-prose-heading])]:text-base [&_h5:not([data-prose-heading])]:font-semibold [&_h6:not([data-prose-heading])]:text-base [&_h6:not([data-prose-heading])]:font-semibold [&_em]:text-base",
-
-  inherit:
-    "[font-family:inherit] [font-size:inherit] [font-weight:inherit] [line-height:inherit] [letter-spacing:inherit] [text-transform:inherit] [font-style:inherit] [font-variant-numeric:inherit]",
-} as const;
-
-export type TypographyRole = keyof typeof typographyRoles;
+export { typeStyle, typographyRoles };
+export type { TypographyRole };
 
 export const redactionLevels = ["clean", "35", "50", "70", "100"] as const;
 export type RedactionLevel = (typeof redactionLevels)[number];
@@ -95,10 +20,6 @@ const redactionFamilyClasses: Record<RedactionLevel, string> = {
   "70": "font-redaction70",
   "100": "font-redaction100",
 };
-
-export function typeStyle(role: TypographyRole): string {
-  return typographyRoles[role];
-}
 
 /** Selects a Redaction cut only through a brand role, never as a raw token. */
 export function redactionTypeStyle(

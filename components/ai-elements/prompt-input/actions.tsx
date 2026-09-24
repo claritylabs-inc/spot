@@ -2,7 +2,7 @@
 
 import {
   DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
 import { ImageIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";

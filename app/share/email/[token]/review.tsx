@@ -4,7 +4,7 @@ import { AlertTriangle, Check, Paperclip, Send } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { useState } from "react";
-import { SpotWordmark } from "@/components/ui/spot-wordmark";
+import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import type { EmailDraftReviewView } from "./view";

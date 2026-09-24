@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { useOnboardingCache } from "@/hooks/use-onboarding-cache";
 import { Loader2 } from "lucide-react";
 import {

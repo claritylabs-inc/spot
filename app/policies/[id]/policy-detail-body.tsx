@@ -12,7 +12,7 @@ import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { FadeIn } from "@/components/ui/fade-in";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { Archive, Clock3, Loader2, Plus, RotateCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -21,16 +21,16 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { StatusTag } from "@/components/ui/status-tag";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
   OperationalItem,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
   OperationalSkeletonList,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +38,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@claritylabs-inc/ui/components/dialog";
 import { usePdf } from "@/components/pdf-context";
 import {
   CertificateDetailPanel,

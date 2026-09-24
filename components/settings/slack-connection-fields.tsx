@@ -13,15 +13,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+} from "@claritylabs-inc/ui/components/select";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";

@@ -3,8 +3,8 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 
 export function PolicyDetailSkeleton() {
   return (

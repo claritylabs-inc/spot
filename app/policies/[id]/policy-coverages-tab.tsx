@@ -1,10 +1,10 @@
 "use client";
 
-import { FadeIn } from "@/components/ui/fade-in";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import {
   OperationalPanel,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 

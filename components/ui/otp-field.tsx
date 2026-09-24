@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { OTPFieldPreview as OTPField } from "@base-ui/react/otp-field";
+import { OTPField } from "@base-ui/react/otp-field";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 

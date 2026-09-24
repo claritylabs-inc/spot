@@ -11,9 +11,9 @@ import {
   OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,

@@ -53,9 +53,9 @@ import {
   useCachedAgentTargets,
   useThreadCacheActions,
 } from "@/lib/sync/spot-cached-queries";
-import { MessageMetaTag } from "@/components/ui/message-meta-tag";
+import { MessageMetaTag } from "@claritylabs-inc/ui/components/message-meta-tag";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { QuotedContent } from "@/components/conversation-message";
 import { EditableBreadcrumbTitle } from "@/components/editable-breadcrumb-title";
 import {
@@ -780,7 +780,7 @@ function MessageFooterActions({
           ) : backgroundMailboxIndexes.length > 1 ? (
             <>
               <MessageMetaTag
-                icon={<LogoIcon size={12} static className="h-3 w-3" />}
+                icon={<LogoIcon size={12} className="h-3 w-3" />}
                 label="Mailbox tasks"
                 count={backgroundMailboxIndexes.length}
                 isActive={isMailboxExpanded}
@@ -1428,7 +1428,6 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
         {isOperatorInitiated ? (
           <LogoIcon
             size={15}
-            static
             className="h-[15px] w-[15px]"
           />
         ) : (

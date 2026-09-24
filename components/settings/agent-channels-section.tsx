@@ -25,24 +25,24 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { FormSection } from "@/components/ui/form-section";
-import { Input } from "@/components/ui/input";
+} from "@claritylabs-inc/ui/components/dialog";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { StatusTag, type StatusIndicatorKind, type StatusPresentation, type StatusTagTone } from "@/components/ui/status-tag";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@claritylabs-inc/ui/components/select";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { StatusTag, type StatusIndicatorKind, type StatusPresentation, type StatusTagTone } from "@claritylabs-inc/ui/components/status-tag";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
 import { getPublicAgentDomain } from "@/lib/domains";
 import { openOAuthTab } from "@/lib/oauth-tab";

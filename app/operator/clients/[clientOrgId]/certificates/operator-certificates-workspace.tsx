@@ -14,8 +14,8 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalSkeletonList,
-} from "@/components/ui/operational-panel";
-import { StatusTag, type StatusIndicatorKind } from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { StatusTag, type StatusIndicatorKind } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,

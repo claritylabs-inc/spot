@@ -12,17 +12,17 @@ import { Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { FileDownloadButton } from "@/components/ui/file-download-button";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Select,
@@ -30,8 +30,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { StatusLabel, StatusTag } from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/select";
+import { StatusLabel, StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";

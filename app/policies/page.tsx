@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PolicyListItem } from "@/components/policy-list-item";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { useCachedPolicyList } from "@/lib/sync/spot-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import type { CarrierIdentity } from "@/convex/lib/carrierIdentity";

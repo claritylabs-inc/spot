@@ -1,6 +1,6 @@
 "use client";
 
-import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";

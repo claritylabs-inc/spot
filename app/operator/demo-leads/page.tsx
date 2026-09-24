@@ -14,7 +14,7 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { ActionSurface } from "@/components/ui/action-surface";
 import {
   Dialog,
@@ -23,8 +23,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { FadeIn } from "@/components/ui/fade-in";
+} from "@claritylabs-inc/ui/components/dialog";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";

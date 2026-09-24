@@ -1,4 +1,4 @@
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { typeStyle } from "@/lib/typography";
 
 export function AgentThinkingBubble() {

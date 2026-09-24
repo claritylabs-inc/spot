@@ -16,16 +16,16 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { StatusTag } from "@/components/ui/status-tag";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import {
   OperationalPanel,
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
-import { Input } from "@/components/ui/input";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { useActiveOrgContext } from "@/lib/hooks/use-active-org-context";

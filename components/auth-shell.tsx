@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { SpotWordmark } from "@/components/ui/spot-wordmark";
+import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import { typeStyle } from "@/lib/typography";
 
 export function BrandWordmark() {

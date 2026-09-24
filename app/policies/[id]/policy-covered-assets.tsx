@@ -3,7 +3,7 @@
 import {
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import type { CoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { typeStyle } from "@/lib/typography";
 

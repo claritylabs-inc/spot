@@ -2,8 +2,8 @@
 
 import { ChevronRight, CircleAlert, SquareTerminal } from "lucide-react";
 
-import { Spinner } from "@/components/ui/spinner";
-import { StatusTag, type StatusPresentation } from "@/components/ui/status-tag";
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
+import { StatusTag, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import type {
   OperatorAgentConfirmation,

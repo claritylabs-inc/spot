@@ -2,7 +2,7 @@
 
 import {
   InputGroupTextarea,
-} from "@/components/ui/input-group";
+} from "@claritylabs-inc/ui/components/input-group";
 import { cn } from "@/lib/utils";
 import type {
   ChangeEvent,

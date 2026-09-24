@@ -1,5 +1,5 @@
 "use client";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -21,14 +21,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import { typeStyle } from "@/lib/typography";
 import { useOperatorRouterCapabilities } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";

@@ -23,7 +23,7 @@ import { useSettingsActions } from "@/components/settings/settings-actions-conte
 import {
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import {

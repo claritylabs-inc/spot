@@ -23,14 +23,14 @@ import {
 } from "@/convex/lib/googleWorkspace";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
-import { FormSection } from "@/components/ui/form-section";
-import { Input } from "@/components/ui/input";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -38,9 +38,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { StatusTag, type StatusTagTone, type StatusIndicatorKind } from "@/components/ui/status-tag";
-import { Textarea } from "@/components/ui/textarea";
+} from "@claritylabs-inc/ui/components/select";
+import { StatusTag, type StatusTagTone, type StatusIndicatorKind } from "@claritylabs-inc/ui/components/status-tag";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";

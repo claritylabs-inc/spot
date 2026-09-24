@@ -4,16 +4,16 @@ import { lobLabel, toLobCodes } from "@/convex/lib/linesOfBusiness";
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
 import { BrandIcon } from "@/components/ui/brand-icon";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import {
   OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { Loader2, Pencil } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
 import {
   formatDisplayDate,

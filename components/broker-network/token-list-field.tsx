@@ -1,9 +1,9 @@
 "use client";
 
-import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 
 import { useState, type KeyboardEvent } from "react";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { typeStyle } from "@/lib/typography";
 
 export function TokenListField({

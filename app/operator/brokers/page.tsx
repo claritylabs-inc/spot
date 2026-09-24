@@ -16,13 +16,13 @@ import { OperatorSidebar } from "../operator-sidebar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { FileDropZone } from "@/components/ui/file-drop";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@claritylabs-inc/ui/components/tabs";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { typeStyle } from "@/lib/typography";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -30,12 +30,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   StatusTag,
   StatusLabel,
   type StatusPresentation,
-} from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,

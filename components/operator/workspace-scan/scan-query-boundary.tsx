@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, type ReactNode } from "react";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 

@@ -14,7 +14,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";

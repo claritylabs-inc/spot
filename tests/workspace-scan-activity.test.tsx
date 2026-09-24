@@ -40,7 +40,7 @@ vi.mock("@/components/settings/settings-drawer", () => ({
     </div>
   ),
 }));
-vi.mock("@/components/ui/searchable-select", () => ({
+vi.mock("@claritylabs-inc/ui/components/searchable-select", () => ({
   SearchableSelect: ({
     options,
     value,

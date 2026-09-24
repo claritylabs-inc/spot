@@ -11,7 +11,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import {
   StatusTag,
   type StatusTagTone,
-} from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/status-tag";
 import { ThreadAttachmentChip } from "../thread-attachment-chip";
 import {
   useCachedQuery,

@@ -22,20 +22,20 @@ import { AppShell } from "@/components/app-shell";
 import { PolicyCitation } from "@/components/context-reference-card";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { ActionSurface } from "@/components/ui/action-surface";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import {
   StatusTag,
   StatusLabel,
   type StatusTagTone,
-} from "@/components/ui/status-tag";
-import { FileDropZone } from "@/components/ui/file-drop";
-import { FormSection } from "@/components/ui/form-section";
-import { Input } from "@/components/ui/input";
+} from "@claritylabs-inc/ui/components/status-tag";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import {
   OperationalPanel,
   OperationalSkeletonList,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -43,7 +43,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   Table,
   TableBody,
@@ -52,8 +52,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -75,7 +75,7 @@ import { useCachedConnectedVendors } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery, useUpdateCachedQuery } from "@/lib/sync/use-cached-query";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 import { usePdf } from "@/components/pdf-context";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";

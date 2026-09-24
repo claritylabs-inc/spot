@@ -40,6 +40,33 @@ client and public projections, operator-only retrieval, rotation invalidation,
 and legacy/revoked/expired behavior. The fixture uses synthetic data and does not
 establish authenticated production workflow coverage.
 
+## Shared UI adoption — September 24, 2026
+
+Registry `@claritylabs-inc/ui@0.2.1` was installed with a clean `npm ci`.
+`node scripts/qa/capture-ui-adoption.mjs <output-dir> <local-url> <fresh-convex-log>`
+uses the seeded operator and fresh captured OTP, checks authenticated route entry,
+row/sidebar access, empty/filled create-form validation, Escape cancellation,
+client-side record navigation, and synthetic OAuth-error toast dismissal. It
+creates desktop (1440×900) and mobile (390×844) screenshots plus a private
+`auth-state.json`; never publish the auth state. No client or external connection
+is created. Install Playwright Chromium with `npx playwright install chromium`
+if absent. `npx convex logs` supplies the local capture log.
+
+Compare with `node scripts/qa/compare-ui-adoption.mjs <baseline-dir> <after-dir>
+<diff-dir>`. The comparator reports pixels with an RGB channel delta above 12.
+Baseline routes came from `f5039c7d709438a4f4a89c1d4d7f3f93ddb774a1`.
+The supplemental toast baseline uses that source with the installed dependency
+set and the equivalent Base UI OTP export rename. Evidence and the full file
+mapping are in [the review gallery](https://41841dba-c31c-4f23-801f-78831a73c9f0.conductor.show/)
+and `.context/qa/ui-adoption/`. These headless local Chrome checks do not establish
+production, dark-theme, or every-component parity. The shell adoption is deferred.
+The workflow passed. Fourteen of 16 screenshots have no changed pixels above the
+threshold; the OTP button edge differs by 3 pixels and the mobile drawer close
+icon by 17 (0.0052% of that image). Full pixel identity is not claimed.
+Validation passed: 138 test files / 761 tests, Next and Convex typechecks, worker
+builds, production build, package/router contracts, and lint (three existing
+warnings).
+
 ## Scripted user outcomes
 
 | ID | Actor / entrypoint | Steps and desired behavior |

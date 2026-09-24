@@ -20,7 +20,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { api } from "@/convex/_generated/api";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";

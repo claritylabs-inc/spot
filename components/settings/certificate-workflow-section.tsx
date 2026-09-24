@@ -10,7 +10,7 @@ import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import {
   OperationalPanel,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";

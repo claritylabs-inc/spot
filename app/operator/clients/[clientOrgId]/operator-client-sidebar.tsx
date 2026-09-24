@@ -130,7 +130,7 @@ export function OperatorClientSidebar({
           initials="OP"
           headerOrgName="Operator"
           onToggleCollapse={onToggleCollapse}
-          icon={<LogoIcon size={15} static />}
+          icon={<LogoIcon size={15} />}
         />
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";

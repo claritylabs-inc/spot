@@ -22,14 +22,14 @@ import {
   type CertificateVersionRecord,
   type PolicyCertificateRecord,
 } from "@/components/certificates/certificate-workspace";
-import { StatusLabel, StatusTag, type StatusPresentation } from "@/components/ui/status-tag";
+import { StatusLabel, StatusTag, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import {
   OperationalItem,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
   OperationalSkeletonList,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -37,8 +37,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@claritylabs-inc/ui/components/select";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePageContext } from "@/hooks/use-page-context";

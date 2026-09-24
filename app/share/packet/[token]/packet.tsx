@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { SpotWordmark } from "@/components/ui/spot-wordmark";
+import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import type { PacketView } from "./view";
 import { PacketDocument } from "./packet-document";
 import { typeStyle } from "@/lib/typography";

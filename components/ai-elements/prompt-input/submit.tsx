@@ -2,13 +2,13 @@
 
 import {
   InputGroupButton,
-} from "@/components/ui/input-group";
+} from "@claritylabs-inc/ui/components/input-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { cn } from "@/lib/utils";
 import type { ChatStatus } from "ai";
 import { CornerDownLeftIcon, SquareIcon, XIcon } from "lucide-react";

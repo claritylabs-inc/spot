@@ -13,12 +13,12 @@ import {
   type AutofillAddress,
 } from "@/components/ui/address-autofill-input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { FormSection } from "@/components/ui/form-section";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { PillButton } from "@/components/ui/pill-button";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";

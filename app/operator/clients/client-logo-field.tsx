@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import { FileDropZone } from "@/components/ui/file-drop";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import type { OperatorClientRow } from "./client-model";

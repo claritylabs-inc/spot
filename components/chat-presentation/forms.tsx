@@ -2,8 +2,8 @@
 
 import { useId, useRef, useState, type FormEvent } from "react";
 import dayjs from "dayjs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -12,7 +12,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import type {
   PresentationProps,
   PresentationReference,

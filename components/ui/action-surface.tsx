@@ -1,52 +1,27 @@
+import * as React from "react";
 import Link from "next/link";
-import type {
-  AnchorHTMLAttributes,
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  ReactNode,
-} from "react";
+import {
+  ActionSurface,
+  ActionSurfaceButton,
+  ActionSurfaceLink as BaseActionSurfaceLink,
+} from "@claritylabs-inc/ui/components/action-surface";
 
-import { cn } from "@/lib/utils";
+type BaseActionSurfaceLinkProps = React.ComponentProps<
+  typeof BaseActionSurfaceLink
+>;
 
-const actionSurfaceClass =
-  "rounded-lg border border-border bg-card text-left transition-colors hover:bg-foreground/[0.02]";
-
-function ActionSurface({
-  className,
-  children,
-  ...props
-}: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
-  return (
-    <div className={cn(actionSurfaceClass, className)} {...props}>
-      {children}
-    </div>
-  );
-}
-
-function ActionSurfaceButton({
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
-  return (
-    <button className={cn(actionSurfaceClass, className)} {...props}>
-      {children}
-    </button>
-  );
-}
-
+// Keep Next client navigation when rendering shared links.
 function ActionSurfaceLink({
-  className,
-  children,
+  href,
+  render,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement> & {
-  children: ReactNode;
-  href: string;
-}) {
+}: BaseActionSurfaceLinkProps) {
   return (
-    <Link className={cn(actionSurfaceClass, className)} {...props}>
-      {children}
-    </Link>
+    <BaseActionSurfaceLink
+      href={href}
+      render={render ?? <Link href={href} />}
+      {...props}
+    />
   );
 }
 

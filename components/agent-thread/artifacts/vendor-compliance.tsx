@@ -2,12 +2,12 @@
 
 import { X } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   StatusTag,
   type StatusTagTone,
-} from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/status-tag";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { VendorComplianceArtifactData, VendorComplianceArtifactRef } from "../types";
 import { formatDisplayDate } from "@/lib/date-format";

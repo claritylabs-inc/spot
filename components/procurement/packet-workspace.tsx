@@ -25,10 +25,10 @@ import {
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";

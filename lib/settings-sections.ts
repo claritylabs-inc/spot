@@ -48,7 +48,7 @@ export type SettingsNavGroup = {
 };
 
 function SpotStarIcon({ className }: { className?: string }) {
-  return createElement(LogoIcon, { size: 16, static: true, className });
+  return createElement(LogoIcon, { size: 16, className });
 }
 
 export function getSettingsNavigation({

@@ -7,7 +7,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { PolicyDetailBody } from "@/app/policies/[id]/policy-detail-body";
 import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   useCachedOperatorClients,

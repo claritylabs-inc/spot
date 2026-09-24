@@ -7,15 +7,15 @@ import { Loader2 } from "lucide-react";
 
 import { OperatorSidebar } from "@/app/operator/operator-sidebar";
 import { AppShell } from "@/components/app-shell";
-import { FadeIn } from "@/components/ui/fade-in";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { api } from "@/convex/_generated/api";

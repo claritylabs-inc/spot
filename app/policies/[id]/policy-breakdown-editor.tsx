@@ -5,8 +5,8 @@ import { useMutation } from "convex/react";
 import dayjs from "dayjs";
 import { Plus, Trash2 } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { api } from "@/convex/_generated/api";
@@ -17,7 +17,7 @@ import {
 } from "@/lib/sync/use-cached-query";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { FormSection } from "@/components/ui/form-section";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
 
 import {
   SourceEvidenceButton,

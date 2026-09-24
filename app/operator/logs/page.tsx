@@ -1,5 +1,5 @@
 "use client";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { useEffect, useMemo, useState } from "react";
 import type { FunctionReturnType } from "convex/server";
 import { useConvex, usePaginatedQuery } from "convex/react";
@@ -10,9 +10,9 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableHeader,

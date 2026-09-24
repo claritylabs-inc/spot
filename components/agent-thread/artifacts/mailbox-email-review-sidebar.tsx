@@ -28,7 +28,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   DropdownMenu,
@@ -38,7 +38,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
 import { typeStyle } from "@/lib/typography";
 
 type MailboxAttachment = {

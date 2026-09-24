@@ -5,7 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "lucide-react";
 import type { ComponentProps } from "react";

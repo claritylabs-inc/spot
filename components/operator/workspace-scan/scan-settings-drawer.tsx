@@ -17,11 +17,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 

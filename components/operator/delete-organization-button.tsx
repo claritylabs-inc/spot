@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 

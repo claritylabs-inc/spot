@@ -25,7 +25,7 @@ import { ProseMarkdown } from "@/components/prose-markdown";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { ReferenceLink, referenceHref, Sources } from "./references";
 import {
   ChoiceGroup,

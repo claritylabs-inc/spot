@@ -4,14 +4,14 @@ import { useEffect } from "react";
 import { BadgeCheck, Copy, Eye, Mail } from "lucide-react";
 import { toast } from "sonner";
 
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
   OperationalItem,
   OperationalPanel,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import {
   CertificatesTable,
   CERTIFICATE_PANEL_CONTAINER_CLASS,

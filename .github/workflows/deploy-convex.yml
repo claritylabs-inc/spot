@@ -18,6 +18,8 @@ concurrency:
 jobs:
   validate-root:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -122,6 +124,8 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs:
       - validate-root
       - validate-workers

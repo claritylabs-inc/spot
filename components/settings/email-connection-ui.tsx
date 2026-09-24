@@ -5,14 +5,14 @@ import { Mail } from "lucide-react";
 
 import type { Id } from "@/convex/_generated/dataModel";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 

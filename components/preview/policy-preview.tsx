@@ -13,7 +13,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { usePdf } from "@/components/pdf-context";
 import { useCachedPolicyDetail } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";

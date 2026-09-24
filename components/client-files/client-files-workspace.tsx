@@ -17,16 +17,16 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
-import { FileDownloadButton } from "@/components/ui/file-download-button";
+import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { FileDropZone } from "@/components/ui/file-drop";
-import { Input } from "@/components/ui/input";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
   OperationalPanel,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -34,7 +34,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   Table,
   TableBody,
@@ -43,8 +43,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDate } from "@/lib/date-format";
 import { inferAttachmentContentType } from "@/lib/thread-prompt";
 import { typeStyle } from "@/lib/typography";

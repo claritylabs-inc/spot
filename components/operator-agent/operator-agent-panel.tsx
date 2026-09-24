@@ -2,7 +2,7 @@
 
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
 
-import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 
 import {
   Fragment,
@@ -41,7 +41,7 @@ import {
 } from "@/components/spot-prompt-input";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,9 +51,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Spinner } from "@/components/ui/spinner";
-import { StatusTag, type StatusPresentation } from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
+import { StatusTag, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePageContext } from "@/hooks/use-page-context";
 import {
@@ -405,7 +405,7 @@ function EmptyThread({
 }) {
   return (
     <div className="flex min-h-full flex-col justify-center py-10">
-      <LogoIcon className="mb-4 text-muted-foreground" size={24} static />
+      <LogoIcon className="mb-4 text-muted-foreground" size={24} />
       <h2 className={cn("text-foreground", typeStyle("body.medium"))}>
         What do you need?
       </h2>

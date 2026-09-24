@@ -8,10 +8,10 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { StatusTag } from "@/components/ui/status-tag";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Table,
