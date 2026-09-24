@@ -1,0 +1,110 @@
+// Owner: P7 (docs/architecture/convex-section-extraction.md).
+// Spot-owned replacement for cl-sdk's `supplementary` extractor
+// (getExtractor("supplementary")). Prompt/schema semantics ported from
+// @claritylabs/cl-sdk 4.6.0 src/prompts/extractors/supplementary.ts so the
+// stored `supplementaryFacts` shape stays identical.
+
+import { z } from "zod";
+
+const SourceProvenanceSchema = z.object({
+  sourceSpanIds: z.array(z.string().min(1)).min(1),
+  documentNodeId: z.string().optional(),
+  sourceTextHash: z.string().optional(),
+  pageStart: z.number().int().positive().optional(),
+  pageEnd: z.number().int().positive().optional(),
+});
+
+const AddressSchema = z.object({
+  street1: z.string(),
+  street2: z.string().optional(),
+  city: z.string(),
+  state: z.string(),
+  zip: z.string(),
+  country: z.string().optional(),
+});
+
+const ContactSchema = z
+  .object({
+    name: z.string().optional(),
+    title: z.string().optional(),
+    type: z.string().optional(),
+    phone: z.string().optional(),
+    fax: z.string().optional(),
+    email: z.string().optional(),
+    address: AddressSchema.optional(),
+    hours: z.string().optional(),
+  })
+  .merge(SourceProvenanceSchema);
+
+export const AuxiliaryFactSchema = z.object({
+  key: z.string().describe("Normalized machine-readable fact key, e.g. 'policyholder_age' or 'insured_name'"),
+  value: z.string().describe("Concrete extracted fact value"),
+  subject: z.string().optional().describe("Person, entity, vehicle, property, or schedule item this fact belongs to"),
+  context: z.string().optional().describe("Short disambiguating context, such as 'Driver Schedule' or 'Named Insured'"),
+});
+
+export const SupplementarySchema = z.object({
+  regulatoryContacts: z
+    .array(ContactSchema)
+    .optional()
+    .describe("Regulatory body contacts (state department of insurance, ombudsman)"),
+  claimsContacts: z
+    .array(ContactSchema)
+    .optional()
+    .describe("Claims reporting contacts and instructions"),
+  thirdPartyAdministrators: z
+    .array(ContactSchema)
+    .optional()
+    .describe("Third-party administrators for claims handling"),
+  cancellationNoticeDays: z
+    .number()
+    .optional()
+    .describe("Required notice period for cancellation in days"),
+  nonrenewalNoticeDays: z
+    .number()
+    .optional()
+    .describe("Required notice period for nonrenewal in days"),
+  auxiliaryFacts: z
+    .array(AuxiliaryFactSchema)
+    .optional()
+    .describe("Additional retrieval-only facts that do not fit the strict primary schema"),
+});
+
+export type SupplementaryResult = z.infer<typeof SupplementarySchema>;
+
+export const SUPPLEMENTARY_MAX_TOKENS = 2048;
+
+export function buildSupplementaryPrompt(alreadyExtractedSummary?: string): string {
+  const exclusionBlock = alreadyExtractedSummary
+    ? `\n\nIMPORTANT — The following facts have ALREADY been captured by prior extraction passes. Do NOT re-extract any of these. Your job is to find ADDITIONAL information that is missing from this list:\n\n${alreadyExtractedSummary}\n`
+    : "";
+
+  return `You are an expert insurance document analyst. Extract supplementary, retrieval-only information from this document that is NOT already captured in the structured extraction results.
+${exclusionBlock}
+Focus on:
+- Regulatory contacts: state department of insurance, regulatory bodies, ombudsman offices — with phone, email, structured address
+- Claims contacts: how to report claims, claims department contact info, hours of operation
+- Third-party administrators (TPAs) for claims handling
+- Cancellation notice period in days
+- Nonrenewal notice period in days
+- Complaint filing procedures and contacts
+- Governing law or jurisdiction provisions
+- Additional policy-specific facts that are useful for memory and retrieval even if they do not belong in the strict primary schema
+
+Look for regulatory notices, complaint contact sections, claims reporting instructions, and cancellation/nonrenewal provisions throughout the document.
+
+Every regulatoryContacts, claimsContacts, and thirdPartyAdministrators row must include sourceSpanIds from the source evidence. Omit contacts when source spans are unavailable.
+
+For auxiliaryFacts:
+- ONLY capture facts that are NOT already present in the structured extraction results above.
+- Do not duplicate information that has already been extracted — no policy numbers, insured names, addresses, coverage limits, deductibles, or any other field that appears in the already-extracted data.
+- Capture concrete, policy-specific facts as structured key/value pairs.
+- Prioritize facts that agents may need later but that are often omitted from strict schemas: policyholder names, insured person names, driver names, ages, dates of birth, marital status, garaging information, lienholders, household members, vehicle assignments, schedule row details, and other discrete identifiers — but ONLY if they are not already in the extracted data.
+- Use short normalized keys like "policyholder_name", "policyholder_age", "insured_name", "driver_age", "driver_date_of_birth", "garaging_zip", "vehicle_principal_driver".
+- Use subject when the fact belongs to a specific person, vehicle, property, or scheduled item.
+- Do not invent facts.
+- Do not include vague boilerplate or generic form language.
+- Do not repeat large narrative excerpts; keep facts atomic.
+
+Return JSON only.`;
+}

@@ -11,7 +11,7 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { chunkDocument } from "@claritylabs/cl-sdk";
+import { chunkPolicyDocument } from "../lib/policyChunks";
 import type { Doc, Id } from "../_generated/dataModel";
 import { policyToInsuranceDoc } from "../lib/documentMapping";
 import { makeEmbedText } from "../lib/sdkCallbacks";
@@ -32,7 +32,7 @@ export const rechunkOne = internalAction({
 
     // Convert to InsuranceDocument and re-chunk
     const doc = policyToInsuranceDoc(policy);
-    const chunks = chunkDocument(doc);
+    const chunks = chunkPolicyDocument(doc);
 
     // Delete all existing chunks for this policy
     const existing = await ctx.runQuery(
