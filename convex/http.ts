@@ -5149,17 +5149,20 @@ http.route({
     } catch {
       return new Response(null, { status: 400 });
     }
-    const result = await ctx.runAction(
-      internal.actions.routerJobs.worker,
-      input,
-    );
+    // Router payloads carry JSON Schemas whose `$schema` keys are not valid Convex values.
+    const result = await ctx.runAction(internal.actions.routerJobs.worker, {
+      ...input,
+      payload: JSON.stringify(input.payload ?? null),
+    });
+    if ("resultJson" in result)
+      return new Response(`{"result":${result.resultJson}}`, {
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        },
+      });
     return Response.json(result, {
-      status:
-        "statusCode" in result
-          ? result.statusCode
-          : "pending" in result
-            ? 202
-            : 200,
+      status: "statusCode" in result ? result.statusCode : 202,
       headers: { "cache-control": "no-store" },
     });
   }),

@@ -25,17 +25,23 @@ export const worker = internalAction({
     leaseId: v.string(),
     orgId: v.id("organizations"),
     invocationKey: v.string(),
-    payload: v.any(),
+    payload: v.string(),
   },
   handler: async (
     ctx,
     args,
   ): Promise<
     | { pending: true }
-    | { result: unknown }
+    | { resultJson: string }
     | { status: "failed"; error: string; statusCode: 403 | 422 }
   > => {
     const { jobKind, jobId, leaseId, orgId } = args;
+    let payload: { orgId?: unknown } | null;
+    try {
+      payload = JSON.parse(args.payload);
+    } catch {
+      payload = null;
+    }
     const lease = await ctx.runQuery(
       internal.routerAssets.validateWorkerLease,
       { jobKind, jobId, leaseId, orgId },
@@ -49,8 +55,8 @@ export const worker = internalAction({
     if (
       !args.invocationKey ||
       args.invocationKey.length > 300 ||
-      !args.payload ||
-      args.payload.orgId !== orgId
+      !payload ||
+      payload.orgId !== orgId
     )
       return {
         status: "failed",
@@ -61,7 +67,7 @@ export const worker = internalAction({
       const result = await executeDurableRouterRequest(
         ctx,
         "generate",
-        args.payload,
+        payload,
         `worker:${jobKind}:${jobId}:${args.invocationKey}`,
       );
       const current = await ctx.runQuery(
@@ -74,7 +80,7 @@ export const worker = internalAction({
           error: "Inactive extraction lease",
           statusCode: 403,
         };
-      return { result };
+      return { resultJson: JSON.stringify(result) };
     } catch (error) {
       if (error instanceof RouterJobPending) return { pending: true };
       const row = await ctx.runQuery(internal.routerJobs.get, {
