@@ -1,6 +1,5 @@
 "use node";
 
-import dayjs from "dayjs";
 import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
@@ -8,8 +7,8 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 
 /**
- * Extract a bound policy from a manually uploaded PDF file.
- * Does not require an email connection — used for direct uploads.
+ * Extract a bound policy from a manually uploaded PDF file registered by
+ * policies.createClientUpload or policies.createOperatorUpload.
  * Thin wrapper — all extraction logic lives in policyExtraction.ts.
  */
 export const extractFromUpload = action({
@@ -27,9 +26,8 @@ export const extractFromUpload = action({
         }),
       ),
     ),
-    // Operator upload path: the policy row may already be registered before
-    // extraction starts.
-    policyId: v.optional(v.id("policies")),
+    // The placeholder policy row registered for this upload.
+    policyId: v.id("policies"),
   },
   returns: v.any(),
   handler: async (
@@ -38,27 +36,12 @@ export const extractFromUpload = action({
   ): Promise<
     { error: string } | { success: true; type: string; id: string }
   > => {
-    const operator = await ctx.runQuery(api.operator.current, {});
-    if (operator.activeImpersonation) {
-      return { error: "Stop impersonating before managing policies" };
-    }
-    const viewer = operator.user;
-
-    let orgId: Id<"organizations">;
-    if (args.policyId) {
-      const policy = (await ctx.runQuery(api.policies.get, {
-        id: args.policyId,
-      })) as { orgId?: Id<"organizations"> } | null;
-      if (!policy?.orgId) return { error: "Policy not found" };
-      orgId = policy.orgId;
-    } else {
-      const orgData = (await ctx.runQuery(api.orgs.viewerOrg, {})) as {
-        membership: { orgId: string };
-      } | null;
-      if (!orgData) return { error: "No organization" };
-      orgId = orgData.membership.orgId as Id<"organizations">;
-    }
-    const userId = viewer._id as Id<"users">;
+    const upload = await ctx.runQuery(api.policies.getUploadExtractionContext, {
+      policyId: args.policyId,
+      fileId: args.fileId,
+    });
+    const { orgId, userId } = upload;
+    if (!orgId || !userId) return { error: upload.error ?? "Upload not authorized" };
     const uploadFileSha256s = [
       args.fileSha256,
       ...(args.additionalFiles ?? []).map((file) => file.fileSha256),
@@ -99,27 +82,7 @@ export const extractFromUpload = action({
     const pdfUrl = await ctx.storage.getUrl(primaryFileId);
     if (!pdfUrl) return { error: "File not found in storage" };
 
-    // If a pre-created operator policyId is provided, use it;
-    // otherwise create a new placeholder policy record.
-    const policyId: Id<"policies"> =
-      args.policyId ??
-      (await ctx.runMutation(api.policies.insert, {
-        userId,
-        orgId,
-        fileId: primaryFileId,
-        fileName: primaryFileName,
-        uploadFileSha256s,
-        carrier: "Extracting...",
-        policyNumber: "Extracting...",
-        linesOfBusiness: ["UN"],
-        documentType: "policy",
-        policyYear: dayjs().year(),
-        effectiveDate: "Extracting...",
-        expirationDate: "Extracting...",
-        isRenewal: false,
-        coverages: [],
-        insuredName: "Extracting...",
-      }));
+    const policyId = args.policyId;
 
     // Create policyFile record for multi-file tracking
     const policyFileId: Id<"policyFiles"> = await ctx.runMutation(

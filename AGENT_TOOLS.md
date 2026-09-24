@@ -340,6 +340,44 @@ The tenant MCP catalog is separate from the model-callable tools above. It curre
 
 The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP action also passes the caller's write-scope state into the shared client-tool executors and mailbox coordinator, which removes nested write tools from the executable map for read-only tokens.
 
+## Browser WebMCP tools
+
+`lib/webmcp/catalog.ts` and `lib/webmcp/definitions/*` define the WebMCP tools
+Chrome agents can call in the Spot web app. `docs/architecture/webmcp.md` holds
+the per-page list and the UI parity table; `/llms.txt` is generated from the
+catalog. There are 137 tools. Seven are declarative, on the signup, login, and
+onboarding forms: `request_signup_code`, `verify_signup_code`,
+`request_login_code`, `verify_login_code`, `submit_user_profile`,
+`submit_company_profile`, and `finish_onboarding`. OTP verification stays
+mandatory. The other 130 are imperative. Client tools cover
+policies, certificates, compliance, requests, shared files, agent threads and
+drafted email, mailbox review items, notifications, connections, organization
+settings, team, agent channels, company wiki, workflow and notification
+settings, integrations, mailboxes, beta features, and the personal profile.
+Public token tools cover shared packets, shared email reviews, vendor
+invitations, and the model routing report.
+
+Effect and access:
+
+- Every tool executes its action directly with no confirmation step. That
+  includes `send_email_draft`, `send_email_drafts`, `send_shared_email_draft`,
+  invitations, removals, and deletions, the same as clicking in the UI.
+- Each tool calls the public Convex function the UI calls, under the same
+  session or page-token authorization, so it can do nothing the user cannot do.
+  `readOnlyHint` marks exactly the `list_*`, `get_*`, and `search_*` tools.
+  `consequentialHint` marks external sends, AI-cost, and irreversible actions,
+  and does not block.
+- Client tools register only for onboarded customer accounts in live client
+  orgs, never for operators or during impersonation, and only on their pages.
+  Admin-only UI actions register only for org admins.
+- Client members upload policies (`upload_policy`) and archive, restore, or
+  cancel extraction for their own uploads (`archive_policy`, `restore_policy`,
+  `cancel_policy_extraction`).
+- Actions clients cannot perform are not exposed: editing policy fields,
+  answering extraction review, and archiving staff-added policies; file
+  management; request editing and proposals; agent email handle edits; Slack
+  channel creation; and organization reset.
+
 ## Markdown frontends and MCP boundaries
 
 - Company knowledge is a standard `.md` document with YAML front matter. Direct members can read it; direct admins can import, edit, download and save it using revision checks. Automated facts preserve arbitrary authored prose and surface conflicts as proposed changes.

@@ -100,6 +100,7 @@ warnings).
 | ROUTING | Operator / Routing | Inspect Routing/Models/Tools, refresh, filters and details; verify long data/mobile rendering. Shared router changes are read-only during local QA. |
 | TELEMETRY | Operator / Telemetry | Switch extraction/model views, inspect empty/populated failures and drill-down, verify recoverable errors and navigation. |
 | LEADS | Operator / Demo leads | Inspect empty state and synthetic public chat if locally available, open lead details and conversation, preserve prospect privacy. |
+| WEBMCP | Agent / signup, onboarding, client workspace | Run `node scripts/webmcp-e2e.mjs --seeded-client adyan@cove.dev`. Declarative signup/login/onboarding tools respond with structured results. A brand-new business reaches its workspace without an invite. Every client UI action runs directly as a tool through the UI's Convex functions. Tools register only for onboarded clients on their pages, with admin tools for admins only and read-only hints on reads, and all unregister on sign-out. |
 | PUBLIC | Anonymous / share, OAuth, weather | Inspect valid synthetic packet/email/iMessage links where fixture exists; invalid tokens fail safely, OAuth invalid requests disclose no secrets, weather renders responsively. |
 
 ## Coverage ledger
@@ -126,6 +127,7 @@ baseline evidence, not a substitute for this run's regression checks.
 | AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits and survives reload; cancellation, archive/restore and mobile rendering passed. A synthetic PDF can be staged/removed/restaged, read accurately, reopened from history and previewed after reload. |
 | PACKET, PROPOSAL, EMAIL | Passed exercised local flows | Packet-file autosave, immutable/revoked snapshots, public download/privacy, proposal gap/staleness, two-PDF extraction/review and email replay/classification/revision/download passed. Concurrency/failed-switch safeguards covered by focused tests; advanced edges listed below. |
 | LEADS | Passed synthetic populated lifecycle | Keyboard detail opening, stored lead facts/conversation, delete cancellation, confirmed deletion and mobile rendering passed. Internal fixture creation does not prove live public-demo ingress. |
+| WEBMCP | Passed scripted headless run (September 24, 2026), with model steps blocked | 171/174 checks passed. The other 3 were blocked because the local router rejected every job with 422: deeper requirement check, requirement import, and agent drafting. Artifact: `.context/qa/webmcp/results.json` plus screenshots. The run executed 95 imperative and all 7 declarative tools against native-local Convex, with email in capture mode. Policy upload: the client drawer, `upload_policy` combined/separate/duplicate/non-PDF, a member-role upload, own-upload archive/restore/cancel, extraction started, and Archive shown only on client uploads. Direct Convex calls: operator upload still works; connected clients, broker orgs, staff-upload archive, and extraction on another user's policy are rejected. Extraction completion needs the extraction worker, which was not running. Not executed: Slack, IMAP mailbox, and destructive profile deletion. It used a stub `modelContext`. |
 | NOTIFICATIONS | Passed local tray workflow | Empty baseline and two synthetic user-scoped items; opening a thread marks one read, mark-all clears the badge, both read states persist after reload. No outbound deliveries. |
 
 ## Batch 1: broker editing and reusable method
@@ -635,3 +637,15 @@ before testing the mobile profile. Evidence and scripts are in
 `.context/qa/streaming/`. This VM has no visible desktop. Live provider-to-browser
 streaming, inline approvals, and completion cards were not exercised by this
 profile check; durable callback ordering and cancellation have backend coverage.
+
+## Client onboarding logo import — September 24, 2026
+
+Headless Chrome against the native-local Convex deployment used fresh captured
+local OTP sign-ups for three synthetic client users. A new client entering
+`vercel.com` in onboarding step 1 received a stored logo with no extra click.
+An org that already had an uploaded logo kept that exact storage ID after step 1
+set its website. An unreachable website produced no logo, no error toast, and a
+server warning; reloading onboarding and entering a reachable website retried and
+stored a logo. Settings → Organization showed no Research company action, and
+Pull from website replaced the logo. Evidence, `results.json`, and the repeatable
+script (`run.mjs`) are in `.context/qa/logo-onboarding/`.

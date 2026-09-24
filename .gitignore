@@ -55,6 +55,12 @@
 !/docs/procurement/
 /docs/procurement/*
 !/docs/procurement/data-inventory.md
+!/docs/architecture/
+/docs/architecture/*
+!/docs/architecture/backend-simplification.md
+!/docs/architecture/chat-presentations.md
+!/docs/architecture/router-jobs.md
+!/docs/architecture/webmcp.md
 !/docs/testing/
 /docs/testing/*
 !/docs/testing/README.md

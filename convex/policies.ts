@@ -13,13 +13,15 @@ import {
   getPolicyAccessForQuery,
   assertCanEditPolicyExtractedFields,
   assertCanUploadPolicy,
-  assertCanArchivePolicy,
+  assertCanManageUploadedPolicy,
+  assertCanReviewPolicyExtraction,
   assertCanReadPolicies,
   getOrgAccess,
   type OrgAccess,
 } from "./lib/access";
 import {
   assertImpersonatedSetupWrite,
+  getActiveOperatorImpersonation,
   requireOperator,
   requireOperatorForUser,
   writeOperatorAudit,
@@ -961,6 +963,7 @@ export const getSummary = query({
       dismissed: enrichedPolicy.dismissed,
       pipelineStatus: enrichedPolicy.pipelineStatus,
       pipelineError: enrichedPolicy.pipelineError,
+      uploadedBySide: enrichedPolicy.uploadedBySide,
       pipelineLog: enrichedPolicy.pipelineLog,
       extractionDataStage: effectiveExtractionDataStage(enrichedPolicy),
       extractionDataStageUpdatedAt: enrichedPolicy.extractionDataStageUpdatedAt,
@@ -1940,7 +1943,7 @@ export const answerCoverageReviewQuestion = mutation({
     const access = await getOrgAccess(ctx, policy.orgId, {
       allowOperator: true,
     });
-    assertCanUploadPolicy(access);
+    assertCanReviewPolicyExtraction(access);
     await assertImpersonatedSetupWrite(ctx, policy.orgId);
 
     const review = policy.extractionReview as
@@ -2237,6 +2240,106 @@ export const createOperatorUpload = mutation({
   },
 });
 
+/** Registers the placeholder policy row that extractFromUpload fills in. */
+async function insertUploadPlaceholder(
+  ctx: MutationCtx,
+  args: {
+    orgId: DataModelId<"organizations">;
+    fileId: DataModelId<"_storage">;
+    fileName?: string;
+    uploadFileSha256s?: string[];
+    uploadedBySide: "operator" | "client";
+    uploadedByUserId: DataModelId<"users">;
+  },
+): Promise<DataModelId<"policies">> {
+  const policyId = await ctx.db.insert("policies", {
+    orgId: args.orgId,
+    fileId: args.fileId,
+    fileName: args.fileName,
+    uploadFileSha256s: normalizeFileSha256s(args.uploadFileSha256s),
+    documentType: "policy",
+    carrier: "Extracting...",
+    policyNumber: "Extracting...",
+    linesOfBusiness: ["UN"],
+    policyYear: dayjs().year(),
+    effectiveDate: "Extracting...",
+    expirationDate: "Extracting...",
+    isRenewal: false,
+    coverages: [],
+    insuredName: "Extracting...",
+    extractionDataStage: "placeholder",
+    extractionDataStageUpdatedAt: nowMs(),
+    uploadedBySide: args.uploadedBySide,
+    uploadedByUserId: args.uploadedByUserId,
+  });
+  await syncPolicyUploadFingerprints(ctx, policyId);
+  return policyId;
+}
+
+// Client members upload into their own organization. The row keeps client
+// provenance so they can later archive or cancel it; extraction starts with
+// extractFromUpload.
+export const createClientUpload = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    fileId: v.id("_storage"),
+    fileName: v.optional(v.string()),
+    fileSha256: v.optional(v.string()),
+    uploadFileSha256s: v.optional(v.array(v.string())),
+    documentType: v.literal("policy"),
+  },
+  handler: async (ctx, args) => {
+    if (await getActiveOperatorImpersonation(ctx)) {
+      throw new Error("Stop impersonating before managing policies");
+    }
+    const access = await getOrgAccess(ctx, args.orgId);
+    assertCanUploadPolicy(access);
+    const fileSha256 = normalizeFileSha256(args.fileSha256);
+    return await insertUploadPlaceholder(ctx, {
+      orgId: args.orgId,
+      fileId: args.fileId,
+      fileName: args.fileName,
+      uploadFileSha256s: args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
+      uploadedBySide: "client",
+      uploadedByUserId: access.userId,
+    });
+  },
+});
+
+/**
+ * Authorizes extractFromUpload. Operators may extract any registered upload;
+ * client members only their own untouched client upload for that file.
+ */
+export const getUploadExtractionContext = query({
+  args: { policyId: v.id("policies"), fileId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const policy = await ctx.db.get(args.policyId);
+    if (!policy?.orgId) return { error: "Policy not found" };
+    if (await getActiveOperatorImpersonation(ctx)) {
+      return { error: "Stop impersonating before managing policies" };
+    }
+    const access = await getOrgAccess(ctx, policy.orgId, {
+      allowOperator: true,
+    });
+    assertCanUploadPolicy(access);
+    if (access.accessType !== "operator") {
+      const untouchedOwnUpload =
+        policy.uploadedBySide === "client" &&
+        policy.uploadedByUserId === access.userId &&
+        policy.fileId === args.fileId &&
+        effectiveExtractionDataStage(policy) === "placeholder" &&
+        !(await getPolicyExtractionRun(ctx, policy._id));
+      if (!untouchedOwnUpload) {
+        return {
+          error:
+            "Extraction can only start for your new upload. Use retry for existing policies.",
+        };
+      }
+    }
+    return { orgId: policy.orgId, userId: access.userId };
+  },
+});
+
 export async function createOperatorUploadByUser(
   ctx: MutationCtx,
   operatorUserId: DataModelId<"users">,
@@ -2255,30 +2358,15 @@ export async function createOperatorUploadByUser(
   if (!client || client.type !== "client") throw new Error("Client not found");
   const fileSha256 = normalizeFileSha256(args.fileSha256);
 
-  const policyId = await ctx.db.insert("policies", {
+  const policyId = await insertUploadPlaceholder(ctx, {
     orgId: args.clientOrgId,
     fileId: args.fileId,
     fileName: args.fileName,
-    uploadFileSha256s: normalizeFileSha256s(
-      args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
-    ),
-    documentType: args.documentType,
-    carrier: "Extracting...",
-    policyNumber: "Extracting...",
-    linesOfBusiness: ["UN"],
-    policyYear: dayjs().year(),
-    effectiveDate: "Extracting...",
-    expirationDate: "Extracting...",
-    isRenewal: false,
-    coverages: [],
-    insuredName: "Extracting...",
-    extractionDataStage: "placeholder",
-    extractionDataStageUpdatedAt: nowMs(),
+    uploadFileSha256s: args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
     uploadedBySide: "operator",
     uploadedByUserId: operator.userId,
   });
 
-  await syncPolicyUploadFingerprints(ctx, policyId);
   await writeOperatorAudit(ctx, {
     operatorUserId: operator.userId,
     type: "setup_write",
@@ -2368,7 +2456,7 @@ export const cancelExtraction = mutation({
     const access = await getOrgAccess(ctx, policy.orgId, {
       allowOperator: true,
     });
-    assertCanUploadPolicy(access);
+    assertCanManageUploadedPolicy(access, policy);
     await assertImpersonatedSetupWrite(ctx, policy.orgId);
     const { userId } = access;
     const orgId = policy.orgId;
@@ -2419,7 +2507,7 @@ export const archive = mutation({
     const access = await getOrgAccess(ctx, policy.orgId, {
       allowOperator: true,
     });
-    assertCanArchivePolicy(access, policy);
+    assertCanManageUploadedPolicy(access, policy);
     await assertImpersonatedSetupWrite(ctx, policy.orgId);
     if (policy.deletedAt) return;
     await ctx.db.patch(args.id, { deletedAt: dayjs().valueOf() });
@@ -2918,7 +3006,7 @@ export const restore = mutation({
     const access = await getOrgAccess(ctx, policy.orgId, {
       allowOperator: true,
     });
-    assertCanArchivePolicy(access, policy);
+    assertCanManageUploadedPolicy(access, policy);
     await assertImpersonatedSetupWrite(ctx, policy.orgId);
     if (!policy.deletedAt) return;
     await ctx.db.patch(args.id, { deletedAt: undefined });

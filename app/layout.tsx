@@ -4,6 +4,10 @@ import localFont from "next/font/local";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { ConvexClientProvider } from "@/components/providers";
 import { AuthGuard } from "@/components/auth-guard";
+import {
+  ClientWebMcpTools,
+  PublicWebMcpTools,
+} from "@/components/webmcp/client-webmcp-tools";
 import { AutoSaveStatusProvider } from "@/components/ui/auto-save-status";
 import { AppToaster } from "@/components/ui/toaster";
 import { SmoothCornersProvider } from "@claritylabs-inc/ui/components/smooth-corners-provider";
@@ -110,6 +114,7 @@ export default function RootLayout({
     <ConvexAuthNextjsServerProvider>
       <html lang="en" suppressHydrationWarning>
         <head>
+          <link rel="llms-txt" href="/llms.txt" type="text/plain" />
           <script
             dangerouslySetInnerHTML={{
               __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark");var b=localStorage.getItem("spot:boot-state");var s=localStorage.getItem("spot:sync-scope");if(b&&s){b=JSON.parse(b);s=JSON.parse(s);if(b&&s&&b.userId===s.userId&&b.orgId===s.orgId)window.__SPOT_BOOT__={accountKind:b.accountKind,onboardingComplete:b.onboardingComplete,membershipRole:b.membershipRole,userId:b.userId,orgId:b.orgId}}}catch(e){}})()`,
@@ -124,6 +129,8 @@ export default function RootLayout({
             <AutoSaveStatusProvider>
               <BrandThemeApplier />
               <AuthGuard>{children}</AuthGuard>
+              <ClientWebMcpTools />
+              <PublicWebMcpTools />
               <AppToaster />
             </AutoSaveStatusProvider>
           </ConvexClientProvider>

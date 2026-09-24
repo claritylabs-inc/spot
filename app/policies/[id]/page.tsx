@@ -28,6 +28,7 @@ export default function PolicyDetailPage({
         afterArchiveHref="/policies?view=archived"
         afterRestoreHref="/policies"
         readOnly
+        canManageOwnUploads
       />
     </AppShell>
   );

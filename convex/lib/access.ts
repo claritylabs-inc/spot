@@ -340,13 +340,25 @@ export function assertCanReadPolicies(access: OrgAccess): void {
   }
 }
 
+/** Operators, and members uploading into their own client organization. */
 export function assertCanUploadPolicy(access: OrgAccess): void {
-  if (access.accessType !== "operator") {
-    throwUserFacingError(
-      userFacingErrorCodes.readOnlyAccess,
-      "Policy uploads are managed by Spot staff.",
-    );
-  }
+  if (access.accessType === "operator") return;
+  if (access.accessType === "member" && access.orgType === "client") return;
+  throwUserFacingError(
+    userFacingErrorCodes.readOnlyAccess,
+    access.accessType === "connected_client"
+      ? "Connected organization access is read-only. Ask the vendor to upload the policy."
+      : "Policy uploads are available to client organizations.",
+  );
+}
+
+/** Answering extraction review questions stays with Spot staff. */
+export function assertCanReviewPolicyExtraction(access: OrgAccess): void {
+  if (access.accessType === "operator") return;
+  throwUserFacingError(
+    userFacingErrorCodes.readOnlyAccess,
+    "Extraction review is managed by Spot staff.",
+  );
 }
 
 export function assertCanEditPolicyExtractedFields(access: OrgAccess): void {
@@ -357,19 +369,28 @@ export function assertCanEditPolicyExtractedFields(access: OrgAccess): void {
   );
 }
 
-export function assertCanArchivePolicy(
+/**
+ * Archive, restore, and extraction cancellation: operators for any policy,
+ * client members only for policies their organization uploaded itself.
+ */
+export function assertCanManageUploadedPolicy(
   access: OrgAccess,
   policy: {
     uploadedBySide?: string;
   },
 ): void {
-  void policy;
-  if (access.accessType !== "operator") {
-    throwUserFacingError(
-      userFacingErrorCodes.readOnlyAccess,
-      "Policy archive changes are managed by Spot staff.",
-    );
+  if (access.accessType === "operator") return;
+  if (
+    access.accessType === "member" &&
+    access.orgType === "client" &&
+    policy.uploadedBySide === "client"
+  ) {
+    return;
   }
+  throwUserFacingError(
+    userFacingErrorCodes.readOnlyAccess,
+    "Only policies your organization uploaded can be changed here. Spot staff manage the rest.",
+  );
 }
 
 export function assertCanReadPolicy(access: OrgAccess): void {

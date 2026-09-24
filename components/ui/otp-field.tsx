@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { OTPField } from "@base-ui/react/otp-field";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
@@ -18,6 +18,8 @@ export function OtpField({
   required = false,
   className,
   id: idProp,
+  name,
+  paramDescription,
 }: {
   value: string;
   onValueChange: (value: string) => void;
@@ -28,12 +30,26 @@ export function OtpField({
   required?: boolean;
   className?: string;
   id?: string;
+  /** Names the hidden input that carries the whole code in form submissions. */
+  name?: string;
+  /** WebMCP `toolparamdescription` for the named hidden input. */
+  paramDescription?: string;
 }) {
   const generatedId = useId();
   const inputId = idProp ?? generatedId;
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!name || !paramDescription) return;
+    // Base UI renders the named hidden input beside the slot container.
+    rootRef.current?.parentElement
+      ?.querySelector(`input[name="${name}"]`)
+      ?.setAttribute("toolparamdescription", paramDescription);
+  }, [name, paramDescription]);
   return (
     <OTPField.Root
+      ref={rootRef}
       id={inputId}
+      name={name}
       length={length}
       value={value}
       onValueChange={onValueChange}
