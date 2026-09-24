@@ -109,7 +109,7 @@ disabling the switch restores manual approval for new calls. Tenant approvals
 are unchanged. References below to exact confirmation describe the default
 manual mode; the global switch can satisfy that gate automatically.
 
-Operator Settings also owns inviting a new Spot operator by exact company email. The invite creates or adopts the matching operator OTP identity, sends the operator-login link, and records an operator audit event. The same `invite_operator` action is available to active operators through the shared agent and operator MCP registry, with exact confirmation and impersonation protections.
+The operator Settings Team section (`/operator/settings?section=team`) owns inviting a new Spot operator by exact company email. The invite creates or adopts the matching operator OTP identity, sends the operator-login link, and records an operator audit event. The same `invite_operator` action is available to active operators through the shared agent and operator MCP registry, with exact confirmation and impersonation protections.
 
 ## Current procurement and ownership boundary
 

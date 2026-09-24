@@ -49,7 +49,12 @@ export function useMcpSettings(disabled: boolean) {
         <OperationalPanelHeader
           title="MCP servers"
           action={
-            <PillButton disabled={disabled} onClick={() => setSelected("new")}>
+            <PillButton
+              type="button"
+              size="compact"
+              disabled={disabled}
+              onClick={() => setSelected("new")}
+            >
               Add server
             </PillButton>
           }

@@ -7,7 +7,7 @@ import {
   SidebarMenuItem,
   SidebarTooltipProvider,
 } from "@/components/app-sidebar/nav-item";
-import { Settings, Route } from "lucide-react";
+import { Settings, Route, Users } from "lucide-react";
 import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -30,8 +30,11 @@ import { useOperatorInvite } from "@/components/operator/operator-invite-panel";
 export default function OperatorSettingsPage() {
   const current = useCachedOperatorCurrent();
   const invitations = useOperatorInvite(!current || Boolean(current.activeImpersonation));
+  const sectionParam = useSearchParams().get("section");
   const section =
-    useSearchParams().get("section") === "models" ? "models" : "general";
+    sectionParam === "models" || sectionParam === "team"
+      ? sectionParam
+      : "general";
   const overrides = useModelOverrides(
     !current || Boolean(current.activeImpersonation),
   );
@@ -66,17 +69,32 @@ export default function OperatorSettingsPage() {
               active={section === "models"}
               collapsed={collapsed}
             />
+            <SidebarMenuItem
+              href="/operator/settings?section=team"
+              icon={Users}
+              label="Team"
+              active={section === "team"}
+              collapsed={collapsed}
+            />
           </div>
         </SidebarTooltipProvider>
       )}
       customSidebarStorageKey="operator-sidebar"
-      rightPanel={section === "models" ? overrides.drawer : invitations.drawer ?? mcp.drawer}
+      rightPanel={
+        section === "models"
+          ? overrides.drawer
+          : section === "team"
+            ? invitations.drawer
+            : mcp.drawer
+      }
       actions={section === "models" ? overrides.action : undefined}
       disablePersistentChat
       disableCommandPalette
     >
       {section === "models" ? (
         overrides.panel
+      ) : section === "team" ? (
+        invitations.panel
       ) : !settings || !current ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -118,7 +136,6 @@ export default function OperatorSettingsPage() {
               </div>
             </OperationalPanelBody>
           </OperationalPanel>
-          {invitations.panel}
           {mcp.panel}
         </div>
       )}
