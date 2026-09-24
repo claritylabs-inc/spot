@@ -1,9 +1,24 @@
 const encoder = new TextEncoder();
 
+const MIN_SIGNING_SECRET_LENGTH = 32;
+
+// The signing key must survive router credential rotation, so it is a
+// dedicated var that falls back to CL_ROUTER_SECRET only until it is set.
+export function resolveRouterAssetSigningSecret(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): string | undefined {
+  const secret =
+    environment.CL_ROUTER_ASSET_SIGNING_SECRET?.trim() ||
+    environment.CL_ROUTER_SECRET?.trim();
+  return secret && secret.length >= MIN_SIGNING_SECRET_LENGTH
+    ? secret
+    : undefined;
+}
+
 export function routerAssetSigningConfiguration(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): { secret: string; siteUrl: string } {
-  const secret = environment.CL_ROUTER_SECRET?.trim();
+  const secret = resolveRouterAssetSigningSecret(environment);
   const siteUrl = environment.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
   if (!secret || !siteUrl)
     throw new Error("Router asset signing is not configured");

@@ -109,7 +109,7 @@ describe("router asset HTTP staging", () => {
 
   test("stores bytes server-side and binds download to the exact active lease", async () => {
     vi.stubEnv("EXTRACTION_WORKER_SECRET", "worker-secret");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
     vi.stubEnv("SPOT_ENV", "local");
     const { t, orgId, jobId } = await runningProposalJob();
@@ -168,10 +168,43 @@ describe("router asset HTTP staging", () => {
     ).toBe(404);
   });
 
+  test("signs and verifies downloads with CL_ROUTER_ASSET_SIGNING_SECRET, unaffected by CL_ROUTER_SECRET rotation", async () => {
+    vi.stubEnv("EXTRACTION_WORKER_SECRET", "worker-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
+    vi.stubEnv(
+      "CL_ROUTER_ASSET_SIGNING_SECRET",
+      "dedicated-signing-secret-that-is-at-least-32-chars",
+    );
+    vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
+    vi.stubEnv("SPOT_ENV", "local");
+    const { t, orgId, jobId } = await runningProposalJob();
+
+    const upload = await t.fetch("/router-assets/upload", {
+      method: "POST",
+      headers: uploadHeaders({ orgId, jobId }),
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(upload.status).toBe(201);
+    const result = (await upload.json()) as {
+      reference: { url: string };
+    };
+    const reference = new URL(result.reference.url);
+
+    const download = await t.fetch(`${reference.pathname}${reference.search}`);
+    expect(download.status).toBe(200);
+
+    // Rotating the router credential alone must not invalidate the signature.
+    vi.stubEnv("CL_ROUTER_SECRET", "rotated-router-secret-at-least-32-chars-long");
+    const afterRotation = await t.fetch(
+      `${reference.pathname}${reference.search}`,
+    );
+    expect(afterRotation.status).toBe(200);
+  });
+
   test("scheduled cleanup covers a response the worker never receives", async () => {
     vi.useFakeTimers();
     vi.stubEnv("EXTRACTION_WORKER_SECRET", "worker-secret");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
     vi.stubEnv("SPOT_ENV", "local");
     const { t, orgId, jobId } = await runningProposalJob();
@@ -194,7 +227,7 @@ describe("router asset signing configuration", () => {
     expect(
       routerAssetSigningConfiguration({
         SPOT_ENV: "dev",
-        CL_ROUTER_SECRET: "router-secret",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
         CONVEX_SITE_URL: "https://acoustic-caiman-755.convex.site",
       }),
     ).toMatchObject({
@@ -203,7 +236,7 @@ describe("router asset signing configuration", () => {
     expect(
       routerAssetSigningConfiguration({
         SPOT_ENV: "production",
-        CL_ROUTER_SECRET: "router-secret",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
         CONVEX_SITE_URL: "https://actions.spot.insure",
       }),
     ).toMatchObject({ siteUrl: "https://actions.spot.insure" });
@@ -217,11 +250,54 @@ describe("router asset signing configuration", () => {
       expect(() =>
         routerAssetSigningConfiguration({
           SPOT_ENV: "production",
-          CL_ROUTER_SECRET: "router-secret",
+          CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
           CONVEX_SITE_URL: siteUrl,
         }),
       ).toThrow("canonical router asset host");
     }
+  });
+
+  test("uses CL_ROUTER_ASSET_SIGNING_SECRET when set, independent of CL_ROUTER_SECRET", () => {
+    expect(
+      routerAssetSigningConfiguration({
+        SPOT_ENV: "local",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
+        CL_ROUTER_ASSET_SIGNING_SECRET:
+          "dedicated-signing-secret-that-is-at-least-32-chars",
+        CONVEX_SITE_URL: "http://localhost:3211",
+      }),
+    ).toMatchObject({
+      secret: "dedicated-signing-secret-that-is-at-least-32-chars",
+    });
+  });
+
+  test("falls back to CL_ROUTER_SECRET when CL_ROUTER_ASSET_SIGNING_SECRET is unset", () => {
+    expect(
+      routerAssetSigningConfiguration({
+        SPOT_ENV: "local",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
+        CONVEX_SITE_URL: "http://localhost:3211",
+      }),
+    ).toMatchObject({
+      secret: "router-secret-that-is-at-least-32-chars-long",
+    });
+  });
+
+  test("rejects a signing secret shorter than the minimum length", () => {
+    expect(() =>
+      routerAssetSigningConfiguration({
+        SPOT_ENV: "local",
+        CL_ROUTER_ASSET_SIGNING_SECRET: "too-short",
+        CONVEX_SITE_URL: "http://localhost:3211",
+      }),
+    ).toThrow("Router asset signing is not configured");
+    expect(() =>
+      routerAssetSigningConfiguration({
+        SPOT_ENV: "local",
+        CL_ROUTER_SECRET: "too-short",
+        CONVEX_SITE_URL: "http://localhost:3211",
+      }),
+    ).toThrow("Router asset signing is not configured");
   });
 });
 
@@ -278,7 +354,7 @@ describe("action-owned router asset cleanup", () => {
   });
 
   test("register failure with an initial delete failure schedules orphan cleanup", async () => {
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
     vi.stubEnv("SPOT_ENV", "local");
     const storageId = "storage-id" as Id<"_storage">;
@@ -307,7 +383,7 @@ describe("action-owned router asset cleanup", () => {
   });
 
   test("preserves registration failure when immediate orphan cleanup also fails", async () => {
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
     vi.stubEnv("SPOT_ENV", "local");
     const storageId = "storage-id" as Id<"_storage">;

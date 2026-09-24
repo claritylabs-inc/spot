@@ -245,12 +245,18 @@ async function prepareJob(
   }
 }
 
+function routerCredential(): string {
+  const secret = process.env.CL_ROUTER_SECRET?.trim();
+  if (!secret) throw new Error("CL_ROUTER_SECRET is required");
+  return secret;
+}
+
 async function routerControl(
   path: string,
   body: unknown | undefined,
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
-  const { secret } = routerAssetSigningConfiguration();
+  const secret = routerCredential();
   const base = process.env.CL_ROUTER_URL?.trim().replace(/\/+$/, "");
   if (!base) throw new Error("CL_ROUTER_URL is required");
   const url = new URL(base);

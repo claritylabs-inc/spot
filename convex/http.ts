@@ -40,6 +40,7 @@ import { getSlackMode } from "./lib/slackConfig";
 import { getOperatorSlackConfig } from "./lib/operatorSlackConfig";
 import { missingSlackHostScopes } from "./lib/slackOAuthPolicy";
 import {
+  resolveRouterAssetSigningSecret,
   routerAssetSigningConfiguration,
   signRouterAsset,
   verifyRouterAssetSignature,
@@ -278,7 +279,7 @@ const routerAssetDownload = httpAction(async (ctx, request) => {
   const assetId = url.searchParams.get("assetId");
   const expiresAt = Number(url.searchParams.get("expiresAt"));
   const signature = url.searchParams.get("signature");
-  const secret = process.env.CL_ROUTER_SECRET?.trim();
+  const secret = resolveRouterAssetSigningSecret();
   if (
     !assetId ||
     !signature ||

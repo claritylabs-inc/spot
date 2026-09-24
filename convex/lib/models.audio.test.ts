@@ -56,7 +56,7 @@ describe("audio transcription routing", () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const ctx = context();
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
       routerResponse(),
@@ -114,7 +114,7 @@ describe("audio transcription routing", () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const ctx = context();
     const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json(

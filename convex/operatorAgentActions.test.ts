@@ -20,7 +20,7 @@ afterEach(() => {
 
 test("operator web research preserves router source evidence on replay and rejects revoked operators", async () => {
   vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-  vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+  vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
   vi.stubEnv("SPOT_ENV", "local");
   vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
   const t = convexTest(schema, modules);

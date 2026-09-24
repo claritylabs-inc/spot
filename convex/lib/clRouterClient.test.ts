@@ -270,21 +270,21 @@ describe("Spot router asset URL allowlist", () => {
     expect(
       routerAssetSigningConfiguration({
         SPOT_ENV: "production",
-        CL_ROUTER_SECRET: "secret",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
         CONVEX_SITE_URL: "https://actions.spot.insure",
       }).siteUrl,
     ).toBe("https://actions.spot.insure");
     expect(
       routerAssetSigningConfiguration({
         SPOT_ENV: "dev",
-        CL_ROUTER_SECRET: "secret",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
         CONVEX_SITE_URL: "https://acoustic-caiman-755.convex.site",
       }).siteUrl,
     ).toBe("https://acoustic-caiman-755.convex.site");
     expect(() =>
       routerAssetSigningConfiguration({
         SPOT_ENV: "production",
-        CL_ROUTER_SECRET: "secret",
+        CL_ROUTER_SECRET: "router-secret-that-is-at-least-32-chars-long",
         CONVEX_SITE_URL: "https://merry-platypus-82.convex.site",
       }),
     ).toThrow(/canonical router asset host/);
