@@ -1933,19 +1933,27 @@ export function makePhases(
           await listSectionResults(convexCtx, policyId, plan.planHash),
         );
         if (outputs) {
-          const preview = await writeDeclarationsPreview(
-            convexCtx,
-            policyId,
-            outputs.flatMap(({ result }) =>
-              result.kind === "declarations" ? [result.output] : [],
-            ),
-            declarationsModel,
-          );
-          await pCtx.log(
-            preview.updated
-              ? "Provisional policy details are ready from the declarations"
-              : `Provisional policy details skipped (${preview.reason ?? "not updated"})`,
-          );
+          // The preview is provisional; it never fails the extraction.
+          try {
+            const preview = await writeDeclarationsPreview(
+              convexCtx,
+              policyId,
+              outputs.flatMap(({ result }) =>
+                result.kind === "declarations" ? [result.output] : [],
+              ),
+              declarationsModel,
+            );
+            await pCtx.log(
+              preview.updated
+                ? "Provisional policy details are ready from the declarations"
+                : `Provisional policy details skipped (${preview.reason ?? "not updated"})`,
+            );
+          } catch (error) {
+            await pCtx.log(
+              `Provisional policy details failed: ${error instanceof Error ? error.message : String(error)}`,
+              "warn",
+            );
+          }
           nextState.previewWritten = true;
         }
       }

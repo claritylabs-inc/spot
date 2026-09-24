@@ -512,6 +512,7 @@ export function mergeSectionResults(args: {
     existing.address ??= party.address;
   };
 
+  // Earlier rows win matching coverages (existing mergeCoverageRows semantics).
   let coverages: CoverageLike[] = [];
   const addCoverageRows = (rows: CoverageLike[]) => {
     coverages =
@@ -529,6 +530,7 @@ export function mergeSectionResults(args: {
       declarations.map(({ section, output }) => ({ section, value: pick(output) })),
     );
 
+  // Declarations: core metadata, parties, premium, and the first coverage rows.
   const declarationFacts: RawOperationalProfile["declarationFacts"] = [];
   const premiumBreakdown: Array<Record<string, unknown>> = [];
   const formInventory: Array<Record<string, unknown>> = [];
@@ -565,6 +567,7 @@ export function mergeSectionResults(args: {
     }),
   );
 
+  // Schedules and coverage forms add rows and terms under the declarations.
   const coverageSchedules: CoverageSchedule[] = [];
   for (const { section, output } of ofKind(args.results, "schedule")) {
     for (const schedule of output.schedules) {
@@ -676,6 +679,7 @@ export function mergeSectionResults(args: {
     );
   }
 
+  // Endorsements apply their party and coverage changes last, in page order.
   const endorsementSupport: RawOperationalProfile["endorsementSupport"] = [];
   const endorsementRecords: Array<Record<string, unknown>> = [];
   for (const { section, output } of ofKind(args.results, "endorsement")) {
