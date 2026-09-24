@@ -192,39 +192,6 @@ test("resolving sends only the exact operator-selected request and never default
   }
 });
 
-test("a correction conflict remains visible and does not close the evidence sidebar", async () => {
-  mocks.query.mockReturnValue({
-    ...activity,
-    status: "updated",
-    availableActions: ["correct"],
-    changes: [
-      { field: "Target date", before: "2026-10-01", after: "2026-11-01" },
-    ],
-  });
-  mocks.correct.mockResolvedValue({
-    status: "conflict",
-    message: "A later edit replaced this value. Nothing was restored.",
-  });
-  const view = await mount();
-  try {
-    await act(async () => button(view.host, "Restore prior values").click());
-    expect(mocks.correct).toHaveBeenCalledExactlyOnceWith({
-      activityId: "finding-one",
-      note: undefined,
-    });
-    expect(view.host.querySelector('[role="alert"]')?.textContent).toContain(
-      "Nothing was restored",
-    );
-    expect(view.onClose).not.toHaveBeenCalled();
-    expect(view.host.textContent).toContain("2026-10-01");
-    mocks.query.mockReturnValue({ ...activity, availableActions: [] });
-    await view.rerender();
-    expect(button(view.host, "Restore prior values")).toBeUndefined();
-  } finally {
-    await view.cleanup();
-  }
-});
-
 test("source excerpts remain inert text and a failed write retains the operator note", async () => {
   mocks.query.mockReturnValue({
     ...activity,

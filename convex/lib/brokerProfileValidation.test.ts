@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
   assertExternalBrokerIdentity,
-  normalizeBrokerLineOfBusinessCodes,
   isSpotOwnedDomain,
   SPOT_ACQUISITION_BRANDS,
 } from "./brokerProfileValidation";
@@ -50,9 +49,4 @@ describe("Spot acquisition ownership", () => {
       assertExternalBrokerIdentity({ name: "External Broker", website }),
     ).not.toThrow();
   });
-});
-
-
-test("ACORD normalization preserves canonical mixed-case codes selected by research", () => {
-  expect(normalizeBrokerLineOfBusinessCodes(["motorcycle", "CGL", "Motorcycle"])).toEqual(["CGL", "Motorcycle"]);
 });

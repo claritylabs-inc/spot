@@ -2,6 +2,16 @@
 
 Guidance for any coding agent working in this repository: Codex, Claude Code, Cursor, or similar tools.
 
+## Current testing boundary
+
+Never write unit tests after you write code.
+
+Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of E2E tests, produce a verifiable and repeatable artifact.
+
+If you must test a system in isolation, first write down all the ways it could fail, then write the code.
+
+Do not add Vitest/Jest/component tests to lock in implementation details, presentation, or behavior already covered by browser workflow QA. Keep an isolation test only when it can catch a real bug that the E2E suite would miss (authorization, tenant isolation, webhook/signature/replay, worker protocol, leases/idempotency, fail-closed security, or a compact domain invariant). `docs/testing/workflow-qa.md` owns the E2E coverage ledger and artifact location.
+
 ## Current Markdown and client-information boundary
 
 Routine query, filtering, calculation, authorization, source-evidence, and workflow values remain typed fields. The narrowed schema removes verified unused state; mutable narrative is stored as standard `.md` content with YAML front matter in `markdownDocuments`. Each document has a filename, raw Markdown, indexed owner/kind, revision, and update timestamp. Front matter never grants access or changes ownership. Company wikis, the two procurement files, requirement/holder notes, and certificate review/delivery notes use this owner. Each procurement request has exactly `private.md` for internal work and `public.md` for shared material; intake, broker history, follow-ups, and file-handling prose belong in those files, with no separate intake, log, or file-note documents. Existing issued packet/certificate snapshots remain immutable evidence.
@@ -237,8 +247,7 @@ Page tabs use plain navigation labels, without status indicators. Always retain 
 - Operator portal route tabs use the shared pill treatment (`TabsList variant="pill"`). Content beneath an active tab does not repeat the tab name in a panel header or add an explanatory card subtitle. Prefer `OperationalLabelValueList` and `OperationalLabelValueRow` over asymmetric multi-column detail layouts; when short facts and long prose coexist, place compact value pairs in a top card and long-form rows in a separate card below.
 - Follow `docs/design/interface-style.md` for browser colors, border strength, spacing, surface choice, card use, shape, elevation, and responsive layout. Follow `docs/design/typography.md` for browser text roles.
 - All tables use rows for readable data and keyboard-accessible sidebar navigation. When a record has a full detail page, its name uses `TableNameLink` from `components/ui/table.tsx`: hover underlines the name, clicking it navigates directly, and clicking elsewhere on the row opens the sidebar. Name links preserve native keyboard and new-tab behavior without triggering row selection. Do not put action buttons, action menus, edit controls, or dropzones in table rows. Put editing and upload controls in the sidebar and all record actions in its footer. Keep sidebar sections quiet: omit headings that merely repeat what filenames or controls already identify. Upload and extraction progress belongs in toasts, not notes embedded in or beneath dropzones. Broker/client selectors show the organization's `OrgBrandIcon` beside both options and the selected name.
-- For iterative visible cloud-Chrome workflow QA, follow `.agents/skills/cl-workflow-qa/SKILL.md` and maintain the scripts and coverage ledger in `docs/testing/workflow-qa.md`; route loads alone do not establish passed workflow coverage.
-- Follow `docs/testing/README.md` when deciding whether a change needs automated coverage. Prefer a small number of durable, risk-focused tests over broad implementation or UI coverage.
+- For iterative visible cloud-Chrome workflow QA, follow `.agents/skills/cl-workflow-qa/SKILL.md` and maintain the scripts and coverage ledger in `docs/testing/workflow-qa.md`; route loads alone do not establish passed workflow coverage. Follow the Current testing boundary above: never write unit tests after code, prefer E2E with a verifiable artifact, and only write isolation tests after listing failure modes first.
 
 - Time limits must protect a concrete boundary: authentication/replay protection, abandoned-job recovery, temporary-file cleanup, bounded provider calls, or diagnostic retention. Human approvals, signed Slack controls, iMessage task continuity, and unread notifications do not expire by age. New broker packet links have no default expiry or maximum lifetime; explicitly requested expirations and existing stored link expirations remain enforced. Revocation and replacement invalidate access immediately.
 - Operator Slack/iMessage callers retain a bounded synchronous wait, then schedule `convex/actions/operatorChannelDelivery.ts` to poll the persisted run and deliver its terminal response or next confirmation. Crossing the request budget never fails or cancels a live task. Deferred delivery revalidates the operator, uses the original channel and delivery key, and routes iMessage only through the separate operator worker. Worker/network request timeouts remain transport safeguards.

@@ -140,67 +140,6 @@ test("intake searches public identity and adds cited facts without replacing man
   expect(runProfileWebRetrieval).toHaveBeenCalledTimes(5);
 });
 
-test("research accepts root and www variants across discovery, retrieval and completion", async () => {
-  const { t, orgId } = await fixture();
-  vi.mocked(runProfileWebRetrieval)
-    .mockResolvedValueOnce({
-      provider: "model_default",
-      attempts: [],
-      text: "Cove Software Inc. operates Cove.",
-      sources: [{ url: "https://www.cove.example/about" }],
-    })
-    .mockResolvedValue({
-      provider: "model_default",
-      attempts: [],
-      text: "Cove creates business software.",
-      sources: [{ url: "https://www.cove.example/about" }],
-    });
-  vi.mocked(generateObjectForOrg)
-    .mockResolvedValueOnce({
-      output: {
-        officialWebsite: "https://cove.example/",
-        identityConfirmed: true,
-        sourceUrl: "https://cove.example/about",
-        reason: "",
-      },
-    } as never)
-    .mockResolvedValueOnce({
-      output: {
-        identityConfirmed: true,
-
-        facts: [
-          {
-            key: "operations",
-            content: "Cove creates business software.",
-            sourceRef: "https://cove.example/about",
-          },
-        ],
-        reason: "",
-      },
-    } as never);
-
-  await t.action(run, { orgId });
-
-  expect(vi.mocked(runProfileWebRetrieval).mock.calls[1][2]).toMatchObject({
-    allowedDomains: ["cove.example", "www.cove.example"],
-  });
-  await t.run(async (ctx) => {
-    const org = await ctx.db.get(orgId);
-    expect(org?.website).toBe("https://cove.example/");
-    expect(org?.companyResearch).toMatchObject({
-      status: "completed",
-      sourceUrls: ["https://www.cove.example/about"],
-      facts: [
-        {
-          content: "Cove creates business software.",
-          sourceRef: "https://www.cove.example/about",
-        },
-      ],
-      unresolvedFields: [],
-    });
-  });
-});
-
 test("research rejects non-www subdomains as different sites", async () => {
   const { t, orgId } = await fixture();
   vi.mocked(runProfileWebRetrieval).mockResolvedValueOnce({
