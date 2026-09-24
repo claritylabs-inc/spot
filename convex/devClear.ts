@@ -33,7 +33,6 @@ const TABLES: TableNames[] = [
   "certificateWorkflowJobs",
   "notifications",
   "notificationPreferences",
-  "documentChunks",
   "sourceSpans",
   "sourceNodes",
   "policyAuditLog",

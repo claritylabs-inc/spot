@@ -39,7 +39,7 @@ import {
 } from "./complianceAgent";
 import { coverageBreakdownForTool } from "./coverageBreakdown";
 import { orgLabelForScope, type AgentScope } from "./agentScope";
-import { searchPolicyDocumentWithSourceSpans } from "./policyLookup";
+import { searchPolicySourceEvidence } from "./policyLookup";
 import { resolvePolicyReferenceForOrg } from "./policyToolResolution";
 import { buildVendorComplianceTools } from "./vendorComplianceTools";
 import type { RequirementScope } from "./complianceTypes";
@@ -883,7 +883,7 @@ export function buildAgentToolExecutors(
             )
             .catch(() => undefined);
         }
-        const evidence = await searchPolicyDocumentWithSourceSpans(
+        const evidence = await searchPolicySourceEvidence(
           ctx,
           resolved.policy,
           params.query,

@@ -226,3 +226,41 @@ export const deleteByPolicy = internalMutation({
     return { deleted: spans.length };
   },
 });
+
+/** Full-text span hits for agent policy search, plus the parent span text of each hit for context. */
+export const searchInternal = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    policyId: v.optional(v.id("policies")),
+    sourceUnit: v.optional(v.string()),
+    query: v.string(),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const spans = await ctx.db
+      .query("sourceSpans")
+      .withSearchIndex("search_text", (q) => {
+        let search = q.search("text", args.query).eq("orgId", args.orgId);
+        if (args.policyId) search = search.eq("policyId", args.policyId);
+        if (args.sourceUnit) search = search.eq("sourceUnit", args.sourceUnit);
+        return search;
+      })
+      .take(Math.max(1, Math.min(Math.floor(args.limit), 100)));
+
+    const parents: Array<{ spanId: string; text: string }> = [];
+    const seenParents = new Set<string>();
+    for (const span of spans) {
+      const parentSpanId = span.parentSpanId;
+      if (!span.policyId || !parentSpanId || seenParents.has(parentSpanId)) continue;
+      seenParents.add(parentSpanId);
+      const parent = await ctx.db
+        .query("sourceSpans")
+        .withIndex("policy_span", (q) =>
+          q.eq("policyId", span.policyId).eq("spanId", parentSpanId),
+        )
+        .first();
+      if (parent) parents.push({ spanId: parent.spanId, text: parent.text });
+    }
+    return { spans, parents };
+  },
+});

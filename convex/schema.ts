@@ -3510,9 +3510,7 @@ export default defineSchema({
     .index("user_organization", ["userId", "orgId"])
     .index("preference_scope", ["userId", "orgId", "type", "channel"]),
 
-  // ── Vector Search (cl-sdk 0.5.0+) ──
-
-  // Document chunks for semantic search over extracted bound policy content
+  // Deprecated: chunk retrieval removed; drop after data cleanup.
   documentChunks: defineTable({
     orgId: v.id("organizations"),
     policyId: v.id("policies"),
@@ -3563,7 +3561,11 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("span", ["spanId"])
     .index("policy_span", ["policyId", "spanId"])
-    .index("policy_parent", ["policyId", "parentSpanId"]),
+    .index("policy_parent", ["policyId", "parentSpanId"])
+    .searchIndex("search_text", {
+      searchField: "text",
+      filterFields: ["orgId", "policyId", "sourceUnit"],
+    }),
 
   // Source-tree hierarchy over raw source spans. This is the canonical
   // retrieval/index layer for policy wording and source-backed facts.
@@ -3591,7 +3593,11 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("node", ["nodeId"])
     .index("policy_node", ["policyId", "nodeId"])
-    .index("policy_parent", ["policyId", "parentNodeId"]),
+    .index("policy_parent", ["policyId", "parentNodeId"])
+    .searchIndex("search_description", {
+      searchField: "description",
+      filterFields: ["orgId", "policyId"],
+    }),
 
   policyDeclarationFacts: defineTable({
     orgId: v.id("organizations"),
