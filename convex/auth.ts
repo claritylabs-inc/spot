@@ -14,7 +14,6 @@ import { generateOtpCode } from "./lib/otp";
 const rateLimiter = new RateLimiter(components.rateLimiter, {
   codeEmailPerMinute: { kind: "token bucket", rate: 1, period: MINUTE },
   codeEmailPerHour: { kind: "token bucket", rate: 5, period: HOUR },
-  codeEmailGlobal: { kind: "token bucket", rate: 500, period: 24 * HOUR },
 });
 
 // Throwing rolls back every limit consumed here, so a blocked request costs nothing.
@@ -25,7 +24,6 @@ export const consumeCodeEmailRateLimit = internalMutation({
     const statuses = [
       await rateLimiter.limit(ctx, "codeEmailPerMinute", { key }),
       await rateLimiter.limit(ctx, "codeEmailPerHour", { key }),
-      await rateLimiter.limit(ctx, "codeEmailGlobal"),
     ];
     const retryAfter = Math.max(0, ...statuses.map((s) => s.retryAfter ?? 0));
     if (statuses.some((s) => !s.ok)) {
