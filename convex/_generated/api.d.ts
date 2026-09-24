@@ -68,7 +68,6 @@ import type * as actions_slackPresentation from "../actions/slackPresentation.js
 import type * as actions_slackReconciliation from "../actions/slackReconciliation.js";
 import type * as actions_threadTitle from "../actions/threadTitle.js";
 import type * as actions_vendorComplianceMonitor from "../actions/vendorComplianceMonitor.js";
-import type * as actions_workerRouterTransportSmoke from "../actions/workerRouterTransportSmoke.js";
 import type * as agentChannels from "../agentChannels.js";
 import type * as agentHistory from "../agentHistory.js";
 import type * as agentTargets from "../agentTargets.js";
@@ -101,7 +100,6 @@ import type * as emailDeliveryAttempts from "../emailDeliveryAttempts.js";
 import type * as emailDraftReviewLinks from "../emailDraftReviewLinks.js";
 import type * as emailSendAuthorizations from "../emailSendAuthorizations.js";
 import type * as employeeProvisioning from "../employeeProvisioning.js";
-import type * as externalExtractionPayload from "../externalExtractionPayload.js";
 import type * as extractionAccess from "../extractionAccess.js";
 import type * as extractionIntegrityAudit from "../extractionIntegrityAudit.js";
 import type * as extractionProgress from "../extractionProgress.js";
@@ -227,7 +225,6 @@ import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmail
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
 import type * as lib_linesOfBusiness from "../lib/linesOfBusiness.js";
-import type * as lib_liteparsePreprocessor from "../lib/liteparsePreprocessor.js";
 import type * as lib_localSeedData from "../lib/localSeedData.js";
 import type * as lib_magicLinkTokens from "../lib/magicLinkTokens.js";
 import type * as lib_mailboxAutomation from "../lib/mailboxAutomation.js";
@@ -289,6 +286,7 @@ import type * as lib_procurementCompletionOutcome from "../lib/procurementComple
 import type * as lib_procurementNarrative from "../lib/procurementNarrative.js";
 import type * as lib_procurementPacket from "../lib/procurementPacket.js";
 import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrchestrator.js";
+import type * as lib_proposalAggregation from "../lib/proposalAggregation.js";
 import type * as lib_proposalMarkdown from "../lib/proposalMarkdown.js";
 import type * as lib_proposalReview from "../lib/proposalReview.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
@@ -394,7 +392,6 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
-import type * as workerRouterTransportSmoke from "../workerRouterTransportSmoke.js";
 
 import type {
   ApiFromModules,
@@ -463,7 +460,6 @@ declare const fullApi: ApiFromModules<{
   "actions/slackReconciliation": typeof actions_slackReconciliation;
   "actions/threadTitle": typeof actions_threadTitle;
   "actions/vendorComplianceMonitor": typeof actions_vendorComplianceMonitor;
-  "actions/workerRouterTransportSmoke": typeof actions_workerRouterTransportSmoke;
   agentChannels: typeof agentChannels;
   agentHistory: typeof agentHistory;
   agentTargets: typeof agentTargets;
@@ -496,7 +492,6 @@ declare const fullApi: ApiFromModules<{
   emailDraftReviewLinks: typeof emailDraftReviewLinks;
   emailSendAuthorizations: typeof emailSendAuthorizations;
   employeeProvisioning: typeof employeeProvisioning;
-  externalExtractionPayload: typeof externalExtractionPayload;
   extractionAccess: typeof extractionAccess;
   extractionIntegrityAudit: typeof extractionIntegrityAudit;
   extractionProgress: typeof extractionProgress;
@@ -622,7 +617,6 @@ declare const fullApi: ApiFromModules<{
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
   "lib/jevThreshold": typeof lib_jevThreshold;
   "lib/linesOfBusiness": typeof lib_linesOfBusiness;
-  "lib/liteparsePreprocessor": typeof lib_liteparsePreprocessor;
   "lib/localSeedData": typeof lib_localSeedData;
   "lib/magicLinkTokens": typeof lib_magicLinkTokens;
   "lib/mailboxAutomation": typeof lib_mailboxAutomation;
@@ -684,6 +678,7 @@ declare const fullApi: ApiFromModules<{
   "lib/procurementNarrative": typeof lib_procurementNarrative;
   "lib/procurementPacket": typeof lib_procurementPacket;
   "lib/profileResearchOrchestrator": typeof lib_profileResearchOrchestrator;
+  "lib/proposalAggregation": typeof lib_proposalAggregation;
   "lib/proposalMarkdown": typeof lib_proposalMarkdown;
   "lib/proposalReview": typeof lib_proposalReview;
   "lib/quoWebhook": typeof lib_quoWebhook;
@@ -789,7 +784,6 @@ declare const fullApi: ApiFromModules<{
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
-  workerRouterTransportSmoke: typeof workerRouterTransportSmoke;
 }>;
 
 /**
