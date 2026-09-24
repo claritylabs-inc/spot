@@ -10,7 +10,7 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { chunkPolicyDocument } from "../lib/policyChunks";
+import { chunkDocument } from "@claritylabs/cl-sdk";
 import { policyToInsuranceDoc } from "../lib/documentMapping";
 import { makeEmbedText } from "../lib/sdkCallbacks";
 
@@ -55,7 +55,7 @@ export const backfill = internalAction({
         const doc = policyToInsuranceDoc(policy);
 
         // Generate chunks
-        const chunks = chunkPolicyDocument(doc);
+        const chunks = chunkDocument(doc);
         if (chunks.length === 0) {
           skipped++;
           continue;

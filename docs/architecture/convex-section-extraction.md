@@ -53,7 +53,10 @@ the final packet rewrites `AGENTS.md` to match.
   chooses among candidates that deterministic code or the model already produced.
   Low-confidence answers route to operator review rather than guessing.
 - Spot stops using cl-sdk's extraction engine (`createExtractor`, `getExtractor`,
-  `chunkDocument`, `runSourceTreeExtraction`, coverage recovery). Spot keeps cl-sdk
+  `runSourceTreeExtraction`, coverage recovery). New extractions produce no
+  `documentChunks` (the current pipeline already produces none; agent retrieval
+  uses source nodes). The legacy re-chunk, backfill and supplementary-facts paths
+  keep using cl-sdk's shared `chunkDocument` until legacy chunks are retired. Spot keeps cl-sdk
   schemas, source-tree helpers, ACORD taxonomy, PDF form filling and agent prompts.
   cl-sdk marks the engine `@deprecated` separately.
 
@@ -69,7 +72,6 @@ manager approval.
 | `convex/lib/citationResolver.ts` | P1 | `{page, quote}` → span IDs / bbox |
 | `convex/lib/policySectioning.ts` | P2 | section plan + PDF slicing |
 | `convex/lib/policyIntakeClassification.ts` | P4 | Jev intake gate + relationship |
-| `convex/lib/policyChunks.ts` | P7 | Spot-owned replacement for cl-sdk `chunkDocument` |
 | `resolveCarrierIdentityDecision` / `CarrierIdentityDecision` in `convex/lib/carrierIdentitySource.ts`; `carrierDecision` param on `sourceTreePolicyFields` | P4 (P3 calls it) | Jev carrier choice |
 
 ## Packets
@@ -88,7 +90,7 @@ manager approval.
   `carrierIdentitySource.ts`, `coverageScoping.ts`, `extractionPostProcess.ts`,
   `extractionFieldReview.ts`, `sourceTree.ts`, `carrierIdentityBackfill.ts` and
   their tests.
-- **P7 — cl-sdk engine removal outside the core.** `policyChunks.ts`,
+- **P7 — cl-sdk engine removal outside the core.**
   `convex/actions/extractSupplementary.ts`, `convex/actions/rechunkPolicy.ts`,
   `convex/actions/backfillChunks.ts`, `convex/lib/extraction.ts`.
 - **P5 — worker removal (after P3).** Delete `extraction-worker/`, worker

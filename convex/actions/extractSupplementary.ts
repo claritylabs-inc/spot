@@ -17,12 +17,11 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { toStrictSchema, withRetry, getPdfPageCount } from "@claritylabs/cl-sdk";
+import { chunkDocument, toStrictSchema, withRetry, getPdfPageCount } from "@claritylabs/cl-sdk";
 import { policyToInsuranceDoc } from "../lib/documentMapping";
 import { makeGenerateObject, makeEmbedText } from "../lib/sdkCallbacks";
 import type { Doc, Id } from "../_generated/dataModel";
 import { extractPdfPlainText } from "../lib/pdfText";
-import { chunkPolicyDocument } from "../lib/policyChunks";
 import { buildSupplementaryPrompt, SupplementarySchema, SUPPLEMENTARY_MAX_TOKENS } from "../lib/supplementaryExtraction";
 
 /**
@@ -173,7 +172,7 @@ export const extractOne = internalAction({
         supplementaryFacts: facts,
 
       } as any);
-      const allChunks = chunkPolicyDocument(doc);
+      const allChunks = chunkDocument(doc);
       const newChunks = allChunks.filter((c) => c.type === "supplementary");
 
       if (newChunks.length > 0) {
