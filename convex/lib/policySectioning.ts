@@ -98,6 +98,27 @@ const ISO_FORM_NUMBER_PATTERN =
 const CARRIER_FORM_NUMBER_PATTERN =
   /\b[A-Z]{2,6}-\d{2,6}\s?\(\d{1,2}\/\d{2,4}\)/;
 
+// Headings that disqualify a form-numbered run from deterministic
+// coverage_form/endorsement classification: these pages carry a printed form
+// number (declarations pages, forms schedules) but are not themselves the
+// form's own coverage wording or endorsement text, so the kind is ambiguous.
+const NON_FORM_HEADING_PHRASES = [
+  "DECLARATIONS",
+  "SCHEDULE OF",
+  "SCHEDULE",
+  "FORMS AND ENDORSEMENTS",
+  "FORMS SCHEDULE",
+  "APPLICATION",
+  "INVOICE",
+  "NOTICE",
+] as const;
+
+// A head line that is itself an endorsement title ("ENDORSEMENT", "ENDORSEMENT
+// NO. 3"), not a substring match against phrases like "FORMS AND
+// ENDORSEMENTS" or "attached endorsements".
+const ENDORSEMENT_TITLE_PATTERN = /^ENDORSEMENT\b/;
+const ENDORSEMENT_NUMBER_PATTERN = /\bENDORSEMENT\s*(NO\.?|#|NUMBER)/;
+
 const DIGEST_HEAD_LINES = 12;
 const DIGEST_FOOT_LINES = 4;
 const DIGEST_LINE_MAX_CHARS = 70;
@@ -171,6 +192,29 @@ function buildPageDigest(page: PdfPageText): PolicyPageDigest {
   };
 }
 
+function hasNonFormHeading(lines: string[]): boolean {
+  const upperLines = lines.map((line) => line.toUpperCase());
+  return NON_FORM_HEADING_PHRASES.some((phrase) =>
+    upperLines.some((line) => line.includes(phrase)),
+  );
+}
+
+function hasEndorsementTitle(lines: string[]): boolean {
+  return lines.some((line) => {
+    const upper = line.toUpperCase().trim();
+    return (
+      ENDORSEMENT_TITLE_PATTERN.test(upper) ||
+      ENDORSEMENT_NUMBER_PATTERN.test(upper)
+    );
+  });
+}
+
+function hasCoverageFormTitle(firstPage: PolicyPageDigest): boolean {
+  return firstPage.headLines
+    .slice(0, 3)
+    .some((line) => /\bCOVERAGE FORM\b/.test(line.toUpperCase()));
+}
+
 /** Strong textual signals for a run of pages sharing one form number. Null means ambiguous (send to Jev). */
 function classifyFormRun(
   run: PolicyPageDigest[],
@@ -182,10 +226,18 @@ function classifyFormRun(
   if (text.includes("THIS ENDORSEMENT CHANGES THE POLICY")) {
     return { kind: "endorsement", confidence: 0.97 };
   }
-  if (/\bCOVERAGE FORM\b/.test(text)) {
+
+  // Declarations pages and forms schedules often carry a printed form number
+  // but are not the form's own coverage wording or endorsement text.
+  const firstPage = run[0];
+  if (hasNonFormHeading(firstPage.headLines)) {
+    return null;
+  }
+
+  if (hasCoverageFormTitle(firstPage)) {
     return { kind: "coverage_form", confidence: 0.9 };
   }
-  if (run.some((digest) => digest.headings.includes("ENDORSEMENT"))) {
+  if (run.some((digest) => hasEndorsementTitle(digest.headLines))) {
     return { kind: "endorsement", confidence: 0.8 };
   }
   return null;
