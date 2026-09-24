@@ -5,7 +5,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { Bold, Heading2, Italic, Link, List } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   ProseMarkdown,
   PROSE_MARKDOWN_STYLES,

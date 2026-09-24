@@ -12,8 +12,8 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePdf } from "@/components/pdf-context";
-import { FileDropZone } from "@/components/ui/file-drop";
-import { FileDownloadButton } from "@/components/ui/file-download-button";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
+import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { useMutation, useQuery } from "convex/react";
 import { FileText, Loader2, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -24,8 +24,8 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { Input } from "@/components/ui/input";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
   OperationalLabelValueList,
@@ -33,10 +33,10 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
-import { Textarea } from "@/components/ui/textarea";
+import { StatusTag, type StatusTagTone } from "@claritylabs-inc/ui/components/status-tag";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 
 type ClientRequestStatus =
   | "submitted"

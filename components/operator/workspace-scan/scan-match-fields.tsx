@@ -3,7 +3,7 @@
 import { usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";

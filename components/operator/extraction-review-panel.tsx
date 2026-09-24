@@ -5,12 +5,12 @@ import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -18,9 +18,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
+} from "@claritylabs-inc/ui/components/select";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { typeStyle } from "@/lib/typography";
 
 type ExtractionReviewTarget =

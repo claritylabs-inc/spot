@@ -3,8 +3,8 @@
 import { ArchiveRestore } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ThreadListRow } from "@/components/agent-thread/thread-list-row";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { FadeIn } from "@/components/ui/fade-in";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { useCachedArchivedThreads } from "@/lib/sync/spot-cached-queries";
 
 export default function ArchivePage() {

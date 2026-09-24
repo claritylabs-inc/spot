@@ -1,186 +1,9 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "@claritylabs-inc/ui/styles.css";
 @plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:is(.dark *));
-
-/* =============================================================================
-   Theme Tokens — Clarity Labs design language merged with shadcn
-   ============================================================================= */
-
-:root {
-  /* Clarity Labs surfaces */
-  --background: #ffffff;
-  --foreground: #000000;
-  --foreground-highlight: #000000;
-
-  /* shadcn semantic tokens mapped to Clarity Labs palette */
-  --card: #ffffff;
-  --card-foreground: #000000;
-  --popover: #ffffff;
-  --popover-foreground: #000000;
-  --primary: #2a97ff;
-  --primary-foreground: #ffffff;
-  --primary-light: #a0d2fa;
-  --primary-muted: #5ba3d9;
-  /* `--brand` is the Spot accent used by primary CTAs. */
-  --brand: #000000;
-  --brand-foreground: #ffffff;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #000000;
-  --muted: #f5f5f5;
-  --muted-foreground: #525252;
-  --accent: #f5f5f5;
-  --accent-foreground: #000000;
-  --destructive: #ef4444;
-  --border-subtle: rgba(0, 0, 0, 0.04);
-  --border: rgba(0, 0, 0, 0.06);
-  --input: rgba(0, 0, 0, 0.08);
-  --border-emphasized: rgba(0, 0, 0, 0.1);
-  --border-hover: rgba(0, 0, 0, 0.14);
-  --border-focus: rgba(0, 0, 0, 0.2);
-  --ring: #2a97ff;
-
-  /* Status colors */
-  --success: #059669;
-  --success-muted: #10b981;
-  --warning: #b45309;
-
-  /* Text hierarchy */
-  --text-muted: #525252;
-  --text-accent: #737373;
-  --divider: var(--border);
-  --footer-muted: #737373;
-
-  /* Charts */
-  --chart-1: #2a97ff;
-  --chart-2: #a0d2fa;
-  --chart-3: #059669;
-  --chart-4: #b45309;
-  --chart-5: #737373;
-
-  --radius: 0.625rem;
-  --motion-fast: 80ms;
-  --motion-medium: 120ms;
-  --motion-slow: 160ms;
-  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
-
-  /* Sidebar */
-  --sidebar: #ffffff;
-  --sidebar-foreground: #000000;
-  --sidebar-primary: #2a97ff;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f5f5f5;
-  --sidebar-accent-foreground: #000000;
-  --sidebar-border: var(--border);
-  --sidebar-ring: #2a97ff;
-}
-
-.dark {
-  --background: #111315;
-  --foreground: #f7f7f8;
-  --foreground-highlight: #ffffff;
-
-  --card: #181a1d;
-  --card-foreground: #f7f7f8;
-  --popover: #1f2125;
-  --popover-foreground: #f7f7f8;
-  --primary: #3da1ff;
-  --primary-foreground: #ffffff;
-  --primary-light: #5bb3ff;
-  --primary-muted: #2a7acc;
-  --brand: #ffffff;
-  --brand-foreground: #000000;
-  --secondary: #25282d;
-  --secondary-foreground: #f7f7f8;
-  --muted: #25282d;
-  --muted-foreground: #b8bbc2;
-  --accent: #25282d;
-  --accent-foreground: #f7f7f8;
-  --destructive: #f87171;
-  --border-subtle: rgba(255, 255, 255, 0.12);
-  --border: rgba(255, 255, 255, 0.16);
-  --input: rgba(255, 255, 255, 0.2);
-  --border-emphasized: rgba(255, 255, 255, 0.24);
-  --border-hover: rgba(255, 255, 255, 0.32);
-  --border-focus: rgba(255, 255, 255, 0.4);
-  --ring: #3da1ff;
-
-  --success: #34d399;
-  --success-muted: #10b981;
-  --warning: #fbbf24;
-
-  --text-muted: #b8bbc2;
-  --text-accent: #969aa2;
-  --divider: var(--border);
-  --footer-muted: #969aa2;
-
-  --chart-1: #3da1ff;
-  --chart-2: #5bb3ff;
-  --chart-3: #34d399;
-  --chart-4: #fbbf24;
-  --chart-5: #969aa2;
-
-  --sidebar: #0d0f11;
-  --sidebar-foreground: #f7f7f8;
-  --sidebar-primary: #3da1ff;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #25282d;
-  --sidebar-accent-foreground: #f7f7f8;
-  --sidebar-border: var(--border);
-  --sidebar-ring: #3da1ff;
-}
+/* Fonts remain owned by Spot; the package ships no font assets. */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-foreground-highlight: var(--foreground-highlight);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-brand: var(--brand);
-  --color-brand-foreground: var(--brand-foreground);
-  --color-primary-light: var(--primary-light);
-  --color-primary-muted: var(--primary-muted);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border-subtle: var(--border-subtle);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-border-emphasized: var(--border-emphasized);
-  --color-border-hover: var(--border-hover);
-  --color-border-focus: var(--border-focus);
-  --color-ring: var(--ring);
-  --color-success: var(--success);
-  --color-success-muted: var(--success-muted);
-  --color-warning: var(--warning);
-  --color-text-muted: var(--text-muted);
-  --color-text-accent: var(--text-accent);
-  --color-divider: var(--divider);
-  --color-footer-muted: var(--footer-muted);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
   --font-sans:
     var(--font-geist-sans), "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
@@ -194,106 +17,17 @@
     var(--font-redaction-70), Georgia, "Times New Roman", serif;
   --font-redaction100:
     var(--font-redaction-100), Georgia, "Times New Roman", serif;
-
-  /* Typography scale */
-  --text-tag: 0.7rem;
-  --text-tag--line-height: 0.875rem;
-  --text-label: 0.7rem;
-  --text-base: 0.85rem;
-
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 /* =============================================================================
-   Base Styles
-   ============================================================================= */
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-
-  html {
-    scroll-behavior: auto;
-    background: var(--background);
-    overscroll-behavior: none;
-  }
-
-  body {
-    @apply bg-background text-foreground;
-    overscroll-behavior: none;
-  }
-
-  ::selection {
-    background: rgba(0, 0, 0, 0.1);
-    color: var(--foreground-highlight);
-  }
-
-  .dark ::selection {
-    background: rgba(255, 255, 255, 0.15);
-    color: var(--foreground-highlight);
-  }
-
-  /* Remove the default webkit inset shadow on form fields */
-  input,
-  select,
-  textarea {
-    -webkit-appearance: none;
-    appearance: none;
-    box-shadow: none;
-  }
-  input[type="color"] {
-    -webkit-appearance: auto;
-    appearance: auto;
-  }
-}
-
-/* =============================================================================
-   Utility Classes
+   App-shell utilities not covered by @claritylabs-inc/ui
    ============================================================================= */
 
 .sidebar-transition {
   transition: width var(--motion-medium) var(--motion-ease);
 }
 
-[data-sonner-toast][data-styled="true"] {
-  padding-right: 2.5rem !important;
-}
-
-[data-sonner-toast][data-styled="true"] [data-close-button] {
-  top: 0.625rem !important;
-  right: 0.625rem !important;
-  left: auto !important;
-  width: 1.25rem !important;
-  height: 1.25rem !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  color: var(--muted-foreground) !important;
-  transform: none !important;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  [data-sonner-toast][data-styled="true"] [data-close-button]:hover {
-    background: transparent !important;
-    border-color: transparent !important;
-    color: var(--foreground) !important;
-  }
-}
-
-[data-sonner-toast][data-styled="true"] [data-close-button]:focus-visible {
-  box-shadow: none !important;
-  outline: 1px solid var(--ring);
-  outline-offset: 2px;
-}
-
+/* AppToaster retains Spot’s mobile edge alignment. */
 @media (max-width: 600px) {
   [data-sonner-toaster][data-x-position="right"] {
     left: auto;
@@ -308,68 +42,28 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+/* Drawer geometry stays app-owned; keyframes survive smooth-corner measurement. */
+@keyframes spot-navigation-enter {
+  from {
+    translate: -100% 0;
   }
-
-  *,
-  *::before,
-  *::after {
-    animation-delay: 0ms !important;
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-delay: 0ms !important;
-    transition-duration: 1ms !important;
+  to {
+    translate: 0 0;
   }
 }
-
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+@keyframes spot-navigation-exit {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: -100% 0;
+  }
 }
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-.table-scrollbar {
-  scrollbar-color: color-mix(in srgb, var(--foreground) 22%, transparent)
-    transparent;
-  scrollbar-width: thin;
-}
-
-@supports selector(::-webkit-scrollbar) {
-  .table-scrollbar {
-    scrollbar-color: auto;
-    scrollbar-width: auto;
+@media (prefers-reduced-motion: no-preference) {
+  .spot-navigation-drawer[data-open] {
+    animation: spot-navigation-enter 120ms cubic-bezier(0.2, 0, 0, 1) both;
   }
-
-  .table-scrollbar::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-
-  .table-scrollbar::-webkit-scrollbar-track,
-  .table-scrollbar::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  .table-scrollbar::-webkit-scrollbar-thumb {
-    min-width: 2.5rem;
-    border: 3px solid transparent;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--foreground) 20%, transparent);
-    background-clip: padding-box;
-  }
-
-  .table-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--foreground) 34%, transparent);
-    background-clip: padding-box;
-  }
-
-  .table-scrollbar::-webkit-scrollbar-thumb:active {
-    background: color-mix(in srgb, var(--foreground) 46%, transparent);
-    background-clip: padding-box;
+  .spot-navigation-drawer[data-closed] {
+    animation: spot-navigation-exit 120ms cubic-bezier(0.2, 0, 0, 1) both;
   }
 }

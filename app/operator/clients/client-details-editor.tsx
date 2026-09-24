@@ -3,8 +3,8 @@
 import { useImperativeHandle, type Ref } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { StatusLabel } from "@/components/ui/status-tag";
-import { Input } from "@/components/ui/input";
+import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -13,7 +13,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useOperatorClientCacheActions } from "@/lib/sync/operator-cached-queries";

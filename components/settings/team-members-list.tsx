@@ -1,10 +1,10 @@
 "use client";
 
 import type { Id } from "@/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { OperationalPanel } from "@/components/ui/operational-panel";
-import { StatusTag } from "@/components/ui/status-tag";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,

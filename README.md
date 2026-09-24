@@ -34,11 +34,17 @@ workers. `.nvmrc`, `.node-version`, package `engines`, and `convex.json` encode
 that contract. On a Mac, the Conductor setup installs Homebrew `node@24` when it
 is missing and always runs the workspace under that toolchain.
 
+The product uses `@claritylabs-inc/ui@0.5.0` from GitHub Packages. Supply
+`NPM_TOKEN` with package read access in your shell before installing (including
+Conductor setup). The root `.npmrc` contains only the registry and environment
+variable reference. [Deployment environments](docs/deployment/environments.md#private-ui-package-installs)
+documents Actions and Vercel configuration; worker installs are independent.
+
 For a non-Conductor checkout:
 
 ```bash
 nvm use
-npm install
+npm ci
 CONVEX_AGENT_MODE=anonymous npx convex dev
 npm run dev
 ```

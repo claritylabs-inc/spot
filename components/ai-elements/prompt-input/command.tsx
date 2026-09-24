@@ -8,7 +8,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-} from "@/components/ui/command";
+} from "@claritylabs-inc/ui/components/command";
 import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 

@@ -6,9 +6,9 @@ import { ClipboardList, FileText, Loader2, Mail as MailIcon, Paperclip, X } from
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import type { ToolArtifactData } from "../types";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {

@@ -24,9 +24,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { OperationalPanel } from "@/components/ui/operational-panel";
-import { SpotWordmark } from "@/components/ui/spot-wordmark";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
+import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import { TextLink } from "@/components/ui/text-link";
 import { formatDisplayDateTimeUtc } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";

@@ -10,7 +10,7 @@ import {
 } from "@/components/webmcp/client-webmcp-tools";
 import { AutoSaveStatusProvider } from "@/components/ui/auto-save-status";
 import { AppToaster } from "@/components/ui/toaster";
-import { SmoothCornersProvider } from "@/components/ui/smooth-corners-provider";
+import { SmoothCornersProvider } from "@claritylabs-inc/ui/components/smooth-corners-provider";
 import { BrandThemeApplier } from "@/components/brand-theme-applier";
 import { getClientPortalUrl } from "@/convex/lib/domains";
 import { typeStyle } from "@/lib/typography";

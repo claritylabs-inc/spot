@@ -15,7 +15,7 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
-import { FileDownloadButton } from "@/components/ui/file-download-button";
+import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { typeStyle } from "@/lib/typography";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(

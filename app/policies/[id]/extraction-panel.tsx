@@ -13,11 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import {
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import {
   formatCarrierLegalEntityNames,

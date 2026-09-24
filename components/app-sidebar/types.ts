@@ -1,10 +1,8 @@
 import type React from "react";
 import type { ThreadConversationItem } from "@/lib/thread-display";
 
-export type NavShortcut = {
-  key: string;
-  type?: "navigation" | "command";
-};
+import type { NavShortcut } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
+export type { NavShortcut } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
 
 export type NavItemConfig = {
   href: string;

@@ -1,7 +1,10 @@
 # Spot typography
 
-Spot browser typography is a typed semantic system. The owner is
-[`lib/typography.ts`](../../lib/typography.ts); React callsites select a role
+Spot browser typography is a typed semantic system. `@claritylabs-inc/ui@0.5.0`
+owns the roles in `lib/typography`; Spot's
+[`lib/typography.ts`](../../lib/typography.ts) re-exports them and retains
+Redaction cuts and renderer-specific adapters. Fonts remain in Spot.
+React callsites select a role
 with `typeStyle(role)` and keep color, spacing, alignment, truncation, and
 layout local. Generated social images, transactional email HTML, and PDF
 rendering have separate renderer contracts.

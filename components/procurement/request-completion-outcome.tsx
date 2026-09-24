@@ -1,5 +1,5 @@
 import type { Doc } from "@/convex/_generated/dataModel";
-import { OperationalLabelValueRow } from "@/components/ui/operational-panel";
+import { OperationalLabelValueRow } from "@claritylabs-inc/ui/components/operational-panel";
 import { formatDisplayDate } from "@/lib/date-format";
 
 export function RequestCompletionOutcome({

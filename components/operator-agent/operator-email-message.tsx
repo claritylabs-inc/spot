@@ -6,7 +6,7 @@ import { ProseMarkdown } from "@/components/prose-markdown";
 import {
   OperationalPanel,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import type { OperatorAgentMessage } from "@/lib/operator-agent-api";
 import { typeStyle } from "@/lib/typography";
 

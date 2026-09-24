@@ -1,11 +1,11 @@
 "use client";
 
-import { FadeIn } from "@/components/ui/fade-in";
+import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import {
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
-import { StatusTag } from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import type { Id } from "@/convex/_generated/dataModel";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";

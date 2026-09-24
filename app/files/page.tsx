@@ -9,7 +9,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 
 export default function FilesPage() {

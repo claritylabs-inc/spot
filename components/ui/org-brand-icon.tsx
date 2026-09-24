@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandIcon } from "@/components/ui/brand-icon";
+import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 
 type OrgBrandIconProps = {
   name?: string | null;

@@ -24,22 +24,22 @@ import {
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { Input } from "@/components/ui/input";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
   OperationalPanel,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   Table,
   TableBody,
@@ -49,7 +49,7 @@ import {
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";

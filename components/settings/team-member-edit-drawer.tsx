@@ -4,19 +4,19 @@ import { useRef, type ReactNode } from "react";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { Loader2, Mail } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { PillButton } from "@/components/ui/pill-button";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import type { TeamMember } from "@/components/settings/team-types";
 import { typeStyle } from "@/lib/typography";

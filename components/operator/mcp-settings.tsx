@@ -14,15 +14,15 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@claritylabs-inc/ui/components/select";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   OperationalPanel,
   OperationalPanelHeader,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 

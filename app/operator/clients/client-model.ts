@@ -1,4 +1,4 @@
-import type { StatusPresentation } from "@/components/ui/status-tag";
+import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "@/convex/_generated/api";
 

@@ -53,11 +53,11 @@ import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { FileDownloadButton } from "@/components/ui/file-download-button";
-import { FileDropZone } from "@/components/ui/file-drop";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
   OperationalLabelValueList,
@@ -65,17 +65,17 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusLabel, StatusTag } from "@/components/ui/status-tag";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { StatusLabel, StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   Table,
   TableBody,
@@ -84,7 +84,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";

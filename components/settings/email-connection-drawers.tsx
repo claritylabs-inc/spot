@@ -1,6 +1,6 @@
 "use client";
 
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 
 import {
   useCallback,
@@ -47,15 +47,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { FormSection } from "@/components/ui/form-section";
-import { Label } from "@/components/ui/label";
+} from "@claritylabs-inc/ui/components/dialog";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
   OperationalPanel,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";

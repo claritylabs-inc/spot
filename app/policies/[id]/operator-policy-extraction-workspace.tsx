@@ -34,16 +34,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@claritylabs-inc/ui/components/dialog";
 import {
   OperationalItem,
   OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag, type StatusIndicatorKind } from "@/components/ui/status-tag";
+import { StatusTag, type StatusIndicatorKind } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,
@@ -52,7 +52,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import {
   useCachedOperatorExtractionTraceDetail,

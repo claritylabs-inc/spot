@@ -1,4 +1,4 @@
-import type { StatusPresentation } from "@/components/ui/status-tag";
+import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import dayjs from "dayjs";
 import type { Doc } from "@/convex/_generated/dataModel";
 export type ModelCall = Doc<"modelRoutingEvents">;

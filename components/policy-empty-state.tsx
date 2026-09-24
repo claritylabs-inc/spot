@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, CornerUpRight, FileUp, FileText, X } from "lucide-react";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   PolicyUploadModeToggle,

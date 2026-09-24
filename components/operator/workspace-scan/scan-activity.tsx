@@ -14,9 +14,9 @@ import {
   OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag, type StatusTagTone } from "@/components/ui/status-tag";
+import { StatusTag, type StatusTagTone } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,
@@ -25,9 +25,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";

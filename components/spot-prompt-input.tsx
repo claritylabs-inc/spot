@@ -1,6 +1,6 @@
 "use client";
 
-import { TagRemoveButton } from "@/components/ui/tag-remove-button";
+import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 
 import {
   useCallback,
@@ -32,7 +32,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { PillButton } from "@/components/ui/pill-button";
 import { cn } from "@/lib/utils";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import type { ChatStatus } from "ai";
 import { useCachedAgentTargets } from "@/lib/sync/spot-cached-queries";
 import {
@@ -87,7 +87,7 @@ function AttachmentActionButtons() {
         onClick={handleAttach}
         label="Add photos or files"
       >
-        <Paperclip className="h-3.5 w-3.5" />
+        <Paperclip className="size-3.5" />
       </PillButton>
     </>
   );
@@ -146,7 +146,7 @@ function AttachmentTags({
             detailed ? "rounded-lg px-2.5 py-1.5" : "rounded-full px-2.5 py-1",
           )}
         >
-          <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <Paperclip className="size-3 shrink-0 text-muted-foreground" />
           <span className="min-w-0">
             <span
               className="block max-w-45 truncate sm:max-w-60"
@@ -373,9 +373,9 @@ function targetScopeLabel(kinds: PromptTargetKind[]) {
 }
 
 function referenceIcon(kind: PromptReference["kind"]) {
-  if (kind === "requirement") return <BadgeCheck className="h-3.5 w-3.5" />;
-  if (kind === "mailbox") return <Inbox className="h-3.5 w-3.5" />;
-  return <FileText className="h-3.5 w-3.5" />;
+  if (kind === "requirement") return <BadgeCheck className="size-3.5" />;
+  if (kind === "mailbox") return <Inbox className="size-3.5" />;
+  return <FileText className="size-3.5" />;
 }
 
 function mergeTextAroundReference(
@@ -474,7 +474,7 @@ function PreparedInputActions({
     actions.push({
       id: "policy",
       label: "Policy",
-      icon: <FileText className="h-3.5 w-3.5" />,
+      icon: <FileText className="size-3.5" />,
       onSelect: () => {
         onOpenTargetPicker("@", PREPARED_POLICY_TARGET_KINDS);
       },
@@ -485,7 +485,7 @@ function PreparedInputActions({
     actions.push({
       id: "requirement",
       label: "Requirement",
-      icon: <BadgeCheck className="h-3.5 w-3.5" />,
+      icon: <BadgeCheck className="size-3.5" />,
       onSelect: () => {
         onOpenTargetPicker("@", PREPARED_REQUIREMENT_TARGET_KINDS);
       },
@@ -496,7 +496,7 @@ function PreparedInputActions({
     actions.push({
       id: "mailbox",
       label: "Mailbox",
-      icon: <Inbox className="h-3.5 w-3.5" />,
+      icon: <Inbox className="size-3.5" />,
       onSelect: () => {
         onOpenTargetPicker("/", PREPARED_MAILBOX_TARGET_KINDS);
       },
@@ -1411,8 +1411,8 @@ export const SpotPromptInput = forwardRef<
                   <Square
                     className={
                       roomyOnMobile
-                        ? "h-3.5 w-3.5 fill-current sm:h-3 sm:w-3"
-                        : "h-3 w-3 fill-current"
+                        ? "size-3.5 fill-current sm:size-3"
+                        : "size-3 fill-current"
                     }
                   />
                   Stop
@@ -1429,8 +1429,8 @@ export const SpotPromptInput = forwardRef<
                       <Spinner
                         className={
                           roomyOnMobile
-                            ? "h-4 w-4 sm:h-3.5 sm:w-3.5"
-                            : "h-3.5 w-3.5"
+                            ? "size-4 sm:size-3.5"
+                            : "size-3.5"
                         }
                       />
                       {submittedLabel}
@@ -1440,8 +1440,8 @@ export const SpotPromptInput = forwardRef<
                       <ArrowUp
                         className={
                           roomyOnMobile
-                            ? "h-4 w-4 sm:h-3.5 sm:w-3.5"
-                            : "h-3.5 w-3.5"
+                            ? "size-4 sm:size-3.5"
+                            : "size-3.5"
                         }
                       />
                       Send

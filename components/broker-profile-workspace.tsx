@@ -9,14 +9,14 @@ import type { FunctionReturnType } from "convex/server";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { TokenListField } from "@/components/broker-network/token-list-field";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
-import { FileDropZone } from "@/components/ui/file-drop";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";

@@ -9,8 +9,8 @@ import { PolicyListItem } from "@/components/policy-list-item";
 import {
   OperationalPanel,
   OperationalPanelBody,
-} from "@/components/ui/operational-panel";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { typeStyle } from "@/lib/typography";
 

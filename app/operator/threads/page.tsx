@@ -24,11 +24,11 @@ import {
 } from "@/components/operator-agent/operator-thread-channel";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
-import { EmptyStateCard } from "@/components/ui/empty-state-card";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { operatorThreadContextHref } from "@/components/operator-agent/operator-page-context";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
   Table,
   TableBody,

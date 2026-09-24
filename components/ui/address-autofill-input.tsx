@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import type { AddressAutofillRetrieveResponse } from "@mapbox/search-js-core";
 import type { Theme as MapboxSearchTheme } from "@mapbox/search-js-web";
 
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { mapboxTypographyAdapter } from "@/lib/typography";
 
 const AddressAutofill = dynamic(

@@ -8,9 +8,9 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { PillButton } from "@/components/ui/pill-button";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
 import { PolicyEmptyState } from "@/components/policy-empty-state";
-import { Badge } from "@/components/ui/badge";
-import { StatusTag } from "@/components/ui/status-tag";
-import { OperationalPanel } from "@/components/ui/operational-panel";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Table,
   TableBody,

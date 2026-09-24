@@ -22,21 +22,21 @@ import { AgentChannelsSection } from "@/components/settings/agent-channels-secti
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { StatusLabel } from "@/components/ui/status-tag";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@claritylabs-inc/ui/components/tabs";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+} from "@claritylabs-inc/ui/components/select";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   useCachedOperatorClients,

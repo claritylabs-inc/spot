@@ -2,7 +2,7 @@
 
 import { Id } from "@/convex/_generated/dataModel";
 import { FileText } from "lucide-react";
-import { BrandIcon } from "@/components/ui/brand-icon";
+import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 import {
   ActionSurface,
   ActionSurfaceButton,

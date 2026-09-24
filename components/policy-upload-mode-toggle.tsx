@@ -1,6 +1,6 @@
 "use client";
 
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 

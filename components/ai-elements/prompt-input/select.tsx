@@ -6,7 +6,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 import { typeStyle } from "@/lib/typography";

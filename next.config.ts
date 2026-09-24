@@ -90,7 +90,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  transpilePackages: ["@claritylabs/cl-sync"],
+  transpilePackages: ["@claritylabs/cl-sync", "@claritylabs-inc/ui"],
   serverExternalPackages: ["canvas"],
   turbopack: {
     root: process.cwd(),

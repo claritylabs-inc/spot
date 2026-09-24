@@ -6,7 +6,7 @@ import { usePdf } from "@/components/pdf-context";
 import {
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import type { CoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { formatDisplayDate } from "@/lib/date-format";
 import {

@@ -11,7 +11,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@claritylabs-inc/ui/components/dropdown-menu";
 import { replaceEditorBody, splitEditorMarkdown } from "@/lib/markdown-editor";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";

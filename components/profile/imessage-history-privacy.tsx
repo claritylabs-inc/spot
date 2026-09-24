@@ -10,7 +10,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import { typeStyle } from "@/lib/typography";

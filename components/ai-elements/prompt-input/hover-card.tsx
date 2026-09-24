@@ -4,7 +4,7 @@ import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from "@/components/ui/hover-card";
+} from "@claritylabs-inc/ui/components/hover-card";
 import type { ComponentProps } from "react";
 
 export type PromptInputHoverCardProps = ComponentProps<typeof HoverCard>;

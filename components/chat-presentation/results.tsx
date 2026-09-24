@@ -4,19 +4,19 @@ import { useId, useMemo, useState } from "react";
 import { useEntityPreview } from "@/hooks/use-entity-preview";
 import type { PresentationProps } from "@/lib/chat-presentation";
 import { typeStyle } from "@/lib/typography";
-import { Input } from "@/components/ui/input";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
   OperationalPanel,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Table,
   TableBody,
@@ -26,7 +26,7 @@ import {
   TableNameLink,
   TableRow,
 } from "@/components/ui/table";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { usePresentation } from "./context";
 import { referenceHref, Sources } from "./references";
 

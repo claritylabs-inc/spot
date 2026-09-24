@@ -5,22 +5,26 @@ import {
   Fragment,
   Suspense,
   isValidElement,
-  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePathname } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@claritylabs-inc/ui/components/dialog";
 import { PanelRightClose } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppShellPanelLayout } from "@/components/app-shell-panel-layout";
 import {
   AppShellSidebarLayout,
+  APP_SIDEBAR_DEFAULT_WIDTH,
   appSidebarPreferenceStorageKey,
-  clampAppSidebarWidth,
-  parseAppSidebarPreference,
-  type AppSidebarPreference,
-} from "@/components/app-shell-sidebar-layout";
+} from "@claritylabs-inc/ui/components/app-shell/app-shell-sidebar-layout";
+import { useAppSidebarPreference } from "@claritylabs-inc/ui/components/app-shell/app-shell";
 import { AppTopBar, type PresenceUser } from "@/components/app-top-bar";
 import { OperatorImpersonationBanner } from "@/components/operator-impersonation-banner";
 import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
@@ -76,27 +80,6 @@ function hasVisibleRightPanel(node: React.ReactNode): boolean {
   return true;
 }
 
-function readAppSidebarPreference(storageKey: string | null) {
-  if (!storageKey) return parseAppSidebarPreference(null);
-
-  try {
-    return parseAppSidebarPreference(localStorage.getItem(storageKey));
-  } catch {
-    return parseAppSidebarPreference(null);
-  }
-}
-
-function persistAppSidebarPreference(
-  storageKey: string | null,
-  preference: AppSidebarPreference,
-) {
-  if (!storageKey) return;
-
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(preference));
-  } catch {}
-}
-
 function ShellContent({
   children,
   actions,
@@ -124,8 +107,38 @@ function ShellContent({
   disableCommandPalette?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [customSidebarPreference, setCustomSidebarPreference] = useState(() =>
-    readAppSidebarPreference(customSidebarPreferenceStorageKey),
+  const mobileMenuRef = useRef<HTMLButtonElement>(null);
+  const pathname = usePathname();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setMobileOpen(false));
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
+  // Register before the shared hook's restoration effect.
+  useEffect(() => {
+    if (customSidebar) return;
+    try {
+      const legacy = localStorage.getItem("sidebar-collapsed");
+      if (legacy === "1" || legacy === "") {
+        localStorage.setItem(
+          "sidebar-collapsed",
+          JSON.stringify({
+            collapsed: legacy === "1",
+            width: APP_SIDEBAR_DEFAULT_WIDTH,
+          }),
+        );
+      }
+    } catch {
+      // Restricted storage leaves the shared hook's in-memory defaults intact.
+    }
+  }, [customSidebar]);
+  const {
+    ready: sidebarReady,
+    preference: customSidebarPreference,
+    toggleCollapse: toggleCustomSidebarCollapse,
+    setCollapsed: updateCustomSidebarCollapsed,
+    setWidth: updateCustomSidebarWidth,
+  } = useAppSidebarPreference(
+    customSidebar ? customSidebarPreferenceStorageKey : "sidebar-collapsed",
   );
   const { isPdfOpen, fileUrl } = usePdf();
   const { preview: entityPreview } = useEntityPreview();
@@ -165,54 +178,14 @@ function ShellContent({
   }, [constrainedPreviewOpen, operatorAgent]);
 
   useEffect(() => {
-    if (!operatorAgent?.open || !mobileOpen) return;
+    if (!mobileOpen || (!isLarge && !operatorAgent?.open)) return;
     const frame = window.requestAnimationFrame(() => setMobileOpen(false));
     return () => window.cancelAnimationFrame(frame);
-  }, [mobileOpen, operatorAgent?.open]);
+  }, [isLarge, mobileOpen, operatorAgent?.open]);
 
-  const updateCustomSidebarPreference = useCallback(
-    (update: (current: AppSidebarPreference) => AppSidebarPreference) => {
-      setCustomSidebarPreference((current) => {
-        const next = update(current);
-        if (
-          next.collapsed === current.collapsed &&
-          next.width === current.width
-        ) {
-          return current;
-        }
-        persistAppSidebarPreference(customSidebarPreferenceStorageKey, next);
-        return next;
-      });
-    },
-    [customSidebarPreferenceStorageKey],
-  );
-
-  const toggleCustomSidebarCollapse = useCallback(() => {
-    updateCustomSidebarPreference((current) => ({
-      ...current,
-      collapsed: !current.collapsed,
-    }));
-  }, [updateCustomSidebarPreference]);
-
-  const updateCustomSidebarCollapsed = useCallback(
-    (next: boolean) => {
-      updateCustomSidebarPreference((current) => ({
-        ...current,
-        collapsed: next,
-      }));
-    },
-    [updateCustomSidebarPreference],
-  );
-
-  const updateCustomSidebarWidth = useCallback(
-    (width: number) => {
-      updateCustomSidebarPreference((current) => ({
-        ...current,
-        width: clampAppSidebarWidth(width),
-      }));
-    },
-    [updateCustomSidebarPreference],
-  );
+  if (!sidebarReady) {
+    return <div className="h-dvh w-full bg-background" aria-busy="true" />;
+  }
 
   const renderedCustomSidebar = customSidebar?.({
     collapsed: customSidebarPreference.collapsed,
@@ -259,7 +232,12 @@ function ShellContent({
             }
             breadcrumbDetail={breadcrumbDetail}
             presenceUsers={presenceUsers}
-            onMobileMenuToggle={() => setMobileOpen((v) => !v)}
+            onMobileMenuToggle={() => {
+              if (!mobileOpen) operatorAgent?.close();
+              setMobileOpen((value) => !value);
+            }}
+            mobileMenuRef={mobileMenuRef}
+            mobileMenuOpen={mobileOpen}
           />
           <div className="relative min-w-0 flex-1 overflow-hidden">
             <main className="absolute inset-0 min-w-0 overflow-y-auto scrollbar-hide">
@@ -296,35 +274,42 @@ function ShellContent({
             >
               {panelLayout}
             </AppShellSidebarLayout>
-            <AnimatePresence>
-              {mobileOpen ? (
-                <>
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="fixed inset-0 z-40 bg-black/20 lg:hidden"
-                    onClick={() => setMobileOpen(false)}
-                  />
-                  <motion.aside
-                    initial={{ x: -280 }}
-                    animate={{ x: 0 }}
-                    exit={{ x: -280 }}
-                    transition={{ duration: 0.12, ease: [0.2, 0, 0, 1] }}
-                    className="fixed bottom-0 left-0 top-0 z-50 flex w-[260px] flex-col border-r border-border bg-background lg:hidden"
-                  >
-                    {renderedMobileCustomSidebar}
-                  </motion.aside>
-                </>
-              ) : null}
-            </AnimatePresence>
+            <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+              <DialogContent
+                showCloseButton={false}
+                overlayClassName="bg-black/20 duration-120 lg:hidden"
+                className="spot-navigation-drawer inset-y-0 left-0 flex h-full w-sidebar-mobile max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r border-border bg-background p-0 ring-0 transition-[opacity,translate] duration-120 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:scale-100 data-starting-style:scale-100 sm:max-w-none lg:hidden"
+                finalFocus={mobileMenuRef}
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  if (
+                    event.target instanceof Element &&
+                    event.target.closest("a[href]")
+                  ) {
+                    setMobileOpen(false);
+                  }
+                }}
+              >
+                <DialogTitle className="sr-only">Navigation</DialogTitle>
+                {renderedMobileCustomSidebar}
+              </DialogContent>
+            </Dialog>
           </>
         ) : (
           <>
             <Suspense fallback={null}>
               <AppSidebar
+                collapsed={customSidebarPreference.collapsed}
+                onToggleCollapse={toggleCustomSidebarCollapse}
                 mobileOpen={mobileOpen}
+                mobileMenuRef={mobileMenuRef}
                 onMobileClose={() => setMobileOpen(false)}
                 disablePersistentChat={disablePersistentChat}
                 onAskSpot={

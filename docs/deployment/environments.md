@@ -4,6 +4,31 @@
 production, shared cloud dev is the deployed integration lane, and each
 Conductor worktree uses native local Convex plus local workers.
 
+## Private UI package installs
+
+The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
+`NPM_TOKEN`. Root installs require a credential with read access to
+`@claritylabs-inc/ui`.
+
+- GitHub Actions: set the repository secret `NPM_TOKEN` to the package-reading
+  credential. CI's `root` job and Release Spot's `validate-root` and `deploy`
+  jobs map it directly into their environment. Package access through
+  `GITHUB_TOKEN` is not required for these installs. The CLI validation and
+  publication jobs install their separate manifests, which do not depend on UI;
+  their existing publication credentials remain separate.
+- Vercel: configure `NPM_TOKEN` on the Spot project for Production, Preview,
+  and any Development environment that installs dependencies.
+- Railway: extraction, tenant/operator iMessage, and Slack Docker builds install
+  only their worker manifests, which do not depend on UI. The mailbox scan
+  Dockerfile performs no npm install. These builds need no UI package token.
+  Keep each service rooted in its worker directory; a future root dependency
+  install would require package authentication at build time.
+- Local development: provide `NPM_TOKEN` in the install process environment.
+  Never put the credential in tracked `.npmrc`, build arguments, or logs.
+
+Repository configuration alone does not verify hosted secret values or prove
+that a hosted build can read the package; the consuming build must pass.
+
 ## Company detail removal
 
 The company detail forms and runtime fields are retired. After deploying this

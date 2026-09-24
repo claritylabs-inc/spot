@@ -12,9 +12,9 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
-import { StatusTag } from "@/components/ui/status-tag";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import {
   OperationalItem,
   OperationalLabelValueList,
@@ -22,9 +22,9 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import {
   Table,
   TableBody,

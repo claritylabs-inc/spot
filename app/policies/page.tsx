@@ -9,7 +9,7 @@ import { PolicyEmptyState } from "@/components/policy-empty-state";
 import { PolicyListItem } from "@/components/policy-list-item";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";

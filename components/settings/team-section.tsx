@@ -1,6 +1,6 @@
 "use client";
 
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
@@ -15,7 +15,7 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { InviteMemberDrawer } from "@/components/settings/invite-member-drawer";
 import {
   TeamMemberEditDrawer,

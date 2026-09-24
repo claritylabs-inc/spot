@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { FileText } from "lucide-react";
-import { BrandIcon } from "@/components/ui/brand-icon";
-import { SpotWordmark } from "@/components/ui/spot-wordmark";
+import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
+import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { policyCardBranding } from "@/lib/policy-card-branding";
 import { readCarrierIdentity } from "@/convex/lib/carrierIdentity";

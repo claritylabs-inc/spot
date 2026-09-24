@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { OperationalPanel, OperationalPanelBody, OperationalPanelHeader } from "@/components/ui/operational-panel";
+import { OperationalPanel, OperationalPanelBody, OperationalPanelHeader } from "@claritylabs-inc/ui/components/operational-panel";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 

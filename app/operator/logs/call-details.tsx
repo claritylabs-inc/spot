@@ -10,8 +10,8 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
-} from "@/components/ui/operational-panel";
-import { StatusTag } from "@/components/ui/status-tag";
+} from "@claritylabs-inc/ui/components/operational-panel";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { formatDisplayDateTime } from "@/lib/date-format";

@@ -42,6 +42,33 @@ client and public projections, operator-only retrieval, rotation invalidation,
 and legacy/revoked/expired behavior. The fixture uses synthetic data and does not
 establish authenticated production workflow coverage.
 
+## Shared UI adoption — September 24, 2026
+
+Registry `@claritylabs-inc/ui@0.2.1` was installed with a clean `npm ci`.
+`node scripts/qa/capture-ui-adoption.mjs <output-dir> <local-url> <fresh-convex-log>`
+uses the seeded operator and fresh captured OTP, checks authenticated route entry,
+row/sidebar access, empty/filled create-form validation, Escape cancellation,
+client-side record navigation, and synthetic OAuth-error toast dismissal. It
+creates desktop (1440×900) and mobile (390×844) screenshots plus a private
+`auth-state.json`; never publish the auth state. No client or external connection
+is created. Install Playwright Chromium with `npx playwright install chromium`
+if absent. `npx convex logs` supplies the local capture log.
+
+Compare with `node scripts/qa/compare-ui-adoption.mjs <baseline-dir> <after-dir>
+<diff-dir>`. The comparator reports pixels with an RGB channel delta above 12.
+Baseline routes came from `f5039c7d709438a4f4a89c1d4d7f3f93ddb774a1`.
+The supplemental toast baseline uses that source with the installed dependency
+set and the equivalent Base UI OTP export rename. Evidence and the full file
+mapping are in [the review gallery](https://41841dba-c31c-4f23-801f-78831a73c9f0.conductor.show/)
+and `.context/qa/ui-adoption/`. These headless local Chrome checks do not establish
+production, dark-theme, or every-component parity. The shell adoption is deferred.
+The workflow passed. Fourteen of 16 screenshots have no changed pixels above the
+threshold; the OTP button edge differs by 3 pixels and the mobile drawer close
+icon by 17 (0.0052% of that image). Full pixel identity is not claimed.
+Validation passed: 138 test files / 761 tests, Next and Convex typechecks, worker
+builds, production build, package/router contracts, and lint (three existing
+warnings).
+
 ## Scripted user outcomes
 
 | ID | Actor / entrypoint | Steps and desired behavior |
@@ -624,3 +651,70 @@ server warning; reloading onboarding and entering a reachable website retried an
 stored a logo. Settings → Organization showed no Research company action, and
 Pull from website replaced the logo. Evidence, `results.json`, and the repeatable
 script (`run.mjs`) are in `.context/qa/logo-onboarding/`.
+
+
+## Shared shell adoption — September 24, 2026
+
+Registry UI 0.5.0 uses package-owned sidebar restoration readiness before nested
+layouts mount. Headless Chromium passed local synthetic operator/client OTP
+login, client list/detail/form validation and cancel, SPA navigation, toast
+dismissal, legacy collapsed/expanded migration and both toggle directions after
+reload. Mobile drawers retain Spot's unblurred backdrop and 120ms slide treatment
+through shared Dialog; focus entry, Escape/outside focus return, same-route close
+and changed-route close passed. Opening navigation closes a competing operator
+panel. Title tests cover focus, Escape/empty rejection, a second edit while an
+offline save is pending, saving status, serialized reconnection and reload.
+The synthetic title fixture is archived after each run; no external sends occur.
+
+Operator navigation resize/collapse and detail keyboard resize survive reload.
+The detail separator restores exactly at 961.59px after navigation expands to
+289.5px, matching baseline behavior. This resolves the UI 0.4.0 restoration-order
+regression without consumer-owned restoration state.
+
+Captures cover login, OTP, home, list/detail, settings, dialog/form and toast at
+1440×900 and 390×844 in both themes. All 16 light captures are unchanged above
+per-channel delta 12. Dark differences affect at most 0.0781% of a capture:
+primary-button text now matches the original pre-adoption background-colored
+foreground instead of the initial adapter's forced black. The baseline is
+`5a7a693d` (latest-main merge before shell adoption), with only the newly added
+operator invitation's shared-panel import repaired for compilation.
+
+Run against the local native Convex synthetic fixture from the developer setup:
+
+```sh
+npx convex logs > .context/logs/convex-capture.log
+# In another terminal:
+npm run dev
+# In another terminal, run sequentially:
+node scripts/qa/capture-ui-adoption.mjs .context/qa/shell/after-light http://localhost:8080
+UI_ADOPTION_THEME=dark node scripts/qa/capture-ui-adoption.mjs .context/qa/shell/after-dark http://localhost:8080
+node scripts/qa/check-shell-adoption.mjs http://localhost:8080 .context/qa/shell/behavior
+node scripts/qa/compare-ui-adoption.mjs .context/qa/shell/before-light .context/qa/shell/after-light .context/qa/shell/diff-light
+node scripts/qa/compare-ui-adoption.mjs .context/qa/shell/before-dark .context/qa/shell/after-dark .context/qa/shell/diff-dark
+```
+
+Capture the baseline with the same commands against its separate local server.
+Capture/auth scripts reject non-loopback origins. `UI_ADOPTION_HEADED=1` selects
+visible Chrome when a display exists; this VM has none, so all recorded results
+are explicitly headless. Auth snapshots and OTP logs remain private. Screenshots,
+comparison JSON, commands and the complete remaining-owner inventory are in the
+[review gallery](https://41841dba-c31c-4f23-801f-78831a73c9f0.conductor.show/shell/).
+
+
+Final drawer follow-up covers client and operator navigation at 390px, Escape
+close, intermediate horizontal positions on both open and close with reduced
+motion disabled, resize to 1440px while open, desktop click/Tab access, and
+390px reopen/focus. Both roles pass in light and dark headless Chromium. The
+hidden-modal risk was not reproduced before the fix; the shell now explicitly
+closes at the desktop breakpoint. Frame sampling reproduced interrupted CSS
+transitions from shared corner measurement; app-owned drawer keyframes preserve
+the 120ms slide without disabling child smoothing or owning modal behavior.
+
+```sh
+SHELL_RESPONSIVE_ONLY=1 node scripts/qa/check-shell-adoption.mjs http://localhost:8080 .context/qa/shell/responsive-final
+UI_ADOPTION_THEME=dark SHELL_RESPONSIVE_ONLY=1 node scripts/qa/check-shell-adoption.mjs http://localhost:8080 .context/qa/shell/responsive-final-dark
+```
+
+Each run saves per-role open/close animation frame JSON, resize/reopen PNGs,
+a desktop settings PNG, and `responsive-results.json`. No fixture writes or
+credential exports are needed for this bounded case.

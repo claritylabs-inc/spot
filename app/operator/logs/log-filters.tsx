@@ -2,9 +2,9 @@
 import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import { useCachedOperatorClients } from "@/lib/sync/operator-cached-queries";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { Label } from "@claritylabs-inc/ui/components/label";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -12,7 +12,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@claritylabs-inc/ui/components/select";
 import {
   SidebarMenuItem,
   SidebarTooltipProvider,

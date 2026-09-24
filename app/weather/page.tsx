@@ -9,10 +9,10 @@ import {
   ModelRouteLogo,
   type ModelProviderId,
 } from "@/components/model-provider-logo";
-import { Badge } from "@/components/ui/badge";
-import { SpotWordmark } from "@/components/ui/spot-wordmark";
-import { OperationalPanel } from "@/components/ui/operational-panel";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import {
   Table,
   TableBody,

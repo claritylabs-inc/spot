@@ -15,7 +15,7 @@ import { api } from "@/convex/_generated/api";
 import { BrandWordmark } from "@/components/auth-shell";
 import { PillButton } from "@/components/ui/pill-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
-import { PhoneInput } from "@/components/ui/phone-input";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { ArrowRight, Check, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getPublicAgentDomain } from "@/lib/domains";
@@ -131,7 +131,7 @@ function Shell({
         >
           <div className="justify-self-start min-w-0">
             <div className="sm:hidden">
-              <LogoIcon size={18} static />
+              <LogoIcon size={18} />
             </div>
             <div className="hidden sm:block">
               <BrandWordmark />

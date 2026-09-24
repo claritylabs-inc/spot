@@ -9,12 +9,12 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { FormSection } from "@/components/ui/form-section";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import {
   OperationalPanel,
   OperationalPanelHeader,
-} from "@/components/ui/operational-panel";
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
