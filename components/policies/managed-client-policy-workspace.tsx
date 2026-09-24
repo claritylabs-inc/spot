@@ -1,19 +1,12 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useMutation, useAction } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PillButton } from "@/components/ui/pill-button";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
-import type { PolicyUploadMode } from "@/components/policy-upload-mode-toggle";
 import { PolicyEmptyState } from "@/components/policy-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { StatusTag } from "@/components/ui/status-tag";
@@ -30,11 +23,7 @@ import {
 import { ArchiveRestore, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
-import {
-  showPolicyExtractionQueuedToast,
-  showPolicyExtractionReadyToast,
-} from "@/components/shared/extraction-banner";
-import { preparePolicyUploadCandidates } from "@/lib/policy-upload-duplicates";
+import { usePolicyUpload } from "@/hooks/use-policy-upload";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
@@ -148,10 +137,6 @@ export function ManagedClientPolicyWorkspace({
   const basePath = basePathProp ?? `/clients/${clientOrgId}/policies`;
   const router = useRouter();
   const [uploaderOpen, setUploaderOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const pendingExtractionToastsRef = useRef<
-    Record<string, { fileName?: string | null }>
-  >({});
   const setActions = onActions ?? clearNode;
   const setRightPanel = onRightPanel ?? clearNode;
   const setBreadcrumbExtra = onBreadcrumb ?? clearText;
@@ -200,16 +185,23 @@ export function ManagedClientPolicyWorkspace({
       : "skip",
   );
 
-  const generateUploadUrl = useMutation(api.policies.generateUploadUrlForOrg);
-  const checkDuplicateUploadByHash = useMutation(
-    api.policies.checkDuplicateUploadByHash,
-  );
   const createOperatorUpload = useMutation(api.policies.createOperatorUpload);
   const restorePolicy = useMutation(api.policies.restore);
   const [restoringId, setRestoringId] = useState<Id<"policies"> | null>(null);
-  const extractFromUpload = useAction(
-    api.actions.extractFromUpload.extractFromUpload,
-  );
+  const { upload: handleUpload, uploading } = usePolicyUpload({
+    orgId: clientOrgId as Id<"organizations"> | undefined,
+    registerUpload: useCallback(
+      (args) =>
+        createOperatorUpload({
+          ...args,
+          clientOrgId: clientOrgId as Id<"organizations">,
+          documentType: "policy",
+        }),
+      [clientOrgId, createOperatorUpload],
+    ),
+    rows: policies as ClientPolicyRow[] | undefined,
+    onOpenPolicy: selectPolicy,
+  });
 
   async function handleRestore(policyId: Id<"policies">) {
     setRestoringId(policyId);
@@ -222,193 +214,6 @@ export function ManagedClientPolicyWorkspace({
       setRestoringId(null);
     }
   }
-
-  const uploadStorage = useCallback(
-    async (file: File): Promise<string> => {
-      if (!clientOrgId) throw new Error("Client organization required");
-      const uploadUrl = await generateUploadUrl({
-        orgId: clientOrgId as Id<"organizations">,
-      });
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/pdf" },
-        body: file,
-      });
-      if (!res.ok) throw new Error("Storage upload failed");
-      const { storageId } = (await res.json()) as { storageId: string };
-      return storageId;
-    },
-    [clientOrgId, generateUploadUrl],
-  );
-
-  const resolvePendingExtractionToasts = useCallback(
-    (rows: ClientPolicyRow[] | undefined) => {
-      if (!rows) return;
-      const pending = pendingExtractionToastsRef.current;
-      if (Object.keys(pending).length === 0) return;
-      const rowsById = new Map(rows.map((policy) => [policy._id, policy]));
-      const readyIds = Object.keys(pending).filter((policyId) =>
-        rowsById.has(policyId as Id<"policies">),
-      );
-      if (readyIds.length === 0) return;
-
-      for (const policyId of readyIds) {
-        const policy = rowsById.get(policyId as Id<"policies">);
-        if (!policy) continue;
-        const pendingPolicy = pending[policyId];
-        showPolicyExtractionReadyToast(
-          {
-            ...policy,
-            documentType: policy.documentType ?? "policy",
-            fileName: policy.fileName ?? pendingPolicy.fileName,
-          },
-          () => selectPolicy(policyId as Id<"policies">),
-        );
-        delete pending[policyId];
-      }
-    },
-    [selectPolicy],
-  );
-
-  const handleUpload = useCallback(
-    async (files: File[], uploadMode: PolicyUploadMode = "combined") => {
-      if (!clientOrgId || files.length === 0) return false;
-      setUploading(true);
-      const progressToastId = `policy-upload:${clientOrgId}`;
-      try {
-        const orgId = clientOrgId as Id<"organizations">;
-        const candidates = await preparePolicyUploadCandidates(
-          files,
-          (fileSha256) => checkDuplicateUploadByHash({ orgId, fileSha256 }),
-        );
-        if (!candidates) return false;
-
-        const storageIds: string[] = [];
-        for (let i = 0; i < candidates.length; i++) {
-          toast.loading(`Uploading ${i + 1} of ${candidates.length}…`, {
-            id: progressToastId,
-          });
-          storageIds.push(await uploadStorage(candidates[i].file));
-        }
-
-        if (uploadMode === "separate") {
-          for (let i = 0; i < storageIds.length; i++) {
-            const uploadArgs = {
-              clientOrgId: orgId,
-              fileId: storageIds[i] as Id<"_storage">,
-              fileName: candidates[i].file.name,
-              fileSha256: candidates[i].fileSha256,
-              uploadFileSha256s: [candidates[i].fileSha256],
-              documentType: "policy" as const,
-            };
-            const policyId = (await createOperatorUpload(
-              uploadArgs,
-            )) as Id<"policies">;
-            showPolicyExtractionQueuedToast({
-              policyId,
-              documentType: "policy",
-              fileName: candidates[i].file.name,
-            });
-            pendingExtractionToastsRef.current[policyId] = {
-              fileName: candidates[i].file.name,
-            };
-            resolvePendingExtractionToasts(
-              policies as ClientPolicyRow[] | undefined,
-            );
-
-            const result = await extractFromUpload({
-              fileId: storageIds[i] as Id<"_storage">,
-              fileName: candidates[i].file.name,
-              fileSha256: candidates[i].fileSha256,
-              policyId,
-            });
-            if (
-              result &&
-              typeof result === "object" &&
-              "error" in result &&
-              typeof result.error === "string"
-            ) {
-              throw new Error(result.error);
-            }
-          }
-        } else {
-          const uploadFileSha256s = candidates.map(
-            (candidate) => candidate.fileSha256,
-          );
-          const uploadArgs = {
-            clientOrgId: orgId,
-            fileId: storageIds[0] as Id<"_storage">,
-            fileName: candidates[0].file.name,
-            fileSha256: candidates[0].fileSha256,
-            uploadFileSha256s,
-            documentType: "policy" as const,
-          };
-          const policyId = (await createOperatorUpload(
-            uploadArgs,
-          )) as Id<"policies">;
-          const displayFileName =
-            candidates.length > 1
-              ? `${candidates[0].file.name.replace(/\.pdf$/i, "")} + ${candidates.length - 1} more.pdf`
-              : candidates[0].file.name;
-          showPolicyExtractionQueuedToast({
-            policyId,
-            documentType: "policy",
-            fileName: displayFileName,
-          });
-          pendingExtractionToastsRef.current[policyId] = {
-            fileName: displayFileName,
-          };
-          resolvePendingExtractionToasts(
-            policies as ClientPolicyRow[] | undefined,
-          );
-
-          if (candidates.length > 1) {
-            toast.loading(`Merging ${candidates.length} files…`, {
-              id: progressToastId,
-            });
-          }
-          const result = await extractFromUpload({
-            fileId: storageIds[0] as Id<"_storage">,
-            fileName: candidates[0].file.name,
-            fileSha256: candidates[0].fileSha256,
-            policyId,
-            additionalFiles: storageIds.slice(1).map((fileId, i) => ({
-              fileId: fileId as Id<"_storage">,
-              fileName: candidates[i + 1].file.name,
-              fileSha256: candidates[i + 1].fileSha256,
-            })),
-          });
-          if (
-            result &&
-            typeof result === "object" &&
-            "error" in result &&
-            typeof result.error === "string"
-          ) {
-            throw new Error(result.error);
-          }
-        }
-        toast.dismiss(progressToastId);
-        return true;
-      } catch (err) {
-        toast.error("Upload failed. Please try again.", {
-          id: progressToastId,
-        });
-        console.error(err);
-        return false;
-      } finally {
-        setUploading(false);
-      }
-    },
-    [
-      clientOrgId,
-      checkDuplicateUploadByHash,
-      uploadStorage,
-      createOperatorUpload,
-      extractFromUpload,
-      policies,
-      resolvePendingExtractionToasts,
-    ],
-  );
 
   useEffect(() => {
     const uploadPanel =
@@ -434,10 +239,6 @@ export function ManagedClientPolicyWorkspace({
 
   const isLoading = policies === undefined;
   const rows = (policies ?? []) as ClientPolicyRow[];
-
-  useEffect(() => {
-    resolvePendingExtractionToasts(policies as ClientPolicyRow[] | undefined);
-  }, [policies, resolvePendingExtractionToasts]);
 
   return (
     <div className="space-y-4">
