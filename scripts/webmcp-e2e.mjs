@@ -265,6 +265,11 @@ try {
   const page = await context.newPage();
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(`${new URL(page.url()).pathname}: ${message.text().slice(0, 300)}`);
+  });
+  result.consoleErrors = consoleErrors;
   const email = `webmcp-e2e-${Date.now()}@example.com`;
   result.email = email;
   await page.goto(`${base}/signup/client`, { waitUntil: "networkidle" });
