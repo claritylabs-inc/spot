@@ -3,8 +3,8 @@
 Spot owns model inputs, results, and referenced binary assets in private Convex
 storage. `convex/routerJobs.ts` owns the invocation journal and capability HTTP
 endpoints. `convex/lib/routerJobClient.ts` owns submission, status polling, and
-reconnection. `convex/actions/routerJobs.ts` provides Node action entry points
-for extraction workers and explicit cancellation.
+reconnection. `convex/actions/routerJobs.ts` provides the Node action entry
+point for explicit cancellation.
 
 The caller supplies a stable invocation key for one model step. The first call
 freezes the request; resuming that key uses its original stored payload, including
@@ -78,21 +78,6 @@ model-visible tool output, public queries, or error strings.
 Terminal request, result, and asset blobs are deleted after seven days; capability
 tokens are revoked. The small invocation/fingerprint/status tombstone remains to
 prevent replay after result retention ends. Active requests have no age expiry.
-
-## Extraction bridge
-
-`POST /router-jobs/worker` requires the extraction worker bearer secret and
-`{jobKind, jobId, leaseId, orgId, invocationKey, payload}`. The existing
-`routerAssets.validateWorkerLease` owner checks the live policy, preview, or
-proposal lease before submission and before returning a completed result. The
-payload organization must match that lease. The effective key contains job kind
-and job ID; it deliberately excludes the lease token so recovering an abandoned
-worker reuses the same inference. Pending work returns HTTP 202. Success returns
-`{result}`. The request body retains the 4 MiB transport ceiling.
-
-Use focused journal/client tests for lost acknowledgement, early callback,
-conflicting identity, cancellation races, unknown outcomes, asset snapshots,
-and cleanup without expiry of active work.
 
 ## Local callback reachability
 

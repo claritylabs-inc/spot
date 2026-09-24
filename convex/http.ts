@@ -41,11 +41,8 @@ import { getOperatorSlackConfig } from "./lib/operatorSlackConfig";
 import { missingSlackHostScopes } from "./lib/slackOAuthPolicy";
 import {
   resolveRouterAssetSigningSecret,
-  routerAssetSigningConfiguration,
-  signRouterAsset,
   verifyRouterAssetSignature,
 } from "./lib/routerAssetSignature";
-import { ROUTER_ASSET_MAX_BYTES, ROUTER_ASSET_TTL_MS } from "./routerAssets";
 import {
   type McpPolicySummarySource,
   policyMatchesMcpFilters,
@@ -83,195 +80,6 @@ http.route({
 });
 const internalApi = internal as any;
 const JSON_HEADERS = { "Content-Type": "application/json" };
-
-function routerAssetMediaType(value: string | null): string | null {
-  const mediaType = value?.trim().toLowerCase().split(";", 1)[0] ?? "";
-  return mediaType === "application/pdf" ||
-    mediaType.startsWith("image/") ||
-    mediaType.startsWith("audio/")
-    ? mediaType
-    : null;
-}
-
-async function readRouterAssetBody(
-  request: Request,
-  declaredBytes: number,
-): Promise<Uint8Array | null> {
-  if (!request.body) return null;
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    receivedBytes += value.byteLength;
-    if (
-      receivedBytes > declaredBytes ||
-      receivedBytes > ROUTER_ASSET_MAX_BYTES
-    ) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  if (receivedBytes !== declaredBytes) return null;
-  const bytes = new Uint8Array(receivedBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
-const routerAssetUpload = httpAction(async (ctx, request) => {
-  const expectedSecret = process.env.EXTRACTION_WORKER_SECRET?.trim();
-  const authorization = request.headers.get("authorization");
-  const jobKind = request.headers.get("x-spot-router-asset-job-kind");
-  const jobId = request.headers.get("x-spot-router-asset-job-id");
-  const leaseId = request.headers.get("x-spot-router-asset-lease-id");
-  const orgId = request.headers.get("x-spot-router-asset-org-id");
-  const filename = request.headers
-    .get("x-spot-router-asset-filename")
-    ?.trim()
-    .slice(0, 255);
-  const mediaType = routerAssetMediaType(request.headers.get("content-type"));
-  const declaredBytes = Number(request.headers.get("content-length"));
-  if (!expectedSecret || authorization !== `Bearer ${expectedSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  if (
-    !jobId ||
-    !leaseId ||
-    !orgId ||
-    !mediaType ||
-    (jobKind !== "policy" && jobKind !== "preview" && jobKind !== "proposal")
-  ) {
-    return new Response("Invalid router asset metadata", { status: 400 });
-  }
-  if (
-    !Number.isSafeInteger(declaredBytes) ||
-    declaredBytes <= 0 ||
-    declaredBytes > ROUTER_ASSET_MAX_BYTES
-  ) {
-    return new Response("Router asset exceeds the 12 MiB limit", {
-      status: 413,
-    });
-  }
-  let signing: { secret: string; siteUrl: string };
-  try {
-    signing = routerAssetSigningConfiguration();
-  } catch {
-    return new Response("Router asset signing is unavailable", { status: 503 });
-  }
-  const lease = await ctx
-    .runQuery(internal.routerAssets.validateWorkerLease, {
-      jobKind,
-      jobId,
-      leaseId,
-      orgId: orgId as Id<"organizations">,
-    })
-    .catch(() => ({ leaseExpiresAt: null }));
-  if (!lease.leaseExpiresAt)
-    return new Response("Stale or mismatched extraction worker lease", {
-      status: 409,
-    });
-  const bytes = await readRouterAssetBody(request, declaredBytes);
-  if (!bytes) {
-    return new Response("Router asset size does not match Content-Length", {
-      status: 400,
-    });
-  }
-  const ownedBytes = new Uint8Array(bytes.byteLength);
-  ownedBytes.set(bytes);
-  const ownedBuffer = ownedBytes.buffer as ArrayBuffer;
-  const storageId = await ctx.storage.store(
-    new Blob([ownedBuffer], { type: mediaType }),
-  );
-  let registeredAssetId: Id<"routerAssets"> | undefined;
-  try {
-    const sha256 = Array.from(
-      new Uint8Array(await crypto.subtle.digest("SHA-256", ownedBuffer)),
-    )
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-    const expiresAt = Math.min(
-      dayjs().valueOf() + ROUTER_ASSET_TTL_MS,
-      lease.leaseExpiresAt,
-    );
-    const assetId = await ctx.runMutation(
-      internal.routerAssets.registerWorkerAsset,
-      {
-        jobKind,
-        jobId,
-        leaseId,
-        orgId: orgId as Id<"organizations">,
-        storageId,
-        mediaType,
-        ...(filename ? { filename } : {}),
-        sizeBytes: bytes.byteLength,
-        sha256,
-        expiresAt,
-      },
-    );
-    registeredAssetId = assetId;
-    const signature = await signRouterAsset(
-      String(assetId),
-      expiresAt,
-      signing.secret,
-    );
-    const query = new URLSearchParams({
-      assetId: String(assetId),
-      expiresAt: String(expiresAt),
-      signature,
-    });
-    return new Response(
-      JSON.stringify({
-        assetId,
-        reference: {
-          url: `${signing.siteUrl}/router-assets?${query.toString()}`,
-          mediaType,
-          ...(filename ? { filename } : {}),
-          sizeBytes: bytes.byteLength,
-          sha256,
-        },
-        cleanup: { expiresAt, signature },
-      }),
-      { status: 201, headers: JSON_HEADERS },
-    );
-  } catch (error) {
-    try {
-      await ctx.storage.delete(storageId);
-      if (registeredAssetId) {
-        await ctx.runMutation(internal.routerAssets.completeCleanup, {
-          assetId: registeredAssetId,
-          storageId,
-        });
-      }
-    } catch {
-      if (registeredAssetId) {
-        await ctx
-          .runMutation(internal.routerAssets.recordCleanupFailure, {
-            assetId: registeredAssetId,
-            storageId,
-          })
-          .catch(() => {});
-      } else {
-        await ctx
-          .runMutation(internal.routerAssets.scheduleUnregisteredCleanup, {
-            storageId,
-            attempt: 1,
-          })
-          .catch(() => {});
-      }
-    }
-    console.error(
-      "Router asset upload registration failed",
-      error instanceof Error ? error.name : "unknown",
-    );
-    return new Response("Router asset registration failed", { status: 500 });
-  }
-});
 
 const routerAssetDownload = httpAction(async (ctx, request) => {
   const url = new URL(request.url);
@@ -312,12 +120,6 @@ http.route({
   method: "GET",
   handler: routerAssetDownload,
 });
-http.route({
-  path: "/router-assets/upload",
-  method: "POST",
-  handler: routerAssetUpload,
-});
-
 http.route({
   path: "/quo-brokers/webhook",
   method: "POST",
@@ -724,13 +526,6 @@ http.route({
         emailDeliveryMode: getEmailDeliveryMode(),
         clientPortalUrl: getClientPortalUrl(),
         authSiteUrl: getAuthSiteUrl(),
-        extractionWorker: {
-          mode: process.env.EXTRACTION_WORKER_MODE ?? "internal",
-          expectedProtocolVersion:
-            process.env.EXTRACTION_WORKER_EXPECTED_PROTOCOL_VERSION ?? null,
-          expectedClSdkVersion:
-            process.env.EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION ?? null,
-        },
         operatorImessage: {
           inboundEnabled: operatorImessageEnabled,
           contactPhoneConfigured: Boolean(getOperatorImessageContactPhone()),
@@ -4379,54 +4174,6 @@ http.route({
   path: "/favicon.ico",
   method: "GET",
   handler: httpAction(async () => spotIconResponse()),
-});
-
-http.route({
-  path: "/router-jobs/worker",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const secret = process.env.EXTRACTION_WORKER_SECRET?.trim();
-    if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
-      return new Response(null, { status: 401 });
-    const length = Number(request.headers.get("content-length"));
-    if (
-      !Number.isSafeInteger(length) ||
-      length <= 0 ||
-      length > 4 * 1024 * 1024
-    )
-      return new Response(null, { status: 413 });
-    const bytes = await readRouterAssetBody(request, length);
-    if (!bytes) return new Response(null, { status: 400 });
-    let input: {
-      jobKind: "policy" | "preview" | "proposal";
-      jobId: string;
-      leaseId: string;
-      orgId: Id<"organizations">;
-      invocationKey: string;
-      payload: unknown;
-    };
-    try {
-      input = JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-      return new Response(null, { status: 400 });
-    }
-    // Router payloads carry JSON Schemas whose `$schema` keys are not valid Convex values.
-    const result = await ctx.runAction(internal.actions.routerJobs.worker, {
-      ...input,
-      payload: JSON.stringify(input.payload ?? null),
-    });
-    if ("resultJson" in result)
-      return new Response(`{"result":${result.resultJson}}`, {
-        headers: {
-          "content-type": "application/json",
-          "cache-control": "no-store",
-        },
-      });
-    return Response.json(result, {
-      status: "statusCode" in result ? result.statusCode : 202,
-      headers: { "cache-control": "no-store" },
-    });
-  }),
 });
 
 http.route({

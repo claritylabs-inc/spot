@@ -28,3 +28,10 @@
 - Note: deprecated fields remain as `v.optional` in schema until the migration mutation runs against existing documents.
   After running `internal.migrations.removeDeprecatedExtractionFields` for all three tables, remove the optional
   schema declarations.
+- Railway extraction worker (`extraction-worker/`), LiteParse/Poppler/Tesseract preprocessing, the provisional preview
+  queue, and the `source-tree-v2` worker protocol — policy and procurement-proposal extraction now run entirely in
+  Convex through a section-based pipeline (durable per-section router jobs, `convex-sections-v1` promotion protocol).
+  `policyExtractionQueue`, `policyExtractionPreviewQueue`, and `workerRouterTransportSmokeRuns` remain in the schema
+  but are deprecated and unwritten; drop them after data cleanup.
+- Note: decommission the Railway `spot-extraction-worker` service and remove `EXTRACTION_WORKER_*`/`LITEPARSE_*` env
+  vars from Convex deployments after this ships — not done as part of this change.

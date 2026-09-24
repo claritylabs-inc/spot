@@ -13,7 +13,6 @@ import {
   canUseAnonymousConvexCloudFallback,
   cloudConvexSelectionKeys,
   consumerAiCredentialNames,
-  conductorContainerNamesOnPort,
   conductorImageTag,
   conductorPorts,
   convexDeploymentNameFromDeployKey,
@@ -28,7 +27,6 @@ import {
   resolveConductorClRouterConfig,
   resolveConductorMapboxAccessToken,
   resolveConductorSourceDeployment,
-  workspaceSlug,
   withoutCloudConvexSelection,
   withoutConsumerAiCredentials,
 } from "./lib/conductor-workspace.mjs";
@@ -192,7 +190,6 @@ function ensureContainerService() {
 
 function buildWorkerImages() {
   const workers = [
-    ["extraction-worker", "extraction-worker"],
     ["imessage-worker", "imessage-worker"],
     ["slack-worker", "slack-worker"],
     ["mailbox-scan-worker", "mailbox-scan-worker"],
@@ -208,26 +205,6 @@ function buildWorkerImages() {
       `${directory}/Dockerfile`,
       directory,
     ]);
-  }
-}
-
-function cleanupContainersOnWorkspacePorts() {
-  const output = capture("container", ["list", "--all", "--format", "json"]);
-  const containers = JSON.parse(output || "[]");
-  if (!Array.isArray(containers)) {
-    throw new Error("Apple container list did not return an array");
-  }
-
-  const { extraction } = conductorPorts();
-  for (const containerName of conductorContainerNamesOnPort(
-    containers,
-    "extraction",
-    extraction,
-  )) {
-    run("container", ["delete", "--force", containerName]);
-    console.log(
-      `Deleted Apple container ${containerName} occupying this workspace's extraction port.`,
-    );
   }
 }
 
@@ -293,7 +270,6 @@ if (
 }
 
 run("npm", ["ci"]);
-run("npm", ["--prefix", "extraction-worker", "ci"]);
 run("npm", ["--prefix", "imessage-worker", "ci"]);
 run("npm", ["--prefix", "slack-worker", "ci"]);
 
@@ -357,7 +333,6 @@ for (const name of cloudConvexSelectionKeys) delete process.env[name];
 
 const {
   web,
-  extraction,
   imessage,
   slack,
   operatorImessage,
@@ -399,11 +374,7 @@ removeConsumerAiCredentials(convex);
 // router-backed AI flows disabled while basic local browser QA remains usable.
 const routerRequired =
   sourceEnvironmentRead || process.env.CONDUCTOR_IS_LOCAL !== "0";
-const {
-  url: clRouterUrl,
-  secret: clRouterSecret,
-  tenantId: clRouterTenantId,
-} = resolveConductorClRouterConfig(
+resolveConductorClRouterConfig(
   {
     url: optionalConvexEnv(convex, "CL_ROUTER_URL"),
     secret: optionalConvexEnv(convex, "CL_ROUTER_SECRET"),
@@ -412,18 +383,6 @@ const {
   { required: routerRequired },
 );
 
-const extractionPackage = JSON.parse(
-  readFileSync(
-    path.join(repoRoot, "extraction-worker", "package.json"),
-    "utf8",
-  ),
-);
-const expectedSdkVersion =
-  extractionPackage.dependencies["@claritylabs/cl-sdk"];
-const extractionSecret = createdLocalDeployment
-  ? randomBytes(32).toString("hex")
-  : optionalConvexEnv(convex, "EXTRACTION_WORKER_SECRET") ||
-    randomBytes(32).toString("hex");
 const imessageSecret = createdLocalDeployment
   ? randomBytes(32).toString("hex")
   : optionalConvexEnv(convex, "IMESSAGE_WORKER_SECRET") ||
@@ -490,11 +449,6 @@ try {
     SLACK_WORKER_URL: `http://127.0.0.1:${slack}`,
     SLACK_WORKER_SECRET: slackSecret,
     SLACK_SIGNING_SECRET: slackWebhookSecret,
-    EXTRACTION_WORKER_MODE: "external",
-    EXTRACTION_WORKER_URL: `http://127.0.0.1:${extraction}`,
-    EXTRACTION_WORKER_SECRET: extractionSecret,
-    EXTRACTION_WORKER_EXPECTED_PROTOCOL_VERSION: "source-tree-v1",
-    EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION: expectedSdkVersion,
     APP_SITE_URL: localAppUrl,
     AUTH_LINK_SITE_URL: localAppUrl,
     CLIENT_PORTAL_URL: localAppUrl,
@@ -515,18 +469,6 @@ run(convex, [
   }),
 ]);
 
-writeRuntimeEnv("extraction-worker.env", {
-  CONVEX_URL: localUrls.cloud,
-  CONVEX_SITE_URL: localUrls.site,
-  SPOT_ENV: "local",
-  EXTRACTION_WORKER_SECRET: extractionSecret,
-  EXTRACTION_WORKER_ID: `conductor-${workspaceSlug()}`,
-  EXTRACTION_JOB_CONCURRENCY: "8",
-  EXTRACTION_PREVIEW_CONCURRENCY: "2",
-  CL_ROUTER_URL: clRouterUrl,
-  CL_ROUTER_SECRET: clRouterSecret,
-  CL_ROUTER_TENANT_ID: clRouterTenantId,
-});
 writeRuntimeEnv("imessage-worker.env", {
   SPOT_ENV: "local",
   IMESSAGE_CHANNEL_ROLE: "customer",
@@ -565,10 +507,9 @@ run("npm", ["run", "check:agent-workers"]);
 
 if (process.env.CONDUCTOR_IS_LOCAL !== "0") {
   ensureContainerService();
-  cleanupContainersOnWorkspacePorts();
   buildWorkerImages();
 }
 
 console.log(
-  "\nConductor workspace ready with its own local Convex database. Run the default Dev template to start Spot, Convex, extraction, the Slack mock worker, and automatic email/OTP capture. Start customer Spectrum with npm run conductor:spectrum or operator Spectrum with npm run conductor:operator-spectrum.",
+  "\nConductor workspace ready with its own local Convex database. Run the default Dev template to start Spot, Convex, the Slack mock worker, and automatic email/OTP capture. Start customer Spectrum with npm run conductor:spectrum or operator Spectrum with npm run conductor:operator-spectrum.",
 );

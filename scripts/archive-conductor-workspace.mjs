@@ -2,9 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import {
-  conductorContainerName,
   conductorImageTags,
-  conductorPorts,
   ensureNode24,
   parseEnvText,
   repoRoot,
@@ -61,14 +59,9 @@ function ensureContainerSystem() {
   return true;
 }
 
-const containerName = conductorContainerName(
-  "extraction",
-  conductorPorts().extraction,
-);
 const imageTags = conductorImageTags();
 
 if (dryRun) {
-  console.log(`Would delete Apple Container container ${containerName}`);
   for (const imageTag of imageTags) {
     console.log(`Would delete Apple Container image ${imageTag}`);
   }
@@ -83,20 +76,6 @@ if (dryRun) {
 }
 
 if (ensureContainerSystem()) {
-  const containers = JSON.parse(
-    runContainer(["list", "--all", "--format", "json"]),
-  );
-  if (
-    containers.some(
-      (container) =>
-        container.id === containerName ||
-        container.configuration?.id === containerName,
-    )
-  ) {
-    runContainer(["delete", "--force", containerName], { stdio: "inherit" });
-    console.log(`Deleted Apple Container container ${containerName}`);
-  }
-
   runContainer(["image", "delete", "--force", ...imageTags], {
     stdio: "inherit",
   });

@@ -539,6 +539,9 @@ async function queueProposalExtraction(
     updatedByUserId: args.operatorUserId,
     updatedAt: now,
   });
+  await ctx.scheduler.runAfter(0, internal.actions.proposalExtraction.advance, {
+    jobId,
+  });
   return { jobId, extractionFingerprint, reused: false };
 }
 

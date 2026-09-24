@@ -295,3 +295,29 @@ export type SummarySectionOutput = z.infer<typeof summarySectionSchema>;
 export type SectionOutputByKind = {
   [K in PolicySectionKind]: z.infer<(typeof SECTION_OUTPUT_SCHEMAS)[K]>;
 };
+
+/**
+ * Quote-only supplemental facts for procurement proposal documents: the
+ * quote validity deadline plus binding/underwriting conditions. Unlike
+ * section schemas, the model copies `sourceNodeIds`/`sourceSpanIds` directly
+ * from the evidence it is supplied (already resolved by the section merge)
+ * instead of returning `{page, quote}` citations to re-resolve.
+ */
+export const proposalEvidenceItemSchema = z.object({
+  description: z.string().min(1).max(2000),
+  category: z.string().max(200).nullable(),
+  sourceNodeIds: z.array(z.string().min(1)).max(20),
+  sourceSpanIds: z.array(z.string().min(1)).max(50),
+  pageStart: z.number().int().positive().nullable(),
+  pageEnd: z.number().int().positive().nullable(),
+});
+
+export const proposalQuoteTermsSchema = z.object({
+  quoteExpirationDate: z.string().max(100).nullable(),
+  quoteExpirationEvidence: proposalEvidenceItemSchema.nullable(),
+  subjectivities: z.array(proposalEvidenceItemSchema).max(100),
+  conditions: z.array(proposalEvidenceItemSchema).max(100),
+});
+
+export type ProposalEvidenceItem = z.infer<typeof proposalEvidenceItemSchema>;
+export type ProposalQuoteTerms = z.infer<typeof proposalQuoteTermsSchema>;

@@ -1,9 +1,9 @@
 # Convex-native section extraction (implementation spec)
 
-Status: in progress. This document is the shared contract for the packets that
-replace the Railway extraction worker. It supersedes the worker, LiteParse,
-preview-queue and `source-tree-v2` sections of `AGENTS.md` once the packets land;
-the final packet rewrites `AGENTS.md` to match.
+Status: implemented. This document is the shared contract for the packets that
+replaced the Railway extraction worker. It supersedes the worker, LiteParse,
+preview-queue and `source-tree-v2` sections of `AGENTS.md`; `AGENTS.md` has been
+rewritten to match.
 
 ## Decisions
 
@@ -76,29 +76,21 @@ manager approval.
 
 ## Packets
 
-- **P1 — pdf text + citations.** Implement `pdfText.ts` and `citationResolver.ts`;
-  migrate every `liteparsePreprocessor.ts` caller except `policyExtraction.ts`
-  (P3) onto `pdfText.ts`; keep `liteparsePreprocessor.ts` compiling for P3 until
-  integration (P5 deletes it).
-- **P2 — sectioning.** Implement `policySectioning.ts` with tests.
-- **P3 — section extraction core.** Rewrite the policy pipeline in
-  `convex/actions/policyExtraction.ts`, add `convex/lib/sectionExtraction/**`,
-  update `convex/lib/extractionPromotion.ts` and the promotion/start/retry/preview
-  functions in `convex/policies.ts`, remove the external-worker and preview-queue
-  branches in those files.
-- **P4 — Jev classifiers.** `policyIntakeClassification.ts`,
-  `carrierIdentitySource.ts`, `coverageScoping.ts`, `extractionPostProcess.ts`,
-  `extractionFieldReview.ts`, `sourceTree.ts`, `carrierIdentityBackfill.ts` and
-  their tests.
-- **P7 — cl-sdk engine removal outside the core.**
-  `convex/actions/extractSupplementary.ts`, `convex/actions/rechunkPolicy.ts`,
-  `convex/actions/backfillChunks.ts`, `convex/lib/extraction.ts`.
-- **P5 — worker removal (after P3).** Delete `extraction-worker/`, worker
-  endpoints/tables/env/scripts/CI/config, move procurement proposal extraction to
-  the same Convex section pipeline, update docs (`AGENTS.md`, README,
-  `docs/deployment/environments.md`, skills).
+Implementation history, in landing order: **P1** built `pdfText.ts` and
+`citationResolver.ts` on pdf.js, migrating callers off LiteParse. **P2** added
+`policySectioning.ts` (form-number grouping + Jev page classification). **P3**
+rewrote the policy pipeline (`convex/actions/policyExtraction.ts`,
+`convex/lib/sectionExtraction/**`) onto per-section durable router jobs and the
+`convex-sections-v1` promotion gate. **P4** replaced extraction heuristics with
+Jev classifiers (intake, carrier identity, coverage scoping, post-process,
+field review, source tree). **P7** removed cl-sdk extraction-engine usage
+outside the core pipeline. **P5** deleted `extraction-worker/` and all worker
+endpoints/tables/env/scripts/CI/config, moved procurement proposal extraction
+onto the same Convex section pipeline, and updated docs and skills.
 
-## Invariants every packet keeps
+## Invariants
+
+These invariants hold across the implementation:
 
 - Read `convex/_generated/ai/guidelines.md` before touching Convex code.
 - Source evidence remains canonical: spans → nodes → operational profile, with

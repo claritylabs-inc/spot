@@ -1,5 +1,4 @@
 import { execFile } from "child_process";
-import { readFileSync } from "fs";
 import { createServer, type Server, type ServerResponse } from "http";
 import type { AddressInfo } from "net";
 import { join } from "path";
@@ -7,13 +6,7 @@ import { promisify } from "util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const root = join(__dirname, "..");
-const read = (path: string) => readFileSync(join(root, path), "utf-8");
 const execFileAsync = promisify(execFile);
-
-const workerPackage = JSON.parse(read("extraction-worker/package.json"));
-const expectedClSdkSpec = workerPackage.dependencies?.["@claritylabs/cl-sdk"];
-if (!expectedClSdkSpec)
-  throw new Error("extraction-worker package is missing @claritylabs/cl-sdk");
 
 let healthServer: Server;
 let healthBaseUrl: string;
@@ -24,7 +17,6 @@ function writeJson(res: ServerResponse, payload: unknown) {
 }
 
 function convexHealth(
-  expectedClSdkVersion: string,
   options: {
     operatorImessageContactPhoneConfigured?: boolean;
     operatorImessageEnabled?: boolean;
@@ -43,18 +35,6 @@ function convexHealth(
     ok: true,
     spotEnv: "production",
     emailDeliveryMode: "live",
-    checks: {
-      extractionWorkerModeExternal: true,
-      extractionWorkerSecretConfigured: true,
-      extractionWorkerUrlConfigured: true,
-      extractionWorkerExpectedProtocolConfigured: true,
-      extractionWorkerExpectedClSdkConfigured: true,
-    },
-    extractionWorker: {
-      mode: "external",
-      expectedProtocolVersion: "source-tree-v1",
-      expectedClSdkVersion,
-    },
     slack: {
       enabled: true,
       mode: "slack",
@@ -96,15 +76,6 @@ function operatorImessageHealth() {
     ...imessageHealth(),
     channelRole: "operator",
     httpPorts: [],
-  };
-}
-
-function extractionWorkerHealth(clSdkVersion: string) {
-  return {
-    ok: true,
-    spotEnv: "production",
-    workerProtocolVersion: "source-tree-v1",
-    clSdkVersion,
   };
 }
 
@@ -156,7 +127,6 @@ async function runAgentHealth(convexPath: string, clRouterPath = "/cl-router") {
         SPOT_CONVEX_AGENT_HEALTH_URL: `${healthBaseUrl}${convexPath}`,
         SPOT_IMESSAGE_WORKER_HEALTH_URL: `${healthBaseUrl}/imessage`,
         SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL: `${healthBaseUrl}/operator-imessage`,
-        SPOT_EXTRACTION_WORKER_HEALTH_URL: `${healthBaseUrl}/extraction-worker`,
         SPOT_PRODUCTION_SLACK_WORKER_HEALTH_URL: `${healthBaseUrl}/slack-worker`,
         SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL: `${healthBaseUrl}${clRouterPath}`,
       },
@@ -167,46 +137,35 @@ async function runAgentHealth(convexPath: string, clRouterPath = "/cl-router") {
 
 beforeAll(async () => {
   healthServer = createServer((req, res) => {
-    if (req.url === "/convex-aligned")
-      return writeJson(res, convexHealth(expectedClSdkSpec));
-    if (req.url === "/convex-stale-sdk")
-      return writeJson(res, convexHealth("^0.0.0"));
+    if (req.url === "/convex-aligned") return writeJson(res, convexHealth());
     if (req.url === "/convex-operator-slack-disabled")
-      return writeJson(
-        res,
-        convexHealth(expectedClSdkSpec, { operatorSlackEnabled: false }),
-      );
+      return writeJson(res, convexHealth({ operatorSlackEnabled: false }));
     if (req.url === "/convex-operator-slack-missing-scopes")
       return writeJson(
         res,
-        convexHealth(expectedClSdkSpec, {
+        convexHealth({
           operatorSlackMissingHostScopes: ["reactions:write"],
         }),
       );
     if (req.url === "/convex-operator-imessage-disabled")
-      return writeJson(
-        res,
-        convexHealth(expectedClSdkSpec, { operatorImessageEnabled: false }),
-      );
+      return writeJson(res, convexHealth({ operatorImessageEnabled: false }));
     if (req.url === "/convex-operator-imessage-number-missing")
       return writeJson(
         res,
-        convexHealth(expectedClSdkSpec, {
+        convexHealth({
           operatorImessageContactPhoneConfigured: false,
         }),
       );
     if (req.url === "/convex-operator-model-missing")
       return writeJson(
         res,
-        convexHealth(expectedClSdkSpec, {
+        convexHealth({
           operatorAgentModelConfigured: false,
         }),
       );
     if (req.url === "/imessage") return writeJson(res, imessageHealth());
     if (req.url === "/operator-imessage")
       return writeJson(res, operatorImessageHealth());
-    if (req.url === "/extraction-worker")
-      return writeJson(res, extractionWorkerHealth(expectedClSdkSpec));
     if (req.url === "/slack-worker") return writeJson(res, slackWorkerHealth());
     if (req.url === "/cl-router") return writeJson(res, clRouterHealth());
     if (req.url === "/cl-router-unfrozen") {
@@ -229,12 +188,6 @@ afterAll(async () => {
 });
 
 describe("agent deployment safeguards", () => {
-  it("fails deployment health when Convex expects a stale cl-sdk worker version", async () => {
-    await expect(runAgentHealth("/convex-stale-sdk")).rejects.toMatchObject({
-      stderr: expect.stringContaining("extractionWorker.expectedClSdkVersion"),
-    });
-  });
-
   it.each([
     ["model route", "/convex-operator-model-missing", "operatorAgent.modelConfigured"],
     ["Slack", "/convex-operator-slack-disabled", "operatorSlack.enabled"],
@@ -262,7 +215,7 @@ describe("agent deployment safeguards", () => {
     },
   );
 
-  it("accepts deployment health only when Convex, worker health, and package spec agree", async () => {
+  it("accepts deployment health when Convex and worker health agree", async () => {
     const result = await runAgentHealth("/convex-aligned");
 
     expect(result.stdout).toContain(
