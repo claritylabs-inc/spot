@@ -1,16 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useMutation } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Upload } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { PolicyEmptyState } from "@/components/policy-empty-state";
 import { PolicyListItem } from "@/components/policy-list-item";
+import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
+import { PillButton } from "@/components/ui/pill-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCachedPolicyList } from "@/lib/sync/spot-cached-queries";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { usePolicyUpload } from "@/hooks/use-policy-upload";
+import {
+  useCachedPolicyList,
+  useCachedViewerOrg,
+} from "@/lib/sync/spot-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import type { CarrierIdentity } from "@/convex/lib/carrierIdentity";
 
 type PolicyRow = {
-  _id: string;
+  _id: Id<"policies">;
+  fileName?: string | null;
+  documentType?: string | null;
   carrier?: string | null;
   carrierIdentity?: CarrierIdentity | null;
   policyDetailOverrides?: unknown;
@@ -48,9 +61,52 @@ export default function PoliciesPage() {
   }, [archivedRequested, archivedPolicies, router]);
   const policies = useCachedPolicyList(showArchived);
   const rows = (policies ?? []) as PolicyRow[];
+  const viewerOrg = useCachedViewerOrg();
+  const orgId = viewerOrg?.org?._id;
+  const createClientUpload = useMutation(api.policies.createClientUpload);
+  const [uploaderOpen, setUploaderOpen] = useState(false);
+  const { upload, uploading } = usePolicyUpload({
+    orgId,
+    registerUpload: useCallback(
+      async (args) => {
+        if (!orgId) throw new Error("Organization required");
+        return await createClientUpload({ ...args, orgId, documentType: "policy" });
+      },
+      [createClientUpload, orgId],
+    ),
+    rows: showArchived ? undefined : (policies as PolicyRow[] | undefined),
+    onOpenPolicy: useCallback(
+      (policyId: Id<"policies">) => router.push(`/policies/${policyId}`),
+      [router],
+    ),
+  });
 
   return (
-    <AppShell>
+    <AppShell
+      actions={
+        showArchived ? null : (
+          <PillButton
+            type="button"
+            size="compact"
+            variant="primary"
+            onClick={() => setUploaderOpen(true)}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Upload policy
+          </PillButton>
+        )
+      }
+      rightPanel={
+        uploaderOpen && !showArchived ? (
+          <PolicyUploadDrawer
+            open
+            onClose={() => setUploaderOpen(false)}
+            onUpload={upload}
+            uploading={uploading}
+          />
+        ) : null
+      }
+    >
       <div className="space-y-4">
         {hasArchivedPolicies ? (
           <Tabs
@@ -70,11 +126,13 @@ export default function PoliciesPage() {
 
         {policies === undefined ? (
           <div className="min-h-32" aria-hidden="true" />
+        ) : rows.length === 0 && !showArchived ? (
+          <PolicyEmptyState uploading={uploading} onUpload={upload} />
         ) : rows.length === 0 ? (
           <div
             className={`py-16 text-center text-muted-foreground/50 ${typeStyle("body.default")}`}
           >
-            No {showArchived ? "archived" : "active"} policies
+            No archived policies
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">

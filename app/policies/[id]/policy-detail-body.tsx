@@ -397,6 +397,11 @@ export interface PolicyDetailBodyProps {
   readOnly?: boolean;
   /** Enable direct operator management without treating the operator as a broker member. */
   operatorMode?: boolean;
+  /**
+   * With readOnly, still allow archive, restore, and extraction cancellation
+   * for policies the viewer's own client organization uploaded.
+   */
+  canManageOwnUploads?: boolean;
 }
 
 export function PolicyDetailBody({
@@ -408,6 +413,7 @@ export function PolicyDetailBody({
   afterRestoreHref = "/policies",
   readOnly = false,
   operatorMode = false,
+  canManageOwnUploads = false,
 }: PolicyDetailBodyProps) {
   const viewerOrg = useCachedViewerOrg();
   const searchParams = useSearchParams();
@@ -545,8 +551,11 @@ export function PolicyDetailBody({
     pipelineStatus === "complete" && extractionDataStage === "final";
   const canEditPolicyDetails =
     canEditExtractedFields && !readOnly && !isArchived && isPolicyFinal;
+  const canManageUpload =
+    !readOnly || (canManageOwnUploads && p.uploadedBySide === "client");
   const canCancelExtraction =
-    pipelineStatus === "running" || pipelineStatus === "paused";
+    canManageUpload &&
+    (pipelineStatus === "running" || pipelineStatus === "paused");
   const isProcessingPolicy =
     !pipelineStatus ||
     pipelineStatus === "idle" ||
@@ -898,7 +907,7 @@ export function PolicyDetailBody({
             <RotateCw className="size-3.5" />
           </PillButton>
         ) : null}
-        {!readOnly && !isArchived && (
+        {canManageUpload && !isArchived && (
           <PillButton
             size="compact"
             variant="secondary"
@@ -935,6 +944,7 @@ export function PolicyDetailBody({
     operatorMode,
     policy,
     readOnly,
+    canManageUpload,
     isArchived,
     reExtracting,
     cancelingExtraction,
@@ -1102,7 +1112,7 @@ export function PolicyDetailBody({
                 ? "This document is archived and excluded from active Spot workflows."
                 : "This policy is archived and excluded from active Spot workflows."}
             </p>
-            {!readOnly ? (
+            {canManageUpload ? (
               <PillButton
                 variant="secondary"
                 size="compact"
