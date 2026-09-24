@@ -904,6 +904,7 @@ export default defineSchema({
     serviceActor: v.optional(v.literal("central_employee_provisioning")),
     type: v.union(
       v.literal("operator_bootstrap"),
+      v.literal("operator_invited"),
       v.literal("employee_provisioned"),
       v.literal("broker_created"),
       v.literal("broker_status_changed"),
