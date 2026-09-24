@@ -132,6 +132,120 @@ describe("form-number grouping", () => {
       }),
     ]);
   });
+
+  test("sends a declarations page with a printed form number to Jev instead of guessing", async () => {
+    vi.mocked(clRouterDecide).mockImplementationOnce(async () =>
+      decideResponse({
+        kind_1: choiceAnswer("declarations", 0.95),
+        boundary_1: noulAnswer(0),
+      }),
+    );
+    const pages: PdfPageText[] = [
+      pdfPage(
+        1,
+        "DECLARATIONS\nNamed Insured: Acme Corp\nPolicy Period: 01/01/2026 to 01/01/2027\nABC-123 (01/20)",
+      ),
+    ];
+    const plan = await planPolicySections({
+      ctx,
+      orgId,
+      pageCount: 1,
+      pages,
+      pdfByteLength: 1000,
+    });
+    expect(clRouterDecide).toHaveBeenCalledTimes(1);
+    expect(plan.pageLabels).toEqual([
+      expect.objectContaining({
+        page: 1,
+        kind: "declarations",
+        source: "classifier",
+        formNumber: "ABC-123 (01/20)",
+      }),
+    ]);
+  });
+
+  test("sends a forms-and-endorsements schedule with a printed form number to Jev", async () => {
+    vi.mocked(clRouterDecide).mockImplementationOnce(async () =>
+      decideResponse({
+        kind_1: choiceAnswer("forms_list", 0.9),
+        boundary_1: noulAnswer(0),
+      }),
+    );
+    const pages: PdfPageText[] = [
+      pdfPage(
+        1,
+        "FORMS AND ENDORSEMENTS SCHEDULE\nForm Number - Description\nCG 20 10 12 19 - Additional Insured\nIL 00 17 11 98 - Common Policy Conditions",
+      ),
+    ];
+    const plan = await planPolicySections({
+      ctx,
+      orgId,
+      pageCount: 1,
+      pages,
+      pdfByteLength: 1000,
+    });
+    expect(clRouterDecide).toHaveBeenCalledTimes(1);
+    expect(plan.pageLabels).toEqual([
+      expect.objectContaining({
+        page: 1,
+        kind: "forms_list",
+        source: "classifier",
+        formNumber: "CG 20 10 12 19",
+      }),
+    ]);
+  });
+
+  test("does not deterministically classify a declarations page whose forms list mentions 'COVERAGE FORM'", async () => {
+    vi.mocked(clRouterDecide).mockImplementationOnce(async () =>
+      decideResponse({
+        kind_1: choiceAnswer("declarations", 0.9),
+        boundary_1: noulAnswer(0),
+      }),
+    );
+    const pages: PdfPageText[] = [
+      pdfPage(
+        1,
+        "DECLARATIONS\nForms and Endorsements Applicable to This Policy:\nCOMMERCIAL GENERAL LIABILITY COVERAGE FORM\nCG 00 01 04 13",
+      ),
+    ];
+    const plan = await planPolicySections({
+      ctx,
+      orgId,
+      pageCount: 1,
+      pages,
+      pdfByteLength: 1000,
+    });
+    expect(clRouterDecide).toHaveBeenCalledTimes(1);
+    expect(plan.pageLabels[0]).toEqual(
+      expect.objectContaining({ kind: "declarations", source: "classifier" }),
+    );
+    expect(plan.pageLabels[0].kind).not.toBe("coverage_form");
+  });
+
+  test("deterministically classifies a page titled 'ENDORSEMENT NO. 3'", async () => {
+    const pages: PdfPageText[] = [
+      pdfPage(
+        1,
+        "ENDORSEMENT NO. 3\nThis endorsement modifies certain provisions of the policy.\nCG 20 10 12 19",
+      ),
+    ];
+    const plan = await planPolicySections({
+      ctx,
+      orgId,
+      pageCount: 1,
+      pages,
+      pdfByteLength: 1000,
+    });
+    expect(clRouterDecide).not.toHaveBeenCalled();
+    expect(plan.pageLabels).toEqual([
+      expect.objectContaining({
+        page: 1,
+        kind: "endorsement",
+        source: "form_number",
+        confidence: 0.8,
+      }),
+    ]);
+  });
 });
 
 describe("Jev per-page classification", () => {
