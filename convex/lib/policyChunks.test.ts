@@ -126,8 +126,8 @@ describe("chunkPolicyDocument parity with cl-sdk chunkDocument", () => {
     const doc = fixture();
     const chunks = chunkPolicyDocument(doc);
     for (const chunk of chunks) {
-      expect(chunk.id.startsWith(`${doc.id}:`)).toBe(true);
-      expect(chunk.documentId).toBe(doc.id);
+      expect(chunk.id.startsWith("policy-1:")).toBe(true);
+      expect(chunk.documentId).toBe("policy-1");
     }
   });
 });
