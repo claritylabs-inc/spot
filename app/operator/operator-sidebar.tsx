@@ -7,7 +7,6 @@ import {
   Building2,
   List,
   LogOut,
-  MessageSquareText,
   ScrollText,
   Settings,
   ChartNoAxesColumn,
@@ -54,7 +53,6 @@ export function OperatorSidebar({
     | "threads"
     | "brokers"
     | "clients"
-    | "demo-leads"
     | "channels"
     | "usage"
     | "logs"
@@ -175,16 +173,6 @@ export function OperatorSidebar({
             label="Insurance providers"
             icon={Building2}
             active={active === "brokers"}
-            collapsed={collapsed}
-          />
-        </div>
-        <SectionHeader label="Sales" collapsed={collapsed} />
-        <div className="flex flex-col gap-1">
-          <SidebarMenuItem
-            href="/operator/demo-leads"
-            label="Demo leads"
-            icon={MessageSquareText}
-            active={active === "demo-leads"}
             collapsed={collapsed}
           />
         </div>

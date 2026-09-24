@@ -51,9 +51,6 @@ type VerificationCleanupResult = {
   participants: number;
   threads: number;
   messages: number;
-  publicConversations: number;
-  publicLogs: number;
-  publicTranscripts: number;
 };
 
 function assertLocalSeed() {
@@ -314,34 +311,11 @@ export const removeLocalVerificationArtifacts = internalMutation({
       (row) => threadIds.has(String(row.threadId)),
     );
 
-    const initialPublicLogs = (
-      await ctx.db.query("publicDemoChatLogs").collect()
-    ).filter((row) =>
-      isVerificationGuid(
-        (row.metadata as { chatGuid?: string } | undefined)?.chatGuid,
-      ),
-    );
-    const publicConversationIds = new Set(
-      initialPublicLogs.map(({ conversationId }) => String(conversationId)),
-    );
-    const publicLogs = (
-      await ctx.db.query("publicDemoChatLogs").collect()
-    ).filter((row) => publicConversationIds.has(String(row.conversationId)));
-    const publicConversations = (
-      await ctx.db.query("publicDemoConversations").collect()
-    ).filter((row) => publicConversationIds.has(String(row._id)));
-    const publicTranscripts = (
-      await ctx.db.query("publicDemoSalesTranscripts").collect()
-    ).filter((row) => publicConversationIds.has(String(row.conversationId)));
-
     for (const row of messages) await ctx.db.delete(row._id);
     for (const row of threads) await ctx.db.delete(row._id);
     for (const row of participants) await ctx.db.delete(row._id);
     for (const row of chats) await ctx.db.delete(row._id);
     for (const row of events) await ctx.db.delete(row._id);
-    for (const row of publicLogs) await ctx.db.delete(row._id);
-    for (const row of publicTranscripts) await ctx.db.delete(row._id);
-    for (const row of publicConversations) await ctx.db.delete(row._id);
 
     return {
       chats: chats.length,
@@ -349,9 +323,6 @@ export const removeLocalVerificationArtifacts = internalMutation({
       participants: participants.length,
       threads: threads.length,
       messages: messages.length,
-      publicConversations: publicConversations.length,
-      publicLogs: publicLogs.length,
-      publicTranscripts: publicTranscripts.length,
     };
   },
 });

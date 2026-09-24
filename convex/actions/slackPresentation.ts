@@ -7,7 +7,6 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
-  buildSlackClassicFinalBlocks,
   buildSlackFinalBlocks,
   formatSlackAnswerText,
   SLACK_DEFAULT_PROCESSING_REACTION,
@@ -91,22 +90,6 @@ async function recordProviderFailure(
 
 function hashPayload(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-const CLASSIC_BLOCK_FALLBACK_CODES = new Set([
-  "invalid_blocks",
-  "msg_blocks_too_long",
-  "msg_blocks_too_many",
-  "unsupported_block_type",
-  "unknown_block_type",
-]);
-
-function fallbackEligible(error: unknown): boolean {
-  return Boolean(
-    error instanceof SlackPresentationError &&
-    error.providerErrorCode &&
-    CLASSIC_BLOCK_FALLBACK_CODES.has(error.providerErrorCode),
-  );
 }
 
 async function bestEffortReaction(args: {
@@ -390,7 +373,7 @@ export const finish = internalAction({
     ]);
     const token = args.actionToken;
     const revision = presentation.revision + 1;
-    const richBlocks = token
+    const finalBlocks: SlackBlock[] = token
       ? buildSlackFinalBlocks({
           message,
           policies,
@@ -409,18 +392,7 @@ export const finish = internalAction({
             },
           },
         ];
-    const classicBlocks = token
-      ? buildSlackClassicFinalBlocks({
-          message,
-          policies,
-          emailDraft,
-          actionToken: token,
-          revision,
-          showHandoff: presentation.threadTs !== undefined,
-        })
-      : richBlocks;
-    let finalBlocks = richBlocks;
-    let payloadHash = hashPayload(finalBlocks);
+    const payloadHash = hashPayload(finalBlocks);
     const target = await presentationTarget(ctx, presentation);
 
     const deliver = async (blocks: SlackBlock[]) => {
@@ -458,20 +430,7 @@ export const finish = internalAction({
     };
 
     try {
-      let providerMessageId: string;
-      try {
-        providerMessageId = await deliver(richBlocks);
-      } catch (error) {
-        if (classicBlocks === richBlocks || !fallbackEligible(error))
-          throw error;
-        console.warn(
-          "[slack] Rich block types were rejected; retrying classic Block Kit",
-          error,
-        );
-        finalBlocks = classicBlocks;
-        payloadHash = hashPayload(finalBlocks);
-        providerMessageId = await deliver(finalBlocks);
-      }
+      const providerMessageId = await deliver(finalBlocks);
       await ctx.runMutation(internalApi.slackPresentation.markFinal, {
         id: presentation._id,
         providerMessageId,

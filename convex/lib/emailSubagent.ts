@@ -27,6 +27,11 @@ import {
 } from "./emailDelivery";
 import { buildEmailSignature } from "./emailIdentity";
 import {
+  COI_DISCLAIMER,
+  NO_OPEN_ENDED_OFFERS,
+  NO_SIGN_OFF,
+} from "./channelStyle";
+import {
   MULTIPLE_COI_SINGLE_RECIPIENT_WARNING,
   normalizeAttachmentText,
   resolveRequestedCoiAttachmentsForRecipient,
@@ -930,12 +935,12 @@ Be careful by default:
 - For certificate/COI delivery requests, attach only the generated COI unless the request separately asks for the original/full policy PDF too.
 - When drafting COIs for multiple recipients, each recipient's email must include only that recipient's generated COI, not the full batch of generated COIs.
 - When the user explicitly asks to bundle all COIs/certificates into one email for a single recipient, attach the requested COIs together in that one email.
-- Treat generated COIs as informational certificates. Do not call them certified, approved, binding, or reviewed.
+- ${COI_DISCLAIMER}
 - Do not call an attachment tool for a document that is already listed in preparedAttachments.
 - Use concise professional formatting. Prefer 1-3 short paragraphs or a short bullet list.
 - Include only the policy facts that are directly useful to the recipient. Avoid exhaustive coverage memos unless explicitly requested.
-- Do not end with open-ended offers like "If you want, I can..." unless a necessary next step or clarification is required.
-- No personal sign-off; the platform adds the Spot signature.
+- ${NO_OPEN_ENDED_OFFERS}
+- ${NO_SIGN_OFF}
 
 Call send_or_draft_email exactly once after preparing any requested attachments.`,
       messages: [

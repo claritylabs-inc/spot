@@ -222,33 +222,3 @@ export function formatComplianceRequirement(requirement: Requirement) {
     : "";
   return `- ${requirement.title} (requirementId: ${requirement._id}; ${details})\n  ${requirement.requirementText}${source}`;
 }
-
-export function formatComplianceRequirementsContext(
-  requirements: Requirement[],
-) {
-  if (requirements.length === 0) return "";
-
-  const vendorRequirements = requirements.filter(
-    (requirement) => requirement.scope === "vendors",
-  );
-  const myRequirements = requirements.filter(
-    (requirement) => requirement.scope === "own_org",
-  );
-  const sections = [];
-  if (vendorRequirements.length > 0) {
-    sections.push(
-      `Vendor requirements:\n${vendorRequirements
-        .map(formatComplianceRequirement)
-        .join("\n")}`,
-    );
-  }
-  if (myRequirements.length > 0) {
-    sections.push(
-      `My requirements:\n${myRequirements
-        .map(formatComplianceRequirement)
-        .join("\n")}`,
-    );
-  }
-
-  return `\n\nCOMPLIANCE REQUIREMENTS:\nThese are typed insurance coverage requirements checked against structured policy coverage evidence. scope says whose obligation this is. Prefer these records over policy documents when the user asks what the org requires. currentComplianceStatus and currentComplianceReasons are the authoritative saved assessment: never independently promote unverified or not_met to met from a generic policy limit. A generic or undifferentiated limit does not prove distinct per-claim, per-occurrence, or aggregate requirements. A policy effective date is not a retroactive date. Source holder and deal fields are authoritative when present; do not infer them from abbreviations. Requirement-mode certificate generation is gated: if every selected requirement is unverified, not_met, or expired, explain that Spot would block generation until at least one is met or expiring_soon; do not say Spot could generate the requirement COIs now.\n${sections.join("\n\n")}`;
-}

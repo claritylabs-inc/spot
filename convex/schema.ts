@@ -3633,6 +3633,7 @@ export default defineSchema({
     .index("policy_active", ["policyId", "active"])
     .index("record", ["recordHash"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoConversations: defineTable({
     channel: publicDemoChannelValidator,
     senderHash: v.string(),
@@ -3656,6 +3657,7 @@ export default defineSchema({
     .index("cta_activity", ["ctaStatus", "lastMessageAt"])
     .index("email", ["leadEmail"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoChatLogs: defineTable({
     conversationId: v.id("publicDemoConversations"),
     channel: publicDemoChannelValidator,
@@ -3691,6 +3693,7 @@ export default defineSchema({
     .index("channel_created", ["channel", "createdAt"])
     .index("created", ["createdAt"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoSalesTranscripts: defineTable({
     conversationId: v.id("publicDemoConversations"),
     channel: publicDemoChannelValidator,
@@ -4938,6 +4941,7 @@ export default defineSchema({
     lastRequestMs: v.number(),
   }).index("token", ["tokenId"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoRateCounters: defineTable({
     rateKey: v.string(),
     windowStart: v.number(),

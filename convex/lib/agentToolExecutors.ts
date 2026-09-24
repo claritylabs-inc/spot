@@ -9,6 +9,8 @@ import {
   attachPolicyDocument,
   compareCoverages,
   confirmPolicyFact,
+  coordinateMailboxTask,
+  createImessageGroupChat,
   generateCoi,
   lookupAddress,
   lookupCompanyContext,
@@ -24,7 +26,9 @@ import {
   saveNote,
   attachClientFile,
   searchThreadHistory,
+  webResearch,
 } from "./chatTools";
+import { runWebRetrieval, type WebRetrievalInput } from "./webRetrieval";
 import { COI_GENERATION_FAILED_MESSAGE } from "./actionFailures";
 import {
   certificateGeneratedOutcome,
@@ -101,6 +105,18 @@ export type BuildAgentToolExecutorsOptions = {
     ToolAttachment & { fileId: Id<"_storage"> }
   >;
   requirementImportDefaultScope?: RequirementScope;
+  /** Registers create_imessage_group_chat; creation still requires write access. */
+  imessageGroupChat?: boolean;
+  /** Registers web_research through the org's configured retrieval provider. */
+  webResearch?: boolean;
+  /** Registers coordinate_mailbox_task with this surface's routing context. */
+  mailboxCoordinator?: {
+    routingParentId: string;
+    accountIds?: Id<"connectedEmailAccounts">[];
+    chatMessageId?: Id<"threadMessages">;
+    statusToPhone?: string;
+    statusChatGuid?: string;
+  };
   onPolicyReferenced?: (policyId: Id<"policies">) => void | Promise<void>;
   onPolicyPresented?: (policyId: Id<"policies">) => void | Promise<void>;
   onPolicySourceEvidence?: (evidence: unknown) => void | Promise<void>;
@@ -1383,5 +1399,90 @@ export function buildAgentToolExecutors(
         }
       },
     },
+    ...(options.imessageGroupChat
+      ? {
+          create_imessage_group_chat: {
+            ...createImessageGroupChat,
+            execute: async (params: {
+              recipients: string[];
+              openingMessage: string;
+              title?: string;
+              confirmed: boolean;
+            }) => {
+              if (!canWriteOrg(options, options.orgId)) {
+                return writeUnavailable(options, "start a new group chat");
+              }
+              if (!params.confirmed) {
+                return "Ask the user to confirm before creating a new iMessage group chat.";
+              }
+              return await ctx.runAction(
+                internal.actions.createOutboundImessageGroup
+                  .createOutboundImessageGroupInternal,
+                {
+                  orgId: options.orgId,
+                  userId: options.userId,
+                  recipients: params.recipients,
+                  openingMessage: params.openingMessage,
+                  title: params.title,
+                },
+              );
+            },
+          },
+        }
+      : {}),
+    ...(options.mailboxCoordinator
+      ? {
+          coordinate_mailbox_task: {
+            ...coordinateMailboxTask,
+            execute: async (params: { task: string }) => {
+              const coordinator = options.mailboxCoordinator!;
+              const result = await ctx.runAction(
+                internal.actions.mailboxCoordinator.runInternal,
+                {
+                  orgId: options.orgId,
+                  userId: options.userId,
+                  task: params.task,
+                  accountIds: coordinator.accountIds,
+                  chatMessageId: coordinator.chatMessageId,
+                  threadId: options.threadId,
+                  routingParentId: coordinator.routingParentId,
+                  statusToPhone: coordinator.statusToPhone,
+                  statusChatGuid: coordinator.statusChatGuid,
+                  canWrite: options.canWrite,
+                },
+              );
+              await options.onToolArtifact?.({
+                type: "mailbox_task",
+                data: result,
+              });
+              return result;
+            },
+          },
+        }
+      : {}),
+    ...(options.webResearch
+      ? {
+          web_research: {
+            ...webResearch,
+            execute: async (params: WebRetrievalInput) => {
+              const result = await runWebRetrieval(ctx, options.orgId, params);
+              if (!result.text) {
+                return {
+                  status: "unavailable",
+                  attempts: result.attempts,
+                  warnings: result.warnings,
+                };
+              }
+              return {
+                status: "ok",
+                provider: result.provider,
+                text: result.text,
+                sources: result.sources,
+                warnings: result.warnings,
+              };
+            },
+          },
+        }
+      : {}),
   };
 }

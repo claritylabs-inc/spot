@@ -24,12 +24,6 @@ type OperatorExtractionTraceList = FunctionReturnType<
 type OperatorExtractionTraceDetail = FunctionReturnType<
   typeof api.operator.getExtractionTrace
 >;
-type OperatorDemoSalesTranscriptList = FunctionReturnType<
-  typeof api.operator.listPublicDemoSalesTranscripts
->;
-type OperatorDemoSalesTranscriptDetail = FunctionReturnType<
-  typeof api.operator.getPublicDemoSalesTranscript
->;
 type EmptyArgs = Record<string, never>;
 type OperatorStatus = OperatorClientRow["operatorStatus"];
 type TraceStatus = "running" | "complete" | "error" | "cancelled";
@@ -46,9 +40,6 @@ type ExtractionTraceFilters = {
   orgId?: string;
   policyId?: string;
   range: ExtractionRangeKey;
-  limit?: number;
-};
-type DemoSalesTranscriptListArgs = {
   limit?: number;
 };
 type OptimisticClientInput = {
@@ -86,12 +77,6 @@ export function operatorExtractionTraceListArgs(
     dateFrom: stableExtractionDateFrom(filters.range),
     limit: filters.limit ?? 250,
   };
-}
-
-export function operatorDemoSalesTranscriptListArgs(
-  limit = 250,
-): DemoSalesTranscriptListArgs {
-  return { limit };
 }
 
 export function useCachedOperatorCurrent() {
@@ -175,26 +160,6 @@ export function useCachedOperatorExtractionTraceDetail(traceId: string | null) {
     api.operator.getExtractionTrace,
     traceId ? { traceId } : "skip",
   ) as OperatorExtractionTraceDetail | undefined;
-}
-
-export function useCachedOperatorDemoSalesTranscripts(limit = 250) {
-  return useCachedQuery(
-    "operator.listPublicDemoSalesTranscripts",
-    api.operator.listPublicDemoSalesTranscripts,
-    operatorDemoSalesTranscriptListArgs(limit),
-  ) as OperatorDemoSalesTranscriptList | undefined;
-}
-
-export function useCachedOperatorDemoSalesTranscriptDetail(
-  transcriptId: string | null,
-) {
-  return useCachedQuery(
-    "operator.getPublicDemoSalesTranscript",
-    api.operator.getPublicDemoSalesTranscript,
-    transcriptId
-      ? { id: transcriptId as Id<"publicDemoSalesTranscripts"> }
-      : "skip",
-  ) as OperatorDemoSalesTranscriptDetail | undefined;
 }
 
 export function useOperatorClientCacheActions() {
