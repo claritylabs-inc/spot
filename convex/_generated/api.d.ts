@@ -174,6 +174,7 @@ import type * as lib_chatPresentationValidators from "../lib/chatPresentationVal
 import type * as lib_chatTools from "../lib/chatTools.js";
 import type * as lib_clRouterClient from "../lib/clRouterClient.js";
 import type * as lib_clRouterLanguageModel from "../lib/clRouterLanguageModel.js";
+import type * as lib_clRouterPrimitive from "../lib/clRouterPrimitive.js";
 import type * as lib_clientFileNames from "../lib/clientFileNames.js";
 import type * as lib_clientFiles from "../lib/clientFiles.js";
 import type * as lib_clientProfile from "../lib/clientProfile.js";
@@ -305,6 +306,7 @@ import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
 import type * as lib_resend from "../lib/resend.js";
 import type * as lib_routerAssetSignature from "../lib/routerAssetSignature.js";
+import type * as lib_routerCapabilities from "../lib/routerCapabilities.js";
 import type * as lib_routerJobClient from "../lib/routerJobClient.js";
 import type * as lib_scanReconciliationSchema from "../lib/scanReconciliationSchema.js";
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
@@ -580,6 +582,7 @@ declare const fullApi: ApiFromModules<{
   "lib/chatTools": typeof lib_chatTools;
   "lib/clRouterClient": typeof lib_clRouterClient;
   "lib/clRouterLanguageModel": typeof lib_clRouterLanguageModel;
+  "lib/clRouterPrimitive": typeof lib_clRouterPrimitive;
   "lib/clientFileNames": typeof lib_clientFileNames;
   "lib/clientFiles": typeof lib_clientFiles;
   "lib/clientProfile": typeof lib_clientProfile;
@@ -711,6 +714,7 @@ declare const fullApi: ApiFromModules<{
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;
   "lib/resend": typeof lib_resend;
   "lib/routerAssetSignature": typeof lib_routerAssetSignature;
+  "lib/routerCapabilities": typeof lib_routerCapabilities;
   "lib/routerJobClient": typeof lib_routerJobClient;
   "lib/scanReconciliationSchema": typeof lib_scanReconciliationSchema;
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
@@ -842,4 +846,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };

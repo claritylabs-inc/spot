@@ -28,7 +28,10 @@ function friendlyError(raw: string): string {
   }
   if (lower.includes("expired")) return "This code has expired. Please request a new one.";
   if (lower.includes("too many") || lower.includes("rate limit")) {
-    return "Too many attempts. Please wait a moment and try again.";
+    const seconds = lower.match(/try again in (\d+) seconds/)?.[1];
+    return seconds
+      ? `Too many attempts. Please wait ${seconds} seconds and try again.`
+      : "Too many attempts. Please wait a moment and try again.";
   }
   if (lower.includes("failed to send") || lower.includes("failed to deliver")) {
     return "We couldn't send the verification email. Please try again.";
