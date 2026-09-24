@@ -1210,6 +1210,9 @@ async function generateObjectWithClRouter<T>(opts: {
           invocationKey,
           payload,
         });
+        // Bound consecutive server errors so a deterministic Convex failure
+        // fails the model call instead of silently retrying forever.
+        let serverErrors = 0;
         for (;;) {
           let response: Response;
           try {
@@ -1230,6 +1233,11 @@ async function generateObjectWithClRouter<T>(opts: {
             await sleep(2_000);
             continue;
           }
+          serverErrors = response.status >= 500 ? serverErrors + 1 : 0;
+          if (serverErrors >= 30)
+            throw new Error(
+              `Durable router job lookup failed (${response.status})`,
+            );
           if (
             response.status === 202 ||
             response.status === 429 ||
