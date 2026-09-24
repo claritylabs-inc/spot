@@ -1,4 +1,5 @@
 import { syncPolicyUploadFingerprints } from "./lib/policyImportDedup";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import {
   mutation,
@@ -2370,6 +2371,11 @@ export const cancelExtraction = mutation({
       pipelineCheckpoint: undefined,
     });
     await clearPolicyExtractionArtifacts(ctx, args.id);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.policyExtraction.cancelSectionJobs,
+      { jobId: args.id },
+    );
     await appendPolicyPipelineLog(ctx, args.id, {
       timestamp: nowMs(),
       message: "Extraction cancelled by user",
@@ -3096,6 +3102,37 @@ export const pipelineListSectionResults = internalQuery({
         storageId: artifact.storageId,
         metadata: artifact.metadata,
       }));
+  },
+});
+
+/** Section router jobs of a cancelled extraction run that may still be running. */
+export const pipelineListCancelledSectionJobs = internalQuery({
+  args: { jobId: v.string(), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { jobId, paginationOpts }) => {
+    const run = await getPolicyExtractionRun(
+      ctx,
+      jobId as DataModelId<"policies">,
+    );
+    if (run?.pipelineError !== "Cancelled by user") {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+    // Section invocation keys are policy:<runId>:<sectionId>:<hash>.
+    const prefix = `policy:${run._id}:`;
+    const jobs = await ctx.db
+      .query("routerJobs")
+      .withIndex("invocation", (q) =>
+        q.gte("invocationKey", prefix).lt("invocationKey", `${prefix}\uffff`),
+      )
+      .paginate(paginationOpts);
+    return {
+      page: jobs.page.flatMap((job) =>
+        job.status === "prepared" || job.status === "running"
+          ? [job.invocationKey]
+          : [],
+      ),
+      isDone: jobs.isDone,
+      continueCursor: jobs.continueCursor,
+    };
   },
 });
 

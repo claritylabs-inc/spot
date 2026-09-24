@@ -2,10 +2,12 @@
 import { convexTest, type TestConvex } from "convex-test";
 import dayjs from "dayjs";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
 import schema from "../schema";
 import { extractionSourceFingerprint } from "../lib/extractionPromotion";
+import type { PolicySection } from "../lib/policySectioning";
 import { RouterJobPending } from "../lib/routerJobClient";
 import {
   SECTION_EXTRACTOR_VERSION,
@@ -13,17 +15,24 @@ import {
   type EndorsementSectionOutput,
   type ScheduleSectionOutput,
 } from "../lib/sectionExtraction/schemas";
+import { sectionInvocationKey } from "../lib/sectionExtraction/sectionJobs";
 import type { SourceSpanLike } from "../lib/sourceTree";
 
-const { executeDurableRouterRequest, slicePdfPages, generateObjectForOrg } =
-  vi.hoisted(() => ({
-    executeDurableRouterRequest: vi.fn(),
-    slicePdfPages: vi.fn(),
-    generateObjectForOrg: vi.fn(),
-  }));
+const {
+  executeDurableRouterRequest,
+  cancelDurableRouterRequest,
+  slicePdfPages,
+  generateObjectForOrg,
+} = vi.hoisted(() => ({
+  executeDurableRouterRequest: vi.fn(),
+  cancelDurableRouterRequest: vi.fn(),
+  slicePdfPages: vi.fn(),
+  generateObjectForOrg: vi.fn(),
+}));
 vi.mock("../lib/routerJobClient", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/routerJobClient")>()),
   executeDurableRouterRequest,
+  cancelDurableRouterRequest,
 }));
 vi.mock("../lib/policySectioning", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/policySectioning")>()),
@@ -41,6 +50,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
   executeDurableRouterRequest.mockReset();
+  cancelDurableRouterRequest.mockReset();
   slicePdfPages.mockReset();
   generateObjectForOrg.mockReset();
 });
@@ -662,5 +672,136 @@ describe("merge", () => {
         metadata: { sourceUnit: "page", textSource: "model_transcription" },
       }),
     ]);
+  });
+});
+
+describe("cancellation", () => {
+  function sectionJobKey(runId: string, section: number, attempt: number) {
+    return sectionInvocationKey({
+      runId,
+      traceId: "trace-1",
+      planHash: plan.planHash,
+      section: plan.sections[section] as PolicySection,
+      attempt,
+    });
+  }
+
+  async function seedRouterJobs(
+    t: TestConvex<typeof schema>,
+    jobs: Array<{
+      invocationKey: string;
+      status: "prepared" | "running" | "succeeded" | "failed" | "cancelled";
+    }>,
+  ) {
+    await t.run(async (ctx) => {
+      const now = dayjs().valueOf();
+      for (const job of jobs) {
+        await ctx.db.insert("routerJobs", {
+          ...job,
+          operation: "generate",
+          fingerprint: "0".repeat(64),
+          requestToken: "request-token",
+          requestTokenHash: "request-token-hash",
+          resultToken: "result-token",
+          resultTokenHash: "result-token-hash",
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    });
+  }
+
+  test("cancelling an extraction cancels the run's in-flight section router jobs", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const ids = await seedSectionExtraction(t);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(ids.policyId, { uploadedBySide: "client" });
+      await ctx.db.insert("orgMemberships", { orgId: ids.orgId, userId: ids.userId, role: "admin" });
+    });
+    const inFlight = [sectionJobKey(ids.runId, 0, 1), sectionJobKey(ids.runId, 1, 1)];
+    await seedRouterJobs(t, [
+      { invocationKey: inFlight[0]!, status: "running" },
+      { invocationKey: inFlight[1]!, status: "prepared" },
+      { invocationKey: sectionJobKey(ids.runId, 0, 2), status: "succeeded" },
+      { invocationKey: sectionJobKey(ids.runId, 1, 2), status: "cancelled" },
+      { invocationKey: "policy:other-run:declarations-1-1:0", status: "running" },
+      { invocationKey: "operator:other-run:step-1", status: "running" },
+    ]);
+    // Best effort: one failed cancellation does not stop the others.
+    cancelDurableRouterRequest.mockRejectedValueOnce(new Error("Router unavailable"));
+
+    await t
+      .withIdentity({ subject: `${ids.userId}|session` })
+      .mutation(api.policies.cancelExtraction, { id: ids.policyId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(cancelDurableRouterRequest.mock.calls.map(([, key]) => key).sort()).toEqual(
+      [...inFlight].sort(),
+    );
+    expect(cancelDurableRouterRequest.mock.settledResults.map((result) => result.type)).toEqual([
+      "rejected",
+      "fulfilled",
+    ]);
+    const scheduled = await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
+    expect(
+      scheduled.find((fn) => fn.name === "actions/policyExtraction:cancelSectionJobs")?.state,
+    ).toEqual({ kind: "success" });
+  });
+
+  test("an advance that finds its run cancelled cancels its in-flight section router jobs", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await seedSectionExtraction(t);
+    const inFlight = sectionJobKey(ids.runId, 0, 1);
+    await seedRouterJobs(t, [{ invocationKey: inFlight, status: "running" }]);
+    // Operator stops cancel the run and policy without scheduling cancelSectionJobs.
+    await t.run(async (ctx) => {
+      const cancelled = {
+        pipelineStatus: "error" as const,
+        pipelineError: "Cancelled by user",
+        pipelineCheckpoint: undefined,
+      };
+      await ctx.db.patch(ids.runId, cancelled);
+      await ctx.db.patch(ids.policyId, cancelled);
+    });
+
+    await t.action(internal.actions.policyExtraction.advance, { jobId: ids.jobId });
+
+    expect(cancelDurableRouterRequest.mock.calls.map(([, key]) => key)).toEqual([inFlight]);
+  });
+
+  test("cancels section jobs submitted while a cancel lands mid-advance", async () => {
+    slicePdfPages.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
+    const t = convexTest(schema, modules);
+    const ids = await seedSectionExtraction(t);
+    executeDurableRouterRequest.mockImplementationOnce(
+      async (ctx: ActionCtx, operation: "generate", _payload: unknown, invocationKey: string) => {
+        await ctx.runMutation(internal.routerJobs.prepare, {
+          invocationKey,
+          operation,
+          fingerprint: "0".repeat(64),
+          requestToken: "request-token",
+          requestTokenHash: "request-token-hash",
+          resultToken: "result-token",
+          resultTokenHash: "result-token-hash",
+          requestStorageId: await ctx.storage.store(new Blob(["{}"])),
+        });
+        await ctx.runMutation(internal.policies.pipelineSetStatus, {
+          jobId: ids.jobId,
+          status: "error",
+          error: "Cancelled by user",
+        });
+        throw new RouterJobPending(invocationKey);
+      },
+    );
+
+    await t.action(internal.actions.policyExtraction.advance, { jobId: ids.jobId });
+
+    expect(cancelDurableRouterRequest.mock.calls.map(([, key]) => key)).toEqual([
+      sectionRequest(0).invocationKey,
+    ]);
+    const state = await readState(t, ids);
+    expect(state.run).toMatchObject({ pipelineStatus: "error", pipelineError: "Cancelled by user" });
+    expect(state.artifacts.filter((artifact) => artifact.kind === "section_result")).toEqual([]);
   });
 });

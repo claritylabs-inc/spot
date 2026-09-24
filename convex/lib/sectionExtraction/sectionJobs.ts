@@ -78,7 +78,8 @@ export async function sectionExtractionRoute(
 /**
  * Stable per attempt: resume reuses the same router job, while a new
  * extraction (trace), plan, retry attempt, or declarations context submits a
- * fresh one.
+ * fresh one. Cancellation lists a run's jobs by the `policy:<runId>:` prefix
+ * (policies.pipelineListCancelledSectionJobs).
  */
 export function sectionInvocationKey(args: {
   runId: string;
