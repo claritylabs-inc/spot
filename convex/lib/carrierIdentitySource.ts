@@ -5,6 +5,8 @@ import {
   type CarrierLegalEntityRelationship,
 } from "./carrierIdentity";
 import { CARRIER_IDENTITY_ENRICHMENT_VERSION } from "./carrierIdentityEnrichment";
+import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 
 export type CarrierSourceSpan = {
   id?: string;
@@ -727,10 +729,33 @@ export function preserveCurrentCarrierBranding(
   };
 }
 
+// Owner: P4 (docs/architecture/convex-section-extraction.md). Jev choice among
+// deterministic carrier candidates; consumed by buildCarrierIdentityFromSourceEvidence.
+export type CarrierIdentityDecision = {
+  version: "carrier-identity-decision-v1";
+  /** Exact candidate name chosen from deterministic source evidence; null when none fits. */
+  insurerLegalName: string | null;
+  relationship: "issuing_insurer" | "operating_name" | "lloyds_syndicate" | "unknown";
+  confidence: number;
+  sourceSpanIds: string[];
+};
+
+export async function resolveCarrierIdentityDecision(_args: {
+  ctx: ActionCtx;
+  orgId: Id<"organizations">;
+  operationalProfile: CarrierOperationalProfile;
+  sourceTree: CarrierSourceNode[];
+  sourceSpans?: CarrierSourceSpan[];
+  traceId?: string;
+}): Promise<CarrierIdentityDecision | null> {
+  return null;
+}
+
 export function buildCarrierIdentityFromSourceEvidence(params: {
   operationalProfile: CarrierOperationalProfile;
   sourceTree: CarrierSourceNode[];
   sourceSpans?: CarrierSourceSpan[];
+  carrierDecision?: CarrierIdentityDecision | null;
 }): CarrierIdentity | undefined {
   const parties = operationalParties(params.operationalProfile);
   const evidence = carrierIdentityEvidence(

@@ -29,6 +29,7 @@ import {
   buildCarrierIdentityFromSourceEvidence,
   preserveCurrentCarrierBranding,
   sourceCarrierIdentityUnchanged,
+  type CarrierIdentityDecision,
 } from "./carrierIdentitySource";
 import { mergeCoverageRows } from "./coverageScoping";
 import { normalizeCoverageName, normalizeText } from "./coverageNames";
@@ -2067,6 +2068,7 @@ export function sourceTreePolicyFields(params: {
   existingDeclarations?: unknown;
   existingLinesOfBusiness?: unknown;
   existingPolicyFields?: unknown;
+  carrierDecision?: CarrierIdentityDecision | null;
 }): Record<string, unknown> {
   const { sourceTree } = params;
   const existingPolicy = params.existingPolicyFields && typeof params.existingPolicyFields === "object" && !Array.isArray(params.existingPolicyFields)

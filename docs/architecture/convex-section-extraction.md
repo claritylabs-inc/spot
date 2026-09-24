@@ -70,6 +70,7 @@ manager approval.
 | `convex/lib/policySectioning.ts` | P2 | section plan + PDF slicing |
 | `convex/lib/policyIntakeClassification.ts` | P4 | Jev intake gate + relationship |
 | `convex/lib/policyChunks.ts` | P7 | Spot-owned replacement for cl-sdk `chunkDocument` |
+| `resolveCarrierIdentityDecision` / `CarrierIdentityDecision` in `convex/lib/carrierIdentitySource.ts`; `carrierDecision` param on `sourceTreePolicyFields` | P4 (P3 calls it) | Jev carrier choice |
 
 ## Packets
 
