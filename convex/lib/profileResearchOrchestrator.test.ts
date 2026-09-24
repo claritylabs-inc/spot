@@ -76,7 +76,7 @@ test("Jev selects parallel research, reassesses gaps, and retains successful evi
   ).toBeLessThanOrEqual(12);
 });
 
-test("independent state and line probabilities select all supported options strictly above 0.7", async () => {
+test("independent state and line probabilities proceed at 0.70", async () => {
   const offered: string[] = [];
   vi.mocked(clRouterDecide).mockImplementation(async (request) => {
     offered.push(...Object.keys(request.questions));
@@ -93,6 +93,7 @@ test("independent state and line probabilities select all supported options stri
                   state_CA: 0.9,
                   state_NV: 0.71,
                   state_OR: 0.7,
+                  state_WY: 0.69,
                   line_CGL: 0.91,
                   line_PROP: 0.8,
                 } as Record<string, number>
@@ -109,7 +110,7 @@ test("independent state and line probabilities select all supported options stri
       urls: ["https://broker.example/products"],
     },
   ]);
-  expect(result.writingStates.map((item) => item.code)).toEqual(["CA", "NV"]);
+  expect(result.writingStates.map((item) => item.code)).toEqual(["CA", "NV", "OR"]);
   expect(result.lineOfBusinessCodes.map((item) => item.code)).toEqual(
     expect.arrayContaining(["CGL", "PROP"]),
   );
@@ -117,13 +118,13 @@ test("independent state and line probabilities select all supported options stri
   expect(offered).toContain("state_WY");
 });
 
-test("broader research admits only sources Jev verifies above the confidence threshold", async () => {
+test("broader research admits sources Jev verifies at 0.70 and excludes 0.69", async () => {
   vi.mocked(clRouterDecide).mockImplementation(async (request) => {
     if (request.task === "profile_research_sources")
       return {
         answers: {
           source_0: { type: "noul", noul: 0.95 },
-          source_1: { type: "noul", noul: 0.7 },
+          source_1: { type: "noul", noul: 0.69 },
         },
       } as never;
     const state = JSON.parse(request.state as string);

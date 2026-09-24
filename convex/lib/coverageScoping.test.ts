@@ -66,6 +66,18 @@ beforeEach(() => {
 });
 
 describe("scopeCoveragesWithClassifier", () => {
+  it("scopes a row at 0.70 and leaves it for review at 0.69", async () => {
+    for (const [confidence, accepted] of [[0.69, false], [0.7, true]] as const) {
+      respond({
+        coverage_1: choice("CGL", confidence),
+        coverage_2: choice("none", 0.9),
+      });
+      const result = await scope();
+      expect(lines(result)[1]).toBe(accepted ? "CGL" : undefined);
+      expect(result.review.questions).toHaveLength(accepted ? 0 : 1);
+    }
+  });
+
   it("asks one batched question per ambiguous coverage row", async () => {
     respond({
       coverage_1: choice("CGL", 0.9),

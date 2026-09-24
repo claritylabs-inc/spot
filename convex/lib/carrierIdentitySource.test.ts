@@ -80,6 +80,17 @@ beforeEach(() => {
 });
 
 describe("resolveCarrierIdentityDecision", () => {
+  it("chooses an insurer at 0.70 but requests review at 0.69", async () => {
+    for (const [confidence, chosen] of [[0.69, false], [0.7, true]] as const) {
+      respond({ insurer: choice("candidate_0", confidence) });
+      const decision = await resolveCarrierIdentityDecision({
+        ctx, orgId, operationalProfile, sourceTree, sourceSpans,
+      });
+      expect(Boolean(decision?.insurerLegalName)).toBe(chosen);
+      expect(Boolean(decision?.reviewReason)).toBe(!chosen);
+    }
+  });
+
   it("lets Jev choose among deterministic candidates in one call", async () => {
     // Lloyd's clauses come first, most specific evidence first.
     respond({ insurer: choice("candidate_0", 0.92) });

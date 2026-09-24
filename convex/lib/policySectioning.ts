@@ -10,7 +10,10 @@ import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { PdfPageText } from "./pdfText";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
+
+export { JEV_PROCEED_THRESHOLD as LOW_CONFIDENCE_THRESHOLD } from "./jevThreshold";
 
 export const POLICY_SECTION_KINDS = [
   "declarations",
@@ -29,9 +32,6 @@ export type PolicySectionKind = (typeof POLICY_SECTION_KINDS)[number];
 /** Hard bounds for one section slice sent to a model. Larger sections are split into consecutive parts of the same kind. */
 export const MAX_SECTION_PAGES = 30;
 export const MAX_SECTION_BYTES = 10 * 1024 * 1024;
-
-/** Page labels below this confidence never start a new section; they join a neighbor instead. */
-export const LOW_CONFIDENCE_THRESHOLD = 0.55;
 
 export type PolicyPageLabel = {
   page: number;
@@ -351,7 +351,7 @@ async function classifyRemainingPages(params: {
         const confidence =
           kindAnswer?.type === "choice" ? kindAnswer.confidence : 0;
         const startsNewDocument =
-          boundaryAnswer?.type === "noul" && boundaryAnswer.noul > 0.5;
+          boundaryAnswer?.type === "noul" && jevProceeds(boundaryAnswer.noul);
         labels[page - 1] = {
           page,
           kind,
@@ -401,7 +401,7 @@ function groupPagesIntoSections(labels: PolicyPageLabel[]): SectionDraft[] {
 
   for (let i = 0; i < n; i++) {
     const label = labels[i];
-    const confident = label.confidence >= LOW_CONFIDENCE_THRESHOLD;
+    const confident = jevProceeds(label.confidence);
 
     if (!confident) {
       if (current) {

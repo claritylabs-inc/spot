@@ -3,6 +3,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import { runProfileWebRetrieval } from "./webRetrieval";
 import {
   publicResearchAllowedDomains,
@@ -16,7 +17,8 @@ import {
   isLobCode,
 } from "./linesOfBusiness";
 
-export const RESEARCH_CONFIDENCE = 0.7;
+export { JEV_PROCEED_THRESHOLD as RESEARCH_CONFIDENCE } from "./jevThreshold";
+
 type Evidence = { topic: string; text: string; urls: string[] };
 const COMMON_TOPICS = {
   identity:
@@ -82,7 +84,7 @@ export async function gatherProfileEvidence(
     );
     unresolvedFields = Object.keys(topics).filter((key) => {
       const answer = judged.answers[key];
-      return answer?.type !== "noul" || answer.noul <= RESEARCH_CONFIDENCE;
+      return answer?.type !== "noul" || !jevProceeds(answer.noul);
     });
     if (!unresolvedFields.length || wave === 3) break;
     const selected = unresolvedFields
@@ -145,7 +147,7 @@ export async function gatherProfileEvidence(
           );
           urls = urls.filter((_, index) => {
             const answer = sourceCheck.answers[`source_${index}`];
-            return answer?.type === "noul" && answer.noul > RESEARCH_CONFIDENCE;
+            return answer?.type === "noul" && jevProceeds(answer.noul);
           });
           if (!urls.length)
             throw new Error(
@@ -217,7 +219,7 @@ export async function selectBrokerAppetite(
       );
       return batch.flatMap((option) => {
         const answer = result.answers[option.key];
-        return answer?.type === "noul" && answer.noul > RESEARCH_CONFIDENCE
+        return answer?.type === "noul" && jevProceeds(answer.noul)
           ? [
               {
                 ...option,

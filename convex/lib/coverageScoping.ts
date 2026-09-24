@@ -11,6 +11,7 @@ import {
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 
 export type CoverageLike = Record<string, unknown>;
 
@@ -941,7 +942,6 @@ export function applyCoverageDeclarationScoping({
   };
 }
 
-const COVERAGE_SCOPE_MIN_CONFIDENCE = 0.6;
 const MAX_COVERAGE_SCOPE_QUESTIONS = 100;
 
 function coverageLineReviewQuestion(
@@ -1076,7 +1076,7 @@ export async function scopeCoveragesWithClassifier(params: {
           answer.confidence,
           answer.probabilities[answer.choice] ?? 0,
         );
-        if (confidence < COVERAGE_SCOPE_MIN_CONFIDENCE) {
+        if (!jevProceeds(confidence)) {
           review.questions.push(coverageLineReviewQuestion(
             coverages[index]!,
             index,

@@ -87,6 +87,18 @@ beforeEach(() => {
 });
 
 describe("grounding fallback", () => {
+  it("keeps a Jev-grounded claim at 0.70 but drops it at 0.69", async () => {
+    for (const [probability, kept] of [[0.69, false], [0.7, true]] as const) {
+      answerTasks({
+        policy_extraction_grounding: (request) =>
+          claimAnswers(request, { insuredName: probability }),
+        policy_extraction_org_name: () => ({}),
+      });
+      const result = await run();
+      expect(result.document.insuredName).toBe(kept ? "Widget Holdings LLC" : undefined);
+    }
+  });
+
   it("keeps only classifier-verified values that fail exact matching, in one batched call", async () => {
     answerTasks({
       policy_extraction_grounding: (request) =>
@@ -138,6 +150,19 @@ describe("grounding fallback", () => {
 });
 
 describe("organization name normalization", () => {
+  it("normalizes a Jev-selected spelling at 0.70 but keeps the source at 0.69", async () => {
+    for (const [confidence, normalized] of [[0.69, false], [0.7, true]] as const) {
+      answerTasks({
+        policy_extraction_grounding: (request) => claimAnswers(request, {}),
+        policy_extraction_org_name: () => ({ organization_0: choice("spelling_1", confidence) }),
+      });
+      const result = await run();
+      expect(result.fields.carrier).toBe(
+        normalized ? "Acme Insurance Company" : "ACME INSURANCE COMPANY (A STOCK COMPANY)",
+      );
+    }
+  });
+
   it("chooses among spellings found verbatim in the source", async () => {
     answerTasks({
       policy_extraction_grounding: (request) => claimAnswers(request, {}),

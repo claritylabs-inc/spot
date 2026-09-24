@@ -501,6 +501,19 @@ describe("oversize sections split into parts", () => {
 });
 
 describe("buildPolicySections coverage invariant", () => {
+  test("a 0.70 page starts a section while a 0.69 page joins its neighbor", () => {
+    for (const confidence of [0.69, 0.7]) {
+      const labels: PolicyPageLabel[] = [
+        { page: 1, kind: "declarations", confidence: 0.9, source: "classifier", startsNewDocument: false },
+        { page: 2, kind: "endorsement", confidence, source: "classifier", startsNewDocument: false },
+      ];
+      const sections = buildPolicySections(labels, 1000);
+      expect(sections.map((section) => section.kind)).toEqual(
+        confidence < 0.7 ? ["declarations"] : ["declarations", "endorsement"],
+      );
+    }
+  });
+
   test("always produces ordered, contiguous, non-overlapping sections covering every page", () => {
     const kinds = POLICY_SECTION_KINDS;
     for (let iteration = 0; iteration < 300; iteration++) {
@@ -534,6 +547,23 @@ describe("buildPolicySections coverage invariant", () => {
       expect(expectedNextPage).toBe(pageCount + 1);
     }
   });
+});
+
+test("Jev marks a page boundary at 0.70 but not 0.69", async () => {
+  for (const probability of [0.69, 0.7]) {
+    vi.mocked(clRouterDecide).mockImplementation(
+      makeAutoDecide({ kindFor: () => "coverage_form", boundaryFor: (page) => page === 2 ? probability : 0 }),
+    );
+    const plan = await planPolicySections({
+      ctx,
+      orgId,
+      pageCount: 2,
+      pages: [pdfPage(1, "Coverage text page one"), pdfPage(2, "Coverage text page two")],
+      pdfByteLength: 1000,
+    });
+    expect(plan.sections).toHaveLength(probability < 0.7 ? 1 : 2);
+    vi.mocked(clRouterDecide).mockReset();
+  }
 });
 
 describe("slicePdfPages", () => {
