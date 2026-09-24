@@ -1516,6 +1516,13 @@ IMPORTANT GROUPING RULE: A real-world policy commonly arrives as multiple PDFs i
         : await runInboundEmailDeterministicControls(ctx, {
             messageText: parsedInboundEmail.currentText,
             draftEmails: currentDraftEmails,
+            orgId,
+            sourceMessage: {
+              _id: inboundMessageId,
+              orgId,
+              threadId: unifiedThreadId,
+              content: parsedInboundEmail.currentText,
+            },
           });
       const cancelRequestTargets =
         !handledConfirmation &&

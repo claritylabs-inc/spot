@@ -46,7 +46,6 @@ import {
   validatePolicyFocusIds,
 } from "../lib/agentPolicyFocus";
 import {
-  mintImessageAppCards,
   mintImessageEmailDraftReviewCard,
   type ImessageAppCard,
 } from "../lib/imessageAppCards";
@@ -981,17 +980,7 @@ export const processInbound = internalAction({
               sourceThreadMessageId: agentResponseMessageId,
             })
           : null;
-      const appCards = [
-        ...(emailDraftCard ? [emailDraftCard] : []),
-        ...(await mintImessageAppCards(ctx, {
-          org,
-          threadId,
-          sourceThreadMessageId: agentResponseMessageId,
-          createdByUserId: user._id,
-          presentedPolicyIds: runState.presentedPolicyIds,
-          artifacts: imessageToolArtifacts,
-        })),
-      ];
+      const appCards = emailDraftCard ? [emailDraftCard] : [];
       await scheduleThreadHistoryCompaction(ctx, threadId);
 
       return await finish(
