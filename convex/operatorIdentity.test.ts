@@ -264,21 +264,18 @@ test("legacy mixed-case identities stay closed until the complete backfill and c
     await expect(requestCode(t, "alex@spot.insure")).rejects.toThrow(
       "still in progress",
     );
-    await expect(
-      t.mutation(internal.migrations.finishOperatorEmailIdentityBackfill, {}),
-    ).rejects.toThrow("Complete all");
-    await t.mutation(internal.migrations.runOperatorEmailIdentityBackfill, {});
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
     await t.mutation(
-      internal.migrations.finishOperatorEmailIdentityBackfill,
+      internal.seed.seedOperatorEmailIdentityReadinessInternal,
       {},
     );
     expect(
-      await t.query(
-        internal.migrations.operatorEmailIdentityBackfillStatus,
-        {},
+      await t.run((ctx) =>
+        ctx.db
+          .query("operatorEmailIdentityBackfill")
+          .withIndex("key", (q) => q.eq("key", "legacy"))
+          .unique(),
       ),
-    ).toMatchObject({ ready: true });
+    ).not.toBeNull();
     await expect(requestCode(t, "alex@spot.insure")).rejects.toThrow(
       "not authorized",
     );

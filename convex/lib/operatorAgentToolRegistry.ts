@@ -1839,7 +1839,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       "Enable or disable one supported Spot feature flag for an exact client organization.",
     inputSchema: z.object({
       orgId: organizationId,
-      flagId: z.enum(["connect_features", "imessage_app_cards"]),
+      flagId: z.enum(["connect_features"]),
       enabled: z.boolean(),
     }),
     capability: "operator.organizations.write",

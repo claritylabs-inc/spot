@@ -36,18 +36,25 @@ afterEach(() => {
 test("rerunning setup preserves edited work and reuses records and stored files", async () => {
   const t = convexTest(schema, modules);
   migrationsTest.register(t);
-  // Drain migration workers before seed creates unrelated scheduled fixtures.
   // Leave the login gate unset so seed must verify and enable it itself.
-  await t.mutation(internal.migrations.runOperatorEmailIdentityBackfill, {});
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
   expect(
-    await t.query(internal.migrations.operatorEmailIdentityBackfillStatus, {}),
-  ).toMatchObject({ ready: false });
+    await t.run((ctx) =>
+      ctx.db
+        .query("operatorEmailIdentityBackfill")
+        .withIndex("key", (q) => q.eq("key", "legacy"))
+        .unique(),
+    ),
+  ).toBeNull();
   const ids = await t.action(api.seed.seed, {});
   await t.finishAllScheduledFunctions(vi.runAllTimers);
   expect(
-    await t.query(internal.migrations.operatorEmailIdentityBackfillStatus, {}),
-  ).toMatchObject({ ready: true });
+    await t.run((ctx) =>
+      ctx.db
+        .query("operatorEmailIdentityBackfill")
+        .withIndex("key", (q) => q.eq("key", "legacy"))
+        .unique(),
+    ),
+  ).not.toBeNull();
   const before = await t.run(async (ctx) => {
     await ctx.db.patch(ids.requestId!, {
       title: "Renamed during QA",

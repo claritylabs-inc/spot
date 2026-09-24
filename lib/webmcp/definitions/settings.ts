@@ -462,7 +462,7 @@ export const settingsTools = {
     pages: SETTINGS_PAGES,
     inputSchema: schema(
       {
-        flag: param.enum(["connect_features", "imessage_app_cards"], "Beta feature."),
+        flag: param.enum(["connect_features"], "Beta feature."),
         enabled: param.boolean("On or off."),
       },
       ["flag", "enabled"],

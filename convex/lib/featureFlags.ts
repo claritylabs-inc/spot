@@ -9,16 +9,6 @@ export const FEATURE_FLAGS = {
     allowedOrgTypes: ["client"],
     beta: true,
   },
-  imessage_app_cards: {
-    id: "imessage_app_cards",
-    label: "iMessage app cards",
-    description:
-      "Send public Spot preview cards for policies and certificates in iMessage conversations.",
-    scope: "org",
-    defaultEnabled: false,
-    allowedOrgTypes: ["broker", "client"],
-    beta: true,
-  },
 } as const;
 
 export type FeatureFlagId = keyof typeof FEATURE_FLAGS;

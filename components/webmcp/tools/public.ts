@@ -84,9 +84,5 @@ export function publicToolImplementations(
       if (!card) return webMcpError("This card link is not available.");
       return { status: "ok", card };
     },
-    get_model_routing_report: async () => ({
-      status: "ok",
-      ...(await convex.query(api.modelConfig.list, {})),
-    }),
   };
 }
