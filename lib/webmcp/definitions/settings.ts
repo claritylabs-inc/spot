@@ -309,21 +309,6 @@ export const settingsTools = {
       ["heading", "accept", "expected_revision"],
     ),
   }),
-  get_certificate_workflow_settings: imperative({
-    title: "Get certificate workflow settings",
-    description: "Read whether Spot reissues certificates automatically when policies renew.",
-    readOnly: true,
-    pages: SETTINGS_PAGES,
-    inputSchema: schema(),
-  }),
-  set_certificate_renewal_reissue: imperative({
-    title: "Set certificate renewal reissue",
-    description: "Turn automatic certificate reissue on policy renewal on or off.",
-    readOnly: false,
-    adminOnly: true,
-    pages: SETTINGS_PAGES,
-    inputSchema: schema({ enabled: param.boolean("Reissue on renewal.") }, ["enabled"]),
-  }),
   get_notification_preferences: imperative({
     title: "Get notification preferences",
     description: "Read the signed-in person's email and iMessage settings for each notification type.",

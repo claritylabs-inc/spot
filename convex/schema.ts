@@ -3318,6 +3318,7 @@ export default defineSchema({
     .index("source", ["requirementSourceDocumentId"])
     .index("file", ["fileId"]),
 
+  // Deprecated: certificate renewal settings removed; drop after data cleanup.
   certificateWorkflowSettings: defineTable({
     clientOrgId: v.id("organizations"),
     renewalReissueEnabled: v.boolean(),

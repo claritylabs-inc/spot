@@ -86,7 +86,6 @@ export function getSettingsNavigation({
       label: "Workflows",
       icon: FileBadge2,
       tabs: [
-        { id: "certificates", label: "Certificates" },
         { id: "notifications", label: "Notifications" },
       ],
     },

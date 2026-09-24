@@ -197,18 +197,6 @@ export const insuranceTools = {
       policy_id: param.string("Optional policy filter."),
     }),
   }),
-  list_certificate_review_jobs: imperative({
-    title: "List certificate review jobs",
-    description:
-      "List certificate renewal-reissue and manual-review jobs with status, holder, and policy.",
-    readOnly: true,
-    inputSchema: schema({
-      status: param.enum(
-        ["review_required", "blocked_missing_contact", "sending", "sent", "cancelled", "failed"],
-        "Optional status filter.",
-      ),
-    }),
-  }),
   generate_certificate: imperative({
     title: "Generate certificate of insurance",
     description:

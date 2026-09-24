@@ -82,8 +82,6 @@ import type * as carrierIdentityCache from "../carrierIdentityCache.js";
 import type * as certificateHolders from "../certificateHolders.js";
 import type * as certificateLifecycle from "../certificateLifecycle.js";
 import type * as certificateNotes from "../certificateNotes.js";
-import type * as certificateWorkflowJobs from "../certificateWorkflowJobs.js";
-import type * as certificateWorkflowSettings from "../certificateWorkflowSettings.js";
 import type * as certificates from "../certificates.js";
 import type * as chatPresentations from "../chatPresentations.js";
 import type * as clRouterOperations from "../clRouterOperations.js";
@@ -479,8 +477,6 @@ declare const fullApi: ApiFromModules<{
   certificateHolders: typeof certificateHolders;
   certificateLifecycle: typeof certificateLifecycle;
   certificateNotes: typeof certificateNotes;
-  certificateWorkflowJobs: typeof certificateWorkflowJobs;
-  certificateWorkflowSettings: typeof certificateWorkflowSettings;
   certificates: typeof certificates;
   chatPresentations: typeof chatPresentations;
   clRouterOperations: typeof clRouterOperations;

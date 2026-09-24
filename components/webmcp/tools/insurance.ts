@@ -450,32 +450,6 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
           })),
       };
     },
-    list_certificate_review_jobs: async (input) => {
-      const jobs = await convex.query(api.certificateWorkflowJobs.listForOrg, {
-        orgId,
-        status: text(input, "status") as
-          | "review_required"
-          | "blocked_missing_contact"
-          | "sending"
-          | "sent"
-          | "cancelled"
-          | "failed"
-          | undefined,
-      });
-      return {
-        status: "ok",
-        jobs: jobs.map((job) => ({
-          job_id: job._id,
-          kind: job.kind,
-          status: job.status,
-          holder: job.holder?.displayName ?? null,
-          policy_id: job.policyId,
-          policy_number: job.policy?.policyNumber ?? null,
-          recipient_email: job.recipientEmail ?? null,
-          review_notes: job.reviewNotes ?? null,
-        })),
-      };
-    },
     generate_certificate: async (input) =>
       batchResult(
         await convex.action(
