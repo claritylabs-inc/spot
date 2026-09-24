@@ -362,7 +362,7 @@ describe("legacy checkpoints", () => {
       const now = dayjs().valueOf();
       await ctx.db.insert("policyExtractionArtifacts", {
         policyId: ids.policyId,
-        kind: "external_completion_payload",
+        kind: "parsed_source",
         storageId: await ctx.storage.store(new Blob(["{}"])),
         runId: ids.runId,
         createdAt: now,

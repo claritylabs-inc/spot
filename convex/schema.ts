@@ -2391,8 +2391,8 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("status_updated", ["pipelineStatus", "updatedAt"]),
 
-  // Narrow queue for external Railway extraction workers. Claim polling reads
-  // this table instead of scanning all running pipeline records.
+  // Deprecated: extraction worker removed; drop after data cleanup. Was the
+  // narrow claim queue for external Railway extraction workers.
   policyExtractionQueue: defineTable({
     policyId: v.id("policies"),
     runId: v.id("policyExtractionRuns"),
@@ -2406,8 +2406,10 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("status_updated", ["status", "updatedAt"]),
 
-  // Lightweight first-read queue. Preview workers populate bounded canonical
-  // fields before the full source-backed extraction pipeline completes.
+  // Deprecated: extraction worker removed; drop after data cleanup. Was the
+  // lightweight first-read queue that preview workers populated with bounded
+  // canonical fields before the full source-backed extraction completed;
+  // preview fields are now written inline by the Convex section pipeline.
   policyExtractionPreviewQueue: defineTable({
     policyId: v.id("policies"),
     runId: v.id("policyExtractionRuns"),
@@ -2423,13 +2425,12 @@ export default defineSchema({
 
   // Storage-backed transient extraction artifacts. These records point at JSON
   // blobs in Convex file storage for pre-embedding chunk/source-span payloads,
-  // external worker completion payloads, and legacy cl-sdk checkpoint cleanup.
+  // section extraction results, and legacy cl-sdk checkpoint cleanup.
   policyExtractionArtifacts: defineTable({
     policyId: v.id("policies"),
     kind: v.union(
       v.literal("cl_sdk_checkpoint"),
       v.literal("embedding_payload"),
-      v.literal("external_completion_payload"),
       v.literal("source_bundle"),
       v.literal("section_result"),
       v.literal("parsed_source"),
@@ -2447,8 +2448,11 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("policy_kind", ["policyId", "kind"]),
 
-  // Short-lived model-input assets staged by authenticated extraction workers
-  // or trusted Convex actions. Public URLs are signed and never persisted.
+  // Short-lived model-input assets staged by trusted Convex actions. Public
+  // URLs are signed and never persisted. `ownerKind: "worker"` and the
+  // `jobKind`/`jobId`/`leaseId` fields are deprecated: extraction worker
+  // removed, no new "worker" rows are created; kept for any lingering rows
+  // and dropped after data cleanup.
   routerAssets: defineTable({
     ownerKind: v.union(v.literal("worker"), v.literal("action")),
     jobKind: v.optional(
@@ -2482,7 +2486,8 @@ export default defineSchema({
     expiresAt: v.number(),
   }).index("expiration", ["expiresAt"]),
 
-  // One short-lived, never-queued policy lease used to smoke-test the deployed
+  // Deprecated: extraction worker removed; drop after data cleanup. Was a
+  // short-lived, never-queued policy lease used to smoke-test the deployed
   // extraction worker's authenticated asset and cl-router transports.
   workerRouterTransportSmokeRuns: defineTable({
     singleton: v.literal("active"),
@@ -2917,8 +2922,16 @@ export default defineSchema({
     attempts: v.number(),
     leaseId: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
+    // Deprecated: extraction worker removed; the pipeline runs entirely in
+    // Convex, so no lease is ever attributed to an external worker id.
     workerId: v.optional(v.string()),
+    // Deprecated: extraction worker removed; completion payloads are built
+    // and consumed inline by the Convex pipeline, never staged in storage.
     completionPayloadStorageId: v.optional(v.id("_storage")),
+    // Compact per-document/per-section pipeline progress. Large payloads
+    // (parsed source spans, section outputs) live in
+    // procurementProposalExtractionArtifacts so checkpoint saves stay small.
+    checkpoint: v.optional(v.any()),
     lastError: v.optional(v.string()),
     // Set when an operator stopped the job (cancel or archive). The row is
     // still `failed`, but it is a deliberate stop, not an extraction issue.
@@ -2933,12 +2946,20 @@ export default defineSchema({
   procurementProposalExtractionArtifacts: defineTable({
     proposalId: v.id("procurementProposals"),
     jobId: v.id("procurementProposalExtractionJobs"),
+    // Scopes an artifact to one proposal document when a job spans several
+    // documents (parsed source, section plan, section results, quote terms).
+    proposalDocumentId: v.optional(v.id("procurementProposalDocuments")),
     kind: v.string(),
-    value: v.any(),
+    value: v.optional(v.any()),
+    // Large payloads (parsed source spans, section outputs) are stored as
+    // files instead of inline `value` so checkpoint-adjacent writes stay
+    // small; small artifacts (logs) keep using `value`.
+    storageId: v.optional(v.id("_storage")),
     createdAt: v.number(),
   })
     .index("proposal", ["proposalId", "createdAt"])
-    .index("job", ["jobId", "createdAt"]),
+    .index("job", ["jobId", "createdAt"])
+    .index("job_document_kind", ["jobId", "proposalDocumentId", "kind"]),
 
   proposalSourceSpans: defineTable({
     orgId: v.id("organizations"),

@@ -4,8 +4,6 @@
  * Copied from the former published policy package 1.0.0 (`dist/*.js` + `.d.ts`)
  * as TypeScript. Model registry/capability/price tables are not vendored:
  * Spot reads selectable routes from authenticated GET /v1/capabilities.
- *
- * Keep `extraction-worker/src/clRouterPolicy.ts` in sync with this file.
  */
 
 export const PRIMITIVES = [

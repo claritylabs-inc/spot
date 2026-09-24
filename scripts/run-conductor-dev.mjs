@@ -15,17 +15,14 @@ process.chdir(repoRoot);
 
 const requiredPaths = [
   ".env.local",
-  ".context/extraction-worker.env",
   ".context/slack-worker.env",
   ".convex/local/default/config.json",
-  "extraction-worker/dist/index.js",
   "slack-worker/dist/src/index.js",
   "node_modules/.bin/concurrently",
   "node_modules/.bin/convex",
   "node_modules/.bin/next",
   "scripts/watch-conductor-email-captures.mjs",
   "scripts/run-conductor-web.mjs",
-  "scripts/run-local-extraction-container.mjs",
 ];
 for (const relativePath of requiredPaths) {
   if (!existsSync(path.join(repoRoot, relativePath))) {
@@ -39,24 +36,19 @@ if (repairLocalConvexSelection()) {
   console.log("Restored this workspace's local Convex selection in .env.local.");
 }
 
-const { web, extraction, slack, convexCloud, convexSite } = conductorPorts();
+const { web, slack, convexCloud, convexSite } = conductorPorts();
 const logDirectory = path.join(repoRoot, ".context", "logs");
 mkdirSync(logDirectory, { recursive: true });
-for (const name of ["web", "convex", "extraction", "slack"]) {
+for (const name of ["web", "convex", "slack"]) {
   writeFileSync(path.join(logDirectory, `${name}.log`), "");
 }
 
 const markerPath = path.join(repoRoot, ".context", "conductor-run-marker");
 writeFileSync(markerPath, `${randomBytes(16).toString("hex")}\n`);
 
-const isCloud = process.env.CONDUCTOR_IS_LOCAL === "0";
-const extractionCommand = isCloud
-  ? `PORT=${extraction} node --env-file=.context/extraction-worker.env extraction-worker/dist/index.js >> .context/logs/extraction.log 2>&1`
-  : `PORT=${extraction} node scripts/run-local-extraction-container.mjs >> .context/logs/extraction.log 2>&1`;
 const commands = [
   "node scripts/run-conductor-web.mjs >> .context/logs/web.log 2>&1",
   `CONVEX_AGENT_MODE=anonymous ./node_modules/.bin/convex dev --local-cloud-port ${convexCloud} --local-site-port ${convexSite} >> .context/logs/convex.log 2>&1`,
-  extractionCommand,
   `PORT=${slack} node --env-file=.context/slack-worker.env slack-worker/dist/src/index.js >> .context/logs/slack.log 2>&1`,
   "node scripts/watch-conductor-email-captures.mjs",
 ];
@@ -68,11 +60,10 @@ const runEnvironment = {
 delete runEnvironment.NO_COLOR;
 
 console.log(`Spot web:              http://localhost:${web}`);
-console.log(`Extraction worker:      http://localhost:${extraction}/health`);
 console.log(`Slack mock worker:       http://localhost:${slack}/health`);
 console.log(`Convex:                  http://127.0.0.1:${convexCloud}`);
 console.log("Spectrum:                npm run conductor:spectrum");
-console.log("Logs:                    .context/logs/{web,convex,extraction,slack}.log");
+console.log("Logs:                    .context/logs/{web,convex,slack}.log");
 console.log("Email/OTP:               shown here; full text in convex.log");
 console.log();
 
@@ -82,7 +73,7 @@ const child = spawn(
     "--raw",
     "--kill-others",
     "--names",
-    "web,convex,extraction,slack,email",
+    "web,convex,slack,email",
     ...commands,
   ],
   {

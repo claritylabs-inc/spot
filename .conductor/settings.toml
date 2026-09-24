@@ -41,11 +41,6 @@ available_in = [ "local" ]
 command = "PATH=\"$(brew --prefix node@24)/bin:$PATH\" npm run conductor:operator-spectrum"
 icon = "message-square-lock"
 
-[scripts.run.extraction-worker]
-available_in = [ "local" ]
-command = "PATH=\"$(brew --prefix node@24)/bin:$PATH\" PORT=$((CONDUCTOR_PORT + 1)) node scripts/run-local-extraction-container.mjs"
-icon = "server"
-
 [scripts.run.slack-worker]
 available_in = [ "local" ]
 command = "PATH=\"$(brew --prefix node@24)/bin:$PATH\" PORT=$((CONDUCTOR_PORT + 5)) node --env-file=.context/slack-worker.env slack-worker/dist/src/index.js"

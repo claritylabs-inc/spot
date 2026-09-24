@@ -1,42 +1,42 @@
-export type ProposalClaimDocument = {
+/**
+ * Owner: P5 (docs/architecture/convex-section-extraction.md). Ported from
+ * `extraction-worker/src/proposalExtraction.ts`'s `aggregateProposalDocuments`
+ * (pure logic, no I/O). Adapted to the field names Spot's own
+ * `mergeSectionResults` compatibility document and raw operational profile
+ * produce (see `convex/lib/sectionExtraction/merge.ts`) instead of cl-sdk's
+ * extractor output: `parties` comes directly from the operational profile
+ * (so "additional_insured" role parties are captured, which the
+ * compatibility document does not expose), and `conditions`/`subjectivities`
+ * come only from the quote-terms supplemental call since section schemas
+ * have no document-level conditions/subjectivities field.
+ */
+
+import type { ProposalQuoteTerms } from "./sectionExtraction/schemas";
+
+export type ProposalDocumentParty = {
+  role: string;
+  name: string;
+  address?: unknown;
+  naicNumber?: string;
+  licenseNumber?: string;
+  scope?: string;
+  sourceNodeIds: string[];
+  sourceSpanIds: string[];
+};
+
+/** One proposal document's merged, source-cited extraction result. */
+export type ProposalDocumentExtraction = {
   proposalDocumentId: string;
-  fileId: string;
   fileName: string;
-  contentType?: string;
-  fileUrl: string;
-  order: number;
+  /** `mergeSectionResults(...).document`: the cl-sdk-compatible shape. */
+  document: Record<string, unknown>;
+  /** `mergeSectionResults(...).operationalProfile.parties`. */
+  parties: ProposalDocumentParty[];
+  supplemental?: ProposalQuoteTerms;
 };
 
 export type ProposalEvidenceRef = {
   proposalDocumentId: string;
-  sourceNodeIds: string[];
-  sourceSpanIds: string[];
-  pageStart?: number;
-  pageEnd?: number;
-};
-
-export type ProposalExtractedDocument = {
-  proposalDocumentId: string;
-  fileName: string;
-  document: Record<string, unknown>;
-  operationalProfile?: Record<string, unknown>;
-  sourceSpans: Array<Record<string, unknown>>;
-  sourceNodes: Array<Record<string, unknown>>;
-  warnings: string[];
-  tokenUsage?: unknown;
-  supplemental?: ProposalQuoteSupplement;
-};
-
-export type ProposalQuoteSupplement = {
-  quoteExpirationDate?: string;
-  quoteExpirationEvidence?: ProposalEvidenceItem;
-  subjectivities?: Array<ProposalEvidenceItem>;
-  conditions?: Array<ProposalEvidenceItem>;
-};
-
-export type ProposalEvidenceItem = {
-  description: string;
-  category?: string;
   sourceNodeIds: string[];
   sourceSpanIds: string[];
   pageStart?: number;
@@ -51,7 +51,6 @@ export type ProposalAggregate = {
   proposedExpirationDate?: string;
   quoteExpirationDate?: string;
   premium?: string;
-  premiumAmount?: number;
   premiums: Array<
     Record<string, unknown> & { evidence: ProposalEvidenceRef[] }
   >;
@@ -130,15 +129,7 @@ function itemEvidence(
   ) {
     return [];
   }
-  return [
-    {
-      proposalDocumentId,
-      sourceNodeIds,
-      sourceSpanIds,
-      pageStart,
-      pageEnd,
-    },
-  ];
+  return [{ proposalDocumentId, sourceNodeIds, sourceSpanIds, pageStart, pageEnd }];
 }
 
 function first<T>(values: Array<T | undefined>): T | undefined {
@@ -155,7 +146,7 @@ function keyFor(value: Record<string, unknown>, fields: string[]): string {
 }
 
 function withEvidence(
-  documents: ProposalExtractedDocument[],
+  documents: ProposalDocumentExtraction[],
   field: string,
   keys: string[],
 ): Array<Record<string, unknown> & { evidence: ProposalEvidenceRef[] }> {
@@ -169,18 +160,15 @@ function withEvidence(
       if (!key.replace(/\|/g, "")) continue;
       const evidence = itemEvidence(extracted.proposalDocumentId, item);
       const existing = byKey.get(key);
-      if (existing) {
-        existing.evidence.push(...evidence);
-      } else {
-        byKey.set(key, { ...item, evidence });
-      }
+      if (existing) existing.evidence.push(...evidence);
+      else byKey.set(key, { ...item, evidence });
     }
   }
   return [...byKey.values()];
 }
 
 function supplementalItems(
-  documents: ProposalExtractedDocument[],
+  documents: ProposalDocumentExtraction[],
   field: "conditions" | "subjectivities",
 ): Array<Record<string, unknown> & { evidence: ProposalEvidenceRef[] }> {
   const byKey = new Map<
@@ -206,7 +194,7 @@ function supplementalItems(
 }
 
 function scalarEvidence(
-  documents: ProposalExtractedDocument[],
+  documents: ProposalDocumentExtraction[],
   field: string,
 ): ProposalEvidenceRef[] {
   return documents.flatMap((extracted) => {
@@ -219,74 +207,52 @@ function scalarEvidence(
   });
 }
 
-function partyRows(extracted: ProposalExtractedDocument) {
-  const document = extracted.document;
-  const parties: Record<string, unknown>[] = [];
-  const namedInsured = text(document.insuredName);
-  if (namedInsured) parties.push({ role: "named_insured", name: namedInsured });
-  for (const item of records(document.additionalNamedInsureds)) {
-    parties.push({ role: "additional_named_insured", ...item });
-  }
-  const insurer = record(document.insurer);
-  if (insurer)
-    parties.push({ role: "insurer", name: insurer.legalName, ...insurer });
-  const producer = record(document.producer);
-  if (producer)
-    parties.push({ role: "producer", name: producer.agencyName, ...producer });
-  for (const field of [
-    "additionalInsureds",
-    "lossPayees",
-    "mortgageHolders",
-  ] as const) {
-    const role =
-      field === "additionalInsureds"
-        ? "additional_insured"
-        : field === "lossPayees"
-          ? "loss_payee"
-          : "mortgage_holder";
-    for (const item of records(document[field]))
-      parties.push({ role, ...item });
-  }
-  return parties;
+function partyRows(
+  extracted: ProposalDocumentExtraction,
+): Array<Record<string, unknown> & { evidence: ProposalEvidenceRef[] }> {
+  return extracted.parties.map((party) => ({
+    role: party.role,
+    name: party.name,
+    ...(party.address ? { address: party.address } : {}),
+    ...(party.naicNumber ? { naicNumber: party.naicNumber } : {}),
+    ...(party.licenseNumber ? { licenseNumber: party.licenseNumber } : {}),
+    ...(party.scope ? { scope: party.scope } : {}),
+    evidence: itemEvidence(extracted.proposalDocumentId, {
+      sourceNodeIds: party.sourceNodeIds,
+      sourceSpanIds: party.sourceSpanIds,
+    }),
+  }));
 }
 
+/**
+ * Deterministically merges every proposal document's extraction into one
+ * aggregate offer: scalars are first-document-wins, list fields are
+ * key-deduplicated with evidence collected across documents so a fact that
+ * appears in more than one document keeps every contributing document's
+ * citations.
+ */
 export function aggregateProposalDocuments(
-  documents: ProposalExtractedDocument[],
+  documents: ProposalDocumentExtraction[],
 ): ProposalAggregate {
   const quoteDocuments = documents.map((item) => item.document);
   const carrier = first(quoteDocuments.map((item) => text(item.carrier)));
   const quoteNumber = first(
-    quoteDocuments.map((item) => text(item.quoteNumber)),
+    quoteDocuments.map((item) => text(item.policyNumber)),
   );
   const insuredName = first(
     quoteDocuments.map((item) => text(item.insuredName)),
   );
   const proposedEffectiveDate = first(
-    quoteDocuments.map((item) => text(item.proposedEffectiveDate)),
+    quoteDocuments.map((item) => text(item.effectiveDate)),
   );
   const proposedExpirationDate = first(
-    quoteDocuments.map((item) => text(item.proposedExpirationDate)),
+    quoteDocuments.map((item) => text(item.expirationDate)),
   );
-  const quoteExpirationDate = first([
-    ...quoteDocuments.map((item) => text(item.quoteExpirationDate)),
-    ...documents.map((item) => text(item.supplemental?.quoteExpirationDate)),
-  ]);
+  const quoteExpirationDate = first(
+    documents.map((item) => text(item.supplemental?.quoteExpirationDate)),
+  );
   const premium = first(quoteDocuments.map((item) => text(item.premium)));
-  const premiumAmount = first(
-    quoteDocuments.map((item) => finiteNumber(item.premiumAmount)),
-  );
 
-  const documentConditions = withEvidence(documents, "conditions", [
-    "name",
-    "content",
-  ]);
-  const documentSubjectivities = [
-    ...withEvidence(documents, "enrichedSubjectivities", [
-      "description",
-      "category",
-    ]),
-    ...withEvidence(documents, "subjectivities", ["description", "category"]),
-  ];
   const parties = new Map<
     string,
     Record<string, unknown> & { evidence: ProposalEvidenceRef[] }
@@ -294,10 +260,9 @@ export function aggregateProposalDocuments(
   for (const extracted of documents) {
     for (const party of partyRows(extracted)) {
       const key = keyFor(party, ["role", "name"]);
-      const evidence = itemEvidence(extracted.proposalDocumentId, party);
       const existing = parties.get(key);
-      if (existing) existing.evidence.push(...evidence);
-      else parties.set(key, { ...party, evidence });
+      if (existing) existing.evidence.push(...party.evidence);
+      else parties.set(key, party);
     }
   }
 
@@ -309,21 +274,14 @@ export function aggregateProposalDocuments(
     proposedExpirationDate,
     quoteExpirationDate,
     premium,
-    premiumAmount,
     premiums: withEvidence(documents, "premiumBreakdown", ["line", "amount"]),
     coverages: withEvidence(documents, "coverages", [
       "name",
       "limit",
       "deductible",
     ]),
-    conditions: [
-      ...documentConditions,
-      ...supplementalItems(documents, "conditions"),
-    ],
-    subjectivities: [
-      ...documentSubjectivities,
-      ...supplementalItems(documents, "subjectivities"),
-    ],
+    conditions: supplementalItems(documents, "conditions"),
+    subjectivities: supplementalItems(documents, "subjectivities"),
     exclusions: withEvidence(documents, "exclusions", ["name", "content"]),
     parties: [...parties.values()],
     evidence: {

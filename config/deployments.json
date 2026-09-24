@@ -5,7 +5,6 @@
     "convexAgentHealthUrl": "https://actions.spot.insure/agent-health",
     "clientPortalUrl": "https://app.spot.insure",
     "clRouterHealthUrlEnv": "SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL",
-    "extractionWorkerHealthUrl": "https://spot-extraction-worker-production.up.railway.app/health",
     "imessageWorkerHealthUrl": "https://spot-production-4618.up.railway.app/health",
     "operatorImessageWorkerHealthUrlEnv": "SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL",
     "slackWorkerHealthUrlEnv": "SPOT_PRODUCTION_SLACK_WORKER_HEALTH_URL",
@@ -41,9 +40,6 @@
       "agentDomain": "agent.spot.insure",
       "notificationDomain": "notifications.spot.insure",
       "authDomain": "auth.spot.insure"
-    },
-    "workers": {
-      "extractionProtocol": "source-tree-v1"
     }
   },
   "local": {
@@ -51,7 +47,6 @@
     "spotEnv": "local",
     "convexAgentHealthUrl": "http://localhost:3210/agent-health",
     "clientPortalUrl": "http://localhost:8080",
-    "extractionWorkerHealthUrl": "http://localhost:8787/health",
     "imessageWorkerHealthUrl": "http://localhost:3001/health",
     "slackWorkerHealthUrl": "http://localhost:8085/health",
     "slack": {
@@ -79,9 +74,6 @@
     },
     "email": {
       "deliveryMode": "capture"
-    },
-    "workers": {
-      "extractionProtocol": "source-tree-v1"
     }
   }
 }

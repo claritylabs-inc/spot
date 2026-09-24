@@ -28,9 +28,17 @@ import {
 } from "../policySectioning";
 import { executeDurableRouterRequest, RouterJobPending } from "../routerJobClient";
 import { buildSectionPrompt } from "./prompts";
-import { SECTION_EXTRACTOR_VERSION, SECTION_OUTPUT_SCHEMAS } from "./schemas";
+import {
+  SECTION_EXTRACTOR_VERSION,
+  SECTION_OUTPUT_SCHEMAS,
+  proposalQuoteTermsSchema,
+  type ProposalEvidenceItem,
+  type ProposalQuoteTerms,
+} from "./schemas";
 
 export const SECTION_TASK_KIND = "extraction_section";
+export const PROPOSAL_QUOTE_TERMS_TASK_KIND = "extraction_proposal_quote_terms";
+const PROPOSAL_QUOTE_TERMS_OUTPUT_TOKENS = 4_096;
 
 // Same headroom sdkCallbacks keeps before staging a PDF as a signed asset.
 const INLINE_REQUEST_HEADROOM_BYTES = 512 * 1024;
@@ -97,6 +105,42 @@ export function sectionInvocationKey(args: {
     declarationsSummary: args.declarationsSummary ?? null,
   });
   return `policy:${args.runId}:${args.section.sectionId}:${sectionHash}`;
+}
+
+/**
+ * Stable per attempt, mirroring `sectionInvocationKey` for procurement
+ * proposal documents: `proposal:<jobId>:<documentId>:<sectionId>:<hash>`.
+ * A new job, document plan, or retry attempt submits a fresh router job.
+ */
+export function proposalSectionInvocationKey(args: {
+  jobId: string;
+  documentId: string;
+  planHash: string;
+  section: PolicySection;
+  attempt: number;
+}): string {
+  const sectionHash = extractionContractHash({
+    extractorVersion: SECTION_EXTRACTOR_VERSION,
+    planHash: args.planHash,
+    section: args.section,
+    attempt: args.attempt,
+  });
+  return `proposal:${args.jobId}:${args.documentId}:${args.section.sectionId}:${sectionHash}`;
+}
+
+/** Stable per attempt for the quote-terms supplemental call on one document. */
+export function proposalQuoteTermsInvocationKey(args: {
+  jobId: string;
+  documentId: string;
+  evidenceHash: string;
+  attempt: number;
+}): string {
+  const hash = extractionContractHash({
+    extractorVersion: SECTION_EXTRACTOR_VERSION,
+    evidenceHash: args.evidenceHash,
+    attempt: args.attempt,
+  });
+  return `proposal:${args.jobId}:${args.documentId}:quote_terms:${hash}`;
 }
 
 async function sectionFilePart(
@@ -252,5 +296,110 @@ export async function runSectionJob(
     };
   } finally {
     if (staged.length > 0) await cleanupSignedRouterAssets(ctx, staged);
+  }
+}
+
+export type ProposalQuoteTermsJobOutcome =
+  | {
+      status: "succeeded";
+      output: ProposalQuoteTerms;
+      response: ClRouterGenerateResponse;
+      durationMs: number;
+    }
+  | { status: "failed"; error: string }
+  | { status: "pending" }
+  | { status: "not_submitted" };
+
+/**
+ * Submits or polls the quote-only supplemental call for one proposal
+ * document: quote validity deadline, subjectivities, binding/underwriting
+ * conditions. Text-only (no PDF attachment) — the model copies
+ * `sourceNodeIds`/`sourceSpanIds` from the supplied evidence, already
+ * resolved by `mergeSectionResults`, rather than returning citations to
+ * re-resolve.
+ */
+export async function runProposalQuoteTermsJob(
+  ctx: ActionCtx,
+  args: {
+    invocationKey: string;
+    allowSubmission: boolean;
+    orgId: Id<"organizations">;
+    documentId: string;
+    traceId?: string;
+    evidence: ProposalEvidenceItem[];
+    route?: ModelRoute;
+  },
+): Promise<ProposalQuoteTermsJobOutcome> {
+  const startedAt = dayjs().valueOf();
+  const job = await ctx.runQuery(internal.routerJobs.get, {
+    invocationKey: args.invocationKey,
+  });
+  if (!job && !args.allowSubmission) return { status: "not_submitted" };
+  const jsonSchema = z.toJSONSchema(proposalQuoteTermsSchema) as Record<
+    string,
+    unknown
+  >;
+  const system =
+    "You extract quote-only commercial-insurance terms from source-backed proposal evidence. Copy source node and span IDs exactly. Do not infer an expiration date, subjectivity, or binding condition that is not explicit. Quote expiration means the deadline or validity date for accepting/binding the quote, not the proposed policy expiration date.";
+  const prompt = `Extract the quote validity deadline, subjectivities, and binding or underwriting conditions from this single proposal document. Use null for an absent quote expiration. Every returned item, including quoteExpirationEvidence when a date is present, must cite supplied source IDs.\n\n${JSON.stringify(args.evidence).slice(0, 160_000)}`;
+  const mapping = mapSpotCallToClRouterPrimitive({
+    task: "extraction",
+    taskKind: PROPOSAL_QUOTE_TERMS_TASK_KIND,
+    hasStructuredOutput: true,
+    hasVision: false,
+  });
+  try {
+    const response = await clRouterGenerateMaybeManual(
+      {
+        primitive: mapping.primitive,
+        ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
+        orgId: String(args.orgId),
+        system,
+        messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+        schema: jsonSchema,
+        schemaDialect: "https://json-schema.org/draft/2020-12/schema",
+        maxTokens: PROPOSAL_QUOTE_TERMS_OUTPUT_TOKENS,
+        trace: normalizeClRouterTrace({
+          traceId: args.traceId,
+          label: "Extract proposal quote terms",
+          phase: "proposal_quote_terms",
+          task: "extraction",
+          taskKind: PROPOSAL_QUOTE_TERMS_TASK_KIND,
+          policyId: args.documentId,
+          channel: "convex",
+        }),
+      },
+      job ? undefined : args.route,
+      {
+        executeJob: (operation, payload) =>
+          executeDurableRouterRequest(
+            ctx,
+            job?.operation ?? operation,
+            job ? null : payload,
+            args.invocationKey,
+            undefined,
+            { wait: "yield" },
+          ),
+      },
+    );
+    const parsed = proposalQuoteTermsSchema.safeParse(response.output);
+    if (!parsed.success) {
+      return {
+        status: "failed",
+        error: "Quote terms output does not match the expected schema",
+      };
+    }
+    return {
+      status: "succeeded",
+      output: parsed.data,
+      response,
+      durationMs: dayjs().valueOf() - (job?.createdAt ?? startedAt),
+    };
+  } catch (error) {
+    if (error instanceof RouterJobPending) return { status: "pending" };
+    return {
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }

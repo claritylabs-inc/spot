@@ -37,9 +37,6 @@ jobs:
         working-directory: imessage-worker
         run: npm ci --include=dev --no-audit --no-fund --loglevel=error
 
-      - name: Check shared package versions
-        run: npm run check:shared-package-versions
-
       - name: Check cl-router API contract
         run: npm run check:cl-router-contract
 
@@ -67,10 +64,6 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-
-      - name: Build extraction worker
-        working-directory: extraction-worker
-        run: npm ci --include=dev --no-audit --no-fund --loglevel=error && npm run build
 
       - name: Build iMessage worker
         working-directory: imessage-worker

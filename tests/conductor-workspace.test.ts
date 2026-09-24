@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   consumerAiCredentialNames,
-  conductorImageTag,
   conductorPorts,
   conductorLocalRuntimeOverrides,
   conductorSourceDeployment,
@@ -36,9 +35,6 @@ describe("Conductor workspace identity", () => {
     try {
       const expectedSlug = path.basename(repoRoot).toLowerCase();
       expect(workspaceSlug()).toBe(expectedSlug);
-      expect(conductorImageTag("extraction-worker")).toBe(
-        `spot-extraction-worker:conductor-${expectedSlug}`,
-      );
     } finally {
       if (originalWorkspaceName === undefined) {
         delete process.env.CONDUCTOR_WORKSPACE_NAME;
@@ -200,7 +196,6 @@ describe("Conductor local Convex selection", () => {
 
       expect(conductorPorts(workspace)).toEqual({
         web: 55000,
-        extraction: 55001,
         imessage: 55002,
         convexCloud: 55003,
         convexSite: 55004,
@@ -223,7 +218,6 @@ describe("Conductor local Convex selection", () => {
         AUTH_LINK_SITE_URL: "http://localhost:55000",
         CLIENT_PORTAL_URL: "http://localhost:55000",
         SITE_URL: "http://localhost:55000",
-        EXTRACTION_WORKER_URL: "http://127.0.0.1:55001",
         IMESSAGE_WORKER_URL: "http://127.0.0.1:55002",
         SLACK_WORKER_URL: "http://127.0.0.1:55005",
         OPERATOR_IMESSAGE_WORKER_URL: "http://127.0.0.1:55006",

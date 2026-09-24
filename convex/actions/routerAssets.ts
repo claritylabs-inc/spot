@@ -5,29 +5,12 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import {
-  resolveRouterAssetSigningSecret,
   routerAssetSigningConfiguration,
   signRouterAsset,
-  verifyRouterAssetSignature,
 } from "../lib/routerAssetSignature";
 import { ROUTER_ASSET_MAX_BYTES, ROUTER_ASSET_TTL_MS } from "../routerAssets";
-
-function requireWorkerSecret(secret: string): void {
-  const expected = process.env.EXTRACTION_WORKER_SECRET?.trim();
-  if (!expected || secret !== expected)
-    throw new Error("Unauthorized extraction worker");
-}
-
-function signingSecret(): string {
-  const secret = resolveRouterAssetSigningSecret();
-  if (!secret)
-    throw new Error(
-      "CL_ROUTER_ASSET_SIGNING_SECRET (or CL_ROUTER_SECRET) is required for router assets",
-    );
-  return secret;
-}
 
 export type RouterAssetCleanup = {
   assetId: Id<"routerAssets">;
@@ -202,29 +185,6 @@ export async function createSignedActionRouterAsset(
     throw error;
   }
 }
-
-export const deleteWorkerAsset = action({
-  args: {
-    secret: v.string(),
-    assetId: v.id("routerAssets"),
-    expiresAt: v.number(),
-    signature: v.string(),
-  },
-  handler: async (ctx, args) => {
-    requireWorkerSecret(args.secret);
-    if (
-      !(await verifyRouterAssetSignature(
-        String(args.assetId),
-        args.expiresAt,
-        args.signature,
-        signingSecret(),
-      ))
-    ) {
-      throw new Error("Invalid router asset cleanup token");
-    }
-    return { deleted: await deleteSignedRouterAsset(ctx, args) };
-  },
-});
 
 export const expireAsset = internalAction({
   args: { assetId: v.id("routerAssets") },

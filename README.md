@@ -24,7 +24,7 @@ Procurement requests use two ordinary Markdown files: `private.md` for internal 
 - Next.js 16 + React 19 + Tailwind 4
 - Convex (DB, actions, scheduler, storage, vector search, HTTP)
 - Vercel AI SDK (`ai`) for model execution + tool-enabled chat
-- `@claritylabs/cl-sdk@4.5.0` for source-tree extraction, insurance-focused primitives, and the canonical ACORD policy taxonomy
+- `@claritylabs/cl-sdk@4.6.0` for insurance-focused primitives, the canonical ACORD policy taxonomy, and schema/prompt helpers used by the Convex extraction pipeline
 - Resend for email ingest and messaging workflows
 
 ## Getting Started
@@ -79,8 +79,9 @@ deployment and database that belong only to that worktree. Workspace setup:
    `IMESSAGE_TERMINAL_FROM_PHONE` is assigned to the Example Risk admin so
    Spectrum starts in an org-scoped broker context. Setup then compiles the
    workers. Local macOS setup also starts Apple `container` and builds
-   worktree-tagged Linux/amd64 worker images; cloud setup uses the compiled
-   workers directly.
+   worktree-tagged Linux/amd64 worker images for the remaining Railway workers
+   (imessage, slack, mailbox-scan); cloud setup uses the compiled workers
+   directly.
 
 When credentials are available, the imported environment includes integration
 and router configuration but filters every AI and retrieval provider credential;
@@ -106,18 +107,16 @@ local and cloud Conductor workspaces:
 - Spot on `http://localhost:$CONDUCTOR_PORT`
 - `convex dev` with the worktree's native local database, including local
   email/OTP capture logs, on `$CONDUCTOR_PORT + 3` (client) and `+ 4` (HTTP actions)
-- the extraction worker on `$CONDUCTOR_PORT + 1`
 - the mock Slack worker on `$CONDUCTOR_PORT + 5`
 - a local email capture watcher that surfaces delivery context and OTPs
 
-On macOS the extraction worker uses the worktree-tagged Apple container image;
-in a cloud workspace it runs the already-built Linux worker directly. The Run
-terminal automatically prints a compact notice for every captured local email,
-including an explicit `OTP:` line when a six-digit code is present. Web, Convex,
-extraction, and Slack output is written to
-`.context/logs/{web,convex,extraction,slack}.log`; full captured email bodies
-remain in `convex.log`. The separate **Email deliveries** Run template opens the
-same capture stream in a dedicated terminal when desired.
+Extraction runs inline inside Convex actions, with no separate process or port.
+The Run terminal automatically prints a compact notice for every captured local
+email, including an explicit `OTP:` line when a six-digit code is present. Web,
+Convex, and Slack output is written to `.context/logs/{web,convex,slack}.log`;
+full captured email bodies remain in `convex.log`. The separate **Email
+deliveries** Run template opens the same capture stream in a dedicated terminal
+when desired.
 
 Spectrum is optional and reserves `$CONDUCTOR_PORT + 2`. Start its interactive
 TUI in a separate terminal with `npm run conductor:spectrum`, or use the
@@ -126,15 +125,13 @@ TUI in a separate terminal with `npm run conductor:spectrum`, or use the
 `/as client` for Cove, and `/as public` for the unlinked public-demo path.
 `/as +<E.164 phone>` can test an explicit local identity; the following message
 uses the newly selected sender.
-Conductor runs are concurrent: each local worktree reserves one six-port namespace
-from its unique `CONDUCTOR_PORT` (`+0` web, `+1` extraction, `+2` Spectrum,
-`+3/+4` Convex, `+5` Slack), and the app/workers wait for that exact local
-instance before starting. Cloud workspaces use the same offsets from port 8080
-because `CONDUCTOR_PORT` is not set there. Explicit Convex ports avoid a Convex
-CLI collision edge case where automatic fallback can select the same port for
-its client and HTTP services. The local extraction container uses a
-worktree-tagged image and a narrow bridge from Apple's container network to that
-loopback-only Convex port.
+Conductor runs are concurrent: each local worktree reserves one port namespace
+from its unique `CONDUCTOR_PORT` (`+0` web, `+2` Spectrum, `+3/+4` Convex,
+`+5` Slack), and the app/workers wait for that exact local instance before
+starting. Cloud workspaces use the same offsets from port 8080 because
+`CONDUCTOR_PORT` is not set there. Explicit Convex ports avoid a Convex CLI
+collision edge case where automatic fallback can select the same port for its
+client and HTTP services.
 
 The checked-in `.worktreeinclude` copies `.env.local` and worker-local env files
 from the repository root. The copied root `.env.local` must initially select a
@@ -168,7 +165,7 @@ not rewrite committed agent skills and guidance; refresh those explicitly with
 - `npm run conductor:setup` - prepare a fresh Conductor worktree end to end
 - `npm run conductor:setup:cloud` - Conductor Cloud entry point; generates the
   gitignored env files a cloud sandbox cannot copy, then runs `conductor:setup`
-- `npm run conductor:dev` - start Spot, Convex, extraction, Slack, and email capture
+- `npm run conductor:dev` - start Spot, Convex, Slack, and email capture
 - `npm run conductor:spectrum` - open the optional Spectrum iMessage TUI in a separate terminal
 - `npm run conductor:emails` - show captured local email deliveries and OTPs in a dedicated terminal
 - `npm run lint` - ESLint
@@ -179,7 +176,7 @@ not rewrite committed agent skills and guidance; refresh those explicitly with
 - `npm run container:doctor` - verify local Apple `container` prerequisites and installation
 - `npm run container:system:start` - start or initialize Apple's local container service
 - `npm run container:build:workers` - build all Railway worker images locally with Apple's `container` CLI for `linux/amd64`
-- `npm run container:run:extraction-worker` / `npm run container:run:imessage-worker` / `npm run container:run:mailbox-scan-worker` - run a locally built worker image with the worker's `.env`
+- `npm run container:run:imessage-worker` / `npm run container:run:mailbox-scan-worker` - run a locally built worker image with the worker's `.env`
 
 ## Local Worker Containers
 
@@ -216,11 +213,11 @@ npm run container:build:workers
 Run one worker image locally:
 
 ```bash
-cp extraction-worker/.env.template extraction-worker/.env
-npm run container:run:extraction-worker
+cp imessage-worker/.env.template imessage-worker/.env
+npm run container:run:imessage-worker
 ```
 
-Repeat with `imessage-worker/.env` or `mailbox-scan-worker/.env` for those services. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers and the extraction worker currently validates the Linux x64 LiteParse native package.
+Repeat with `slack-worker/.env` or `mailbox-scan-worker/.env` for those services. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
 
 ## Environment
 
@@ -228,7 +225,7 @@ Common variables used across major workflows:
 
 - `CONVEX_DEPLOYMENT`
 - `CONVEX_SITE_URL` — exact Spot HTTP-action origin used for signed router
-  assets; set it on both Convex and the extraction worker
+  assets; a Convex env var
   (`https://acoustic-caiman-755.convex.site` in shared dev,
   `https://actions.spot.insure` in production)
 - `CL_ROUTER_URL` — canonical cl-router origin for every AI and web-retrieval call
@@ -261,7 +258,8 @@ Not every flow requires every variable; requirements depend on which features yo
 
 1. Scan inboxes or accept uploads.
 2. Store raw files in Convex storage.
-3. Extract structured insurance/business data via `cl-sdk`.
+3. Extract structured insurance/business data through the Convex section
+   extraction pipeline.
 4. Persist policy data and chunk + embed content for retrieval.
 5. Write key facts into the company wiki.
 
@@ -328,6 +326,6 @@ Internal Convex functions do not have user auth context. Do not call public auth
 - `convex/lib/models.ts` - settings resolution and router-only task helpers
 - `convex/lib/sdkCallbacks.ts` - `cl-sdk` task bridge
 - `convex/lib/agentPrompts.ts` - retrieval context builders
-- `convex/actions/extractPolicy.ts` - policy extraction entrypoint
+- `convex/actions/extractFromUpload.ts` - policy extraction entrypoint
 - `convex/connectedOrgs.ts` - connected vendor/client relationship mutations and queries
 - `convex/http.ts` - HTTP, REST, and MCP routes

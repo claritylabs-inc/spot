@@ -2954,11 +2954,7 @@ const pipelineArtifactKindValidator = v.union(
 export const pipelineSaveArtifact = internalMutation({
   args: {
     jobId: v.string(),
-    kind: v.union(
-      pipelineArtifactKindValidator,
-      // P5: remove with extraction-worker (convex/externalExtractionPayload.ts).
-      v.literal("external_completion_payload"),
-    ),
+    kind: pipelineArtifactKindValidator,
     storageId: v.id("_storage"),
     sourceFingerprint: v.optional(v.string()),
     extractorVersion: v.optional(v.string()),
@@ -3321,7 +3317,6 @@ export const pipelineRequeueStale = internalMutation({
             nextPhase?: string;
             state?: {
               orgId?: string;
-              workerRouterTransportSmokeRequestId?: string;
             };
             createdAt?: number;
             lease?: {
@@ -3365,28 +3360,7 @@ export const pipelineRequeueStale = internalMutation({
         continue;
       }
 
-      const smokeRequestId =
-        checkpoint.state?.workerRouterTransportSmokeRequestId;
-      if (smokeRequestId) {
-        const smoke = await ctx.db
-          .query("workerRouterTransportSmokeRuns")
-          .withIndex("request", (query) =>
-            query.eq("requestId", smokeRequestId),
-          )
-          .unique();
-        if (
-          smoke?.policyId === run.policyId &&
-          smoke.runId === run._id &&
-          smoke.leaseId === checkpoint.lease?.id &&
-          String(smoke.orgId) === checkpoint.state?.orgId
-        ) {
-          skipped.push(String(run.policyId));
-          continue;
-        }
-      }
-
-      // advance restarts checkpoints from removed phases or the extraction
-      // worker from load_pdf.
+      // advance restarts checkpoints from removed phases.
       await appendPolicyPipelineLog(ctx, run.policyId, {
         timestamp: now,
         message: `Stale extraction lease detected; requeueing ${checkpoint.nextPhase ?? "pipeline"} phase`,

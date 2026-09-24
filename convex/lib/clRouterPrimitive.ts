@@ -2,8 +2,6 @@
  * Spot → cl-router primitive mapping. The primitive and requirement vocabulary
  * comes from `contracts/cl-router/policy.ts`; the internal task/taskKind
  * mapping below is Spot-owned.
- *
- * Keep in sync with `extraction-worker/src/clRouterPrimitive.ts`.
  */
 
 import type {

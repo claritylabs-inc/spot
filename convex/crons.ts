@@ -33,6 +33,13 @@ crons.interval(
 );
 
 crons.interval(
+  "sweep stale proposal extractions",
+  { minutes: 10 },
+  internal.actions.proposalExtraction.sweepStale,
+  {},
+);
+
+crons.interval(
   "reconcile Slack installation and channel health",
   { minutes: 15 },
   internalApi.actions.slackReconciliation.runDue,

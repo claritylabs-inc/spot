@@ -48,9 +48,6 @@ jobs:
         working-directory: imessage-worker
         run: npm ci --include=dev --no-audit --no-fund --loglevel=error
 
-      - name: Check shared package versions
-        run: npm run check:shared-package-versions
-
       - name: Lint
         if: matrix.check == 'lint'
         run: npm run lint
@@ -80,10 +77,6 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-
-      - name: Build extraction worker
-        working-directory: extraction-worker
-        run: npm ci --include=dev --no-audit --no-fund --loglevel=error && npm run build
 
       - name: Build iMessage worker
         working-directory: imessage-worker
@@ -151,8 +144,6 @@ jobs:
           fi
           npx convex deploy --yes
           node scripts/complete-operator-email-identity-backfill.mjs
-          sdk_version="$(node -p "require('./extraction-worker/package.json').dependencies['@claritylabs/cl-sdk']")"
-          npx convex env set EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION "$sdk_version"
           npx convex env set OPERATOR_SLACK_ENABLED true
           npx convex env set OPERATOR_IMESSAGE_ENABLED true
           npx convex env set OPERATOR_IMESSAGE_TERMINAL_ENABLED false
@@ -189,7 +180,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           RAILWAY_STATUS_CONTEXTS: |
-            Spot - spot-extraction-worker
             Spot - imessage-worker
             Spot - operator-imessage-worker
             Spot - slack-worker
