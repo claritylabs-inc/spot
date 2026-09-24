@@ -142,4 +142,40 @@ describe("resolveCitation", () => {
     expect(viaIndex[0].sourceSpanIds).toEqual(["span-1"]);
     expect(viaIndex[1].sourceSpanIds).toEqual(["span-2"]);
   });
+
+  test("prefers line spans over the page-level span when both are present", () => {
+    const spans: SourceSpanLike[] = [
+      { id: "page-1", pageStart: 7, pageEnd: 7, text: "Wrong text that should be ignored entirely" },
+      { id: "line-1", pageStart: 7, pageEnd: 7, sourceUnit: "line", text: "General liability" },
+      { id: "line-2", pageStart: 7, pageEnd: 7, sourceUnit: "line", text: "coverage applies to fires" },
+    ];
+    const result = resolveCitation({ page: 7, quote: "coverage applies to fires" }, spans);
+
+    expect(result.match).toBe("exact");
+    expect(result.sourceSpanIds).toEqual(["line-2"]);
+  });
+
+  test("resolves a 150-line page against 300 citations in well under 200ms", () => {
+    const lineCount = 150;
+    const spans: SourceSpanLike[] = Array.from({ length: lineCount }, (_, i) => ({
+      id: `line-${i}`,
+      pageStart: 1,
+      pageEnd: 1,
+      sourceUnit: "line",
+      text: `Clause number ${i}: the insured shall comply with provision ${i} of this policy.`,
+    }));
+
+    const citations: SectionCitation[] = Array.from({ length: 300 }, (_, i) => {
+      const line = i % lineCount;
+      return { page: 1, quote: `provision ${line} of this policy` };
+    });
+
+    const started = performance.now();
+    const results = resolveCitations(citations, spans);
+    const elapsedMs = performance.now() - started;
+
+    expect(results).toHaveLength(300);
+    expect(results.every((result) => result.match === "exact")).toBe(true);
+    expect(elapsedMs).toBeLessThan(200);
+  });
 });
