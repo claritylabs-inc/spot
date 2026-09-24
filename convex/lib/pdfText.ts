@@ -4,10 +4,11 @@
 // Convex-native pdf.js text layer for every PDF consumer. Replaces the worker's
 // LiteParse conversion endpoint.
 
-import type {
-  SpotSourceChunk,
-  SpotSourceKind,
-  SpotSourceSpan,
+import {
+  buildPdfSourceSpans,
+  type SpotSourceChunk,
+  type SpotSourceKind,
+  type SpotSourceSpan,
 } from "./pdfSourceSpans";
 
 export type PdfPageText = {
@@ -29,20 +30,48 @@ export type PdfTextResult = {
   parsingMs: number;
 };
 
-export async function extractPdfText(_params: {
+export async function extractPdfText(params: {
   pdfBytes: Uint8Array;
   documentId: string;
   sourceKind?: SpotSourceKind;
 }): Promise<PdfTextResult> {
-  throw new Error("extractPdfText: not implemented (P1)");
+  const startedAt = Date.now();
+  const pages: PdfPageText[] = [];
+  const { sourceSpans, sourceChunks, pageCount } = await buildPdfSourceSpans({
+    pdfBytes: params.pdfBytes,
+    documentId: params.documentId,
+    sourceKind: params.sourceKind ?? "policy_pdf",
+    onPageText: (page, text) => {
+      pages.push({ page, text: text.trim() });
+    },
+  });
+  const textLayerMissing = pages.every((page) => !page.text);
+  const text = pages
+    .map((page) => page.text)
+    .filter(Boolean)
+    .join("\n\n");
+  return {
+    pageCount,
+    text,
+    pages,
+    sourceSpans,
+    sourceChunks,
+    textLayerMissing,
+    parsedAt: Date.now(),
+    parsingMs: Date.now() - startedAt,
+  };
 }
 
 /** Bounded plain-text helper for callers that only need text. Null when empty. */
-export async function extractPdfPlainText(_params: {
+export async function extractPdfPlainText(params: {
   pdfBytes: Uint8Array;
   documentId: string;
   sourceKind?: SpotSourceKind;
   maxChars?: number;
 }): Promise<string | null> {
-  throw new Error("extractPdfPlainText: not implemented (P1)");
+  const result = await extractPdfText(params);
+  const text = result.text.trim();
+  if (!text) return null;
+  const maxChars = params.maxChars ?? 40_000;
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
 }

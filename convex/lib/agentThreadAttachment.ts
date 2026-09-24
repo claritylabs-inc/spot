@@ -5,7 +5,7 @@ import mammoth from "mammoth";
 
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { tryBuildParsedPdfText } from "./liteparsePreprocessor";
+import { extractPdfPlainText } from "./pdfText";
 import { generateAgentTextForOrg, generatedTextFromResult } from "./models";
 import {
   isXlsxSpreadsheetAttachment,
@@ -196,11 +196,10 @@ export async function readStoredThreadAttachment(
     args.filename.toLowerCase().endsWith(".pdf")
   ) {
     extracted =
-      (await tryBuildParsedPdfText({
+      (await extractPdfPlainText({
         pdfBytes: buffer,
         documentId: args.filename,
         sourceKind: "attachment",
-        timeoutMs: 20_000,
       })) ?? "";
   } else if (
     args.contentType ===

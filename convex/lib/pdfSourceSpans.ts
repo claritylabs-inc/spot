@@ -157,7 +157,9 @@ export async function buildPdfSourceSpans(params: {
   pdfBytes: Uint8Array;
   documentId: string;
   sourceKind?: SpotSourceKind;
-}): Promise<{ sourceSpans: SpotSourceSpan[]; sourceChunks: SpotSourceChunk[] }> {
+  /** Invoked once per page with the raw extracted text, in page order. */
+  onPageText?: (page: number, text: string) => void;
+}): Promise<{ sourceSpans: SpotSourceSpan[]; sourceChunks: SpotSourceChunk[]; pageCount: number }> {
   try {
     const { getDocument, VerbosityLevel } = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const loadingTask = getDocument({
@@ -181,6 +183,7 @@ export async function buildPdfSourceSpans(params: {
             return `${item.str}${item.hasEOL ? "\n" : " "}`;
           })
           .join("");
+        params.onPageText?.(pageNumber, text);
         const span = buildSpan({
           documentId: params.documentId,
           sourceKind: params.sourceKind ?? "policy_pdf",
@@ -212,9 +215,10 @@ export async function buildPdfSourceSpans(params: {
     return {
       sourceSpans,
       sourceChunks: chunkSpotSourceSpans(sourceSpans),
+      pageCount: doc.numPages,
     };
   } catch (error) {
     console.warn(`PDF source span extraction failed: ${error instanceof Error ? error.message : String(error)}`);
-    return { sourceSpans: [], sourceChunks: [] };
+    return { sourceSpans: [], sourceChunks: [], pageCount: 0 };
   }
 }
