@@ -56,6 +56,10 @@ values. `research_client` remains client-only; exact-gated operator
 `research_broker` targets external brokers. Creation and identity edits schedule
 research automatically, including provisioned brokers. Research initializes a missing broker profile as prospect; automated profile writes have no attributed human updater. All retrieval and generation remain router-only.
 
+## Procurement request client visibility
+
+Procurement requests appear in the client portal by default, however they are created. Operators hide or reveal one with the Client visibility switch in Edit request, or through `update_procurement_request` `clientVisible`. The portal shows only `public.md` and request files that are separately client-visible; `private.md` is never exposed.
+
 ## Procurement file metadata transition
 
 The shared client-file upload panel omits policy association. Procurement request
