@@ -7,6 +7,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import {
+  resolveRouterAssetSigningSecret,
   routerAssetSigningConfiguration,
   signRouterAsset,
   verifyRouterAssetSignature,
@@ -20,9 +21,11 @@ function requireWorkerSecret(secret: string): void {
 }
 
 function signingSecret(): string {
-  const secret = process.env.CL_ROUTER_SECRET?.trim();
+  const secret = resolveRouterAssetSigningSecret();
   if (!secret)
-    throw new Error("CL_ROUTER_SECRET is required for router assets");
+    throw new Error(
+      "CL_ROUTER_ASSET_SIGNING_SECRET (or CL_ROUTER_SECRET) is required for router assets",
+    );
   return secret;
 }
 

@@ -16,7 +16,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.stubEnv("SPOT_ENV", "local");
   vi.stubEnv("CL_ROUTER_URL", "http://localhost:8080");
-  vi.stubEnv("CL_ROUTER_SECRET", "secret");
+  vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
   vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
 });
 

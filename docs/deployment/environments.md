@@ -398,7 +398,7 @@ Every deployed lane needs matching values:
 
 | Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. |
+| Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. Also set `CL_ROUTER_ASSET_SIGNING_SECRET` (at least 32 characters), the dedicated HMAC key for signed router asset URLs; it falls back to `CL_ROUTER_SECRET` only while unset, so rotate it independently of `CL_ROUTER_SECRET` and never rotate the two together. |
 | Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state)                                                                                                                                                                                                |
 | cl-router         | `SPOT_ENV`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, exact comma-separated `CL_ROUTER_ASSET_HOSTS`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, and provider/retrieval credentials. Do not set `DATABASE_URL`, `PORT`, Railway variables, or the retired Fastify refresh/scoring interval variables on the Convex router deployments. |
 
@@ -420,6 +420,14 @@ never contain provider credentials.
 credentialed retrieval call. There is no task gate, consumer-side direct path,
 or break-glass provider fallback. A missing or unavailable router produces the
 typed unavailable state or failure for that operation.
+
+Signed router asset URLs (`convex/lib/routerAssetSignature.ts`,
+`convex/http.ts`'s `/router-assets` route) are HMAC-signed with
+`CL_ROUTER_ASSET_SIGNING_SECRET`, not `CL_ROUTER_SECRET`. Rotating the router
+credential must never invalidate in-flight signed asset URLs, so the two
+secrets are configured and rotated independently once
+`CL_ROUTER_ASSET_SIGNING_SECRET` is set; it only falls back to
+`CL_ROUTER_SECRET` while unset, to keep first deploys a no-op.
 
 Typed classification decisions use `clRouterDecide` and authenticated
 `POST /v1/decide`, with the router-owned Jev pin and native Choice/Noul answers.

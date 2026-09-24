@@ -227,6 +227,9 @@ Common variables used across major workflows:
   `https://actions.spot.insure` in production)
 - `CL_ROUTER_URL` — canonical cl-router origin for every AI and web-retrieval call
 - `CL_ROUTER_SECRET` — inference bearer shared only with cl-router
+- `CL_ROUTER_ASSET_SIGNING_SECRET` — dedicated HMAC key (32+ chars) for signed
+  router asset URLs; falls back to `CL_ROUTER_SECRET` only while unset, so set
+  it explicitly and rotate it independently of the router credential
 - `CL_ROUTER_TIMEOUT_MS` — optional total router request timeout
 - `AUTH_RESEND_KEY` — Resend API key (shared by all outbound email; not required for local capture with `SPOT_ENV=local` and `EMAIL_DELIVERY_MODE=capture`)
 - `RESEND_WEBHOOK_SECRET`

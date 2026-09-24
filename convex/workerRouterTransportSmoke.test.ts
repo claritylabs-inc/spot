@@ -132,7 +132,7 @@ describe("worker router transport smoke fixture", () => {
 
   test("an unqueued fixture can stage through the real lease gate and exact cleanup removes it", async () => {
     vi.stubEnv("EXTRACTION_WORKER_SECRET", "worker-secret");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
     vi.stubEnv("SPOT_ENV", "local");
     const t = convexTest(schema, modules);

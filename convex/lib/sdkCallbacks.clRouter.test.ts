@@ -91,7 +91,7 @@ describe("cl-router embedding callbacks", () => {
   test("chunks routed embedding batches below the Convex response value limit", async () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const texts = Array.from({ length: 131 }, (_, index) => `text-${index}`);
     const embedding = Array.from({ length: 1536 }, () => 0.25);
     const fetchMock = vi.fn(
@@ -145,7 +145,7 @@ describe("cl-router generation callbacks", () => {
   test("auto-routes unpinned extraction with the requested budget and records router trace metadata", async () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const fetchMock = vi.fn(async () =>
       Response.json(generationResponse({ ok: true })),
     );
@@ -280,7 +280,7 @@ describe("cl-router generation callbacks", () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const settings = generationContext().settings;
     const storageIds = ["storage-image", "storage-pdf"] as Id<"_storage">[];
     const assetIds = ["asset-image", "asset-pdf"] as Id<"routerAssets">[];
@@ -379,7 +379,7 @@ describe("cl-router generation callbacks", () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const settings = generationContext().settings;
     const storageId = "storage-first" as Id<"_storage">;
     const assetId = "asset-first" as Id<"routerAssets">;
@@ -433,7 +433,7 @@ describe("cl-router generation callbacks", () => {
     vi.stubEnv("SPOT_ENV", "production");
     vi.stubEnv("CONVEX_SITE_URL", "https://actions.spot.insure");
     vi.stubEnv("CL_ROUTER_URL", "https://router.example.test");
-    vi.stubEnv("CL_ROUTER_SECRET", "router-secret");
+    vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
     const settings = generationContext().settings;
     const storageId = "storage-cleanup-failure" as Id<"_storage">;
     const assetId = "asset-cleanup-failure" as Id<"routerAssets">;
