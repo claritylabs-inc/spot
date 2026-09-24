@@ -430,6 +430,26 @@ export const pendingInvitationForViewer = query({
 
 // ── Mutations ──
 
+async function scheduleOnboardingLogoImport(
+  ctx: MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  const org = await ctx.db.get(orgId);
+  const website = org?.website?.trim();
+  if (
+    org?.type !== "client" ||
+    org.onboardingComplete ||
+    org.iconStorageId ||
+    !website
+  )
+    return;
+  await ctx.scheduler.runAfter(
+    0,
+    internal.actions.extractCompanyInfo.importMissingOrgLogoInternal,
+    { orgId, url: website },
+  );
+}
+
 /** Create a client org during orphan client signup wizard. */
 export const createClientOrg = mutation({
   args: {
@@ -466,6 +486,7 @@ export const createClientOrg = mutation({
     });
 
     await scheduleCompanyResearch(ctx, orgId);
+    await scheduleOnboardingLogoImport(ctx, orgId);
     return orgId;
   },
 });
@@ -500,6 +521,8 @@ export const updateOrg = mutation({
     await ctx.db.patch(orgId, { ...args, ...identity });
     if (args.name !== undefined || args.website !== undefined)
       await scheduleCompanyResearch(ctx, orgId);
+    if (args.website !== undefined)
+      await scheduleOnboardingLogoImport(ctx, orgId);
   },
 });
 
@@ -1249,6 +1272,30 @@ export const setIconInternal = internalMutation({
       await ctx.storage.delete(org.iconStorageId).catch(() => {});
     }
     await ctx.db.patch(args.orgId, { iconStorageId: args.iconStorageId });
+  },
+});
+
+/** Stores an automatically imported logo only while the org still lacks one for the same website. */
+export const setMissingIconInternal = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    website: v.string(),
+    iconStorageId: v.id("_storage"),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const org = await ctx.db.get(args.orgId);
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      org.iconStorageId ||
+      org.website?.trim() !== args.website
+    ) {
+      await ctx.storage.delete(args.iconStorageId).catch(() => {});
+      return false;
+    }
+    await ctx.db.patch(args.orgId, { iconStorageId: args.iconStorageId });
+    return true;
   },
 });
 

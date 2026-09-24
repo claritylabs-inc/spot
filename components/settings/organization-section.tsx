@@ -9,7 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { Globe2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -29,9 +29,6 @@ import { typeStyle } from "@/lib/typography";
 export function OrganizationSection() {
   const orgData = useCachedViewerOrg();
   const updateOrg = useMutation(api.orgs.updateOrg);
-  const extractCompanyInfo = useAction(
-    api.actions.extractCompanyInfo.extractCompanyInfo,
-  );
 
   const org = orgData?.org;
 
@@ -43,7 +40,6 @@ export function OrganizationSection() {
   const setName = draft.field("name");
   const setWebsite = draft.field("website");
   const settingsHydrated = Boolean(org);
-  const [extracting, setExtracting] = useState(false);
 
   const { setActions } = useSettingsActions();
 
@@ -69,50 +65,9 @@ export function OrganizationSection() {
   const saveOrgSettingsNow = orgAutoSave.saveNow;
 
   useEffect(() => {
-    setActions(
-      <>
-        <AutoSaveStatus status={orgAutoSave.status} />
-        <PillButton
-          variant="secondary"
-          size="compact"
-          label={extracting ? "Queuing…" : "Research company"}
-          expandLabel
-          onClick={handleExtract}
-          disabled={extracting || org?.type === "broker"}
-        >
-          {extracting ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Globe2 className="size-3.5" />
-          )}
-        </PillButton>
-      </>,
-    );
+    setActions(<AutoSaveStatus status={orgAutoSave.status} />);
     return () => setActions(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    orgAutoSave.status,
-    extracting,
-    org?.type,
-    website,
-  ]);
-
-  async function handleExtract() {
-    setExtracting(true);
-    try {
-      if (website.trim()) {
-        const url = /^https?:\/\//i.test(website) ? website : `https://${website}`;
-        await updateOrg({ website: url });
-        setWebsite(url);
-      }
-      const result = await extractCompanyInfo({});
-      toast.success(result.status === "running" ? "Company research already running" : "Company research queued");
-    } catch {
-      toast.error("Could not queue company research");
-    } finally {
-      setExtracting(false);
-    }
-  }
+  }, [orgAutoSave.status, setActions]);
 
   if (orgData === undefined) {
     return (
