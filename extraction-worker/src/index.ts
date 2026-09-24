@@ -1213,16 +1213,19 @@ async function generateObjectWithClRouter<T>(opts: {
         for (;;) {
           let response: Response;
           try {
-            response = await fetch(`${CONVEX_SITE_URL}/router-jobs/worker`, {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${SECRET}`,
-                "content-type": "application/json",
+            response = await fetch(
+              new URL("/router-jobs/worker", CONVEX_SITE_URL),
+              {
+                method: "POST",
+                headers: {
+                  authorization: `Bearer ${SECRET}`,
+                  "content-type": "application/json",
+                },
+                body,
+                // Reconnect the control request without cancelling the durable inference.
+                signal: AbortSignal.timeout(10_000),
               },
-              body,
-              // Reconnect the control request without cancelling the durable inference.
-              signal: AbortSignal.timeout(10_000),
-            });
+            );
           } catch {
             await sleep(2_000);
             continue;
