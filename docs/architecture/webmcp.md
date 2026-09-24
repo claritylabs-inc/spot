@@ -41,6 +41,9 @@ names are a contract with the spot.insure agent docs; renaming one breaks them.
   `/share/*`, `/connect/request/*`, and `/weather` without a session.
 - File parameters are base64 (`file_name`, `content_type`, `content_base64`,
   max 20 MB) and upload through the same storage upload URL the UI uses.
+  `upload_policy` hashes each PDF for the same duplicate check as the drawer
+  and returns `status: "duplicate"` without uploading unless
+  `allow_duplicates` is true.
 
 ## Tools by page
 
@@ -52,7 +55,7 @@ The full, generated list with descriptions is `/llms.txt`.
 | `/login` (forms) | `request_login_code`, `verify_login_code` |
 | `/onboarding/setup` (forms) | `submit_user_profile`, `submit_company_profile`, `finish_onboarding` |
 | Every client page | `open_spot_page`, `start_spot_agent_thread`, `list_agent_threads`, `list_notifications`, `mark_notifications_read`, `mark_all_notifications_read`, `set_theme`, `sign_out`, `list_policies`, `get_policy`, `search_policy_wording`, `get_policy_source_evidence`, `get_policy_document_url`, `list_policy_versions`, `list_certificates`, `list_certificate_review_jobs`, `list_compliance_requirements`, `list_requirement_sources`, `list_source_certificates`, `list_insurance_requests`, `get_insurance_request`, `list_client_files` |
-| `/policies` | `retry_policy_extraction`, `generate_certificate` |
+| `/policies` | `upload_policy`, `archive_policy`, `restore_policy`, `cancel_policy_extraction`, `retry_policy_extraction`, `generate_certificate` |
 | `/certificates` | `generate_certificate`, `generate_certificates_for_requirements`, `reissue_certificate`, `update_certificate_holder`, `archive_certificate`, `restore_certificate` |
 | `/compliance` | `generate_certificate`, `generate_certificates_for_requirements`, `list_vendor_compliance`; admins: `create_compliance_requirement`, `update_compliance_requirement`, `archive_compliance_requirement`, `update_requirement_source`, `archive_requirement_sources`, `import_compliance_requirements`, `recheck_compliance_requirement` |
 | `/requests` | `create_insurance_request`, `attach_request_document` |
@@ -79,8 +82,10 @@ actions a client cannot perform in the UI today.
 | Navigation | Sidebar pages, settings sections | `open_spot_page` |
 | Notifications | List, open (marks read), mark all read | `list_notifications`, `mark_notifications_read`, `mark_all_notifications_read` |
 | Policies | List active/archived, detail, coverages, source evidence, PDF, history, certificates tab | `list_policies`, `get_policy`, `get_policy_source_evidence`, `get_policy_document_url`, `list_policy_versions`, `list_certificates` (`policy_id`) |
+| Policies | Upload PDFs from the header drawer or empty state, combined or separate, with duplicate warning | `upload_policy` (`mode`, `allow_duplicates`) |
+| Policies | Archive, restore, or cancel extraction of a policy the client uploaded | `archive_policy`, `restore_policy`, `cancel_policy_extraction` |
 | Policies | Resume/restart failed extraction | `retry_policy_extraction` |
-| Policies | Upload, edit fields, archive/restore, cancel extraction, answer review questions | Not exposed: operator-only (`assertCanUploadPolicy`, `assertCanArchivePolicy`, `assertCanEditPolicyExtractedFields`) |
+| Policies | Edit fields, answer extraction review questions, archive policies Spot staff added | Not exposed: operator-only (`assertCanEditPolicyExtractedFields`, `assertCanReviewPolicyExtraction`, `assertCanManageUploadedPolicy`) |
 | Certificates | List active/archived, versions, downloads | `list_certificates` |
 | Certificates | Review jobs tab | `list_certificate_review_jobs` |
 | Certificates | Generate (policy mode / requirements mode) | `generate_certificate`, `generate_certificates_for_requirements` |

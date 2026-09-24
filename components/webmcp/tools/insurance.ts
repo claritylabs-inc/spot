@@ -5,14 +5,17 @@ import {
   assertDate,
   bool,
   compact,
+  decodeFileParam,
   id,
   isoTime,
   num,
   record,
   requiredText,
   stringList,
+  sha256Hex,
   text,
   uploadBase64File,
+  uploadDecodedFile,
   type ClientToolContext,
   type ToolInput,
   type ToolMap,
@@ -29,6 +32,7 @@ type Policy = {
   expirationDate?: string;
   extractionDataStage?: string;
   pipelineStatus?: string;
+  uploadedBySide?: string;
 };
 
 export function policyRow(policy: Policy) {
@@ -41,6 +45,8 @@ export function policyRow(policy: Policy) {
     effective_date: policy.effectiveDate ?? null,
     expiration_date: policy.expirationDate ?? null,
     extraction_status: policy.extractionDataStage ?? policy.pipelineStatus ?? null,
+    pipeline_status: policy.pipelineStatus ?? null,
+    uploaded_by: policy.uploadedBySide ?? null,
     url: `/policies/${policy._id}`,
   };
 }
@@ -314,6 +320,100 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
           created_at: isoTime(version.createdAt),
         })),
       };
+    },
+    upload_policy: async (input) => {
+      const files = Array.isArray(input.files) ? (input.files as ToolInput[]) : [];
+      if (files.length === 0) return webMcpError("Provide at least one PDF in files.");
+      const mode = text(input, "mode") === "separate" ? "separate" : "combined";
+      const decoded = files.map(decodeFileParam);
+      const notPdf = decoded.filter(
+        (file) => file.contentType !== "application/pdf" && !/\.pdf$/i.test(file.fileName),
+      );
+      if (notPdf.length > 0) {
+        return webMcpError(`Only PDF policies can be uploaded: ${notPdf.map((file) => file.fileName).join(", ")}.`);
+      }
+      const candidates = await Promise.all(
+        decoded.map(async (file) => {
+          const fileSha256 = await sha256Hex(file.bytes);
+          const duplicate = await convex.mutation(api.policies.checkDuplicateUploadByHash, {
+            orgId,
+            fileSha256,
+          });
+          return { file: { ...file, contentType: "application/pdf" }, fileSha256, duplicate };
+        }),
+      );
+      const duplicates = candidates.filter((candidate) => candidate.duplicate);
+      if (duplicates.length > 0 && bool(input, "allow_duplicates") !== true) {
+        return {
+          status: "duplicate",
+          message: "These files match existing policies. Nothing was uploaded; pass allow_duplicates: true to upload anyway.",
+          duplicates: duplicates.map(({ file, duplicate }) => ({
+            file_name: file.fileName,
+            existing_policy_id: duplicate?.policyId ?? null,
+            existing_policy_number: duplicate?.policyNumber ?? null,
+          })),
+        };
+      }
+      const uploaded = [];
+      for (const candidate of candidates) {
+        uploaded.push({
+          ...candidate,
+          storage: await uploadDecodedFile(candidate.file, () =>
+            convex.mutation(api.policies.generateUploadUrlForOrg, { orgId }),
+          ),
+        });
+      }
+      const groups = mode === "separate" ? uploaded.map((item) => [item]) : [uploaded];
+      const policies = [];
+      for (const [primary, ...rest] of groups) {
+        const policyId = await convex.mutation(api.policies.createClientUpload, {
+          orgId,
+          fileId: primary.storage.storageId,
+          fileName: primary.file.fileName,
+          fileSha256: primary.fileSha256,
+          uploadFileSha256s: [primary, ...rest].map((item) => item.fileSha256),
+          documentType: "policy",
+        });
+        const extraction = await convex.action(api.actions.extractFromUpload.extractFromUpload, {
+          policyId,
+          fileId: primary.storage.storageId,
+          fileName: primary.file.fileName,
+          fileSha256: primary.fileSha256,
+          additionalFiles: rest.map((item) => ({
+            fileId: item.storage.storageId,
+            fileName: item.file.fileName,
+            fileSha256: item.fileSha256,
+          })),
+        });
+        const failed = extraction && typeof extraction === "object" && "error" in extraction;
+        policies.push({
+          policy_id: policyId,
+          file_names: [primary, ...rest].map((item) => item.file.fileName),
+          extraction: failed ? "failed_to_start" : "started",
+          ...(failed ? { error: String(extraction.error) } : {}),
+          url: `/policies/${policyId}`,
+        });
+      }
+      return {
+        status: policies.every((policy) => policy.extraction === "started") ? "uploaded" : "partial",
+        mode,
+        policies,
+        message:
+          "Extraction runs in the background. Check progress with get_policy (extraction_status); use retry_policy_extraction if it fails.",
+        next_tool: "get_policy",
+      };
+    },
+    archive_policy: async (input) => {
+      await convex.mutation(api.policies.archive, { id: id<"policies">(input, "policy_id") });
+      return { status: "archived" };
+    },
+    restore_policy: async (input) => {
+      await convex.mutation(api.policies.restore, { id: id<"policies">(input, "policy_id") });
+      return { status: "active" };
+    },
+    cancel_policy_extraction: async (input) => {
+      await convex.mutation(api.policies.cancelExtraction, { id: id<"policies">(input, "policy_id") });
+      return { status: "cancelled" };
     },
     retry_policy_extraction: async (input) => {
       const result = await convex.action(api.actions.retryExtraction.retryExtraction, {

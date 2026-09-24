@@ -21,6 +21,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import dayjs from "dayjs";
+import { ConvexHttpClient } from "convex/browser";
+import { anyApi } from "convex/server";
 import { chromium } from "playwright";
 import { consumeLocalEmailCaptures } from "./watch-conductor-email-captures.mjs";
 
@@ -32,6 +34,42 @@ const seededIndex = process.argv.indexOf("--seeded-client");
 const seededClient = seededIndex > 0 ? process.argv[seededIndex + 1] : null;
 const convexLog = path.join(repoRoot, ".context", "logs", "convex.log");
 mkdirSync(outDir, { recursive: true });
+
+const convexUrl = readFileSync(path.join(repoRoot, ".env.local"), "utf8").match(
+  /^NEXT_PUBLIC_CONVEX_URL=(.+)$/m,
+)?.[1];
+const runId = Date.now();
+
+/** A one-page PDF whose bytes (and so its duplicate hash) are unique per label. */
+function makePdf(label) {
+  const text = `BT /F1 12 Tf 72 720 Td (${label}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${text.length} >>\nstream\n${text}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = pdf.length;
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf, "latin1");
+}
+
+function pdfParam(label) {
+  return {
+    file_name: `${label}.pdf`,
+    content_type: "application/pdf",
+    content_base64: makePdf(label).toString("base64"),
+  };
+}
 
 const checks = [];
 function check(name, ok, detail) {
@@ -207,6 +245,51 @@ async function openPage(page, args, urlPattern, toolNames) {
   return opened;
 }
 
+/** A Convex client signed in through the normal OTP flow, for backend boundary checks. */
+async function nodeSession(email) {
+  const client = new ConvexHttpClient(convexUrl, { logger: false });
+  const from = logOffset();
+  await client.action(anyApi.auth.signIn, { provider: "resend-otp", params: { email } });
+  const code = await waitForOtp(email, from);
+  const signedIn = await client.action(anyApi.auth.signIn, {
+    provider: "resend-otp",
+    params: { email, code },
+  });
+  client.setAuth(signedIn.tokens.token);
+  return client;
+}
+
+async function rejection(run) {
+  try {
+    await run();
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function storePdf(client, orgId, label) {
+  const uploadUrl = await client.mutation(anyApi.policies.generateUploadUrlForOrg, { orgId });
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: makePdf(label),
+  });
+  return (await response.json()).storageId;
+}
+
+/** Waits for a new upload's extraction to start; a router rejection is blocked, not failed. */
+async function checkExtractionStarted(page, name, policyId, logFrom) {
+  const policy = await eventually(
+    () => call(page, "get_policy", { policy_id: policyId }),
+    (value) => ["running", "paused", "complete", "error"].includes(value.policy?.pipeline_status),
+    40,
+  );
+  const status = policy.policy?.pipeline_status;
+  checkModelStep(name, policy, status === "running" || status === "paused" || status === "complete", logFrom);
+  return status;
+}
+
 async function waitForOtp(email, fromOffset) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const contents = readFileSync(convexLog, "utf8").slice(fromOffset);
@@ -335,6 +418,71 @@ try {
   const badPolicy = await call(page, "get_policy", { policy_id: "not-a-real-id" });
   check("get_policy with bad id returns structured error", badPolicy.status === "error", badPolicy);
   await page.screenshot({ path: path.join(outDir, "client-policies.png") });
+
+  // Client policy upload: the restored UI drawer, then upload_policy.
+  auditTools("/policies", await registeredTools(page));
+  const uiPdfLabel = `webmcp-ui-policy-${runId}`;
+  const uiPdfPath = path.join(outDir, `${uiPdfLabel}.pdf`);
+  writeFileSync(uiPdfPath, makePdf(uiPdfLabel));
+  let uploadLogFrom = logOffset();
+  await page.getByRole("button", { name: "Upload policy" }).first().click();
+  const drawer = page.getByRole("dialog");
+  await drawer.locator('input[type="file"]').setInputFiles(uiPdfPath);
+  await page.screenshot({ path: path.join(outDir, "client-policy-upload-drawer.png") });
+  await drawer.getByRole("button", { name: "Upload policy" }).click();
+  const afterUi = await eventually(
+    () => call(page, "list_policies", {}),
+    (value) => value.policies?.some((row) => row.uploaded_by === "client"),
+    40,
+  );
+  const uiPolicy = afterUi.policies?.find((row) => row.uploaded_by === "client");
+  check("UI drawer upload creates a client-provenance policy", Boolean(uiPolicy), afterUi);
+  if (uiPolicy) await checkExtractionStarted(page, "UI upload starts extraction", uiPolicy.policy_id, uploadLogFrom);
+  await page.screenshot({ path: path.join(outDir, "client-policies-after-upload.png") });
+
+  uploadLogFrom = logOffset();
+  const combined = await call(page, "upload_policy", {
+    files: [pdfParam(`webmcp-dec-${runId}`), pdfParam(`webmcp-forms-${runId}`)],
+    mode: "combined",
+  });
+  check("upload_policy combined merges files into one policy", combined.status === "uploaded" && combined.policies?.length === 1 && combined.policies[0].file_names.length === 2, combined);
+  if (combined.policies?.[0]) await checkExtractionStarted(page, "upload_policy combined starts extraction", combined.policies[0].policy_id, uploadLogFrom);
+  uploadLogFrom = logOffset();
+  const separate = await call(page, "upload_policy", {
+    files: [pdfParam(`webmcp-auto-${runId}`), pdfParam(`webmcp-cyber-${runId}`)],
+    mode: "separate",
+  });
+  check("upload_policy separate creates one policy per file", separate.status === "uploaded" && separate.policies?.length === 2, separate);
+  if (separate.policies?.[0]) await checkExtractionStarted(page, "upload_policy separate starts extraction", separate.policies[0].policy_id, uploadLogFrom);
+  const duplicate = await call(page, "upload_policy", { files: [pdfParam(uiPdfLabel)] });
+  check("upload_policy stops on a duplicate without uploading", duplicate.status === "duplicate" && duplicate.duplicates?.[0]?.existing_policy_id === uiPolicy?.policy_id, duplicate);
+  const forced = await call(page, "upload_policy", { files: [pdfParam(uiPdfLabel)], allow_duplicates: true });
+  check("upload_policy allow_duplicates uploads anyway", forced.status === "uploaded", forced);
+  const notPdf = await call(page, "upload_policy", {
+    files: [{ file_name: "notes.txt", content_type: "text/plain", content_base64: btoa("not a policy") }],
+  });
+  check("upload_policy rejects non-PDF files", notPdf.status === "error", notPdf);
+  const cancelTarget = separate.policies?.[1]?.policy_id;
+  if (cancelTarget) {
+    const cancelled = await call(page, "cancel_policy_extraction", { policy_id: cancelTarget });
+    check("cancel_policy_extraction on a client upload", cancelled.status === "cancelled", cancelled);
+  }
+  const forcedId = forced.policies?.[0]?.policy_id;
+  check("archive_policy on a client upload", (await call(page, "archive_policy", { policy_id: forcedId })).status === "archived");
+  const archivedPolicies = await eventually(
+    () => call(page, "list_policies", { archived: true }),
+    (value) => value.policies?.some((row) => row.policy_id === forcedId),
+  );
+  check("archived client upload is listed as archived", archivedPolicies.policies?.some((row) => row.policy_id === forcedId), archivedPolicies);
+  check("restore_policy on a client upload", (await call(page, "restore_policy", { policy_id: forcedId })).status === "active");
+  if (uiPolicy) {
+    await page.goto(`${base}/policies/${uiPolicy.policy_id}`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Archive" }).first().waitFor({ timeout: 30_000 });
+    check("client-uploaded policy detail offers Archive", await page.getByRole("button", { name: "Archive" }).first().isVisible());
+    await page.screenshot({ path: path.join(outDir, "client-uploaded-policy-detail.png") });
+    await page.goto(`${base}/policies`, { waitUntil: "networkidle" });
+    await waitForTools(page, ["list_policies"]);
+  }
 
   const opened = await call(page, "open_spot_page", { page: "requests" });
   check("open_spot_page navigates", opened.status === "navigating" && opened.url === "/requests", opened);
@@ -514,6 +662,9 @@ try {
   const memberTools = (await registeredTools(memberPage)).map((tool) => tool.name);
   result.toolsOnSettingsAsMember = memberTools;
   check("member gets member settings tools but no admin tools", memberTools.includes("get_notification_preferences") && !memberTools.includes("invite_team_member") && !memberTools.includes("update_organization"), memberTools);
+  await openPage(memberPage, { page: "policies" }, /\/policies/, ["upload_policy"]);
+  const memberUpload = await call(memberPage, "upload_policy", { files: [pdfParam(`webmcp-member-${runId}`)] });
+  check("a non-admin client member can upload a policy", memberUpload.status === "uploaded", memberUpload);
   await memberContext.close();
   const team = await eventually(
     () => call(page, "list_team_members", {}),
@@ -705,6 +856,11 @@ try {
       result.seededWording = wording;
       check("search_policy_wording returns excerpts", wording.status === "ok" && wording.matches.length > 0, wording);
       await call(seededPage, "open_spot_page", { page: "policies", record_id: policy.policy_id });
+      await waitForTools(seededPage, ["archive_policy"]);
+      const staffArchive = await call(seededPage, "archive_policy", { policy_id: policy.policy_id });
+      check("archive_policy rejects a policy Spot staff uploaded", staffArchive.status === "error" && /Spot staff/.test(staffArchive.error), staffArchive);
+      await seededPage.getByRole("button", { name: "Generate COI" }).first().waitFor({ timeout: 30_000 }).catch(() => {});
+      check("staff-uploaded policy detail hides Archive", !(await seededPage.getByRole("button", { name: "Archive" }).first().isVisible().catch(() => false)));
       await waitForTools(seededPage, ["generate_certificate"]);
       const certificate = await call(seededPage, "generate_certificate", { policy_id: policy.policy_id, holder_name: `WebMCP Synthetic Holder ${stamp}`, city: "Austin", state: "TX" });
       result.seededCertificate = certificate;
@@ -772,6 +928,69 @@ try {
   check("vendor invitation tools fail safely on an invalid token", missingInvite.status === "error", missingInvite);
   check("no client tools on public pages", !(await registeredTools(publicPage)).some((tool) => tool.name === "list_policies"));
   await publicContext.close();
+
+  // 7. Upload permission boundaries, called directly against Convex.
+  const clientOrgId = organization.organization.org_id;
+  const clientSession = await nodeSession(newEmail);
+  const operatorSession = await nodeSession("terry@claritylabs.inc");
+  const operatorFileId = await storePdf(operatorSession, clientOrgId, `webmcp-operator-${runId}`);
+  const operatorPolicyId = await operatorSession.mutation(anyApi.policies.createOperatorUpload, {
+    clientOrgId,
+    fileId: operatorFileId,
+    fileName: `webmcp-operator-${runId}.pdf`,
+    documentType: "policy",
+  });
+  const operatorExtraction = await operatorSession.action(anyApi.actions.extractFromUpload.extractFromUpload, {
+    policyId: operatorPolicyId,
+    fileId: operatorFileId,
+    fileName: `webmcp-operator-${runId}.pdf`,
+  });
+  check("operator upload into a client still works", operatorExtraction?.success === true, operatorExtraction);
+  const operatorRow = await clientSession.query(anyApi.policies.getSummary, { id: operatorPolicyId });
+  check("operator upload keeps operator provenance", operatorRow?.uploadedBySide === "operator", operatorRow?.uploadedBySide);
+  const archiveStaffUpload = await rejection(() => clientSession.mutation(anyApi.policies.archive, { id: operatorPolicyId }));
+  check("client cannot archive a staff upload", Boolean(archiveStaffUpload), archiveStaffUpload);
+  const clientFileId = await storePdf(clientSession, clientOrgId, `webmcp-rebind-${runId}`);
+  const rebind = await clientSession.action(anyApi.actions.extractFromUpload.extractFromUpload, {
+    policyId: operatorPolicyId,
+    fileId: clientFileId,
+  });
+  check("client cannot start extraction on someone else's policy", Boolean(rebind?.error), rebind);
+
+  const coveSession = await nodeSession("adyan@cove.dev");
+  const coveOrgId = (await coveSession.query(anyApi.orgs.viewerOrg, {})).org._id;
+  await clientSession.action(anyApi.connectedOrgs.requestVendorAccessByEmail, {
+    clientOrgId,
+    vendorEmail: "adyan@cove.dev",
+    relationshipLabel: "WebMCP upload boundary",
+  });
+  const coveClients = await eventually(
+    () => coveSession.query(anyApi.connectedOrgs.listClients, { orgId: coveOrgId }),
+    (rows) => rows.some((row) => row.clientOrg?._id === clientOrgId && row.status === "pending"),
+  );
+  const relationship = coveClients.find((row) => row.clientOrg?._id === clientOrgId && row.status === "pending");
+  await coveSession.mutation(anyApi.connectedOrgs.approve, { relationshipId: relationship._id });
+  const vendorPolicies = await clientSession.query(anyApi.policies.listForOrg, { orgId: coveOrgId, documentType: "policy" });
+  check("connected client can read the vendor's policies", vendorPolicies.length > 0, vendorPolicies.length);
+  const connectedUploadUrl = await rejection(() => clientSession.mutation(anyApi.policies.generateUploadUrlForOrg, { orgId: coveOrgId }));
+  check("connected client cannot get an upload URL for the vendor", /read-only/i.test(connectedUploadUrl ?? ""), connectedUploadUrl);
+  const connectedCreate = await rejection(() =>
+    clientSession.mutation(anyApi.policies.createClientUpload, {
+      orgId: coveOrgId,
+      fileId: clientFileId,
+      fileName: "vendor.pdf",
+      documentType: "policy",
+    }),
+  );
+  check("connected client cannot register a policy for the vendor", Boolean(connectedCreate), connectedCreate);
+  const connectedArchive = await rejection(() => clientSession.mutation(anyApi.policies.archive, { id: vendorPolicies[0]._id }));
+  check("connected client cannot archive the vendor's policy", Boolean(connectedArchive), connectedArchive);
+  await clientSession.mutation(anyApi.connectedOrgs.revoke, { relationshipId: relationship._id });
+
+  const brokerSession = await nodeSession("terry@example-risk.example");
+  const brokerOrgId = (await brokerSession.query(anyApi.orgs.viewerOrg, {}))?.org?._id;
+  const brokerUpload = await rejection(() => brokerSession.mutation(anyApi.policies.generateUploadUrlForOrg, { orgId: brokerOrgId }));
+  check("broker organizations cannot upload policies", Boolean(brokerUpload), brokerUpload);
 
   result.coverage = {
     registered: [...registeredEverywhere].sort(),

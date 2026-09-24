@@ -134,6 +134,49 @@ export const insuranceTools = {
     readOnly: true,
     inputSchema: schema({ policy_id: policyId }, ["policy_id"]),
   }),
+  upload_policy: imperative({
+    title: "Upload policy",
+    description:
+      "Upload policy PDFs into the client's workspace and start AI extraction. combined (default) merges all files into one policy, for example a declarations page plus forms; separate creates one policy per file. Files matching an existing policy are skipped unless allow_duplicates is true. Returns the new policy IDs; follow up with get_policy, or retry_policy_extraction if extraction fails.",
+    readOnly: false,
+    consequential: true,
+    pages: ["/policies"],
+    inputSchema: schema(
+      {
+        files: param.array(
+          "One or more PDF files.",
+          param.object("PDF file.", fileParams, ["file_name", "content_base64"]),
+        ),
+        mode: param.enum(["combined", "separate"], "combined (default) or separate."),
+        allow_duplicates: param.boolean(
+          "Upload even when a file matches an existing policy, as the UI's Continue upload does.",
+        ),
+      },
+      ["files"],
+    ),
+  }),
+  archive_policy: imperative({
+    title: "Archive policy",
+    description:
+      "Archive a policy the client uploaded so it no longer counts in coverage, compliance, or certificates. Policies added by Spot staff can't be archived here. Restore with restore_policy.",
+    readOnly: false,
+    pages: ["/policies"],
+    inputSchema: schema({ policy_id: policyId }, ["policy_id"]),
+  }),
+  restore_policy: imperative({
+    title: "Restore policy",
+    description: "Restore an archived policy the client uploaded.",
+    readOnly: false,
+    pages: ["/policies"],
+    inputSchema: schema({ policy_id: policyId }, ["policy_id"]),
+  }),
+  cancel_policy_extraction: imperative({
+    title: "Cancel policy extraction",
+    description: "Stop a running extraction for a policy the client uploaded.",
+    readOnly: false,
+    pages: ["/policies"],
+    inputSchema: schema({ policy_id: policyId }, ["policy_id"]),
+  }),
   retry_policy_extraction: imperative({
     title: "Retry policy extraction",
     description:

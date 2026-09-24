@@ -98,14 +98,14 @@ export type UploadedFile = {
   size: number;
 };
 
-/**
- * Uploads a base64 file param set ({file_name, content_type, content_base64})
- * to a Convex storage upload URL, the same POST the UI's drop zones make.
- */
-export async function uploadBase64File(
-  file: ToolInput,
-  getUploadUrl: () => Promise<string>,
-): Promise<UploadedFile> {
+export type DecodedFile = {
+  fileName: string;
+  contentType: string;
+  bytes: Uint8Array<ArrayBuffer>;
+};
+
+/** Decodes a base64 file param set ({file_name, content_type, content_base64}). */
+export function decodeFileParam(file: ToolInput): DecodedFile {
   const fileName = requiredText(file, "file_name");
   const contentType = text(file, "content_type") ?? "application/octet-stream";
   let bytes: Uint8Array<ArrayBuffer>;
@@ -117,14 +117,41 @@ export async function uploadBase64File(
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_UPLOAD_BYTES) {
     throw new Error("The file must be between 1 byte and 20 MB.");
   }
+  return { fileName, contentType, bytes };
+}
+
+/** POSTs decoded bytes to a Convex storage upload URL, as the UI's drop zones do. */
+export async function uploadDecodedFile(
+  file: DecodedFile,
+  getUploadUrl: () => Promise<string>,
+): Promise<UploadedFile> {
   const response = await fetch(await getUploadUrl(), {
     method: "POST",
-    headers: { "Content-Type": contentType },
-    body: new Blob([bytes], { type: contentType }),
+    headers: { "Content-Type": file.contentType },
+    body: new Blob([file.bytes], { type: file.contentType }),
   });
   if (!response.ok) throw new Error("Upload failed.");
   const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
-  return { storageId, fileName, contentType, size: bytes.byteLength };
+  return {
+    storageId,
+    fileName: file.fileName,
+    contentType: file.contentType,
+    size: file.bytes.byteLength,
+  };
+}
+
+export async function uploadBase64File(
+  file: ToolInput,
+  getUploadUrl: () => Promise<string>,
+): Promise<UploadedFile> {
+  return await uploadDecodedFile(decodeFileParam(file), getUploadUrl);
+}
+
+export async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function isoTime(value: number | undefined | null) {
