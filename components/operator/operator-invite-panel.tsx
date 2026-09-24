@@ -28,9 +28,12 @@ export function useOperatorInvite(disabled: boolean) {
     setSending(true);
     try {
       const result = await inviteOperator({ email });
-      if (result.emailSent) toast.success(`Invitation sent to ${result.email}`);
-      else toast.error(`Operator access is ready for ${result.email}, but the email could not be sent. Retry the invitation to send it again.`);
-      close();
+      if (result.emailSent) {
+        toast.success(`Invitation sent to ${result.email}`);
+        close();
+      } else {
+        toast.error(`Operator access is ready for ${result.email}, but the email could not be sent. Retry the invitation to send it again.`);
+      }
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(error, "Operator invitation could not be sent."),
