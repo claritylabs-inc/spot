@@ -100,8 +100,8 @@ describe("mailbox automation judgments", () => {
 
   test("uncertain memory and requirement body decisions do not enable those actions", () => {
     const judgments = answers("multiple");
-    judgments["1_body"] = { type: "noul", noul: 0.8 };
-    judgments["1_memory"] = { type: "noul", noul: 0.8 };
+    judgments["1_body"] = { type: "noul", noul: 0.69 };
+    judgments["1_memory"] = { type: "noul", noul: 0.69 };
     const decision = applyMailboxAutomationJudgments(
       extracted,
       judgments,

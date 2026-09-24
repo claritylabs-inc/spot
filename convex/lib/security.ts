@@ -150,13 +150,9 @@ export async function classifyPromptInjection(
         },
       };
     }
-    const injectionProbability =
-      answer?.type === "choice"
-        ? Object.entries(answer.probabilities)
-            .filter(([category]) => category !== "safe")
-            .reduce((sum, [, probability]) => sum + probability, 0)
-        : 0;
-    const safe = !jevProceeds(injectionProbability);
+    // Proceed only when Jev is at least 70% sure the message is safe.
+    const safe =
+      answer?.type === "choice" && jevProceeds(answer.probabilities.safe);
     return {
       safe,
       audit: {

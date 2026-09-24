@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { DecideResponse } from "../../contracts/cl-router/policy";
+import { JEV_PROCEED_THRESHOLD } from "./jevThreshold";
 
 export type ConnectedEmailAutomation = {
   policyImports: boolean;
@@ -50,7 +51,7 @@ export function resolveMailboxAutomationPolicy(account: {
   };
 }
 
-export const MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD = 0.9;
+export const MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD = JEV_PROCEED_THRESHOLD;
 
 export const mailboxAutomationClassificationSchema = z.enum([
   "ignore",
