@@ -325,6 +325,7 @@ export async function writeOperatorAudit(
     type:
       | "employee_provisioned"
       | "operator_bootstrap"
+      | "operator_invited"
       | "broker_created"
       | "broker_status_changed"
       | "broker_launch_email_sent"

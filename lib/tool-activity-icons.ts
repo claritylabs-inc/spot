@@ -56,6 +56,7 @@ const operatorToolCategories = {
   search_organizations: "organizations",
   get_organization: "organizations",
   create_client_organization: "organizations",
+  invite_operator: "settings",
   update_organization_profile: "organizations",
   set_organization_status: "organizations",
   get_broker_network_profile: "brokers",

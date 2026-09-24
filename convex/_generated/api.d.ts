@@ -368,6 +368,7 @@ import type * as operatorGoogleWorkspaceReconciliation from "../operatorGoogleWo
 import type * as operatorGoogleWorkspaceScan from "../operatorGoogleWorkspaceScan.js";
 import type * as operatorGoogleWorkspaceScanActivity from "../operatorGoogleWorkspaceScanActivity.js";
 import type * as operatorImessage from "../operatorImessage.js";
+import type * as operatorInvitations from "../operatorInvitations.js";
 import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
 import type * as operatorMcpServers from "../operatorMcpServers.js";
 import type * as operatorPolicyImports from "../operatorPolicyImports.js";
@@ -776,6 +777,7 @@ declare const fullApi: ApiFromModules<{
   operatorGoogleWorkspaceScan: typeof operatorGoogleWorkspaceScan;
   operatorGoogleWorkspaceScanActivity: typeof operatorGoogleWorkspaceScanActivity;
   operatorImessage: typeof operatorImessage;
+  operatorInvitations: typeof operatorInvitations;
   operatorMcpOAuth: typeof operatorMcpOAuth;
   operatorMcpServers: typeof operatorMcpServers;
   operatorPolicyImports: typeof operatorPolicyImports;
