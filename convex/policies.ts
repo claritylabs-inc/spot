@@ -47,6 +47,7 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import {
   extractionContractHash,
   evaluateExtractionPromotion,
+  sectionResultArtifactReasons,
   type ExtractionCompletionManifest,
   type PromotionEvidenceLedger,
 } from "./lib/extractionPromotion";
@@ -65,7 +66,9 @@ type PolicyExtractionArtifactKind =
   | "embedding_payload"
   | "external_completion_payload"
   | "source_bundle"
-  | "section_result";
+  | "section_result"
+  | "parsed_source"
+  | "section_plan";
 type PolicyPipelineLogEntry = {
   timestamp: number;
   message: string;
@@ -113,7 +116,7 @@ const PIPELINE_LOG_LIMIT = 500;
 const PIPELINE_LOG_MIN_INTERVAL_MS = 10_000;
 const PIPELINE_STALE_REQUEUE_MS = 5 * 60 * 1000;
 const PIPELINE_STALE_REQUEUE_BATCH_LIMIT = 25;
-const EXTERNAL_WORKER_CLAIM_BATCH_LIMIT = 10;
+const INTAKE_CANDIDATE_SCAN_LIMIT = 40;
 
 function isImportantPipelineLog(entry: PolicyPipelineLogEntry) {
   if (entry.level === "warn" || entry.level === "error") return true;
@@ -537,148 +540,6 @@ async function patchPolicyExtractionRun(
   return await ctx.db.get(run._id);
 }
 
-async function enqueueExternalPolicyExtraction(
-  ctx: any,
-  policyId: DataModelId<"policies">,
-  runId: DataModelId<"policyExtractionRuns">,
-  now: number,
-) {
-  const existingRows = await ctx.db
-    .query("policyExtractionQueue")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
-    .collect();
-  const [first, ...duplicates] = existingRows;
-  const fields = {
-    runId,
-    status: "queued" as const,
-    leaseId: undefined,
-    leaseExpiresAt: undefined,
-    heartbeatAt: undefined,
-    updatedAt: now,
-  };
-  if (first) {
-    await ctx.db.patch(first._id, fields);
-  } else {
-    await ctx.db.insert("policyExtractionQueue", {
-      policyId,
-      ...fields,
-      createdAt: now,
-    });
-  }
-  for (const row of duplicates) {
-    await ctx.db.delete(row._id);
-  }
-}
-
-async function enqueueExternalPolicyExtractionPreview(
-  ctx: any,
-  policyId: DataModelId<"policies">,
-  runId: DataModelId<"policyExtractionRuns">,
-  now: number,
-) {
-  const existingRows = await ctx.db
-    .query("policyExtractionPreviewQueue")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
-    .collect();
-  const [first, ...duplicates] = existingRows;
-  const fields = {
-    runId,
-    status: "queued" as const,
-    leaseId: undefined,
-    leaseExpiresAt: undefined,
-    heartbeatAt: undefined,
-    updatedAt: now,
-  };
-  if (first) {
-    await ctx.db.patch(first._id, fields);
-  } else {
-    await ctx.db.insert("policyExtractionPreviewQueue", {
-      policyId,
-      ...fields,
-      createdAt: now,
-    });
-  }
-  for (const row of duplicates) {
-    await ctx.db.delete(row._id);
-  }
-}
-
-async function clearExternalPolicyExtractionQueue(
-  ctx: any,
-  policyId: DataModelId<"policies">,
-) {
-  const rows = await ctx.db
-    .query("policyExtractionQueue")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
-    .collect();
-  for (const row of rows) {
-    await ctx.db.delete(row._id);
-  }
-}
-
-async function clearExternalPolicyExtractionPreviewQueue(
-  ctx: any,
-  policyId: DataModelId<"policies">,
-) {
-  const rows = await ctx.db
-    .query("policyExtractionPreviewQueue")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
-    .collect();
-  for (const row of rows) {
-    await ctx.db.delete(row._id);
-  }
-}
-
-async function patchExternalPolicyExtractionPreviewQueueLease(
-  ctx: any,
-  policyId: DataModelId<"policies">,
-  lease: { id: string; expiresAt: number; heartbeatAt: number },
-  status: "queued" | "leased",
-) {
-  const rows = await ctx.db
-    .query("policyExtractionPreviewQueue")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
-    .collect();
-  const [first, ...duplicates] = rows;
-  if (first) {
-    await ctx.db.patch(first._id, {
-      status,
-      leaseId: status === "leased" ? lease.id : undefined,
-      leaseExpiresAt: status === "leased" ? lease.expiresAt : undefined,
-      heartbeatAt: status === "leased" ? lease.heartbeatAt : undefined,
-      updatedAt: nowMs(),
-    });
-  }
-  for (const row of duplicates) {
-    await ctx.db.delete(row._id);
-  }
-}
-
-async function patchExternalPolicyExtractionQueueLease(
-  ctx: any,
-  policyId: DataModelId<"policies">,
-  lease: { id: string; expiresAt: number; heartbeatAt: number },
-  status: "queued" | "leased",
-) {
-  const rows = await ctx.db
-    .query("policyExtractionQueue")
-    .withIndex("policy", (q: any) => q.eq("policyId", policyId))
-    .collect();
-  const [first, ...duplicates] = rows;
-  if (first) {
-    await ctx.db.patch(first._id, {
-      status,
-      leaseId: status === "leased" ? lease.id : undefined,
-      leaseExpiresAt: status === "leased" ? lease.expiresAt : undefined,
-      heartbeatAt: status === "leased" ? lease.heartbeatAt : undefined,
-      updatedAt: nowMs(),
-    });
-  }
-  for (const row of duplicates) {
-    await ctx.db.delete(row._id);
-  }
-}
-
 async function clearPolicyExtractionArtifacts(
   ctx: any,
   policyId: DataModelId<"policies">,
@@ -707,11 +568,23 @@ async function clearTransientPolicyExtractionArtifacts(
   for (const kind of [
     "cl_sdk_checkpoint",
     "embedding_payload",
-    "external_completion_payload",
+    "parsed_source",
+    "section_plan",
   ] as const) {
     await clearPolicyExtractionArtifacts(ctx, policyId, kind);
   }
 }
+
+// Phases that run before replacement fields are promoted. "extract" is the
+// removed monolithic phase; its checkpoints restart from load_pdf.
+const PRE_PROMOTION_PHASES = new Set([
+  "load_pdf",
+  "parse",
+  "plan_sections",
+  "extract_sections",
+  "merge",
+  "extract",
+]);
 
 type PolicyPipelineCheckpoint = {
   nextPhase?: string;
@@ -740,8 +613,7 @@ function isRetryablePrePromotionReplacement(
     policy?.extractionDataStage === "final" &&
     replacementRun &&
     state.replacementPromotionStarted === false &&
-    (typedCheckpoint?.nextPhase === "load_pdf" ||
-      typedCheckpoint?.nextPhase === "extract")
+    PRE_PROMOTION_PHASES.has(typedCheckpoint?.nextPhase ?? "")
   );
 }
 
@@ -812,10 +684,6 @@ async function setPolicyPipelineStatus(
     getPolicyExtractionRun(ctx, policyId),
     ctx.db.get(policyId),
   ]);
-  if (status !== "running") {
-    await clearExternalPolicyExtractionQueue(ctx, policyId);
-    await clearExternalPolicyExtractionPreviewQueue(ctx, policyId);
-  }
   const canonicalStatus = canonicalPipelineStatusPatch(
     policy,
     run?.pipelineCheckpoint,
@@ -993,6 +861,37 @@ export const listAllInternal = internalQuery({
       .withIndex("organization", (idx) => idx.eq("orgId", args.orgId))
       .collect();
     return all.filter(isFinalExtractedPolicy);
+  },
+});
+
+// Most recent final policies in an org, offered to the intake classifier as
+// advisory relationship candidates. Bounded because policy rows are large.
+export const listIntakeCandidatesInternal = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    excludePolicyId: v.id("policies"),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const recent = await ctx.db
+      .query("policies")
+      .withIndex("organization", (idx) => idx.eq("orgId", args.orgId))
+      .order("desc")
+      .take(INTAKE_CANDIDATE_SCAN_LIMIT);
+    return recent
+      .filter(
+        (policy) =>
+          policy._id !== args.excludePolicyId && isFinalExtractedPolicy(policy),
+      )
+      .slice(0, args.limit)
+      .map((policy) => ({
+        policyId: String(policy._id),
+        policyNumber: policy.policyNumber,
+        carrier: policy.carrier,
+        namedInsured: policy.insuredName,
+        effectiveDate: policy.effectiveDate,
+        expirationDate: policy.expirationDate,
+      }));
   },
 });
 
@@ -2776,37 +2675,24 @@ export const promoteCompletedExtractionInternal = internalMutation({
         "Persisted source bundle metadata does not match the promotion evidence",
       );
     }
-    if (manifest.protocolVersion === "source-tree-v2") {
-      const sectionArtifacts = await ctx.db
-        .query("policyExtractionArtifacts")
-        .withIndex("policy_kind", (q) =>
-          q.eq("policyId", args.id).eq("kind", "section_result"),
-        )
-        .collect();
-      for (const section of manifest.sections) {
-        const resultHash = section.resultHash;
-        const persisted = sectionArtifacts.find((candidate) => {
-          const metadata =
-            candidate.metadata &&
-            typeof candidate.metadata === "object" &&
-            !Array.isArray(candidate.metadata)
-              ? (candidate.metadata as Record<string, unknown>)
-              : {};
-          return (
-            candidate.runId === args.runId &&
-            candidate.sectionId === section.id &&
-            candidate.sourceFingerprint === manifest.sourceFingerprint &&
-            candidate.extractorVersion === manifest.extractorVersion &&
-            metadata.status === section.status &&
-            metadata.resultHash === resultHash
-          );
-        });
-        if (!resultHash || !persisted) {
-          throw new Error(
-            `Extraction promotion requires the persisted ${section.id} result`,
-          );
-        }
-      }
+    if (manifest.protocolVersion !== "convex-sections-v1") {
+      throw new Error("Extraction promotion requires a convex-sections-v1 manifest");
+    }
+    const sectionArtifacts = await ctx.db
+      .query("policyExtractionArtifacts")
+      .withIndex("policy_kind", (q) =>
+        q.eq("policyId", args.id).eq("kind", "section_result"),
+      )
+      .collect();
+    const missingSections = sectionResultArtifactReasons({
+      manifest,
+      runId: args.runId,
+      artifacts: sectionArtifacts,
+    });
+    if (missingSections.length > 0) {
+      throw new Error(
+        `Extraction promotion requires persisted section results: ${missingSections.join("; ")}`,
+      );
     }
 
     const inputFields = args.fields as Record<string, unknown>;
@@ -2817,7 +2703,6 @@ export const promoteCompletedExtractionInternal = internalMutation({
       hasValidCarrierIdentity: hasSourceBackedCarrierIdentity(
         inputFields.carrierIdentity,
       ),
-      postCutover: true,
     });
     const mode =
       process.env.EXTRACTION_PROMOTION_GATE_MODE === "enforce"
@@ -2834,10 +2719,7 @@ export const promoteCompletedExtractionInternal = internalMutation({
       manifestHash: manifest.manifestHash,
       decidedAt,
     };
-    const hardBlocked = manifest.sections.some(
-      (section) => section.status === "degraded",
-    );
-    if ((mode === "enforce" && !decision.allowed) || hardBlocked) {
+    if (mode === "enforce" && !decision.allowed) {
       await ctx.db.patch(args.runId, {
         sourceFingerprint: ledger.sourceFingerprint,
         extractorVersion: manifest.extractorVersion,
@@ -2894,16 +2776,35 @@ const PREVIEW_EXTRACTION_FIELD_ALLOWLIST = new Set([
   "summary",
 ]);
 
+/**
+ * Writes provisional first-read fields while the current leased extraction run
+ * is still working. Final policies are never overwritten.
+ */
 export const updatePreviewExtractionInternal = internalMutation({
   args: {
     id: v.id("policies"),
+    runId: v.id("policyExtractionRuns"),
+    leaseId: v.string(),
     fields: v.any(),
     previewVersion: v.string(),
     previewModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const policy = await ctx.db.get(args.id);
+    const [policy, currentRun] = await Promise.all([
+      ctx.db.get(args.id),
+      getPolicyExtractionRun(ctx, args.id),
+    ]);
     if (!policy) return { updated: false, reason: "not_found" };
+    const checkpoint = currentRun?.pipelineCheckpoint as
+      | { lease?: { id?: string } }
+      | undefined;
+    if (
+      currentRun?._id !== args.runId ||
+      currentRun.pipelineStatus !== "running" ||
+      checkpoint?.lease?.id !== args.leaseId
+    ) {
+      return { updated: false, reason: "stale_run" };
+    }
     if (isFinalExtractedPolicy(policy)) {
       return { updated: false, reason: "already_final" };
     }
@@ -2936,23 +2837,6 @@ export const updatePreviewExtractionInternal = internalMutation({
       extractionPreviewError: undefined,
     });
     return { updated: true };
-  },
-});
-
-export const failPreviewExtractionInternal = internalMutation({
-  args: {
-    id: v.id("policies"),
-    error: v.string(),
-    previewVersion: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const policy = await ctx.db.get(args.id);
-    if (!policy || isFinalExtractedPolicy(policy)) return;
-    await ctx.db.patch(args.id, {
-      extractionPreviewError: args.error,
-      extractionPreviewVersion: args.previewVersion,
-      extractionDataStageUpdatedAt: nowMs(),
-    });
   },
 });
 
@@ -3058,15 +2942,22 @@ export const listForOrg = query({
   },
 });
 
+const pipelineArtifactKindValidator = v.union(
+  v.literal("cl_sdk_checkpoint"),
+  v.literal("embedding_payload"),
+  v.literal("source_bundle"),
+  v.literal("section_result"),
+  v.literal("parsed_source"),
+  v.literal("section_plan"),
+);
+
 export const pipelineSaveArtifact = internalMutation({
   args: {
     jobId: v.string(),
     kind: v.union(
-      v.literal("cl_sdk_checkpoint"),
-      v.literal("embedding_payload"),
+      pipelineArtifactKindValidator,
+      // P5: remove with extraction-worker (convex/externalExtractionPayload.ts).
       v.literal("external_completion_payload"),
-      v.literal("source_bundle"),
-      v.literal("section_result"),
     ),
     storageId: v.id("_storage"),
     sourceFingerprint: v.optional(v.string()),
@@ -3186,39 +3077,32 @@ export const pipelineGetPromotionContext = internalQuery({
   },
 });
 
-export const pipelineListResumableArtifacts = internalQuery({
+export const pipelineListSectionResults = internalQuery({
   args: { jobId: v.string() },
   handler: async (ctx, { jobId }) => {
     const policyId = jobId as DataModelId<"policies">;
     const run = await getPolicyExtractionRun(ctx, policyId);
-    if (!run) return null;
+    if (!run) return [];
     const artifacts = await ctx.db
       .query("policyExtractionArtifacts")
-      .withIndex("policy", (q) => q.eq("policyId", policyId))
-      .order("desc")
+      .withIndex("policy_kind", (q) =>
+        q.eq("policyId", policyId).eq("kind", "section_result"),
+      )
       .collect();
-    return {
-      runId: run._id,
-      artifacts: artifacts.filter(
-        (artifact) =>
-          artifact.runId === run._id &&
-          (artifact.kind === "source_bundle" ||
-            artifact.kind === "section_result"),
-      ),
-    };
+    return artifacts
+      .filter((artifact) => artifact.runId === run._id)
+      .map((artifact) => ({
+        sectionId: artifact.sectionId,
+        storageId: artifact.storageId,
+        metadata: artifact.metadata,
+      }));
   },
 });
 
 export const pipelineGetArtifact = internalQuery({
   args: {
     jobId: v.string(),
-    kind: v.union(
-      v.literal("cl_sdk_checkpoint"),
-      v.literal("embedding_payload"),
-      v.literal("external_completion_payload"),
-      v.literal("source_bundle"),
-      v.literal("section_result"),
-    ),
+    kind: pipelineArtifactKindValidator,
   },
   handler: async (ctx, { jobId, kind }) => {
     return await ctx.db
@@ -3234,15 +3118,7 @@ export const pipelineGetArtifact = internalQuery({
 export const pipelineClearArtifacts = internalMutation({
   args: {
     jobId: v.string(),
-    kind: v.optional(
-      v.union(
-        v.literal("cl_sdk_checkpoint"),
-        v.literal("embedding_payload"),
-        v.literal("external_completion_payload"),
-        v.literal("source_bundle"),
-        v.literal("section_result"),
-      ),
-    ),
+    kind: v.optional(pipelineArtifactKindValidator),
   },
   handler: async (ctx, { jobId, kind }) => {
     const policyId = jobId as DataModelId<"policies">;
@@ -3298,8 +3174,6 @@ export const pipelineSetStatus = internalMutation({
         getPolicyExtractionRun(ctx, policyId),
         ctx.db.get(policyId),
       ]);
-      await clearExternalPolicyExtractionQueue(ctx, policyId);
-      await clearExternalPolicyExtractionPreviewQueue(ctx, policyId);
       const canonicalStatus = canonicalPipelineStatusPatch(
         policy,
         run?.pipelineCheckpoint,
@@ -3373,135 +3247,6 @@ export const pipelineClearLog = internalMutation({
   },
 });
 
-export const pipelineStartExternalWorkerJob = internalMutation({
-  args: {
-    jobId: v.string(),
-    state: v.any(),
-  },
-  handler: async (ctx, { jobId, state }) => {
-    const policyId = jobId as DataModelId<"policies">;
-    const now = nowMs();
-    const shouldRunPreview =
-      !state?.policyVersionKind || state.policyVersionKind === "new_policy";
-    const run = await patchPolicyExtractionRun(ctx, policyId, {
-      pipelineStatus: "running",
-      pipelineError: undefined,
-      pipelineCheckpoint: {
-        nextPhase: "extract",
-        state: {
-          ...state,
-          externalWorker: true,
-        },
-        createdAt: now,
-      },
-    });
-    if (run) {
-      await enqueueExternalPolicyExtraction(ctx, policyId, run._id, now);
-      if (shouldRunPreview) {
-        await enqueueExternalPolicyExtractionPreview(
-          ctx,
-          policyId,
-          run._id,
-          now,
-        );
-      } else {
-        await clearExternalPolicyExtractionPreviewQueue(ctx, policyId);
-      }
-    }
-    const policyPatch: Record<string, unknown> = {
-      pipelineStatus: "running",
-      pipelineError: undefined,
-      pipelineCheckpoint: undefined,
-      pipelineLog: undefined,
-    };
-    if (shouldRunPreview) {
-      policyPatch.extractionDataStage = "placeholder";
-      policyPatch.extractionDataStageUpdatedAt = now;
-      policyPatch.extractionPreviewError = undefined;
-    }
-    await ctx.db.patch(policyId, policyPatch);
-    await appendPolicyPipelineLog(ctx, policyId, {
-      timestamp: now,
-      message: "Queued for external extraction worker",
-      phase: "queue",
-      level: "info",
-    });
-  },
-});
-
-// Marks an extraction run as rejected before it is handed to the external
-// worker queue (document intake gate). No lease exists yet, so this cannot go
-// through pipelineCompleteLease. New upload rows are auto-archived; rejection
-// during re-extraction or renewal leaves the existing bound policy active.
-export const pipelineRejectExternalJob = internalMutation({
-  args: {
-    jobId: v.string(),
-    error: v.string(),
-    userId: v.optional(v.string()),
-    archivePolicy: v.boolean(),
-    state: v.optional(v.any()),
-  },
-  handler: async (ctx, { jobId, error, userId, archivePolicy, state }) => {
-    const policyId = jobId as DataModelId<"policies">;
-    const now = nowMs();
-    const run = await ensurePolicyExtractionRun(ctx, policyId);
-    const policy = await ctx.db.get(policyId);
-    const retryCheckpoint =
-      !archivePolicy && state
-        ? {
-            nextPhase: "extract",
-            state: {
-              ...state,
-              externalWorker: true,
-            },
-            createdAt: now,
-          }
-        : undefined;
-    const checkpoint = retryCheckpoint ?? run?.pipelineCheckpoint;
-    const canonicalStatus = canonicalPipelineStatusPatch(
-      policy,
-      checkpoint,
-      "error",
-      error,
-    );
-    if (run) {
-      await ctx.db.patch(run._id, {
-        ...canonicalStatus,
-        pipelineCheckpoint:
-          canonicalStatus.pipelineStatus === "complete"
-            ? checkpoint
-            : undefined,
-        updatedAt: now,
-      });
-    }
-    await clearExternalPolicyExtractionQueue(ctx, policyId);
-    await clearExternalPolicyExtractionPreviewQueue(ctx, policyId);
-    await ctx.db.patch(
-      policyId,
-      archivePolicy
-        ? {
-            pipelineStatus: "error",
-            pipelineError: error,
-            pipelineCheckpoint: undefined,
-            pipelineLog: undefined,
-          }
-        : {
-            pipelineCheckpoint: undefined,
-            pipelineLog: undefined,
-          },
-    );
-    if (archivePolicy) {
-      await archiveRejectedPolicyDocument(ctx, policyId, userId);
-    }
-    await insertPipelineTraceLog(ctx, policyId, {
-      timestamp: now,
-      message: error,
-      phase: "gate",
-      level: "error",
-    });
-  },
-});
-
 // Auto-archives a policy row whose document was rejected by the intake gate so
 // it lands in the archived list instead of lingering as a failed policy row.
 async function archiveRejectedPolicyDocument(
@@ -3528,9 +3273,7 @@ async function archiveRejectedPolicyDocument(
   }
 }
 
-// In-Convex extraction rejects documents inside the pipeline's extract phase;
-// this lets that action path share the same auto-archive behavior as
-// pipelineRejectExternalJob.
+// The parse phase rejects documents that fail the intake gate.
 export const archiveRejectedDocumentInternal = internalMutation({
   args: {
     id: v.id("policies"),
@@ -3538,305 +3281,6 @@ export const archiveRejectedDocumentInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     await archiveRejectedPolicyDocument(ctx, args.id, args.userId);
-  },
-});
-
-export const pipelineClaimExternalWorkerJob = internalMutation({
-  args: {
-    leaseId: v.string(),
-    leaseExpiresAt: v.number(),
-    batchSize: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const now = nowMs();
-    const batchSize = Math.max(
-      1,
-      Math.min(
-        EXTERNAL_WORKER_CLAIM_BATCH_LIMIT,
-        Math.floor(args.batchSize ?? EXTERNAL_WORKER_CLAIM_BATCH_LIMIT),
-      ),
-    );
-    const queueRows = await ctx.db
-      .query("policyExtractionQueue")
-      .withIndex("status_updated", (q) => q.eq("status", "queued"))
-      .order("asc")
-      .take(batchSize);
-
-    for (const queueRow of queueRows) {
-      const run = await ctx.db.get(queueRow.runId);
-      if (!run) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      const policy = await ctx.db.get(run.policyId);
-      const org = policy?.orgId ? await ctx.db.get(policy.orgId) : null;
-      if (org?.deletedAt !== undefined) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      const checkpoint = run.pipelineCheckpoint as
-        | {
-            nextPhase?: string;
-            state?: { externalWorker?: boolean; fileId?: string };
-            createdAt?: number;
-            lease?: {
-              id?: string;
-              phase?: string;
-              expiresAt?: number;
-              heartbeatAt?: number;
-            };
-          }
-        | undefined;
-      if (run.pipelineStatus !== "running") {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      if (
-        checkpoint?.nextPhase !== "extract" ||
-        !checkpoint.state?.externalWorker ||
-        !checkpoint.state.fileId
-      ) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-
-      const heartbeatAt = checkpoint.lease?.heartbeatAt;
-      const lastLogAt =
-        run.pipelineLog?.at(-1)?.timestamp ??
-        checkpoint.createdAt ??
-        run.updatedAt;
-      const activeLease =
-        checkpoint.lease?.expiresAt !== undefined &&
-        checkpoint.lease.expiresAt > now &&
-        (heartbeatAt === undefined
-          ? now - lastLogAt <= PIPELINE_STALE_REQUEUE_MS
-          : now - heartbeatAt <= PIPELINE_STALE_REQUEUE_MS);
-      if (activeLease) continue;
-
-      const lease = {
-        id: args.leaseId,
-        phase: "external_extract",
-        expiresAt: args.leaseExpiresAt,
-        heartbeatAt: now,
-      };
-      const leasedCheckpoint = {
-        ...checkpoint,
-        lease,
-      };
-      await ctx.db.patch(run._id, {
-        pipelineCheckpoint: leasedCheckpoint,
-        updatedAt: now,
-      });
-      await ctx.db.patch(queueRow._id, {
-        status: "leased",
-        leaseId: args.leaseId,
-        leaseExpiresAt: args.leaseExpiresAt,
-        heartbeatAt: now,
-        updatedAt: now,
-      });
-      await appendPolicyPipelineLog(ctx, run.policyId, {
-        timestamp: now,
-        message: "External extraction worker claimed job",
-        phase: "worker",
-        level: "info",
-      });
-      // A worker crash can drop the preview job without recording a failure:
-      // the lease dies with the worker and the queue row is later deleted while
-      // the run is not in a claimable state. When the main job is re-claimed
-      // and the preview never delivered (stage still "placeholder", no recorded
-      // preview error), restore the preview queue row so the provisional
-      // extraction gets another attempt.
-      const claimState = checkpoint.state as
-        | { policyVersionKind?: string }
-        | undefined;
-      if (
-        !claimState?.policyVersionKind ||
-        claimState.policyVersionKind === "new_policy"
-      ) {
-        const policy = await ctx.db.get(run.policyId);
-        const previewPending =
-          !!policy &&
-          !policy.deletedAt &&
-          policy.extractionDataStage === "placeholder" &&
-          !policy.extractionPreviewError;
-        if (previewPending) {
-          const previewRows = await ctx.db
-            .query("policyExtractionPreviewQueue")
-            .withIndex("policy", (q) => q.eq("policyId", run.policyId))
-            .collect();
-          if (previewRows.length === 0) {
-            await enqueueExternalPolicyExtractionPreview(
-              ctx,
-              run.policyId,
-              run._id,
-              now,
-            );
-            await appendPolicyPipelineLog(ctx, run.policyId, {
-              timestamp: now,
-              message:
-                "Re-queued provisional extraction after interrupted preview job",
-              phase: "preview",
-              level: "info",
-            });
-          }
-        }
-      }
-      return {
-        policyId: String(run.policyId),
-        checkpoint: leasedCheckpoint,
-      };
-    }
-
-    return null;
-  },
-});
-
-export const pipelineClaimExternalPreviewWorkerJob = internalMutation({
-  args: {
-    leaseId: v.string(),
-    leaseExpiresAt: v.number(),
-    batchSize: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const now = nowMs();
-    const batchSize = Math.max(
-      1,
-      Math.min(
-        EXTERNAL_WORKER_CLAIM_BATCH_LIMIT,
-        Math.floor(args.batchSize ?? EXTERNAL_WORKER_CLAIM_BATCH_LIMIT),
-      ),
-    );
-    const queueRows = await ctx.db
-      .query("policyExtractionPreviewQueue")
-      .withIndex("status_updated", (q) => q.eq("status", "queued"))
-      .order("asc")
-      .take(batchSize);
-
-    for (const queueRow of queueRows) {
-      const [run, policy] = await Promise.all([
-        ctx.db.get(queueRow.runId),
-        ctx.db.get(queueRow.policyId),
-      ]);
-      if (!run || !policy) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      if (isFinalExtractedPolicy(policy) || run.pipelineStatus !== "running") {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      const org = policy?.orgId ? await ctx.db.get(policy.orgId) : null;
-      if (org?.deletedAt !== undefined) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      const checkpoint = run.pipelineCheckpoint as
-        | {
-            nextPhase?: string;
-            state?: {
-              externalWorker?: boolean;
-              fileId?: string;
-              sourceKind?: string;
-              orgId?: string;
-              userId?: string;
-              policyVersionKind?: string;
-            };
-            createdAt?: number;
-          }
-        | undefined;
-      if (
-        checkpoint?.nextPhase !== "extract" ||
-        !checkpoint.state?.externalWorker ||
-        !checkpoint.state.fileId
-      ) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-      if (
-        checkpoint.state.policyVersionKind &&
-        checkpoint.state.policyVersionKind !== "new_policy"
-      ) {
-        await ctx.db.delete(queueRow._id);
-        continue;
-      }
-
-      const heartbeatAt = queueRow.heartbeatAt ?? queueRow.updatedAt;
-      const activeLease =
-        queueRow.leaseExpiresAt !== undefined &&
-        queueRow.leaseExpiresAt > now &&
-        now - heartbeatAt <= PIPELINE_STALE_REQUEUE_MS;
-      if (activeLease) continue;
-
-      await ctx.db.patch(queueRow._id, {
-        status: "leased",
-        leaseId: args.leaseId,
-        leaseExpiresAt: args.leaseExpiresAt,
-        heartbeatAt: now,
-        updatedAt: now,
-      });
-      await insertPipelineTraceLog(ctx, run.policyId, {
-        timestamp: now,
-        message: "External extraction worker claimed preview job",
-        phase: "preview",
-        level: "info",
-      });
-      return {
-        policyId: String(run.policyId),
-        checkpoint,
-      };
-    }
-
-    return null;
-  },
-});
-
-export const pipelineExtendPreviewLease = internalMutation({
-  args: {
-    jobId: v.string(),
-    leaseId: v.string(),
-    leaseExpiresAt: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("policyExtractionPreviewQueue")
-      .withIndex("policy", (q) =>
-        q.eq("policyId", args.jobId as DataModelId<"policies">),
-      )
-      .collect();
-    const row = rows.find((candidate) => candidate.leaseId === args.leaseId);
-    if (!row) return false;
-    await patchExternalPolicyExtractionPreviewQueueLease(
-      ctx,
-      args.jobId as DataModelId<"policies">,
-      {
-        id: args.leaseId,
-        expiresAt: args.leaseExpiresAt,
-        heartbeatAt: nowMs(),
-      },
-      "leased",
-    );
-    return true;
-  },
-});
-
-export const pipelineCompletePreviewLease = internalMutation({
-  args: {
-    jobId: v.string(),
-    leaseId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("policyExtractionPreviewQueue")
-      .withIndex("policy", (q) =>
-        q.eq("policyId", args.jobId as DataModelId<"policies">),
-      )
-      .collect();
-    const row = rows.find((candidate) => candidate.leaseId === args.leaseId);
-    if (!row) return false;
-    for (const candidate of rows) {
-      await ctx.db.delete(candidate._id);
-    }
-    return true;
   },
 });
 
@@ -3866,61 +3310,16 @@ export const pipelineRequeueStale = internalMutation({
       )
       .order("asc")
       .take(batchSize);
-    const leasedQueueRows = await ctx.db
-      .query("policyExtractionQueue")
-      .withIndex("status_updated", (q) =>
-        q.eq("status", "leased").lt("updatedAt", cutoff),
-      )
-      .order("asc")
-      .take(batchSize);
-    const leasedPreviewRows = await ctx.db
-      .query("policyExtractionPreviewQueue")
-      .withIndex("status_updated", (q) =>
-        q.eq("status", "leased").lt("updatedAt", cutoff),
-      )
-      .order("asc")
-      .take(batchSize);
 
     const requeued: string[] = [];
     const markedError: string[] = [];
     const skipped: string[] = [];
-
-    for (const queueRow of leasedQueueRows) {
-      const heartbeatAt = queueRow.heartbeatAt ?? queueRow.updatedAt;
-      if (now - heartbeatAt <= olderThanMs) {
-        skipped.push(String(queueRow.policyId));
-        continue;
-      }
-      await ctx.db.patch(queueRow._id, {
-        status: "queued",
-        leaseId: undefined,
-        leaseExpiresAt: undefined,
-        heartbeatAt: undefined,
-        updatedAt: now,
-      });
-    }
-
-    for (const queueRow of leasedPreviewRows) {
-      const heartbeatAt = queueRow.heartbeatAt ?? queueRow.updatedAt;
-      if (now - heartbeatAt <= olderThanMs) {
-        skipped.push(String(queueRow.policyId));
-        continue;
-      }
-      await ctx.db.patch(queueRow._id, {
-        status: "queued",
-        leaseId: undefined,
-        leaseExpiresAt: undefined,
-        heartbeatAt: undefined,
-        updatedAt: now,
-      });
-    }
 
     for (const run of runs) {
       const checkpoint = run.pipelineCheckpoint as
         | {
             nextPhase?: string;
             state?: {
-              externalWorker?: boolean;
               orgId?: string;
               workerRouterTransportSmokeRequestId?: string;
             };
@@ -3986,45 +3385,24 @@ export const pipelineRequeueStale = internalMutation({
         }
       }
 
-      if (
-        checkpoint.state?.externalWorker &&
-        checkpoint.nextPhase === "extract"
-      ) {
-        await appendPolicyPipelineLog(ctx, run.policyId, {
-          timestamp: now,
-          message:
-            "Stale external extraction lease detected; clearing lease for worker reclaim",
-          phase: "watchdog",
-          level: "warn",
-        });
-        await ctx.db.patch(run._id, {
-          pipelineCheckpoint: {
-            ...checkpoint,
-            lease: undefined,
-          },
-          updatedAt: now,
-        });
-        await enqueueExternalPolicyExtraction(ctx, run.policyId, run._id, now);
-      } else {
-        await appendPolicyPipelineLog(ctx, run.policyId, {
-          timestamp: now,
-          message: `Stale extraction lease detected; requeueing ${checkpoint.nextPhase ?? "pipeline"} phase`,
-          phase: "watchdog",
-          level: "warn",
-        });
-        await ctx.scheduler.runAfter(
-          0,
-          (internal as any).actions.policyExtraction.advance,
-          {
-            jobId: String(run.policyId),
-          },
-        );
-      }
+      // advance restarts checkpoints from removed phases or the extraction
+      // worker from load_pdf.
+      await appendPolicyPipelineLog(ctx, run.policyId, {
+        timestamp: now,
+        message: `Stale extraction lease detected; requeueing ${checkpoint.nextPhase ?? "pipeline"} phase`,
+        phase: "watchdog",
+        level: "warn",
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.policyExtraction.advance,
+        { jobId: String(run.policyId) },
+      );
       requeued.push(String(run.policyId));
     }
 
     return {
-      scanned: runs.length + leasedQueueRows.length + leasedPreviewRows.length,
+      scanned: runs.length,
       requeued,
       markedError,
       skipped,
@@ -4061,19 +3439,15 @@ export const pipelineReconcileTerminalState = internalMutation({
       policyCheckpoint?.state?.traceId,
     ].filter((traceId): traceId is string => Boolean(traceId));
 
-    await clearExternalPolicyExtractionPreviewQueue(ctx, policyId);
     const clearsRetryState =
       (status === "complete" &&
         !isRetryablePrePromotionReplacement(policy, run?.pipelineCheckpoint)) ||
       error === "Cancelled by user";
-    if (run && run.pipelineCheckpoint !== undefined) {
-      await clearExternalPolicyExtractionQueue(ctx, policyId);
-      if (clearsRetryState) {
-        await ctx.db.patch(run._id, {
-          pipelineCheckpoint: undefined,
-          updatedAt: nowMs(),
-        });
-      }
+    if (run && run.pipelineCheckpoint !== undefined && clearsRetryState) {
+      await ctx.db.patch(run._id, {
+        pipelineCheckpoint: undefined,
+        updatedAt: nowMs(),
+      });
     }
     if (policy) {
       await ctx.db.patch(
@@ -4189,20 +3563,6 @@ export const pipelineSaveStateForLease = internalMutation({
     }
 
     const now = nowMs();
-    const stateRecord = state as { externalWorker?: boolean } | undefined;
-    if (stateRecord?.externalWorker && nextPhase === "extract") {
-      await patchExternalPolicyExtractionQueueLease(
-        ctx,
-        jobId as DataModelId<"policies">,
-        { id: leaseId, expiresAt: leaseExpiresAt, heartbeatAt: now },
-        "leased",
-      );
-    } else {
-      await clearExternalPolicyExtractionQueue(
-        ctx,
-        jobId as DataModelId<"policies">,
-      );
-    }
     await ctx.db.patch(run._id, {
       pipelineCheckpoint: {
         nextPhase,
@@ -4250,17 +3610,6 @@ export const pipelineExtendLease = internalMutation({
     }
 
     const now = nowMs();
-    const stateRecord = checkpoint.state as
-      | { externalWorker?: boolean }
-      | undefined;
-    if (stateRecord?.externalWorker && checkpoint.nextPhase === "extract") {
-      await patchExternalPolicyExtractionQueueLease(
-        ctx,
-        jobId as DataModelId<"policies">,
-        { id: leaseId, expiresAt: leaseExpiresAt, heartbeatAt: now },
-        "leased",
-      );
-    }
     await ctx.db.patch(run._id, {
       pipelineCheckpoint: {
         ...checkpoint,
@@ -4329,19 +3678,6 @@ export const pipelineCompleteLease = internalMutation({
       ) {
         patch.pipelineCheckpoint = undefined;
       }
-    }
-    const nextCheckpoint = patch.pipelineCheckpoint as
-      | { nextPhase?: string; state?: { externalWorker?: boolean } }
-      | undefined;
-    if (
-      args.status === "complete" ||
-      args.status === "error" ||
-      !nextCheckpoint ||
-      nextCheckpoint.nextPhase !== "extract" ||
-      !nextCheckpoint.state?.externalWorker
-    ) {
-      await clearExternalPolicyExtractionQueue(ctx, policyId);
-      await clearExternalPolicyExtractionPreviewQueue(ctx, policyId);
     }
     patch.updatedAt = nowMs();
 

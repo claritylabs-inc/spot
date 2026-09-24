@@ -3,8 +3,10 @@ import { buildDocumentSourceTree, buildSourceSpan } from "@claritylabs/cl-sdk";
 import {
   buildExtractionCompletionManifest,
   buildPromotionEvidenceLedger,
-  buildPromotionSourceCoverageMap,
   evaluateExtractionPromotion,
+  sectionPageCoverageReasons,
+  sectionResultArtifactReasons,
+  type PromotionEvidenceLedger,
 } from "./extractionPromotion";
 
 function evidence(texts: string[]) {
@@ -22,6 +24,29 @@ function evidence(texts: string[]) {
   };
 }
 
+function sectionsManifest(
+  source: ReturnType<typeof evidence>,
+  ledger: PromotionEvidenceLedger,
+  sections: Array<{ id: string; pageStart: number; pageEnd: number }>,
+  pageCount = source.sourceSpans.length,
+) {
+  return buildExtractionCompletionManifest({
+    extractorVersion: "test",
+    ledger,
+    pageCount,
+    sectionPlanHash: "plan-1",
+    sections: sections.map((section) => ({
+      ...section,
+      kind: "declarations",
+      sourceSpanIds: source.sourceSpans
+        .filter((span) =>
+          span.pageStart! >= section.pageStart && span.pageStart! <= section.pageEnd)
+        .map((span) => span.id),
+      resultHash: `result-${section.id}`,
+    })),
+  });
+}
+
 describe("extraction promotion evidence", () => {
   test("model-reported absence cannot override detected evidence", () => {
     const source = evidence([
@@ -33,18 +58,15 @@ describe("extraction promotion evidence", () => {
       "General Liability Coverage Limit $1,000,000",
     ]);
     const ledger = buildPromotionEvidenceLedger(source);
-    const manifest = buildExtractionCompletionManifest({
-      protocolVersion: "source-tree-v1",
-      extractorVersion: "test",
-      ledger,
-    });
+    const manifest = sectionsManifest(source, ledger, [
+      { id: "declarations-1-6", pageStart: 1, pageEnd: 6 },
+    ]);
 
     const decision = evaluateExtractionPromotion({
       manifest,
       ledger,
       operationalProfile: { coverages: [] },
       hasValidCarrierIdentity: false,
-      postCutover: true,
     });
 
     expect(decision.allowed).toBe(false);
@@ -65,11 +87,9 @@ describe("extraction promotion evidence", () => {
       "Unrelated administrative wording.",
     ]);
     const ledger = buildPromotionEvidenceLedger(source);
-    const manifest = buildExtractionCompletionManifest({
-      protocolVersion: "source-tree-v1",
-      extractorVersion: "test",
-      ledger,
-    });
+    const manifest = sectionsManifest(source, ledger, [
+      { id: "declarations-1-2", pageStart: 1, pageEnd: 2 },
+    ]);
 
     const decision = evaluateExtractionPromotion({
       manifest,
@@ -82,7 +102,6 @@ describe("extraction promotion evidence", () => {
         coverages: [],
       },
       hasValidCarrierIdentity: true,
-      postCutover: true,
     });
 
     expect(decision.allowed).toBe(false);
@@ -90,94 +109,124 @@ describe("extraction promotion evidence", () => {
       "policy_number evidence is present but the extracted profile omitted a cited value",
     );
   });
+});
 
-  test("coverage not_applicable requires no candidates and complete source coverage", () => {
-    const source = evidence(["Property Coverage Schedule"]);
-    const ledger = buildPromotionEvidenceLedger(source);
-    const sourceCoverageMap = buildPromotionSourceCoverageMap(source);
-    const manifest = buildExtractionCompletionManifest({
-      protocolVersion: "source-tree-v2",
-      extractorVersion: "test",
+describe("convex-sections-v1 promotion", () => {
+  const source = evidence([
+    "Policy Number: GL-100",
+    "Property Coverage Limit $1,000,000",
+    "Unclassified policy wording.",
+  ]);
+  const ledger = buildPromotionEvidenceLedger(source);
+  const citedProfile = {
+    policyNumber: {
+      value: "GL-100",
+      sourceSpanIds: [source.sourceSpans[0]!.id],
+    },
+    coverages: [{
+      name: "Property",
+      sourceSpanIds: [source.sourceSpans[1]!.id],
+    }],
+  };
+  const evaluate = (sections: Array<{ id: string; pageStart: number; pageEnd: number }>) =>
+    evaluateExtractionPromotion({
+      manifest: sectionsManifest(source, ledger, sections),
       ledger,
-      sourceCoverageMap,
-      sections: [
-        {
-          id: "extraction_policy_core",
-          status: "complete",
-          sourceSpanIds: ledger.eligibleSourceSpanIds,
-        },
-        {
-          id: "extraction_policy_coverage",
-          status: "not_applicable",
-          sourceSpanIds: [],
-        },
-      ],
-    });
-    const decision = evaluateExtractionPromotion({
-      manifest,
-      ledger,
-      operationalProfile: {},
+      operationalProfile: citedProfile,
       hasValidCarrierIdentity: true,
-      postCutover: true,
     });
+
+  test("promotes when every page belongs to exactly one section", () => {
+    const decision = evaluate([
+      { id: "declarations-1-1", pageStart: 1, pageEnd: 1 },
+      { id: "coverage_form-2-3", pageStart: 2, pageEnd: 3 },
+    ]);
+
+    expect(decision.reasons).toEqual([]);
+    expect(decision.allowed).toBe(true);
+  });
+
+  test("blocks a manifest with an unassigned page", () => {
+    const decision = evaluate([
+      { id: "declarations-1-1", pageStart: 1, pageEnd: 1 },
+      { id: "coverage_form-3-3", pageStart: 3, pageEnd: 3 },
+    ]);
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasons).toContain("pages 2 are not assigned to a section");
+    expect(decision.reasons).toContain("source coverage is incomplete");
+  });
+
+  test("blocks a manifest that assigns a page twice", () => {
+    const decision = evaluate([
+      { id: "declarations-1-2", pageStart: 1, pageEnd: 2 },
+      { id: "coverage_form-2-3", pageStart: 2, pageEnd: 3 },
+    ]);
 
     expect(decision.allowed).toBe(false);
     expect(decision.reasons).toContain(
-      "coverage cannot be not_applicable when candidates exist or source coverage is incomplete",
+      "pages 2 are assigned to more than one section",
     );
   });
 
-  test("v2 source coverage assigns every span and binds section IDs to deterministic shards", () => {
-    const source = evidence([
-      "Policy Number: GL-100",
-      "Property Coverage Limit $1,000,000",
-      "Unclassified policy wording.",
-    ]);
-    const ledger = buildPromotionEvidenceLedger(source);
-    const sourceCoverageMap = buildPromotionSourceCoverageMap(source);
-    const coreSpanIds = sourceCoverageMap.entries
-      .filter((entry) => entry.assignment !== "coverage")
-      .map((entry) => entry.sourceSpanId);
-    const coverageSpanIds = sourceCoverageMap.entries
-      .filter((entry) => entry.assignment === "coverage" || entry.assignment === "both")
-      .map((entry) => entry.sourceSpanId);
-    const manifest = buildExtractionCompletionManifest({
-      protocolVersion: "source-tree-v2",
-      extractorVersion: "test",
-      ledger,
-      sourceCoverageMap,
+  test("rejects out-of-range sections and a missing page count", () => {
+    expect(sectionPageCoverageReasons({
+      pageCount: 2,
       sections: [
-        { id: "extraction_policy_core", status: "complete", sourceSpanIds: coreSpanIds },
-        { id: "extraction_policy_coverage", status: "complete", sourceSpanIds: coverageSpanIds },
+        { id: "declarations-1-1", pageStart: 1, pageEnd: 1 },
+        { id: "other-2-4", pageStart: 2, pageEnd: 4 },
       ],
-    });
+    })).toEqual([
+      "section other-2-4 has an invalid page range",
+      "pages 2 are not assigned to a section",
+    ]);
+    expect(sectionPageCoverageReasons({ sections: [] })).toEqual([
+      "section manifest has no valid page count",
+    ]);
+  });
 
-    expect(sourceCoverageMap.complete).toBe(true);
-    expect(sourceCoverageMap.entries).toHaveLength(source.sourceSpans.length);
-    expect(manifest.sourceCoverageMap?.shards.catchAll).toHaveLength(1);
-    const decision = evaluateExtractionPromotion({
-      manifest,
-      ledger,
-      operationalProfile: {
-        policyNumber: {
-          value: "GL-100",
-          sourceSpanIds: [source.sourceSpans[0]!.id],
-        },
-        coverages: [{
-          name: "Property",
-          sourceSpanIds: [source.sourceSpans[1]!.id],
-        }],
+  test("requires a persisted, succeeded section_result for every section", () => {
+    const manifest = sectionsManifest(source, ledger, [
+      { id: "declarations-1-1", pageStart: 1, pageEnd: 1 },
+      { id: "coverage_form-2-3", pageStart: 2, pageEnd: 3 },
+    ]);
+    const artifacts = manifest.sections.map((section) => ({
+      runId: "run-1",
+      sectionId: section.id,
+      sourceFingerprint: manifest.sourceFingerprint,
+      extractorVersion: manifest.extractorVersion,
+      metadata: {
+        status: "succeeded",
+        planHash: "plan-1",
+        resultHash: section.resultHash,
       },
-      hasValidCarrierIdentity: true,
-      postCutover: true,
-    });
-    expect(decision.reasons).not.toContain("source coverage is incomplete");
-    expect(decision.reasons).not.toContain(
-      "core section span IDs do not match the deterministic source-coverage map",
-    );
-    expect(decision.reasons).not.toContain(
-      "coverage section span IDs do not match the deterministic source-coverage map",
-    );
-    expect(decision.allowed).toBe(true);
+    }));
+    const [declarations, coverageForm] = artifacts;
+
+    expect(sectionResultArtifactReasons({ manifest, runId: "run-1", artifacts }))
+      .toEqual([]);
+    expect(sectionResultArtifactReasons({
+      manifest,
+      runId: "run-1",
+      artifacts: [coverageForm!],
+    })).toEqual(["section declarations-1-1 has no persisted successful result"]);
+    expect(sectionResultArtifactReasons({
+      manifest,
+      runId: "run-1",
+      artifacts: [
+        { ...declarations!, metadata: { ...declarations!.metadata, status: "failed" } },
+        coverageForm!,
+      ],
+    })).toEqual(["section declarations-1-1 has no persisted successful result"]);
+    expect(sectionResultArtifactReasons({
+      manifest,
+      runId: "run-1",
+      artifacts: [
+        declarations!,
+        { ...coverageForm!, metadata: { ...coverageForm!.metadata, resultHash: "other" } },
+      ],
+    })).toEqual(["section coverage_form-2-3 has no persisted successful result"]);
+    expect(sectionResultArtifactReasons({ manifest, runId: "run-2", artifacts }))
+      .toHaveLength(2);
   });
 });

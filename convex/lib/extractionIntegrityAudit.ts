@@ -30,7 +30,6 @@ export function classifyExtractionIntegrity(args: {
     ledger: args.ledger,
     operationalProfile: args.operationalProfile,
     hasValidCarrierIdentity: args.hasValidCarrierIdentity,
-    postCutover: args.postCutover,
   });
   if (!args.postCutover) {
     return {

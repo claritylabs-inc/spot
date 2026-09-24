@@ -85,52 +85,42 @@ export type PromotionEvidenceLedger = {
   ambiguous: boolean;
 };
 
-export type ExtractionSectionId =
-  | "legacy_monolith"
-  | "extraction_policy_core"
-  | "extraction_policy_coverage"
-  | "extraction_coverage_cleanup";
-
-export type PromotionSourceCoverageMap = {
-  version: "source-coverage-v1";
-  sourceFingerprint: string;
-  eligibleSourceSpanIds: string[];
-  entries: Array<{
-    sourceSpanId: string;
-    assignment: "core" | "coverage" | "both" | "catch_all";
-  }>;
-  shards: {
-    core: string[];
-    coverage: string[];
-    both: string[];
-    catchAll: string[];
-  };
-  complete: boolean;
+/** One planned section with a persisted, succeeded section_result. */
+export type ExtractionManifestSection = {
+  id: string;
+  kind: string;
+  pageStart: number;
+  pageEnd: number;
+  sourceSpanIds: string[];
+  resultHash: string;
 };
 
 export type ExtractionCompletionManifest = {
   version: "extraction-completion-manifest-v1";
-  protocolVersion: "source-tree-v1" | "source-tree-v2";
+  protocolVersion: "convex-sections-v1";
   extractorVersion: string;
   sourceFingerprint: string;
   eligibleSourceSpanIds: string[];
-  sourceCoverageMap?: PromotionSourceCoverageMap;
-  sections: Array<{
-    id: ExtractionSectionId;
-    status: "complete" | "not_applicable" | "degraded";
-    sourceSpanIds: string[];
-    resultHash?: string;
-  }>;
+  pageCount: number;
+  sectionPlanHash: string;
+  sections: ExtractionManifestSection[];
   processedSourceSpanIds: string[];
   completeSourceCoverage: boolean;
   evidenceLedgerHash: string;
   manifestHash: string;
 };
 
+export type SectionResultArtifactRecord = {
+  runId?: string;
+  sectionId?: string;
+  sourceFingerprint?: string;
+  extractorVersion?: string;
+  metadata?: unknown;
+};
+
 export type PromotionGateDecision = {
   allowed: boolean;
   reasons: string[];
-  postCutoverViolation: boolean;
 };
 
 const FIELD_PATTERNS: Record<PromotionEvidenceField, RegExp[]> = {
@@ -161,9 +151,6 @@ const LABEL_ONLY: Record<PromotionEvidenceField, RegExp> = {
 };
 
 const COVERAGE_PATTERN = /\b(?:coverage|coverages|covered|limit(?:s)?\s+of\s+(?:insurance|liability)|deductible|retention|insuring\s+agreement|schedule\s+of|vehicle\s+schedule|auto\s+schedule|property\s+schedule|location\s+schedule|coverage\s+part|premium\s+schedule)\b/i;
-const CORE_CONTEXT = /\b(?:policy\s*(?:number|no\.?|#)|named\s+insured|insured\s+name|carrier|insurer|insurance\s+company|policy\s+period|effective\s+date|expiration\s+date|expiry\s+date|producer|broker|general\s+agent|declarations?)\b/i;
-const COVERAGE_CONTEXT = /\b(?:coverage|coverages|covered|limit(?:s)?\s+of\s+(?:insurance|liability)|deductible|retention|insuring\s+agreement|schedule\s+of|vehicle\s+schedule|auto\s+schedule|property\s+schedule|location\s+schedule|coverage\s+part|premium\s+schedule)\b/i;
-const PARTY_CHANGING_ENDORSEMENT = /\b(?:endorsement|additional\s+insured|named\s+insured|loss\s+payee|mortgagee|carrier|insurer|producer|broker|general\s+agent|changes?\s+the\s+policy)\b/i;
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -282,53 +269,6 @@ function projections(
       .slice()
       .sort((left, right) => left.order - right.order || compareText(left.id, right.id)),
   }));
-}
-
-export function buildPromotionSourceCoverageMap(args: {
-  sourceSpans: readonly SourceSpanLike[];
-  sourceTree: readonly PromotionSourceNode[];
-}): PromotionSourceCoverageMap {
-  const projected = projections(args.sourceSpans, args.sourceTree);
-  const entries = projected.map((item): PromotionSourceCoverageMap["entries"][number] => {
-    const spanText = clean(item.span.text);
-    const nodeContext = clean(item.nodes.flatMap((node) => [
-      node.title,
-      node.description,
-      node.path,
-    ]).join(" "));
-    const context = `${spanText} ${nodeContext}`;
-    const inEndorsement = item.nodes.some((node) =>
-      node.kind === "endorsement" || /\bendorsement\b/i.test(`${node.title} ${node.path}`));
-    const core = CORE_CONTEXT.test(context);
-    const coverage = COVERAGE_CONTEXT.test(context);
-    const partyChangingEndorsement = inEndorsement &&
-      PARTY_CHANGING_ENDORSEMENT.test(context);
-    return {
-      sourceSpanId: item.id,
-      assignment: partyChangingEndorsement || (core && coverage)
-        ? "both"
-        : core
-          ? "core"
-          : coverage
-            ? "coverage"
-            : "catch_all",
-    };
-  });
-  const eligibleSourceSpanIds = projected.map((item) => item.id);
-  const assigned = new Set(entries.map((entry) => entry.sourceSpanId));
-  return {
-    version: "source-coverage-v1",
-    sourceFingerprint: extractionSourceFingerprint(args.sourceSpans),
-    eligibleSourceSpanIds,
-    entries,
-    shards: {
-      core: entries.filter((entry) => entry.assignment === "core").map((entry) => entry.sourceSpanId),
-      coverage: entries.filter((entry) => entry.assignment === "coverage").map((entry) => entry.sourceSpanId),
-      both: entries.filter((entry) => entry.assignment === "both").map((entry) => entry.sourceSpanId),
-      catchAll: entries.filter((entry) => entry.assignment === "catch_all").map((entry) => entry.sourceSpanId),
-    },
-    complete: eligibleSourceSpanIds.every((id) => assigned.has(id)),
-  };
 }
 
 function fieldCandidates(
@@ -454,34 +394,29 @@ export function buildPromotionEvidenceLedger(args: {
 }
 
 export function buildExtractionCompletionManifest(args: {
-  protocolVersion: "source-tree-v1" | "source-tree-v2";
   extractorVersion: string;
   ledger: PromotionEvidenceLedger;
-  sourceCoverageMap?: PromotionSourceCoverageMap;
-  sections?: ExtractionCompletionManifest["sections"];
+  pageCount: number;
+  sectionPlanHash: string;
+  sections: ExtractionManifestSection[];
 }): ExtractionCompletionManifest {
-  const sections = args.sections ?? [{
-    id: "legacy_monolith" as const,
-    status: "complete" as const,
-    sourceSpanIds: args.ledger.eligibleSourceSpanIds,
-  }];
   const processedSourceSpanIds = [...new Set(
-    sections
-      .filter((section) => section.status !== "degraded")
-      .flatMap((section) => section.sourceSpanIds),
+    args.sections.flatMap((section) => section.sourceSpanIds),
   )].sort();
+  const processed = new Set(processedSourceSpanIds);
   const withoutHash = {
     version: "extraction-completion-manifest-v1" as const,
-    protocolVersion: args.protocolVersion,
+    protocolVersion: "convex-sections-v1" as const,
     extractorVersion: args.extractorVersion,
     sourceFingerprint: args.ledger.sourceFingerprint,
     eligibleSourceSpanIds: args.ledger.eligibleSourceSpanIds,
-    ...(args.sourceCoverageMap ? { sourceCoverageMap: args.sourceCoverageMap } : {}),
-    sections,
+    pageCount: args.pageCount,
+    sectionPlanHash: args.sectionPlanHash,
+    sections: args.sections,
     processedSourceSpanIds,
     completeSourceCoverage:
       args.ledger.completeSourceCoverage
-      && args.ledger.eligibleSourceSpanIds.every((id) => processedSourceSpanIds.includes(id)),
+      && args.ledger.eligibleSourceSpanIds.every((id) => processed.has(id)),
     evidenceLedgerHash: args.ledger.ledgerHash,
   };
   return { ...withoutHash, manifestHash: stableHash(withoutHash) };
@@ -518,8 +453,93 @@ function sourceBackedProjectionCitesCandidate(
   return false;
 }
 
-function sameIds(left: readonly string[], right: readonly string[]): boolean {
-  return stableHash([...new Set(left)].sort()) === stableHash([...new Set(right)].sort());
+function isPage(value: unknown, pageCount: number): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= pageCount
+  );
+}
+
+function formatPages(pages: number[]): string {
+  const ranges: string[] = [];
+  for (let index = 0; index < pages.length; index += 1) {
+    const start = pages[index]!;
+    while (pages[index + 1] === pages[index]! + 1) index += 1;
+    ranges.push(start === pages[index] ? `${start}` : `${start}-${pages[index]}`);
+  }
+  return ranges.join(", ");
+}
+
+/** Every page 1..pageCount belongs to exactly one section. */
+export function sectionPageCoverageReasons(input: {
+  pageCount?: number;
+  sections: ReadonlyArray<{ id: string; pageStart?: number; pageEnd?: number }>;
+}): string[] {
+  const { pageCount } = input;
+  if (typeof pageCount !== "number" || !Number.isSafeInteger(pageCount) || pageCount < 1) {
+    return ["section manifest has no valid page count"];
+  }
+  const reasons: string[] = [];
+  if (new Set(input.sections.map((section) => section.id)).size !== input.sections.length) {
+    reasons.push("section IDs are not unique");
+  }
+  const assignments = new Map<number, number>();
+  for (const { id, pageStart, pageEnd } of input.sections) {
+    if (!isPage(pageStart, pageCount) || !isPage(pageEnd, pageCount) || pageEnd < pageStart) {
+      reasons.push(`section ${id} has an invalid page range`);
+      continue;
+    }
+    for (let page = pageStart; page <= pageEnd; page += 1) {
+      assignments.set(page, (assignments.get(page) ?? 0) + 1);
+    }
+  }
+  const missing: number[] = [];
+  const duplicated: number[] = [];
+  for (let page = 1; page <= pageCount; page += 1) {
+    const count = assignments.get(page) ?? 0;
+    if (count === 0) missing.push(page);
+    if (count > 1) duplicated.push(page);
+  }
+  if (missing.length > 0) {
+    reasons.push(`pages ${formatPages(missing)} are not assigned to a section`);
+  }
+  if (duplicated.length > 0) {
+    reasons.push(`pages ${formatPages(duplicated)} are assigned to more than one section`);
+  }
+  return reasons;
+}
+
+/**
+ * Each manifest section needs a persisted, succeeded section_result from the
+ * same run, plan, source fingerprint, and extractor.
+ */
+export function sectionResultArtifactReasons(args: {
+  manifest: ExtractionCompletionManifest;
+  runId: string;
+  artifacts: readonly SectionResultArtifactRecord[];
+}): string[] {
+  return args.manifest.sections.flatMap((section) => {
+    const persisted = args.artifacts.some((artifact) => {
+      const metadata =
+        artifact.metadata && typeof artifact.metadata === "object" && !Array.isArray(artifact.metadata)
+          ? (artifact.metadata as Record<string, unknown>)
+          : {};
+      return (
+        artifact.runId === args.runId &&
+        artifact.sectionId === section.id &&
+        artifact.sourceFingerprint === args.manifest.sourceFingerprint &&
+        artifact.extractorVersion === args.manifest.extractorVersion &&
+        metadata.status === "succeeded" &&
+        metadata.planHash === args.manifest.sectionPlanHash &&
+        metadata.resultHash === section.resultHash
+      );
+    });
+    return section.resultHash && persisted
+      ? []
+      : [`section ${section.id} has no persisted successful result`];
+  });
 }
 
 export function evaluateExtractionPromotion(args: {
@@ -527,7 +547,6 @@ export function evaluateExtractionPromotion(args: {
   ledger: PromotionEvidenceLedger;
   operationalProfile: unknown;
   hasValidCarrierIdentity: boolean;
-  postCutover: boolean;
 }): PromotionGateDecision {
   const reasons: string[] = [];
   if (args.manifest.sourceFingerprint !== args.ledger.sourceFingerprint) {
@@ -539,42 +558,7 @@ export function evaluateExtractionPromotion(args: {
   if (!args.manifest.completeSourceCoverage || !args.ledger.completeSourceCoverage) {
     reasons.push("source coverage is incomplete");
   }
-  if (args.manifest.protocolVersion === "source-tree-v2") {
-    const coverageMap = args.manifest.sourceCoverageMap;
-    if (!coverageMap) {
-      reasons.push("source-tree-v2 manifest is missing its source-coverage map");
-    } else {
-      const entryIds = coverageMap.entries.map((entry) => entry.sourceSpanId);
-      if (
-        coverageMap.sourceFingerprint !== args.ledger.sourceFingerprint ||
-        !sameIds(coverageMap.eligibleSourceSpanIds, args.ledger.eligibleSourceSpanIds) ||
-        !sameIds(entryIds, args.ledger.eligibleSourceSpanIds) ||
-        new Set(entryIds).size !== entryIds.length ||
-        !coverageMap.complete
-      ) {
-        reasons.push("source-coverage map does not cover the complete source bundle");
-      }
-      const coreSection = args.manifest.sections.find((section) =>
-        section.id === "extraction_policy_core");
-      const coverageSection = args.manifest.sections.find((section) =>
-        section.id === "extraction_policy_coverage");
-      const expectedCore = coverageMap.entries
-        .filter((entry) => entry.assignment !== "coverage")
-        .map((entry) => entry.sourceSpanId);
-      const expectedCoverage = coverageMap.entries
-        .filter((entry) => entry.assignment === "coverage" || entry.assignment === "both")
-        .map((entry) => entry.sourceSpanId);
-      if (!coreSection || !sameIds(coreSection.sourceSpanIds, expectedCore)) {
-        reasons.push("core section span IDs do not match the deterministic source-coverage map");
-      }
-      if (!coverageSection || !sameIds(coverageSection.sourceSpanIds, expectedCoverage)) {
-        reasons.push("coverage section span IDs do not match the deterministic source-coverage map");
-      }
-    }
-  }
-  if (args.manifest.sections.some((section) => section.status === "degraded")) {
-    reasons.push("one or more extraction sections are degraded");
-  }
+  reasons.push(...sectionPageCoverageReasons(args.manifest));
   const profile = args.operationalProfile && typeof args.operationalProfile === "object"
     ? args.operationalProfile as Record<string, unknown>
     : {};
@@ -614,20 +598,8 @@ export function evaluateExtractionPromotion(args: {
       reasons.push("coverage evidence is present but the extracted profile has no cited coverage row");
     }
   }
-  const coverageSection = args.manifest.sections.find((section) =>
-    section.id === "extraction_policy_coverage");
-  if (
-    coverageSection?.status === "not_applicable"
-    && (
-      args.ledger.coverageRegions.status === "observed"
-      || !args.ledger.completeSourceCoverage
-    )
-  ) {
-    reasons.push("coverage cannot be not_applicable when candidates exist or source coverage is incomplete");
-  }
   return {
     allowed: reasons.length === 0,
     reasons,
-    postCutoverViolation: args.postCutover && reasons.length > 0,
   };
 }

@@ -2432,6 +2432,8 @@ export default defineSchema({
       v.literal("external_completion_payload"),
       v.literal("source_bundle"),
       v.literal("section_result"),
+      v.literal("parsed_source"),
+      v.literal("section_plan"),
     ),
     storageId: v.id("_storage"),
     runId: v.optional(v.id("policyExtractionRuns")),
