@@ -1739,7 +1739,6 @@ function policyFileUnavailableMessage(policy: Record<string, unknown>) {
   return `Policy ${String(policy.policyNumber ?? policy._id ?? "record")} must finish extraction before its original PDF is available.`;
 }
 
-
 // ── MCP Streamable HTTP Transport ──
 // Single endpoint implementing MCP protocol over HTTP for remote clients (Claude.ai, etc.)
 
