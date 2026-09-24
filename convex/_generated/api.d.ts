@@ -284,10 +284,10 @@ import type * as lib_policyDocumentStructure from "../lib/policyDocumentStructur
 import type * as lib_policyImportDedup from "../lib/policyImportDedup.js";
 import type * as lib_policyIntakeClassification from "../lib/policyIntakeClassification.js";
 import type * as lib_policyLookup from "../lib/policyLookup.js";
-import type * as lib_policySearch from "../lib/policySearch.js";
 import type * as lib_policyPartyContext from "../lib/policyPartyContext.js";
 import type * as lib_policyPeriodExtraction from "../lib/policyPeriodExtraction.js";
 import type * as lib_policyProductIdentity from "../lib/policyProductIdentity.js";
+import type * as lib_policySearch from "../lib/policySearch.js";
 import type * as lib_policySectioning from "../lib/policySectioning.js";
 import type * as lib_policyToolResolution from "../lib/policyToolResolution.js";
 import type * as lib_policyTypes from "../lib/policyTypes.js";
@@ -697,10 +697,10 @@ declare const fullApi: ApiFromModules<{
   "lib/policyImportDedup": typeof lib_policyImportDedup;
   "lib/policyIntakeClassification": typeof lib_policyIntakeClassification;
   "lib/policyLookup": typeof lib_policyLookup;
-  "lib/policySearch": typeof lib_policySearch;
   "lib/policyPartyContext": typeof lib_policyPartyContext;
   "lib/policyPeriodExtraction": typeof lib_policyPeriodExtraction;
   "lib/policyProductIdentity": typeof lib_policyProductIdentity;
+  "lib/policySearch": typeof lib_policySearch;
   "lib/policySectioning": typeof lib_policySectioning;
   "lib/policyToolResolution": typeof lib_policyToolResolution;
   "lib/policyTypes": typeof lib_policyTypes;
