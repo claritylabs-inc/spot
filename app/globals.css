@@ -41,3 +41,29 @@
     right: 0;
   }
 }
+
+/* Drawer geometry stays app-owned; keyframes survive smooth-corner measurement. */
+@keyframes spot-navigation-enter {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+@keyframes spot-navigation-exit {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spot-navigation-drawer[data-open] {
+    animation: spot-navigation-enter 120ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+  .spot-navigation-drawer[data-closed] {
+    animation: spot-navigation-exit 120ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+}

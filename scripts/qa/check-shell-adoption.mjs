@@ -51,6 +51,174 @@ async function login(page, email) {
   await page.getByRole("button", { name: /verify/i }).click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
+async function measureDrawerMotion(page, action, role, phase) {
+  await page.evaluate(() => {
+    window.__drawerMotion = [];
+    window.__drawerMotionDone = new Promise((resolve) => {
+      const start = performance.now();
+      function sample(now) {
+        const popup = document.querySelector('[role="dialog"]');
+        if (popup) {
+          const style = getComputedStyle(popup);
+          window.__drawerMotion.push({
+            time: now - start,
+            x: popup.getBoundingClientRect().x,
+            transition: style.transitionProperty,
+            duration: style.transitionDuration,
+            translate: style.translate,
+            open: popup.hasAttribute("data-open"),
+            starting: popup.hasAttribute("data-starting-style"),
+            ending: popup.hasAttribute("data-ending-style"),
+            animations: popup.getAnimations().map((animation) => ({
+              state: animation.playState,
+              time: animation.currentTime,
+            })),
+          });
+        }
+        if (now - start < 500) requestAnimationFrame(sample);
+        else resolve(window.__drawerMotion);
+      }
+      requestAnimationFrame(sample);
+    });
+  });
+  await action();
+  const frames = await page.evaluate(() => window.__drawerMotionDone);
+  writeFileSync(
+    path.join(out, `${role}-${phase}-motion.json`),
+    JSON.stringify(frames, null, 2),
+  );
+  assert(
+    frames.some((frame) =>
+      frame.transition
+        .split(",")
+        .map((value) => value.trim())
+        .includes("translate"),
+    ),
+    `${role} ${phase}: individual translate must transition`,
+  );
+  assert(
+    frames.some((frame) => frame.x > -259 && frame.x < -1),
+    `${role} ${phase}: drawer must have an intermediate horizontal position`,
+  );
+}
+
+if (process.env.SHELL_RESPONSIVE_ONLY) {
+  const cases = [];
+  try {
+    for (const [role, email, route] of [
+      ["client", "adyan@cove.dev", "/policies"],
+      ["operator", "terry@claritylabs.inc", "/operator/clients"],
+    ]) {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        reducedMotion: "no-preference",
+        colorScheme:
+          process.env.UI_ADOPTION_THEME === "dark" ? "dark" : "light",
+      });
+      await context.addInitScript(
+        (theme) => {
+          localStorage.setItem("theme", theme);
+        },
+        process.env.UI_ADOPTION_THEME === "dark" ? "dark" : "light",
+      );
+      const page = await context.newPage();
+      page.setDefaultTimeout(15000);
+      try {
+        await login(page, email);
+        await page.goto(`${baseUrl}${route}`);
+        if (role === "operator")
+          await page.locator("table tbody tr").first().waitFor();
+        else
+          await page
+            .getByRole("button", { name: "Upload policy", exact: true })
+            .waitFor();
+        const toggle = page.getByRole("button", {
+          name: "Toggle navigation",
+          exact: true,
+        });
+        await measureDrawerMotion(page, () => toggle.click(), role, "open");
+        const dialog = page.getByRole("dialog", {
+          name: "Navigation",
+          exact: true,
+        });
+        await dialog.waitFor();
+        await shot(page, `${role}-mobile-before-resize`);
+        await measureDrawerMotion(
+          page,
+          () => page.keyboard.press("Escape"),
+          role,
+          "close",
+        );
+        await dialog.waitFor({ state: "hidden" });
+        await toggle.click();
+        await dialog.waitFor();
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page
+          .locator('[role="dialog"][data-open]')
+          .waitFor({ state: "detached", timeout: 3000 });
+        await page
+          .getByRole("button", { name: "Collapse navigation", exact: true })
+          .click();
+        const expand = page.getByRole("button", {
+          name: "Expand navigation",
+          exact: true,
+        });
+        await expand.focus();
+        await page.keyboard.press("Tab");
+        assert(
+          await page.evaluate(() => {
+            const focused = document.activeElement;
+            return (
+              focused &&
+              focused !== document.body &&
+              !focused.closest('[inert], [role="dialog"]') &&
+              focused.getClientRects().length > 0
+            );
+          }),
+          "Desktop tab focus must reach visible, non-modal content",
+        );
+        await expand.click();
+        await shot(page, `${role}-desktop-after-resize`);
+        await page.setViewportSize({ width: 390, height: 844 });
+        assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+        await toggle.click();
+        await dialog.waitFor();
+        assert(
+          await dialog.evaluate((el) => el.contains(document.activeElement)),
+          "Reopened mobile drawer receives focus",
+        );
+        await shot(page, `${role}-mobile-reopened`);
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden" });
+        if (role === "operator") {
+          await page.setViewportSize({ width: 1440, height: 900 });
+          await page.goto(`${baseUrl}/operator/settings`);
+          await page.getByRole("switch").first().waitFor();
+          await shot(page, "operator-desktop-settings");
+        }
+        cases.push({ role, passed: true });
+      } catch (error) {
+        await shot(page, `${role}-failure`);
+        cases.push({ role, passed: false, error: String(error) });
+      } finally {
+        await context.close();
+      }
+    }
+    writeFileSync(
+      path.join(out, "responsive-results.json"),
+      JSON.stringify({ browser: "headless Chromium", cases }, null, 2),
+    );
+    console.log(cases);
+    assert(
+      cases.every((result) => result.passed),
+      "Responsive drawer workflow failed",
+    );
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
+}
+
 try {
   if (!process.env.SHELL_OPERATOR_ONLY) {
     const context = await browser.newContext({

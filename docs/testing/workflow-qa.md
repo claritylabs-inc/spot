@@ -699,3 +699,22 @@ visible Chrome when a display exists; this VM has none, so all recorded results
 are explicitly headless. Auth snapshots and OTP logs remain private. Screenshots,
 comparison JSON, commands and the complete remaining-owner inventory are in the
 [review gallery](https://41841dba-c31c-4f23-801f-78831a73c9f0.conductor.show/shell/).
+
+
+Final drawer follow-up covers client and operator navigation at 390px, Escape
+close, intermediate horizontal positions on both open and close with reduced
+motion disabled, resize to 1440px while open, desktop click/Tab access, and
+390px reopen/focus. Both roles pass in light and dark headless Chromium. The
+hidden-modal risk was not reproduced before the fix; the shell now explicitly
+closes at the desktop breakpoint. Frame sampling reproduced interrupted CSS
+transitions from shared corner measurement; app-owned drawer keyframes preserve
+the 120ms slide without disabling child smoothing or owning modal behavior.
+
+```sh
+SHELL_RESPONSIVE_ONLY=1 node scripts/qa/check-shell-adoption.mjs http://localhost:8080 .context/qa/shell/responsive-final
+UI_ADOPTION_THEME=dark SHELL_RESPONSIVE_ONLY=1 node scripts/qa/check-shell-adoption.mjs http://localhost:8080 .context/qa/shell/responsive-final-dark
+```
+
+Each run saves per-role open/close animation frame JSON, resize/reopen PNGs,
+a desktop settings PNG, and `responsive-results.json`. No fixture writes or
+credential exports are needed for this bounded case.

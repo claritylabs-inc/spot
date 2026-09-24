@@ -178,10 +178,10 @@ function ShellContent({
   }, [constrainedPreviewOpen, operatorAgent]);
 
   useEffect(() => {
-    if (!operatorAgent?.open || !mobileOpen) return;
+    if (!mobileOpen || (!isLarge && !operatorAgent?.open)) return;
     const frame = window.requestAnimationFrame(() => setMobileOpen(false));
     return () => window.cancelAnimationFrame(frame);
-  }, [mobileOpen, operatorAgent?.open]);
+  }, [isLarge, mobileOpen, operatorAgent?.open]);
 
   if (!sidebarReady) {
     return <div className="h-dvh w-full bg-background" aria-busy="true" />;
@@ -278,7 +278,7 @@ function ShellContent({
               <DialogContent
                 showCloseButton={false}
                 overlayClassName="bg-black/20 duration-120 lg:hidden"
-                className="inset-y-0 left-0 flex h-full w-sidebar-mobile max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r border-border bg-background p-0 ring-0 duration-120 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:-translate-x-full data-ending-style:scale-100 data-starting-style:-translate-x-full data-starting-style:scale-100 sm:max-w-none lg:hidden"
+                className="spot-navigation-drawer inset-y-0 left-0 flex h-full w-sidebar-mobile max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r border-border bg-background p-0 ring-0 transition-[opacity,translate] duration-120 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:scale-100 data-starting-style:scale-100 sm:max-w-none lg:hidden"
                 finalFocus={mobileMenuRef}
                 onClick={(event) => {
                   if (
