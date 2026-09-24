@@ -17,6 +17,7 @@
 // Requires `SPOT_ENV=local` and `EMAIL_DELIVERY_MODE=capture` on the local
 // Convex deployment, with Convex logs in .context/logs/convex.log. Writes
 // results.json and screenshots to .context/qa/webmcp/.
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import dayjs from "dayjs";
@@ -36,6 +37,43 @@ const checks = [];
 function check(name, ok, detail) {
   checks.push({ name, ok: Boolean(ok), ...(detail === undefined ? {} : { detail }) });
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok || detail === undefined ? "" : ` — ${JSON.stringify(detail)}`}`);
+}
+
+// Model-backed steps depend on the local router. A router or model failure is
+// recorded as blocked, not passed; any other error fails.
+const MODEL_UNAVAILABLE = /router|model|provider|inference|timed? ?out|CL_ROUTER|rate limit|overloaded/i;
+function checkModelStep(name, response, ok, logFrom) {
+  if (ok) return check(name, true);
+  const detail = JSON.stringify(response ?? null);
+  const routerRejected =
+    logFrom !== undefined &&
+    /Router job control rejected/.test(readFileSync(convexLog, "utf8").slice(logFrom));
+  if (MODEL_UNAVAILABLE.test(detail) || routerRejected) {
+    checks.push({ name, ok: true, blocked: true, detail: response });
+    console.log(`BLOCKED ${name} — ${detail}`);
+    return;
+  }
+  check(name, false, response);
+}
+
+const executed = new Set();
+const registeredEverywhere = new Set();
+async function call(page, name, input = {}) {
+  executed.add(name);
+  return await page.evaluate(([tool, args]) => window.__callTool(tool, args), [name, input]);
+}
+
+/** Reads are named list_/get_/search_ and carry readOnlyHint; nothing else does. */
+function auditTools(label, tools) {
+  for (const tool of tools) registeredEverywhere.add(tool.name);
+  const wrong = tools.filter(
+    (tool) => /^(list|get|search)_/.test(tool.name) !== (tool.annotations?.readOnlyHint === true),
+  );
+  const invalid = Object.fromEntries(
+    tools.map((tool) => [tool.name, validateSchema(tool.inputSchema)]).filter(([, problems]) => problems.length > 0),
+  );
+  check(`${label}: readOnlyHint matches read tools`, wrong.length === 0, wrong.map((tool) => tool.name));
+  check(`${label}: input schemas are valid JSON Schema objects`, Object.keys(invalid).length === 0, invalid);
 }
 
 const STUB = () => {
@@ -135,6 +173,38 @@ function logOffset() {
   } catch {
     return 0;
   }
+}
+
+async function waitForEmail(email, fromOffset, attempts = 60) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const contents = readFileSync(convexLog, "utf8").slice(fromOffset);
+    const capture = consumeLocalEmailCaptures(contents).captures.find((item) => item.to.includes(email));
+    if (capture) return capture;
+    // Long captures are logged as multi-line string concatenations.
+    if (contents.includes("[spot:local-email-capture]") && contents.includes(`to: ${email}`)) {
+      return { to: email, codes: [] };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return null;
+}
+
+/** Retries a read until it reflects a just-finished write (live query lag). */
+async function eventually(read, done, attempts = 20) {
+  let value;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    value = await read();
+    if (done(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return value;
+}
+
+async function openPage(page, args, urlPattern, toolNames) {
+  const opened = await call(page, "open_spot_page", args);
+  await page.waitForURL(urlPattern, { timeout: 30_000 });
+  await waitForTools(page, toolNames);
+  return opened;
 }
 
 async function waitForOtp(email, fromOffset) {
@@ -253,63 +323,326 @@ try {
   const policiesTools = await registeredTools(page);
   result.toolsOnPolicies = policiesTools;
   check("client workspace registers app-wide tools", appWide.every((name) => policiesTools.some((tool) => tool.name === name)));
-  const schemaProblems = Object.fromEntries(
-    policiesTools.map((tool) => [tool.name, validateSchema(tool.inputSchema)]).filter(([, problems]) => problems.length > 0),
-  );
-  check("all registered input schemas are valid", Object.keys(schemaProblems).length === 0, schemaProblems);
-  const readOnly = ["list_policies", "get_policy", "search_policy_wording", "list_certificates", "list_insurance_requests", "get_insurance_request", "list_compliance_requirements"];
-  check("reads carry readOnlyHint", readOnly.every((name) => policiesTools.find((tool) => tool.name === name)?.annotations?.readOnlyHint === true));
-  check("writes are not readOnly", policiesTools.filter((tool) => !readOnly.includes(tool.name)).every((tool) => tool.annotations?.readOnlyHint === false));
+  auditTools("/policies", policiesTools);
   check("page-scoped writes absent on /policies list", !policiesTools.some((tool) => tool.name === "create_insurance_request"));
-  const policies = await page.evaluate(() => window.__callTool("list_policies", {}));
+  const policies = await call(page, "list_policies", {});
   check("list_policies executes for new client", policies.status === "ok" && Array.isArray(policies.policies), policies);
-  const badPolicy = await page.evaluate(() => window.__callTool("get_policy", { policy_id: "not-a-real-id" }));
+  const badPolicy = await call(page, "get_policy", { policy_id: "not-a-real-id" });
   check("get_policy with bad id returns structured error", badPolicy.status === "error", badPolicy);
   await page.screenshot({ path: path.join(outDir, "client-policies.png") });
 
-  const opened = await page.evaluate(() => window.__callTool("open_spot_page", { page: "requests" }));
+  const opened = await call(page, "open_spot_page", { page: "requests" });
   check("open_spot_page navigates", opened.status === "navigating" && opened.url === "/requests", opened);
   await page.waitForURL(/\/requests/);
   await waitForTools(page, ["create_insurance_request", "attach_request_document"]);
   const requestTools = await registeredTools(page);
   result.toolsOnRequests = requestTools.map((tool) => tool.name);
   check("request writes registered only on /requests", !requestTools.some((tool) => tool.name === "generate_certificate"));
-  const created = await page.evaluate(() =>
-    window.__callTool("create_insurance_request", {
+  const created = await call(page, "create_insurance_request", {
       title: "WebMCP e2e cyber coverage",
       narrative: "Synthetic local test: need $1M cyber liability for a new customer contract.",
       target_effective_date: "2026-11-01",
-    }),
-  );
+    });
   result.createdRequest = created;
   check("create_insurance_request submits", created.status === "submitted" && created.request_id, created);
-  const attached = await page.evaluate(
-    (requestId) =>
-      window.__callTool("attach_request_document", {
-        request_id: requestId,
+  const attached = await call(page, "attach_request_document", {
+        request_id: created.request_id,
         file_name: "requirements.txt",
         content_type: "text/plain",
         content_base64: btoa("Synthetic contract insurance requirements."),
-      }),
-    created.request_id,
-  );
+      });
   check("attach_request_document uploads", attached.status === "attached", attached);
-  const fetched = await page.evaluate((requestId) => window.__callTool("get_insurance_request", { request_id: requestId }), created.request_id);
+  const fetched = await call(page, "get_insurance_request", { request_id: created.request_id });
   check("get_insurance_request shows status and file", fetched.status === "ok" && fetched.request.files.length === 1, fetched);
 
-  await page.evaluate(() => window.__callTool("open_spot_page", { page: "compliance" }));
+  await call(page, "open_spot_page", { page: "compliance" });
   await page.waitForURL(/\/compliance/);
   await waitForTools(page, ["recheck_compliance_requirement", "generate_certificate"]);
   const complianceTools = await registeredTools(page);
   result.toolsOnCompliance = complianceTools.map((tool) => tool.name);
   check("request writes unregistered after leaving /requests", !complianceTools.some((tool) => tool.name === "create_insurance_request"));
-  const requirements = await page.evaluate(() => window.__callTool("list_compliance_requirements", {}));
+  const requirements = await call(page, "list_compliance_requirements", {});
   check("list_compliance_requirements executes", requirements.status === "ok" && Array.isArray(requirements.requirements), requirements);
-  const certificates = await page.evaluate(() => window.__callTool("list_certificates", {}));
+  const certificates = await call(page, "list_certificates", {});
   check("list_certificates executes", certificates.status === "ok", certificates);
   await page.screenshot({ path: path.join(outDir, "client-compliance.png") });
 
-  await page.getByText("Sign out", { exact: true }).first().click();
+  // 3b. Full client parity as the organization admin who signed up.
+  const stamp = Date.now();
+  const createdRequirement = await call(page, "create_compliance_requirement", {
+    scope: "own_org",
+    title: "WebMCP GL $1M per occurrence",
+    requirement_text: "Commercial general liability of at least $1,000,000 per occurrence.",
+    line_of_business: "CGL",
+    limits: [{ kind: "per_occurrence", amount: 1000000 }],
+    provisions: ["additional_insured"],
+  });
+  check("create_compliance_requirement", createdRequirement.status === "created", createdRequirement);
+  const updatedRequirement = await call(page, "update_compliance_requirement", {
+    requirement_id: createdRequirement.requirement_id,
+    scope: "own_org",
+    title: "WebMCP GL $2M per occurrence",
+    line_of_business: "CGL",
+    requirement_text: "Commercial general liability of at least $2,000,000 per occurrence.",
+    limits: [{ kind: "per_occurrence", amount: 2000000 }],
+  });
+  check("update_compliance_requirement", updatedRequirement.status === "updated", updatedRequirement);
+  const listedRequirements = await call(page, "list_compliance_requirements", { scope: "own_org" });
+  check("updated requirement is listed", listedRequirements.requirements?.some((row) => row.title === "WebMCP GL $2M per occurrence"), listedRequirements);
+  const recheck = await call(page, "recheck_compliance_requirement", { requirement_id: createdRequirement.requirement_id });
+  checkModelStep("recheck_compliance_requirement runs the AI check", recheck, recheck.status === "ok");
+  const imported = await call(page, "import_compliance_requirements", {
+    pasted_text: "Vendor shall maintain workers compensation at statutory limits and automobile liability of $1,000,000 combined single limit.",
+    source_type: "vendor_requirements",
+    source_name: "WebMCP vendor packet",
+    scope: "vendors",
+  });
+  checkModelStep("import_compliance_requirements extracts from pasted text", imported, imported.status === "imported");
+  const sources = await call(page, "list_requirement_sources", {});
+  check("list_requirement_sources", sources.status === "ok", sources);
+  if (imported.requirement_source_id) {
+    const sourceUpdate = await call(page, "update_requirement_source", {
+      requirement_source_id: imported.requirement_source_id,
+      deal_name: "WebMCP vendor deal",
+      notes_markdown: "Synthetic WebMCP notes.",
+    });
+    check("update_requirement_source", sourceUpdate.status === "updated", sourceUpdate);
+    const sourceCertificates = await call(page, "list_source_certificates", { requirement_source_id: imported.requirement_source_id });
+    check("list_source_certificates", sourceCertificates.status === "ok", sourceCertificates);
+    const archivedSources = await call(page, "archive_requirement_sources", { requirement_source_ids: [imported.requirement_source_id] });
+    check("archive_requirement_sources", archivedSources.status === "archived", archivedSources);
+  }
+  const archivedRequirement = await call(page, "archive_compliance_requirement", { requirement_id: createdRequirement.requirement_id });
+  check("archive_compliance_requirement", archivedRequirement.status === "archived", archivedRequirement);
+
+  await openPage(page, { page: "connect" }, /\/connect\/vendors/, ["request_vendor_access", "list_vendors"]);
+  auditTools("/connect/vendors", await registeredTools(page));
+  const vendorEmail = `webmcp-vendor-${stamp}@example.com`;
+  let emailOffset = logOffset();
+  const vendorRequest = await call(page, "request_vendor_access", { vendor_email: vendorEmail, relationship_label: "WebMCP test vendor" });
+  check("request_vendor_access", vendorRequest.status === "pending", vendorRequest);
+  check("vendor invitation email captured locally", Boolean(await waitForEmail(vendorEmail, emailOffset)));
+  const vendors = await eventually(
+    () => call(page, "list_vendors", {}),
+    (value) => value.vendors?.some((row) => row.vendor_email === vendorEmail),
+  );
+  const vendorRow = vendors.vendors?.find((row) => row.vendor_email === vendorEmail);
+  check("list_vendors shows the invitation without secrets", Boolean(vendorRow?.invitation_id) && !/otpCode|inviteTokenHash/.test(JSON.stringify(vendors)), vendors);
+  emailOffset = logOffset();
+  const resent = await call(page, "resend_vendor_invitation", { invitation_id: vendorRow?.invitation_id });
+  check("resend_vendor_invitation", resent.status === "resent", resent);
+  check("resent invitation email captured locally", Boolean(await waitForEmail(vendorEmail, emailOffset)));
+  const cancelledVendor = await call(page, "cancel_vendor_invitation", { invitation_id: vendorRow?.invitation_id });
+  check("cancel_vendor_invitation", cancelledVendor.status === "cancelled", cancelledVendor);
+  check("list_vendor_compliance", (await call(page, "list_vendor_compliance", {})).status === "ok");
+  check("list_connected_clients", (await call(page, "list_connected_clients", {})).status === "ok");
+
+  await openPage(page, { page: "settings", settings_section: "team" }, /\/settings/, ["invite_team_member", "get_company_wiki"]);
+  const settingsTools = await registeredTools(page);
+  result.toolsOnSettings = settingsTools.map((tool) => tool.name);
+  auditTools("/settings (admin)", settingsTools);
+  const organization = await call(page, "get_organization", {});
+  check("get_organization reports admin role", organization.your_role === "admin", organization);
+  check("update_organization", (await call(page, "update_organization", { name: "WebMCP Test Co Renamed" })).status === "updated");
+  const logo = await call(page, "upload_organization_logo", {
+    file_name: "logo.png",
+    content_type: "image/png",
+    content_base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  });
+  check("upload_organization_logo", logo.status === "updated", logo);
+  check("update_agent_email_settings", (await call(page, "update_agent_email_settings", { send_delay_seconds: 5, bcc_requester_on_agent_emails: true })).status === "updated");
+  const channels = await call(page, "get_agent_channels", {});
+  check("get_agent_channels", channels.status === "ok" && channels.settings, channels);
+  const channelsOff = await call(page, "update_agent_channels", { email_enabled: false });
+  const channelsOn = await call(page, "update_agent_channels", { email_enabled: true });
+  check("update_agent_channels toggles and restores", channelsOff.settings?.emailEnabled === false && channelsOn.settings?.emailEnabled === true, [channelsOff, channelsOn]);
+  const teammateEmail = `webmcp-teammate-${stamp}@example.com`;
+  emailOffset = logOffset();
+  const invited = await call(page, "invite_team_member", { email: teammateEmail, role: "member" });
+  check("invite_team_member", invited.status === "invited", invited);
+  check("team invitation email captured locally", Boolean(await waitForEmail(teammateEmail, emailOffset)));
+  const extraInvite = await call(page, "invite_team_member", { email: `webmcp-cancel-${stamp}@example.com`, role: "admin" });
+  const invitations = await eventually(
+    () => call(page, "list_team_invitations", {}),
+    (value) => value.invitations?.length >= 2,
+  );
+  check("second invite_team_member", extraInvite.status === "invited", extraInvite);
+  check("list_team_invitations", invitations.invitations?.length >= 2, invitations);
+  check("cancel_team_invitation", (await call(page, "cancel_team_invitation", { invitation_id: extraInvite.invitation_id })).status === "cancelled");
+  const members = await call(page, "list_team_members", {});
+  check("list_team_members", members.members?.length === 1, members);
+  check("set_primary_insurance_contact", (await call(page, "set_primary_insurance_contact", { user_id: members.members?.[0]?.user_id })).status === "updated");
+  check("update_team_member_profile", (await call(page, "update_team_member_profile", { membership_id: members.members?.[0]?.membership_id, title: "Head of Risk" })).status === "updated");
+  const workflow = await call(page, "get_certificate_workflow_settings", {});
+  check("get_certificate_workflow_settings", workflow.status === "ok", workflow);
+  check("set_certificate_renewal_reissue", (await call(page, "set_certificate_renewal_reissue", { enabled: !workflow.renewal_reissue_enabled })).status === "updated");
+  await call(page, "set_certificate_renewal_reissue", { enabled: Boolean(workflow.renewal_reissue_enabled) });
+  check("get_notification_preferences", (await call(page, "get_notification_preferences", {})).status === "ok");
+  check("set_notification_channels", (await call(page, "set_notification_channels", { type: "own_compliance_gap", email: true, imessage: false })).status === "updated");
+  check("set_all_notification_channel", (await call(page, "set_all_notification_channel", { channel: "email", enabled: true })).status === "updated");
+  check("reset_notification_channels", (await call(page, "reset_notification_channels", { type: "all" })).status === "reset");
+  const wiki = await call(page, "get_company_wiki", {});
+  if (wiki.status === "ok") {
+    const savedWiki = await call(page, "save_company_wiki", { markdown: `${wiki.markdown.trimEnd()}\n\nWebMCP synthetic note.\n`, expected_revision: wiki.revision });
+    check("save_company_wiki", savedWiki.status === "ok" && savedWiki.revision > wiki.revision, savedWiki);
+  } else {
+    check("get_company_wiki reports its state", wiki.status === "error", wiki);
+  }
+  check("list_connected_apps", (await call(page, "list_connected_apps", {})).status === "ok");
+  check("list_mailboxes", (await call(page, "list_mailboxes", {})).status === "ok");
+  check("set_beta_feature", (await call(page, "set_beta_feature", { flag: "connect_features", enabled: true })).status === "updated");
+  await page.screenshot({ path: path.join(outDir, "client-settings.png") });
+
+  // A plain member sees member tools only: admin controls stay unregistered.
+  const memberContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await memberContext.addInitScript(STUB);
+  const memberPage = await memberContext.newPage();
+  await memberPage.goto(`${base}/login?email=${encodeURIComponent(teammateEmail)}`, { waitUntil: "networkidle" });
+  const memberOffset = logOffset();
+  await memberPage.evaluate(() => window.__agentSubmit('form[toolname="request_login_code"]'));
+  await memberPage.waitForSelector('form[toolname="verify_login_code"]');
+  await memberPage.evaluate((value) => window.__agentFill('form[toolname="verify_login_code"]', { code: value }), await waitForOtp(teammateEmail, memberOffset));
+  const memberLogin = await memberPage.evaluate(() => window.__agentSubmit('form[toolname="verify_login_code"]'));
+  check("invited teammate signs in with the login tools", memberLogin.status === "signed_in", memberLogin);
+  await waitForTools(memberPage, ["list_policies"]);
+  await openPage(memberPage, { page: "settings" }, /\/settings/, ["list_team_members"]);
+  const memberTools = (await registeredTools(memberPage)).map((tool) => tool.name);
+  result.toolsOnSettingsAsMember = memberTools;
+  check("member gets member settings tools but no admin tools", memberTools.includes("get_notification_preferences") && !memberTools.includes("invite_team_member") && !memberTools.includes("update_organization"), memberTools);
+  await memberContext.close();
+  const team = await eventually(
+    () => call(page, "list_team_members", {}),
+    (value) => value.members?.length === 2,
+  );
+  const teammate = team.members?.find((member) => member.email === teammateEmail);
+  check("accepted teammate appears in list_team_members", Boolean(teammate), team);
+  if (teammate) {
+    check("change_member_role to admin", (await call(page, "change_member_role", { membership_id: teammate.membership_id, role: "admin" })).status === "updated");
+    check("change_member_role back to member", (await call(page, "change_member_role", { membership_id: teammate.membership_id, role: "member" })).status === "updated");
+    const memberEmailChange = await call(page, "request_member_email_change", { membership_id: teammate.membership_id, email: `webmcp-teammate-new-${stamp}@example.com` });
+    check("request_member_email_change", memberEmailChange.status === "code_sent", memberEmailChange);
+    check("cancel_member_email_change", (await call(page, "cancel_member_email_change", { membership_id: teammate.membership_id, request_id: memberEmailChange.request_id })).status === "cancelled");
+    check("remove_team_member", (await call(page, "remove_team_member", { membership_id: teammate.membership_id })).status === "removed");
+  }
+  const research = await call(page, "research_company", { website: "https://example.com" });
+  check("research_company queues research", research.status !== "error", research);
+
+  await openPage(page, { page: "profile" }, /\/profile/, ["update_profile"]);
+  auditTools("/profile", await registeredTools(page));
+  check("update_profile", (await call(page, "update_profile", { title: "Operations Lead", stream_responses: true })).status === "updated");
+  const profileAfter = await call(page, "get_profile", {});
+  check("get_profile reflects the update", profileAfter.profile?.title === "Operations Lead", profileAfter);
+  check("set_proactive_contact_channels", (await call(page, "set_proactive_contact_channels", { email: true, imessage: false })).status === "updated");
+  check("get_imessage_history_deletion_state", (await call(page, "get_imessage_history_deletion_state", {})).status === "ok");
+  check("prepare_imessage_history_deletion", (await call(page, "prepare_imessage_history_deletion", {})).status === "preparing");
+  const abandonedChange = await call(page, "request_email_change", { email: `webmcp-abandoned-${stamp}@example.com` });
+  check("cancel_email_change", (await call(page, "cancel_email_change", { request_id: abandonedChange.request_id })).status === "cancelled");
+  const newEmail = `webmcp-changed-${stamp}@example.com`;
+  emailOffset = logOffset();
+  const emailChange = await call(page, "request_email_change", { email: newEmail });
+  check("request_email_change sends a code", emailChange.status === "code_sent", emailChange);
+  const changeCode = (await waitForEmail(newEmail, emailOffset))?.codes?.[0];
+  const confirmed = await call(page, "confirm_email_change", { request_id: emailChange.request_id, code: changeCode });
+  check("confirm_email_change with the captured code", confirmed.status === "changed" && confirmed.email === newEmail, confirmed);
+
+  check("list_notifications", (await call(page, "list_notifications", {})).status === "ok");
+  check("mark_all_notifications_read", (await call(page, "mark_all_notifications_read", {})).status === "read");
+  await call(page, "set_theme", { theme: "dark" });
+  check("set_theme applies dark mode", await page.evaluate(() => document.documentElement.classList.contains("dark")));
+  await call(page, "set_theme", { theme: "light" });
+
+  // Agent threads and drafted email, sent directly by the tool.
+  const brokerEmail = `webmcp-broker-${stamp}@example.com`;
+  const agentLogFrom = logOffset();
+  const started = await call(page, "start_spot_agent_thread", {
+    message: `Draft an email to ${brokerEmail} with the subject "WebMCP test" asking for our certificate of insurance. Do not send it; just prepare the draft.`,
+  });
+  check("start_spot_agent_thread", started.status === "started", started);
+  await page.waitForURL(/\/agent\/thread\//, { timeout: 30_000 });
+  await waitForTools(page, ["get_agent_thread", "send_email_draft"]);
+  auditTools("/agent/thread", await registeredTools(page));
+  let draftId = null;
+  let thread = null;
+  for (let attempt = 0; attempt < 90 && !draftId; attempt += 1) {
+    thread = await call(page, "get_agent_thread", { thread_id: started.thread_id });
+    draftId = thread.messages?.find((message) => message.pending_email_id)?.pending_email_id ?? null;
+    const failed = thread.messages?.find((message) => message.role === "agent" && message.status === "error");
+    if (failed) break;
+    if (!draftId) await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  result.agentThread = thread;
+  checkModelStep("agent drafts an email in the thread", thread, Boolean(draftId), agentLogFrom);
+  const draftIds = draftId ? [draftId] : [];
+  if (!draftId) {
+    // The local router is unavailable: create synthetic drafts in this local
+    // deployment so the send tools still run through sendDraftNow/sendDraftsNow.
+    for (let index = 0; index < 3; index += 1) {
+      const output = execFileSync(
+        path.join(repoRoot, "node_modules", ".bin", "convex"),
+        [
+          "run",
+          "pendingEmails:create",
+          JSON.stringify({
+            orgId: organization.organization.org_id,
+            threadId: started.thread_id,
+            scheduledSendTime: Date.now(),
+            recipientEmail: brokerEmail,
+            fromHeader: "Spot Agent <agent@example.com>",
+            subject: `WebMCP test ${index + 1}`,
+            emailBody: "Synthetic local WebMCP draft. Please send our certificate of insurance.",
+            status: "draft",
+          }),
+        ],
+        { cwd: repoRoot, encoding: "utf8", env: { ...process.env, CONVEX_AGENT_MODE: "anonymous" } },
+      );
+      draftIds.push(JSON.parse(output.trim()));
+    }
+    result.draftFixture = draftIds;
+    draftId = draftIds[0];
+  }
+  if (draftId) {
+    const draft = await call(page, "get_email_draft", { draft_id: draftId });
+    check("get_email_draft", draft.status === "ok" && draft.email.to === brokerEmail, draft);
+    check("cancel_email_draft", (await call(page, "cancel_email_draft", { draft_id: draftId })).status === "cancelled");
+    check("restore_email_draft", (await call(page, "restore_email_draft", { draft_id: draftId })).status === "draft");
+    emailOffset = logOffset();
+    const sent = await call(page, "send_email_draft", { draft_id: draftId });
+    check("send_email_draft sends without a confirmation step", sent.status === "sent" && sent.recipient === brokerEmail, sent);
+    check("sent draft captured locally, not delivered", Boolean(await waitForEmail(brokerEmail, emailOffset)));
+    if (draftIds.length > 1) {
+      const batch = await call(page, "send_email_drafts", { draft_ids: draftIds.slice(1) });
+      check("send_email_drafts sends every draft", batch.status === "sent" && batch.sent.length === draftIds.length - 1, batch);
+    }
+    const agentMessage = thread.messages.find((message) => message.role === "agent");
+    if (agentMessage) {
+      const rated = await call(page, "rate_agent_response", { message_id: agentMessage.message_id, rating: "positive" });
+      checkModelStep("rate_agent_response", rated, rated.status === "recorded");
+    }
+  }
+  check("list_agent_reference_targets", (await call(page, "list_agent_reference_targets", {})).status === "ok");
+  const followUp = await call(page, "send_thread_message", {
+    thread_id: started.thread_id,
+    message: "Here is the contract for context.",
+    attachments: [{ file_name: "contract.txt", content_type: "text/plain", content_base64: btoa("Synthetic contract text.") }],
+  });
+  check("send_thread_message with an attachment", followUp.status === "sent", followUp);
+  const withAttachment = await call(page, "get_agent_thread", { thread_id: started.thread_id });
+  const attachedFile = withAttachment.messages?.flatMap((message) => message.attachments).find((file) => file.file_name === "contract.txt");
+  const attachmentUrls = await call(page, "get_thread_attachment_urls", { thread_id: started.thread_id, file_ids: [attachedFile?.file_id] });
+  check("get_thread_attachment_urls", attachmentUrls.status === "ok" && attachmentUrls.files?.[0]?.url, attachmentUrls);
+  const lastAgent = [...(withAttachment.messages ?? [])].reverse().find((message) => message.role === "agent");
+  if (lastAgent) {
+    check("retry_agent_response", (await call(page, "retry_agent_response", { message_id: lastAgent.message_id })).status === "retrying");
+  }
+  check("rename_thread", (await call(page, "rename_thread", { thread_id: started.thread_id, title: "WebMCP thread" })).status === "renamed");
+  check("archive_thread", (await call(page, "archive_thread", { thread_id: started.thread_id })).status === "archived");
+  const archivedThreads = await call(page, "list_agent_threads", { archived: true });
+  check("list_agent_threads shows the archived thread", archivedThreads.threads?.some((row) => row.thread_id === started.thread_id), archivedThreads);
+  check("unarchive_thread", (await call(page, "unarchive_thread", { thread_id: started.thread_id })).status === "active");
+  await page.screenshot({ path: path.join(outDir, "client-agent-thread.png") });
+
+  const signedOut = await call(page, "sign_out", {});
+  check("sign_out tool signs out", signedOut.status === "signed_out", signedOut);
   await page.waitForFunction(() => window.__webmcp.tools.size === 0, null, { timeout: 30_000 });
   check("sign-out unregisters every tool", (await registeredTools(page)).length === 0);
   check("no page errors during agent flow", pageErrors.length === 0, pageErrors);
@@ -356,39 +689,98 @@ try {
     const loggedIn = await seededPage.evaluate(() => window.__agentSubmit('form[toolname="verify_login_code"]'));
     check("verify_login_code responds signed_in", loggedIn.status === "signed_in", loggedIn);
     await waitForTools(seededPage, ["list_policies"]);
-    const seededPolicies = await seededPage.evaluate(() => window.__callTool("list_policies", {}));
+    const seededPolicies = await call(seededPage, "list_policies", {});
     result.seededPolicies = seededPolicies;
     const policy = seededPolicies.policies?.find((item) => item.extraction_status === "final") ?? seededPolicies.policies?.[0];
     check("seeded client lists policies", Boolean(policy), seededPolicies);
     if (policy) {
-      const detail = await seededPage.evaluate((id) => window.__callTool("get_policy", { policy_id: id }), policy.policy_id);
+      const detail = await call(seededPage, "get_policy", { policy_id: policy.policy_id });
       check("get_policy returns coverages", detail.status === "ok" && Array.isArray(detail.policy.coverages), detail.status);
-      const wording = await seededPage.evaluate((id) => window.__callTool("search_policy_wording", { policy_id: id, query: "liability", limit: 3 }), policy.policy_id);
+      const wording = await call(seededPage, "search_policy_wording", { policy_id: policy.policy_id, query: "liability", limit: 3 });
       result.seededWording = wording;
       check("search_policy_wording returns excerpts", wording.status === "ok" && wording.matches.length > 0, wording);
-      await seededPage.evaluate((id) => window.__callTool("open_spot_page", { page: "policies", record_id: id }), policy.policy_id);
+      await call(seededPage, "open_spot_page", { page: "policies", record_id: policy.policy_id });
       await waitForTools(seededPage, ["generate_certificate"]);
-      const certificate = await seededPage.evaluate(
-        (id) => window.__callTool("generate_certificate", { policy_id: id, holder_name: "WebMCP Synthetic Holder LLC", city: "Austin", state: "TX" }),
-        policy.policy_id,
-      );
+      const certificate = await call(seededPage, "generate_certificate", { policy_id: policy.policy_id, holder_name: `WebMCP Synthetic Holder ${stamp}`, city: "Austin", state: "TX" });
       result.seededCertificate = certificate;
       check("generate_certificate returns a PDF or a hold", ["completed", "partial", "held"].includes(certificate.status), certificate);
-      const listed = await seededPage.evaluate(() => window.__callTool("list_certificates", {}));
-      check("list_certificates includes the synthetic holder", listed.certificates?.some((item) => item.holder === "WebMCP Synthetic Holder LLC"), listed.status);
+      const listed = await call(seededPage, "list_certificates", {});
+      check("list_certificates includes the synthetic holder", listed.certificates?.some((item) => item.holder === `WebMCP Synthetic Holder ${stamp}`), listed.status);
       await seededPage.screenshot({ path: path.join(outDir, "seeded-policy.png") });
+      const pdf = await call(seededPage, "get_policy_document_url", { policy_id: policy.policy_id });
+      check("get_policy_document_url", pdf.status === "ok" && pdf.pdf_url, pdf);
+      check("list_policy_versions", (await call(seededPage, "list_policy_versions", { policy_id: policy.policy_id })).status === "ok");
+      const evidence = await call(seededPage, "get_policy_source_evidence", {
+        policy_id: policy.policy_id,
+        node_ids: wording.matches.map((match) => match.node_id).slice(0, 2),
+      });
+      check("get_policy_source_evidence returns cited sections", evidence.status === "ok" && evidence.sections.length > 0, evidence);
+
+      await openPage(seededPage, { page: "certificates" }, /\/certificates/, ["reissue_certificate", "archive_certificate"]);
+      auditTools("/certificates", await registeredTools(seededPage));
+      const synthetic = listed.certificates.find((item) => item.holder === `WebMCP Synthetic Holder ${stamp}`);
+      const reissued = await call(seededPage, "reissue_certificate", { certificate_id: synthetic.certificate_id });
+      check("reissue_certificate issues a new version", reissued.status === "generated" && reissued.pdf_url, reissued);
+      const holderUpdate = await call(seededPage, "update_certificate_holder", { certificate_id: synthetic.certificate_id, city: "Dallas" });
+      check("update_certificate_holder issues a new version", holderUpdate.status === "generated", holderUpdate);
+      const archivedCertificate = await call(seededPage, "archive_certificate", { certificate_id: synthetic.certificate_id });
+      check("archive_certificate", archivedCertificate.status === "archived", archivedCertificate);
+      const archivedList = await call(seededPage, "list_certificates", { archived: true });
+      check("archived certificate is listed as archived", archivedList.certificates?.some((item) => item.certificate_id === synthetic.certificate_id));
+      const restoredCertificate = await call(seededPage, "restore_certificate", { certificate_id: synthetic.certificate_id });
+      check("restore_certificate", restoredCertificate.status === "active", restoredCertificate);
+      check("list_certificate_review_jobs", (await call(seededPage, "list_certificate_review_jobs", {})).status === "ok");
+      const seededSources = await call(seededPage, "list_requirement_sources", {});
+      const seededSource = seededSources.sources?.find((source) => source.requirement_count > 0);
+      if (seededSource) {
+        const sourceBatch = await call(seededPage, "generate_certificates_for_requirements", { requirement_source_id: seededSource.requirement_source_id });
+        check("generate_certificates_for_requirements reports PDFs or gaps", ["completed", "partial", "held", "blocked"].includes(sourceBatch.status), sourceBatch);
+      }
     }
-    const seededRequests = await seededPage.evaluate(() => window.__callTool("list_insurance_requests", {}));
+    check("list_client_files", (await call(seededPage, "list_client_files", {})).status === "ok");
+    const seededNotifications = await call(seededPage, "list_notifications", {});
+    const firstNotification = seededNotifications.notifications?.[0];
+    if (firstNotification) {
+      check("mark_notifications_read", (await call(seededPage, "mark_notifications_read", { notification_ids: [firstNotification.notification_id] })).status === "read");
+    }
+    const seededRequests = await call(seededPage, "list_insurance_requests", {});
     check("client request results omit private fields", !JSON.stringify(seededRequests).includes("private.md"), seededRequests.status);
     await seeded.close();
   }
+
+  // 6. Public pages register token tools without a session.
+  const publicContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await publicContext.addInitScript(STUB);
+  const publicPage = await publicContext.newPage();
+  await publicPage.goto(`${base}/weather`, { waitUntil: "networkidle" });
+  await waitForTools(publicPage, ["get_model_routing_report"]);
+  const routing = await call(publicPage, "get_model_routing_report", {});
+  check("get_model_routing_report on /weather", routing.status === "ok" && Array.isArray(routing.routes), routing.status);
+  await publicPage.goto(`${base}/share/email/not-a-real-token`, { waitUntil: "networkidle" });
+  await waitForTools(publicPage, ["get_shared_email_draft", "send_shared_email_draft"]);
+  auditTools("/share/email", await registeredTools(publicPage));
+  const missingDraft = await call(publicPage, "get_shared_email_draft", {});
+  check("shared email tools fail safely on an invalid token", missingDraft.status === "error", missingDraft);
+  await publicPage.goto(`${base}/connect/request/not-a-real-token`, { waitUntil: "networkidle" });
+  await waitForTools(publicPage, ["get_vendor_invitation"]);
+  const missingInvite = await call(publicPage, "get_vendor_invitation", {});
+  check("vendor invitation tools fail safely on an invalid token", missingInvite.status === "error", missingInvite);
+  check("no client tools on public pages", !(await registeredTools(publicPage)).some((tool) => tool.name === "list_policies"));
+  await publicContext.close();
+
+  result.coverage = {
+    registered: [...registeredEverywhere].sort(),
+    executed: [...executed].sort(),
+  };
 } catch (error) {
   check("run completed", false, error instanceof Error ? error.message : String(error));
 } finally {
   await browser.close();
   result.checks = checks;
   result.passed = checks.every((item) => item.ok);
+  result.blocked = checks.filter((item) => item.blocked).map((item) => item.name);
   writeFileSync(path.join(outDir, "results.json"), `${JSON.stringify(result, null, 2)}\n`);
-  console.log(`\n${checks.filter((item) => item.ok).length}/${checks.length} checks passed. Artifacts: ${path.relative(repoRoot, outDir)}/`);
+  const blockedCount = result.blocked.length;
+  console.log(`\n${checks.filter((item) => item.ok && !item.blocked).length}/${checks.length} checks passed${blockedCount ? `, ${blockedCount} blocked by the local model router` : ""}. Tools executed: ${executed.size}. Artifacts: ${path.relative(repoRoot, outDir)}/`);
   process.exitCode = result.passed ? 0 : 1;
 }

@@ -342,26 +342,37 @@ The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP 
 
 ## Browser WebMCP tools
 
-`lib/webmcp/catalog.ts` defines the WebMCP tools that Chrome agents can call in
-the Spot web app; `docs/architecture/webmcp.md` has the full table. Declarative
-tools on the signup, login, and onboarding forms are `request_signup_code`,
-`verify_signup_code`, `request_login_code`, `verify_login_code`,
-`submit_user_profile`, `submit_company_profile`, and `finish_onboarding`. OTP
-verification stays mandatory.
+`lib/webmcp/catalog.ts` and `lib/webmcp/definitions/*` define the WebMCP tools
+Chrome agents can call in the Spot web app. `docs/architecture/webmcp.md` holds
+the per-page list and the UI parity table; `/llms.txt` is generated from the
+catalog. There are 133 tools. Seven are declarative, on the signup, login, and
+onboarding forms: `request_signup_code`, `verify_signup_code`,
+`request_login_code`, `verify_login_code`, `submit_user_profile`,
+`submit_company_profile`, and `finish_onboarding`. OTP verification stays
+mandatory. The other 126 are imperative. Client tools cover
+policies, certificates, compliance, requests, shared files, agent threads and
+drafted email, mailbox review items, notifications, connections, organization
+settings, team, agent channels, company wiki, workflow and notification
+settings, integrations, mailboxes, beta features, and the personal profile.
+Public token tools cover shared packets, shared email reviews, vendor
+invitations, and the model routing report.
 
-Imperative tools register only for an onboarded customer account in a live
-client org, and never for operators, including during impersonation. The read
-tools register on every client page: `list_policies`, `get_policy`,
-`search_policy_wording`, `list_certificates`, `list_insurance_requests`,
-`get_insurance_request`, and `list_compliance_requirements`. `open_spot_page` and
-`start_spot_agent_thread` also register on every client page. Page-scoped writes
-are `generate_certificate` (certificates, compliance, policies),
-`create_insurance_request` and `attach_request_document` (requests), and
-`recheck_compliance_requirement` (compliance).
+Effect and access:
 
-Each tool calls the public Convex function the UI already uses, under the same
-session authorization. None sends email, contacts brokers, or binds coverage.
-Agent-thread email drafts keep their existing explicit send confirmation.
+- Every tool executes its action directly with no confirmation step. That
+  includes `send_email_draft`, `send_email_drafts`, `send_shared_email_draft`,
+  invitations, removals, and deletions, the same as clicking in the UI.
+- Each tool calls the public Convex function the UI calls, under the same
+  session or page-token authorization, so it can do nothing the user cannot do.
+  `readOnlyHint` marks exactly the `list_*`, `get_*`, and `search_*` tools.
+  `consequentialHint` marks external sends, AI-cost, and irreversible actions,
+  and does not block.
+- Client tools register only for onboarded customer accounts in live client
+  orgs, never for operators or during impersonation, and only on their pages.
+  Admin-only UI actions register only for org admins.
+- Actions clients cannot perform are not exposed: policy upload, editing, and
+  archiving; file management; request editing and proposals; agent email
+  handle edits; Slack channel creation; and organization reset.
 
 ## Markdown frontends and MCP boundaries
 

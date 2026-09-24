@@ -164,7 +164,8 @@ export function webMcpParamAttributes(name: WebMcpToolName, param: string) {
   const definition = getWebMcpTool(name);
   return {
     name: param,
-    toolparamdescription: definition.params?.[param],
+    toolparamdescription:
+      definition.surface === "declarative" ? definition.params?.[param] : undefined,
   };
 }
 
