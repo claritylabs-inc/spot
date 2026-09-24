@@ -74,7 +74,6 @@ type OperatorToolSpec<TSchema extends z.ZodType> = {
   description: string;
   inputSchema: TSchema;
   capability: string;
-  family?: "company_email";
   effect: OperatorToolEffect;
   requiredRole: OperatorToolRole;
   confirmation: "none" | "exact";
