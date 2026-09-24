@@ -8,6 +8,7 @@
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import type { PdfPageText } from "./pdfText";
 
 export type PolicyIntakeDocumentClass =
@@ -50,7 +51,6 @@ export type PolicyIntakeDecision = {
 const MAX_EVIDENCE_CHARS = 60_000;
 const MAX_RELATIONSHIP_EVIDENCE_CHARS = 20_000;
 const MAX_RELATIONSHIP_CANDIDATES = 20;
-const RELATIONSHIP_MIN_CONFIDENCE = 0.6;
 
 const SPECIMEN_POLICY_MARKER = /\bSPECIMEN\s+(?:INSURANCE\s+)?POLICY\b/i;
 const SPECIMEN_POLICY_HEADING =
@@ -137,18 +137,16 @@ export function buildIntakeEvidence(
   return { complete, text };
 }
 
-/** Rejection thresholds from the original document gate. */
+/** Reject only when Jev is sufficiently sure the document is not a policy. */
 export function shouldRejectPolicyIntake(decision: {
   classification: PolicyIntakeDocumentClass;
   confidence: number;
 }): boolean {
-  if (decision.classification === "non_insurance") {
-    return decision.confidence >= 0.5;
-  }
-  if (decision.classification === "insurance_related_but_not_bound_policy") {
-    return decision.confidence >= 0.65;
-  }
-  return false;
+  return (
+    (decision.classification === "non_insurance" ||
+      decision.classification === "insurance_related_but_not_bound_policy") &&
+    jevProceeds(decision.confidence)
+  );
 }
 
 function normalized(value: string | undefined) {
@@ -299,7 +297,7 @@ export async function classifyPolicyIntake(args: {
     const relationshipAnswer = result.answers.relationship;
     const relationship: PolicyIntakeDecision["relationship"] =
       relationshipAnswer?.type === "choice" &&
-      relationshipAnswer.confidence >= RELATIONSHIP_MIN_CONFIDENCE
+      jevProceeds(relationshipAnswer.confidence)
         ? {
             ...parseRelationshipChoice(
               relationshipAnswer.choice,

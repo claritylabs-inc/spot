@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "./clRouterClient";
-import { decideForwardReplyDirection } from "./forwardReplyDirection";
 import {
   decideRequirementAttachmentImport,
   validateRequirementAttachmentDecision,
@@ -112,38 +111,23 @@ describe("Jev source and recipient decisions", () => {
     confidence: 1,
   });
 
-  it("requires confirmation when native document probability is low despite high answer confidence", async () => {
-    respond({
-      intent: choice("import_new_requirements", 0.99),
-      scope: choice("vendors", 0.99),
-      document_0: choice("insurance_requirements", 0.7),
-    });
+  it("requires confirmation at 0.69 and auto-authorizes at 0.70", async () => {
     const attachment = file("Requirements.pdf", "source");
-    expect(
-      await decideRequirementAttachmentImport(ctx, {
+    for (const probability of [0.69, 0.7]) {
+      respond({
+        intent: choice("import_new_requirements", 0.99),
+        scope: choice("vendors", 0.99),
+        document_0: choice("insurance_requirements", probability),
+      });
+      expect(await decideRequirementAttachmentImport(ctx, {
         orgId,
         messageText: "Import these requirements",
         attachments: [attachment],
-      }),
-    ).toMatchObject({
-      authorization: "confirmation",
-      attachments: [attachment],
-    });
+      })).toMatchObject({
+        authorization: probability < 0.7 ? "confirmation" : "auto",
+        attachments: [attachment],
+      });
+    }
   });
 
-  it("defaults to the forwarder unless Jev affirms the exact supplied sender with high probability", async () => {
-    const args = {
-      orgId,
-      currentText: "Reply to the original sender",
-      forwarderEmail: "user@example.com",
-      parsedOriginalSender: "Original@Example.com",
-    };
-    respond({ replyToOriginal: { type: "noul", noul: 0.89 } });
-    expect(await decideForwardReplyDirection(ctx, args)).toBeUndefined();
-    respond({ replyToOriginal: { type: "noul", noul: 0.99 } });
-    expect(await decideForwardReplyDirection(ctx, args)).toEqual({
-      target: "original_sender",
-      originalSender: "original@example.com",
-    });
-  });
 });

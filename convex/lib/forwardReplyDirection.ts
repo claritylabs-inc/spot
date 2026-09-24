@@ -3,6 +3,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import type { ForwardReplyDirection } from "./inboundEmailParser";
 
 export async function decideForwardReplyDirection(
@@ -38,7 +39,7 @@ export async function decideForwardReplyDirection(
       },
     }, { telemetry: _ctx });
     const answer = result.answers.replyToOriginal;
-    return answer?.type === "noul" && answer.noul >= 0.9
+    return answer?.type === "noul" && jevProceeds(answer.noul)
       ? { target: "original_sender", originalSender }
       : undefined;
   } catch {

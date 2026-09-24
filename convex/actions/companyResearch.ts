@@ -13,10 +13,10 @@ import {
 import { generateObjectForOrg } from "../lib/models";
 import { ORG_WIKI_SECTIONS } from "../lib/orgWiki";
 import { clRouterDecide } from "../lib/clRouterClient";
+import { jevProceeds } from "../lib/jevThreshold";
 import {
   gatherProfileEvidence,
   selectBrokerAppetite,
-  RESEARCH_CONFIDENCE,
 } from "../lib/profileResearchOrchestrator";
 import { runProfileWebRetrieval } from "../lib/webRetrieval";
 
@@ -113,7 +113,7 @@ export const run = internalAction({
       );
       const selected = (key: string) => {
         const answer = start.answers[key];
-        return answer?.type === "noul" && answer.noul > RESEARCH_CONFIDENCE;
+        return answer?.type === "noul" && jevProceeds(answer.noul);
       };
       const identitySteps = [
         ...(selected("searchIdentity")
@@ -216,7 +216,7 @@ export const run = internalAction({
       const identityAnswer = verified.answers.identity;
       if (
         identityAnswer?.type !== "noul" ||
-        identityAnswer.noul <= RESEARCH_CONFIDENCE
+        !jevProceeds(identityAnswer.noul)
       ) {
         await ctx.runMutation(completeRef, {
           ...base,
@@ -296,12 +296,12 @@ export const run = internalAction({
       );
       const verifiedFacts = citedFacts.filter((_, index) => {
         const answer = verification.answers[`fact_${index}`];
-        return answer?.type === "noul" && answer.noul > RESEARCH_CONFIDENCE;
+        return answer?.type === "noul" && jevProceeds(answer.noul);
       });
       const officeAnswer = verification.answers.office;
       const verifiedOffice =
         officeAnswer?.type === "noul" &&
-        officeAnswer.noul > RESEARCH_CONFIDENCE;
+        jevProceeds(officeAnswer.noul);
       await ctx.runMutation(completeRef, {
         ...base,
         website,

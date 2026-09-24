@@ -5,6 +5,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import type { RequirementScope } from "./complianceTypes";
 import type { WorkflowOutcome } from "./workflows/types";
 
@@ -150,8 +151,8 @@ export function validateRequirementAttachmentDecision<
   );
   const autoAuthorized =
     Boolean(decision.intentEvidence.trim()) &&
-    decision.confidence >= 0.9 &&
-    selectedConfidence >= 0.9;
+    jevProceeds(decision.confidence) &&
+    jevProceeds(selectedConfidence);
 
   return {
     authorization: autoAuthorized ? "auto" : "confirmation",

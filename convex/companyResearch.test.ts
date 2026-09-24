@@ -67,6 +67,19 @@ async function fixture() {
   return { t, orgId };
 }
 
+test("starts identity research at 0.70 but skips it at 0.69", async () => {
+  for (const probability of [0.69, 0.7]) {
+    const { t, orgId } = await fixture();
+    vi.mocked(clRouterDecide).mockResolvedValueOnce({
+      answers: { searchIdentity: { type: "noul", noul: probability } },
+    } as never);
+    vi.mocked(runProfileWebRetrieval).mockRejectedValueOnce(new Error("offline"));
+    await t.action(run, { orgId });
+    expect(runProfileWebRetrieval).toHaveBeenCalledTimes(probability < 0.7 ? 0 : 1);
+    vi.mocked(runProfileWebRetrieval).mockClear();
+  }
+});
+
 test("intake searches public identity and adds cited facts without replacing manual prose", async () => {
   const { t, orgId } = await fixture();
   const original =

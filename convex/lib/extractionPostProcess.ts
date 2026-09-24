@@ -7,6 +7,7 @@ import { scopeCoveragesWithClassifier } from "./coverageScoping";
 import { insuranceDocToPolicy } from "./documentMapping";
 import { applyPolicyPeriodFallback } from "./policyPeriodExtraction";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 
 type SourceSpanLike = {
   text?: string;
@@ -44,8 +45,6 @@ export type ExtractionPostProcessResult = {
   coverageReviewQuestionCount: number;
 };
 
-const GROUNDING_SUPPORT_MIN_PROBABILITY = 0.8;
-const ORG_NAME_MIN_CONFIDENCE = 0.6;
 const MAX_GROUNDING_QUESTIONS = 40;
 const MAX_CITED_TEXT_CHARS = 1_400;
 const MAX_ORG_NAME_CANDIDATES = 6;
@@ -566,7 +565,7 @@ async function verifyGroundingClaims(
     }, { telemetry: options.ctx });
     return new Set(batch.flatMap((claim, index) => {
       const answer = result.answers[`claim_${index}`];
-      return answer?.type === "noul" && answer.noul >= GROUNDING_SUPPORT_MIN_PROBABILITY
+      return answer?.type === "noul" && jevProceeds(answer.noul)
         ? [claim.key]
         : [];
     }));
@@ -668,7 +667,7 @@ async function normalizeOrgNamesWithClassifier(
       if (answer?.type !== "choice") continue;
       const confidence = Math.min(answer.confidence, answer.probabilities[answer.choice] ?? 0);
       const spelling = item.candidates[Number(answer.choice.replace("spelling_", ""))];
-      if (confidence < ORG_NAME_MIN_CONFIDENCE || answer.choice === "keep_extracted" || !spelling) {
+      if (!jevProceeds(confidence) || answer.choice === "keep_extracted" || !spelling) {
         continue;
       }
       const [field, child] = item.key.split(".");

@@ -50,6 +50,20 @@ beforeEach(() => {
 });
 
 describe("classifyPolicyIntake", () => {
+  it("rejects non-policy choices and accepts relationships only at 0.70", async () => {
+    for (const confidence of [0.69, 0.7]) {
+      respond({
+        classification: choice("non_insurance", confidence),
+        relationship: choice("renewal__policy_old", confidence),
+      });
+      const decision = await classifyPolicyIntake({
+        ctx, orgId, pageCount: 2, pages, existingPolicies,
+      });
+      expect(decision.shouldExtract).toBe(confidence < 0.7);
+      expect(decision.relationship.kind).toBe(confidence < 0.7 ? "unknown" : "renewal");
+    }
+  });
+
   it("asks classification and relationship in one decide call", async () => {
     respond({
       classification: choice("bound_policy_document", 0.93),
@@ -101,7 +115,7 @@ describe("classifyPolicyIntake", () => {
     });
   });
 
-  it("rejects confident non-policy documents with the original thresholds", async () => {
+  it("rejects confident non-policy documents", async () => {
     respond({ classification: choice("insurance_related_but_not_bound_policy", 0.7) });
 
     const decision = await classifyPolicyIntake({ ctx, orgId, pageCount: 2, pages, existingPolicies: [] });

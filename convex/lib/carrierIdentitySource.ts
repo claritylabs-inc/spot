@@ -6,6 +6,7 @@ import {
 } from "./carrierIdentity";
 import { CARRIER_IDENTITY_ENRICHMENT_VERSION } from "./carrierIdentityEnrichment";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 
@@ -707,7 +708,6 @@ function carrierCandidates(params: CarrierEvidenceParams) {
   };
 }
 
-const CARRIER_DECISION_MIN_CONFIDENCE = 0.6;
 const MAX_CARRIER_CANDIDATES = 24;
 
 export async function resolveCarrierIdentityDecision(args: {
@@ -767,14 +767,14 @@ export async function resolveCarrierIdentityDecision(args: {
       answer.probabilities[answer.choice] ?? 0,
     );
     const chosen = candidates[Number(answer.choice.replace("candidate_", ""))];
-    if (confidence < CARRIER_DECISION_MIN_CONFIDENCE || answer.choice === "none" || !chosen) {
+    if (!jevProceeds(confidence) || answer.choice === "none" || !chosen) {
       return {
         version: "carrier-identity-decision-v1",
         insurerLegalName: null,
         relationship: "unknown",
         confidence,
         sourceSpanIds: [],
-        ...(confidence < CARRIER_DECISION_MIN_CONFIDENCE
+        ...(!jevProceeds(confidence)
           ? {
               reviewReason: `Carrier identity is ambiguous across ${candidates.length} source candidates; confirm the issuing insurer.`,
             }
