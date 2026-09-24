@@ -14,6 +14,7 @@ import { typeStyle } from "@/lib/typography";
 import {
   agentSubmitEvent,
   respondToAgent,
+  useWebMcpEnabled,
   useWebMcpToolActivated,
   webMcpError,
   webMcpFormAttributes,
@@ -46,6 +47,7 @@ export function AuthEntryPage({
   mode: "login" | "signup";
   role?: "broker" | "client";
 }) {
+  const webMcpEnabled = useWebMcpEnabled();
   const { signIn } = useAuthActions();
   const { isAuthenticated } = useConvexAuth();
   const router = useRouter();
@@ -186,7 +188,7 @@ export function AuthEntryPage({
             key={requestCodeTool}
             onSubmit={handleEmailSubmit}
             className="space-y-4"
-            {...webMcpFormAttributes(requestCodeTool)}
+            {...(webMcpEnabled ? webMcpFormAttributes(requestCodeTool) : {})}
           >
             <div>
               <label htmlFor="auth-email" className={`text-muted-foreground block mb-1.5 ${typeStyle("label.field")}`}>
@@ -194,7 +196,7 @@ export function AuthEntryPage({
               </label>
               <input
                 id="auth-email"
-                {...webMcpParamAttributes(requestCodeTool, "email")}
+                {...(webMcpEnabled ? webMcpParamAttributes(requestCodeTool, "email") : {})}
                 type="email"
                 autoComplete="email"
                 value={email}
@@ -230,7 +232,7 @@ export function AuthEntryPage({
             key={verifyCodeTool}
             onSubmit={handleCodeSubmit}
             className="space-y-4"
-            {...webMcpFormAttributes(verifyCodeTool)}
+            {...(webMcpEnabled ? webMcpFormAttributes(verifyCodeTool) : {})}
           >
             <div>
               <label htmlFor="auth-verification-code" className={`text-muted-foreground block mb-2 ${typeStyle("label.field")}`}>
@@ -239,7 +241,7 @@ export function AuthEntryPage({
               <OtpField
                 id="auth-verification-code"
                 name="code"
-                paramDescription={webMcpParamAttributes(verifyCodeTool, "code").toolparamdescription}
+                paramDescription={(webMcpEnabled ? webMcpParamAttributes(verifyCodeTool, "code").toolparamdescription : undefined)}
                 value={code}
                 onValueChange={setCode}
                 autoFocus

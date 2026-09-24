@@ -30,6 +30,7 @@ import { typeStyle } from "@/lib/typography";
 import {
   agentSubmitEvent,
   respondToAgent,
+  useWebMcpEnabled,
   useWebMcpToolActivated,
   webMcpError,
   webMcpFormAttributes,
@@ -171,6 +172,7 @@ function Shell({
 }
 
 export default function ClientOnboardingSetupPage() {
+  const webMcpEnabled = useWebMcpEnabled();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signOut } = useAuthActions();
@@ -515,7 +517,7 @@ export default function ClientOnboardingSetupPage() {
           <form
             onSubmit={submitStep0}
             className="space-y-10"
-            {...webMcpFormAttributes("submit_user_profile")}
+            {...(webMcpEnabled ? webMcpFormAttributes("submit_user_profile") : {})}
           >
             <div className="space-y-4">
               <div className="space-y-2">
@@ -523,7 +525,7 @@ export default function ClientOnboardingSetupPage() {
                   Your name
                 </label>
                 <input
-                  {...webMcpParamAttributes("submit_user_profile", "name")}
+                  {...(webMcpEnabled ? webMcpParamAttributes("submit_user_profile", "name") : {})}
                   type="text"
                   autoComplete="name"
                   value={userName}
@@ -539,7 +541,7 @@ export default function ClientOnboardingSetupPage() {
                   Your role
                 </label>
                 <input
-                  {...webMcpParamAttributes("submit_user_profile", "title")}
+                  {...(webMcpEnabled ? webMcpParamAttributes("submit_user_profile", "title") : {})}
                   type="text"
                   autoComplete="organization-title"
                   value={userRole}
@@ -554,7 +556,7 @@ export default function ClientOnboardingSetupPage() {
                   Mobile number (optional)
                 </label>
                 <PhoneInput
-                  {...webMcpParamAttributes("submit_user_profile", "phone")}
+                  {...(webMcpEnabled ? webMcpParamAttributes("submit_user_profile", "phone") : {})}
                   value={userPhone || undefined}
                   onChange={(value) => setUserPhone(value ?? "")}
                   defaultCountry="US"
@@ -607,7 +609,7 @@ export default function ClientOnboardingSetupPage() {
           <form
             onSubmit={submitStep1}
             className="space-y-10"
-            {...webMcpFormAttributes("submit_company_profile")}
+            {...(webMcpEnabled ? webMcpFormAttributes("submit_company_profile") : {})}
           >
             <div className="space-y-4">
               <div className="space-y-2">
@@ -615,7 +617,7 @@ export default function ClientOnboardingSetupPage() {
                   Organization name
                 </label>
                 <input
-                  {...webMcpParamAttributes("submit_company_profile", "organization_name")}
+                  {...(webMcpEnabled ? webMcpParamAttributes("submit_company_profile", "organization_name") : {})}
                   type="text"
                   autoComplete="organization"
                   value={orgName}
@@ -631,7 +633,7 @@ export default function ClientOnboardingSetupPage() {
                   Website (optional)
                 </label>
                 <input
-                  {...webMcpParamAttributes("submit_company_profile", "website")}
+                  {...(webMcpEnabled ? webMcpParamAttributes("submit_company_profile", "website") : {})}
                   type="text"
                   inputMode="url"
                   value={website}
@@ -673,7 +675,7 @@ export default function ClientOnboardingSetupPage() {
           <form
             onSubmit={submitFinish}
             className="space-y-10"
-            {...webMcpFormAttributes("finish_onboarding")}
+            {...(webMcpEnabled ? webMcpFormAttributes("finish_onboarding") : {})}
           >
             <ol
               className={`list-none space-y-4 text-muted-foreground [&>li]:flex [&>li]:gap-4 ${typeStyle("body.default")}`}
