@@ -8,12 +8,7 @@
  * @module
  */
 
-import type * as acordTaxonomyBackfillBatches from "../acordTaxonomyBackfillBatches.js";
-import type * as actions_backfillAcordTaxonomy from "../actions/backfillAcordTaxonomy.js";
-import type * as actions_backfillCarrierIdentity from "../actions/backfillCarrierIdentity.js";
-import type * as actions_backfillLinesOfBusiness from "../actions/backfillLinesOfBusiness.js";
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
-import type * as actions_cleanupLegacyLineOfBusinessFields from "../actions/cleanupLegacyLineOfBusinessFields.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
 import type * as actions_companyInformationExtraction from "../actions/companyInformationExtraction.js";
@@ -29,7 +24,6 @@ import type * as actions_enrichCarrierIdentity from "../actions/enrichCarrierIde
 import type * as actions_extractCompanyInfo from "../actions/extractCompanyInfo.js";
 import type * as actions_extractFromUpload from "../actions/extractFromUpload.js";
 import type * as actions_extractSupplementary from "../actions/extractSupplementary.js";
-import type * as actions_extractionIntegrityAudit from "../actions/extractionIntegrityAudit.js";
 import type * as actions_generateCoi from "../actions/generateCoi.js";
 import type * as actions_handleInboundEmail from "../actions/handleInboundEmail.js";
 import type * as actions_handleInboundImessage from "../actions/handleInboundImessage.js";
@@ -52,6 +46,7 @@ import type * as actions_processThreadChat from "../actions/processThreadChat.js
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
 import type * as actions_reExtractFromFile from "../actions/reExtractFromFile.js";
+import type * as actions_reextractLegacyPolicies from "../actions/reextractLegacyPolicies.js";
 import type * as actions_renderEmailPreview from "../actions/renderEmailPreview.js";
 import type * as actions_retryExtraction from "../actions/retryExtraction.js";
 import type * as actions_routerAssets from "../actions/routerAssets.js";
@@ -73,10 +68,7 @@ import type * as agentHistory from "../agentHistory.js";
 import type * as agentTargets from "../agentTargets.js";
 import type * as appCardLinks from "../appCardLinks.js";
 import type * as auth from "../auth.js";
-import type * as backfillDeclarationFacts from "../backfillDeclarationFacts.js";
-import type * as backfillLinesOfBusinessBatches from "../backfillLinesOfBusinessBatches.js";
 import type * as brokerProfiles from "../brokerProfiles.js";
-import type * as carrierIdentityBackfill from "../carrierIdentityBackfill.js";
 import type * as carrierIdentityCache from "../carrierIdentityCache.js";
 import type * as certificateHolders from "../certificateHolders.js";
 import type * as certificateLifecycle from "../certificateLifecycle.js";
@@ -84,7 +76,6 @@ import type * as certificateNotes from "../certificateNotes.js";
 import type * as certificates from "../certificates.js";
 import type * as chatPresentations from "../chatPresentations.js";
 import type * as clRouterOperations from "../clRouterOperations.js";
-import type * as cleanupLegacyLineOfBusinessFieldsBatches from "../cleanupLegacyLineOfBusinessFieldsBatches.js";
 import type * as clientFiles from "../clientFiles.js";
 import type * as clientProcurementRequests from "../clientProcurementRequests.js";
 import type * as companyInformation from "../companyInformation.js";
@@ -101,7 +92,6 @@ import type * as emailDraftReviewLinks from "../emailDraftReviewLinks.js";
 import type * as emailSendAuthorizations from "../emailSendAuthorizations.js";
 import type * as employeeProvisioning from "../employeeProvisioning.js";
 import type * as extractionAccess from "../extractionAccess.js";
-import type * as extractionIntegrityAudit from "../extractionIntegrityAudit.js";
 import type * as extractionProgress from "../extractionProgress.js";
 import type * as extractionTraces from "../extractionTraces.js";
 import type * as http from "../http.js";
@@ -113,7 +103,6 @@ import type * as imessagePrivacy from "../imessagePrivacy.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_acordForms_select from "../lib/acordForms/select.js";
 import type * as lib_acordForms_types from "../lib/acordForms/types.js";
-import type * as lib_acordTaxonomyBackfill from "../lib/acordTaxonomyBackfill.js";
 import type * as lib_acordTaxonomyBackfillReport from "../lib/acordTaxonomyBackfillReport.js";
 import type * as lib_actionConfirmationFingerprint from "../lib/actionConfirmationFingerprint.js";
 import type * as lib_actionFailures from "../lib/actionFailures.js";
@@ -139,7 +128,6 @@ import type * as lib_brandIcon from "../lib/brandIcon.js";
 import type * as lib_branding from "../lib/branding.js";
 import type * as lib_brokerProfileValidation from "../lib/brokerProfileValidation.js";
 import type * as lib_carrierIdentity from "../lib/carrierIdentity.js";
-import type * as lib_carrierIdentityBackfill from "../lib/carrierIdentityBackfill.js";
 import type * as lib_carrierIdentityEnrichment from "../lib/carrierIdentityEnrichment.js";
 import type * as lib_carrierIdentityProjection from "../lib/carrierIdentityProjection.js";
 import type * as lib_carrierIdentitySource from "../lib/carrierIdentitySource.js";
@@ -196,7 +184,6 @@ import type * as lib_emailSubagent from "../lib/emailSubagent.js";
 import type * as lib_emailTemplate from "../lib/emailTemplate.js";
 import type * as lib_emailWorkflow from "../lib/emailWorkflow.js";
 import type * as lib_employeeProvisioning from "../lib/employeeProvisioning.js";
-import type * as lib_extractionIntegrityAudit from "../lib/extractionIntegrityAudit.js";
 import type * as lib_extractionPostProcess from "../lib/extractionPostProcess.js";
 import type * as lib_extractionPromotion from "../lib/extractionPromotion.js";
 import type * as lib_extractionPromptGuidance from "../lib/extractionPromptGuidance.js";
@@ -339,7 +326,6 @@ import type * as lib_workflows_mailboxTasks from "../lib/workflows/mailboxTasks.
 import type * as lib_workflows_types from "../lib/workflows/types.js";
 import type * as markdownDocuments from "../markdownDocuments.js";
 import type * as memoryMaintenance from "../memoryMaintenance.js";
-import type * as migrations from "../migrations.js";
 import type * as modelRoutingEvents from "../modelRoutingEvents.js";
 import type * as modelSettings from "../modelSettings.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
@@ -377,6 +363,7 @@ import type * as proposalSourceNodes from "../proposalSourceNodes.js";
 import type * as proposalSourceSpans from "../proposalSourceSpans.js";
 import type * as quoBrokerWebhook from "../quoBrokerWebhook.js";
 import type * as rateLimits from "../rateLimits.js";
+import type * as reextractLegacyPolicies from "../reextractLegacyPolicies.js";
 import type * as requirementExtractionRuns from "../requirementExtractionRuns.js";
 import type * as routerAssets from "../routerAssets.js";
 import type * as routerJobs from "../routerJobs.js";
@@ -400,12 +387,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  acordTaxonomyBackfillBatches: typeof acordTaxonomyBackfillBatches;
-  "actions/backfillAcordTaxonomy": typeof actions_backfillAcordTaxonomy;
-  "actions/backfillCarrierIdentity": typeof actions_backfillCarrierIdentity;
-  "actions/backfillLinesOfBusiness": typeof actions_backfillLinesOfBusiness;
   "actions/chatPresentations": typeof actions_chatPresentations;
-  "actions/cleanupLegacyLineOfBusinessFields": typeof actions_cleanupLegacyLineOfBusinessFields;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
   "actions/companyInformationExtraction": typeof actions_companyInformationExtraction;
@@ -421,7 +403,6 @@ declare const fullApi: ApiFromModules<{
   "actions/extractCompanyInfo": typeof actions_extractCompanyInfo;
   "actions/extractFromUpload": typeof actions_extractFromUpload;
   "actions/extractSupplementary": typeof actions_extractSupplementary;
-  "actions/extractionIntegrityAudit": typeof actions_extractionIntegrityAudit;
   "actions/generateCoi": typeof actions_generateCoi;
   "actions/handleInboundEmail": typeof actions_handleInboundEmail;
   "actions/handleInboundImessage": typeof actions_handleInboundImessage;
@@ -444,6 +425,7 @@ declare const fullApi: ApiFromModules<{
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
   "actions/reExtractFromFile": typeof actions_reExtractFromFile;
+  "actions/reextractLegacyPolicies": typeof actions_reextractLegacyPolicies;
   "actions/renderEmailPreview": typeof actions_renderEmailPreview;
   "actions/retryExtraction": typeof actions_retryExtraction;
   "actions/routerAssets": typeof actions_routerAssets;
@@ -465,10 +447,7 @@ declare const fullApi: ApiFromModules<{
   agentTargets: typeof agentTargets;
   appCardLinks: typeof appCardLinks;
   auth: typeof auth;
-  backfillDeclarationFacts: typeof backfillDeclarationFacts;
-  backfillLinesOfBusinessBatches: typeof backfillLinesOfBusinessBatches;
   brokerProfiles: typeof brokerProfiles;
-  carrierIdentityBackfill: typeof carrierIdentityBackfill;
   carrierIdentityCache: typeof carrierIdentityCache;
   certificateHolders: typeof certificateHolders;
   certificateLifecycle: typeof certificateLifecycle;
@@ -476,7 +455,6 @@ declare const fullApi: ApiFromModules<{
   certificates: typeof certificates;
   chatPresentations: typeof chatPresentations;
   clRouterOperations: typeof clRouterOperations;
-  cleanupLegacyLineOfBusinessFieldsBatches: typeof cleanupLegacyLineOfBusinessFieldsBatches;
   clientFiles: typeof clientFiles;
   clientProcurementRequests: typeof clientProcurementRequests;
   companyInformation: typeof companyInformation;
@@ -493,7 +471,6 @@ declare const fullApi: ApiFromModules<{
   emailSendAuthorizations: typeof emailSendAuthorizations;
   employeeProvisioning: typeof employeeProvisioning;
   extractionAccess: typeof extractionAccess;
-  extractionIntegrityAudit: typeof extractionIntegrityAudit;
   extractionProgress: typeof extractionProgress;
   extractionTraces: typeof extractionTraces;
   http: typeof http;
@@ -505,7 +482,6 @@ declare const fullApi: ApiFromModules<{
   "lib/access": typeof lib_access;
   "lib/acordForms/select": typeof lib_acordForms_select;
   "lib/acordForms/types": typeof lib_acordForms_types;
-  "lib/acordTaxonomyBackfill": typeof lib_acordTaxonomyBackfill;
   "lib/acordTaxonomyBackfillReport": typeof lib_acordTaxonomyBackfillReport;
   "lib/actionConfirmationFingerprint": typeof lib_actionConfirmationFingerprint;
   "lib/actionFailures": typeof lib_actionFailures;
@@ -531,7 +507,6 @@ declare const fullApi: ApiFromModules<{
   "lib/branding": typeof lib_branding;
   "lib/brokerProfileValidation": typeof lib_brokerProfileValidation;
   "lib/carrierIdentity": typeof lib_carrierIdentity;
-  "lib/carrierIdentityBackfill": typeof lib_carrierIdentityBackfill;
   "lib/carrierIdentityEnrichment": typeof lib_carrierIdentityEnrichment;
   "lib/carrierIdentityProjection": typeof lib_carrierIdentityProjection;
   "lib/carrierIdentitySource": typeof lib_carrierIdentitySource;
@@ -588,7 +563,6 @@ declare const fullApi: ApiFromModules<{
   "lib/emailTemplate": typeof lib_emailTemplate;
   "lib/emailWorkflow": typeof lib_emailWorkflow;
   "lib/employeeProvisioning": typeof lib_employeeProvisioning;
-  "lib/extractionIntegrityAudit": typeof lib_extractionIntegrityAudit;
   "lib/extractionPostProcess": typeof lib_extractionPostProcess;
   "lib/extractionPromotion": typeof lib_extractionPromotion;
   "lib/extractionPromptGuidance": typeof lib_extractionPromptGuidance;
@@ -731,7 +705,6 @@ declare const fullApi: ApiFromModules<{
   "lib/workflows/types": typeof lib_workflows_types;
   markdownDocuments: typeof markdownDocuments;
   memoryMaintenance: typeof memoryMaintenance;
-  migrations: typeof migrations;
   modelRoutingEvents: typeof modelRoutingEvents;
   modelSettings: typeof modelSettings;
   notificationPreferences: typeof notificationPreferences;
@@ -769,6 +742,7 @@ declare const fullApi: ApiFromModules<{
   proposalSourceSpans: typeof proposalSourceSpans;
   quoBrokerWebhook: typeof quoBrokerWebhook;
   rateLimits: typeof rateLimits;
+  reextractLegacyPolicies: typeof reextractLegacyPolicies;
   requirementExtractionRuns: typeof requirementExtractionRuns;
   routerAssets: typeof routerAssets;
   routerJobs: typeof routerJobs;
