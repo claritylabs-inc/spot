@@ -3,7 +3,13 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { isValidPhoneNumber } from "react-phone-number-input";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { BrandWordmark } from "@/components/auth-shell";
@@ -21,6 +27,15 @@ import {
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
+import {
+  agentSubmitEvent,
+  respondToAgent,
+  useWebMcpToolActivated,
+  webMcpError,
+  webMcpFormAttributes,
+  webMcpParamAttributes,
+  type WebMcpResult,
+} from "@/lib/webmcp/runtime";
 
 const AGENT_DOMAIN = getPublicAgentDomain();
 const SPOT_IMESSAGE_NUMBER = AGENT_TEXT_NUMBER;
@@ -260,41 +275,39 @@ export default function ClientOnboardingSetupPage() {
     router.replace("/login");
   }, [signOut, router]);
 
-  const handleStep0Next = useCallback(async () => {
+  const handleStep0Next = useCallback(async (profile: {
+    name: string;
+    title: string;
+    phone?: string;
+  }): Promise<WebMcpResult> => {
     setSubmitting(true);
     setError("");
     try {
-      await updateProfile({
-        name: userName.trim(),
-        title: userRole.trim(),
-        phone: trimmedUserPhone || undefined,
-      });
-      patchViewer({
-        name: userName.trim(),
-        title: userRole.trim(),
-        phone: trimmedUserPhone || undefined,
-      });
+      await updateProfile(profile);
+      patchViewer(profile);
       setCurrentStep(1);
+      return { status: "profile_saved", next_tool: "submit_company_profile" };
     } catch (e) {
-      const message = getUserFacingErrorMessage(e, "Failed to save");
-      setError(
-        message.includes("This phone number is already used")
-          ? "This phone number is already used by another user."
-          : message.includes("Enter a valid phone number")
-            ? "Enter a valid phone number with country code."
-            : message,
-      );
+      const raw = getUserFacingErrorMessage(e, "Failed to save");
+      const message = raw.includes("This phone number is already used")
+        ? "This phone number is already used by another user."
+        : raw.includes("Enter a valid phone number")
+          ? "Enter a valid phone number with country code."
+          : raw;
+      setError(message);
+      return webMcpError(message, { next_tool: "submit_user_profile" });
     } finally {
       setSubmitting(false);
     }
-  }, [patchViewer, updateProfile, userName, userRole, trimmedUserPhone]);
+  }, [patchViewer, updateProfile]);
 
-  const handleStep1Next = useCallback(async () => {
+  const handleStep1Next = useCallback(async (
+    trimmedName: string,
+    trimmedSite: string,
+  ): Promise<WebMcpResult> => {
     setSubmitting(true);
     setError("");
     try {
-      const trimmedName = orgName.trim();
-      const trimmedSite = website.trim();
       if (viewerOrg?.org) {
         await updateOrg({
           name: trimmedName || undefined,
@@ -323,8 +336,15 @@ export default function ClientOnboardingSetupPage() {
           .catch(() => toast.dismiss(enrichToast));
       }
       setCurrentStep(2);
+      return {
+        status: "organization_saved",
+        organization_name: trimmedName,
+        next_tool: "finish_onboarding",
+      };
     } catch (e) {
-      setError(getUserFacingErrorMessage(e, "Failed to save"));
+      const message = getUserFacingErrorMessage(e, "Failed to save");
+      setError(message);
+      return webMcpError(message, { next_tool: "submit_company_profile" });
     } finally {
       setSubmitting(false);
     }
@@ -332,25 +352,123 @@ export default function ClientOnboardingSetupPage() {
     updateOrg,
     createClientOrg,
     viewerOrg,
-    orgName,
-    website,
     extractCompanyInfo,
     patchViewerOrg,
   ]);
 
-  const handleFinish = useCallback(async () => {
+  const handleFinish = useCallback(async (): Promise<WebMcpResult> => {
     setSubmitting(true);
     setError("");
     try {
       await completeOnboarding();
       patchViewer({ onboardingComplete: true });
       patchViewerOrg({ onboardingComplete: true });
-      router.replace(isVendorInvite ? "/connect/clients" : "/");
+      const nextUrl = isVendorInvite ? "/connect/clients" : "/";
+      router.replace(nextUrl);
+      return {
+        status: "onboarding_complete",
+        next_url: nextUrl,
+        message:
+          "Setup is complete. The client workspace registers list_policies, get_policy, list_insurance_requests, and the other signed-in tools listed at /llms.txt.",
+        next_tool: "list_policies",
+      };
     } catch (e) {
-      setError(getUserFacingErrorMessage(e, "Failed to finish"));
+      const message = getUserFacingErrorMessage(e, "Failed to finish");
+      setError(message);
       setSubmitting(false);
+      return webMcpError(message, { next_tool: "finish_onboarding" });
     }
   }, [completeOnboarding, isVendorInvite, patchViewer, patchViewerOrg, router]);
+
+  useWebMcpToolActivated("submit_user_profile", () => {
+    const form = document.querySelector<HTMLFormElement>(
+      'form[toolname="submit_user_profile"]',
+    );
+    if (!form) return;
+    const data = new FormData(form);
+    setUserName(String(data.get("name") ?? ""));
+    setUserRole(String(data.get("title") ?? ""));
+  });
+
+  useWebMcpToolActivated("submit_company_profile", () => {
+    const form = document.querySelector<HTMLFormElement>(
+      'form[toolname="submit_company_profile"]',
+    );
+    if (!form) return;
+    const data = new FormData(form);
+    setOrgName(String(data.get("organization_name") ?? ""));
+    setWebsite(String(data.get("website") ?? ""));
+  });
+
+  function submitStep0(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const agentEvent = agentSubmitEvent(e);
+    if (!agentEvent) {
+      if (canContinueStep0 && !submitting) {
+        void handleStep0Next({
+          name: userName.trim(),
+          title: userRole.trim(),
+          phone: trimmedUserPhone || undefined,
+        });
+      }
+      return;
+    }
+    const data = new FormData(e.currentTarget);
+    const name = String(data.get("name") ?? "").trim();
+    const title = String(data.get("title") ?? "").trim();
+    const phone = String(data.get("phone") ?? "").trim();
+    setUserName(name);
+    setUserRole(title);
+    const invalid = !name || !title
+      ? "Provide both name and title."
+      : phone && (!phone.startsWith("+") || !isValidPhoneNumber(phone))
+        ? "Enter phone in international format, for example +14155550123, or leave it empty."
+        : null;
+    if (!invalid && phone) setUserPhone(phone);
+    respondToAgent(
+      agentEvent,
+      invalid
+        ? Promise.resolve(webMcpError(invalid, { next_tool: "submit_user_profile" }))
+        : handleStep0Next({ name, title, phone: phone || undefined }),
+    );
+  }
+
+  function submitStep1(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const agentEvent = agentSubmitEvent(e);
+    if (!agentEvent) {
+      if (canContinueStep1 && !submitting) {
+        void handleStep1Next(orgName.trim(), website.trim());
+      }
+      return;
+    }
+    const data = new FormData(e.currentTarget);
+    const name = String(data.get("organization_name") ?? "").trim();
+    const site = String(data.get("website") ?? "").trim();
+    setOrgName(name);
+    setWebsite(site);
+    respondToAgent(
+      agentEvent,
+      name
+        ? handleStep1Next(name, site)
+        : Promise.resolve(
+            webMcpError("Provide the organization name.", {
+              next_tool: "submit_company_profile",
+            }),
+          ),
+    );
+  }
+
+  function submitFinish(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const agentEvent = agentSubmitEvent(e);
+    if (submitting) {
+      respondToAgent(agentEvent, Promise.resolve(webMcpError("Setup is already finishing.")));
+      return;
+    }
+    const result = handleFinish();
+    respondToAgent(agentEvent, result);
+  }
 
   const canContinueStep0 =
     userName.trim().length > 0 && userRole.trim().length > 0 && !phoneBlocked;
@@ -395,12 +513,9 @@ export default function ClientOnboardingSetupPage() {
 
         {currentStep === 0 && (
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!canContinueStep0 || submitting) return;
-              void handleStep0Next();
-            }}
+            onSubmit={submitStep0}
             className="space-y-10"
+            {...webMcpFormAttributes("submit_user_profile")}
           >
             <div className="space-y-4">
               <div className="space-y-2">
@@ -408,7 +523,9 @@ export default function ClientOnboardingSetupPage() {
                   Your name
                 </label>
                 <input
+                  {...webMcpParamAttributes("submit_user_profile", "name")}
                   type="text"
+                  autoComplete="name"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
                   id="onboarding-name"
@@ -422,7 +539,9 @@ export default function ClientOnboardingSetupPage() {
                   Your role
                 </label>
                 <input
+                  {...webMcpParamAttributes("submit_user_profile", "title")}
                   type="text"
+                  autoComplete="organization-title"
                   value={userRole}
                   onChange={(e) => setUserRole(e.target.value)}
                   id="onboarding-role"
@@ -435,6 +554,7 @@ export default function ClientOnboardingSetupPage() {
                   Mobile number (optional)
                 </label>
                 <PhoneInput
+                  {...webMcpParamAttributes("submit_user_profile", "phone")}
                   value={userPhone || undefined}
                   onChange={(value) => setUserPhone(value ?? "")}
                   defaultCountry="US"
@@ -485,12 +605,9 @@ export default function ClientOnboardingSetupPage() {
 
         {currentStep === 1 && (
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!canContinueStep1 || submitting) return;
-              void handleStep1Next();
-            }}
+            onSubmit={submitStep1}
             className="space-y-10"
+            {...webMcpFormAttributes("submit_company_profile")}
           >
             <div className="space-y-4">
               <div className="space-y-2">
@@ -498,7 +615,9 @@ export default function ClientOnboardingSetupPage() {
                   Organization name
                 </label>
                 <input
+                  {...webMcpParamAttributes("submit_company_profile", "organization_name")}
                   type="text"
+                  autoComplete="organization"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                   id="onboarding-organization"
@@ -512,7 +631,9 @@ export default function ClientOnboardingSetupPage() {
                   Website (optional)
                 </label>
                 <input
+                  {...webMcpParamAttributes("submit_company_profile", "website")}
                   type="text"
+                  inputMode="url"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
                   id="onboarding-website"
@@ -549,7 +670,11 @@ export default function ClientOnboardingSetupPage() {
         )}
 
         {currentStep === 2 && (
-          <div className="space-y-10">
+          <form
+            onSubmit={submitFinish}
+            className="space-y-10"
+            {...webMcpFormAttributes("finish_onboarding")}
+          >
             <ol
               className={`list-none space-y-4 text-muted-foreground [&>li]:flex [&>li]:gap-4 ${typeStyle("body.default")}`}
             >
@@ -637,8 +762,7 @@ export default function ClientOnboardingSetupPage() {
             ) : null}
 
             <PillButton
-              type="button"
-              onClick={handleFinish}
+              type="submit"
               disabled={submitting}
               className="w-full justify-center shadow-none sm:w-auto"
             >
@@ -649,7 +773,7 @@ export default function ClientOnboardingSetupPage() {
               )}
               {submitting ? "Finishing…" : "Finish setup"}
             </PillButton>
-          </div>
+          </form>
         )}
       </div>
     </Shell>

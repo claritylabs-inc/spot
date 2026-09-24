@@ -340,6 +340,29 @@ The tenant MCP catalog is separate from the model-callable tools above. It curre
 
 The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP action also passes the caller's write-scope state into the shared client-tool executors and mailbox coordinator, which removes nested write tools from the executable map for read-only tokens.
 
+## Browser WebMCP tools
+
+`lib/webmcp/catalog.ts` defines the WebMCP tools that Chrome agents can call in
+the Spot web app; `docs/architecture/webmcp.md` has the full table. Declarative
+tools on the signup, login, and onboarding forms are `request_signup_code`,
+`verify_signup_code`, `request_login_code`, `verify_login_code`,
+`submit_user_profile`, `submit_company_profile`, and `finish_onboarding`. OTP
+verification stays mandatory.
+
+Imperative tools register only for an onboarded customer account in a live
+client org, and never for operators, including during impersonation. The read
+tools register on every client page: `list_policies`, `get_policy`,
+`search_policy_wording`, `list_certificates`, `list_insurance_requests`,
+`get_insurance_request`, and `list_compliance_requirements`. `open_spot_page` and
+`start_spot_agent_thread` also register on every client page. Page-scoped writes
+are `generate_certificate` (certificates, compliance, policies),
+`create_insurance_request` and `attach_request_document` (requests), and
+`recheck_compliance_requirement` (compliance).
+
+Each tool calls the public Convex function the UI already uses, under the same
+session authorization. None sends email, contacts brokers, or binds coverage.
+Agent-thread email drafts keep their existing explicit send confirmation.
+
 ## Markdown frontends and MCP boundaries
 
 - Company knowledge is a standard `.md` document with YAML front matter. Direct members can read it; direct admins can import, edit, download and save it using revision checks. Automated facts preserve arbitrary authored prose and surface conflicts as proposed changes.

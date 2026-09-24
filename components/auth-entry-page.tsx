@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -11,6 +11,15 @@ import { completeOtpSignIn } from "@/lib/otp-auth";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
+import {
+  agentSubmitEvent,
+  respondToAgent,
+  useWebMcpToolActivated,
+  webMcpError,
+  webMcpFormAttributes,
+  webMcpParamAttributes,
+  type WebMcpResult,
+} from "@/lib/webmcp/runtime";
 
 function friendlyError(raw: string): string {
   const lower = raw.toLowerCase();
@@ -41,9 +50,14 @@ export function AuthEntryPage({
 
   const isBroker = role === "broker";
   const nextPath = searchParams.get("next");
-  const defaultPostLogin = isBroker && mode === "signup"
+  const isSignup = mode === "signup";
+  const defaultPostLogin = isSignup
+    ? isBroker
       ? "/onboarding?type=broker"
-      : "/";
+      : "/onboarding"
+    : "/";
+  const requestCodeTool = isSignup ? "request_signup_code" : "request_login_code";
+  const verifyCodeTool = isSignup ? "verify_signup_code" : "verify_login_code";
   const postLoginPath =
     nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : defaultPostLogin;
 
@@ -57,36 +71,92 @@ export function AuthEntryPage({
     if (isAuthenticated) router.replace(postLoginPath);
   }, [isAuthenticated, postLoginPath, router]);
 
+  useWebMcpToolActivated(requestCodeTool, () => {
+    const input = document.querySelector<HTMLInputElement>(
+      `form[toolname="${requestCodeTool}"] input[name="email"]`,
+    );
+    if (input) setEmail(input.value);
+  });
+
   if (isAuthenticated) return null;
 
-  async function handleEmailSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function requestCode(nextEmail: string): Promise<WebMcpResult> {
     setLoading(true);
     setError("");
     try {
-      await signIn("resend-otp", { email });
+      await signIn("resend-otp", { email: nextEmail });
+      setEmail(nextEmail);
       setStep("code");
+      return {
+        status: "code_sent",
+        email: nextEmail,
+        message: `Spot emailed a 6-digit verification code to ${nextEmail}. It expires in 15 minutes. Ask the account owner for the code (or read it from a mailbox you are authorized to access); never guess it.`,
+        next_tool: verifyCodeTool,
+      };
     } catch (err: unknown) {
-      setError(friendlyError(getUserFacingErrorMessage(err, "")));
+      const message = friendlyError(getUserFacingErrorMessage(err, ""));
+      setError(message);
+      return webMcpError(message, { next_tool: requestCodeTool });
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleCodeSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyCode(nextCode: string): Promise<WebMcpResult> {
     setLoading(true);
     setError("");
     try {
-      await completeOtpSignIn(email, code);
-      window.location.assign(postLoginPath);
+      await completeOtpSignIn(email, nextCode);
+      return {
+        status: "signed_in",
+        email,
+        next_url: postLoginPath,
+        message: isSignup
+          ? "Verified. Spot is opening account setup; new accounts continue with submit_user_profile."
+          : "Verified. Spot is opening the workspace.",
+        ...(isSignup && !isBroker ? { next_tool: "submit_user_profile" } : {}),
+      };
     } catch (err: unknown) {
-      setError(friendlyError(getUserFacingErrorMessage(err, "")));
+      const message = friendlyError(getUserFacingErrorMessage(err, ""));
+      setError(message);
       setLoading(false);
+      return webMcpError(message, { next_tool: verifyCodeTool });
     }
   }
 
-  const isSignup = mode === "signup";
+  function handleEmailSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const agentEvent = agentSubmitEvent(e);
+    const submitted = agentEvent
+      ? String(new FormData(e.currentTarget).get("email") ?? "").trim()
+      : email;
+    const result = submitted
+      ? requestCode(submitted)
+      : Promise.resolve(webMcpError("Provide a work email address."));
+    respondToAgent(agentEvent, result);
+  }
+
+  function handleCodeSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const agentEvent = agentSubmitEvent(e);
+    const submitted = agentEvent
+      ? String(new FormData(e.currentTarget).get("code") ?? "").replace(/\D/g, "")
+      : code;
+    if (agentEvent) setCode(submitted);
+    const result =
+      submitted.length === 6
+        ? verifyCode(submitted)
+        : Promise.resolve(
+            webMcpError("The verification code must be exactly 6 digits.", {
+              next_tool: verifyCodeTool,
+            }),
+          );
+    respondToAgent(agentEvent, result);
+    void result.then((outcome) => {
+      if (outcome.status === "signed_in") window.location.assign(postLoginPath);
+    });
+  }
+
   const title = isSignup
     ? isBroker
       ? "Create your brokerage account"
@@ -109,13 +179,21 @@ export function AuthEntryPage({
         logo={<BrandWordmark />}
       >
         {step === "email" ? (
-          <form onSubmit={handleEmailSubmit} className="space-y-4">
+          <form
+            key={requestCodeTool}
+            onSubmit={handleEmailSubmit}
+            className="space-y-4"
+            {...webMcpFormAttributes(requestCodeTool)}
+          >
             <div>
-              <label className={`text-muted-foreground block mb-1.5 ${typeStyle("label.field")}`}>
+              <label htmlFor="auth-email" className={`text-muted-foreground block mb-1.5 ${typeStyle("label.field")}`}>
                 Email Address
               </label>
               <input
+                id="auth-email"
+                {...webMcpParamAttributes(requestCodeTool, "email")}
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
@@ -145,12 +223,25 @@ export function AuthEntryPage({
             </div>
           </form>
         ) : (
-          <form onSubmit={handleCodeSubmit} className="space-y-4">
+          <form
+            key={verifyCodeTool}
+            onSubmit={handleCodeSubmit}
+            className="space-y-4"
+            {...webMcpFormAttributes(verifyCodeTool)}
+          >
             <div>
               <label htmlFor="auth-verification-code" className={`text-muted-foreground block mb-2 ${typeStyle("label.field")}`}>
                 Verification Code
               </label>
-              <OtpField id="auth-verification-code" value={code} onValueChange={setCode} autoFocus required />
+              <OtpField
+                id="auth-verification-code"
+                name="code"
+                paramDescription={webMcpParamAttributes(verifyCodeTool, "code").toolparamdescription}
+                value={code}
+                onValueChange={setCode}
+                autoFocus
+                required
+              />
               <p className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}>
                 We sent a 6-digit code to <span className={`text-foreground ${typeStyle("body.medium")}`}>{email}</span>
               </p>

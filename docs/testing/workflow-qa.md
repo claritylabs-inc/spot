@@ -73,6 +73,7 @@ establish authenticated production workflow coverage.
 | ROUTING | Operator / Routing | Inspect Routing/Models/Tools, refresh, filters and details; verify long data/mobile rendering. Shared router changes are read-only during local QA. |
 | TELEMETRY | Operator / Telemetry | Switch extraction/model views, inspect empty/populated failures and drill-down, verify recoverable errors and navigation. |
 | LEADS | Operator / Demo leads | Inspect empty state and synthetic public chat if locally available, open lead details and conversation, preserve prospect privacy. |
+| WEBMCP | Agent / signup, onboarding, client workspace | Run `node scripts/webmcp-e2e.mjs --seeded-client adyan@cove.dev`: declarative signup/login/onboarding tools respond with structured results, a brand-new business reaches its workspace without an invite, imperative tools register only for onboarded clients on their pages with valid schemas, and all unregister on sign-out. |
 | PUBLIC | Anonymous / share, OAuth, weather | Inspect valid synthetic packet/email/iMessage links where fixture exists; invalid tokens fail safely, OAuth invalid requests disclose no secrets, weather renders responsively. |
 
 ## Coverage ledger
@@ -99,6 +100,7 @@ baseline evidence, not a substitute for this run's regression checks.
 | AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits and survives reload; cancellation, archive/restore and mobile rendering passed. A synthetic PDF can be staged/removed/restaged, read accurately, reopened from history and previewed after reload. |
 | PACKET, PROPOSAL, EMAIL | Passed exercised local flows | Packet-file autosave, immutable/revoked snapshots, public download/privacy, proposal gap/staleness, two-PDF extraction/review and email replay/classification/revision/download passed. Concurrency/failed-switch safeguards covered by focused tests; advanced edges listed below. |
 | LEADS | Passed synthetic populated lifecycle | Keyboard detail opening, stored lead facts/conversation, delete cancellation, confirmed deletion and mobile rendering passed. Internal fixture creation does not prove live public-demo ingress. |
+| WEBMCP | Passed scripted headless run (September 24, 2026) | 44/44 checks passed; artifact `.context/qa/webmcp/results.json` and screenshots. Covered: agent and typed signup, invite-free org creation, login tools, request create/attach/get, seeded policy detail, wording search, and certificate generation. The run used a stub `modelContext`, not Chrome's native WebMCP. `start_spot_agent_thread` and `recheck_compliance_requirement` registered but were not executed. |
 | NOTIFICATIONS | Passed local tray workflow | Empty baseline and two synthetic user-scoped items; opening a thread marks one read, mark-all clears the badge, both read states persist after reload. No outbound deliveries. |
 
 ## Batch 1: broker editing and reusable method

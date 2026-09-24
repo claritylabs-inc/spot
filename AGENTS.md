@@ -806,6 +806,8 @@ Onboarding is role-specific.
 - `/signup` opens the client email/OTP form directly; `/signup/client` remains a compatible entrypoint. Broker accounts are provisioned by operators.
 - `/onboarding` routes broker organizations to `/onboarding/broker`; new users without an organization and client users continue to `/onboarding/setup`.
 - Client setup has three steps: identity (name, role, optional phone), organization (name and optional website enrichment), and finish. Policy uploads are operator-only and are not offered during client onboarding. Finish shows an agent email only when the organization has a configured handle.
+- Client signup is self-serve and invite-free: OTP verification, then `orgs.createClientOrg` creates a live client org with the signer as admin. `/signup/client` is the canonical URL shared with spot.insure (supports `?email=`); client signup lands on `/onboarding` after verification.
+- WebMCP: `lib/webmcp/catalog.ts` owns every browser tool name and description; auth and onboarding forms are declarative tools, and `components/webmcp/client-webmcp-tools.tsx` registers imperative tools for onboarded client accounts only. `/llms.txt` is generated from the catalog. See `docs/architecture/webmcp.md`; tool names are a contract with the landing site.
 - `/broker/team` hosts the shared team settings actions and sidebar through `SettingsActionsContext`, including member editing and invitations.
 
 Passport onboarding (`/onboarding/passport/*`) has been removed.
