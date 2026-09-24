@@ -7,7 +7,6 @@
 // ── Still exported from SDK ──
 export { stripFences, sanitizeNulls, extractPageRange, getPdfPageCount } from "@claritylabs/cl-sdk";
 export { CONTEXT_KEY_MAP } from "@claritylabs/cl-sdk";
-export { chunkDocument, createExtractor } from "@claritylabs/cl-sdk";
 
 // ── Types ──
 export type { LogFn, ContextKeyMapping, TokenUsage, ConvertPdfToImagesFn, PdfInput } from "@claritylabs/cl-sdk";
@@ -16,7 +15,9 @@ export type { ExtractorConfig, ExtractionResult, ExtractOptions, InsuranceDocume
 // ── Local re-exports ──
 export { insuranceDocToPolicy, policyToInsuranceDoc } from "./documentMapping";
 
-// ── Spot extraction factory ──
+// Removed at integration with P3: buildExtractor wraps cl-sdk's deprecated
+// createExtractor engine. convex/actions/policyExtraction.ts still imports it
+// on this branch's baseline; P3 replaces that pipeline and removes this import.
 import { createExtractor } from "@claritylabs/cl-sdk";
 import type { LogFn, TokenUsage } from "@claritylabs/cl-sdk";
 import { makeGenerateObject } from "./sdkCallbacks";

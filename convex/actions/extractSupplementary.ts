@@ -17,17 +17,13 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import {
-  getExtractor,
-  toStrictSchema,
-  withRetry,
-  getPdfPageCount,
-  chunkDocument,
-} from "@claritylabs/cl-sdk";
+import { toStrictSchema, withRetry, getPdfPageCount } from "@claritylabs/cl-sdk";
 import { policyToInsuranceDoc } from "../lib/documentMapping";
 import { makeGenerateObject, makeEmbedText } from "../lib/sdkCallbacks";
 import type { Doc, Id } from "../_generated/dataModel";
-import { tryBuildParsedPdfText } from "../lib/liteparsePreprocessor";
+import { extractPdfPlainText } from "../lib/pdfText";
+import { chunkPolicyDocument } from "../lib/policyChunks";
+import { buildSupplementaryPrompt, SupplementarySchema, SUPPLEMENTARY_MAX_TOKENS } from "../lib/supplementaryExtraction";
 
 /**
  * Build a summary of data already captured by structured extractors.
@@ -120,14 +116,11 @@ export const extractOne = internalAction({
     const arrayBuffer = await blob.arrayBuffer();
     const pdfBase64: string = Buffer.from(arrayBuffer).toString("base64");
 
-    const supplementary = getExtractor("supplementary");
-    if (!supplementary) throw new Error("Supplementary extractor not found in SDK");
-
     const generateObject = makeGenerateObject("extraction", {
       ctx,
       orgId: policy.orgId as Id<"organizations">,
     });
-    const parsedPdfText = await tryBuildParsedPdfText({
+    const parsedPdfText = await extractPdfPlainText({
       pdfBytes: new Uint8Array(arrayBuffer),
       documentId: String(args.policyId),
       sourceKind: "policy_pdf",
@@ -135,18 +128,16 @@ export const extractOne = internalAction({
 
     // Build dedup context so the LLM skips already-extracted data
     const alreadyExtracted = buildAlreadyExtractedSummary(policy);
-    // buildPrompt accepts optional alreadyExtractedSummary in 0.13.1+ (types lag behind)
-    const buildPrompt = supplementary.buildPrompt as (summary?: string) => string;
     const prompt = parsedPdfText
-      ? `${buildPrompt(alreadyExtracted || undefined)}\n\n[Document text parsed with LiteParse]\n${parsedPdfText}`
-      : `${buildPrompt(alreadyExtracted || undefined)}\n\n[Document pages 1-${await getPdfPageCount(pdfBase64)} are provided as a PDF file.]`;
-    const strictSchema = toStrictSchema(supplementary.schema);
+      ? `${buildSupplementaryPrompt(alreadyExtracted || undefined)}\n\n[Document text]\n${parsedPdfText}`
+      : `${buildSupplementaryPrompt(alreadyExtracted || undefined)}\n\n[Document pages 1-${await getPdfPageCount(pdfBase64)} are provided as a PDF file.]`;
+    const strictSchema = toStrictSchema(SupplementarySchema);
 
     const result: { object: unknown; usage?: unknown } = await withRetry(() =>
       generateObject({
         prompt,
         schema: strictSchema,
-        maxTokens: supplementary.maxTokens ?? 2048,
+        maxTokens: SUPPLEMENTARY_MAX_TOKENS,
         providerOptions: parsedPdfText ? { parsedPdfText } : { pdfBase64 },
       }),
     );
@@ -182,7 +173,7 @@ export const extractOne = internalAction({
         supplementaryFacts: facts,
 
       } as any);
-      const allChunks = chunkDocument(doc);
+      const allChunks = chunkPolicyDocument(doc);
       const newChunks = allChunks.filter((c) => c.type === "supplementary");
 
       if (newChunks.length > 0) {
