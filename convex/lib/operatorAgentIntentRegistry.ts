@@ -1,3 +1,5 @@
+import type { OperatorToolFamily } from "./operatorAgentToolRegistry";
+
 type PageContext = {
   pageType: string;
   entityId?: string;
@@ -127,4 +129,27 @@ export function resolveOperatorAgentIntent(
     }
   }
   return intent;
+}
+
+const OPERATOR_AGENT_INTENT_FAMILIES: Record<
+  string,
+  readonly OperatorToolFamily[]
+> = {
+  find_account_or_policy: ["policies", "broker_network", "procurement"],
+  check_system_health: ["platform", "extraction"],
+  search_company_email: ["company_email"],
+  investigate_recent_failures: ["platform", "extraction", "policies", "procurement"],
+  review_client: ["policies", "compliance", "client_files", "wiki", "procurement"],
+  update_client: ["organizations", "wiki", "web"],
+  start_procurement: ["procurement", "policies", "client_files", "wiki"],
+  review_procurement: ["procurement", "broker_network", "client_files"],
+  investigate_policy: ["policies", "extraction"],
+  prepare_certificate: ["compliance", "policies"],
+  review_client_knowledge: ["client_files", "wiki"],
+};
+
+export function operatorAgentIntentFamilies(intentId: string) {
+  return Object.hasOwn(OPERATOR_AGENT_INTENT_FAMILIES, intentId)
+    ? OPERATOR_AGENT_INTENT_FAMILIES[intentId]
+    : undefined;
 }
