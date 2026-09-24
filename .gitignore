@@ -25,6 +25,7 @@
 *.pem
 /tmp
 /docs/*
+!/docs/shared-ui-proposal.md
 !/docs/help/
 /docs/help/*
 !/docs/help/README.md
