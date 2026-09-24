@@ -34,19 +34,15 @@ function address(value: unknown): PolicyPartyAddress | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   const result: OperationalAddress = {
-    street1: text(record.street1) ?? text(record.line1) ?? text(record.addressLine1),
-    street2: text(record.street2) ?? text(record.line2) ?? text(record.addressLine2),
-    city: text(record.city) ?? text(record.locality),
-    state: text(record.state) ?? text(record.region),
-    zip: text(record.zip) ?? text(record.postalCode) ?? text(record.postcode),
+    street1: text(record.street1),
+    street2: text(record.street2),
+    city: text(record.city),
+    state: text(record.state),
+    zip: text(record.zip),
     country: text(record.country),
     formatted: text(record.formatted),
   };
   return Object.values(result).some(Boolean) ? result : undefined;
-}
-
-function joinLines(...values: Array<string | undefined>) {
-  return values.filter(Boolean).join("\n") || undefined;
 }
 
 function normalizedIdentity(value: unknown) {
@@ -63,17 +59,6 @@ function matchingIdentifier(
     normalizedIdentity(candidate.name) === resolvedIdentity && text(candidate.identifier)
   );
   return text(match?.identifier);
-}
-
-function declarationValues(policy: Record<string, any>) {
-  const fields = Array.isArray(policy.declarations?.fields)
-    ? policy.declarations.fields as Array<Record<string, unknown>>
-    : [];
-  return (...names: string[]) => {
-    const accepted = new Set(names);
-    const match = fields.find((field) => accepted.has(String(field.field ?? "")));
-    return text(match?.value);
-  };
 }
 
 function profileParty(
@@ -161,28 +146,20 @@ export function resolvePolicyPartyContext(
   policy: Record<string, any>,
 ) {
   const profile = compatibilityRecord(policy.operationalProfile) as Partial<PolicyOperationalProfile>;
-  const declarationValue = declarationValues(policy);
   const producer = compatibilityRecord(policy.producer);
   const insurer = compatibilityRecord(policy.insurer);
   const generalAgent = compatibilityRecord(policy.generalAgent);
-  const legacyMga = compatibilityRecord(policy.mga);
   const detailOverrides = compatibilityRecord(policy.policyDetailOverrides);
   const insuredOverride = ownedRecord(detailOverrides, "insured");
   const producerOverride = ownedRecord(detailOverrides, "producer");
   const insurerOverride = ownedRecord(detailOverrides, "insurer");
-  const generalAgentOverride =
-    ownedRecord(detailOverrides, "generalAgent") ??
-    ownedRecord(detailOverrides, "mga");
+  const generalAgentOverride = ownedRecord(detailOverrides, "generalAgent");
 
-  const insuredParty = profileParty(profile, ["named_insured", "insured", "client"]);
-  const producerParty = profileParty(profile, ["producer", "broker", "agent"]);
+  const insuredParty = profileParty(profile, ["named_insured"]);
+  const producerParty = profileParty(profile, ["producer", "broker"]);
   const insurerParty = profileParty(profile, ["insurer"]);
   const carrierParty = profileParty(profile, ["carrier"]);
-  const generalAgentParty = profileParty(profile, [
-    "general_agent",
-    "mga",
-    "administrator",
-  ]);
+  const generalAgentParty = profileParty(profile, ["general_agent"]);
   const declarationFacts = Array.isArray(profile.declarationFacts)
     ? profile.declarationFacts as Array<{ field?: string; address?: unknown }>
     : [];
@@ -194,33 +171,21 @@ export function resolvePolicyPartyContext(
     ? text(insuredOverride.name)
     : insuredParty?.name ??
       sourceBackedText(profile.namedInsured) ??
-      text(policy.insuredName) ??
-      declarationValue("masterPolicyHolderAndMailingAddressName")?.replace(/;$/, "");
+      text(policy.insuredName);
   const insuredAddress = insuredOverride
     ? address(insuredOverride.address)
     : insuredParty?.address ??
       sourceBackedMailingAddress ??
-      address(policy.insuredAddress) ??
-      joinLines(
-        declarationValue("masterPolicyHolderAndMailingAddressStreet")?.replace(/;$/, ""),
-        declarationValue("masterPolicyHolderAndMailingAddressCityStateZip"),
-      );
+      address(policy.insuredAddress);
   const producerName = producerOverride
     ? text(producerOverride.name)
     : producerParty?.name ??
       sourceBackedText(profile.broker) ??
-      text(producer.agencyName) ??
-      text(policy.brokerAgency) ??
-      text(policy.broker) ??
-      joinLines(declarationValue("producerName"), declarationValue("producerDBA"));
+      text(producer.agencyName);
   const producerAddress = producerOverride
     ? address(producerOverride.address)
     : producerParty?.address ??
-      address(producer.address) ??
-      joinLines(
-        declarationValue("producerAddressStreetSuite"),
-        declarationValue("producerAddressCityStateZip"),
-      );
+      address(producer.address);
   const producerContactName = producerOverride
     ? text(producerOverride.contactName)
     : text(producer.contactName);
@@ -235,10 +200,6 @@ export function resolvePolicyPartyContext(
     : matchingIdentifier(producerName, [
       { name: producerParty?.name, identifier: producerParty?.licenseNumber },
       { name: producer.agencyName, identifier: producer.licenseNumber },
-      {
-        name: text(policy.brokerAgency) ?? text(policy.broker),
-        identifier: policy.brokerLicenseNumber,
-      },
     ]);
   const carrierIdentity = insurerOverride
     ? undefined
@@ -253,8 +214,7 @@ export function resolvePolicyPartyContext(
       text(insurer.legalName) ??
       text(policy.carrierLegalName) ??
       text(policy.security) ??
-      text(policy.carrier) ??
-      declarationValue("insurerName");
+      text(policy.carrier);
   const carrierDisplayName = insurerOverride
     ? text(insurerOverride.name)
     : carrierIdentity?.displayName ??
@@ -285,8 +245,7 @@ export function resolvePolicyPartyContext(
     : hasMultipleLegalEntities
       ? undefined
       : resolvedInsurerParty?.address ??
-      address(insurer.address) ??
-      joinLines(declarationValue("insurerAddress1"), declarationValue("insurerCityStateZip"));
+      address(insurer.address);
   const insurerNaicNumber = insurerOverride
     ? text(insurerOverride.naicNumber)
     : hasMultipleLegalEntities
@@ -305,11 +264,7 @@ export function resolvePolicyPartyContext(
   const extractedGeneralAgentName =
     generalAgentParty?.name ??
     text(generalAgent.agencyName) ??
-    text(generalAgent.name) ??
-    text(legacyMga.name) ??
-    text(legacyMga.agencyName) ??
-    text(policy.mga) ??
-    declarationValue("generalAgentName", "mgaName", "administratorName");
+    text(generalAgent.name);
   const suppressExtractedGeneralAgent = Boolean(
     !generalAgentOverride &&
     carrierOperatingName &&
@@ -324,8 +279,7 @@ export function resolvePolicyPartyContext(
     : suppressExtractedGeneralAgent
       ? undefined
       : generalAgentParty?.address ??
-      address(generalAgent.address) ??
-      address(legacyMga.address);
+      address(generalAgent.address);
   const generalAgentLicenseNumber = generalAgentOverride
     ? text(generalAgentOverride.licenseNumber)
     : suppressExtractedGeneralAgent
@@ -339,18 +293,13 @@ export function resolvePolicyPartyContext(
         name: text(generalAgent.agencyName) ?? text(generalAgent.name),
         identifier: generalAgent.licenseNumber,
       },
-      {
-        name: text(legacyMga.agencyName) ?? text(legacyMga.name) ?? text(policy.mga),
-        identifier: legacyMga.licenseNumber,
-      },
     ]);
   const operationsDescription = Object.prototype.hasOwnProperty.call(
     detailOverrides,
     "operationsDescription",
   )
     ? text(detailOverrides.operationsDescription)
-    : sourceBackedText(profile.operationsDescription) ??
-      declarationValue("descriptionOfOperations", "operationsDescription", "businessOperations");
+    : sourceBackedText(profile.operationsDescription);
   const additionalNamedInsureds = insuredOverride
     ? (Array.isArray(insuredOverride.additionalNamedInsureds)
       ? insuredOverride.additionalNamedInsureds
@@ -369,12 +318,10 @@ export function resolvePolicyPartyContext(
 
   const rawParties: unknown[] = Array.isArray(profile.parties) ? profile.parties : [];
   const overriddenRoles = new Set<string>([
-    ...(insuredOverride ? ["named_insured", "insured", "client"] : []),
-    ...(producerOverride ? ["producer", "broker", "agent"] : []),
+    ...(insuredOverride ? ["named_insured"] : []),
+    ...(producerOverride ? ["producer", "broker"] : []),
     ...(insurerOverride ? ["insurer", "carrier"] : []),
-    ...(generalAgentOverride
-      ? ["general_agent", "mga", "administrator"]
-      : []),
+    ...(generalAgentOverride ? ["general_agent"] : []),
   ]);
   const parties = rawParties
     .filter((party): party is OperationalParty =>
@@ -388,7 +335,7 @@ export function resolvePolicyPartyContext(
         ) &&
         !(
           suppressExtractedGeneralAgent &&
-          ["general_agent", "mga", "administrator"].includes(
+          ["general_agent"].includes(
             String((party as { role?: unknown }).role).toLowerCase(),
           ) &&
           normalizedIdentity((party as { name?: unknown }).name) ===
@@ -398,15 +345,8 @@ export function resolvePolicyPartyContext(
     )
     .map((party: OperationalParty) => {
       const record = party as ResolvedParty;
-      const rawRole = String(record.role).toLowerCase();
-      const role = ["mga", "administrator"].includes(rawRole)
-        ? "general_agent"
-        : ["broker", "agent"].includes(rawRole)
-          ? "producer"
-          : record.role;
       return {
         ...record,
-        role,
         name: record.name.trim(),
         address: address(record.address),
         sourceNodeIds: record.sourceNodeIds ?? [],
@@ -415,7 +355,7 @@ export function resolvePolicyPartyContext(
     });
   upsertResolvedParty(
     parties,
-    ["named_insured", "insured", "client"],
+    ["named_insured"],
     "named_insured",
     insuredName,
     insuredAddress,
@@ -423,7 +363,7 @@ export function resolvePolicyPartyContext(
   );
   upsertResolvedParty(
     parties,
-    ["producer", "broker", "agent"],
+    ["producer", "broker"],
     "producer",
     producerName,
     producerAddress,
@@ -445,7 +385,7 @@ export function resolvePolicyPartyContext(
   }
   upsertResolvedParty(
     parties,
-    ["general_agent", "mga", "administrator"],
+    ["general_agent"],
     "general_agent",
     generalAgentName,
     generalAgentAddress,
@@ -454,16 +394,11 @@ export function resolvePolicyPartyContext(
           ...generalAgentOverride,
           licenseNumber: generalAgentLicenseNumber,
         }
-      : {
-          ...generalAgent,
-          ...legacyMga,
-          licenseNumber: generalAgentLicenseNumber,
-        },
+      : { ...generalAgent, licenseNumber: generalAgentLicenseNumber },
   );
 
   return {
     profile,
-    declarationValue,
     parties,
     insuredName,
     insuredAddress,

@@ -147,21 +147,15 @@ function titleCase(value: string): string {
 }
 
 function spanId(span: SourceSpanLike): string {
-  return String(span.id ?? span.spanId ?? span.textHash ?? stableHash(span.text ?? "").slice(0, 16));
+  return String(span.id ?? stableHash(span.text ?? "").slice(0, 16));
 }
 
 function pageStart(span: SourceSpanLike): number | undefined {
-  const location = span.location ?? {};
-  return span.pageStart
-    ?? (typeof location.page === "number" ? location.page : undefined)
-    ?? (typeof location.startPage === "number" ? location.startPage : undefined);
+  return span.pageStart;
 }
 
 function pageEnd(span: SourceSpanLike): number | undefined {
-  const location = span.location ?? {};
-  return span.pageEnd
-    ?? (typeof location.endPage === "number" ? location.endPage : undefined)
-    ?? pageStart(span);
+  return span.pageEnd ?? pageStart(span);
 }
 
 function nodeId(documentId: string, kind: string, index: number): string {
@@ -244,12 +238,12 @@ export function sourceSpansForSdk(sourceSpans: SourceSpanLike[], documentId: str
     .filter((span) => typeof span.text === "string")
     .map((span, index) => {
       const rawId = spanId(span);
-      const id = span.id || span.spanId
+      const id = span.id
         ? rawId
         : [
           rawId,
           pageStart(span) ?? "na",
-          span.sourceUnit ?? span.metadata?.sourceUnit ?? span.metadata?.elementType ?? "unit",
+          span.sourceUnit ?? "unit",
           typeof span.table?.rowIndex === "number" ? span.table.rowIndex : "row",
           typeof span.table?.columnIndex === "number" ? span.table.columnIndex : "col",
           index,
@@ -264,13 +258,12 @@ export function sourceSpansForSdk(sourceSpans: SourceSpanLike[], documentId: str
         chunkId: undefined,
         kind: normalizedKind(span.kind),
         text,
-        hash: span.hash ?? span.textHash ?? stableHash(text || id),
-        textHash: span.textHash,
+        hash: span.hash ?? stableHash(text || id),
         pageStart: pageStart(span),
         pageEnd: pageEnd(span),
         sectionId: span.sectionId,
         formNumber: span.formNumber,
-        sourceUnit: normalizedSourceUnit(span.sourceUnit ?? span.metadata?.sourceUnit ?? span.metadata?.elementType),
+        sourceUnit: normalizedSourceUnit(span.sourceUnit),
         parentSpanId: span.parentSpanId,
         table: normalizedTable(span.table),
         bbox: span.bbox,
@@ -1868,10 +1861,6 @@ function carrierNameMatchesSourceDesignation(
 
 function clearedCarrierIdentityState() {
   return {
-    carrierBrandId: undefined,
-    carrierBrandStatus: undefined,
-    carrierBrandAttempts: undefined,
-    carrierBrandAttemptedAt: undefined,
     carrierIdentityEnrichmentStatus: undefined,
     carrierIdentityEnrichmentAttempts: undefined,
     carrierIdentityEnrichmentAttemptedAt: undefined,
@@ -2261,7 +2250,7 @@ export function sourceTreePolicyFields(params: {
         currentGeneralAgent?.agencyName,
         carrierIdentity.operatingName,
       )
-      ? { generalAgent: undefined, mga: undefined }
+      ? { generalAgent: undefined }
       : {}),
   };
 }
@@ -2312,7 +2301,7 @@ export function operationalProfilePolicyFields(
   const insuredParty = partyForRoles("named_insured", "insured");
   const producerParty = partyForRoles("producer", "broker");
   const insurerParty = partyForRoles("insurer", "carrier");
-  const generalAgentParty = partyForRoles("general_agent", "mga", "administrator");
+  const generalAgentParty = partyForRoles("general_agent");
   const insurer = profileInsurer ?? insurerParty?.name;
   const broker = profileBroker ?? producerParty?.name;
   const policyAddress = (party: OperationalParty) => ({ ...party.address });

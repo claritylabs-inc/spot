@@ -28,7 +28,6 @@ type PolicyRow = {
   carrierIdentity?: CarrierIdentity | null;
   policyDetailOverrides?: unknown;
   generalAgent?: { agencyName?: string } | null;
-  mga?: string | null;
   policyNumber?: string | null;
   productIdentity?: unknown;
   programName?: string | null;
@@ -143,9 +142,7 @@ export default function PoliciesPage() {
                 carrier={policy.carrier ?? "Carrier not identified"}
                 carrierIdentity={policy.carrierIdentity}
                 policyDetailOverrides={policy.policyDetailOverrides}
-                generalAgent={
-                  policy.generalAgent?.agencyName ?? policy.mga ?? undefined
-                }
+                generalAgent={policy.generalAgent?.agencyName ?? undefined}
                 policyNumber={
                   policy.policyNumber ?? "Policy number unavailable"
                 }

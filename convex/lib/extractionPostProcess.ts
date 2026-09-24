@@ -58,7 +58,6 @@ const SOURCE_GROUNDED_IDENTITY_FIELDS = [
   "carrierAmBestRating",
   "carrierAdmittedStatus",
   "underwriter",
-  "mga",
   "broker",
   "brokerAgency",
   "brokerContactName",

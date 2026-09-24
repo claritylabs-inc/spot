@@ -172,7 +172,6 @@ async function writePolicyOperatorAudit(
 
 function effectiveExtractionDataStage(policy: {
   extractionDataStage?: string;
-  pipelineStatus?: string;
 }): PolicyExtractionDataStage {
   if (
     policy.extractionDataStage === "placeholder" ||
@@ -181,7 +180,7 @@ function effectiveExtractionDataStage(policy: {
   ) {
     return policy.extractionDataStage;
   }
-  return policy.pipelineStatus === "complete" ? "final" : "placeholder";
+  return "placeholder";
 }
 
 function isFinalExtractedPolicy(policy: {
@@ -209,54 +208,16 @@ function isPreviewReadablePolicy(policy: {
   );
 }
 
-function hasExtractedPolicyIdentity(policy: {
-  carrier?: string;
-  security?: string;
-  generalAgent?: { agencyName?: string };
-  mga?: string;
-  policyNumber?: string;
-  insuredName?: string;
-  summary?: string;
-  coverages?: unknown[];
-}) {
-  const clean = (value?: string) => {
-    const trimmed = value?.trim();
-    return Boolean(trimmed && !/^extracting/i.test(trimmed));
-  };
-  return (
-    clean(policy.carrier) ||
-    clean(policy.security) ||
-    clean(policy.generalAgent?.agencyName) ||
-    clean(policy.mga) ||
-    clean(policy.policyNumber) ||
-    clean(policy.insuredName) ||
-    clean(policy.summary) ||
-    (Array.isArray(policy.coverages) && policy.coverages.length > 0)
-  );
-}
-
 function isVisiblePolicyListRow(policy: {
   extractionDataStage?: string;
   pipelineStatus?: string;
   deletedAt?: number;
-  carrier?: string;
-  security?: string;
-  generalAgent?: { agencyName?: string };
-  mga?: string;
-  policyNumber?: string;
-  insuredName?: string;
-  summary?: string;
-  coverages?: unknown[];
 }) {
   if (policy.deletedAt) return false;
   if (policy.extractionDataStage === "placeholder") return true;
   if (isPreviewReadablePolicy(policy)) return true;
   if (policy.pipelineStatus === "error") return true;
-  return (
-    !policy.extractionDataStage &&
-    !policy.pipelineStatus &&
-    hasExtractedPolicyIdentity(policy)
-  );
+  return false;
 }
 
 const FINAL_EXTRACTION_IDENTITY_FIELDS = [
@@ -805,8 +766,6 @@ export const getSummary = query({
       carrierNaicNumber: enrichedPolicy.carrierNaicNumber,
       security: enrichedPolicy.security,
       generalAgent: enrichedPolicy.generalAgent,
-      // Read compatibility for policies extracted before General Agent nomenclature.
-      mga: enrichedPolicy.mga,
       broker: enrichedPolicy.broker,
       brokerAgency: enrichedPolicy.brokerAgency,
       brokerContactName: enrichedPolicy.brokerContactName,
@@ -1252,7 +1211,6 @@ export const insert = mutation({
     carrier: v.string(),
     security: v.optional(v.string()),
     underwriter: v.optional(v.string()),
-    mga: v.optional(v.string()),
     broker: v.optional(v.string()),
     policyNumber: v.string(),
     linesOfBusiness: v.optional(v.array(v.string())),
@@ -1366,7 +1324,6 @@ export const updateExtraction = mutation({
     carrier: v.optional(v.string()),
     security: v.optional(v.string()),
     underwriter: v.optional(v.string()),
-    mga: v.optional(v.string()),
     broker: v.optional(v.string()),
     // Enriched entity fields (cl-sdk 1.2+)
     carrierIdentity: v.optional(carrierIdentityValidator),
@@ -1965,7 +1922,6 @@ export const confirmPolicyFactFromSource = internalMutation({
       v.object({
         carrier: v.optional(v.string()),
         security: v.optional(v.string()),
-        mga: v.optional(v.string()),
         generalAgentName: v.optional(v.string()),
         broker: v.optional(v.string()),
         policyNumber: v.optional(v.string()),

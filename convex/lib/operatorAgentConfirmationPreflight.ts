@@ -4,7 +4,6 @@ import dayjs from "dayjs";
 
 import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { effectiveExtractionDataStage } from "../backfillDeclarationFacts";
 import {
   validateProcurementRequestCreateByOperator,
   writableProcurementRequestStatus,
@@ -274,7 +273,7 @@ async function preflightConfirmPolicyFact(
   if (
     policy.deletedAt ||
     policy.pipelineStatus !== "complete" ||
-    effectiveExtractionDataStage(policy) !== "final"
+    policy.extractionDataStage !== "final"
   ) {
     throw new Error(
       "Policy facts can be confirmed after full source-backed extraction finishes.",

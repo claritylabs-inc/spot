@@ -38,7 +38,6 @@ import { typeStyle } from "@/lib/typography";
 type ClientPolicyRow = {
   _id: Id<"policies">;
   carrier?: string | null;
-  mga?: string | null;
   policyNumber?: string | null;
   fileName?: string | null;
   effectiveDate?: string | null;

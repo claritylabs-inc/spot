@@ -73,21 +73,15 @@ describe("certificate policy evidence", () => {
 
   it("uses policy operations and address and honors explicit policy clears", () => {
     const policy = {
-      declarations: { fields: [
-        { field: "descriptionOfOperations", value: "Policy-declared operations" },
-        { field: "masterPolicyHolderAndMailingAddressStreet", value: "1 Policy St" },
-      ] },
-    };
-    expect(policyToCoiData(policy)).toMatchObject({
-      description: "Policy-declared operations",
-      insuredAddress: "1 Policy St",
-    });
-    expect(policyToCoiData({
-      ...policy,
+      insuredAddress: { street1: "1 Policy St" },
       operationalProfile: {
         operationsDescription: { value: "Policy operational profile" },
       },
-    }).description).toBe("Policy operational profile");
+    };
+    expect(policyToCoiData(policy)).toMatchObject({
+      description: "Policy operational profile",
+      insuredAddress: { street1: "1 Policy St" },
+    });
     const cleared = policyToCoiData({
       ...policy,
       policyDetailOverrides: { operationsDescription: "", insured: { address: "" } },
