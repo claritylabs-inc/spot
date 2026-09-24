@@ -37,6 +37,7 @@ type PolicyRow = {
   expirationDate?: string | null;
   policyTermType?: string | null;
   pipelineStatus?: string;
+  pipelineError?: string | null;
   extractionDataStage?: string | null;
   uploadedBySide?:
     | "broker"
@@ -155,6 +156,7 @@ export default function PoliciesPage() {
                 expirationDate={policy.expirationDate ?? undefined}
                 policyTermType={policy.policyTermType ?? undefined}
                 pipelineStatus={policy.pipelineStatus}
+                pipelineError={policy.pipelineError ?? undefined}
                 extractionDataStage={policy.extractionDataStage ?? undefined}
                 uploadedBySide={policy.uploadedBySide}
                 href={`/policies/${policy._id}`}

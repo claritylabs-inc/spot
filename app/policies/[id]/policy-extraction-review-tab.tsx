@@ -10,6 +10,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { pendingExtractionReviewQuestions } from "@/lib/extraction-state";
 import { typeStyle } from "@/lib/typography";
 
 type CoverageReviewOption = {
@@ -39,16 +40,7 @@ type CoverageReviewQuestion = {
 export function extractionReviewQuestions(
   policy: Record<string, unknown>,
 ): CoverageReviewQuestion[] {
-  const review = policy.extractionReview as
-    | { questions?: CoverageReviewQuestion[] }
-    | undefined;
-  if (!Array.isArray(review?.questions)) return [];
-  return review.questions.filter(
-    (question) =>
-      question.id &&
-      question.status !== "confirmed" &&
-      question.status !== "dismissed",
-  );
+  return pendingExtractionReviewQuestions<CoverageReviewQuestion>(policy);
 }
 
 function reviewString(value: unknown) {

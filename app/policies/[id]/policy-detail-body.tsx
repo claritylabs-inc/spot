@@ -13,10 +13,9 @@ import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
-import { Archive, Clock3, Loader2, Plus, RotateCw } from "lucide-react";
+import { Archive, Clock3, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import dayjs from "dayjs";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
@@ -28,7 +27,6 @@ import {
   OperationalItem,
   OperationalPanel,
   OperationalPanelBody,
-  OperationalPanelHeader,
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import {
@@ -53,6 +51,7 @@ import {
   extractionReviewQuestions,
   PolicyExtractionReview,
 } from "./policy-extraction-review-tab";
+import { PolicySectionsTab } from "./policy-sections-tab";
 import { PolicyBreakdownEditor } from "./policy-breakdown-editor";
 import {
   PolicyDetailsEditor,
@@ -71,30 +70,21 @@ import {
   formatDisplayPolicyPeriod,
 } from "@/lib/date-format";
 import { policyTermTypeFromVersionSnapshot } from "@/convex/lib/policyVersioning";
-import type { PipelineStatus, LogEntry } from "@claritylabs/cl-pipelines";
 import { PolicyDetailSkeleton } from "./policy-detail-skeleton";
 import { PolicyExtractionBanner } from "@/components/shared/extraction-banner";
-import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
-import { isNonInsuranceDocument } from "@/convex/lib/policyDocumentGate";
-import { typeStyle } from "@/lib/typography";
 import {
-  OperatorPolicyExtractionPanel,
-  OperatorPolicyExtractionHistory,
-  OperatorPolicyInspectionPanel,
-  OperatorPolicyWorkspace,
-  type OperatorPolicyInspection,
-} from "./operator-policy-extraction-workspace";
-
-type PolicyPipelineLogEntry = LogEntry & {
-  timestamp: number;
-  message: string;
-  phase?: string;
-  level?: string;
-};
+  ReextractControl,
+  useReextractControl,
+} from "@/components/shared/reextract-control";
+import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
+import {
+  extractionState,
+  hasFinalExtraction,
+} from "@/lib/extraction-state";
+import { typeStyle } from "@/lib/typography";
 
 type PolicyDetailTab =
-  | "extraction"
-  | "extraction-history"
+  | "sections"
   | "details"
   | "coverages"
   | "review"
@@ -106,8 +96,7 @@ function parsePolicyDetailTab(
   fallback: PolicyDetailTab = "details",
 ): PolicyDetailTab {
   if (
-    value === "extraction" ||
-    value === "extraction-history" ||
+    value === "sections" ||
     value === "details" ||
     value === "coverages" ||
     value === "review" ||
@@ -117,19 +106,6 @@ function parsePolicyDetailTab(
     return value;
   }
   return fallback;
-}
-
-const LOG_POLICY_ACTIVITY_IN_BROWSER =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "development";
-
-function logPolicyActivityToBrowser(
-  event: "status" | "audit" | "pipeline_log",
-  payload: Record<string, unknown>,
-) {
-  if (!LOG_POLICY_ACTIVITY_IN_BROWSER) return;
-  console.info(`[policy-activity] ${event}`, payload);
 }
 
 type PolicyVersionRow = {
@@ -227,34 +203,6 @@ function HistoryDatum({ label, value }: { label: string; value: ReactNode }) {
         {value}
       </p>
     </div>
-  );
-}
-
-function policyDataStage(policy: Record<string, unknown>) {
-  const stage = policy.extractionDataStage;
-  if (stage === "placeholder" || stage === "preview" || stage === "final") {
-    return stage;
-  }
-  return policy.pipelineStatus === "complete" ? "final" : "placeholder";
-}
-
-function ProvisionalPolicyGate({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <OperationalPanel as="div">
-      <OperationalPanelHeader title={title} description={description} />
-      <OperationalPanelBody
-        className={`px-4 py-5 text-muted-foreground ${typeStyle("body.default")}`}
-      >
-        Extraction is complete for this policy. Enrichment is still running, so
-        source-backed actions are held until enrichment finishes.
-      </OperationalPanelBody>
-    </OperationalPanel>
   );
 }
 
@@ -419,10 +367,6 @@ export function PolicyDetailBody({
   const searchParams = useSearchParams();
   const [showCertificateSheet, setShowCertificateSheet] = useState(false);
   const [showEditExtractedFields, setShowEditExtractedFields] = useState(false);
-  const [showOperatorExtractionPanel, setShowOperatorExtractionPanel] =
-    useState(false);
-  const [operatorInspection, setOperatorInspection] =
-    useState<OperatorPolicyInspection | null>(null);
   const [editingPolicyDetails, setEditingPolicyDetails] =
     useState<PolicyDetailsEditSection | null>(null);
   const [selectedCertificate, setSelectedCertificate] =
@@ -436,8 +380,8 @@ export function PolicyDetailBody({
   const [activeTab, setActiveTab] = useState<PolicyDetailTab>(() =>
     parsePolicyDetailTab(
       searchParams.get("tab"),
-      operatorMode && searchParams.get("traceId")
-        ? "extraction-history"
+      operatorMode && (searchParams.get("run") || searchParams.get("traceId"))
+        ? "sections"
         : "details",
     ),
   );
@@ -462,13 +406,7 @@ export function PolicyDetailBody({
     api.certificates.listActivityByPolicy,
     { policyId: id as Id<"policies"> },
   );
-  const extractionTraces = useCachedQuery(
-    "operator.listExtractionTraces",
-    api.operator.listExtractionTraces,
-    operatorMode ? { policyId: id as Id<"policies">, limit: 1 } : "skip",
-  );
   const hasCertificates = (certificates?.length ?? 0) > 0 || (certificateActivity?.certificates.length ?? 0) > 0 || (certificateActivity?.holds.length ?? 0) > 0;
-  const hasExtractionHistory = (extractionTraces?.length ?? 0) > 0;
   const fileUrl = useCachedQuery(
     "policies.getPolicyFileUrl.detail",
     api.policies.getPolicyFileUrl,
@@ -477,25 +415,19 @@ export function PolicyDetailBody({
 
   const archivePolicy = useMutation(api.policies.archive);
   const restorePolicy = useMutation(api.policies.restore);
-  const cancelExtraction = useMutation(api.policies.cancelExtraction);
   const archiveCertificateMutation = useMutation(
     api.certificateLifecycle.archive,
   );
-  const retryExtraction = useAction(
-    api.actions.retryExtraction.retryExtraction,
-  );
   const generateCertificate = useAction(api.certificates.generateForPolicy);
+  const { control: reextract, dialog: reextractDialog } = useReextractControl(
+    policy?._id,
+  );
 
-  const [reExtracting, setReExtracting] = useState(false);
-  const [cancelingExtraction, setCancelingExtraction] = useState(false);
   const router = useRouter();
   const initialPage = Number(searchParams.get("page")) || undefined;
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
-  const [showRefreshDialog, setShowRefreshDialog] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
-  const loggedPipelineEntries = useRef<Set<string>>(new Set());
-  const loggedStatus = useRef<string | null>(null);
 
   const { openWithUrl, setFileUrl: preloadPdfUrl } = usePdf();
   const { setPageContext } = usePageContext();
@@ -532,10 +464,11 @@ export function PolicyDetailBody({
   const canEditExtractedFields =
     operatorMode ||
     (viewerOrg?.org as { type?: "broker" } | undefined)?.type === "broker";
-  const pipelineStatus = p.pipelineStatus as PipelineStatus | undefined;
-  const isRejectedDocument =
-    pipelineStatus === "error" &&
-    isNonInsuranceDocument(p.pipelineError as string | undefined);
+  const state = useMemo(
+    () => extractionState((policy ?? {}) as Record<string, unknown>),
+    [policy],
+  );
+  const isRejectedDocument = state.kind === "not_a_policy";
   const breadcrumbLabel =
     (!isRejectedDocument &&
       [displayName, policyNumber]
@@ -546,29 +479,12 @@ export function PolicyDetailBody({
         .join(" ")) ||
     (p.fileName as string | undefined) ||
     "Uploaded document";
-  const extractionDataStage = policyDataStage(p);
-  const isPolicyFinal =
-    pipelineStatus === "complete" && extractionDataStage === "final";
+  const isPolicyFinal = hasFinalExtraction(state);
   const canEditPolicyDetails =
     canEditExtractedFields && !readOnly && !isArchived && isPolicyFinal;
   const canManageUpload =
     !readOnly || (canManageOwnUploads && p.uploadedBySide === "client");
-  const canCancelExtraction =
-    canManageUpload &&
-    (pipelineStatus === "running" || pipelineStatus === "paused");
-  const isProcessingPolicy =
-    !pipelineStatus ||
-    pipelineStatus === "idle" ||
-    pipelineStatus === "running" ||
-    pipelineStatus === "paused";
-  const rawPipelineLog = p.pipelineLog;
-  const pipelineLog: PolicyPipelineLogEntry[] = useMemo(
-    () =>
-      Array.isArray(rawPipelineLog)
-        ? (rawPipelineLog as PolicyPipelineLogEntry[])
-        : [],
-    [rawPipelineLog],
-  );
+  const canControlExtraction = canManageUpload && !isArchived;
   const reviewQuestions = extractionReviewQuestions(p);
   const hasExtractionReviews = reviewQuestions.length > 0;
   const coverageBreakdown = buildCoverageBreakdown(p);
@@ -584,14 +500,7 @@ export function PolicyDetailBody({
     ...(!isRejectedDocument && hasCertificates
       ? [{ id: "certificates" as const, label: "Certificates" }]
       : []),
-    ...(operatorMode && hasExtractionHistory
-      ? [
-          {
-            id: "extraction-history" as const,
-            label: "Extraction history",
-          },
-        ]
-      : []),
+    ...(operatorMode ? [{ id: "sections" as const, label: "Sections" }] : []),
     ...(!operatorMode && hasHistory
       ? [{ id: "history" as const, label: "History" }]
       : []),
@@ -610,20 +519,7 @@ export function PolicyDetailBody({
       setShowCertificateSheet(false);
       setShowEditExtractedFields(false);
       setSelectedCertificate(null);
-      setOperatorInspection(null);
       setEditingPolicyDetails(section);
-    },
-    [],
-  );
-
-  const openOperatorInspection = useCallback(
-    (inspection: OperatorPolicyInspection) => {
-      setShowCertificateSheet(false);
-      setShowEditExtractedFields(false);
-      setEditingPolicyDetails(null);
-      setSelectedCertificate(null);
-      setShowOperatorExtractionPanel(false);
-      setOperatorInspection(inspection);
     },
     [],
   );
@@ -737,50 +633,6 @@ export function PolicyDetailBody({
   );
 
   useEffect(() => {
-    loggedPipelineEntries.current.clear();
-    loggedStatus.current = null;
-  }, [id]);
-
-  useEffect(() => {
-    if (!LOG_POLICY_ACTIVITY_IN_BROWSER || !policy) return;
-    const statusKey = [
-      policy._id,
-      pipelineStatus ?? "unknown",
-      (p.pipelineError as string | undefined) ?? "",
-    ].join(":");
-    if (loggedStatus.current === statusKey) return;
-    loggedStatus.current = statusKey;
-    logPolicyActivityToBrowser("status", {
-      policyId: policy._id,
-      policyNumber,
-      status: pipelineStatus ?? "unknown",
-      error: p.pipelineError,
-    });
-  }, [policy, pipelineStatus, p.pipelineError, policyNumber]);
-
-  useEffect(() => {
-    if (!LOG_POLICY_ACTIVITY_IN_BROWSER || pipelineLog.length === 0) return;
-    for (const entry of pipelineLog) {
-      const key = [
-        entry.timestamp,
-        entry.phase ?? "",
-        entry.level ?? "",
-        entry.message,
-      ].join(":");
-      if (loggedPipelineEntries.current.has(key)) continue;
-      loggedPipelineEntries.current.add(key);
-      logPolicyActivityToBrowser("pipeline_log", {
-        policyId: id,
-        policyNumber,
-        timestamp: dayjs(entry.timestamp).toISOString(),
-        phase: entry.phase,
-        level: entry.level ?? "info",
-        message: entry.message,
-      });
-    }
-  }, [id, pipelineLog, policyNumber]);
-
-  useEffect(() => {
     if (!onBreadcrumb) return;
     if (!policy) {
       onBreadcrumb(null);
@@ -830,39 +682,6 @@ export function PolicyDetailBody({
     }
   };
 
-  const handleReextractFromSource = async () => {
-    setReExtracting(true);
-    try {
-      await retryExtraction({ policyId: id as Id<"policies">, mode: "full" });
-      toast.success("Re-extraction started");
-      setShowRefreshDialog(false);
-    } catch {
-      toast.error("Re-extraction failed");
-    } finally {
-      setReExtracting(false);
-    }
-  };
-
-  const handleCancelExtraction = useCallback(async () => {
-    if (!policy) return;
-    setCancelingExtraction(true);
-    try {
-      await cancelExtraction({ id: policy._id });
-      toast.success("Extraction cancelled");
-    } catch {
-      toast.error("Failed to cancel extraction");
-    } finally {
-      setCancelingExtraction(false);
-    }
-  }, [cancelExtraction, policy]);
-
-  const explainFinalExtractionGate = useCallback(() => {
-    toast.message("Enrichment is still running", {
-      description:
-        "Policy details are available now. COIs, endorsements, and source-backed actions unlock when enrichment finishes.",
-    });
-  }, []);
-
   useEffect(() => {
     if (!onActions) return;
     if (!policy) {
@@ -872,40 +691,8 @@ export function PolicyDetailBody({
     onActions(
       <>
         <ViewPdfButton url={fileUrl} disabled={!fileUrl} />
-        {!operatorMode && !readOnly && !isArchived && (
-          <PillButton
-            size="compact"
-            variant="secondary"
-            label={reExtracting ? "Re-extracting…" : "Re-extract"}
-            expandLabel
-            disabled={isProcessingPolicy || reExtracting || cancelingExtraction}
-            onClick={() => setShowRefreshDialog(true)}
-          >
-            {reExtracting ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RotateCw className="size-3.5" />
-            )}
-          </PillButton>
-        )}
-        {operatorMode && !readOnly && !isArchived ? (
-          <PillButton
-            size="compact"
-            variant="secondary"
-            label="Re-extract"
-            expandLabel
-            disabled={isProcessingPolicy}
-            onClick={() => {
-              setShowCertificateSheet(false);
-              setShowEditExtractedFields(false);
-              setEditingPolicyDetails(null);
-              setSelectedCertificate(null);
-              setOperatorInspection(null);
-              setShowOperatorExtractionPanel(true);
-            }}
-          >
-            <RotateCw className="size-3.5" />
-          </PillButton>
+        {canControlExtraction ? (
+          <ReextractControl control={reextract} state={state} />
         ) : null}
         {canManageUpload && !isArchived && (
           <PillButton
@@ -923,11 +710,9 @@ export function PolicyDetailBody({
             size="compact"
             onClick={() => {
               if (!isPolicyFinal) {
-                explainFinalExtractionGate();
+                toast.message("Available once Spot finishes reading this policy");
                 return;
               }
-              setShowOperatorExtractionPanel(false);
-              setOperatorInspection(null);
               setSelectedCertificate(null);
               setShowCertificateSheet(true);
             }}
@@ -941,22 +726,15 @@ export function PolicyDetailBody({
     return () => onActions(null);
   }, [
     onActions,
-    operatorMode,
     policy,
     readOnly,
     canManageUpload,
+    canControlExtraction,
     isArchived,
-    reExtracting,
-    cancelingExtraction,
-    canCancelExtraction,
-    isProcessingPolicy,
     isPolicyFinal,
-    explainFinalExtractionGate,
-    handleCancelExtraction,
+    reextract,
+    state,
     fileUrl,
-    visibleActiveTab,
-    canEditExtractedFields,
-    setShowCertificateSheet,
   ]);
 
   useEffect(() => {
@@ -964,20 +742,6 @@ export function PolicyDetailBody({
     if (!policy) {
       onRightPanel(null);
       return;
-    }
-    if (operatorMode && showOperatorExtractionPanel && fullPolicy) {
-      onRightPanel(
-        <OperatorPolicyExtractionPanel
-          policy={
-            fullPolicy as unknown as Record<string, unknown> & {
-              _id: Id<"policies">;
-            }
-          }
-          readOnly={readOnly || isArchived}
-          onClose={() => setShowOperatorExtractionPanel(false)}
-        />,
-      );
-      return () => onRightPanel(null);
     }
     if (showCertificateSheet && !readOnly && isPolicyFinal && policy.orgId) {
       onRightPanel(
@@ -1045,31 +809,17 @@ export function PolicyDetailBody({
       );
       return () => onRightPanel(null);
     }
-    if (operatorMode && operatorInspection && fullPolicy) {
-      onRightPanel(
-        <OperatorPolicyInspectionPanel
-          inspection={operatorInspection}
-          fileUrl={fileUrl}
-          onClose={() => setOperatorInspection(null)}
-        />,
-      );
-      return () => onRightPanel(null);
-    }
     onRightPanel(null);
     return () => onRightPanel(null);
   }, [
     onRightPanel,
-    operatorMode,
     policy,
     fullPolicy,
-    fileUrl,
     readOnly,
     isPolicyFinal,
     showCertificateSheet,
     showEditExtractedFields,
-    showOperatorExtractionPanel,
     editingPolicyDetails,
-    operatorInspection,
     selectedCertificateForPanel,
     reissueCertificate,
     editCertificateHolder,
@@ -1158,58 +908,25 @@ export function PolicyDetailBody({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={showRefreshDialog}
-        onOpenChange={(v) => !v && !reExtracting && setShowRefreshDialog(false)}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Re-extract policy data</DialogTitle>
-            <DialogDescription>
-              Rerun extraction from the original file for{" "}
-              <strong>{policyNumber}</strong>. This will regenerate the
-              structured policy data and searchable chunks.
-            </DialogDescription>
-          </DialogHeader>
+      {reextractDialog}
 
-          <DialogFooter>
-            <PillButton
-              variant="secondary"
-              onClick={() => setShowRefreshDialog(false)}
-              disabled={reExtracting}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              onClick={handleReextractFromSource}
-              disabled={reExtracting}
-            >
-              {reExtracting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Re-extract
-            </PillButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {!operatorMode ? (
+      {/* The local cache can briefly hold another policy; toasts outlive renders. */}
+      {!operatorMode && policy._id === id ? (
         <PolicyExtractionBanner
           policyId={policy._id}
-          status={pipelineStatus}
-          extractionDataStage={extractionDataStage}
-          error={p.pipelineError as string | undefined}
-          log={pipelineLog}
-          onCancel={canCancelExtraction ? handleCancelExtraction : undefined}
-          cancelling={cancelingExtraction}
+          state={state}
+          onReextract={
+            canControlExtraction ? reextract.requestReextract : undefined
+          }
+          onCancel={canControlExtraction ? reextract.cancel : undefined}
+          cancelling={reextract.cancelling}
         />
       ) : null}
 
       {visibleTabs.length > 1 ? (
         <Tabs
           value={visibleActiveTab}
-          onValueChange={(value) => {
-            setOperatorInspection(null);
-            setActiveTab(value as PolicyDetailTab);
-          }}
+          onValueChange={(value) => setActiveTab(value as PolicyDetailTab)}
           className="mb-6"
         >
           <TabsList variant="pill">
@@ -1236,33 +953,15 @@ export function PolicyDetailBody({
       {visibleActiveTab === "details" && (
         <PolicyDetailsTab
           policy={policy}
+          state={state}
           fileUrl={fileUrl}
           canEdit={canEditPolicyDetails}
           onEdit={openPolicyDetailsEditor}
         />
       )}
 
-      {visibleActiveTab === "extraction-history" && operatorMode ? (
-        <div className="space-y-6">
-          <OperatorPolicyExtractionHistory
-            policyId={policy._id}
-            initialTraceId={searchParams.get("traceId")}
-            inspection={operatorInspection}
-            onInspect={openOperatorInspection}
-          />
-          {fullPolicy === undefined ? (
-            <OperationalSkeletonList rows={8} showTrailing={false} />
-          ) : fullPolicy ? (
-            <OperatorPolicyWorkspace
-              policy={
-                fullPolicy as unknown as Record<string, unknown> & {
-                  _id: Id<"policies">;
-                }
-              }
-              onInspect={openOperatorInspection}
-            />
-          ) : null}
-        </div>
+      {visibleActiveTab === "sections" && operatorMode ? (
+        <PolicySectionsTab policyId={policy._id} fileUrl={fileUrl} />
       ) : null}
 
       {visibleActiveTab === "coverages" && fullPolicy === undefined ? (
@@ -1287,20 +986,20 @@ export function PolicyDetailBody({
       )}
 
       {visibleActiveTab === "certificates" && !isPolicyFinal && (
-        <ProvisionalPolicyGate
-          title="Certificates unavailable"
-          description="COI generation requires enrichment to finish for this policy."
-        />
+        <OperationalPanel as="div">
+          <OperationalPanelBody
+            className={`text-muted-foreground ${typeStyle("body.default")}`}
+          >
+            Certificates are available once Spot finishes reading this policy.
+          </OperationalPanelBody>
+        </OperationalPanel>
       )}
 
       {visibleActiveTab === "certificates" && isPolicyFinal && (
         <CertificatesTab
           policyId={policy._id}
           selectedCertificateId={selectedCertificateForPanel?._id ?? null}
-          onSelectCertificate={(certificate) => {
-            setOperatorInspection(null);
-            setSelectedCertificate(certificate);
-          }}
+          onSelectCertificate={setSelectedCertificate}
         />
       )}
 

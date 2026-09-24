@@ -18,11 +18,8 @@ type OperatorClientRow = OperatorClientList[number];
 export type OperatorRouterCapabilities = FunctionReturnType<
   typeof api.clRouterOperations.getCapabilities
 >;
-type OperatorExtractionTraceList = FunctionReturnType<
-  typeof api.operator.listExtractionTraces
->;
-type OperatorExtractionTraceDetail = FunctionReturnType<
-  typeof api.operator.getExtractionTrace
+type OperatorExtractionRunList = FunctionReturnType<
+  typeof api.operator.listExtractionRuns
 >;
 type OperatorDemoSalesTranscriptList = FunctionReturnType<
   typeof api.operator.listPublicDemoSalesTranscripts
@@ -32,22 +29,6 @@ type OperatorDemoSalesTranscriptDetail = FunctionReturnType<
 >;
 type EmptyArgs = Record<string, never>;
 type OperatorStatus = OperatorClientRow["operatorStatus"];
-type TraceStatus = "running" | "complete" | "error" | "cancelled";
-type ExtractionRangeKey = "all" | "24h" | "30d" | "90d";
-type ExtractionTraceListArgs = {
-  status?: TraceStatus;
-  orgId?: Id<"organizations">;
-  policyId?: Id<"policies">;
-  dateFrom?: number;
-  limit?: number;
-};
-type ExtractionTraceFilters = {
-  status?: TraceStatus;
-  orgId?: string;
-  policyId?: string;
-  range: ExtractionRangeKey;
-  limit?: number;
-};
 type DemoSalesTranscriptListArgs = {
   limit?: number;
 };
@@ -59,33 +40,9 @@ type OptimisticClientInput = {
   adminName?: string;
   adminPhone?: string;
 };
-const extractionRangeMs: Record<Exclude<ExtractionRangeKey, "all">, number> = {
-  "24h": 24 * 60 * 60 * 1000,
-  "30d": 30 * 24 * 60 * 60 * 1000,
-  "90d": 90 * 24 * 60 * 60 * 1000,
-};
 
 function sortByCreatedAtDesc<T extends { createdAt: number }>(rows: T[]) {
   return [...rows].sort((a, b) => b.createdAt - a.createdAt);
-}
-
-export function stableExtractionDateFrom(range: ExtractionRangeKey) {
-  if (range === "all") return undefined;
-  return dayjs().startOf("hour").valueOf() - extractionRangeMs[range];
-}
-
-export function operatorExtractionTraceListArgs(
-  filters: ExtractionTraceFilters,
-): ExtractionTraceListArgs {
-  return {
-    status: filters.status,
-    orgId: filters.orgId ? (filters.orgId as Id<"organizations">) : undefined,
-    policyId: filters.policyId
-      ? (filters.policyId as Id<"policies">)
-      : undefined,
-    dateFrom: stableExtractionDateFrom(filters.range),
-    limit: filters.limit ?? 250,
-  };
 }
 
 export function operatorDemoSalesTranscriptListArgs(
@@ -159,22 +116,12 @@ export function useOperatorRouterCapabilities() {
   return { capabilities, loading, refresh };
 }
 
-export function useCachedOperatorExtractionTraces(
-  filters: ExtractionTraceFilters,
-) {
+export function useCachedOperatorExtractionRuns(policyId: Id<"policies">) {
   return useCachedQuery(
-    "operator.listExtractionTraces",
-    api.operator.listExtractionTraces,
-    operatorExtractionTraceListArgs(filters),
-  ) as OperatorExtractionTraceList | undefined;
-}
-
-export function useCachedOperatorExtractionTraceDetail(traceId: string | null) {
-  return useCachedQuery(
-    "operator.getExtractionTrace.v4",
-    api.operator.getExtractionTrace,
-    traceId ? { traceId } : "skip",
-  ) as OperatorExtractionTraceDetail | undefined;
+    "operator.listExtractionRuns",
+    api.operator.listExtractionRuns,
+    { policyId },
+  ) as OperatorExtractionRunList | undefined;
 }
 
 export function useCachedOperatorDemoSalesTranscripts(limit = 250) {

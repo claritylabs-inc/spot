@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { extractionState } from "@/lib/extraction-state";
 import { webMcpError } from "@/lib/webmcp/runtime";
 import {
   assertDate,
@@ -32,6 +33,8 @@ type Policy = {
   expirationDate?: string;
   extractionDataStage?: string;
   pipelineStatus?: string;
+  pipelineError?: string;
+  extractionReview?: unknown;
   uploadedBySide?: string;
 };
 
@@ -44,8 +47,7 @@ export function policyRow(policy: Policy) {
     lines_of_business: policy.linesOfBusiness ?? [],
     effective_date: policy.effectiveDate ?? null,
     expiration_date: policy.expirationDate ?? null,
-    extraction_status: policy.extractionDataStage ?? policy.pipelineStatus ?? null,
-    pipeline_status: policy.pipelineStatus ?? null,
+    extraction_state: extractionState(policy).kind,
     uploaded_by: policy.uploadedBySide ?? null,
     url: `/policies/${policy._id}`,
   };
@@ -399,7 +401,7 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
         mode,
         policies,
         message:
-          "Extraction runs in the background. Check progress with get_policy (extraction_status); use retry_policy_extraction if it fails.",
+          "Extraction runs in the background. Check progress with get_policy (extraction_state); use retry_policy_extraction if it fails.",
         next_tool: "get_policy",
       };
     },
@@ -416,9 +418,10 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
       return { status: "cancelled" };
     },
     retry_policy_extraction: async (input) => {
+      // Any legacy resume/restart mode is ignored: retries are always full runs.
       const result = await convex.action(api.actions.retryExtraction.retryExtraction, {
         policyId: id<"policies">(input, "policy_id"),
-        mode: text(input, "mode") as "resume" | "restart" | undefined,
+        mode: "full",
       });
       return "error" in result && result.error
         ? webMcpError(String(result.error))
