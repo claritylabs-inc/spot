@@ -25,6 +25,7 @@
 *.pem
 /tmp
 /docs/*
+!/docs/ui-inventory.md
 !/docs/help/
 /docs/help/*
 !/docs/help/README.md
