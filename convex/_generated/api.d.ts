@@ -9,7 +9,6 @@
  */
 
 import type * as acordTaxonomyBackfillBatches from "../acordTaxonomyBackfillBatches.js";
-import type * as actions_agentResponseFeedback from "../actions/agentResponseFeedback.js";
 import type * as actions_backfillAcordTaxonomy from "../actions/backfillAcordTaxonomy.js";
 import type * as actions_backfillCarrierIdentity from "../actions/backfillCarrierIdentity.js";
 import type * as actions_backfillLinesOfBusiness from "../actions/backfillLinesOfBusiness.js";
@@ -62,7 +61,6 @@ import type * as actions_retryExtraction from "../actions/retryExtraction.js";
 import type * as actions_routerAssets from "../actions/routerAssets.js";
 import type * as actions_routerJobs from "../actions/routerJobs.js";
 import type * as actions_sendCertificateWorkflowJob from "../actions/sendCertificateWorkflowJob.js";
-import type * as actions_sendIntroImessage from "../actions/sendIntroImessage.js";
 import type * as actions_sendNotificationEmail from "../actions/sendNotificationEmail.js";
 import type * as actions_sendNotificationImessage from "../actions/sendNotificationImessage.js";
 import type * as actions_sendNotificationSlack from "../actions/sendNotificationSlack.js";
@@ -78,7 +76,6 @@ import type * as actions_vendorComplianceMonitor from "../actions/vendorComplian
 import type * as actions_workerRouterTransportSmoke from "../actions/workerRouterTransportSmoke.js";
 import type * as agentChannels from "../agentChannels.js";
 import type * as agentHistory from "../agentHistory.js";
-import type * as agentResponseFeedback from "../agentResponseFeedback.js";
 import type * as agentTargets from "../agentTargets.js";
 import type * as appCardLinks from "../appCardLinks.js";
 import type * as auth from "../auth.js";
@@ -422,7 +419,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   acordTaxonomyBackfillBatches: typeof acordTaxonomyBackfillBatches;
-  "actions/agentResponseFeedback": typeof actions_agentResponseFeedback;
   "actions/backfillAcordTaxonomy": typeof actions_backfillAcordTaxonomy;
   "actions/backfillCarrierIdentity": typeof actions_backfillCarrierIdentity;
   "actions/backfillLinesOfBusiness": typeof actions_backfillLinesOfBusiness;
@@ -475,7 +471,6 @@ declare const fullApi: ApiFromModules<{
   "actions/routerAssets": typeof actions_routerAssets;
   "actions/routerJobs": typeof actions_routerJobs;
   "actions/sendCertificateWorkflowJob": typeof actions_sendCertificateWorkflowJob;
-  "actions/sendIntroImessage": typeof actions_sendIntroImessage;
   "actions/sendNotificationEmail": typeof actions_sendNotificationEmail;
   "actions/sendNotificationImessage": typeof actions_sendNotificationImessage;
   "actions/sendNotificationSlack": typeof actions_sendNotificationSlack;
@@ -491,7 +486,6 @@ declare const fullApi: ApiFromModules<{
   "actions/workerRouterTransportSmoke": typeof actions_workerRouterTransportSmoke;
   agentChannels: typeof agentChannels;
   agentHistory: typeof agentHistory;
-  agentResponseFeedback: typeof agentResponseFeedback;
   agentTargets: typeof agentTargets;
   appCardLinks: typeof appCardLinks;
   auth: typeof auth;

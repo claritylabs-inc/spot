@@ -229,13 +229,6 @@ export const consumeInternal = internalMutation({
   },
 });
 
-export const invalidatePendingForThread = internalMutation({
-  args: { threadId: v.id("threads"), reason: v.string() },
-  handler: async (ctx, args) => {
-    return invalidatePendingConfirmations(ctx, args.threadId, args.reason);
-  },
-});
-
 export const latestPendingInternal = internalQuery({
   args: { threadId: v.id("threads") },
   handler: (ctx, args) =>

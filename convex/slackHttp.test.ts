@@ -868,7 +868,7 @@ describe("Slack Events API webhook", () => {
     expect(state.settings?.slackEnabled).toBe(true);
   });
 
-  test.each(["spot_response_feedback", "glass_response_feedback"])(
+  test.each(["spot_open_policy", "glass_open_policy"])(
     "authorizes and deduplicates signed %s controls for canonical operators",
     async (actionId) => {
       const t = convexTest(schema, modules);
@@ -936,7 +936,7 @@ describe("Slack Events API webhook", () => {
           {
             action_id: actionId,
             action_ts: "1800.2",
-            value: `positive:${created.actionToken}`,
+            value: created.actionToken,
           },
         ],
       };
@@ -947,7 +947,7 @@ describe("Slack Events API webhook", () => {
       );
       expect(interactions).toHaveLength(1);
       expect(interactions[0]).toMatchObject({
-        actionId: "spot_response_feedback",
+        actionId: "spot_open_policy",
         actorId: fixture.actorId,
       });
 
@@ -961,7 +961,7 @@ describe("Slack Events API webhook", () => {
     },
   );
 
-  test("records a signed negative-feedback modal submission for the same actor", async () => {
+  test("ignores retired feedback action ids without erroring", async () => {
     const t = convexTest(schema, modules);
     const { clientOrgId, connectionId } = await seedConnection(t);
     const fixture = await t.run(async (ctx) => {
@@ -1017,56 +1017,85 @@ describe("Slack Events API webhook", () => {
       id: created.presentation._id,
       providerMessageId: "1800.1",
     });
-    await t.run(async (ctx) => {
-      await ctx.db.patch(created.presentation!._id, {
-        createdAt: dayjs().subtract(90, "day").valueOf(),
-        updatedAt: dayjs().subtract(90, "day").valueOf(),
-        actionTokenExpiresAt: dayjs().subtract(60, "day").valueOf(),
-      });
-    });
-    const claimed = await t.mutation(
-      internal.slackPresentation.claimInteraction,
-      {
-        interactionKey: "negative-feedback-click",
-        actionToken: created.actionToken,
-        teamId: "T-CUSTOMER",
-        actorTeamId: "T-CUSTOMER",
-        slackUserId: "U-CUSTOMER",
-        channelId: "C-PRIMARY",
-        messageTs: "1800.1",
-        actionId: "spot_response_feedback",
-        value: "negative",
-      },
+    const payload = {
+      type: "block_actions",
+      team: { id: "T-CUSTOMER" },
+      user: { id: "U-CUSTOMER", team_id: "T-CUSTOMER" },
+      channel: { id: "C-PRIMARY" },
+      message: { ts: "1800.1" },
+      actions: [
+        {
+          action_id: "spot_response_feedback",
+          action_ts: "1800.2",
+          value: `positive:${created.actionToken}`,
+        },
+      ],
+    };
+    expect((await signedInteraction(t, payload)).status).toBe(200);
+    const interactions = await t.run((ctx) =>
+      ctx.db.query("slackInteractionEvents").collect(),
     );
+    expect(interactions).toHaveLength(0);
+
     const submission = {
       type: "view_submission",
       team: { id: "T-CUSTOMER" },
       user: { id: "U-CUSTOMER", team_id: "T-CUSTOMER" },
       view: {
         callback_id: "spot_negative_feedback",
-        private_metadata: claimed.interaction._id,
-        state: {
-          values: {
-            spot_feedback_comment_block: {
-              spot_feedback_comment: {
-                action_id: "spot_feedback_comment",
-                value: "The coverage limit was wrong.",
-              },
-            },
-          },
-        },
+        private_metadata: "unused",
+        state: { values: {} },
       },
     };
     expect((await signedInteraction(t, submission)).status).toBe(200);
-    const feedback = await t.run((ctx) =>
-      ctx.db.query("agentResponseFeedback").collect(),
-    );
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({
+  });
+
+  test("throws when claiming an interaction on a revoked presentation", async () => {
+    const t = convexTest(schema, modules);
+    const { clientOrgId, connectionId } = await seedConnection(t);
+    const fixture = await t.run(async (ctx) => {
+      const connection = await ctx.db.get(connectionId);
+      const threadId = await ctx.db.insert("threads", {
+        orgId: clientOrgId,
+        title: "Slack support",
+        createdBy: connection!.serviceUserId,
+        lastMessageAt: 1,
+        originChannel: "slack",
+        slackConnectionId: connectionId,
+        slackChannelId: "C-PRIMARY",
+        slackThreadTs: "1800.0",
+        slackConversationKind: "channel",
+        slackState: "active",
+      });
+      const messageId = await ctx.db.insert("threadMessages", {
+        threadId,
+        orgId: clientOrgId,
+        channel: "slack",
+        role: "agent",
+        content: "Answer",
+      });
+      return { threadId, messageId };
+    });
+    const created = await t.mutation(internal.slackPresentation.create, {
+      orgId: clientOrgId,
+      threadId: fixture.threadId,
       threadMessageId: fixture.messageId,
-      slackActorId: fixture.actorId,
-      rating: "negative",
-      comment: "The coverage limit was wrong.",
+      connectionId,
+      teamId: "T-CUSTOMER",
+      channelId: "C-PRIMARY",
+      threadTs: "1800.0",
+      mode: "message",
+    });
+    if (!created.presentation || !created.actionToken) {
+      throw new Error("Expected a new Slack presentation");
+    }
+    await t.mutation(internal.slackPresentation.markActive, {
+      id: created.presentation._id,
+      providerMessageId: "1800.1",
+    });
+    await t.mutation(internal.slackPresentation.markFinal, {
+      id: created.presentation._id,
+      providerMessageId: "1800.1",
     });
     await t.run((ctx) =>
       ctx.db.patch(created.presentation!._id, {
@@ -1082,8 +1111,8 @@ describe("Slack Events API webhook", () => {
         slackUserId: "U-CUSTOMER",
         channelId: "C-PRIMARY",
         messageTs: "1800.1",
-        actionId: "spot_response_feedback",
-        value: "negative",
+        actionId: "spot_open_policy",
+        value: created.actionToken,
       }),
     ).rejects.toThrow("no longer available");
   });

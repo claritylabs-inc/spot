@@ -19,17 +19,6 @@ const categoryValidator = v.union(
   v.literal("unsafe"),
   v.literal("other"),
 );
-const modelProviderValidator = v.union(
-  v.literal("openai"),
-  v.literal("anthropic"),
-  v.literal("google"),
-  v.literal("xai"),
-  v.literal("mistral"),
-  v.literal("cohere"),
-  v.literal("fireworks"),
-  v.literal("moonshot"),
-  v.literal("deepseek"),
-);
 
 function targetKey(targetKind: string, targetId: string) {
   return `${targetKind}:${targetId.trim()}`;
@@ -63,7 +52,6 @@ export const resolveTargetInternal = internalQuery({
     operatorUserId: v.id("users"),
     targetKind: targetKindValidator,
     targetId: v.string(),
-    routerRequestId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
@@ -76,14 +64,7 @@ export const resolveTargetInternal = internalQuery({
         .withIndex("run", (query) => query.eq("runId", normalizedTargetId))
         .unique();
       if (!run) throw new Error("Requirement extraction run not found");
-      return {
-        targetId: normalizedTargetId,
-        orgId: run.orgId,
-        routerRequestId: run.requestId,
-        taskKind: run.requestId ? "requirement_extraction" : undefined,
-        provider: run.provider,
-        model: run.model,
-      };
+      return { targetId: normalizedTargetId, orgId: run.orgId };
     }
 
     const session = await ctx.db
@@ -92,36 +73,10 @@ export const resolveTargetInternal = internalQuery({
       .unique();
     if (!session) throw new Error("Policy extraction trace not found");
 
-    const requestedRouterRequestId = bounded(args.routerRequestId, 500);
-    const event = requestedRouterRequestId
-      ? await ctx.db
-          .query("policyExtractionTraceEvents")
-          .withIndex("trace_time", (query) =>
-            query.eq("traceId", normalizedTargetId),
-          )
-          .filter((query) =>
-            query.eq(
-              query.field("routerRequestId"),
-              requestedRouterRequestId,
-            ),
-          )
-          .first()
-      : null;
-    if (requestedRouterRequestId && !event) {
-      throw new Error("Selected model request does not belong to this trace");
-    }
-    if (event && (event.error || event.status === "error")) {
-      throw new Error("Failed model requests cannot receive quality ratings");
-    }
-
     return {
       targetId: normalizedTargetId,
       orgId: session.orgId,
       policyId: session.policyId,
-      routerRequestId: event?.routerRequestId,
-      taskKind: event?.taskKind,
-      provider: event?.provider,
-      model: event?.model,
     };
   },
 });
@@ -138,10 +93,6 @@ export const recordInternal = internalMutation({
     fieldPath: v.optional(v.string()),
     expectedValue: v.optional(v.string()),
     comment: v.optional(v.string()),
-    routerRequestId: v.optional(v.string()),
-    taskKind: v.optional(v.string()),
-    provider: v.optional(modelProviderValidator),
-    model: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const key = targetKey(args.targetKind, args.targetId);
@@ -152,20 +103,10 @@ export const recordInternal = internalMutation({
       )
       .unique();
     if (existing) {
-      return {
-        id: existing._id,
-        rating: existing.rating,
-        routerRequestId: existing.routerRequestId,
-        taskKind: existing.taskKind,
-        shouldSubmit:
-          Boolean(existing.routerRequestId) &&
-          (existing.routerSignalStatus === "pending" ||
-            existing.routerSignalStatus === "error"),
-      };
+      return { id: existing._id, rating: existing.rating };
     }
 
     const timestamp = dayjs().valueOf();
-    const routerRequestId = bounded(args.routerRequestId, 500);
     const id = await ctx.db.insert("extractionReviews", {
       targetKind: args.targetKind,
       targetId: args.targetId,
@@ -183,39 +124,10 @@ export const recordInternal = internalMutation({
           : undefined,
       comment:
         args.rating === "negative" ? bounded(args.comment, 4_000) : undefined,
-      routerRequestId,
-      taskKind: bounded(args.taskKind, 200),
-      provider: args.provider,
-      model: bounded(args.model, 500),
-      routerSignalStatus: routerRequestId ? "pending" : "not_applicable",
+      routerSignalStatus: "not_applicable",
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    return {
-      id,
-      rating: args.rating,
-      routerRequestId,
-      taskKind: args.taskKind,
-      shouldSubmit: Boolean(routerRequestId),
-    };
-  },
-});
-
-export const markRouterSignalInternal = internalMutation({
-  args: {
-    reviewId: v.id("extractionReviews"),
-    status: v.union(v.literal("submitted"), v.literal("error")),
-    error: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const review = await ctx.db.get(args.reviewId);
-    if (!review) return false;
-    await ctx.db.patch(review._id, {
-      routerSignalStatus: args.status,
-      routerSignalError:
-        args.status === "error" ? bounded(args.error, 1_000) : undefined,
-      updatedAt: dayjs().valueOf(),
-    });
-    return true;
+    return { id, rating: args.rating };
   },
 });

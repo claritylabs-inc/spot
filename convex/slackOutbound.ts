@@ -449,7 +449,3 @@ export const markOperatorDirectMessageFailed = internalMutation({
   },
 });
 
-export const getOperatorDirectMessage = internalQuery({
-  args: { id: v.id("operatorSlackOutboundSends") },
-  handler: async (ctx, args) => await ctx.db.get(args.id),
-});

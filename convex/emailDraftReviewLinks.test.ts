@@ -10,7 +10,6 @@ import {
   claimSendInternal,
   createInternal,
   getByToken,
-  sweepExpired,
 } from "./emailDraftReviewLinks";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -19,7 +18,6 @@ const createReviewLink = createInternal as any;
 const bindConfirmation = bindConfirmationInternal as any;
 const claimSend = claimSendInternal as any;
 const getReviewLink = getByToken as any;
-const sweepReviewLinks = sweepExpired as any;
 
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -206,9 +204,6 @@ describe("email draft review links", () => {
       await ctx.db.patch(confirmationId, { expiresAt: 1 });
     });
 
-    await expect(
-      data.t.mutation(sweepReviewLinks, { batchSize: 10 }),
-    ).resolves.toEqual({ deleted: 0 });
     expect(
       await data.t.query(getReviewLink, { token: link.token }),
     ).toMatchObject({ canSend: true });

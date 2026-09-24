@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { stableHash } from "@claritylabs/cl-sync";
 import { useStickToBottom } from "use-stick-to-bottom";
 import dayjs from "dayjs";
@@ -35,8 +35,6 @@ import {
   Clock,
   Download,
   Paperclip,
-  ThumbsDown,
-  ThumbsUp,
 } from "lucide-react";
 import { SiSlack } from "react-icons/si";
 import { api } from "@/convex/_generated/api";
@@ -801,7 +799,6 @@ function MessageFooterActions({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {messageId ? <ResponseRatingButtons messageId={messageId} /> : null}
           {retryMessageId ? (
             <TryAgainMessageButton messageId={retryMessageId} />
           ) : null}
@@ -840,67 +837,6 @@ function MessageFooterActions({
           </PillButton>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function ResponseRatingButtons({
-  messageId,
-}: {
-  messageId: Id<"threadMessages">;
-}) {
-  const submitFeedback = useAction(
-    api.actions.agentResponseFeedback.submit,
-  );
-  const existingFeedback = useQuery(
-    api.agentResponseFeedback.getForMessage,
-    { messageId },
-  ) as { rating: "positive" | "negative" } | null | undefined;
-  const [rating, setRating] = useState<"positive" | "negative" | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const effectiveRating = rating ?? existingFeedback?.rating ?? null;
-
-  const submit = async (nextRating: "positive" | "negative") => {
-    if (effectiveRating || submitting) return;
-    setSubmitting(true);
-    try {
-      const result = await submitFeedback({ messageId, rating: nextRating });
-      setRating(result.rating);
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Feedback could not be saved"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-0.5" aria-label="Rate this response">
-      <PillButton
-        type="button"
-        variant="icon"
-        size="compact"
-        iconOnly
-        label="Good response"
-        disabled={submitting || existingFeedback === undefined || effectiveRating !== null}
-        aria-pressed={effectiveRating === "positive"}
-        className={effectiveRating === "positive" ? "bg-foreground/[0.06] text-foreground" : undefined}
-        onClick={() => submit("positive")}
-      >
-        <ThumbsUp className="size-3.5" />
-      </PillButton>
-      <PillButton
-        type="button"
-        variant="icon"
-        size="compact"
-        iconOnly
-        label="Poor response"
-        disabled={submitting || existingFeedback === undefined || effectiveRating !== null}
-        aria-pressed={effectiveRating === "negative"}
-        className={effectiveRating === "negative" ? "bg-foreground/[0.06] text-foreground" : undefined}
-        onClick={() => submit("negative")}
-      >
-        <ThumbsDown className="size-3.5" />
-      </PillButton>
     </div>
   );
 }

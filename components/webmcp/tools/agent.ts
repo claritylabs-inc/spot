@@ -192,17 +192,6 @@ export function agentToolImplementations(ctx: ClientToolContext): ToolMap {
       });
       return { status: "retrying" };
     },
-    rate_agent_response: async (input) => {
-      const result = await convex.action(
-        api.actions.agentResponseFeedback.submit,
-        compact({
-          messageId: id<"threadMessages">(input, "message_id"),
-          rating: requiredText(input, "rating") as "positive" | "negative",
-          comment: text(input, "comment"),
-        }),
-      );
-      return { status: "recorded", rating: result.rating };
-    },
     get_thread_attachment_urls: async (input) => {
       const fileIds = stringList(input, "file_ids");
       if (!fileIds) return webMcpError("file_ids is required.");

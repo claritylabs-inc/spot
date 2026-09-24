@@ -1615,6 +1615,7 @@ export default defineSchema({
     .index("started", ["startedAt"])
     .index("expiration", ["expiresAt"]),
 
+  // Deprecated: rating removed; drop after data cleanup.
   extractionReviews: defineTable({
     targetKind: v.union(
       v.literal("policy_extraction"),
@@ -3876,6 +3877,7 @@ export default defineSchema({
     ),
     // Agent response metadata
     routerRequestId: v.optional(v.string()),
+    // Deprecated: rating removed; drop after data cleanup.
     feedbackPromptedAt: v.optional(v.number()),
     replyToMessageId: v.optional(v.id("threadMessages")),
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
@@ -4266,6 +4268,7 @@ export default defineSchema({
     .index("interaction", ["interactionKey"])
     .index("presentation_created", ["presentationId", "createdAt"]),
 
+  // Deprecated: rating removed; drop after data cleanup.
   agentResponseFeedback: defineTable({
     orgId: v.id("organizations"),
     threadId: v.id("threads"),

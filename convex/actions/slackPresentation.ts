@@ -16,7 +16,6 @@ import {
   type SlackEmailDraftCard,
 } from "../lib/slackBlocks";
 import { MAX_POLICY_CARDS_PER_TURN } from "../lib/agentPolicyPresentation";
-import { sendClRouterFeedback } from "../lib/clRouterClient";
 
 // Break the generated API's recursive reference to this action module.
 const internalApi = internal as any;
@@ -530,7 +529,6 @@ export const clearReaction = internalAction({
 export const processInteraction = internalAction({
   args: {
     interactionId: v.id("slackInteractionEvents"),
-    feedbackModalOpened: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(
@@ -541,58 +539,7 @@ export const processInteraction = internalAction({
     const { interaction, presentation, actor } = context;
     let confirmation = "Done.";
     try {
-      if (interaction.actionId.startsWith("spot_response_feedback")) {
-        const rating =
-          interaction.value === "negative" ? "negative" : "positive";
-        const feedback = await ctx.runMutation(internalApi.slackPresentation.upsertFeedback, {
-          presentationId: presentation._id,
-          slackActorId: actor._id,
-          rating,
-        });
-        if (feedback.shouldSubmit && feedback.routerRequestId) {
-          try {
-            await sendClRouterFeedback({
-              requestId: feedback.routerRequestId,
-              idempotencyKey: `agent-response:${presentation.threadMessageId}:${actor._id}`,
-              source: "slack",
-              signals: { rating: rating === "positive" ? "up" : "down" },
-              trace: {
-                traceId: String(presentation.threadMessageId),
-                channel: "slack",
-                taskKind: "query_reason",
-              },
-            });
-            await ctx.runMutation(
-              internalApi.agentResponseFeedback.markRouterSignalInternal,
-              { feedbackId: feedback.id, status: "submitted" },
-            );
-          } catch (error) {
-            console.warn("[slack] Could not submit response rating to cl-router", error);
-            await ctx.runMutation(
-              internalApi.agentResponseFeedback.markRouterSignalInternal,
-              {
-                feedbackId: feedback.id,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-              },
-            );
-          }
-        }
-        if (rating === "negative" && args.feedbackModalOpened) {
-          await ctx.runMutation(
-            internalApi.slackPresentation.completeInteraction,
-            {
-              id: interaction._id,
-              status: "completed",
-            },
-          );
-          return;
-        }
-        confirmation =
-          rating === "positive"
-            ? "Thanks — your feedback was recorded."
-            : "Thanks — I recorded that this response needs work.";
-      } else if (interaction.actionId === "spot_request_human") {
+      if (interaction.actionId === "spot_request_human") {
         const result = await ctx.runMutation(
           internalApi.slack.requestHandoffFromAgent,
           {

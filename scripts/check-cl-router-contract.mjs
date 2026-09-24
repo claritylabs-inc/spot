@@ -20,7 +20,6 @@ const REQUIRED_OPERATION_KEYS = [
   "post /v1/transcribe",
   "get /v1/capabilities",
   "post /v1/retrieve",
-  "post /v1/feedback",
 ];
 const REQUIRED_FIXTURE_SCHEMAS = [
   "GenerateRequest",
@@ -35,8 +34,6 @@ const REQUIRED_FIXTURE_SCHEMAS = [
   "CapabilitiesResponse",
   "RetrieveRequest",
   "RetrieveResponse",
-  "FeedbackRequest",
-  "FeedbackResponse",
   "HealthResponse",
 ];
 

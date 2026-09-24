@@ -349,9 +349,3 @@ export const completeSendInternal = internalMutation({
     });
   },
 });
-
-export const sweepExpired = internalMutation({
-  args: { batchSize: v.optional(v.number()) },
-  // Previously scheduled sweeps must not delete durable review links.
-  handler: async () => ({ deleted: 0 }),
-});
