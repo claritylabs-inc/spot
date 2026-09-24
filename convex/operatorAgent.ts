@@ -3084,6 +3084,18 @@ async function executeToolActionDomain(
     };
   }
 
+  if (args.toolName === "invite_operator") {
+    return {
+      result: await ctx.runAction(
+        internal.operatorInvitations.inviteOperatorForAgentInternal,
+        {
+          operatorUserId: args.operatorUserId,
+          email: String(args.input.email),
+        },
+      ),
+    };
+  }
+
   throw new Error(`Unsupported operator action tool: ${args.toolName}`);
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useMutation } from "convex/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { AuthCard, AuthMinimalShell, BrandWordmark } from "@/components/auth-shell";
 import { OtpField } from "@/components/ui/otp-field";
@@ -25,11 +25,12 @@ function friendlyError(raw: string): string {
 
 export default function OperatorLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { signIn, signOut } = useAuthActions();
   const { isAuthenticated } = useConvexAuth();
   const bootstrap = useMutation(api.operator.bootstrapViewer);
   const [step, setStep] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

@@ -25,9 +25,11 @@ import { api } from "@/convex/_generated/api";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useOperatorInvite } from "@/components/operator/operator-invite-panel";
 
 export default function OperatorSettingsPage() {
   const current = useCachedOperatorCurrent();
+  const invitations = useOperatorInvite(!current || Boolean(current.activeImpersonation));
   const section =
     useSearchParams().get("section") === "models" ? "models" : "general";
   const overrides = useModelOverrides(
@@ -68,7 +70,7 @@ export default function OperatorSettingsPage() {
         </SidebarTooltipProvider>
       )}
       customSidebarStorageKey="operator-sidebar"
-      rightPanel={section === "models" ? overrides.drawer : mcp.drawer}
+      rightPanel={section === "models" ? overrides.drawer : invitations.drawer ?? mcp.drawer}
       actions={section === "models" ? overrides.action : undefined}
       disablePersistentChat
       disableCommandPalette
@@ -116,6 +118,7 @@ export default function OperatorSettingsPage() {
               </div>
             </OperationalPanelBody>
           </OperationalPanel>
+          {invitations.panel}
           {mcp.panel}
         </div>
       )}

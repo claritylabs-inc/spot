@@ -1,6 +1,6 @@
 # Operator tool activity icons
 
-The current operator registry has 75 tools. `lib/tool-activity-icons.ts` maps every
+`lib/tool-activity-icons.ts` maps every
 registry tool to a Lucide icon category; TypeScript requires complete coverage.
 Icons describe the tool’s subject or action, not success, authorization, or approval.
 Unknown, historical, and tenant-only names retain the generic `Wrench` fallback.
@@ -25,7 +25,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Addresses | `MapPin` | `lookup_address` |
 | Platform health | `Activity` | `get_operator_overview`, `get_routing_status`, `get_channel_health` |
 | Outbound messages | `Send` | `send_operator_slack_message` |
-| Configuration | `Settings2` | `set_client_feature_flag` |
+| Configuration | `Settings2` | `set_client_feature_flag`, `invite_operator` |
 | Archive | `Archive` | `archive_procurement_proposal` |
 | Deletion | `Trash2` | `clear_all_agent_memory` |
 

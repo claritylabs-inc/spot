@@ -115,6 +115,9 @@ const emailAddress = z
   .min(3)
   .max(320)
   .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Enter a valid email address");
+const operatorEmailAddress = emailAddress.transform((value) =>
+  value.toLowerCase(),
+);
 const procurementRequestStatus = z.enum([
   "draft",
   "submitted",
@@ -1742,6 +1745,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: () => ({ kind: "platform", id: "clients" }),
     summarize: (input) =>
       `Create standalone client ${JSON.stringify(input.name)}`,
+  }),
+  invite_operator: defineOperatorTool({
+    version: 1,
+    description:
+      "Invite one Spot operator using their exact primary company email address. Creates operator access and emails an operator-login link; OTP verification is still required. Existing active access and roles are preserved. Customer, disabled, alias-conflicting and ambiguous identities are rejected. Check emailSent: false means access was configured but the invitation email failed; do not claim delivery or retry automatically.",
+    inputSchema: z.object({
+      email: operatorEmailAddress.describe("Exact company email address for the new operator"),
+    }),
+    capability: "operator.access.write",
+    effect: "access_change",
+    requiredRole: "operator",
+    confirmation: "exact",
+    execution: "action",
+    target: (input) => ({ kind: "operator", id: input.email }),
+    summarize: (input) => `Invite Spot operator ${input.email}`,
   }),
   update_organization_profile: defineOperatorTool({
     version: 4,

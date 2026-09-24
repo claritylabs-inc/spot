@@ -18,6 +18,7 @@ import {
 import { assertNoOperatorImpersonation } from "./clientFiles";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
+import { validateOperatorInvitation } from "../operatorInvitations";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "call_mcp_tool",
@@ -49,6 +50,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_procurement_file_item",
   "update_procurement_email_thread",
   "create_client_organization",
+  "invite_operator",
   "update_organization_profile",
   "research_client",
   "research_broker",
@@ -988,6 +990,10 @@ export async function preflightOperatorToolConfirmation(
     case "create_client_organization":
       await preflightClientOrganizationCreate(ctx, args.input);
       return;
+    case "invite_operator": {
+      await validateOperatorInvitation(ctx, String(args.input.email ?? ""));
+      return;
+    }
     case "update_organization_profile": {
       const org = await requireDocument(
         ctx,
