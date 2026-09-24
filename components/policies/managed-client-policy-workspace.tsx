@@ -9,7 +9,10 @@ import { PillButton } from "@/components/ui/pill-button";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
 import { PolicyEmptyState } from "@/components/policy-empty-state";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
-import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import {
+  StatusTag,
+  type StatusTagTone,
+} from "@claritylabs-inc/ui/components/status-tag";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Table,
@@ -26,6 +29,10 @@ import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
 import { formatDisplayDate } from "@/lib/date-format";
+import {
+  extractionState,
+  type ExtractionStateKind,
+} from "@/lib/extraction-state";
 import { typeStyle } from "@/lib/typography";
 
 type ClientPolicyRow = {
@@ -40,7 +47,6 @@ type ClientPolicyRow = {
   pipelineStatus?: string | null;
   pipelineError?: string | null;
   extractionDataStage?: string | null;
-  extractionPreviewError?: string | null;
   isDemo?: boolean | null;
   uploadedBySide?:
     | "broker"
@@ -70,35 +76,16 @@ function formatDate(value?: string | null) {
   return normalized ? formatDisplayDate(normalized) : cleaned;
 }
 
-function displayStatus(
-  status?: string | null,
-  extractionDataStage?: string | null,
-) {
-  if (extractionDataStage === "preview" && status !== "complete") {
-    return "enriching";
-  }
-  if (
-    extractionDataStage === "placeholder" &&
-    (!status || status === "idle" || status === "running")
-  ) {
-    return "extracting";
-  }
-  if (!status || status === "running") return "extracting";
-  return status.replace(/_/g, " ");
-}
-
-function statusTone(
-  status?: string | null,
-  extractionDataStage?: string | null,
-) {
-  const display = displayStatus(status, extractionDataStage);
-  if (display === "complete") return "success" as const;
-  if (display === "error" || display === "failed") return "danger" as const;
-  if (display === "paused") return "warning" as const;
-  if (display === "extracting" || display === "enriching")
-    return "info" as const;
-  return "neutral" as const;
-}
+const EXTRACTION_STATUS: Record<
+  ExtractionStateKind,
+  { label: string; tone: StatusTagTone }
+> = {
+  extracting: { label: "Reading…", tone: "info" },
+  ready: { label: "Ready", tone: "success" },
+  needs_review: { label: "Needs review", tone: "warning" },
+  failed: { label: "Couldn't read", tone: "danger" },
+  not_a_policy: { label: "Not a policy", tone: "warning" },
+};
 
 function displayUploadedBy(side?: ClientPolicyRow["uploadedBySide"]) {
   if (side === "broker") return "Broker";
@@ -310,6 +297,7 @@ export function ManagedClientPolicyWorkspace({
                 const carrier = cleanField(policy.carrier) ?? "Untitled policy";
                 const policyNumber =
                   cleanField(policy.policyNumber) ?? "No policy number";
+                const status = EXTRACTION_STATUS[extractionState(policy).kind];
                 return (
                   <TableRow
                     key={policy._id}
@@ -347,18 +335,7 @@ export function ManagedClientPolicyWorkspace({
                       {policy.isDemo ? (
                         <Badge variant="outline">demo</Badge>
                       ) : (
-                        <StatusTag
-                          tone={statusTone(policy.pipelineStatus, policy.extractionDataStage)}
-                          indicator={
-                            policy.pipelineStatus === "cancelled"
-                              ? "cancelled"
-                              : policy.pipelineStatus === "paused"
-                                ? "waiting"
-                                : undefined
-                          }
-                        >
-                          {displayStatus(policy.pipelineStatus, policy.extractionDataStage)}
-                        </StatusTag>
+                        <StatusTag tone={status.tone}>{status.label}</StatusTag>
                       )}
                     </TableCell>
                     <TableCell className="max-w-60 px-4 truncate text-muted-foreground">

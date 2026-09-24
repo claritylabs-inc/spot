@@ -63,7 +63,6 @@ export function usePolicyUpload<Row extends UploadedPolicyRow>({
       showPolicyExtractionReadyToast(
         {
           ...policy,
-          documentType: policy.documentType ?? "policy",
           fileName: policy.fileName ?? pending[policyId].fileName,
         },
         () => onOpenPolicy(policyId as Id<"policies">),
@@ -78,7 +77,7 @@ export function usePolicyUpload<Row extends UploadedPolicyRow>({
 
   const queue = useCallback(
     (policyId: Id<"policies">, fileName: string) => {
-      showPolicyExtractionQueuedToast({ policyId, documentType: "policy", fileName });
+      showPolicyExtractionQueuedToast({ policyId, fileName });
       pendingRef.current[policyId] = { fileName };
       announceReady();
     },

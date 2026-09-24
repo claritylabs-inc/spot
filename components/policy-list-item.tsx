@@ -12,6 +12,7 @@ import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { resolvePolicyCarrierDisplay } from "@/convex/lib/policyPartyContext";
 import { policyProductName } from "@/convex/lib/policyProductIdentity";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
+import { extractionState } from "@/lib/extraction-state";
 import {
   formatDisplayDate,
   formatDisplayPolicyPeriod,
@@ -41,6 +42,7 @@ interface PolicyListItemProps {
   expirationDate?: string;
   policyTermType?: string;
   pipelineStatus?: string;
+  pipelineError?: string;
   extractionDataStage?: string;
   uploadedBySide?: UploadedBySide;
   href?: string;
@@ -109,24 +111,19 @@ export function PolicyListItem({
   expirationDate,
   policyTermType,
   pipelineStatus,
+  pipelineError,
   extractionDataStage,
   uploadedBySide,
   href,
   onClick,
   trailingAction,
 }: PolicyListItemProps) {
-  const isProvisional =
-    extractionDataStage === "preview" && pipelineStatus !== "complete";
-  const isPlaceholderProcessing =
-    extractionDataStage === "placeholder" &&
-    (!pipelineStatus ||
-      pipelineStatus === "idle" ||
-      pipelineStatus === "running");
-  const isProcessing =
-    !isProvisional &&
-    (isPlaceholderProcessing ||
-      pipelineStatus === "running" ||
-      !pipelineStatus);
+  const { kind } = extractionState({
+    pipelineStatus,
+    pipelineError,
+    extractionDataStage,
+  });
+  const isProcessing = kind === "extracting";
   const generalAgentClean = cleanField(generalAgent);
   const policyNumberClean = cleanField(policyNumber);
   const productNameClean = cleanField(
@@ -163,10 +160,10 @@ export function PolicyListItem({
       expirationClean,
       policyTermType,
     ) ||
-    (isProcessing || isProvisional ? "Pending extraction" : "Not listed");
+    (isProcessing ? "Pending" : "Not listed");
   const fallbackTitle =
     productNameClean ??
-    (isProcessing || isProvisional ? "Pending classification" : "Not classified");
+    (isProcessing ? "Pending" : "Not classified");
   const { patternStyle, surfaceClassName, surfaceStyle } = policyCardBranding(
     issuerName,
     branding?.accentColor,
@@ -212,14 +209,11 @@ export function PolicyListItem({
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           {isProcessing ? (
-            <StatusTag tone="info">
-              Extracting
-            </StatusTag>
-          ) : null}
-          {isProvisional ? (
-            <StatusTag tone="info">
-              Enriching
-            </StatusTag>
+            <StatusTag tone="info">Reading…</StatusTag>
+          ) : kind === "failed" ? (
+            <StatusTag tone="danger">Couldn&apos;t read</StatusTag>
+          ) : kind === "not_a_policy" ? (
+            <StatusTag tone="warning">Not a policy</StatusTag>
           ) : null}
           <ProvenanceBadge side={uploadedBySide} />
         </div>

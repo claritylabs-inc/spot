@@ -283,8 +283,8 @@ function ProposalDropzone({
         filed.status === "already_filed"
           ? "These proposal documents are already filed"
           : filed.status === "revised"
-            ? "Proposal revision filed and queued for extraction"
-            : "Proposal filed and queued for extraction",
+            ? "Proposal revision filed"
+            : "Proposal filed",
         { id: uploadToast },
       );
     } catch (error) {
@@ -370,6 +370,67 @@ type ProposalView = {
     } | null;
   };
 };
+
+function proposalExtractionState(proposal: ProposalView) {
+  const latest = proposal.extraction.latest;
+  if (latest?.stuck || latest?.status === "failed") return "failed";
+  if (latest?.status === "pending" || latest?.status === "running") {
+    return "reading";
+  }
+  return null;
+}
+
+function ProposalExtractionStatus({
+  proposal,
+  readOnly,
+}: {
+  proposal: ProposalView;
+  readOnly: boolean;
+}) {
+  const retryExtraction = useMutation(api.procurementProposals.retryExtraction);
+  const cancelExtraction = useMutation(
+    api.procurementProposals.cancelExtraction,
+  );
+  const [working, setWorking] = useState(false);
+  const failed = proposalExtractionState(proposal) === "failed";
+
+  async function run() {
+    setWorking(true);
+    try {
+      await (failed
+        ? retryExtraction({ proposalId: proposal._id })
+        : cancelExtraction({ proposalId: proposal._id }));
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Could not update the quote"));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <StatusTag tone={failed ? "danger" : "info"}>
+        {failed
+          ? `Couldn't read ${proposal.documents[0]?.fileName ?? "this quote"}`
+          : "Reading quote…"}
+      </StatusTag>
+      {!readOnly ? (
+        <PillButton
+          size="xs"
+          variant="secondary"
+          disabled={working}
+          onClick={() => void run()}
+        >
+          {failed ? "Retry" : "Cancel"}
+        </PillButton>
+      ) : null}
+    </div>
+  );
+}
 
 const FINDING_TONE = {
   meets: "success",
@@ -974,12 +1035,12 @@ export function OutreachEditor({
                   onClick={() =>
                     void run(
                       () => retryExtraction({ proposalId: proposal._id }),
-                      "Queuing extraction…",
-                      "Proposal extraction queued",
+                      "Retrying…",
+                      "Reading quote…",
                     )
                   }
                 >
-                  Retry extraction
+                  Retry reading
                 </PillButton>
               ) : proposal &&
                 (latestExtraction?.status === "pending" ||
@@ -990,12 +1051,12 @@ export function OutreachEditor({
                   onClick={() =>
                     void run(
                       () => cancelExtraction({ proposalId: proposal._id }),
-                      "Cancelling extraction…",
-                      "Proposal extraction cancelled",
+                      "Cancelling…",
+                      "Stopped reading quote",
                     )
                   }
                 >
-                  Cancel extraction
+                  Cancel reading
                 </PillButton>
               ) : null}
               {sidebarTab === "terms" ? (
@@ -1885,7 +1946,6 @@ export function ProcurementRequestWorkspace({
                   const conclusion = review?.stale
                     ? undefined
                     : (review?.staffConclusion ?? review?.modelConclusion);
-                  const latestExtraction = proposal?.extraction.latest;
                   return (
                     <TableRow
                       key={outreach._id}
@@ -1914,7 +1974,12 @@ export function ProcurementRequestWorkspace({
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        {proposal ? (
+                        {proposal && proposalExtractionState(proposal) ? (
+                          <ProposalExtractionStatus
+                            proposal={proposal}
+                            readOnly={readOnly}
+                          />
+                        ) : proposal ? (
                           <StatusTag
                             indicator={
                               proposal.status === "draft"
@@ -1944,20 +2009,6 @@ export function ProcurementRequestWorkspace({
                         ) : (
                           <OutreachStatusTag status={outreach.status} />
                         )}
-                        {latestExtraction?.stuck ? (
-                          <p
-                            className={`mt-1 text-warning ${typeStyle("caption.default")}`}
-                          >
-                            Extraction lease expired
-                          </p>
-                        ) : latestExtraction?.status === "failed" ? (
-                          <p
-                            className={`mt-1 max-w-48 truncate text-destructive ${typeStyle("caption.default")}`}
-                            title={latestExtraction.lastError ?? undefined}
-                          >
-                            {latestExtraction.lastError || "Extraction failed"}
-                          </p>
-                        ) : null}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {offer.premium ?? offer.premiumAmount ?? "—"}

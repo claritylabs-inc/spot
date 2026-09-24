@@ -19,6 +19,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
+import { extractionState, hasFinalExtraction } from "@/lib/extraction-state";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
@@ -89,8 +90,7 @@ type CertificateBatchResult = {
 };
 
 function policyReadyForCertificate(policy: CertificatePolicyOption) {
-  if (policy.extractionDataStage === "final") return true;
-  return !policy.extractionDataStage && policy.pipelineStatus === "complete";
+  return hasFinalExtraction(extractionState(policy));
 }
 
 function policyLabel(policy: CertificatePolicyOption) {
@@ -426,7 +426,7 @@ export function CertificateGeneratePanel({
                 />
                 {policies !== undefined && readyPolicies.length === 0 ? (
                   <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-                    No fully extracted policies are ready for certificate generation.
+                    No policies are ready for certificates yet.
                   </p>
                 ) : null}
               </section>
@@ -534,7 +534,7 @@ export function CertificateGeneratePanel({
                   ) : null}
                   {selectedRequirements.length > 0 && readyRequirementCount === 0 ? (
                     <p className={`border-t border-border pt-3 text-muted-foreground ${typeStyle("body.default")}`}>
-                      No certificate can be generated until at least one requirement is met by a fully extracted policy.
+                      No certificate can be generated until a ready policy meets at least one requirement.
                     </p>
                   ) : null}
                 </div>

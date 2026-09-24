@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ExtractionReviewPanel } from "@/components/operator/extraction-review-panel";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
   OperationalLabelValueList,
@@ -254,28 +253,6 @@ export function CallDetails({
                 </details>
               ))}
             </div>
-          ) : null}
-          {call.policyRun ? (
-            <ExtractionReviewPanel
-              targetKind="policy_extraction"
-              targetId={call.policyRun.traceId}
-              modelSteps={
-                call.requestId
-                  ? [
-                      {
-                        requestId: call.requestId,
-                        label: displayTask(call.taskKind),
-                      },
-                    ]
-                  : []
-              }
-            />
-          ) : null}
-          {call.requirementRun ? (
-            <ExtractionReviewPanel
-              targetKind="requirement_extraction"
-              targetId={call.requirementRun.runId}
-            />
           ) : null}
         </div>
       )}

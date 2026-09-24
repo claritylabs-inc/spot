@@ -336,10 +336,10 @@ function ActivityDrawer({ activityId, onClose }: ActivityDrawerProps) {
                 label="Policy import"
                 value={
                   {
-                    queued: "Queued for extraction",
-                    extracting: "Extracting",
-                    complete: "Extraction completed",
-                    error: "Extraction failed",
+                    queued: "Queued",
+                    extracting: "Reading policy…",
+                    complete: "Imported",
+                    error: "Couldn't read policy",
                   }[activity.importState]
                 }
               />

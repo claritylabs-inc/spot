@@ -3,6 +3,7 @@
 import { lobLabel, toLobCodes } from "@/convex/lib/linesOfBusiness";
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
 import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
@@ -11,7 +12,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
 } from "@claritylabs-inc/ui/components/operational-panel";
-import { Loader2, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
@@ -26,6 +27,11 @@ import {
   type CarrierIdentity,
 } from "@/convex/lib/carrierIdentity";
 import { policyProductName } from "@/convex/lib/policyProductIdentity";
+import {
+  EXTRACTION_FAILED_MESSAGE,
+  extractingLabel,
+  type ExtractionProgress,
+} from "@/lib/extraction-state";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
@@ -122,34 +128,6 @@ function isRealLineOfBusiness(value: string) {
   );
 }
 
-function ExtractionPendingDetails() {
-  return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex items-center gap-2">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/45" />
-        <span className={`text-muted-foreground ${typeStyle("body.medium")}`}>
-          Extracting policy details
-        </span>
-      </div>
-      <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
-        {["Policy number", "Lines of business", "Policy period", "Premium"].map(
-          (label, index) => (
-            <div
-              key={label}
-              className={index === 0 ? "sm:col-span-2" : undefined}
-            >
-              <p className={`mb-1.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                {label}
-              </p>
-              <Skeleton className="h-4 w-full max-w-56 bg-foreground/6" />
-            </div>
-          ),
-        )}
-      </div>
-    </div>
-  );
-}
-
 export interface PolicySummaryProps {
   carrier?: string;
   carrierDisplayName?: string;
@@ -168,7 +146,9 @@ export interface PolicySummaryProps {
   summary?: string;
   isRenewal?: boolean;
   pdfUrl?: string | null;
-  isExtracting: boolean;
+  /** Set while Spot is reading the policy; missing fields render as skeletons. */
+  extracting?: { progress?: ExtractionProgress };
+  failed?: boolean;
   onEdit?: () => void;
 }
 
@@ -190,7 +170,8 @@ export function PolicySummary({
   summary: _summary,
   isRenewal,
   pdfUrl,
-  isExtracting,
+  extracting,
+  failed,
   onEdit,
 }: PolicySummaryProps) {
   const realPolicyNumber = realText(policyNumber);
@@ -254,6 +235,7 @@ export function PolicySummary({
     !!realTotalCost ||
     !!realOperationsDescription;
   const hasOverviewRows =
+    !!extracting ||
     !!realPolicyNumber ||
     !!realProductName ||
     realLinesOfBusiness.length > 0 ||
@@ -263,6 +245,11 @@ export function PolicySummary({
     !!realTotalCost;
   const { patternStyle, surfaceClassName, surfaceStyle } =
     policyOverviewBranding(issuerName, branding?.accentColor);
+  const orPending = (value: ReactNode) =>
+    value ??
+    (extracting ? (
+      <Skeleton className="ml-auto h-4 w-full max-w-40 bg-foreground/6" />
+    ) : undefined);
 
   return (
     <OperationalPanel className="mb-6 @container">
@@ -302,10 +289,18 @@ export function PolicySummary({
                 Renewal
               </Badge>
             ) : null}
-            <PolicyStatusTag
-              expirationDate={realExpirationDate}
-              continuous={continuous}
-            />
+            {extracting ? (
+              <StatusTag tone="info">
+                {extractingLabel(extracting.progress)}
+              </StatusTag>
+            ) : failed ? (
+              <StatusTag tone="danger">Couldn&apos;t read</StatusTag>
+            ) : (
+              <PolicyStatusTag
+                expirationDate={realExpirationDate}
+                continuous={continuous}
+              />
+            )}
             {onEdit ? (
               <PillButton
                 type="button"
@@ -332,34 +327,32 @@ export function PolicySummary({
           ) : null}
 
           <div className="min-w-0 flex-1">
-            {!hasExtractedDetails ? (
-              <div className="p-5">
-                {isExtracting ? (
-                  <ExtractionPendingDetails />
-                ) : (
-                  <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-                    No policy details were extracted.
-                  </p>
-                )}
-              </div>
+            {!hasExtractedDetails && !extracting ? (
+              <p
+                className={`p-5 text-muted-foreground ${typeStyle("body.default")}`}
+              >
+                {failed
+                  ? EXTRACTION_FAILED_MESSAGE
+                  : "No policy details were extracted."}
+              </p>
             ) : null}
 
             {hasOverviewRows ? (
               <dl>
                 <OperationalLabelValueRow
                   label="Policy number"
-                  value={realPolicyNumber}
+                  value={orPending(realPolicyNumber)}
                   align="right"
                 />
                 <OperationalLabelValueRow
                   label="Product / plan"
-                  value={realProductName}
+                  value={orPending(realProductName)}
                   align="right"
                 />
-                {realLinesOfBusiness.length > 0 ? (
-                  <OperationalLabelValueRow
-                    label="Product lines"
-                    value={
+                <OperationalLabelValueRow
+                  label="Product lines"
+                  value={orPending(
+                    realLinesOfBusiness.length > 0 ? (
                       <span className="flex flex-col items-start gap-0.5 sm:items-end">
                         {realLinesOfBusiness.slice(0, 4).map((line) => (
                           <span key={line}>{lobLabel(line)}</span>
@@ -370,28 +363,28 @@ export function PolicySummary({
                           </span>
                         ) : null}
                       </span>
-                    }
-                    align="right"
-                  />
-                ) : null}
+                    ) : undefined,
+                  )}
+                  align="right"
+                />
                 <OperationalLabelValueRow
                   label="Policy period"
-                  value={periodValue}
+                  value={orPending(periodValue)}
                   align="right"
                 />
                 <OperationalLabelValueRow
                   label="Premium"
-                  value={realPremium}
+                  value={orPending(realPremium)}
                   align="right"
                 />
                 <OperationalLabelValueRow
                   label="Taxes & fees"
-                  value={realTaxesAndFees}
+                  value={orPending(realTaxesAndFees)}
                   align="right"
                 />
                 <OperationalLabelValueRow
                   label="Total payable"
-                  value={realTotalCost}
+                  value={orPending(realTotalCost)}
                   align="right"
                 />
               </dl>

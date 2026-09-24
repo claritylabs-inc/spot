@@ -259,6 +259,7 @@ export function PolicyPreview({
         expirationDate={realText(record.expirationDate)}
         policyTermType={realText(record.policyTermType)}
         pipelineStatus={realText(record.pipelineStatus)}
+        pipelineError={realText(record.pipelineError)}
         extractionDataStage={realText(record.extractionDataStage)}
       />
 
