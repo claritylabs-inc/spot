@@ -4307,7 +4307,9 @@
             "maxLength": 256
           },
           "model": {
-            "const": "jev-1.13.0"
+            "type": "string",
+            "pattern": "^jev-",
+            "description": "Actual TypeSafe Jev model version that served this decision, e.g. \"jev-1.14.0\". Requests use jev-latest (or TYPESAFE_MODEL) but the response reports the concrete version TypeSafe selected."
           },
           "answers": {
             "type": "object",

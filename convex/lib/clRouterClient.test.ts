@@ -386,6 +386,43 @@ test("decisions use the authenticated Jev endpoint and validate exact question c
   ).rejects.toMatchObject({ kind: "invalid_response" });
 });
 
+test("decisions accept any resolved Jev version and reject non-Jev models", async () => {
+  const request = {
+    orgId: "org-1",
+    task: "test_decision",
+    parentRequestId: "parent-1",
+    state: { message: "Reply to the original sender" },
+    questions: {
+      reply: { type: "noul" as const, instructions: "Is a reply requested?" },
+    },
+  };
+  const response = {
+    contractVersion: 1,
+    requestId: "decision-1",
+    parentRequestId: "parent-1",
+    model: "jev-1.14.0",
+    answers: { reply: { type: "noul", noul: 0.95 } },
+    usage: { inputTokens: 100, outputTokens: 8 },
+    cost: { status: "priced", costNanoUsd: 4200 },
+    durationMs: 100,
+  };
+  const fetchMock = vi.fn<typeof globalThis.fetch>(async () =>
+    Response.json(response),
+  );
+  const result = await clRouterDecide(request, {
+    environment,
+    fetch: fetchMock,
+  });
+  expect(result.answers.reply).toEqual({ type: "noul", noul: 0.95 });
+
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ ...response, model: "gpt-5.5" }),
+  );
+  await expect(
+    clRouterDecide(request, { environment, fetch: fetchMock }),
+  ).rejects.toMatchObject({ kind: "invalid_response" });
+});
+
 test("manual generation posts the explicit route without settings or pins", async () => {
   const fetchMock = vi.fn(async () =>
     Response.json({

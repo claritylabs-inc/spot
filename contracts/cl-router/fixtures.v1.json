@@ -576,7 +576,7 @@
       "value": {
         "contractVersion": 1,
         "requestId": "decision_contract_fixture",
-        "model": "jev-1.13.0",
+        "model": "jev-1.14.0",
         "answers": {
           "reply": {
             "type": "noul",

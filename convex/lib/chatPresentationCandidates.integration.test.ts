@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import {
-  JEV_MODEL,
   parseDecideRequest,
   parseDecideResponse,
 } from "../../contracts/cl-router/policy";
@@ -223,7 +222,7 @@ function validatedDecision(
     {
       contractVersion: 1,
       requestId: "decision1",
-      model: JEV_MODEL,
+      model: "jev-1.13.0",
       answers,
       usage: { inputTokens: 20, outputTokens: 5 },
       cost: { status: "unpriced", costNanoUsd: null },
