@@ -1,19 +1,44 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import dayjs from "dayjs";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { RouterJobPending } from "./lib/routerJobClient";
 import { seedRequestIntake } from "./lib/procurementNarrative";
 
-const { generate } = vi.hoisted(() => ({ generate: vi.fn() }));
+const { generate, decide } = vi.hoisted(() => ({
+  generate: vi.fn(),
+  decide: vi.fn(),
+}));
+vi.mock("./lib/clRouterClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/clRouterClient")>()),
+  clRouterDecide: decide,
+}));
 vi.mock("./lib/models", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/models")>()),
   generateAgentTextForOperatorTask: generate,
 }));
 const modules = import.meta.glob("./**/*.ts");
+
+function familyDecision(
+  request: { questions: Record<string, unknown> },
+  selected?: readonly string[],
+) {
+  return {
+    answers: Object.fromEntries(
+      Object.keys(request.questions).map((family) => [
+        family,
+        { type: "noul", noul: !selected || selected.includes(family) ? 1 : 0 },
+      ]),
+    ),
+  };
+}
+
+beforeEach(() => {
+  decide.mockImplementation(async (request) => familyDecision(request));
+});
 
 async function finishOperatorSchedules(t: ReturnType<typeof convexTest>) {
   // An action must finish before fake time reaches its abandoned-action watchdog.
@@ -28,6 +53,7 @@ async function finishOperatorSchedules(t: ReturnType<typeof convexTest>) {
 afterEach(() => {
   vi.useRealTimers();
   generate.mockReset();
+  decide.mockReset();
 });
 
 test("pauses a batch at its first approval, preserves research, and resumes without accepting stale completion", async () => {
@@ -156,6 +182,7 @@ test("pauses a batch at its first approval, preserves research, and resumes with
     "https://miller.example",
   );
   if (!confirmation) throw new Error("Missing approval");
+  decide.mockImplementation(async (request) => familyDecision(request, []));
   const savedConfirmation = await t.run((ctx) => ctx.db.get(confirmation._id));
   expect(JSON.parse(savedConfirmation!.payload.input)).toHaveProperty(
     "evidence",
@@ -188,6 +215,8 @@ test("pauses a batch at its first approval, preserves research, and resumes with
     }),
   ).toEqual({ status: "not_completed" });
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    expect(options.tools.update_broker_network_profile).toBeDefined();
+    expect(options.tools.import_policy_files).toBeUndefined();
     expect(options.system).toContain("miller.example");
     expect(options.system).toContain("networkStatus");
     expect(options.messages.at(-1)).toEqual({
@@ -1339,4 +1368,225 @@ test("cancellation before request preparation prevents a late journal from start
   expect(await t.query(internal.routerJobs.get, { invocationKey })).toBeNull();
   await finishOperatorSchedules(t);
   expect(generate).not.toHaveBeenCalled();
+});
+
+function familyToolResult(
+  toolName: string,
+  input: Record<string, unknown>,
+  output: unknown,
+) {
+  return {
+    text: "",
+    route: { provider: "openai", model: "gpt-5.6-terra" },
+    response: {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool-call", toolCallId: "family-call", toolName, input },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "family-call",
+              toolName,
+              output: { type: "json", value: output },
+            },
+          ],
+        },
+      ],
+    },
+    steps: [
+      { toolCalls: [{ toolName, input }], toolResults: [{ toolName, output }] },
+    ],
+  };
+}
+
+test("a simple operator request offers core tools without unrelated prompt modules and records the selection", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  decide.mockImplementation(async (request) => familyDecision(request, []));
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.tools.get_operator_overview).toBeDefined();
+    expect(options.tools.search_organizations).toBeDefined();
+    expect(options.tools.expand_tools).toBeDefined();
+    expect(options.tools.import_policy_files).toBeUndefined();
+    expect(options.tools.update_broker_network_profile).toBeUndefined();
+    expect(options.system).not.toContain("To add bound policies");
+    expect(options.system).not.toContain("Company email tools read");
+    expect(options.system).not.toContain("When importing or updating a client");
+    expect(options.system).not.toContain("Spot's own acquisition brands");
+    expect(run.trace).toMatchObject({
+      toolFamilies: "",
+      toolFamilySource: "jev",
+    });
+    return { text: "Ready.", steps: [] };
+  });
+  await finishOperatorSchedules(t);
+  expect(decide).toHaveBeenCalledTimes(1);
+  expect(decide.mock.calls[0][0]).toMatchObject({
+    task: "operator_agent_families",
+    state: { request: "Update the client" },
+  });
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+    status: "completed",
+  });
+});
+
+test("a starter intent selects its families without a Jev request", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  await t.run(async (ctx) => {
+    const run = await ctx.db.get(queued.runId);
+    if (!run) throw new Error("Missing run");
+    await ctx.db.patch(run.userMessageId, {
+      toolArtifacts: [
+        {
+          type: "operator_intent",
+          data: { id: "check_system_health", version: 1 },
+        },
+      ],
+    });
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.tools.get_routing_status).toBeDefined();
+    expect(options.tools.retry_failed_policy_extraction).toBeDefined();
+    expect(options.tools.update_broker_network_profile).toBeUndefined();
+    expect(run.trace).toMatchObject({ toolFamilySource: "intent" });
+    expect(run.trace.toolFamilies.split(",").sort()).toEqual([
+      "extraction",
+      "platform",
+    ]);
+    return { text: "No issues.", steps: [] };
+  });
+  await finishOperatorSchedules(t);
+  expect(decide).not.toHaveBeenCalled();
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+    status: "completed",
+  });
+});
+
+test("new tool evidence triggers family selection on the next step", async () => {
+  vi.useFakeTimers();
+  const { t, orgId, queued } = await durableOperatorFixture();
+  decide
+    .mockImplementationOnce(async (request) => familyDecision(request, []))
+    .mockImplementationOnce(async (request) =>
+      familyDecision(request, ["policies"]),
+    );
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    expect(options.tools.import_policy_files).toBeUndefined();
+    const input = { orgId };
+    const output = await options.tools.get_organization.execute(input);
+    return familyToolResult("get_organization", input, output);
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.tools.import_policy_files).toBeDefined();
+    expect(options.system).toContain("To add bound policies");
+    expect(run.trace).toMatchObject({
+      toolFamilies: "policies",
+      toolFamilySource: "jev",
+    });
+    return { text: "Found the client.", steps: [] };
+  });
+  await finishOperatorSchedules(t);
+  expect(decide).toHaveBeenCalledTimes(2);
+  expect(decide.mock.calls[1][0].state.recentToolActivity).toContain(
+    "get_organization",
+  );
+  expect(decide.mock.calls[1][0].state.recentToolActivity).toContain(
+    "Durable client",
+  );
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+    status: "completed",
+  });
+});
+
+test("expand_tools persists through later all-no selections and keeps the sticky route", async () => {
+  vi.useFakeTimers();
+  const { t, orgId, queued } = await durableOperatorFixture();
+  decide.mockImplementation(async (request) => familyDecision(request, []));
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    expect(options.tools.set_organization_status).toBeUndefined();
+    const input = { families: ["organizations"] };
+    const output = await options.tools.expand_tools.execute(input);
+    expect(output).toMatchObject({
+      status: "available_next_step",
+      families: ["organizations"],
+    });
+    return familyToolResult("expand_tools", input, output);
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.tools.set_organization_status).toBeDefined();
+    expect(run.durable.route).toEqual({
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
+    const input = { orgId };
+    return familyToolResult(
+      "get_organization",
+      input,
+      await options.tools.get_organization.execute(input),
+    );
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.tools.set_organization_status).toBeDefined();
+    expect(options.system).toContain("When importing or updating a client");
+    expect(run.trace.toolFamilies).toBe("organizations");
+    return { text: "Ready to update.", steps: [] };
+  });
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(3);
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+    status: "completed",
+  });
+  expect(
+    await t.run((ctx) => ctx.db.query("agentActionAuditEvents").collect()),
+  ).toHaveLength(1);
+});
+
+test("a durable router replay can still execute the expansion offered by the original step", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  decide.mockImplementation(async (request) => familyDecision(request, []));
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(options.tools.expand_tools).toBeDefined();
+    const requestStorageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(["{}"], { type: "application/json" })),
+    );
+    await t.mutation(internal.routerJobs.prepare, {
+      invocationKey: `${run.durable.invocationKey}:0`,
+      operation: "generate",
+      fingerprint: "a".repeat(64),
+      requestToken: "b".repeat(64),
+      requestTokenHash: "b".repeat(64),
+      resultToken: "c".repeat(64),
+      resultTokenHash: "c".repeat(64),
+      requestStorageId,
+    });
+    throw new RouterJobPending(run.durable.invocationKey);
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
+    expect(run.trace.toolFamilySource).toBe("resume");
+    expect(options.tools.expand_tools).toBeDefined();
+    const input = { families: ["policies"] };
+    const output = await options.tools.expand_tools.execute(input);
+    return familyToolResult("expand_tools", input, output);
+  });
+  generate.mockImplementationOnce(async (_ctx, _task, options) => {
+    expect(options.tools.import_policy_files).toBeDefined();
+    return { text: "Policy tools ready.", steps: [] };
+  });
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(3);
+  expect(generate.mock.calls[0][3].durable.invocationKey).toBe(
+    generate.mock.calls[1][3].durable.invocationKey,
+  );
+  expect(decide).toHaveBeenCalledTimes(2);
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toMatchObject({
+    status: "completed",
+  });
 });

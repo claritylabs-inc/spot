@@ -20,6 +20,19 @@ vi.mock("./lib/models", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./lib/models")>()),
   generateAgentTextForOperatorTask: generate,
 }));
+vi.mock("./lib/clRouterClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/clRouterClient")>()),
+  clRouterDecide: vi.fn(
+    async (request: { questions: Record<string, unknown> }) => ({
+      answers: Object.fromEntries(
+        Object.keys(request.questions).map((family) => [
+          family,
+          { type: "noul", noul: 1 },
+        ]),
+      ),
+    }),
+  ),
+}));
 vi.mock("./lib/chatPresentationComposer", () => ({
   composeChatPresentation: compose,
 }));
