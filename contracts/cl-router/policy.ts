@@ -43,7 +43,8 @@ export const DIRECT_MODEL_PROVIDERS = [
 ] as const;
 export type DirectModelProvider = (typeof DIRECT_MODEL_PROVIDERS)[number];
 
-export const JEV_MODEL = "jev-1.13.0";
+/** Response `model` is the actual Jev version TypeSafe served (e.g. "jev-1.14.0"), not a fixed pin. */
+export const JEV_MODEL_PATTERN = /^jev-/;
 
 export type JsonValue =
   | string
@@ -394,7 +395,7 @@ export function parseDecideResponse(
   if (r.contractVersion !== 1) invalid();
   text(r.requestId);
   text(r.model);
-  if (r.model !== JEV_MODEL) invalid();
+  if (!JEV_MODEL_PATTERN.test(r.model as string)) invalid();
   if (r.parentRequestId !== undefined) text(r.parentRequestId);
   natural(r.durationMs);
   const usage = object(r.usage);

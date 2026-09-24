@@ -1,7 +1,8 @@
 {
   "sourceRepository": "claritylabs-inc/cl-router",
   "sourcePath": "openapi/cl-router-v1.json",
-  "sourceRevision": "f4874a6950ed7cad3e4ec94d7b61c6936619f3ba",
+  "sourceRevision": "ab0279de2b8e1926f2ddd81ba8d6b066a2d16cbe",
   "sourceWorktreeDirty": false,
-  "sha256": "2b5077bb7e34891cd8be481cce7a072669503b600741b49aa38a6b77406474f1"
+  "sha256": "14a153412d787e2edbb4771f3a8893b02107bdbb0245e4445f93f05f820160e4",
+  "note": "PARTIAL SYNC: only the DecideResponse.model schema hunk (const jev-1.13.0 -> pattern ^jev-) was cherry-picked from this commit, not a byte-exact copy of the full file. ab0279d also bundles unrelated additive changes (GET /v1/capabilities model catalog from #49, admin-portal from #51) that were intentionally left out of this snapshot to keep the jev-version fix scoped. A follow-up full resync to this or a later commit should replace this note."
 }
