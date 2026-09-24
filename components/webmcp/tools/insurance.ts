@@ -418,14 +418,10 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
       return { status: "cancelled" };
     },
     retry_policy_extraction: async (input) => {
-      // Any legacy resume/restart mode is ignored: retries are always full runs.
-      const result = await convex.action(api.actions.retryExtraction.retryExtraction, {
+      await convex.action(api.actions.retryExtraction.retryExtraction, {
         policyId: id<"policies">(input, "policy_id"),
-        mode: "full",
       });
-      return "error" in result && result.error
-        ? webMcpError(String(result.error))
-        : { status: "extraction_started" };
+      return { status: "extraction_started" };
     },
 
     list_certificates: async (input) => {

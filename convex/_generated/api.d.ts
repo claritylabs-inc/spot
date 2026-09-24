@@ -115,7 +115,9 @@ import type * as emailDeliveryAttempts from "../emailDeliveryAttempts.js";
 import type * as emailDraftReviewLinks from "../emailDraftReviewLinks.js";
 import type * as employeeProvisioning from "../employeeProvisioning.js";
 import type * as externalExtractionPayload from "../externalExtractionPayload.js";
+import type * as extractionAccess from "../extractionAccess.js";
 import type * as extractionIntegrityAudit from "../extractionIntegrityAudit.js";
+import type * as extractionProgress from "../extractionProgress.js";
 import type * as extractionReviews from "../extractionReviews.js";
 import type * as extractionTraces from "../extractionTraces.js";
 import type * as http from "../http.js";
@@ -213,6 +215,7 @@ import type * as lib_extractionIntegrityAudit from "../lib/extractionIntegrityAu
 import type * as lib_extractionPostProcess from "../lib/extractionPostProcess.js";
 import type * as lib_extractionPromotion from "../lib/extractionPromotion.js";
 import type * as lib_extractionPromptGuidance from "../lib/extractionPromptGuidance.js";
+import type * as lib_extractionRunView from "../lib/extractionRunView.js";
 import type * as lib_extractionTraceRouterFields from "../lib/extractionTraceRouterFields.js";
 import type * as lib_featureFlags from "../lib/featureFlags.js";
 import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js";
@@ -531,7 +534,9 @@ declare const fullApi: ApiFromModules<{
   emailDraftReviewLinks: typeof emailDraftReviewLinks;
   employeeProvisioning: typeof employeeProvisioning;
   externalExtractionPayload: typeof externalExtractionPayload;
+  extractionAccess: typeof extractionAccess;
   extractionIntegrityAudit: typeof extractionIntegrityAudit;
+  extractionProgress: typeof extractionProgress;
   extractionReviews: typeof extractionReviews;
   extractionTraces: typeof extractionTraces;
   http: typeof http;
@@ -629,6 +634,7 @@ declare const fullApi: ApiFromModules<{
   "lib/extractionPostProcess": typeof lib_extractionPostProcess;
   "lib/extractionPromotion": typeof lib_extractionPromotion;
   "lib/extractionPromptGuidance": typeof lib_extractionPromptGuidance;
+  "lib/extractionRunView": typeof lib_extractionRunView;
   "lib/extractionTraceRouterFields": typeof lib_extractionTraceRouterFields;
   "lib/featureFlags": typeof lib_featureFlags;
   "lib/forwardReplyDirection": typeof lib_forwardReplyDirection;

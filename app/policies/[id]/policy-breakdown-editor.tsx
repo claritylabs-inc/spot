@@ -14,6 +14,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   cachedQueryArgsKey,
   cachedQueryCollectionFor,
+  cachedQueryResult,
 } from "@/lib/sync/use-cached-query";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -236,14 +237,10 @@ export function PolicyBreakdownEditor({
         const current = store.getCollection(collection, argsKey)?.[0]?.value;
         if (!current || typeof current !== "object") continue;
         void store.upsertCollection(collection, argsKey, [
-          {
-            _id: "result",
-            value: {
-              ...current,
-              ...args.fields,
-            },
-            updatedAt: dayjs().valueOf(),
-          },
+          cachedQueryResult(argsKey, {
+            ...current,
+            ...args.fields,
+          }),
         ]);
       }
     },

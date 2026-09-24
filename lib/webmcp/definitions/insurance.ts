@@ -180,17 +180,11 @@ export const insuranceTools = {
   retry_policy_extraction: imperative({
     title: "Retry policy extraction",
     description:
-      "Resume or restart a failed policy extraction, as offered in the policy's error banner. Uses AI extraction time.",
+      "Re-extract a policy from its original file, as offered when Spot couldn't finish reading it. Uses AI extraction time.",
     readOnly: false,
     consequential: true,
     pages: ["/policies"],
-    inputSchema: schema(
-      {
-        policy_id: policyId,
-        mode: param.enum(["resume", "restart"], "resume continues from the failed step; restart runs extraction again."),
-      },
-      ["policy_id"],
-    ),
+    inputSchema: schema({ policy_id: policyId }, ["policy_id"]),
   }),
 
   list_certificates: imperative({
