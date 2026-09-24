@@ -655,36 +655,47 @@ script (`run.mjs`) are in `.context/qa/logo-onboarding/`.
 
 ## Shared shell adoption — September 24, 2026
 
-Workflow plan: local synthetic operator and client, normal captured-OTP login.
-Capture login, home, client list/detail, settings, dialog/form and toast at
-1440px and 390px in light/dark themes using `scripts/qa/capture-ui-adoption.mjs`.
-Compare against the pre-shell merge commit. Verify client navigation, mobile
-navigation focus/Escape, legacy collapsed preference restoration, new collapse
-persistence, resize persistence and title edit/cancel/save. Restore fixture titles
-and preferences after behavioral checks. No external sends or production writes.
-Evidence and the remaining-local-owner inventory belong in `.context/qa/shell/`.
-The VM has no visible display; headless results must remain explicitly labeled.
+Registry UI 0.5.0 uses package-owned sidebar restoration readiness before nested
+layouts mount. Headless Chromium passed local synthetic operator/client OTP
+login, client list/detail/form validation and cancel, SPA navigation, toast
+dismissal, legacy collapsed/expanded migration and both toggle directions after
+reload. Mobile drawers retain Spot's unblurred backdrop and 120ms slide treatment
+through shared Dialog; focus entry, Escape/outside focus return, same-route close
+and changed-route close passed. Opening navigation closes a competing operator
+panel. Title tests cover focus, Escape/empty rejection, a second edit while an
+offline save is pending, saving status, serialized reconnection and reload.
+The synthetic title fixture is archived after each run; no external sends occur.
 
-Headless Chromium passed operator login/list/detail/form/toast captures and client
-legacy collapsed/expanded migration, both collapse directions after reload,
-mobile focus entry/Escape return, same-route and changed-route drawer closure,
-Next navigation, theme persistence, and title cancellation/empty rejection.
-An offline title-save workflow accepted a second edit while pending, displayed
-Still saving, serialized both saves after reconnection, and preserved the last
-value after reload. Its synthetic thread was archived afterward.
+Operator navigation resize/collapse and detail keyboard resize survive reload.
+The detail separator restores exactly at 961.59px after navigation expands to
+289.5px, matching baseline behavior. This resolves the UI 0.4.0 restoration-order
+regression without consumer-owned restoration state.
 
-The 16 light comparisons have 15 unchanged captures at per-channel delta 12;
-mobile detail differs by 26 close-icon edge pixels. Dark primary-button glyphs
-now use background-colored text, matching the original pre-adoption source;
-the initial adoption adapter had incorrectly forced black text. Maximum dark
-changed area is 0.0781%. Mobile navigation now uses shared Sheet focus handling
-and its blurred backdrop instead of the former untrapped overlay.
+Captures cover login, OTP, home, list/detail, settings, dialog/form and toast at
+1440×900 and 390×844 in both themes. All 16 light captures are unchanged above
+per-channel delta 12. Dark differences affect at most 0.0781% of a capture:
+primary-button text now matches the original pre-adoption background-colored
+foreground instead of the initial adapter's forced black. The baseline is
+`5a7a693d` (latest-main merge before shell adoption), with only the newly added
+operator invitation's shared-panel import repaired for compilation.
 
-UI 0.4.0 exposed an operator persistence regression: after widening
-navigation to 289.5px, a keyboard-resized detail separator reloads at 932.48px
-instead of 961.59px. The baseline commit `7f39b6d3` restores exactly with the same
-saved percentages. The shared preference hook restores width after the child
-layout mounts. Run `SHELL_OPERATOR_ONLY=1 node scripts/qa/check-shell-adoption.mjs`
-to reproduce. UI 0.5.0 adds package-owned readiness; the consumer now gates layout mounting on it. Final browser verification is pending. Full client behavior
-runs use the same script without that flag. Artifacts are available in the
+Run against the local native Convex synthetic fixture from the developer setup:
+
+```sh
+npx convex logs > .context/logs/convex-capture.log
+# In another terminal:
+npm run dev
+# In another terminal, run sequentially:
+node scripts/qa/capture-ui-adoption.mjs .context/qa/shell/after-light http://localhost:8080
+UI_ADOPTION_THEME=dark node scripts/qa/capture-ui-adoption.mjs .context/qa/shell/after-dark http://localhost:8080
+node scripts/qa/check-shell-adoption.mjs http://localhost:8080 .context/qa/shell/behavior
+node scripts/qa/compare-ui-adoption.mjs .context/qa/shell/before-light .context/qa/shell/after-light .context/qa/shell/diff-light
+node scripts/qa/compare-ui-adoption.mjs .context/qa/shell/before-dark .context/qa/shell/after-dark .context/qa/shell/diff-dark
+```
+
+Capture the baseline with the same commands against its separate local server.
+Capture/auth scripts reject non-loopback origins. `UI_ADOPTION_HEADED=1` selects
+visible Chrome when a display exists; this VM has none, so all recorded results
+are explicitly headless. Auth snapshots and OTP logs remain private. Screenshots,
+comparison JSON, commands and the complete remaining-owner inventory are in the
 [review gallery](https://41841dba-c31c-4f23-801f-78831a73c9f0.conductor.show/shell/).
