@@ -2019,6 +2019,7 @@ function buildCarrierIdentity(params: {
   sourceTree: DocumentSourceNode[];
   sourceSpans?: SourceSpanLike[];
   existingPolicyFields?: unknown;
+  carrierDecision?: CarrierIdentityDecision | null;
 }): {
   carrierIdentity?: CarrierIdentity;
   replacementCarrierName?: string;
@@ -2180,6 +2181,7 @@ export function sourceTreePolicyFields(params: {
     sourceTree,
     sourceSpans: params.sourceSpans,
     existingPolicyFields: params.existingPolicyFields,
+    carrierDecision: params.carrierDecision,
   });
   if (!carrierIdentity) {
     if (!clearExistingIdentity) return projected;
