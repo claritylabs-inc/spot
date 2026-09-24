@@ -1204,10 +1204,7 @@ export const setSoloClientStatus = mutation({
 export const setClientFeatureFlag = mutation({
   args: {
     clientOrgId: v.id("organizations"),
-    flagId: v.union(
-      v.literal("connect_features"),
-      v.literal("imessage_app_cards"),
-    ),
+    flagId: v.literal("connect_features"),
     enabled: v.boolean(),
   },
   handler: async (ctx, args) => {

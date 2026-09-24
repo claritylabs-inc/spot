@@ -3,7 +3,7 @@ import {
   type DirectModelProvider,
 } from "../../contracts/cl-router/policy";
 
-export type ModelProvider = DirectModelProvider | "moonshot";
+export type ModelProvider = DirectModelProvider;
 export type ModelRoute = {
   provider: ModelProvider;
   model: string;
@@ -78,11 +78,6 @@ export type WebRetrievalRoute = {
   route?: ModelRoute;
 };
 
-const RETIRED_MODEL_IDS = new Set<string>([
-  "accounts/fireworks/models/kimi-k2p6",
-  "accounts/fireworks/routers/kimi-k2p6-fast",
-]);
-
 export const PROVIDER_LABELS: Record<ModelProvider, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
@@ -91,74 +86,25 @@ export const PROVIDER_LABELS: Record<ModelProvider, string> = {
   mistral: "Mistral",
   cohere: "Cohere",
   fireworks: "Fireworks",
-  moonshot: "Disabled provider",
   deepseek: "DeepSeek",
 };
 
-export const MODEL_TASK_LABELS: Record<ModelTask, string> = {
-  chat: "Chat assistant",
-  chat_vision: "Chat rich-input understanding",
-  voice_transcription: "Voice memo transcription",
-  email_draft: "Email drafting",
-  email_reply: "Inbound email replies",
-  extraction: "Policy extraction",
-  extraction_preview: "Fast policy extraction",
-  extraction_coverage_recovery: "Coverage recovery",
-  classification: "Classification",
-  requirement_extraction: "Requirement extraction",
-  org_memory_extraction: "Org memory extraction",
-  analysis: "Reasoning and review",
-  summary: "Summaries",
-  triage: "Website enrichment",
-  email_extraction: "Email extraction",
-  document_extraction: "Document extraction",
-  security: "Security checks",
-  mailbox_coordinator: "Mailbox coordinator",
-  embeddings: "Embeddings",
-};
-
-export const MODEL_TASK_DESCRIPTIONS: Record<ModelTask, string> = {
-  chat: "Interactive assistant route for web chat, MCP/CLI chat, iMessage/SMS, retrieval orchestration, and tool calls.",
-  chat_vision:
-    "Rich-input-capable web, iMessage, and operator route for reading user images and parser-empty PDFs while preserving normal chat tools and side effects.",
-  voice_transcription:
-    "Speech-to-text route for bounded iMessage voice memos before the transcript enters the normal tool-capable chat workflow.",
-  email_draft:
-    "Outbound email drafting route for chat-requested messages and email subagent drafts.",
-  email_reply:
-    "Inbound email reply route for tenant-aware email agent responses.",
-  extraction:
-    "Standard bound-policy extraction route after LiteParse preprocessing: focused fields, source review, and post-processing.",
-  extraction_preview:
-    "Fast preview route for policy-list fields extracted from LiteParse text before full enrichment completes.",
-  extraction_coverage_recovery:
-    "Retired route retained for stored settings compatibility; AI coverage recovery is disabled.",
-  classification:
-    "Legacy generation route retained for stored settings compatibility. Classification decisions use router-owned Jev through /v1/decide.",
-  requirement_extraction:
-    "Structured extraction route for compliance requirements from leases, client contracts, vendor packets, and pasted requirement text.",
-  org_memory_extraction:
-    "Durable organization memory extraction route for stable company-profile facts from email and iMessage exchanges.",
-  analysis:
-    "Deeper reasoning route for coverage analysis, compliance review, partner-program matching, policy reconciliation, and policy-change impact.",
-  summary:
-    "Summary route for thread titles, COI copy, and compact email/conversation summaries.",
-  triage:
-    "Website-enrichment synthesis route after public web retrieval; this does not control the web search provider.",
-  email_extraction:
-    "Low-cost route for extracting structured facts from email body text and supported attachment text.",
-  document_extraction:
-    "Document-level extraction route for non-policy subtasks and attachment analysis outside full policy extraction.",
-  security:
-    "Legacy generation route retained for stored settings compatibility. Prompt-injection classification uses router-owned Jev through /v1/decide.",
-  mailbox_coordinator:
-    "Coordinator route for multi-step connected-mailbox workflows: search mail, inspect attachments, import policies or requirements, and plan follow-up.",
-  embeddings:
-    "Vector embedding route for policies and source chunks. Must stay compatible with the configured Convex vector dimensions.",
-};
+/**
+ * Retired routes: no longer selectable in operator settings, but kept in
+ * ALL_MODEL_TASKS/ModelTask so stored-data compatibility and internal
+ * taskKind bucketing (`convex/lib/models.ts`, `convex/lib/sdkCallbacks.ts`)
+ * keep working. `extraction_coverage_recovery` is retired cl-sdk coverage
+ * recovery; `classification`/`security` decisions now go through
+ * clRouterDecide (/v1/decide) instead of a generation route.
+ */
+const RETIRED_MODEL_TASK_IDS = [
+  "extraction_coverage_recovery",
+  "classification",
+  "security",
+] as const satisfies readonly ModelTask[];
 
 export const MODEL_TASKS = ALL_MODEL_TASKS.filter(
-  (task) => task !== "extraction_coverage_recovery",
+  (task) => !(RETIRED_MODEL_TASK_IDS as readonly string[]).includes(task),
 );
 export const OPERATOR_AGENT_MODEL_ROUTE_ID = "operator_agent" as const;
 export type ModelRouteId = ModelTask | typeof OPERATOR_AGENT_MODEL_ROUTE_ID;
@@ -167,102 +113,9 @@ export const MODEL_ROUTE_IDS = [
   OPERATOR_AGENT_MODEL_ROUTE_ID,
 ] as ModelRouteId[];
 
-export const MODEL_ROUTE_LABELS: Record<ModelRouteId, string> = {
-  ...MODEL_TASK_LABELS,
-  operator_agent: "Operator agent",
-};
-
-export const MODEL_ROUTE_DESCRIPTIONS: Record<ModelRouteId, string> = {
-  ...MODEL_TASK_DESCRIPTIONS,
-  operator_agent:
-    "Required manually selected route for the internal operator agent across the portal, Slack, iMessage, and MCP. It must support rich attachment input and is always submitted through /v1/manual, never auto-routed.",
-};
-
-export type ModelRouteGroup<RouteId extends string = string> = {
-  id: string;
-  label: string;
-  description: string;
-  tasks: readonly RouteId[];
-};
-
-export const MODEL_TASK_GROUPS = [
-  {
-    id: "agent_communication",
-    label: "Agent communication",
-    description:
-      "Routes used when Spot is talking to users or coordinating mailbox workflows.",
-    tasks: [
-      "chat",
-      "chat_vision",
-      "voice_transcription",
-      "email_reply",
-      "email_draft",
-      "mailbox_coordinator",
-    ],
-  },
-  {
-    id: "reasoning_authoring",
-    label: "Reasoning and authoring",
-    description:
-      "Routes used for deeper policy reasoning, review, and summaries.",
-    tasks: ["analysis", "summary"],
-  },
-  {
-    id: "document_ingestion",
-    label: "Document ingestion",
-    description:
-      "Routes used to extract structured facts from policies, files, and email text.",
-    tasks: [
-      "requirement_extraction",
-      "org_memory_extraction",
-      "extraction",
-      "document_extraction",
-      "email_extraction",
-    ],
-  },
-  {
-    id: "platform_utilities",
-    label: "Platform utilities",
-    description: "Routes used for enrichment and vector indexing.",
-    tasks: ["triage", "embeddings"],
-  },
-] as const satisfies readonly ModelRouteGroup<ModelTask>[];
-
-export const OPERATOR_MODEL_ROUTE_GROUPS = [
-  {
-    id: "internal_operations",
-    label: "Internal operations",
-    description:
-      "Required manually selected /v1/manual routes for Clarity Labs operator workflows.",
-    tasks: [OPERATOR_AGENT_MODEL_ROUTE_ID],
-  },
-  MODEL_TASK_GROUPS[0],
-  MODEL_TASK_GROUPS[1],
-  MODEL_TASK_GROUPS[2],
-  MODEL_TASK_GROUPS[3],
-] as const satisfies readonly ModelRouteGroup<ModelRouteId>[];
-
 export const MODEL_PROVIDERS = [
   ...DIRECT_MODEL_PROVIDERS,
-  "moonshot",
 ] as const satisfies readonly ModelProvider[];
-export const CONFIGURABLE_MODEL_PROVIDERS = DIRECT_MODEL_PROVIDERS;
-
-export const WEB_RETRIEVAL_LABELS: Record<WebRetrievalProvider, string> = {
-  parallel: "Parallel",
-  exa: "Exa",
-  model_default: "Model default",
-  openai: "OpenAI",
-  google: "Google",
-  anthropic: "Claude",
-  xai: "xAI",
-};
-
-export const OPERATOR_WEB_RETRIEVAL_PROVIDERS = [
-  "parallel",
-  "exa",
-  "model_default",
-] as const satisfies readonly WebRetrievalProvider[];
 
 export const WEB_RETRIEVAL_DEFAULT: WebRetrievalRoute = { primary: "parallel" };
 
@@ -338,10 +191,4 @@ export function isConfigurableModelProvider(
   value: string,
 ): value is DirectModelProvider {
   return (DIRECT_MODEL_PROVIDERS as readonly string[]).includes(value);
-}
-
-export function isRetiredModelRoute(
-  route: ModelRoute | null | undefined,
-): boolean {
-  return !!route && RETIRED_MODEL_IDS.has(route.model);
 }

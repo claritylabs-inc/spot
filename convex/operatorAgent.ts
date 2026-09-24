@@ -2850,10 +2850,7 @@ async function executeToolDomain(
       throw new Error("Client organization not found");
     }
     const flagId = input.flagId;
-    if (
-      flagId !== "connect_features" &&
-      flagId !== "imessage_app_cards"
-    ) {
+    if (flagId !== "connect_features") {
       throw new Error("Unsupported feature flag");
     }
     const enabled = input.enabled === true;

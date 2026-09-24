@@ -53,10 +53,6 @@ async function saveNote(ctx: MutationCtx, scope: DocumentScope, body: string, ti
   });
 }
 
-export async function validateDeliveryNotes(ctx: MutationCtx, job: Doc<"certificateWorkflowJobs">, notes: string, actorUserId: Id<"users">) {
-  await prepareNote(ctx, { orgId: job.orgId, kind: "certificate_delivery_notes", certificateWorkflowJobId: job._id }, notes, "Certificate delivery notes", { actorUserId });
-}
-
 export function readRequirementNotes(ctx: ReadCtx, source: Doc<"requirementSourceDocuments">, includePrivate = false) {
   return readNote(ctx, {
     orgId: source.orgId, kind: "requirement_notes", requirementSourceDocumentId: source._id,
@@ -84,34 +80,4 @@ export async function saveHolderNotes(ctx: MutationCtx, holder: Doc<"certificate
 export async function copyHolderNotes(ctx: MutationCtx, source: Doc<"certificateHolders">, target: Doc<"certificateHolders">) {
   const document = await getMarkdownDocument(ctx, { orgId: source.orgId, kind: "holder_notes", certificateHolderId: source._id });
   if (document) await saveHolderNotes(ctx, target, document.markdown);
-}
-
-export async function readWorkflowNotes(ctx: ReadCtx, job: Doc<"certificateWorkflowJobs">, includePrivate = false) {
-  const [reviewNotes, sendNotes] = await Promise.all([
-    readNote(ctx, {
-      orgId: job.orgId, kind: "certificate_review_notes", certificateWorkflowJobId: job._id,
-    }, includePrivate),
-    readNote(ctx, {
-      orgId: job.orgId, kind: "certificate_delivery_notes", certificateWorkflowJobId: job._id,
-    }, includePrivate),
-  ]);
-  return { reviewNotes, sendNotes };
-}
-
-export async function saveWorkflowNotes(
-  ctx: MutationCtx,
-  job: Doc<"certificateWorkflowJobs">,
-  notes: { reviewNotes?: string; sendNotes?: string },
-  writer: NoteWriter = {},
-) {
-  if (notes.reviewNotes !== undefined) {
-    await saveNote(ctx, {
-      orgId: job.orgId, kind: "certificate_review_notes", certificateWorkflowJobId: job._id,
-    }, notes.reviewNotes, "Certificate review notes", writer);
-  }
-  if (notes.sendNotes !== undefined) {
-    await saveNote(ctx, {
-      orgId: job.orgId, kind: "certificate_delivery_notes", certificateWorkflowJobId: job._id,
-    }, notes.sendNotes, "Certificate delivery notes", writer);
-  }
 }

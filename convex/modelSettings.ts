@@ -1,27 +1,17 @@
-import dayjs from "dayjs";
 import { v } from "convex/values";
 import {
+  internalMutation,
   internalQuery,
-  mutation,
-  query,
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { requireOperator } from "./lib/operatorIdentity";
 import {
-  CONFIGURABLE_MODEL_PROVIDERS,
-  MODEL_ROUTE_DESCRIPTIONS,
   MODEL_ROUTE_IDS,
-  MODEL_ROUTE_LABELS,
   MODEL_TASKS,
-  OPERATOR_MODEL_ROUTE_GROUPS,
   OPERATOR_AGENT_MODEL_ROUTE_ID,
-  OPERATOR_WEB_RETRIEVAL_PROVIDERS,
   PROVIDER_LABELS,
   WEB_RETRIEVAL_DEFAULT,
-  WEB_RETRIEVAL_LABELS,
   isConfigurableModelProvider,
-  isRetiredModelRoute,
   type ModelRoute,
   type ModelRouteId,
   type ModelTask,
@@ -34,69 +24,11 @@ import {
 
 type GlobalRoutes = Partial<Record<ModelRouteId, ModelRoute>>;
 
-const configurableProviderValidator = v.union(
-  v.literal("openai"),
-  v.literal("anthropic"),
-  v.literal("google"),
-  v.literal("xai"),
-  v.literal("mistral"),
-  v.literal("cohere"),
-  v.literal("fireworks"),
-  v.literal("deepseek"),
-);
-
-const routeValidator = v.object({
-  provider: configurableProviderValidator,
-  model: v.string(),
-});
-
-const routeUpdateValidator = v.union(routeValidator, v.null());
-
-const webRetrievalProviderValidator = v.union(
-  v.literal("parallel"),
-  v.literal("exa"),
-  v.literal("model_default"),
-);
-
-const webRetrievalValidator = v.object({
-  primary: webRetrievalProviderValidator,
-  route: v.optional(routeValidator),
-});
-
-const globalRoutesValidator = v.object({
-  operator_agent: v.optional(routeUpdateValidator),
-  chat: v.optional(routeUpdateValidator),
-  chat_vision: v.optional(routeUpdateValidator),
-  voice_transcription: v.optional(routeUpdateValidator),
-  email_draft: v.optional(routeUpdateValidator),
-  email_reply: v.optional(routeUpdateValidator),
-  extraction: v.optional(routeUpdateValidator),
-  extraction_preview: v.optional(routeUpdateValidator),
-  classification: v.optional(routeUpdateValidator),
-  requirement_extraction: v.optional(routeUpdateValidator),
-  org_memory_extraction: v.optional(routeUpdateValidator),
-  analysis: v.optional(routeUpdateValidator),
-  summary: v.optional(routeUpdateValidator),
-  triage: v.optional(routeUpdateValidator),
-  email_extraction: v.optional(routeUpdateValidator),
-  document_extraction: v.optional(routeUpdateValidator),
-  security: v.optional(routeUpdateValidator),
-  mailbox_coordinator: v.optional(routeUpdateValidator),
-  embeddings: v.optional(routeUpdateValidator),
-});
-
-function isModelRouteId(value: string): value is ModelRouteId {
-  return (MODEL_ROUTE_IDS as string[]).includes(value);
-}
-
 function assertSupportedRoute(
   routeId: ModelRouteId,
   route: ModelRoute,
   models: RouterModelEntry[] | null,
 ) {
-  if (isRetiredModelRoute(route)) {
-    throw new Error(`Retired model ${route.model} is no longer selectable`);
-  }
   if (!isConfigurableModelProvider(route.provider) || route.model.length === 0) {
     throw new Error(
       `${PROVIDER_LABELS[route.provider] ?? route.provider} model ${route.model} is not available`,
@@ -125,20 +57,7 @@ function assertSupportedRoute(
 }
 
 function routeStaticallySupported(route: ModelRoute) {
-  return (
-    !isRetiredModelRoute(route) &&
-    isConfigurableModelProvider(route.provider) &&
-    route.model.length > 0
-  );
-}
-
-function nullableGlobalRoutes(routes: GlobalRoutes | undefined) {
-  return Object.fromEntries(
-    MODEL_ROUTE_IDS.map((id) => {
-      const route = routes?.[id];
-      return [id, route && routeStaticallySupported(route) ? route : null];
-    }),
-  ) as Record<ModelRouteId, ModelRoute | null>;
+  return isConfigurableModelProvider(route.provider) && route.model.length > 0;
 }
 
 /**
@@ -170,8 +89,14 @@ export function explicitOperatorAgentRoute(
     : null;
 }
 
+/**
+ * Reads possibly-legacy stored web-retrieval config, so the input type is
+ * looser than WebRetrievalRoute: stored `route.provider` can still be the
+ * retired "moonshot" literal (schema.ts keeps it for old documents). This
+ * always discards `route`, so the mismatch never surfaces.
+ */
 function normalizeWebRetrieval(
-  config: WebRetrievalRoute | undefined,
+  config: { primary: string; route?: unknown } | undefined,
 ): WebRetrievalRoute {
   if (!config) return WEB_RETRIEVAL_DEFAULT;
   if (
@@ -184,105 +109,6 @@ function normalizeWebRetrieval(
   return { primary: "model_default" };
 }
 
-function assertSupportedWebRetrieval(config: WebRetrievalRoute) {
-  if (config.route) {
-    throw new Error(
-      `${WEB_RETRIEVAL_LABELS[config.primary]} web retrieval does not use a model override`,
-    );
-  }
-}
-
-export const getGlobal = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireOperator(ctx);
-    const settings = await ctx.db
-      .query("globalModelSettings")
-      .withIndex("key", (q) => q.eq("key", "default"))
-      .first();
-
-    return {
-      providers: CONFIGURABLE_MODEL_PROVIDERS.map((id) => ({
-        id,
-        label: PROVIDER_LABELS[id],
-      })),
-      tasks: MODEL_ROUTE_IDS.map((id) => ({
-        id,
-        label: MODEL_ROUTE_LABELS[id],
-        description: MODEL_ROUTE_DESCRIPTIONS[id],
-        isEmbedding: id === "embeddings",
-        isAudio: id === "voice_transcription",
-        manualRequired: id === OPERATOR_AGENT_MODEL_ROUTE_ID,
-      })),
-      groups: OPERATOR_MODEL_ROUTE_GROUPS,
-      routes: nullableGlobalRoutes(explicitGlobalRoutes(settings)),
-      webRetrieval: normalizeWebRetrieval(settings?.webRetrieval),
-      webRetrievalProviders: OPERATOR_WEB_RETRIEVAL_PROVIDERS.map((id) => ({
-        id,
-        label: WEB_RETRIEVAL_LABELS[id],
-      })),
-      updatedAt: settings?.updatedAt ?? null,
-    };
-  },
-});
-
-export const updateGlobalRoutes = mutation({
-  args: { routes: globalRoutesValidator },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    const existing = await ctx.db
-      .query("globalModelSettings")
-      .withIndex("key", (q) => q.eq("key", "default"))
-      .first();
-
-    for (const [task, route] of Object.entries(args.routes)) {
-      if (task === OPERATOR_AGENT_MODEL_ROUTE_ID && route === null) {
-        throw new Error(
-          "Operator agent model selection is required and cannot use automated routing",
-        );
-      }
-      if (!route) continue;
-      if (!isModelRouteId(task)) throw new Error(`Unknown model route ${task}`);
-      // Mutations cannot fetch the router. When GET /v1/capabilities includes
-      // `models`, the operator UI fail-closes against that list. Older routers
-      // omit `models`; pins remain unvalidated-but-allowed here and the router
-      // rejects unknown /v1/manual routes.
-      assertSupportedRoute(task, route, null);
-    }
-
-    const now = dayjs().valueOf();
-    const routes = explicitGlobalRoutes(existing);
-    const explicitRouteOverrides = new Set<string>(Object.keys(routes));
-    for (const [task, route] of Object.entries(args.routes)) {
-      if (!isModelRouteId(task)) continue;
-      if (route === null) {
-        delete routes[task];
-        explicitRouteOverrides.delete(task);
-      } else if (route) {
-        routes[task] = route;
-        explicitRouteOverrides.add(task);
-      }
-    }
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        routes,
-        explicitRouteOverrides: [...explicitRouteOverrides],
-        updatedBy: operator.userId,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("globalModelSettings", {
-        key: "default",
-        routes,
-        explicitRouteOverrides: [...explicitRouteOverrides],
-        updatedBy: operator.userId,
-        updatedAt: now,
-      });
-    }
-  },
-});
-
 export const resolveOperatorAgentRoute = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -293,41 +119,11 @@ export const resolveOperatorAgentRoute = internalQuery({
     const route = explicitOperatorAgentRoute(settings);
     if (!route) {
       throw new Error(
-        "Operator agent model is not configured. Select a provider and image-capable model in Operator routing.",
+        "Operator agent model is not configured. Set the operator_agent route on globalModelSettings.",
       );
     }
     assertSupportedRoute(OPERATOR_AGENT_MODEL_ROUTE_ID, route, null);
     return route;
-  },
-});
-
-export const updateGlobalWebRetrieval = mutation({
-  args: { webRetrieval: webRetrievalValidator },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    assertSupportedWebRetrieval(args.webRetrieval);
-
-    const existing = await ctx.db
-      .query("globalModelSettings")
-      .withIndex("key", (q) => q.eq("key", "default"))
-      .first();
-    const now = dayjs().valueOf();
-    const webRetrieval = normalizeWebRetrieval(args.webRetrieval);
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        webRetrieval,
-        updatedBy: operator.userId,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("globalModelSettings", {
-        key: "default",
-        webRetrieval,
-        updatedBy: operator.userId,
-        updatedAt: now,
-      });
-    }
   },
 });
 
@@ -353,11 +149,7 @@ export async function resolvePublicModelDefaults(ctx: QueryCtx) {
   const routeSources: Partial<Record<ModelTask, "global">> = {};
   for (const task of MODEL_TASKS) {
     const route = globalRoutes[task];
-    if (
-      route &&
-      route.provider !== "moonshot" &&
-      routeStaticallySupported(route)
-    ) {
+    if (route && routeStaticallySupported(route)) {
       routes[task] = route;
       routeSources[task] = "global";
     }
@@ -373,4 +165,163 @@ export async function resolvePublicModelDefaults(ctx: QueryCtx) {
 export const resolvePublicDefaults = internalQuery({
   args: {},
   handler: resolvePublicModelDefaults,
+});
+
+/**
+ * Route keys retired from the catalog (`convex/lib/modelCatalog.ts`) but
+ * possibly still present on stored settings rows. Strip them so the schema
+ * fields can eventually be narrowed.
+ */
+const RETIRED_ROUTE_KEYS = [
+  "extraction_coverage_recovery",
+  "classification",
+  "security",
+  "extraction_quality",
+  "extraction_coverage_cleanup",
+  "fallback",
+] as const;
+
+const STRIP_RETIRED_ROUTES_BATCH_SIZE = 50;
+
+function stripRetiredRouteKeys(
+  routes: Record<string, unknown> | undefined,
+): { routes: Record<string, unknown> | undefined; strippedCount: number } {
+  if (!routes) return { routes, strippedCount: 0 };
+  let strippedCount = 0;
+  const next = { ...routes };
+  for (const key of RETIRED_ROUTE_KEYS) {
+    if (key in next) {
+      delete next[key];
+      strippedCount += 1;
+    }
+  }
+  return { routes: next, strippedCount };
+}
+
+/**
+ * Unsets retired route keys on stored `globalModelSettings` /
+ * `brokerModelSettings` rows. Bounded and batched: pass the returned
+ * `continueCursor` back in until `isDone` to cover every broker row. Not run
+ * automatically by this packet.
+ */
+export const stripRetiredRoutesInternal = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    let globalRowsUpdated = 0;
+    let globalKeysStripped = 0;
+
+    if (!args.cursor) {
+      const globalSettings = await ctx.db
+        .query("globalModelSettings")
+        .withIndex("key", (q) => q.eq("key", "default"))
+        .first();
+      if (globalSettings) {
+        const { routes, strippedCount } = stripRetiredRouteKeys(
+          globalSettings.routes as Record<string, unknown> | undefined,
+        );
+        const explicitRouteOverrides = (
+          globalSettings.explicitRouteOverrides ?? []
+        ).filter(
+          (key) => !(RETIRED_ROUTE_KEYS as readonly string[]).includes(key),
+        );
+        const overridesChanged =
+          explicitRouteOverrides.length !==
+          (globalSettings.explicitRouteOverrides ?? []).length;
+        if (strippedCount > 0 || overridesChanged) {
+          await ctx.db.patch(globalSettings._id, {
+            routes,
+            explicitRouteOverrides,
+          });
+          globalRowsUpdated = 1;
+          globalKeysStripped = strippedCount;
+        }
+      }
+    }
+
+    const page = await ctx.db
+      .query("brokerModelSettings")
+      .paginate({ numItems: STRIP_RETIRED_ROUTES_BATCH_SIZE, cursor: args.cursor ?? null });
+
+    let brokerRowsUpdated = 0;
+    let brokerKeysStripped = 0;
+    for (const row of page.page) {
+      const { routes, strippedCount } = stripRetiredRouteKeys(
+        row.routes as Record<string, unknown> | undefined,
+      );
+      if (strippedCount > 0) {
+        await ctx.db.patch(row._id, { routes });
+        brokerRowsUpdated += 1;
+        brokerKeysStripped += strippedCount;
+      }
+    }
+
+    return {
+      globalRowsUpdated,
+      globalKeysStripped,
+      brokerRowsScanned: page.page.length,
+      brokerRowsUpdated,
+      brokerKeysStripped,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
+});
+
+const CLEAR_OVERRIDES_BATCH_SIZE = 50;
+
+/**
+ * Clears every stored operator model-route override: the operator settings
+ * UI and its `getGlobal`/`updateGlobalRoutes`/`updateGlobalWebRetrieval`
+ * mutations are removed, so `globalModelSettings.routes`,
+ * `explicitRouteOverrides`, `webRetrieval`, and `brokerModelSettings.routes`
+ * can no longer be edited and are frozen at whatever they last held.
+ * Bounded and batched like stripRetiredRoutesInternal: pass the returned
+ * `continueCursor` back in until `isDone` to cover every broker row. Not run
+ * automatically by this packet.
+ */
+export const clearOperatorModelOverridesInternal = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    let globalRowCleared = false;
+
+    if (!args.cursor) {
+      const globalSettings = await ctx.db
+        .query("globalModelSettings")
+        .withIndex("key", (q) => q.eq("key", "default"))
+        .first();
+      if (
+        globalSettings &&
+        (globalSettings.routes ||
+          globalSettings.explicitRouteOverrides?.length ||
+          globalSettings.webRetrieval)
+      ) {
+        await ctx.db.patch(globalSettings._id, {
+          routes: undefined,
+          explicitRouteOverrides: undefined,
+          webRetrieval: undefined,
+        });
+        globalRowCleared = true;
+      }
+    }
+
+    const page = await ctx.db
+      .query("brokerModelSettings")
+      .paginate({ numItems: CLEAR_OVERRIDES_BATCH_SIZE, cursor: args.cursor ?? null });
+
+    let brokerRowsCleared = 0;
+    for (const row of page.page) {
+      if (row.routes) {
+        await ctx.db.patch(row._id, { routes: undefined });
+        brokerRowsCleared += 1;
+      }
+    }
+
+    return {
+      globalRowCleared,
+      brokerRowsScanned: page.page.length,
+      brokerRowsCleared,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+    };
+  },
 });

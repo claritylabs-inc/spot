@@ -527,68 +527,6 @@ export function toCertificateVersionDto(version: CertificateVersionDtoSource) {
   };
 }
 
-export interface CertificateWorkflowJobDtoSource {
-  _id: DtoId;
-  orgId: DtoId;
-  brokerOrgId?: DtoId;
-  certificateId: DtoId;
-  certificateVersionId?: DtoId;
-  holderId: DtoId;
-  policyId: DtoId;
-  policyVersionId?: DtoId;
-  kind: string;
-  status: string;
-  reason?: string;
-  recipientName?: string;
-  recipientEmail?: string;
-  recipientPhone?: string;
-  reviewNotes?: string;
-  sendNotes?: string;
-  sentAt?: number;
-  cancelledAt?: number;
-  cancelReason?: string;
-  lastError?: string;
-  reviewedAt?: number;
-  createdAt: number;
-  updatedAt: number;
-  holder?: CertificateHolderDtoSource | null;
-  policy?: PolicyDtoSource | null;
-  certificateVersion?: CertificateVersionDtoSource | null;
-}
-
-export function toCertificateWorkflowJobDto(job: CertificateWorkflowJobDtoSource) {
-  return {
-    id: job._id,
-    org_id: job.orgId,
-    broker_org_id: job.brokerOrgId ?? null,
-    certificate_id: job.certificateId,
-    policy_certificate_id: job.certificateId,
-    certificate_version_id: job.certificateVersionId ?? null,
-    holder_id: job.holderId,
-    policy_id: job.policyId,
-    policy_version_id: job.policyVersionId ?? null,
-    kind: job.kind,
-    status: job.status,
-    reason: job.reason ?? null,
-    recipient_name: job.recipientName ?? null,
-    recipient_email: job.recipientEmail ?? null,
-    recipient_phone: job.recipientPhone ?? null,
-    review_notes: job.reviewNotes ?? null,
-    send_notes: job.sendNotes ?? null,
-    sent_at: job.sentAt ?? null,
-    cancelled_at: job.cancelledAt ?? null,
-    cancel_reason: job.cancelReason ?? null,
-    last_error: job.lastError ?? null,
-    reviewed_at: job.reviewedAt ?? null,
-    created_at: job.createdAt,
-    updated_at: job.updatedAt,
-    holder: job.holder ? toCertificateHolderDto(job.holder) : null,
-    policy: job.policy ? toPolicyDto(job.policy) : null,
-    certificate_version: job.certificateVersion
-      ? toCertificateVersionDto(job.certificateVersion)
-      : null,
-  };
-}
 
 export interface McpThreadSummarySource {
   _id: DtoId;

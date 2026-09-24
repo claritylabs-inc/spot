@@ -1,13 +1,12 @@
 "use client";
 
-import { useModelOverrides } from "./model-overrides";
 import { useSearchParams } from "next/navigation";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import {
   SidebarMenuItem,
   SidebarTooltipProvider,
 } from "@/components/app-sidebar/nav-item";
-import { Settings, Route, Users } from "lucide-react";
+import { Settings, Users } from "lucide-react";
 import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -31,13 +30,7 @@ export default function OperatorSettingsPage() {
   const current = useCachedOperatorCurrent();
   const invitations = useOperatorInvite(!current || Boolean(current.activeImpersonation));
   const sectionParam = useSearchParams().get("section");
-  const section =
-    sectionParam === "models" || sectionParam === "team"
-      ? sectionParam
-      : "general";
-  const overrides = useModelOverrides(
-    !current || Boolean(current.activeImpersonation),
-  );
+  const section = sectionParam === "team" ? sectionParam : "general";
   const settings = useQuery(api.operator.getAgentSettings);
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
@@ -63,13 +56,6 @@ export default function OperatorSettingsPage() {
               collapsed={collapsed}
             />
             <SidebarMenuItem
-              href="/operator/settings?section=models"
-              icon={Route}
-              label="Model overrides"
-              active={section === "models"}
-              collapsed={collapsed}
-            />
-            <SidebarMenuItem
               href="/operator/settings?section=team"
               icon={Users}
               label="Team"
@@ -80,20 +66,11 @@ export default function OperatorSettingsPage() {
         </SidebarTooltipProvider>
       )}
       customSidebarStorageKey="operator-sidebar"
-      rightPanel={
-        section === "models"
-          ? overrides.drawer
-          : section === "team"
-            ? invitations.drawer
-            : mcp.drawer
-      }
-      actions={section === "models" ? overrides.action : undefined}
+      rightPanel={section === "team" ? invitations.drawer : mcp.drawer}
       disablePersistentChat
       disableCommandPalette
     >
-      {section === "models" ? (
-        overrides.panel
-      ) : section === "team" ? (
+      {section === "team" ? (
         invitations.panel
       ) : !settings || !current ? (
         <div className="flex h-64 items-center justify-center">

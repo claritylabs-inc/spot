@@ -53,7 +53,6 @@ import {
   toCertificateHolderDto,
   toCertificateDto,
   toCertificateVersionDto,
-  toCertificateWorkflowJobDto,
   toMcpConnectedVendorPolicyDto,
   toMcpMyPolicyDto,
   toMcpPolicySearchResultDto,
@@ -1761,20 +1760,6 @@ function compatibleCertificateGenerationResponse(
     : batch;
 }
 
-function certificateWorkflowJobStatusParam(status: string | null) {
-  if (
-    status === "review_required" ||
-    status === "blocked_missing_contact" ||
-    status === "sending" ||
-    status === "sent" ||
-    status === "cancelled" ||
-    status === "failed"
-  ) {
-    return status;
-  }
-  return undefined;
-}
-
 function effectivePolicyDataStage(policy: Record<string, unknown>) {
   const stage = policy.extractionDataStage;
   if (stage === "placeholder" || stage === "preview" || stage === "final") {
@@ -2062,33 +2047,6 @@ http.route({
   }),
 });
 
-// GET /mcp/certificates/review-jobs/list
-http.route({
-  path: "/mcp/certificates/review-jobs/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const jobs = await ctx.runQuery(
-        internal.certificateWorkflowJobs.listForOrgInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          policyId: (getQueryParam(request, "policyId") ??
-            getQueryParam(request, "policy_id") ??
-            undefined) as Id<"policies"> | undefined,
-          status: certificateWorkflowJobStatusParam(
-            getQueryParam(request, "status"),
-          ),
-        },
-      );
-      return jsonResponse(jobs.map(toCertificateWorkflowJobDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
 // POST /mcp/policies/certificates/generate
 http.route({
   path: "/mcp/policies/certificates/generate",
@@ -2354,22 +2312,6 @@ const MCP_TOOLS: TenantMcpToolCatalogEntry[] = [
         certificateHolderId: {
           type: "string",
           description: "Optional alias for holderId",
-        },
-      },
-    },
-  },
-  {
-    name: "list_certificate_review_jobs",
-    description:
-      "List certificate renewal/post-endorsement/manual review jobs.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: { type: "string", description: "Optional policy ID" },
-        status: {
-          type: "string",
-          description:
-            "Optional job status: review_required, blocked_missing_contact, sending, sent, cancelled, or failed",
         },
       },
     },
@@ -3353,34 +3295,6 @@ async function handleToolCall(
             type: "text",
             text: JSON.stringify(
               versions.map(toCertificateVersionDto),
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "list_certificate_review_jobs": {
-      const policyId = args.policyId ?? args.policy_id;
-      const jobs = await ctx.runQuery(
-        internal.certificateWorkflowJobs.listForOrgInternal,
-        {
-          orgId,
-          policyId:
-            typeof policyId === "string" && policyId
-              ? (policyId as Id<"policies">)
-              : undefined,
-          status: certificateWorkflowJobStatusParam(
-            typeof args.status === "string" ? args.status : null,
-          ),
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              jobs.map(toCertificateWorkflowJobDto),
               null,
               2,
             ),
@@ -4661,39 +4575,6 @@ http.route({
   }),
 });
 
-// ── GET /api/v1/certificate-review-jobs ──
-http.route({
-  path: "/api/v1/certificate-review-jobs",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireApiAuth(ctx, request);
-      const jobs = await ctx.runQuery(
-        internal.certificateWorkflowJobs.listForOrgInternal,
-        {
-          orgId: identity.orgId,
-          policyId: (getQueryParam(request, "policy_id") ??
-            getQueryParam(request, "policyId") ??
-            undefined) as Id<"policies"> | undefined,
-          status: certificateWorkflowJobStatusParam(
-            getQueryParam(request, "status"),
-          ),
-        },
-      );
-      return jsonResponse({
-        data: jobs.map(toCertificateWorkflowJobDto),
-        next_cursor: null,
-      });
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse(
-        { error: { code: "internal_error", message: String(e) } },
-        500,
-      );
-    }
-  }),
-});
-
 // ── GET /api/v1/vendors ──
 http.route({
   path: "/api/v1/vendors",
@@ -5044,13 +4925,6 @@ http.route({
             tags: ["Certificates"],
             summary: "List certificate issue/reissue versions for a policy",
             responses: { "200": { description: "Certificate versions" } },
-          },
-        },
-        "/api/v1/certificate-review-jobs": {
-          get: {
-            tags: ["Certificates"],
-            summary: "List certificate renewal/post-endorsement review jobs",
-            responses: { "200": { description: "Certificate review jobs" } },
           },
         },
         "/api/v1/vendors": {

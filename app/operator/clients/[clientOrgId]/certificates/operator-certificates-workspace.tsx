@@ -33,18 +33,6 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { PillButton } from "@/components/ui/pill-button";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 
-type CertificateWorkflowJob = {
-  _id: Id<"certificateWorkflowJobs">;
-  certificateId: Id<"policyCertificates">;
-  kind: string;
-  status: string;
-  reason?: string;
-  recipientName?: string;
-  recipientEmail?: string;
-  lastError?: string;
-  updatedAt: number;
-};
-
 function displayValue(value?: string) {
   return value?.replaceAll("_", " ") ?? "—";
 }
@@ -88,11 +76,6 @@ export function OperatorCertificatesWorkspace({
     api.certificateLifecycle.listForOrg,
     { orgId },
   ) as PolicyCertificateRecord[] | undefined;
-  const jobs = useCachedQuery(
-    "certificateWorkflowJobs.listForOrg.operator",
-    api.certificateWorkflowJobs.listForOrg,
-    { orgId },
-  ) as CertificateWorkflowJob[] | undefined;
   const generateCertificate = useAction(api.certificates.generateForPolicy);
   const archiveCertificateMutation = useMutation(api.certificateLifecycle.archive);
   const unarchiveCertificateMutation = useMutation(api.certificateLifecycle.unarchive);
@@ -108,17 +91,6 @@ export function OperatorCertificatesWorkspace({
   const [unarchivingCertificateId, setUnarchivingCertificateId] =
     useState<Id<"policyCertificates"> | null>(null);
 
-  const openJobs = useMemo(
-    () => (jobs ?? []).filter((job) => !["sent", "cancelled"].includes(job.status)),
-    [jobs],
-  );
-  const latestJobByCertificate = useMemo(() => {
-    const result = new Map<Id<"policyCertificates">, CertificateWorkflowJob>();
-    for (const job of [...openJobs].sort((a, b) => b.updatedAt - a.updatedAt)) {
-      if (!result.has(job.certificateId)) result.set(job.certificateId, job);
-    }
-    return result;
-  }, [openJobs]);
   const selectedCertificate = useMemo(
     () =>
       (certificates ?? []).find((row) => row._id === selectedCertificateId) ??
@@ -276,7 +248,7 @@ export function OperatorCertificatesWorkspace({
 
   return (
     <div className="space-y-4">
-      {certificates === undefined || jobs === undefined ? (
+      {certificates === undefined ? (
         <OperationalSkeletonList rows={5} />
       ) : visibleCertificates.length === 0 ? (
         <OperationalPanel as="div">
@@ -292,19 +264,17 @@ export function OperatorCertificatesWorkspace({
             <Table className="min-w-[1220px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[10%] px-4">Status</TableHead>
-                  <TableHead className="w-[20%]">Holder</TableHead>
-                  <TableHead className="w-[20%]">Policy</TableHead>
-                  <TableHead className="w-[14%]">Form / request</TableHead>
-                  <TableHead className="w-[16%]">Workflow</TableHead>
-                  <TableHead className="w-[8%]">Version</TableHead>
-                  <TableHead className="w-[12%] px-4">Updated</TableHead>
+                  <TableHead className="w-[12%] px-4">Status</TableHead>
+                  <TableHead className="w-[24%]">Holder</TableHead>
+                  <TableHead className="w-[24%]">Policy</TableHead>
+                  <TableHead className="w-[16%]">Form / request</TableHead>
+                  <TableHead className="w-[10%]">Version</TableHead>
+                  <TableHead className="w-[14%] px-4">Updated</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visibleCertificates.map((row) => {
                   const version = row.currentVersion;
-                  const job = latestJobByCertificate.get(row._id);
                   return (
                     <TableRow
                       key={row._id}
@@ -345,20 +315,6 @@ export function OperatorCertificatesWorkspace({
                         <p className={typeStyle("caption.default")}>
                           {displayValue(version?.requestKind)}
                         </p>
-                      </TableCell>
-                      <TableCell className="max-w-56">
-                        {job ? (
-                          <>
-                            <StatusTag tone={statusTone(job.status)} indicator={statusIndicator(job.status)}>
-                              {displayValue(job.status)}
-                            </StatusTag>
-                            <p className={`mt-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
-                              {job.lastError ?? job.reason ?? displayValue(job.kind)}
-                            </p>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">No open job</span>
-                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {version ? `v${version.versionNumber}` : "—"}

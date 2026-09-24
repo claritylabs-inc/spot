@@ -61,16 +61,6 @@ export class SpotApi {
     );
   }
 
-  async certificateReviewJobs(policyId?: string, status?: string) {
-    const params = new URLSearchParams();
-    if (policyId) params.set("policy_id", policyId);
-    if (status) params.set("status", status);
-    const query = params.toString();
-    return this.request<ListResponse<Record<string, unknown>>>(
-      `/api/v1/certificate-review-jobs${query ? `?${query}` : ""}`,
-    );
-  }
-
   async runUploadPipeline(filePath: string) {
     const prompt = `Run the policy upload pipeline for file path: ${filePath}. If direct file access is unavailable, explain required upload handoff steps.`;
     return this.askSpot(prompt);

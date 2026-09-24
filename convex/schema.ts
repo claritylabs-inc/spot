@@ -516,7 +516,7 @@ export default defineSchema({
     website: v.optional(v.string()),
     companyResearch: v.optional(companyResearchValidator),
     smokeMarker: v.optional(v.string()),
-    // Legacy company facts: accepted for the deletion migration only; no active writers.
+    // Deprecated: cleared by the removed removeCompanyDetails migration; no active writers.
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
     mailingAddress: v.optional(orgMailingAddressValidator),
@@ -1025,6 +1025,9 @@ export default defineSchema({
     .index("run_time", ["runId", "timestamp"])
     .index("expiration", ["expiresAt"]),
 
+  // Deprecated: the write path (modelSettings.updateGlobalRoutes and the
+  // operator model-overrides UI) is removed. Stored routes are frozen until
+  // modelSettings.clearOperatorModelOverridesInternal clears them.
   brokerModelSettings: defineTable({
     brokerOrgId: v.id("organizations"),
     routes: v.optional(
@@ -1036,7 +1039,9 @@ export default defineSchema({
         email_reply: v.optional(modelRouteValidator),
         extraction: v.optional(modelRouteValidator),
         extraction_preview: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_coverage_recovery: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         classification: v.optional(modelRouteValidator),
         requirement_extraction: v.optional(modelRouteValidator),
         org_memory_extraction: v.optional(modelRouteValidator),
@@ -1045,6 +1050,7 @@ export default defineSchema({
         triage: v.optional(modelRouteValidator),
         email_extraction: v.optional(modelRouteValidator),
         document_extraction: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         security: v.optional(modelRouteValidator),
         mailbox_coordinator: v.optional(modelRouteValidator),
         embeddings: v.optional(modelRouteValidator),
@@ -1056,6 +1062,10 @@ export default defineSchema({
 
   globalModelSettings: defineTable({
     key: v.literal("default"),
+    // Deprecated: no write path remains (modelSettings.updateGlobalRoutes and
+    // the operator model-overrides UI are removed). Still read by
+    // modelSettings.resolveOperatorAgentRoute/resolvePublicModelDefaults;
+    // frozen until modelSettings.clearOperatorModelOverridesInternal runs.
     explicitRouteOverrides: v.optional(v.array(v.string())),
     routes: v.optional(
       v.object({
@@ -1067,7 +1077,9 @@ export default defineSchema({
         email_reply: v.optional(modelRouteValidator),
         extraction: v.optional(modelRouteValidator),
         extraction_preview: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_coverage_recovery: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         classification: v.optional(modelRouteValidator),
         requirement_extraction: v.optional(modelRouteValidator),
         org_memory_extraction: v.optional(modelRouteValidator),
@@ -1076,12 +1088,16 @@ export default defineSchema({
         triage: v.optional(modelRouteValidator),
         email_extraction: v.optional(modelRouteValidator),
         document_extraction: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         security: v.optional(modelRouteValidator),
         mailbox_coordinator: v.optional(modelRouteValidator),
         embeddings: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_quality: v.optional(modelRouteValidator),
         extraction_form_inventory: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_coverage_cleanup: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         fallback: v.optional(modelRouteValidator),
       }),
     ),
@@ -3065,7 +3081,7 @@ export default defineSchema({
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     clientFileId: v.optional(v.id("clientFiles")),
     sourceEmailMessageId: v.optional(v.id("procurementEmailMessages")),
-    // Retired fields remain optional until simplifyProcurementFiles has run.
+    // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     purpose: v.optional(
       v.union(
         v.literal("requirements"),
@@ -3077,6 +3093,7 @@ export default defineSchema({
       ),
     ),
     label: v.string(),
+    // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     status: v.optional(
       v.union(
         v.literal("requested"),
@@ -3088,6 +3105,7 @@ export default defineSchema({
     brokerRelease: v.optional(
       v.union(v.literal("hidden"), v.literal("listed"), v.literal("attached")),
     ),
+    // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     brokerReleaseProposed: v.optional(
       v.union(v.literal("listed"), v.literal("attached")),
     ),
@@ -3123,6 +3141,7 @@ export default defineSchema({
     ),
     attempts: v.number(),
     leaseExpiresAt: v.optional(v.number()),
+    // Deprecated: cleared by the removed removeCompanyExtractionProfiles migration; no active writers.
     profile: v.optional(companyInformationProfileValidator),
     organizationFacts: v.optional(
       v.array(companyInformationOrganizationFactValidator),
@@ -3301,6 +3320,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("client", ["clientOrgId"]),
 
+  // Deprecated: certificate renewal jobs removed; drop after data cleanup.
   certificateWorkflowJobs: defineTable({
     orgId: v.id("organizations"),
     brokerOrgId: v.optional(v.id("organizations")),

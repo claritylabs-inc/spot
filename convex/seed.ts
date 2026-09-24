@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
+import { reserveLegacyOperatorEmailIdentity } from "./lib/operatorIdentity";
 import { normalizeUserPhone } from "./lib/userPhone";
 
 import { LOCAL_FIXTURE } from "./lib/localSeedData";
@@ -173,6 +174,45 @@ async function ensureMembership(
   });
 }
 
+// The production operator-email-identity backfill migration has already run;
+// local/preview deployments start from an empty table and need the same
+// "legacy" readiness row so operator alias login works against seed data.
+export const seedOperatorEmailIdentityReadinessInternal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db
+      .query("operatorEmailIdentityBackfill")
+      .withIndex("key", (q) => q.eq("key", "legacy"))
+      .unique();
+    if (existing) return { ready: true };
+
+    for (const user of await ctx.db.query("users").collect()) {
+      await reserveLegacyOperatorEmailIdentity(ctx, user.email, user._id);
+    }
+    for (const profile of await ctx.db.query("operatorProfiles").collect()) {
+      await reserveLegacyOperatorEmailIdentity(
+        ctx,
+        profile.email,
+        profile.userId,
+      );
+    }
+    for (const account of await ctx.db.query("authAccounts").collect()) {
+      if (account.provider === "resend-otp") {
+        await reserveLegacyOperatorEmailIdentity(
+          ctx,
+          account.providerAccountId,
+          account.userId,
+        );
+      }
+    }
+    await ctx.db.insert("operatorEmailIdentityBackfill", {
+      key: "legacy",
+      completedAt: dayjs().valueOf(),
+    });
+    return { ready: true };
+  },
+});
+
 export const seed = action({
   args: {
     brokerPhone: v.optional(v.string()),
@@ -249,31 +289,7 @@ export const seed = action({
     }
     const workflow = await seedWorkflowFixtures(ctx, fixture);
     await ctx.runMutation(
-      internal.migrations.runOperatorEmailIdentityBackfill,
-      {},
-    );
-    // Local setup waits for its bounded fixture backfill; production uses the
-    // explicitly invoked migration and completion commands.
-    const setupDeadline = dayjs().add(60, "second").valueOf();
-    for (;;) {
-      const status = await ctx.runQuery(
-        internal.migrations.operatorEmailIdentityBackfillStatus,
-        {},
-      );
-      if (
-        status.statuses.length === 3 &&
-        status.statuses.every((migration) => migration.isDone)
-      )
-        break;
-      if (dayjs().valueOf() >= setupDeadline) {
-        throw new Error(
-          "Local operator identity backfill is still running. Rerun seed after checking its migration status.",
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    await ctx.runMutation(
-      internal.migrations.finishOperatorEmailIdentityBackfill,
+      internal.seed.seedOperatorEmailIdentityReadinessInternal,
       {},
     );
     return { ...fixture, ...workflow };

@@ -441,7 +441,7 @@ export function settingsToolImplementations(ctx: ClientToolContext): ToolMap {
     },
     set_beta_feature: async (input) => {
       await convex.mutation(api.orgs.setFeatureFlag, {
-        flagId: requiredText(input, "flag") as "connect_features" | "imessage_app_cards",
+        flagId: requiredText(input, "flag") as "connect_features",
         enabled: requiredBool(input, "enabled"),
       });
       return { status: "updated" };

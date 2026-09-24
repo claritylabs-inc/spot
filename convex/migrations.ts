@@ -1,5 +1,4 @@
 import { Migrations } from "@convex-dev/migrations";
-import { internalMutation, internalQuery } from "./_generated/server";
 import dayjs from "dayjs";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
@@ -11,120 +10,8 @@ import {
   applyCarrierIdentityEnrichment,
   readCarrierIdentity,
 } from "./lib/carrierIdentity";
-import { reserveLegacyOperatorEmailIdentity } from "./lib/operatorIdentity";
 
 export const migrations = new Migrations<DataModel>(components.migrations);
-
-export const simplifyProcurementFiles = migrations.define({
-  table: "procurementFileItems",
-  batchSize: 100,
-  migrateOne: async (ctx, item) => {
-    // Removing a broker-specific scope must never grant access to every broker.
-    if (
-      item.outreachId &&
-      item.brokerRelease &&
-      item.brokerRelease !== "hidden"
-    ) {
-      const request = await ctx.db.get(item.requestId);
-      if (request) {
-        await ctx.db.patch(request._id, {
-          packetRevision: (request.packetRevision ?? 0) + 1,
-          updatedAt: dayjs().valueOf(),
-        });
-      }
-    }
-    return {
-      purpose: undefined,
-      status: undefined,
-      outreachId: undefined,
-      brokerReleaseProposed: undefined,
-      ...(item.outreachId ? { brokerRelease: "hidden" as const } : {}),
-    };
-  },
-});
-
-export const backfillOperatorUserEmailIdentities = migrations.define({
-  table: "users",
-  batchSize: 100,
-  migrateOne: async (ctx, user) => {
-    await reserveLegacyOperatorEmailIdentity(ctx, user.email, user._id);
-  },
-});
-
-export const backfillOperatorProfileEmailIdentities = migrations.define({
-  table: "operatorProfiles",
-  batchSize: 100,
-  migrateOne: async (ctx, profile) => {
-    await reserveLegacyOperatorEmailIdentity(
-      ctx,
-      profile.email,
-      profile.userId,
-    );
-  },
-});
-
-export const backfillOperatorAuthEmailIdentities = migrations.define({
-  table: "authAccounts",
-  batchSize: 100,
-  migrateOne: async (ctx, account) => {
-    if (account.provider === "resend-otp") {
-      await reserveLegacyOperatorEmailIdentity(
-        ctx,
-        account.providerAccountId,
-        account.userId,
-      );
-    }
-  },
-});
-
-const operatorIdentityMigrations = [
-  internal.migrations.backfillOperatorUserEmailIdentities,
-  internal.migrations.backfillOperatorProfileEmailIdentities,
-  internal.migrations.backfillOperatorAuthEmailIdentities,
-];
-
-export const runOperatorEmailIdentityBackfill = migrations.runner(
-  operatorIdentityMigrations,
-);
-
-export const operatorEmailIdentityBackfillStatus = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const statuses = await migrations.getStatus(ctx, {
-      migrations: operatorIdentityMigrations,
-    });
-    const ready = await ctx.db
-      .query("operatorEmailIdentityBackfill")
-      .withIndex("key", (q) => q.eq("key", "legacy"))
-      .unique();
-    return { ready: !!ready, statuses };
-  },
-});
-
-export const finishOperatorEmailIdentityBackfill = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const statuses = await migrations.getStatus(ctx, {
-      migrations: operatorIdentityMigrations,
-    });
-    if (statuses.length !== 3 || statuses.some((status) => !status.isDone)) {
-      throw new Error(
-        "Complete all operator email identity migrations before enabling alias login.",
-      );
-    }
-    const existing = await ctx.db
-      .query("operatorEmailIdentityBackfill")
-      .withIndex("key", (q) => q.eq("key", "legacy"))
-      .unique();
-    if (!existing) {
-      await ctx.db.insert("operatorEmailIdentityBackfill", {
-        key: "legacy",
-        completedAt: dayjs().valueOf(),
-      });
-    }
-    return { ready: true };
-  },
-});
 
 export const backfillDeclarationFacts = migrations.define({
   table: "policies",
@@ -136,35 +23,6 @@ export const backfillDeclarationFacts = migrations.define({
     await replacePolicyDeclarationFacts(ctx, policy._id);
   },
 });
-
-export const removeCompanyDetails = migrations.define({
-  table: "organizations",
-  batchSize: 10,
-  migrateOne: async (ctx, org) => {
-    await ctx.db.patch(org._id, {
-      industry: undefined,
-      industryVertical: undefined,
-      mailingAddress: undefined,
-      profileFacts: undefined,
-      profileFactsUpdatedAt: undefined,
-      profileOverrides: undefined,
-      profileOverridesUpdatedAt: undefined,
-      profileOverridesUpdatedByUserId: undefined,
-      relatedLegalEntities: undefined,
-    });
-  },
-});
-
-export const removeCompanyExtractionProfiles = migrations.define({
-  table: "companyInformationExtractions",
-  batchSize: 100,
-  migrateOne: async () => ({ profile: undefined }),
-});
-
-export const removeStructuredCompanyDetails = migrations.runner([
-  internal.migrations.removeCompanyDetails,
-  internal.migrations.removeCompanyExtractionProfiles,
-]);
 
 export const consolidateCarrierIdentityBranding = migrations.define({
   table: "policies",
