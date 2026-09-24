@@ -149,23 +149,6 @@
       ]
     },
     {
-      "name": "feedback",
-      "method": "post",
-      "path": "/v1/feedback",
-      "request": {
-        "required": true,
-        "mediaType": "application/json",
-        "schema": "FeedbackRequest"
-      },
-      "responses": [
-        {
-          "status": "200",
-          "mediaType": "application/json",
-          "schema": "FeedbackResponse"
-        }
-      ]
-    },
-    {
       "name": "structured decision",
       "method": "post",
       "path": "/v1/decide",
@@ -415,36 +398,6 @@
           "attemptCount": 1
         },
         "requestId": "router_request_transcription_fixture"
-      }
-    },
-    {
-      "name": "Spot extraction feedback request",
-      "schema": "FeedbackRequest",
-      "value": {
-        "requestId": "router_request_generation_fixture",
-        "tenantId": "glass",
-        "idempotencyKey": "extraction-postprocess-v1:policy_fixture:router_request_generation_fixture",
-        "signals": {
-          "reviewCorrectionCount": 2,
-          "reviewedFieldCount": 40,
-          "ungroundedStripCount": 1,
-          "sensitiveFieldCount": 20,
-          "escalationCount": 0,
-          "qualityScore": 0.95
-        },
-        "trace": {
-          "tags": {
-            "policyId": "policy_fixture"
-          }
-        }
-      }
-    },
-    {
-      "name": "Spot extraction feedback response",
-      "schema": "FeedbackResponse",
-      "value": {
-        "accepted": true,
-        "duplicate": false
       }
     },
     {

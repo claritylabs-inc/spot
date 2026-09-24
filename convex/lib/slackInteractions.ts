@@ -18,12 +18,6 @@ export type SlackBlockActionPayload = {
 
 export type SlackViewSubmissionPayload = {
   type: "view_submission";
-  teamId: string;
-  actorTeamId: string;
-  userId: string;
-  callbackId: string;
-  privateMetadata: string;
-  comment?: string;
 };
 
 export type SlackInteractionPayload =
@@ -69,39 +63,7 @@ export function parseSlackInteraction(rawBody: string): SlackInteractionPayload 
   if (!teamId || !actorTeamId || !userId) return null;
 
   if (payload?.type === "view_submission") {
-    const view = record(payload.view);
-    const state = record(view?.state);
-    const values = record(state?.values);
-    const callbackIdValue = text(view?.callback_id);
-    const privateMetadata = text(view?.private_metadata);
-    if (!callbackIdValue || !privateMetadata) return null;
-    const callbackId = normalizeInteractionId(callbackIdValue);
-    let comment: string | undefined;
-    for (const blockValue of Object.values(values ?? {})) {
-      const block = record(blockValue);
-      if (!block) continue;
-      for (const elementValue of Object.values(block)) {
-        const element = record(elementValue);
-        if (!element) continue;
-        const commentActionId = text(element.action_id);
-        if (
-          !commentActionId ||
-          normalizeInteractionId(commentActionId) !== "spot_feedback_comment"
-        ) {
-          continue;
-        }
-        comment = text(element.value);
-      }
-    }
-    return {
-      type: "view_submission",
-      teamId,
-      actorTeamId,
-      userId,
-      callbackId,
-      privateMetadata,
-      comment,
-    };
+    return { type: "view_submission" };
   }
 
   if (payload?.type !== "block_actions") return null;
@@ -145,10 +107,5 @@ export function slackActionToken(actionId: string, value: string): {
   token: string;
   value?: string;
 } | null {
-  if (normalizeInteractionId(actionId).startsWith("spot_response_feedback")) {
-    const [rating, token] = value.split(":", 2);
-    if ((rating !== "positive" && rating !== "negative") || !token) return null;
-    return { token, value: rating };
-  }
   return value ? { token: value } : null;
 }

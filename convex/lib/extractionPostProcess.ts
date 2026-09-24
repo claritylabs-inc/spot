@@ -3,15 +3,10 @@
 import dayjs from "dayjs";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { internal } from "../_generated/api";
 import { scopeCoveragesWithClassifier } from "./coverageScoping";
 import { insuranceDocToPolicy } from "./documentMapping";
 import { applyPolicyPeriodFallback } from "./policyPeriodExtraction";
-import {
-  clRouterDecide,
-  sendClRouterFeedback,
-  type ClRouterFeedbackRequest,
-} from "./clRouterClient";
+import { clRouterDecide } from "./clRouterClient";
 
 type SourceSpanLike = {
   text?: string;
@@ -696,61 +691,10 @@ function openReviewQuestionCount(fields: Record<string, unknown>) {
   return openExtractionReviewQuestions(fields.extractionReview).length;
 }
 
-async function findOperationalProfileFeedbackOrigin(
-  options: ExtractionPostProcessOptions,
-  beforeTimestamp: number,
-) {
-  if (!options.traceId) return null;
-  try {
-    return await options.ctx.runQuery(
-      internal.extractionTraces.getLatestRouterRequestForTaskKind,
-      {
-        traceId: options.traceId,
-        taskKind: "extraction_operational_profile",
-        beforeTimestamp,
-      },
-    ) as { requestId: string; timestamp: number } | null;
-  } catch {
-    return null;
-  }
-}
-
-export function postProcessFeedbackRequest(args: {
-  originRequestId: string;
-  ungroundedStripCount: number;
-  sensitiveFieldCount: number;
-  escalationCount: number;
-  traceId?: string;
-  policyId?: string;
-}): ClRouterFeedbackRequest | null {
-  const hasGroundingSignal = args.sensitiveFieldCount > 0;
-  if (!hasGroundingSignal && args.escalationCount === 0) return null;
-  return {
-    requestId: args.originRequestId,
-    idempotencyKey: "extraction-postprocess-v1",
-    signals: {
-      ...(hasGroundingSignal
-        ? {
-            ungroundedStripCount: args.ungroundedStripCount,
-            sensitiveFieldCount: args.sensitiveFieldCount,
-          }
-        : {}),
-      ...(args.escalationCount > 0 ? { escalationCount: args.escalationCount } : {}),
-    },
-    trace: {
-      ...(args.traceId ? { traceId: args.traceId } : {}),
-      ...(args.policyId ? { policyId: args.policyId } : {}),
-      phase: "post_process",
-      originTaskKind: "extraction_operational_profile",
-    },
-  };
-}
-
 export async function postProcessExtractionDocument(
   options: ExtractionPostProcessOptions,
 ): Promise<ExtractionPostProcessResult> {
   let document = options.document;
-  const feedbackOrigin = await findOperationalProfileFeedbackOrigin(options, dayjs().valueOf());
 
   const periodFallback = applyPolicyPeriodFallback(
     document,
@@ -818,21 +762,6 @@ export async function postProcessExtractionDocument(
   const fields = await normalizeOrgNamesWithClassifier(options, scopedCoverage.fields);
   const groundedFields = await ground(fields);
   const coverageReviewQuestionCount = openReviewQuestionCount(groundedFields.value);
-  if (feedbackOrigin) {
-    const request = postProcessFeedbackRequest({
-      originRequestId: feedbackOrigin.requestId,
-      ungroundedStripCount: groundedDocument.removed.length + groundedFields.removed.length,
-      sensitiveFieldCount: groundedDocument.sensitiveFieldCount + groundedFields.sensitiveFieldCount,
-      escalationCount: coverageReviewQuestionCount,
-      traceId: options.traceId,
-      policyId: options.policyId ? String(options.policyId) : undefined,
-    });
-    if (request) {
-      void sendClRouterFeedback(request).catch(() => {
-        // Feedback is best-effort and must never fail extraction.
-      });
-    }
-  }
 
   return {
     document,

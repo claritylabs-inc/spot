@@ -10,7 +10,6 @@ import {
 
 vi.mock("./clRouterClient", () => ({
   clRouterDecide: vi.fn(),
-  sendClRouterFeedback: vi.fn(async () => undefined),
 }));
 
 type DecideRequest = Parameters<typeof clRouterDecide>[0];

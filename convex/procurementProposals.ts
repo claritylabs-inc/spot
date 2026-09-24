@@ -334,14 +334,6 @@ export const list = query({
   },
 });
 
-export const get = query({
-  args: { proposalId: v.id("procurementProposals") },
-  handler: async (ctx, args) => {
-    await requireOperator(ctx);
-    return await getProcurementProposalDetails(ctx, args.proposalId);
-  },
-});
-
 type ResolvedDocument = {
   fileId: Id<"_storage">;
   fileName: string;

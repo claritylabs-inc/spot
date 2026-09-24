@@ -97,17 +97,6 @@ async function assertNoActiveOperatorImpersonationForPolicyWrite(
   }
 }
 
-function normalizeSlug(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/^-+|-+$/g, "");
-}
-
-function slugFromName(name: string) {
-  return normalizeSlug(name.trim().replace(/\s+/g, "-"));
-}
-
 function normalizeWebsiteUrl(value: string | undefined) {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
@@ -1570,106 +1559,6 @@ export const recordPolicyExtractionOperationInternal = internalMutation({
   },
 });
 
-export const upsertBrokerInternal = internalMutation({
-  args: {
-    operatorUserId: v.id("users"),
-    adminUserId: v.id("users"),
-    adminEmail: v.string(),
-    adminName: v.optional(v.string()),
-    adminPhone: v.optional(v.string()),
-    broker: v.object({
-      name: v.string(),
-      slug: v.optional(v.string()),
-      website: v.optional(v.string()),
-    }),
-  },
-  handler: async (ctx, args) => {
-    await assertCustomerUser(ctx, args.adminUserId);
-    assertExternalBrokerIdentity({ ...args.broker, email: args.adminEmail });
-    const brokerName = args.broker.name.trim();
-    if (!brokerName) throw new Error("Broker name is required");
-    const slug = args.broker.slug
-      ? normalizeSlug(args.broker.slug)
-      : slugFromName(brokerName);
-    if (slug.length < 3 || slug.length > 40)
-      throw new Error("Slug must be 3-40 characters");
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug)) {
-      throw new Error("Slug must start and end with a letter or number");
-    }
-    const existingBySlug = await ctx.db
-      .query("organizations")
-      .withIndex("slug", (q) => q.eq("slug", slug))
-      .first();
-    if (existingBySlug?.deletedAt !== undefined)
-      throw new Error("Broker was deleted; choose a different slug");
-    if (existingBySlug && existingBySlug.type !== "broker") {
-      throw new Error("Slug is already used by a non-broker org");
-    }
-    const patch = {
-      name: brokerName,
-      type: "broker" as const,
-      slug,
-      website: args.broker.website?.trim() || undefined,
-      primaryInsuranceContactId: args.adminUserId,
-      onboardingComplete: true,
-      operatorStatus: "onboarding" as const,
-    };
-    const brokerOrgId =
-      existingBySlug?._id ?? (await ctx.db.insert("organizations", patch));
-    if (existingBySlug) await ctx.db.patch(brokerOrgId, patch);
-
-    const existingAdminMembership = await ctx.db
-      .query("orgMemberships")
-      .withIndex("organization_user", (q) =>
-        q.eq("orgId", brokerOrgId).eq("userId", args.adminUserId),
-      )
-      .first();
-    if (!existingAdminMembership) {
-      const otherMembership = await ctx.db
-        .query("orgMemberships")
-        .withIndex("user", (q) => q.eq("userId", args.adminUserId))
-        .first();
-      if (otherMembership)
-        throw new Error("Broker admin already belongs to another organization");
-      await ctx.db.insert("orgMemberships", {
-        orgId: brokerOrgId,
-        userId: args.adminUserId,
-        role: "admin",
-      });
-    }
-    const adminUserPatch: {
-      accountKind: "customer";
-      email: string;
-      name?: string;
-      phone?: string;
-      onboardingComplete: boolean;
-    } = {
-      accountKind: "customer",
-      email: args.adminEmail,
-      name: args.adminName?.trim() || undefined,
-      onboardingComplete: true,
-    };
-    if (args.adminPhone !== undefined) {
-      adminUserPatch.phone = await normalizeAvailableUserPhone(
-        ctx,
-        args.adminPhone,
-        args.adminUserId,
-      );
-    }
-    await ctx.db.patch(args.adminUserId, adminUserPatch);
-    await writeOperatorAudit(ctx, {
-      operatorUserId: args.operatorUserId,
-      type: "broker_created",
-      targetOrgId: brokerOrgId,
-      targetUserId: args.adminUserId,
-      summary: `Created or updated broker ${brokerName}`,
-      metadata: { slug, adminEmail: args.adminEmail },
-    });
-    await scheduleCompanyResearch(ctx, brokerOrgId);
-    return { brokerOrgId };
-  },
-});
-
 export async function createStandaloneClientOrganizationByOperator(
   ctx: MutationCtx,
   args: {
@@ -1834,32 +1723,6 @@ export const createSoloClientInternal = internalMutation({
   },
 });
 
-export const getBrokerLaunchContextInternal = internalQuery({
-  args: { brokerOrgId: v.id("organizations") },
-  handler: async (ctx, args) => {
-    const broker = await ctx.db.get(args.brokerOrgId);
-    if (!broker || broker.type !== "broker") return null;
-    const memberships = await ctx.db
-      .query("orgMemberships")
-      .withIndex("organization", (q) => q.eq("orgId", args.brokerOrgId))
-      .collect();
-    const adminMembership = memberships.find(
-      (membership) => membership.role === "admin",
-    );
-    const admin = adminMembership
-      ? await ctx.db.get(adminMembership.userId)
-      : null;
-    return {
-      brokerOrgId: broker._id,
-      name: broker.name,
-      slug: broker.slug,
-      adminUserId: admin?._id,
-      adminEmail: admin?.email,
-      adminName: admin?.name,
-    };
-  },
-});
-
 export const getSoloClientLaunchContextInternal = internalQuery({
   args: {
     clientOrgId: v.id("organizations"),
@@ -1892,30 +1755,6 @@ export const getSoloClientLaunchContextInternal = internalQuery({
       adminEmail: recipient.email,
       adminName: recipient.name,
     };
-  },
-});
-
-export const markBrokerLaunchedInternal = internalMutation({
-  args: {
-    brokerOrgId: v.id("organizations"),
-    operatorUserId: v.id("users"),
-    adminUserId: v.optional(v.id("users")),
-  },
-  handler: async (ctx, args) => {
-    const broker = await ctx.db.get(args.brokerOrgId);
-    if (!broker || broker.type !== "broker")
-      throw new Error("Broker not found");
-    await ctx.db.patch(args.brokerOrgId, {
-      operatorStatus: "live",
-      onboardingComplete: true,
-    });
-    await writeOperatorAudit(ctx, {
-      operatorUserId: args.operatorUserId,
-      type: "broker_launch_email_sent",
-      targetOrgId: args.brokerOrgId,
-      targetUserId: args.adminUserId,
-      summary: `Launched ${broker.name} and sent broker login email`,
-    });
   },
 });
 

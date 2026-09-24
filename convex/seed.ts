@@ -280,16 +280,6 @@ export const seed = action({
   },
 });
 
-export const cleanupLegacyDemoFixture = action({
-  args: { dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, args): Promise<LegacyDemoCleanupResult> => {
-    assertLocalSeed();
-    return await ctx.runMutation(internal.seed.removeLegacyDemoFixture, {
-      dryRun: args.dryRun ?? true,
-    });
-  },
-});
-
 export const cleanupLocalVerificationArtifacts = action({
   args: {},
   handler: async (ctx): Promise<VerificationCleanupResult> => {

@@ -507,24 +507,15 @@ http.route({
     if (!payload)
       return jsonResponse({ error: "Unsupported Slack interaction" }, 400);
     if (payload.type === "view_submission") {
-      if (payload.callbackId !== "spot_negative_feedback") {
-        return jsonResponse({ response_action: "clear" });
-      }
-      try {
-        await ctx.runMutation(
-          internalApi.slackPresentation.submitFeedbackComment,
-          {
-            interactionId: payload.privateMetadata,
-            teamId: payload.teamId,
-            actorTeamId: payload.actorTeamId,
-            slackUserId: payload.userId,
-            comment: payload.comment,
-          },
-        );
-      } catch (error) {
-        console.warn("[slack] Rejected feedback submission", error);
-      }
       return jsonResponse({ response_action: "clear" });
+    }
+    const retiredActionIds = new Set([
+      "spot_response_feedback",
+      "spot_response_feedback_positive",
+      "spot_response_feedback_negative",
+    ]);
+    if (payload.type === "block_actions" && retiredActionIds.has(payload.actionId)) {
+      return jsonResponse({ ok: true });
     }
     const operatorDecision = operatorSlackConfirmationDecision(
       payload.actionId,
@@ -593,41 +584,10 @@ http.route({
         },
       );
       if (claim.claimed) {
-        let feedbackModalOpened = false;
-        if (action.value === "negative" && payload.triggerId) {
-          try {
-            const workerUrl = process.env.SLACK_WORKER_URL?.trim().replace(
-              /\/$/,
-              "",
-            );
-            const workerSecret = process.env.SLACK_WORKER_SECRET?.trim();
-            if (workerUrl && workerSecret) {
-              const response = await fetch(`${workerUrl}/view/open`, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${workerSecret}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  teamId: payload.teamId,
-                  triggerId: payload.triggerId,
-                  privateMetadata: claim.interaction._id,
-                }),
-                signal: AbortSignal.timeout(1_500),
-              });
-              feedbackModalOpened = response.ok;
-            }
-          } catch (error) {
-            console.warn("[slack] Could not open feedback detail modal", error);
-          }
-        }
         await ctx.scheduler.runAfter(
           0,
           internalApi.actions.slackPresentation.processInteraction,
-          {
-            interactionId: claim.interaction._id,
-            feedbackModalOpened,
-          },
+          { interactionId: claim.interaction._id },
         );
       }
       return jsonResponse({ ok: true });

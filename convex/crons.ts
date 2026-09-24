@@ -39,13 +39,6 @@ crons.interval(
   {},
 );
 
-crons.interval(
-  "retry response rating signals",
-  { minutes: 10 },
-  internalApi.actions.agentResponseFeedback.retryPending,
-  {},
-);
-
 crons.cron(
   "sweep extraction traces",
   "30 3 * * *",

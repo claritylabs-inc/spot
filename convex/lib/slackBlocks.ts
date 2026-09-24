@@ -225,33 +225,6 @@ function certificateAttachments(
   );
 }
 
-function feedbackBlock(args: {
-  messageId: Id<"threadMessages">;
-  revision: number;
-  actionToken: string;
-}): SlackBlock {
-  return {
-    type: "context_actions",
-    block_id: blockId("spot-feedback", args.messageId, args.revision),
-    elements: [
-      {
-        type: "feedback_buttons",
-        action_id: "spot_response_feedback",
-        positive_button: {
-          text: { type: "plain_text", text: "Helpful" },
-          value: `positive:${args.actionToken}`,
-          accessibility_label: "Mark this Spot response as helpful",
-        },
-        negative_button: {
-          text: { type: "plain_text", text: "Needs work" },
-          value: `negative:${args.actionToken}`,
-          accessibility_label: "Mark this Spot response as needing work",
-        },
-      },
-    ],
-  };
-}
-
 export function buildSlackFinalBlocks(args: {
   message: Pick<
     Doc<"threadMessages">,
@@ -400,11 +373,6 @@ export function buildSlackFinalBlocks(args: {
     });
   }
 
-  blocks.push(feedbackBlock({
-    messageId: args.message._id,
-    revision: args.revision,
-    actionToken: args.actionToken,
-  }));
   return blocks.slice(0, 50);
 }
 
@@ -530,22 +498,7 @@ export function buildSlackClassicFinalBlocks(args: {
     });
   }
 
-  const finalActions: SlackBlock[] = [
-    {
-      type: "button",
-      action_id: "spot_response_feedback_positive",
-      value: `positive:${args.actionToken}`,
-      text: { type: "plain_text", text: "Helpful" },
-      accessibility_label: "Mark this Spot response as helpful",
-    },
-    {
-      type: "button",
-      action_id: "spot_response_feedback_negative",
-      value: `negative:${args.actionToken}`,
-      text: { type: "plain_text", text: "Needs work" },
-      accessibility_label: "Mark this Spot response as needing work",
-    },
-  ];
+  const finalActions: SlackBlock[] = [];
   if (args.showHandoff) {
     finalActions.push({
       type: "button",
@@ -555,10 +508,12 @@ export function buildSlackClassicFinalBlocks(args: {
       accessibility_label: "Request help from a Spot service team member",
     });
   }
-  blocks.push({
-    type: "actions",
-    block_id: blockId("spot-classic-actions", args.message._id, args.revision),
-    elements: finalActions,
-  });
+  if (finalActions.length) {
+    blocks.push({
+      type: "actions",
+      block_id: blockId("spot-classic-actions", args.message._id, args.revision),
+      elements: finalActions,
+    });
+  }
   return blocks.slice(0, 50);
 }
