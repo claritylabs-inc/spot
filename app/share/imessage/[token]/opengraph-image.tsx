@@ -6,7 +6,7 @@ import {
 } from "@/lib/policy-card-branding";
 import { readCarrierIdentity } from "@/convex/lib/carrierIdentity";
 import { SPOT_BLUE, SPOT_MARK_PATH } from "@/lib/spot-mark";
-import { SPOT_WORDMARK } from "@/lib/spot-wordmark";
+import SPOT_WORDMARK from "@claritylabs-inc/ui/lib/spot-wordmark.json";
 import {
   compactList,
   loadAppCardView,

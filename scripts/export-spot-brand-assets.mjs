@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { SPOT_BLUE, SPOT_MARK_PATH } from "../lib/spot-mark.ts";
-import { SPOT_WORDMARK } from "../lib/spot-wordmark.ts";
+import SPOT_WORDMARK from "@claritylabs-inc/ui/lib/spot-wordmark.json" with { type: "json" };
 
 const markSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 65 65" width="65" height="65" fill="none">
   <circle cx="32.5" cy="32.5" r="31" fill="none" stroke="${SPOT_BLUE}" stroke-width="1.25"/>

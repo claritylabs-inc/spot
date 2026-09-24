@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { FileText } from "lucide-react";
-import { BrandIcon } from "@/components/ui/brand-icon";
+import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import {
   OperationalLabelValueList,

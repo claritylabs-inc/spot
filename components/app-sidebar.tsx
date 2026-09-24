@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@claritylabs-inc/ui/components/sheet";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -65,12 +70,18 @@ function sidebarHeaderBranding({
 }
 
 export function AppSidebar({
+  collapsed,
+  onToggleCollapse: toggleCollapse,
   mobileOpen,
+  mobileMenuRef,
   onMobileClose,
   onAskSpot,
   disablePersistentChat = false,
 }: {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   mobileOpen?: boolean;
+  mobileMenuRef?: RefObject<HTMLButtonElement | null>;
   onMobileClose?: () => void;
   onAskSpot?: () => void;
   disablePersistentChat?: boolean;
@@ -142,13 +153,6 @@ export function AppSidebar({
     [canManageSettings, connectItems, navItems],
   );
 
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem("sidebar-collapsed") === "1";
-    } catch {
-      return false;
-    }
-  });
   const shortcutSequenceActiveRef = useRef(false);
   const shortcutSequenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -176,14 +180,6 @@ export function AppSidebar({
     () => [...visiblePinnedConversations, ...visibleAgentConversations],
     [visibleAgentConversations, visiblePinnedConversations],
   );
-
-  function toggleCollapse() {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem("sidebar-collapsed", next ? "1" : "");
-    } catch {}
-  }
 
   useEffect(() => {
     onMobileClose?.();
@@ -405,29 +401,38 @@ export function AppSidebar({
         </aside>
       )}
 
-      <AnimatePresence>
-        {mobileOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="fixed inset-0 bg-black/20 z-40 lg:hidden"
-              onClick={onMobileClose}
-            />
-            <motion.aside
-              initial={{ x: -280 }}
-              animate={{ x: 0 }}
-              exit={{ x: -280 }}
-              transition={{ duration: 0.12, ease: [0.2, 0, 0, 1] }}
-              className="fixed left-0 top-0 bottom-0 w-[260px] z-50 border-r border-border bg-background lg:hidden"
-            >
-              {mobileActiveContent}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+      <Sheet
+        open={mobileOpen ?? false}
+        onOpenChange={(open) => {
+          if (!open) onMobileClose?.();
+        }}
+      >
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="w-[260px]! gap-0 bg-background lg:hidden"
+          finalFocus={mobileMenuRef}
+          onClick={(event) => {
+            if (
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            if (
+              event.target instanceof Element &&
+              event.target.closest("a[href]")
+            ) {
+              onMobileClose?.();
+            }
+          }}
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {mobileActiveContent}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

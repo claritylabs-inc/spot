@@ -1,12 +1,22 @@
 // Capture the local seeded operator workflow; fails closed on authentication errors.
 // Usage: node scripts/qa/capture-ui-adoption.mjs <outdir> <baseUrl> <convexLog>
 import { chromium } from "playwright";
-import { readFileSync, mkdirSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 
 const outDir = process.argv[2] || ".context/screenshots/after";
 const baseUrl = process.argv[3] || "http://localhost:8080";
+const target = new URL(baseUrl);
+if (
+  !["http:", "https:"].includes(target.protocol) ||
+  !["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) ||
+  target.username ||
+  target.password
+) {
+  throw new Error("UI adoption captures require a loopback HTTP(S) URL");
+}
+
 const convexLog = process.argv[4] || ".context/logs/convex-capture.log";
 
 mkdirSync(outDir, { recursive: true });
@@ -38,7 +48,17 @@ async function shoot(page, name, { width, height }) {
 }
 
 async function main() {
-  const browser = await chromium.launch();
+  const colorScheme = process.env.UI_ADOPTION_THEME || "light";
+  assert(
+    ["light", "dark"].includes(colorScheme),
+    "Theme must be light or dark",
+  );
+  const headed = process.env.UI_ADOPTION_HEADED === "1";
+  assert(!headed || process.env.DISPLAY, "Visible Chrome requires a display");
+  const browser = await chromium.launch({
+    headless: !headed,
+    ...(headed ? { executablePath: "google-chrome" } : {}),
+  });
   const state = process.env.UI_ADOPTION_AUTH_STATE
     ? JSON.parse(readFileSync(process.env.UI_ADOPTION_AUTH_STATE, "utf8"))
     : undefined;
@@ -47,7 +67,13 @@ async function main() {
       ...origin,
       origin: new URL(baseUrl).origin,
     }));
-  const context = await browser.newContext({ storageState: state });
+  const context = await browser.newContext({
+    storageState: state,
+    colorScheme,
+  });
+  await context.addInitScript((theme) => {
+    localStorage.setItem("theme", theme);
+  }, colorScheme);
   const page = await context.newPage();
   page.setDefaultTimeout(30000);
   page.setDefaultNavigationTimeout(120000);
@@ -188,6 +214,19 @@ async function main() {
     process.env.UI_ADOPTION_TOAST_ONLY
       ? "PASS: synthetic OAuth-error toast dismissal"
       : "PASS: fresh OTP login, authenticated routes, row sidebar, form validation/cancel, SPA record link, synthetic OAuth-error toast dismissal",
+  );
+  writeFileSync(
+    path.join(outDir, "capture-mode.json"),
+    JSON.stringify(
+      {
+        browser: headed ? "visible Chrome" : "headless Chromium",
+        theme: colorScheme,
+        baseUrl,
+        result: "passed",
+      },
+      null,
+      2,
+    ),
   );
   await browser.close();
 }

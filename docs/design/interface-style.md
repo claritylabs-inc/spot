@@ -62,14 +62,17 @@ subtitle. Persistent status tags belong in the overview or active-tab body.
 ## System owners
 
 Use the shared owner before writing a local version of the same pattern.
-`@claritylabs-inc/ui@0.2.1` owns generic primitives and their CSS. Import them
+`@claritylabs-inc/ui@0.5.0` owns generic primitives and their CSS. Import them
 from `@claritylabs-inc/ui/components/<name>`; brand primitives use
 `components/brand/<name>`. Spot retains routing adapters for PillButton,
 TextLink, ActionSurfaceLink and TableNameLink, plus application-specific editors,
-address autofill, OTP and PDF controls. The app shell and AppToaster remain local.
-The local theme hook/selector remain because 0.2.1's hook export targets `.ts`
-while its implementation is `.tsx`, and the generic ToggleGroup does not expose
-Spot's option styling/accessible labels.
+address autofill, OTP and PDF controls. Shared shell layouts, sidebar preferences,
+controlled title editing, theme controls and toasts come from the package. Spot
+owns auth/org/operator/entity/PDF orchestration, title autosave/status, user storage
+keys and toast insets. PillButton's `preset="spot"` owns its product styling;
+the local adapter only maps legacy props and Next navigation. The legacy
+`sidebar-collapsed` scalar migrates once to the shared JSON preference before
+restoration; all subsequent state and persistence use the shared hook.
 
 | Concern                                         | Owner                                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -77,7 +80,7 @@ Spot's option styling/accessible labels.
 | Typography roles                                | `lib/typography.ts` and [typography.md](./typography.md)                             |
 | Persistent grouped content                      | `@claritylabs-inc/ui/components/operational-panel`                                                |
 | Clickable bounded rows or tiles                 | `components/ui/action-surface.tsx`                                                   |
-| Generic self-contained content card (exception) | `components/ui/card.tsx`                                                             |
+| Generic self-contained content card (exception) | `@claritylabs-inc/ui/components/card`                                                             |
 | Product action buttons                          | `components/ui/pill-button.tsx`                                                      |
 | Inputs and selection controls                   | `@claritylabs-inc/ui/components/{input,textarea,select,searchable-select}` |
 | Tabs, tables, dialogs, and popovers             | Package primitives; `components/ui/table.tsx` retains Next navigation |

@@ -7,7 +7,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@claritylabs-inc/ui/components/tooltip";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { cn } from "@/lib/utils";
 import type { ChatStatus } from "ai";

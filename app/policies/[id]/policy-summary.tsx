@@ -3,7 +3,7 @@
 import { lobLabel, toLobCodes } from "@/convex/lib/linesOfBusiness";
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
-import { BrandIcon } from "@/components/ui/brand-icon";
+import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import {

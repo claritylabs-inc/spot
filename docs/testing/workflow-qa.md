@@ -651,3 +651,40 @@ server warning; reloading onboarding and entering a reachable website retried an
 stored a logo. Settings → Organization showed no Research company action, and
 Pull from website replaced the logo. Evidence, `results.json`, and the repeatable
 script (`run.mjs`) are in `.context/qa/logo-onboarding/`.
+
+
+## Shared shell adoption — September 24, 2026
+
+Workflow plan: local synthetic operator and client, normal captured-OTP login.
+Capture login, home, client list/detail, settings, dialog/form and toast at
+1440px and 390px in light/dark themes using `scripts/qa/capture-ui-adoption.mjs`.
+Compare against the pre-shell merge commit. Verify client navigation, mobile
+navigation focus/Escape, legacy collapsed preference restoration, new collapse
+persistence, resize persistence and title edit/cancel/save. Restore fixture titles
+and preferences after behavioral checks. No external sends or production writes.
+Evidence and the remaining-local-owner inventory belong in `.context/qa/shell/`.
+The VM has no visible display; headless results must remain explicitly labeled.
+
+Headless Chromium passed operator login/list/detail/form/toast captures and client
+legacy collapsed/expanded migration, both collapse directions after reload,
+mobile focus entry/Escape return, same-route and changed-route drawer closure,
+Next navigation, theme persistence, and title cancellation/empty rejection.
+An offline title-save workflow accepted a second edit while pending, displayed
+Still saving, serialized both saves after reconnection, and preserved the last
+value after reload. Its synthetic thread was archived afterward.
+
+The 16 light comparisons have 15 unchanged captures at per-channel delta 12;
+mobile detail differs by 26 close-icon edge pixels. Dark primary-button glyphs
+now use background-colored text, matching the original pre-adoption source;
+the initial adoption adapter had incorrectly forced black text. Maximum dark
+changed area is 0.0781%. Mobile navigation now uses shared Sheet focus handling
+and its blurred backdrop instead of the former untrapped overlay.
+
+UI 0.4.0 exposed an operator persistence regression: after widening
+navigation to 289.5px, a keyboard-resized detail separator reloads at 932.48px
+instead of 961.59px. The baseline commit `7f39b6d3` restores exactly with the same
+saved percentages. The shared preference hook restores width after the child
+layout mounts. Run `SHELL_OPERATOR_ONLY=1 node scripts/qa/check-shell-adoption.mjs`
+to reproduce. UI 0.5.0 adds package-owned readiness; the consumer now gates layout mounting on it. Final browser verification is pending. Full client behavior
+runs use the same script without that flag. Artifacts are available in the
+[review gallery](https://41841dba-c31c-4f23-801f-78831a73c9f0.conductor.show/shell/).

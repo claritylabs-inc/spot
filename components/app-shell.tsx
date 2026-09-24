@@ -5,22 +5,26 @@ import {
   Fragment,
   Suspense,
   isValidElement,
-  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePathname } from "next/navigation";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@claritylabs-inc/ui/components/sheet";
 import { PanelRightClose } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppShellPanelLayout } from "@/components/app-shell-panel-layout";
 import {
   AppShellSidebarLayout,
+  APP_SIDEBAR_DEFAULT_WIDTH,
   appSidebarPreferenceStorageKey,
-  clampAppSidebarWidth,
-  parseAppSidebarPreference,
-  type AppSidebarPreference,
-} from "@/components/app-shell-sidebar-layout";
+} from "@claritylabs-inc/ui/components/app-shell/app-shell-sidebar-layout";
+import { useAppSidebarPreference } from "@claritylabs-inc/ui/components/app-shell/app-shell";
 import { AppTopBar, type PresenceUser } from "@/components/app-top-bar";
 import { OperatorImpersonationBanner } from "@/components/operator-impersonation-banner";
 import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
@@ -76,27 +80,6 @@ function hasVisibleRightPanel(node: React.ReactNode): boolean {
   return true;
 }
 
-function readAppSidebarPreference(storageKey: string | null) {
-  if (!storageKey) return parseAppSidebarPreference(null);
-
-  try {
-    return parseAppSidebarPreference(localStorage.getItem(storageKey));
-  } catch {
-    return parseAppSidebarPreference(null);
-  }
-}
-
-function persistAppSidebarPreference(
-  storageKey: string | null,
-  preference: AppSidebarPreference,
-) {
-  if (!storageKey) return;
-
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(preference));
-  } catch {}
-}
-
 function ShellContent({
   children,
   actions,
@@ -124,8 +107,38 @@ function ShellContent({
   disableCommandPalette?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [customSidebarPreference, setCustomSidebarPreference] = useState(() =>
-    readAppSidebarPreference(customSidebarPreferenceStorageKey),
+  const mobileMenuRef = useRef<HTMLButtonElement>(null);
+  const pathname = usePathname();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setMobileOpen(false));
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
+  // Register before the shared hook's restoration effect.
+  useEffect(() => {
+    if (customSidebar) return;
+    try {
+      const legacy = localStorage.getItem("sidebar-collapsed");
+      if (legacy === "1" || legacy === "") {
+        localStorage.setItem(
+          "sidebar-collapsed",
+          JSON.stringify({
+            collapsed: legacy === "1",
+            width: APP_SIDEBAR_DEFAULT_WIDTH,
+          }),
+        );
+      }
+    } catch {
+      // Restricted storage leaves the shared hook's in-memory defaults intact.
+    }
+  }, [customSidebar]);
+  const {
+    ready: sidebarReady,
+    preference: customSidebarPreference,
+    toggleCollapse: toggleCustomSidebarCollapse,
+    setCollapsed: updateCustomSidebarCollapsed,
+    setWidth: updateCustomSidebarWidth,
+  } = useAppSidebarPreference(
+    customSidebar ? customSidebarPreferenceStorageKey : "sidebar-collapsed",
   );
   const { isPdfOpen, fileUrl } = usePdf();
   const { preview: entityPreview } = useEntityPreview();
@@ -170,49 +183,9 @@ function ShellContent({
     return () => window.cancelAnimationFrame(frame);
   }, [mobileOpen, operatorAgent?.open]);
 
-  const updateCustomSidebarPreference = useCallback(
-    (update: (current: AppSidebarPreference) => AppSidebarPreference) => {
-      setCustomSidebarPreference((current) => {
-        const next = update(current);
-        if (
-          next.collapsed === current.collapsed &&
-          next.width === current.width
-        ) {
-          return current;
-        }
-        persistAppSidebarPreference(customSidebarPreferenceStorageKey, next);
-        return next;
-      });
-    },
-    [customSidebarPreferenceStorageKey],
-  );
-
-  const toggleCustomSidebarCollapse = useCallback(() => {
-    updateCustomSidebarPreference((current) => ({
-      ...current,
-      collapsed: !current.collapsed,
-    }));
-  }, [updateCustomSidebarPreference]);
-
-  const updateCustomSidebarCollapsed = useCallback(
-    (next: boolean) => {
-      updateCustomSidebarPreference((current) => ({
-        ...current,
-        collapsed: next,
-      }));
-    },
-    [updateCustomSidebarPreference],
-  );
-
-  const updateCustomSidebarWidth = useCallback(
-    (width: number) => {
-      updateCustomSidebarPreference((current) => ({
-        ...current,
-        width: clampAppSidebarWidth(width),
-      }));
-    },
-    [updateCustomSidebarPreference],
-  );
+  if (!sidebarReady) {
+    return <div className="h-dvh w-full bg-background" aria-busy="true" />;
+  }
 
   const renderedCustomSidebar = customSidebar?.({
     collapsed: customSidebarPreference.collapsed,
@@ -260,6 +233,8 @@ function ShellContent({
             breadcrumbDetail={breadcrumbDetail}
             presenceUsers={presenceUsers}
             onMobileMenuToggle={() => setMobileOpen((v) => !v)}
+            mobileMenuRef={mobileMenuRef}
+            mobileMenuOpen={mobileOpen}
           />
           <div className="relative min-w-0 flex-1 overflow-hidden">
             <main className="absolute inset-0 min-w-0 overflow-y-auto scrollbar-hide">
@@ -296,35 +271,42 @@ function ShellContent({
             >
               {panelLayout}
             </AppShellSidebarLayout>
-            <AnimatePresence>
-              {mobileOpen ? (
-                <>
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="fixed inset-0 z-40 bg-black/20 lg:hidden"
-                    onClick={() => setMobileOpen(false)}
-                  />
-                  <motion.aside
-                    initial={{ x: -280 }}
-                    animate={{ x: 0 }}
-                    exit={{ x: -280 }}
-                    transition={{ duration: 0.12, ease: [0.2, 0, 0, 1] }}
-                    className="fixed bottom-0 left-0 top-0 z-50 flex w-[260px] flex-col border-r border-border bg-background lg:hidden"
-                  >
-                    {renderedMobileCustomSidebar}
-                  </motion.aside>
-                </>
-              ) : null}
-            </AnimatePresence>
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetContent
+                side="left"
+                showCloseButton={false}
+                className="w-[260px]! gap-0 bg-background lg:hidden"
+                finalFocus={mobileMenuRef}
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  if (
+                    event.target instanceof Element &&
+                    event.target.closest("a[href]")
+                  ) {
+                    setMobileOpen(false);
+                  }
+                }}
+              >
+                <SheetTitle className="sr-only">Navigation</SheetTitle>
+                {renderedMobileCustomSidebar}
+              </SheetContent>
+            </Sheet>
           </>
         ) : (
           <>
             <Suspense fallback={null}>
               <AppSidebar
+                collapsed={customSidebarPreference.collapsed}
+                onToggleCollapse={toggleCustomSidebarCollapse}
                 mobileOpen={mobileOpen}
+                mobileMenuRef={mobileMenuRef}
                 onMobileClose={() => setMobileOpen(false)}
                 disablePersistentChat={disablePersistentChat}
                 onAskSpot={

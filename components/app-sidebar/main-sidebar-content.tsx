@@ -23,7 +23,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@claritylabs-inc/ui/components/tooltip";
 import {
   MENU_ITEM_ACTIVE,
   MENU_ITEM_BASE,

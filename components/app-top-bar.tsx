@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
-import { PillButtonSizeProvider } from "@/components/ui/pill-button";
+import { AppTopBar as SharedAppTopBar } from "@claritylabs-inc/ui/components/app-shell/app-top-bar";
+import type { Ref } from "react";
 import { typeStyle } from "@/lib/typography";
 
 const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
@@ -109,71 +109,40 @@ export function AppTopBar({
   breadcrumbDetail,
   onMobileMenuToggle,
   presenceUsers,
+  mobileMenuRef,
+  mobileMenuOpen,
 }: {
   actions?: React.ReactNode;
   breadcrumbDetail?: React.ReactNode;
   onMobileMenuToggle?: () => void;
   presenceUsers?: PresenceUser[];
+  mobileMenuRef?: Ref<HTMLButtonElement>;
+  mobileMenuOpen?: boolean;
 }) {
   const pathname = usePathname();
   const { label, href } = resolveAppBreadcrumb(pathname);
-
   return (
-    <header className="h-12 flex items-center gap-3 px-6 lg:px-8 border-b border-border shrink-0">
-      {/* Mobile hamburger */}
-      <button
-        type="button"
-        onClick={onMobileMenuToggle}
-        className="lg:hidden p-1.5 -ml-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/4 transition-colors"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
-
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        {breadcrumbDetail && label ? (
-          <>
-            <Link
-              href={href}
-              className={`hidden sm:inline text-muted-foreground/60 hover:text-foreground transition-colors truncate shrink-0 ${typeStyle("control.button")}`}
-            >
-              {label}
-            </Link>
-            <span
-              className={`hidden sm:inline text-muted-foreground/30 ${typeStyle("body.default")}`}
-            >
-              /
-            </span>
-            <span
-              className={`text-foreground truncate ${typeStyle("body.default")}`}
-            >
-              {breadcrumbDetail}
-            </span>
-          </>
-        ) : (
-          <span
-            className={`text-foreground truncate ${typeStyle("body.medium")}`}
-          >
-            {breadcrumbDetail ?? label}
-          </span>
-        )}
-      </div>
-
-      {/* Presence + actions */}
-      <PillButtonSizeProvider size="compact">
-        <div
-          className="flex shrink-0 items-center gap-2"
-          data-slot="app-top-bar-actions"
-        >
-          {presenceUsers && presenceUsers.length > 0 && (
+    <SharedAppTopBar
+      breadcrumb={label}
+      breadcrumbHref={href}
+      breadcrumbRender={<Link href={href} />}
+      breadcrumbDetail={breadcrumbDetail}
+      breadcrumbSeparator={<span className="text-muted-foreground/30">/</span>}
+      breadcrumbListClassName={`gap-1.5 ${typeStyle("body.default")}`}
+      onMobileMenuToggle={onMobileMenuToggle}
+      mobileMenuRef={mobileMenuRef}
+      mobileMenuOpen={mobileMenuOpen}
+      actions={
+        <>
+          {presenceUsers && presenceUsers.length > 0 ? (
             <>
               <PresenceAvatars users={presenceUsers} />
               <div className="w-px h-4 bg-foreground/10" />
             </>
-          )}
+          ) : null}
           {actions}
-        </div>
-      </PillButtonSizeProvider>
-    </header>
+        </>
+      }
+    />
   );
 }

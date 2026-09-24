@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
-import { BrandIcon } from "@/components/ui/brand-icon";
+import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 import {
   type CarrierIdentity,
 } from "@/convex/lib/carrierIdentity";
