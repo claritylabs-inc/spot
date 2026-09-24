@@ -83,43 +83,15 @@ export function sourceSpanIdsFromValue(value: unknown): string[] {
 }
 
 export function getPolicyDocumentOutline(policy: Record<string, unknown>): DocumentOutlineNode[] {
-  const document = asRecord(policy.document);
-  for (const candidate of [
-    policy.documentOutline,
-    document?.documentOutline,
-    document?.outline,
-  ]) {
-    const outline = asOutlineArray(candidate);
-    if (outline.length > 0) return outline;
-  }
-  return [];
+  return asOutlineArray(policy.documentOutline);
 }
 
 export function getPolicyDocumentMetadata(policy: Record<string, unknown>): Record<string, unknown> | undefined {
-  const document = asRecord(policy.document);
-  for (const candidate of [
-    policy.documentMetadata,
-    document?.documentMetadata,
-    document?.metadata,
-  ]) {
-    const metadata = asRecord(candidate);
-    if (metadata && Object.keys(metadata).length > 0) return metadata;
-  }
-  return undefined;
+  return asRecord(policy.documentMetadata);
 }
 
 export function getPolicyFormInventory(policy: Record<string, unknown>): Record<string, unknown>[] {
-  const metadata = getPolicyDocumentMetadata(policy);
-  const candidates = [
-    policy.formInventory,
-    metadata?.formInventory,
-    asRecord(policy.document)?.formInventory,
-  ];
-  for (const candidate of candidates) {
-    const forms = asRecordArray(candidate);
-    if (forms.length > 0) return forms;
-  }
-  return [];
+  return asRecordArray(policy.formInventory);
 }
 
 export function flattenDocumentOutline(

@@ -52,8 +52,6 @@ function buildAlreadyExtractedSummary(policy: any): string {
   if (policy.brokerAgency || policy.broker) lines.push(`broker: ${policy.brokerAgency || policy.broker}`);
   if (policy.generalAgent?.agencyName) {
     lines.push(`general_agent: ${policy.generalAgent.agencyName}`);
-  } else if (policy.mga) {
-    lines.push(`general_agent: ${policy.mga}`);
   }
   if (policy.underwriter) lines.push(`underwriter: ${policy.underwriter}`);
 

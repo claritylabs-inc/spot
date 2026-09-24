@@ -3,7 +3,6 @@ const POLICY_VERSION_SNAPSHOT_KEYS = [
   "security",
   "underwriter",
   "generalAgent",
-  "mga",
   "broker",
   "policyNumber",
   "linesOfBusiness",

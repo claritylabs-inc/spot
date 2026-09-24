@@ -57,7 +57,6 @@ export type CertificatePolicyRecord = {
   _id: Id<"policies">;
   carrier?: string;
   security?: string;
-  mga?: string;
   policyNumber?: string;
   insuredName?: string;
   effectiveDate?: string;

@@ -74,20 +74,15 @@ function readNumber(value: unknown): number | undefined {
 }
 
 function relatedParentId(span: SourceSpanDoc): string | undefined {
-  const metadata = span.metadata ?? {};
   const parent =
     span.parentSpanId ??
     span.table?.rowSpanId ??
-    span.table?.tableSpanId ??
-    metadata.parentSpanId ??
-    metadata.rowSpanId ??
-    metadata.tableSpanId;
+    span.table?.tableSpanId;
   return typeof parent === "string" && parent.length > 0 ? parent : undefined;
 }
 
 function sourceUnit(span: SourceSpanDoc): string | undefined {
-  const value = span.sourceUnit ?? span.metadata?.sourceUnit ?? span.metadata?.elementType;
-  return typeof value === "string" ? value : undefined;
+  return span.sourceUnit;
 }
 
 export function usePolicySourceSpans(
@@ -154,10 +149,10 @@ export function highlightBoxesForSpans(
     (span.bbox ?? []).map((box) => ({
       ...box,
       coordinateWidth: readNumber(
-        span.metadata?.bboxCoordinateWidth ?? span.metadata?.pageWidth,
+        span.metadata?.bboxCoordinateWidth,
       ),
       coordinateHeight: readNumber(
-        span.metadata?.bboxCoordinateHeight ?? span.metadata?.pageHeight,
+        span.metadata?.bboxCoordinateHeight,
       ),
     })),
   );

@@ -135,7 +135,6 @@ const POLICY_VERSION_LABELS: Record<PolicyVersionRow["versionKind"], string> = {
 const POLICY_VERSION_FIELD_LABEL_OVERRIDES: Record<string, string> = {
   insuredDba: "Insured DBA",
   generalAgent: "General Agent",
-  mga: "General Agent",
   isRenewal: "Renewal flag",
 };
 

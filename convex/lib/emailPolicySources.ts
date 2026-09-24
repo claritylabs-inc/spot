@@ -10,7 +10,6 @@ type PolicyLike = {
   _id: Id<"policies">;
   carrier?: string;
   security?: string;
-  mga?: string;
   generalAgent?: { agencyName?: string };
   policyNumber?: string;
   linesOfBusiness?: string[];
@@ -37,7 +36,6 @@ function sourceFromPolicy(policy: PolicyLike, siteUrl: string): EmailPolicySourc
   const label = "Policy";
   const generalAgent =
     policy.generalAgent?.agencyName ||
-    policy.mga ||
     policy.security ||
     policy.carrier ||
     "Unknown";

@@ -303,6 +303,7 @@ const policyDetailOverridesValidator = v.object({
     }),
   ),
   // Read compatibility for overrides saved before General Agent nomenclature.
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   mga: v.optional(policyDetailPartyValidator),
 });
 
@@ -724,6 +725,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("name", ["normalizedName"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   carrierIdentityBackfillResults: defineTable({
     policyId: v.id("policies"),
     outcome: v.union(
@@ -740,6 +742,7 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("outcome", ["outcome"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyDryRunPages: defineTable({
     runId: v.string(),
     cursorKey: v.string(),
@@ -753,6 +756,7 @@ export default defineSchema({
     .index("run", ["runId"])
     .index("run_cursor", ["runId", "cursorKey"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyWriteRuns: defineTable({
     runId: v.string(),
     orgId: v.optional(v.id("organizations")),
@@ -769,6 +773,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("run", ["runId"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyWritePages: defineTable({
     runId: v.string(),
     cursorKey: v.string(),
@@ -781,6 +786,7 @@ export default defineSchema({
     .index("run", ["runId"])
     .index("run_cursor", ["runId", "cursorKey"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyWritePolicyResults: defineTable({
     runId: v.string(),
     cursorKey: v.string(),
@@ -1833,11 +1839,15 @@ export default defineSchema({
     carrier: v.string(), // backward compat — prefer security for new extractions
     security: v.optional(v.string()), // insurer/underwriter company (e.g. "Lloyd's Underwriters")
     underwriter: v.optional(v.string()), // named individual underwriter (e.g. "Libby Rudd")
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandId: v.optional(v.id("carrierBrands")),
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandStatus: v.optional(
       v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
     ),
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandAttempts: v.optional(v.number()),
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandAttemptedAt: v.optional(v.number()),
     carrierIdentityEnrichmentStatus: v.optional(
       v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
@@ -1845,6 +1855,7 @@ export default defineSchema({
     carrierIdentityEnrichmentAttempts: v.optional(v.number()),
     carrierIdentityEnrichmentAttemptedAt: v.optional(v.number()),
     // Read compatibility for policies extracted before generalAgent.
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     mga: v.optional(v.string()),
     broker: v.optional(v.string()),
     // Enriched entity fields (cl-sdk 1.2+)
@@ -2304,7 +2315,7 @@ export default defineSchema({
         effectiveDatePage: v.optional(v.number()),
       }),
     ),
-    // Full document structure with provenance
+    // Source-tree projection retained for current agent and certificate context.
     documentMetadata: v.optional(v.any()),
     documentOutline: v.optional(v.any()),
     sourceTreeVersion: v.optional(v.string()),
@@ -2320,8 +2331,7 @@ export default defineSchema({
     sourceTreeUpdatedAt: v.optional(v.number()),
     sourceTreeError: v.optional(v.string()),
     operationalProfile: v.optional(v.any()),
-    // Extracted document structure (sections, endorsements, conditions, etc.)
-    // Uses v.any() because the cl-sdk document schema evolves frequently
+    // Current extraction still stores the SDK document structure.
     document: v.optional(v.any()),
     // Dismissal flag — set when a policy row is dismissed/marked not-insurance.
     // Replaces the old extractionStatus: "not_insurance" value.
