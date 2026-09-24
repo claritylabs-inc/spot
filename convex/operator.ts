@@ -263,82 +263,8 @@ export const getClientSupportDetails = query({
   },
 });
 
-export const listPublicDemoSalesTranscripts = query({
-  args: {
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    await requireOperator(ctx);
-    const limit = Math.max(1, Math.min(Math.floor(args.limit ?? 200), 500));
-    return await ctx.db
-      .query("publicDemoSalesTranscripts")
-      .withIndex("updated")
-      .order("desc")
-      .take(limit);
-  },
-});
 
-export const getPublicDemoSalesTranscript = query({
-  args: { id: v.id("publicDemoSalesTranscripts") },
-  handler: async (ctx, args) => {
-    await requireOperator(ctx);
-    const transcript = await ctx.db.get(args.id);
-    if (!transcript) return null;
-    const conversation = await ctx.db.get(transcript.conversationId);
-    const logs = await ctx.db
-      .query("publicDemoChatLogs")
-      .withIndex("conversation_created", (q) =>
-        q.eq("conversationId", transcript.conversationId),
-      )
-      .order("asc")
-      .take(200);
-    return { transcript, conversation, logs };
-  },
-});
 
-export const deletePublicDemoSalesTranscript = mutation({
-  args: { id: v.id("publicDemoSalesTranscripts") },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    const transcript = await ctx.db.get(args.id);
-    if (!transcript) return { deleted: false, deletedLogs: 0 };
-
-    const [logs, transcripts] = await Promise.all([
-      ctx.db
-        .query("publicDemoChatLogs")
-        .withIndex("conversation_created", (q) =>
-          q.eq("conversationId", transcript.conversationId),
-        )
-        .collect(),
-      ctx.db
-        .query("publicDemoSalesTranscripts")
-        .withIndex("conversation", (q) =>
-          q.eq("conversationId", transcript.conversationId),
-        )
-        .collect(),
-    ]);
-
-    for (const log of logs) await ctx.db.delete(log._id);
-    for (const relatedTranscript of transcripts) {
-      await ctx.db.delete(relatedTranscript._id);
-    }
-    const conversation = await ctx.db.get(transcript.conversationId);
-    if (conversation) await ctx.db.delete(conversation._id);
-
-    await writeOperatorAudit(ctx, {
-      operatorUserId: operator.userId,
-      type: "demo_lead_deleted",
-      summary: "Deleted a public demo lead and its chat history",
-      metadata: {
-        conversationId: transcript.conversationId,
-        transcriptId: transcript._id,
-        deletedLogs: logs.length,
-      },
-    });
-
-    return { deleted: true, deletedLogs: logs.length };
-  },
-});
 
 async function extractionRunCostUsd(ctx: QueryCtx, traceId: string) {
   const events = await ctx.db

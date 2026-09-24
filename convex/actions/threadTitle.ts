@@ -14,36 +14,9 @@ import {
   slackThreadTitle,
   slackThreadTitleSeed,
 } from "../lib/slackThreadTitle";
+import { buildTitleSystemPrompt } from "../lib/channelStyle";
 
-export const TITLE_SYSTEM_PROMPT = `You are a thread title generator for an insurance work assistant.
-
-Given the initial user request and any starting page context, output a short title that captures the user's actual work intent.
-
-Rules:
-- Return the title field only. Do not include analysis or explanation.
-- Do not output analysis, reasoning, steps, headings, lists, or Markdown.
-- Use title case.
-- Use 2-4 words.
-- Never begin with conversational framing such as "Can you", "Could you", "I need", or "Please".
-- Prefer the action and deliverable/topic over contact names or email addresses.
-- Use starting page context to disambiguate generic requests like "send this", "summarize this", or "what about exclusions?"
-- Never include raw email addresses, email domains, usernames, file IDs, generated IDs, or local-part fragments.
-- For certificate of insurance work, use a compact action title such as "Generate COI", "Update COI", "Draft COI", or "Send COI".
-- Good examples: "Generate COI", "Send COI", "GL Coverage Limits", "Cyber Liability Policy", "Endorsement Follow Up", "Renewal Timeline".`;
-
-export const SLACK_TITLE_SYSTEM_PROMPT = `You are a Slack thread title generator for an insurance work assistant.
-
-Given the initial message in a Slack thread, output a compact topic that makes the conversation easy to find later.
-
-Rules:
-- Return the title field only. Do not include analysis or explanation.
-- Do not output analysis, reasoning, steps, headings, lists, or Markdown.
-- Use title case.
-- Use 3-4 words whenever the message provides enough context.
-- Name the actual request, deliverable, policy topic, or operational issue.
-- Do not repeat the Slack channel, sender, or conversational framing.
-- Never include Slack mentions, raw email addresses, URLs, usernames, file IDs, generated IDs, or local-part fragments.
-- Good examples: "Review Cyber Renewal", "Summarize Coverage Exclusions", "Update Certificate Holder", "Confirm Property Deductible".`;
+export const TITLE_SYSTEM_PROMPT = buildTitleSystemPrompt();
 
 const ThreadTitleOutputSchema = z.object({
   title: z.string().min(1).max(80),
@@ -122,9 +95,7 @@ async function generateThreadTitle(
   const result = await generateObject({
     schema: ThreadTitleOutputSchema,
     maxOutputTokens: 16,
-    system: args.titlePrefix
-      ? SLACK_TITLE_SYSTEM_PROMPT
-      : TITLE_SYSTEM_PROMPT,
+    system: buildTitleSystemPrompt({ slack: Boolean(args.titlePrefix) }),
     prompt: buildTitlePromptContent(args.context),
   });
   const generated = normalizeGeneratedTitle(result.object.title);

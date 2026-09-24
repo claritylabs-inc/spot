@@ -21,17 +21,8 @@ export type OperatorRouterCapabilities = FunctionReturnType<
 type OperatorExtractionRunList = FunctionReturnType<
   typeof api.operator.listExtractionRuns
 >;
-type OperatorDemoSalesTranscriptList = FunctionReturnType<
-  typeof api.operator.listPublicDemoSalesTranscripts
->;
-type OperatorDemoSalesTranscriptDetail = FunctionReturnType<
-  typeof api.operator.getPublicDemoSalesTranscript
->;
 type EmptyArgs = Record<string, never>;
 type OperatorStatus = OperatorClientRow["operatorStatus"];
-type DemoSalesTranscriptListArgs = {
-  limit?: number;
-};
 type OptimisticClientInput = {
   clientOrgId: Id<"organizations">;
   name: string;
@@ -45,11 +36,6 @@ function sortByCreatedAtDesc<T extends { createdAt: number }>(rows: T[]) {
   return [...rows].sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function operatorDemoSalesTranscriptListArgs(
-  limit = 250,
-): DemoSalesTranscriptListArgs {
-  return { limit };
-}
 
 export function useCachedOperatorCurrent() {
   return useCachedQuery("operator.current", api.operator.current, {}) as
@@ -124,25 +110,7 @@ export function useCachedOperatorExtractionRuns(policyId: Id<"policies">) {
   ) as OperatorExtractionRunList | undefined;
 }
 
-export function useCachedOperatorDemoSalesTranscripts(limit = 250) {
-  return useCachedQuery(
-    "operator.listPublicDemoSalesTranscripts",
-    api.operator.listPublicDemoSalesTranscripts,
-    operatorDemoSalesTranscriptListArgs(limit),
-  ) as OperatorDemoSalesTranscriptList | undefined;
-}
 
-export function useCachedOperatorDemoSalesTranscriptDetail(
-  transcriptId: string | null,
-) {
-  return useCachedQuery(
-    "operator.getPublicDemoSalesTranscript",
-    api.operator.getPublicDemoSalesTranscript,
-    transcriptId
-      ? { id: transcriptId as Id<"publicDemoSalesTranscripts"> }
-      : "skip",
-  ) as OperatorDemoSalesTranscriptDetail | undefined;
-}
 
 export function useOperatorClientCacheActions() {
   const upsertClients = useUpsertCachedQuery<OperatorClientList, EmptyArgs>(
