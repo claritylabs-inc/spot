@@ -37,7 +37,7 @@
   font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
 }
 :is([data-agent-dock], [data-agent-surface]) :is([data-prose], [data-prose] table, [data-chat-bubble]) {
-  font-weight: 350;
+  font-weight: 300;
 }
 :is([data-agent-dock], [data-agent-surface]) :is(strong, b, th) {
   font-weight: 500;

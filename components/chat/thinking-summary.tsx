@@ -82,7 +82,7 @@ export function ThinkingSummary({
   const noun = hasCalls ? "tool call" : "tool";
   return (
     <ChatDisclosure
-      key={working ? "working" : "finished"}
+      working={working}
       className={`mb-3 text-muted-foreground/50 ${typeStyle("caption.default")}`}
       summaryClassName="hover:text-muted-foreground"
       summary={

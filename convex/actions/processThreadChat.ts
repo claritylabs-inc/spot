@@ -78,6 +78,7 @@ import {
   decideRequirementAttachmentImport,
 } from "../lib/requirementAttachmentIntent";
 import { slackThreadContextText } from "../lib/slackThreadContext";
+import { threadPageContext } from "../lib/threadPageContext";
 
 const RECENT_ATTACHMENT_MESSAGE_LIMIT = 6;
 
@@ -430,12 +431,12 @@ export const run = internalAction({
       const canSendEmail = emailIdentity.canSend;
 
       let pageContextBlock = "";
-      if (thread?.initialContext) {
-        const ic = thread.initialContext;
+      const ic = thread ? threadPageContext(thread) : undefined;
+      if (ic) {
         if (ic.summary) {
-          pageContextBlock = `FOCUSED CONTEXT — The user started this chat from the ${ic.pageType} detail page:\n- ${ic.summary}\n- Prioritize answering questions about this specific ${ic.pageType}. Reference it directly without the user needing to specify which one.`;
+          pageContextBlock = `FOCUSED CONTEXT — The user attached the ${ic.pageType} detail page to this chat:\n- ${ic.summary}\n- Prioritize answering questions about this specific ${ic.pageType}. Reference it directly without the user needing to specify which one.`;
         } else if (ic.pageType) {
-          pageContextBlock = `FOCUSED CONTEXT — The user started this chat from the ${ic.pageType} page.`;
+          pageContextBlock = `FOCUSED CONTEXT — The user attached the ${ic.pageType} page to this chat.`;
         }
       }
 

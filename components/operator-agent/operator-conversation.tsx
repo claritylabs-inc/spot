@@ -22,6 +22,7 @@ import {
   ChatUserTurn,
 } from "@/components/chat/chat-message";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { MessageContextTag } from "@/components/chat/message-context-tag";
 import { ChatDisclosure } from "@/components/chat/disclosure";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import { AgentDockSuggestions } from "@/components/agent-dock/agent-dock-suggestions";
@@ -305,7 +306,10 @@ function OperatorMessageRow({
           {content}
         </ProseMarkdown>
       ) : (
-        <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
+        <p className="whitespace-pre-wrap wrap-anywhere">
+          <MessageContextTag context={message.pageContext} />
+          {content}
+        </p>
       )}
       attachments={emailBody ? null : attachments}
     />

@@ -21,7 +21,7 @@ The thread route is intentionally thin. Tenant message UI and artifact surfaces 
 
 Web chat follows a messaging contract rather than an execution-console contract:
 
-- Web replies stream when the viewer’s Stream responses preference is enabled (default on). Show thinking independently enables a collapsible tool-activity summary (default off). Use the thinking bubble before text arrives or when streaming is disabled. Keep raw model reasoning, tool inputs/outputs, and subagent logs private.
+- Web replies stream when the viewer’s Stream responses preference is enabled (default on). Show thinking independently enables a tool-activity summary (default off). Activity stays fully expanded while the turn is working, including while response text streams, then animates closed when the turn finishes. Completed activity can be reopened; reduced motion disables the collapse animation. Use the thinking bubble before text arrives or when streaming is disabled. Keep raw model reasoning, tool inputs/outputs, and subagent logs private.
 - Show `Delivered` on the viewer's latest web message after Convex acknowledges it, and `Read` only after the linked agent run has started. Older receipts stay hidden to keep the thread quiet.
 - Reconcile streamed text with the final saved response. Keep source links, files, delivery status, and actionable artifacts because they change what the user can verify or do next.
 - Detailed tool audit data remains in internal telemetry and channel adapters. The optional activity summary shows tool labels only; model reasoning and tool payloads stay private.

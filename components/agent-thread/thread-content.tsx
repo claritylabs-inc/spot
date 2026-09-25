@@ -15,6 +15,7 @@ import {
 import { SiSlack } from "react-icons/si";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { threadPageContext } from "@/convex/lib/threadPageContext";
 import type { PresentationReference } from "@/lib/chat-presentation";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
@@ -310,6 +311,7 @@ export function UnifiedThreadContent({
   const { appendOptimisticSend, markOptimisticSendFailed } =
     useThreadCacheActions();
   const updateTitle = useMutation(api.threads.updateTitle);
+  const clearPageContext = useMutation(api.threads.clearPageContext);
   const generateUploadUrl = useMutation(api.threads.generateUploadUrl);
   const chatInputRef = useRef<ChatComposerHandle>(null);
   const lastAutoOpenedEmailId = useRef<string | null>(null);
@@ -634,6 +636,8 @@ export function UnifiedThreadContent({
   if (!thread) {
     return <div className="h-full" />;
   }
+
+  const threadContext = threadPageContext(thread);
   const slackUrl = slackConversationUrl(thread);
 
   return (
@@ -684,13 +688,17 @@ export function UnifiedThreadContent({
             variant="dock"
             orgId={thread.orgId}
             contextChip={
-              thread.initialContext ? (
+              threadContext ? (
                 <AgentDockContextChip
                   label={
-                    thread.initialContext.summary ??
-                    thread.initialContext.pageType.replaceAll("_", " ")
+                    threadContext.summary ??
+                    threadContext.pageType.replaceAll("_", " ")
                   }
-                  retained
+                  onRemove={() =>
+                    void clearPageContext({ id: threadId }).catch(() =>
+                      toast.error("Could not remove the page context"),
+                    )
+                  }
                 />
               ) : undefined
             }

@@ -83,6 +83,7 @@ export function OperatorAgentChat({
   const cancelRun = useMutation(operatorAgentApi.cancelRun);
   const confirmAction = useMutation(operatorAgentApi.confirmAction);
   const startIntent = useMutation(operatorAgentApi.startIntent);
+  const clearThreadContext = useMutation(operatorAgentApi.clearThreadContext);
   const currentPageContext = useMemo(() => {
     const context =
       registeredPageContext ?? operatorPageContextFromPathname(pathname);
@@ -98,7 +99,7 @@ export function OperatorAgentChat({
       ? currentPageContext
       : null;
   const activeThread = detail.thread;
-  const retainedThreadContext = activeThread?.initialContext ?? null;
+  const retainedThreadContext = activeThread?.pageContext ?? null;
   const displayedPageContext = retainedThreadContext ?? availablePageContext;
   const intents = useQuery(
     operatorAgentApi.listIntents,
@@ -110,7 +111,13 @@ export function OperatorAgentChat({
   );
   const running = detail.activeRun || submitting;
   const toggleContext = () => {
-    if (availablePageContext) {
+    if (retainedThreadContext && activeThreadId) {
+      // Keep the current page off too so the cleared context doesn't reattach.
+      if (currentPageContextKey) dock.detachContext(currentPageContextKey);
+      void clearThreadContext({ threadId: activeThreadId }).catch(
+        reportError("Could not remove the page context"),
+      );
+    } else if (availablePageContext) {
       if (currentPageContextKey) dock.detachContext(currentPageContextKey);
     } else {
       dock.attachContext();
@@ -309,8 +316,11 @@ export function OperatorAgentChat({
           contextChip={
             <AgentDockContextChip
               label={contextLabel}
-              href={activeThread ? operatorThreadContextHref(activeThread) : null}
-              retained={Boolean(retainedThreadContext)}
+              href={
+                activeThread
+                  ? operatorThreadContextHref(activeThread.id, retainedThreadContext)
+                  : null
+              }
               detached={!displayedPageContext}
               onRemove={toggleContext}
             />

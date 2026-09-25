@@ -110,11 +110,10 @@ export function operatorPageContextFromPathname(
   };
 }
 
-export function operatorThreadContextHref(thread: {
-  id: string;
-  initialContext?: PageContext;
-}) {
-  const context = thread.initialContext;
+export function operatorThreadContextHref(
+  threadId: string,
+  context: PageContext | null | undefined,
+) {
   if (!context) return null;
   let href = context.href;
   if (!href) {
@@ -142,6 +141,6 @@ export function operatorThreadContextHref(thread: {
   if (
     !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|profile|routing|telemetry|logs|usage|settings)\/?$/.test(url.pathname)
   ) return null;
-  url.searchParams.set("agentThread", thread.id);
+  url.searchParams.set("agentThread", threadId);
   return `${url.pathname}${url.search}${url.hash}`;
 }

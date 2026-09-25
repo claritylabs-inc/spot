@@ -126,6 +126,7 @@ import {
   slackThreadContextSnapshotValidator,
   type SlackThreadContextSnapshot,
 } from "./lib/slackThreadContext";
+import { threadPageContext } from "./lib/threadPageContext";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -1377,6 +1378,7 @@ export async function enqueueOperatorMessage(
     userId: args.operatorUserId,
     userName: operator?.name ?? operator?.email ?? "Operator",
     content,
+    pageContext: threadPageContext(thread) ?? pageContext,
     attachments,
     emailContent: args.emailContent,
     toolArtifacts: toolArtifacts.length > 0 ? toolArtifacts : undefined,
@@ -1445,6 +1447,7 @@ export async function enqueueOperatorMessage(
     ...(!thread.initialContext && pageContext
       ? { initialContext: pageContext }
       : {}),
+    ...(!threadPageContext(thread) && pageContext ? { pageContext } : {}),
     ...(thread.title === "New chat"
       ? { title: normalizeOperatorThreadTitle(content).slice(0, 80) }
       : {}),
@@ -3315,6 +3318,48 @@ export const unarchiveThread = mutation({
   },
 });
 
+async function withPageContextHref(
+  ctx: QueryCtx,
+  context: Doc<"operatorAgentThreads">["initialContext"],
+) {
+  if (!context?.entityId || context.href) return context;
+  let href: string | undefined;
+  if (context.pageType === "procurement_request") {
+    const requestId = ctx.db.normalizeId(
+      "procurementRequests",
+      context.entityId,
+    );
+    const request = requestId
+      ? await ctx.db.get("procurementRequests", requestId)
+      : null;
+    if (request) {
+      href = `/operator/clients/${request.clientOrgId}/procurement/${request._id}`;
+    }
+  } else if (context.pageType === "policy") {
+    const policyId = ctx.db.normalizeId("policies", context.entityId);
+    const policy = policyId ? await ctx.db.get("policies", policyId) : null;
+    if (policy) {
+      href = `/operator/clients/${policy.orgId}/policies/${policy._id}`;
+    }
+  }
+  return href ? { ...context, href } : context;
+}
+
+export const clearThreadContext = mutation({
+  args: { threadId: v.id("operatorAgentThreads") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireOperatorThread(ctx, args.threadId, operator.userId, {
+      allowShared: true,
+    });
+    await ctx.db.patch(args.threadId, {
+      pageContext: null,
+      updatedAt: dayjs().valueOf(),
+    });
+    return { cleared: true };
+  },
+});
+
 export const getThread = query({
   args: { threadId: v.id("operatorAgentThreads") },
   handler: async (ctx, args) => {
@@ -3325,32 +3370,10 @@ export const getThread = query({
       operator.userId,
       { allowShared: true },
     );
-    let initialContext = thread.initialContext;
-    if (initialContext?.entityId && !initialContext.href) {
-      let href: string | undefined;
-      if (initialContext.pageType === "procurement_request") {
-        const requestId = ctx.db.normalizeId(
-          "procurementRequests",
-          initialContext.entityId,
-        );
-        const request = requestId
-          ? await ctx.db.get("procurementRequests", requestId)
-          : null;
-        if (request) {
-          href = `/operator/clients/${request.clientOrgId}/procurement/${request._id}`;
-        }
-      } else if (initialContext.pageType === "policy") {
-        const policyId = ctx.db.normalizeId(
-          "policies",
-          initialContext.entityId,
-        );
-        const policy = policyId ? await ctx.db.get("policies", policyId) : null;
-        if (policy) {
-          href = `/operator/clients/${policy.orgId}/policies/${policy._id}`;
-        }
-      }
-      if (href) initialContext = { ...initialContext, href };
-    }
+    const [initialContext, pageContext] = await Promise.all([
+      withPageContextHref(ctx, thread.initialContext),
+      withPageContextHref(ctx, threadPageContext(thread)),
+    ]);
     const [messages, runs, confirmations] = await Promise.all([
       ctx.db
         .query("operatorAgentMessages")
@@ -3390,7 +3413,7 @@ export const getThread = query({
     );
     const presentationBudget = presentationReadBudget();
     return {
-      thread: { ...thread, initialContext },
+      thread: { ...thread, initialContext, pageContext: pageContext ?? null },
       messages: (
         await Promise.all(
           [...messages].reverse().map(async (message) => {
@@ -3477,7 +3500,7 @@ export const startIntent = mutation({
       ? await findEmptyChatThread(ctx, args.emptyThreadId, operator.userId)
       : null;
     const pageContext =
-      emptyThread?.initialContext ??
+      (emptyThread ? threadPageContext(emptyThread) : undefined) ??
       normalizeOperatorPageContext(args.pageContext);
     const intent = resolveOperatorAgentIntent(args.intentId, pageContext);
 

@@ -1,13 +1,10 @@
 import { expect, test } from "vitest";
 import { operatorThreadContextHref } from "./operator-page-context";
 
-test("context links reopen the thread on its origin page", () => {
-  const href = operatorThreadContextHref({
-    id: "chosen-thread",
-    initialContext: {
-      pageType: "procurement_request",
-      href: "/operator/clients/first/procurement/request?tab=proposals",
-    },
+test("context links reopen the thread on its context page", () => {
+  const href = operatorThreadContextHref("chosen-thread", {
+    pageType: "procurement_request",
+    href: "/operator/clients/first/procurement/request?tab=proposals",
   });
   const destination = new URL(href!, "https://spot.invalid");
   expect(destination.pathname).toBe("/operator/clients/first/procurement/request");
@@ -17,7 +14,7 @@ test("context links reopen the thread on its origin page", () => {
 
 test("context links stay within supported operator pages", () => {
   for (const href of ["https://example.com", "//example.com", "/operator/../login", "/operator/threads/other", "/operator/unknown"]) {
-    expect(operatorThreadContextHref({ id: "thread", initialContext: { pageType: "operator_client", href } })).toBeNull();
+    expect(operatorThreadContextHref("thread", { pageType: "operator_client", href })).toBeNull();
   }
-  expect(operatorThreadContextHref({ id: "thread" })).toBeNull();
+  expect(operatorThreadContextHref("thread", null)).toBeNull();
 });

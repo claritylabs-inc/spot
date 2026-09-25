@@ -10,6 +10,7 @@ type BackendThread = {
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   title: string;
   initialContext?: PageContext;
+  pageContext?: PageContext | null;
   createdAt: number;
   lastMessageAt: number;
   archivedAt?: number;
@@ -26,6 +27,7 @@ type BackendMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  pageContext?: PageContext;
   rerun?: { runId: string; withErrorContext: boolean };
   replyToMessageId?: string;
   dedupeKey?: string;
@@ -131,6 +133,7 @@ export type OperatorAgentThread = {
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   title: string;
   initialContext?: PageContext;
+  pageContext?: PageContext | null;
   createdAt: number;
   lastMessageAt: number;
   archivedAt?: number;
@@ -159,6 +162,7 @@ export type OperatorAgentMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  pageContext?: PageContext;
   rerun?: { runId: string; withErrorContext: boolean };
   replyToMessageId?: string;
   isDirectToolRequest?: boolean;
@@ -210,6 +214,11 @@ export const operatorAgentApi = {
     SetThreadArchiveArgs,
     { restored: true }
   >("operatorAgent:unarchiveThread"),
+  clearThreadContext: makeFunctionReference<
+    "mutation",
+    { threadId: string },
+    { cleared: true }
+  >("operatorAgent:clearThreadContext"),
   generateUploadUrl: makeFunctionReference<
     "mutation",
     Record<string, never>,
@@ -266,6 +275,7 @@ function normalizeThread(thread: BackendThread): OperatorAgentThread {
     channel: thread.channel,
     title: thread.title,
     initialContext: thread.initialContext,
+    pageContext: thread.pageContext ?? null,
     createdAt: thread.createdAt,
     lastMessageAt: thread.lastMessageAt,
     archivedAt: thread.archivedAt,
@@ -316,6 +326,7 @@ export function normalizeOperatorAgentThread(
       status: message.status,
       createdAt: message.createdAt,
       userName: message.userName,
+      pageContext: message.pageContext,
       rerun: message.rerun,
       replyToMessageId: message.replyToMessageId,
       isDirectToolRequest:

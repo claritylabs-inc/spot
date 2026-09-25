@@ -8,21 +8,18 @@ import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
 /**
- * Composer chip for the page a chat is about. The current page can be removed
- * and toggled back with `AgentDockContextToggle`; a thread's saved origin is
- * shown read-only.
+ * Composer chip for the page a chat is about, either the current page or the
+ * context saved on the thread. Removing it detaches the page from the chat.
  */
 export function AgentDockContextChip({
   label,
   href,
-  retained = false,
   detached = false,
   onRemove,
 }: {
   label: string | null;
-  /** The saved origin page, when it can be reopened. */
+  /** The context page, when it can be reopened. */
   href?: string | null;
-  retained?: boolean;
   detached?: boolean;
   onRemove?: () => void;
 }) {
@@ -30,10 +27,10 @@ export function AgentDockContextChip({
   if (detached) return null;
   return (
     <span
-      title={retained ? `Chat started from ${label}` : `Using ${label}`}
+      title={`Using ${label}`}
       className={cn(
         "mr-1 flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-full border border-input bg-foreground/[0.03] pl-2 text-foreground/80",
-        retained ? "pr-2" : "pr-0.5",
+        onRemove ? "pr-0.5" : "pr-2",
         typeStyle("label.tag"),
       )}
     >
@@ -45,7 +42,7 @@ export function AgentDockContextChip({
       ) : (
         <span className="max-w-48 truncate">{label}</span>
       )}
-      {!retained && onRemove ? (
+      {onRemove ? (
         <TagRemoveButton label={`Remove ${label}`} onClick={onRemove} />
       ) : null}
     </span>
