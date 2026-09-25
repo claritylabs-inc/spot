@@ -130,10 +130,10 @@ const FAMILY_REQUIRED_TOOLS: Partial<
 
 const FAMILY_QUESTIONS: Record<ClientToolFamily, string> = {
   policy_qa:
-    "Could this turn require reading policy wording or policy details: coverage, exclusions, endorsements, conditions, definitions, limits, deductibles, premiums, whether something is covered, or a policy summary?",
+    "Could this turn ask about the user's own insurance policies: any policy fact (policy number, carrier, named insured, effective or expiration dates, premium, limits, deductibles), a list or comparison of policies, coverage wording, exclusions, endorsements, definitions, whether something is covered, or a policy summary?",
   coi: "Could this turn involve a certificate of insurance (COI), a certificate holder, an additional insured, or delivering a certificate?",
   compliance:
-    "Could this turn involve insurance requirements, compliance status, a lease, contract, or requirement document, or vendor compliance?",
+    "Could this turn involve insurance requirements imposed by a lease, contract, or other requirement document, checking compliance against such requirements, or vendor compliance? Questions only about the user's own policy facts or dates are not compliance.",
   policy_change_email:
     "Could this turn involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
   email:

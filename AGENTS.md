@@ -41,7 +41,7 @@ The former Railway extraction worker, LiteParse/Poppler/OCR, preview queue, `sou
 
 ## Post-deploy operator checklist for this extraction release
 
-After the release deploys to an approved target:
+After the release deploys to an approved target. Steps 2–3 can run in production through the manual `post-deploy-maintenance` GitHub workflow (`gh workflow run post-deploy-maintenance.yml -f task=<task>`), which uses the repository's production deploy key:
 
 1. Decommission the Railway `spot-extraction-worker` service.
 2. Remove `EXTRACTION_WORKER_*` and `LITEPARSE_*` variables from Convex deployments.
