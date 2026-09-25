@@ -644,11 +644,6 @@ export function UnifiedThreadContent({
     <ChatMessageList
       className="h-full"
       anchorKey={threadId}
-      clearanceClassName={
-        messages && messages.length > 0
-          ? thread.originChannel === "slack" ? "h-32" : "h-24"
-          : "h-20"
-      }
       composer={
         thread.originChannel === "slack" ? (
           <div className="my-2 flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">

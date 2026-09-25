@@ -1505,15 +1505,21 @@ export const SpotPromptInput = forwardRef<
 /** Composer pinned under the transcript, on the chat surface. */
 export function ChatInputOverlay({
   children,
+  composerRef,
 }: {
   children: React.ReactNode;
+  /** The opaque composer area, excluding the fade above it. */
+  composerRef?: React.Ref<HTMLDivElement>;
 }) {
   return (
     <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
       <div className="relative h-8" aria-hidden="true">
         <InputOverlayFade />
       </div>
-      <div className="pointer-events-auto border-t border-border bg-(--chat-surface,var(--background)) px-3 md:px-4">
+      <div
+        ref={composerRef}
+        className="pointer-events-auto border-t border-border bg-(--chat-surface,var(--background)) px-3 md:px-4"
+      >
         {children}
       </div>
     </div>

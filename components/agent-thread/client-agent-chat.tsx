@@ -130,7 +130,6 @@ function NewClientChat({ onThreadCreated }: AgentDockChatProps) {
     <ChatMessageList
       className="min-h-0 flex-1"
       anchorKey={null}
-      clearanceClassName="h-20"
       composer={
         <ChatComposer
           ref={composerRef}

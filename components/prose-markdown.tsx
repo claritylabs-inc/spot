@@ -227,6 +227,7 @@ export function ProseMarkdown({
 
   return (
     <div
+      data-prose=""
       className={cn(
         compact ? COMPACT_STYLES : PROSE_MARKDOWN_STYLES,
         "min-w-0 wrap-break-word wrap-anywhere",
