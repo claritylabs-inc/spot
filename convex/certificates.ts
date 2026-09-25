@@ -147,6 +147,34 @@ const certificateGateReviewSchema = z.object({
   evidenceIds: z.array(z.string()).max(8),
 });
 
+/**
+ * Source spans and nodes relevant to a certificate request, found with the
+ * policy's full-text indexes so the gate reads the policy wording itself.
+ */
+async function loadCertificateGateSourceEvidence(
+  ctx: any,
+  args: { policyId: Id<"policies">; queryParts: Array<string | undefined> },
+): Promise<{ sourceSpans: any[]; sourceNodes: any[] }> {
+  const query = args.queryParts
+    .filter((part): part is string => Boolean(part?.trim()))
+    .join(" ")
+    .slice(0, 1_000);
+  if (!query) return { sourceSpans: [], sourceNodes: [] };
+  const [spanHits, sourceNodes] = await Promise.all([
+    ctx.runQuery(internal.sourceSpans.searchInternal, {
+      policyId: args.policyId,
+      query,
+      limit: 60,
+    }),
+    ctx.runQuery(internal.sourceNodes.searchInternal, {
+      policyId: args.policyId,
+      query,
+      limit: 40,
+    }),
+  ]);
+  return { sourceSpans: spanHits.spans, sourceNodes };
+}
+
 async function evaluateCertificateRequestGateWithLlm(params: {
   ctx: any;
   orgId: Id<"organizations">;
@@ -1322,6 +1350,15 @@ export const generateForOrg = internalAction({
               : "Endorsement-aware certificate generation is queued until Spot rebuilds source-tree evidence for this policy.",
         };
       }
+      const evidence = await loadCertificateGateSourceEvidence(ctx, {
+        policyId: args.policyId,
+        queryParts: [
+          certificateHolder,
+          args.requestText,
+          ...(args.requestedEndorsements ?? []),
+          ...requiredChanges.map((kind) => kind.replaceAll("_", " ")),
+        ],
+      });
       gate = await evaluateCertificateRequestGateWithLlm({
         ctx,
         orgId: args.orgId,
@@ -1331,6 +1368,8 @@ export const generateForOrg = internalAction({
         requestedEndorsements: args.requestedEndorsements,
         detectedEndorsements,
         policy: policy as Record<string, unknown> | null,
+        sourceSpans: evidence.sourceSpans,
+        sourceNodes: evidence.sourceNodes,
       });
     }
 
