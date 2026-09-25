@@ -3822,6 +3822,16 @@ export default defineSchema({
         summary: v.optional(v.string()),
       }),
     ),
+    pageContext: v.optional(
+      v.union(
+        v.object({
+          pageType: v.string(),
+          entityId: v.optional(v.string()),
+          summary: v.optional(v.string()),
+        }),
+        v.null(),
+      ),
+    ),
     visibility: v.optional(
       v.union(
         v.literal("broker_visible"),
@@ -3944,6 +3954,14 @@ export default defineSchema({
       v.array(v.id("insuranceRequirements")),
     ),
     referencedMailboxIds: v.optional(v.array(v.id("connectedEmailAccounts"))),
+    /** Thread page context in effect when a user message was sent. */
+    pageContext: v.optional(
+      v.object({
+        pageType: v.string(),
+        entityId: v.optional(v.string()),
+        summary: v.optional(v.string()),
+      }),
+    ),
     // Sections cited by the agent (titles captured from lookup_policy_section tool results)
     citedSections: v.optional(v.array(v.string())),
     // Structured coverage names cited by the agent when tool results match policy coverages
@@ -4442,6 +4460,17 @@ export default defineSchema({
         href: v.optional(v.string()),
       }),
     ),
+    pageContext: v.optional(
+      v.union(
+        v.object({
+          pageType: v.string(),
+          entityId: v.optional(v.string()),
+          summary: v.optional(v.string()),
+          href: v.optional(v.string()),
+        }),
+        v.null(),
+      ),
+    ),
     lastMessageAt: v.number(),
     archivedAt: v.optional(v.number()),
     archiveState: v.optional(v.literal("archived")),
@@ -4473,6 +4502,15 @@ export default defineSchema({
     replyToMessageId: v.optional(v.id("operatorAgentMessages")),
     dedupeKey: v.optional(v.string()),
     content: v.string(),
+    /** Thread page context in effect when a user message was sent. */
+    pageContext: v.optional(
+      v.object({
+        pageType: v.string(),
+        entityId: v.optional(v.string()),
+        summary: v.optional(v.string()),
+        href: v.optional(v.string()),
+      }),
+    ),
     presentation: v.optional(chatPresentationValidator),
     presentationRevision: v.optional(v.number()),
     emailContent: v.optional(operatorEmailContentValidator),

@@ -712,3 +712,13 @@ UI_ADOPTION_THEME=dark SHELL_RESPONSIVE_ONLY=1 node scripts/qa/check-shell-adopt
 Each run saves per-role open/close animation frame JSON, resize/reopen PNGs,
 a desktop settings PNG, and `responsive-results.json`. No fixture writes or
 credential exports are needed for this bounded case.
+
+## Agent activity disclosure — September 25, 2026
+
+`node .context/activity-qa/check.mjs` exercises the real shared `ChatDisclosure`
+component in headless Chrome using the bundled fixture in `.context/activity-qa/`.
+Passed: activity remains expanded while working, completion collapses the content,
+completed activity reopens, a resumed turn resets expansion on completion, keyboard
+activation works, and reduced motion collapses immediately. ESLint passed for both
+changed chat components. This isolated browser fixture does not establish full
+ authenticated client/operator streaming workflow coverage or visual styling parity.

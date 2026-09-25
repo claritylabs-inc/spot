@@ -22,6 +22,7 @@ import {
   ChatErrorNotice,
   ChatUserTurn,
 } from "@/components/chat/chat-message";
+import { MessageContextTag } from "@/components/chat/message-context-tag";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import {
   ContextReferenceCard,
@@ -538,11 +539,13 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
           {msg.content}
         </ProseMarkdown>
       ) : (
-        <PromptReferenceText
-          content={msg.content}
-          references={promptReferences}
-          className="block"
-        />
+        <span className="block">
+          <MessageContextTag context={msg.pageContext} />
+          <PromptReferenceText
+            content={msg.content}
+            references={promptReferences}
+          />
+        </span>
       )}
       quotedText={isEmail ? (msg.emailContent?.quotedText ?? null) : null}
       attachments={msg.attachments?.length ? (

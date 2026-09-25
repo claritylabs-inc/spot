@@ -28,6 +28,7 @@ import {
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
 import { canAccessThread } from "./lib/threadAccess";
+import { threadPageContext } from "./lib/threadPageContext";
 import {
   agentAddressAliases,
   canonicalAgentAddress,
@@ -547,6 +548,7 @@ export const sendMessage = mutation({
       userName,
       operatorInitiated,
       content: args.content,
+      pageContext: threadPageContext(thread),
       attachments: args.attachments,
       referencedPolicyIds: args.referencedPolicyIds,
       referencedRequirementIds: args.referencedRequirementIds,
@@ -642,6 +644,14 @@ export const updateTitle = mutation({
   handler: async (ctx, args) => {
     await requireCurrentOrgThread(ctx, args.id);
     await ctx.db.patch(args.id, { title: args.title });
+  },
+});
+
+export const clearPageContext = mutation({
+  args: { id: v.id("threads") },
+  handler: async (ctx, args) => {
+    await requireCurrentOrgThread(ctx, args.id);
+    await ctx.db.patch(args.id, { pageContext: null });
   },
 });
 
