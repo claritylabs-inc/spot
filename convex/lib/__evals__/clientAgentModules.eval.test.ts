@@ -1,5 +1,5 @@
 /**
- * Manual eval for the Jev prompt-module selection (`client_agent_turn_modules`).
+ * Manual eval for the Jev tool-family selection (`client_agent_turn_modules`).
  *
  * Not run in CI: every case is skipped unless CL_ROUTER_EVALS=1. Run it against
  * the dev router with the router env loaded from the checkout's .env.local:
@@ -7,7 +7,7 @@
  *   set -a; source .env.local; set +a
  *   CL_ROUTER_EVALS=1 npx vitest run convex/lib/__evals__/clientAgentModules.eval.test.ts
  *
- * Each case asserts that the expected modules are included (extra modules are
+ * Each case asserts that the expected families are included (extra families are
  * allowed; the threshold biases toward inclusion) and, when given, the answer
  * depth. The summary table at the end shows every selection for comparison.
  */
@@ -19,7 +19,7 @@ import {
   type AnswerDepth,
   type ClientAgentSurface,
   type ClientAgentTurnSelection,
-  type OptionalPromptModule,
+  type ClientToolFamily,
 } from "../clientAgentPrompt";
 
 const enabled = process.env.CL_ROUTER_EVALS === "1";
@@ -29,7 +29,7 @@ type EvalCase = {
   message: string;
   summary?: string;
   attachments?: string[];
-  expectModules: OptionalPromptModule[];
+  expectFamilies: ClientToolFamily[];
   expectDepth?: AnswerDepth;
 };
 
@@ -55,7 +55,14 @@ const TOOLS_BY_SURFACE: Record<ClientAgentSurface, Record<string, unknown>> = {
   web: {
     ...CORE,
     present_policy_card: {},
-    email_expert: {},
+    draft_email: {},
+    update_email_draft: {},
+    attach_policy_pdf_to_draft: {},
+    attach_file_to_draft: {},
+    attach_coi_to_draft: {},
+    list_email_drafts: {},
+    send_email_draft: {},
+    cancel_email_draft: {},
     coordinate_mailbox_task: {},
     web_research: {},
     create_imessage_group_chat: {},
@@ -64,21 +71,42 @@ const TOOLS_BY_SURFACE: Record<ClientAgentSurface, Record<string, unknown>> = {
   slack: {
     ...CORE,
     present_policy_card: {},
-    email_expert: {},
+    draft_email: {},
+    update_email_draft: {},
+    attach_policy_pdf_to_draft: {},
+    attach_file_to_draft: {},
+    attach_coi_to_draft: {},
+    list_email_drafts: {},
+    send_email_draft: {},
+    cancel_email_draft: {},
     coordinate_mailbox_task: {},
     web_research: {},
   },
   imessage: {
     ...CORE,
     present_policy_card: {},
-    email_expert: {},
+    draft_email: {},
+    update_email_draft: {},
+    attach_policy_pdf_to_draft: {},
+    attach_file_to_draft: {},
+    attach_coi_to_draft: {},
+    list_email_drafts: {},
+    send_email_draft: {},
+    cancel_email_draft: {},
     coordinate_mailbox_task: {},
     web_research: {},
     create_imessage_group_chat: {},
   },
   email: {
     ...CORE,
-    email_expert: {},
+    draft_email: {},
+    update_email_draft: {},
+    attach_policy_pdf_to_draft: {},
+    attach_file_to_draft: {},
+    attach_coi_to_draft: {},
+    list_email_drafts: {},
+    send_email_draft: {},
+    cancel_email_draft: {},
     coordinate_mailbox_task: {},
     web_research: {},
     create_imessage_group_chat: {},
@@ -97,128 +125,131 @@ export const CLIENT_AGENT_MODULE_EVAL_CASES: EvalCase[] = [
   {
     surface: "web",
     message: "What's my GL policy number?",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
     expectDepth: "specific_section",
   },
   {
     surface: "web",
     message: "Give me a summary of our property policy.",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
     expectDepth: "basic_summary",
   },
   {
     surface: "web",
     message:
       "I need the complete breakdown of the cyber policy: every endorsement, sublimit, exclusion, and definition.",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
     expectDepth: "comprehensive",
   },
   {
     surface: "web",
     message: "Are we covered if a customer slips on ice outside the store?",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
   },
   {
     surface: "web",
-    message: "Generate a COI for Acme Properties, 100 Main St, Denver CO 80202.",
-    expectModules: ["coi"],
+    message:
+      "Generate a COI for Acme Properties, 100 Main St, Denver CO 80202.",
+    expectFamilies: ["coi"],
   },
   {
     surface: "web",
     message: "Email the certificate for Acme Properties to leasing@acme.com.",
-    expectModules: ["coi"],
+    expectFamilies: ["coi", "email"],
   },
   {
     surface: "web",
     message:
       "Here is our new lease. What insurance does it require and do we comply?",
     attachments: ["Lease Agreement - 2026.pdf"],
-    expectModules: ["compliance"],
+    expectFamilies: ["compliance"],
   },
   {
     surface: "web",
     message: "Which of our vendors are out of compliance right now?",
-    expectModules: ["compliance"],
+    expectFamilies: ["compliance"],
   },
   {
     surface: "web",
     message:
       "Please add our new warehouse at 42 Dock Rd to the property policy effective Oct 1.",
-    expectModules: ["policy_change_email"],
+    expectFamilies: ["policy_change_email"],
   },
   {
     surface: "web",
     message: "Can you get us quotes for a new umbrella policy?",
-    expectModules: ["procurement"],
+    expectFamilies: ["procurement"],
   },
   {
     surface: "web",
-    message: "Find the renewal quote our broker emailed last month and import the policy PDF.",
-    expectModules: ["mailbox"],
+    message:
+      "Find the renewal quote our broker emailed last month and import the policy PDF.",
+    expectFamilies: ["mailbox"],
   },
   {
     surface: "web",
     message: "What does Acme Roofing's website say they do?",
-    expectModules: ["web_research"],
+    expectFamilies: ["web_research"],
   },
   {
     surface: "web",
-    message: "Loop in my broker so we can settle whether the endorsement applies.",
-    expectModules: ["collaboration"],
+    message:
+      "Loop in my broker so we can settle whether the endorsement applies.",
+    expectFamilies: ["collaboration"],
   },
   {
     surface: "web",
     message: "What did you tell me earlier about the deductible on that claim?",
     summary: "The user asked about a hail claim deductible two weeks ago.",
-    expectModules: ["history"],
+    expectFamilies: ["history"],
   },
   {
     surface: "web",
     message: "Open the auto policy for me.",
-    expectModules: ["presentation"],
+    expectFamilies: ["presentation"],
   },
   {
     surface: "slack",
     message: "@Spot when does our workers comp policy expire?",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
   },
   {
     surface: "slack",
     message: "@Spot draft an email to the landlord with the COI attached.",
-    expectModules: ["coi"],
+    expectFamilies: ["coi", "email"],
   },
   {
     surface: "imessage",
     message: "coi for bluebird events pls",
-    expectModules: ["coi"],
+    expectFamilies: ["coi"],
   },
   {
     surface: "imessage",
     message: "does our policy cover a rented forklift",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
   },
   {
     surface: "email",
     message:
       "Subject: Additional insured request\n\nHi Spot, our client Northwind needs to be added as additional insured on the GL policy and wants a certificate showing it.",
-    expectModules: ["coi"],
+    expectFamilies: ["coi"],
   },
   {
     surface: "email",
     message:
       "Subject: Policy docs\n\nAttached is our renewed BOP. Please add it to the library.",
     attachments: ["BOP Renewal 2026.pdf"],
-    expectModules: [],
+    expectFamilies: [],
   },
   {
     surface: "mcp",
     message: "List every active policy with its expiration date.",
-    expectModules: ["policy_qa"],
+    expectFamilies: ["policy_qa"],
   },
   {
     surface: "mcp",
     message: "Do our saved vendor requirements cover cyber liability?",
-    expectModules: ["compliance"],
+    expectFamilies: ["compliance"],
   },
 ];
 
@@ -231,7 +262,7 @@ const results: Array<{
   source: ClientAgentTurnSelection["source"];
 }> = [];
 
-describe.skipIf(!enabled)("client agent module selection (dev router)", () => {
+describe.skipIf(!enabled)("client agent family selection (dev router)", () => {
   const ctx = { runMutation: async () => undefined } as unknown as ActionCtx;
   const orgId = "eval-org" as Id<"organizations">;
 
@@ -249,14 +280,14 @@ describe.skipIf(!enabled)("client agent module selection (dev router)", () => {
       results.push({
         surface: evalCase.surface,
         message: evalCase.message.slice(0, 60),
-        expected: evalCase.expectModules.join(","),
-        selected: selection.modules.join(","),
+        expected: evalCase.expectFamilies.join(","),
+        selected: selection.families.join(","),
         depth: selection.answerDepth ?? "-",
         source: selection.source,
       });
       expect(selection.source).toBe("jev");
-      expect(selection.modules).toEqual(
-        expect.arrayContaining(evalCase.expectModules),
+      expect(selection.families).toEqual(
+        expect.arrayContaining(evalCase.expectFamilies),
       );
       if (evalCase.expectDepth) {
         expect(selection.answerDepth).toBe(evalCase.expectDepth);

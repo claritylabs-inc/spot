@@ -472,7 +472,7 @@ export const lookupAddress = tool({
 
 export const attachPolicyDocument = tool({
   description:
-    "Attach or send the original full policy PDF document for a specific policy. Use this when the user asks for a copy of the policy, policy PDF, full policy, declarations PDF, wording, or original policy document in chat/iMessage/SMS. For email delivery, prefer the email_expert tool so it can attach the original policy PDF to the email.",
+    "Attach or send the original full policy PDF document for a specific policy. Use this when the user asks for a copy of the policy, policy PDF, full policy, declarations PDF, wording, or original policy document in chat/iMessage/SMS. For email delivery, use attach_policy_pdf_to_draft to attach the original policy PDF to the email draft.",
   inputSchema: z.object({
     policyId: z
       .string()

@@ -6,9 +6,8 @@ import { internal } from "../_generated/api";
 import { stepCountIs } from "ai";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import {
-  buildClientAgentSystemPrompt,
+  buildClientAgentTurnTools,
   decideClientAgentTurn,
-  filterToolsForModules,
   promptModuleArtifact,
 } from "../lib/clientAgentPrompt";
 import { unknownSenderReply } from "../lib/channelStyle";
@@ -25,10 +24,7 @@ import {
   resolveImessageConversationScope,
   type ResolvedImessageParticipant,
 } from "../lib/imessageGroupResolution";
-import {
-  buildEmailExpertTool,
-  resolveEmailAgentIdentity,
-} from "../lib/emailSubagent";
+import { buildEmailTools, resolveEmailAgentIdentity } from "../lib/emailTools";
 import { FATAL_ACTION_FAILED_MESSAGE } from "../lib/actionFailures";
 import { buildPendingEmailConfirmation } from "../lib/actionConfirmationFingerprint";
 import { buildEmailDraftTextSummary } from "../lib/emailDraftSummary";
@@ -647,7 +643,8 @@ export const processInbound = internalAction({
         emailIdentity.agentAddress &&
         emailIdentity.fromHeader
           ? {
-              email_expert: buildEmailExpertTool(ctx, {
+              ...buildEmailTools(ctx, {
+                scope: agentScope,
                 orgId,
                 userId: user._id,
                 threadId,
@@ -697,17 +694,11 @@ export const processInbound = internalAction({
       runState.onToolArtifact(
         promptModuleArtifact(selection, { traceId, surface: "imessage" }),
       );
-      const imessageTools = filterToolsForModules(
-        registeredTools,
-        selection.modules,
-      );
-      const systemPrompt = buildClientAgentSystemPrompt({
+      const turnTools = buildClientAgentTurnTools(registeredTools, selection, {
         surface: "imessage",
         org: { name: org.name },
         userName,
         siteUrl,
-        tools: imessageTools,
-        modules: selection.modules,
         answerDepth: selection.answerDepth,
         maxToolCalls: 8,
         canSendEmail: emailIdentity.canSend,
@@ -729,9 +720,8 @@ export const processInbound = internalAction({
         task: chatTask,
         options: {
           maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
-          system: systemPrompt,
+          ...turnTools,
           messages: modelMessages,
-          tools: imessageTools,
           stopWhen: stepCountIs(8),
         },
         run: {

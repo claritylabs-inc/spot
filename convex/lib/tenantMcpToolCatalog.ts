@@ -354,6 +354,19 @@ const COMPATIBILITY_ALIASES: Record<
   },
 };
 
+const EMAIL_TOOL_NAMES = new Set([
+  "draft_email",
+  "update_email_draft",
+  "list_email_drafts",
+  "send_email_draft",
+  "send_email_drafts",
+  "cancel_email_draft",
+]);
+
+export function isTenantMcpEmailTool(name: string): boolean {
+  return EMAIL_TOOL_NAMES.has(name);
+}
+
 const RETIRED_NAME_ALIASES = {
   list_my_policies: {
     sharedName: "lookup_policy",
@@ -705,6 +718,11 @@ export function resolveTenantMcpToolCall(
     sharedName:
       alias?.sharedName ??
       retiredAlias?.sharedName ??
+      (isTenantMcpEmailTool(name)
+        ? name === "send_email_drafts"
+          ? "send_email_draft"
+          : name
+        : undefined) ??
       (name in SHARED_TOOLS ? name : undefined),
     input: alias
       ? alias.mapInput(input)
@@ -713,7 +731,9 @@ export function resolveTenantMcpToolCall(
             retiredAlias.schema.parse(input) as Record<string, unknown>,
           )
         : input,
-    compatibility: COMPATIBILITY_TOOLS.some((entry) => entry.name === name),
+    compatibility:
+      !isTenantMcpEmailTool(name) &&
+      COMPATIBILITY_TOOLS.some((entry) => entry.name === name),
     retiredAlias: Boolean(retiredAlias),
   };
 }

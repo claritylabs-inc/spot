@@ -23,7 +23,6 @@ import { spotIconResponse } from "./lib/brandIcon";
 import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
-import { buildEmailDraftTextSummary } from "./lib/emailDraftSummary";
 import {
   parseSlackEventPayload,
   parseSlackLifecyclePayload,
@@ -1794,51 +1793,10 @@ async function handleToolCall(
       input: args,
       canWrite: mcpCanWrite(identity),
     });
-    return mcpTextResult(result);
+    return name === "list_email_drafts" && typeof result === "string"
+      ? { content: [{ type: "text", text: result }] }
+      : mcpTextResult(result);
   }
-  const upsertEmailDraft = async () => {
-    requireMcpWriteScope(identity);
-    if (name === "update_email_draft" && !args.draftId)
-      throw new Error("Missing draftId parameter");
-    if (!args.to || !args.subject || !args.body)
-      throw new Error("Missing to, subject, or body parameter");
-    const draft = await ctx.runAction(
-      internal.actions.emailDrafts.upsertForMcp,
-      {
-        orgId,
-        userId,
-        draftId:
-          typeof args.draftId === "string"
-            ? (args.draftId as Id<"pendingEmails">)
-            : undefined,
-        threadId:
-          typeof args.threadId === "string"
-            ? (args.threadId as Id<"threads">)
-            : undefined,
-        to: args.to as string,
-        subject: args.subject as string,
-        body: args.body as string,
-        cc: Array.isArray(args.cc)
-          ? args.cc.filter(
-              (value): value is string => typeof value === "string",
-            )
-          : undefined,
-        bcc: Array.isArray(args.bcc)
-          ? args.bcc.filter(
-              (value): value is string => typeof value === "string",
-            )
-          : undefined,
-        originalPolicyIds: Array.isArray(args.originalPolicyIds)
-          ? (args.originalPolicyIds.filter(
-              (value): value is Id<"policies"> => typeof value === "string",
-            ) as Id<"policies">[])
-          : undefined,
-      },
-    );
-    return {
-      content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
-    };
-    };
   const compatibilityHandlers = {
     list_policies: async () => {
       const policies = (await ctx.runQuery(
@@ -1941,79 +1899,6 @@ async function handleToolCall(
             text: `**Thread:** ${result.threadId}\n\n${result.response}`,
           },
         ],
-      };
-    },
-    list_email_drafts: async () => {
-      const drafts = await ctx.runQuery(
-        internal.pendingEmails.listDraftsInternal,
-        {
-          orgId,
-          threadId:
-            typeof args.threadId === "string" && args.threadId
-              ? (args.threadId as Id<"threads">)
-              : undefined,
-        },
-      );
-      const showAll = args.showAll === true;
-      const summary =
-        drafts.length > 0
-          ? buildEmailDraftTextSummary(drafts, {
-              sampleSize: showAll ? drafts.length : 3,
-              includeIds: true,
-              commands: "mcp",
-            })
-          : "No email drafts found.";
-      return { content: [{ type: "text", text: summary }] };
-    },
-    draft_email: upsertEmailDraft,
-    update_email_draft: upsertEmailDraft,
-    send_email_draft: async () => {
-      requireMcpWriteScope(identity);
-      if (typeof args.draftId !== "string" || !args.draftId)
-        throw new Error("Missing draftId parameter");
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.sendForMcp,
-        {
-          orgId,
-          draftId: args.draftId as Id<"pendingEmails">,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
-      };
-    },
-    send_email_drafts: async () => {
-      requireMcpWriteScope(identity);
-      const draftIds = Array.isArray(args.draftIds)
-        ? (args.draftIds.filter(
-            (value): value is Id<"pendingEmails"> => typeof value === "string",
-          ) as Id<"pendingEmails">[])
-        : [];
-      if (draftIds.length === 0) throw new Error("Missing draftIds parameter");
-      const result = await ctx.runAction(
-        internal.actions.emailDrafts.sendManyForMcp,
-        {
-          orgId,
-          draftIds,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    },
-    cancel_email_draft: async () => {
-      requireMcpWriteScope(identity);
-      if (typeof args.draftId !== "string" || !args.draftId)
-        throw new Error("Missing draftId parameter");
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.cancelForMcp,
-        {
-          orgId,
-          draftId: args.draftId as Id<"pendingEmails">,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
       };
     },
     list_connected_vendors: async () => {

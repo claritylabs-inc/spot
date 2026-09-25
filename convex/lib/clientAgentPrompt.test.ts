@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { generateText, stepCountIs, tool } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
+import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "./clRouterClient";
 import {
   availableClientAgentModules,
   buildClientAgentSystemPrompt,
+  buildClientAgentTurnTools,
+  fallbackClientAgentSelection,
   decideClientAgentTurn,
   filterToolsForModules,
   OPTIONAL_PROMPT_MODULES,
@@ -36,7 +41,8 @@ const ALL_TOOLS = {
   import_requirement_attachments: {},
   lookup_connected_vendors: {},
   present_policy_card: {},
-  email_expert: {},
+  draft_email: {},
+  send_email_draft: {},
   coordinate_mailbox_task: {},
   web_research: {},
   create_imessage_group_chat: {},
@@ -83,7 +89,10 @@ describe("module availability is decided in code", () => {
       ...OPTIONAL_PROMPT_MODULES,
     ]);
     expect(
-      availableClientAgentModules({ lookup_policy: {}, present_policy_card: {} }),
+      availableClientAgentModules({
+        lookup_policy: {},
+        present_policy_card: {},
+      }),
     ).toContain("presentation");
   });
 });
@@ -203,7 +212,7 @@ describe("Jev turn selection", () => {
       message: "Can you check whether we meet the lease requirements?",
       tools: ALL_TOOLS,
     });
-    expect(failed).toEqual({
+    expect(failed).toMatchObject({
       modules: [...OPTIONAL_PROMPT_MODULES],
       availableModules: [...OPTIONAL_PROMPT_MODULES],
       source: "fallback",
@@ -238,14 +247,11 @@ describe("tool loading follows the selected modules", () => {
   it("drops single-module tools that were not selected and keeps core and shared tools", () => {
     const filtered = filterToolsForModules(ALL_TOOLS, ["policy_qa", "history"]);
     expect(Object.keys(filtered).sort()).toEqual(
-      [
-        ...Object.keys(CORE_TOOLS),
-        "email_expert",
-      ].sort(),
+      Object.keys(CORE_TOOLS).sort(),
     );
-    expect(filterToolsForModules(ALL_TOOLS, [...OPTIONAL_PROMPT_MODULES])).toEqual(
-      ALL_TOOLS,
-    );
+    expect(
+      filterToolsForModules(ALL_TOOLS, [...OPTIONAL_PROMPT_MODULES]),
+    ).toEqual(ALL_TOOLS);
   });
 });
 
@@ -267,7 +273,10 @@ describe("system prompt per surface", () => {
     email: "EMAIL MODE",
   };
 
-  function prompt(surface: ClientAgentSurface, overrides?: Partial<Parameters<typeof buildClientAgentSystemPrompt>[0]>) {
+  function prompt(
+    surface: ClientAgentSurface,
+    overrides?: Partial<Parameters<typeof buildClientAgentSystemPrompt>[0]>,
+  ) {
     return buildClientAgentSystemPrompt({
       surface,
       org: { name: "Cove Coffee" },
@@ -324,6 +333,17 @@ describe("system prompt per surface", () => {
     expect(withoutTools).toContain("COMPLIANCE REQUIREMENTS:");
     expect(withoutTools).toContain("OLDER THREAD HISTORY:");
 
+    const unavailableDespiteIdentity = prompt("web", {
+      tools: CORE_TOOLS,
+      canSendEmail: true,
+    });
+    expect(unavailableDespiteIdentity).not.toContain(
+      "Email sending is available",
+    );
+    expect(unavailableDespiteIdentity).not.toContain(
+      "Drafting, forwarding, and sending",
+    );
+
     const withTools = prompt("web");
     expect(withTools).toContain("POLICY CARDS:");
     expect(withTools).toContain("POLICY CHANGES AND BROKER FOLLOW-UP:");
@@ -357,4 +377,171 @@ describe("system prompt per surface", () => {
     expect(text).toContain("POLICY FOCUS: abc");
     expect(text).toContain("<conversation_summary>");
   });
+});
+
+describe("client family selection within one SDK turn", () => {
+  function turn(tools = ALL_TOOLS) {
+    return buildClientAgentTurnTools(
+      tools,
+      {
+        ...fallbackClientAgentSelection(tools),
+        modules: ["policy_qa"],
+        families: ["policy_qa"],
+      },
+      {
+        surface: "web",
+        org: { name: "Cove Coffee" },
+        maxToolCalls: 10,
+        canSendEmail: true,
+      },
+    );
+  }
+
+  it("registers every tool while exposing only selected tools at the first step", async () => {
+    const options = turn();
+    expect(options.tools.generate_coi).toBe(ALL_TOOLS.generate_coi);
+    expect(options.tools.draft_email).toBe(ALL_TOOLS.draft_email);
+    const step = await options.prepareStep({ steps: [] });
+    expect(step.activeTools).toContain("lookup_policy");
+    expect(step.activeTools).toContain("expand_tools");
+    expect(step.activeTools).not.toContain("generate_coi");
+    expect(step.activeTools).not.toContain("draft_email");
+    expect(step.system).not.toContain("CERTIFICATES OF INSURANCE:");
+  });
+
+  it("expands tools and their guidance for the next step of the same turn", async () => {
+    const options = turn();
+    const first = await options.prepareStep({ steps: [] });
+    await options.tools.expand_tools.execute({ families: ["coi", "email"] });
+    expect(first.activeTools).not.toContain("generate_coi");
+    const second = await options.prepareStep({ steps: [] });
+    expect(second.activeTools).toEqual(
+      expect.arrayContaining([
+        "generate_coi",
+        "draft_email",
+        "send_email_draft",
+        "expand_tools",
+      ]),
+    );
+    expect(second.system).toContain("CERTIFICATES OF INSURANCE:");
+    expect(second.system).toContain("EMAIL DRAFTS AND DELIVERY:");
+    expect((await options.prepareStep({ steps: [] })).activeTools).toEqual(
+      second.activeTools,
+    );
+  });
+
+  it("retains a family used earlier in the turn", async () => {
+    const options = turn();
+    const step = await options.prepareStep({
+      steps: [
+        {
+          toolCalls: [{ toolName: "search_thread_history" }],
+        },
+      ],
+    });
+    expect(step.activeTools).toContain("search_thread_history");
+    expect(step.system).toContain("OLDER THREAD HISTORY:");
+    expect((await options.prepareStep({ steps: [] })).activeTools).toContain(
+      "search_thread_history",
+    );
+  });
+
+  it("cannot expand unavailable tools or bypass requirement-import authorization", async () => {
+    const options = turn(CORE_TOOLS as typeof ALL_TOOLS);
+    const expanded = await options.tools.expand_tools.execute({
+      families: ["email", "compliance", "coi"],
+    });
+    expect(expanded).toMatchObject({
+      unavailable: ["email", "coi"],
+    });
+    const step = await options.prepareStep({ steps: [] });
+    expect(step.activeTools).not.toContain("draft_email");
+    expect(step.activeTools).not.toContain("import_requirement_attachments");
+    expect(step.system).not.toContain("use import_requirement_attachments");
+  });
+});
+
+it("AI SDK activates expanded tools and guidance on the next generation step", async () => {
+  const generateCertificate = vi.fn(async () => ({ status: "generated" }));
+  const tools = {
+    generate_coi: tool({
+      inputSchema: z.object({}),
+      execute: generateCertificate,
+    }),
+  };
+  const selection = {
+    ...fallbackClientAgentSelection(tools),
+    families: [],
+    modules: [],
+  };
+  const turnTools = buildClientAgentTurnTools(tools, selection, {
+    surface: "web",
+    org: { name: "Cove Coffee" },
+    maxToolCalls: 3,
+  });
+  let step = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      const toolNames = options.tools
+        ?.filter((entry) => entry.type === "function")
+        .map((entry) => entry.name);
+      const system = options.prompt
+        .filter((entry) => entry.role === "system")
+        .map((entry) => entry.content)
+        .join("\n");
+      const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      };
+      if (step++ === 0) {
+        expect(toolNames).toEqual(["expand_tools"]);
+        expect(system).not.toContain("CERTIFICATES OF INSURANCE:");
+        return {
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "expand",
+              toolName: "expand_tools",
+              input: JSON.stringify({ families: ["coi"] }),
+            },
+          ],
+          finishReason: { unified: "tool-calls", raw: "tool-calls" },
+          usage,
+          warnings: [],
+        };
+      }
+      expect(toolNames).toEqual(["generate_coi", "expand_tools"]);
+      expect(system).toContain("CERTIFICATES OF INSURANCE:");
+      if (step === 2)
+        return {
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "certificate",
+              toolName: "generate_coi",
+              input: "{}",
+            },
+          ],
+          finishReason: { unified: "tool-calls", raw: "tool-calls" },
+          usage,
+          warnings: [],
+        };
+      return {
+        content: [{ type: "text", text: "Certificate generated." }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage,
+        warnings: [],
+      };
+    },
+  });
+  const result = await generateText({
+    ...turnTools,
+    model,
+    prompt: "Generate a certificate.",
+    stopWhen: stepCountIs(3),
+  });
+  expect(result.text).toBe("Certificate generated.");
+  expect(result.steps).toHaveLength(3);
+  expect(generateCertificate).toHaveBeenCalledOnce();
+  expect(decide).not.toHaveBeenCalled();
 });

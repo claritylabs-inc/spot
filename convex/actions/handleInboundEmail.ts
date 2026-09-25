@@ -38,9 +38,8 @@ import {
 } from "../lib/resend";
 import { stripMarkdown } from "../lib/aiUtils";
 import {
-  buildClientAgentSystemPrompt,
+  buildClientAgentTurnTools,
   decideClientAgentTurn,
-  filterToolsForModules,
   promptModuleArtifact,
 } from "../lib/clientAgentPrompt";
 import { unknownSenderReply } from "../lib/channelStyle";
@@ -55,14 +54,14 @@ import {
 } from "../lib/security";
 import { getClientPortalUrl } from "../lib/domains";
 import {
-  buildEmailExpertTool,
+  buildEmailTools,
   buildAgentEmailHtmlBody,
   buildEmailSignature,
   getEmailAgentFromName,
   toResendAttachments,
   type EmailAttachmentMeta,
-  type EmailSubagentResult,
-} from "../lib/emailSubagent";
+  type EmailToolResult,
+} from "../lib/emailTools";
 import { FATAL_ACTION_FAILED_MESSAGE } from "../lib/actionFailures";
 import { buildTextModelHistory } from "../lib/agentMessageHistory";
 import { cleanAgentMarkdownForTransport } from "../lib/transportRenderers";
@@ -1100,7 +1099,7 @@ export const processInbound = internalAction({
         }
       }
 
-      const emailToolState: { result: EmailSubagentResult | null } = {
+      const emailToolState: { result: EmailToolResult | null } = {
         result: null,
       };
       const generatedCoiAttachments: EmailAttachmentMeta[] = [];
@@ -1175,7 +1174,8 @@ export const processInbound = internalAction({
         }),
         ...(isInternal && effectiveMode === "direct"
           ? {
-              email_expert: buildEmailExpertTool(ctx, {
+              ...buildEmailTools(ctx, {
+                scope,
                 orgId,
                 userId: primaryUserId,
                 threadId: unifiedThreadId,
@@ -1226,7 +1226,7 @@ export const processInbound = internalAction({
                   `Subject: ${subject}`,
                   bodyForAgent,
                 ].join("\n\n"),
-                onResult: (result: EmailSubagentResult) => {
+                onResult: (result: EmailToolResult) => {
                   emailToolState.result = result;
                 },
               }),
@@ -1553,42 +1553,39 @@ IMPORTANT GROUPING RULE: A real-world policy commonly arrives as multiple PDFs i
         emailToolArtifacts.push(
           promptModuleArtifact(selection, { traceId, surface: "email" }),
         );
-        const emailTools = filterToolsForModules(
+        const turnTools = buildClientAgentTurnTools(
           registeredTools,
-          selection.modules,
+          selection,
+          {
+            surface: "email",
+            org: { name: org.name },
+            mode:
+              effectiveMode === "direct"
+                ? "direct"
+                : effectiveMode === "cc"
+                  ? "cc"
+                  : "forward",
+            userName,
+            siteUrl,
+            answerDepth: selection.answerDepth,
+            maxToolCalls: 10,
+            canSendEmail: canDirectInternalTools,
+            emailUnavailableReason: canDirectInternalTools
+              ? undefined
+              : "only direct requests from the organization's own domain can send email",
+            extras: promptExtras,
+            attachments: attachmentContext.names,
+            policyFocus: policyFocusBlock,
+            summary: boundedHistory.summary,
+          },
         );
-        const systemContext = buildClientAgentSystemPrompt({
-          surface: "email",
-          org: { name: org.name },
-          mode:
-            effectiveMode === "direct"
-              ? "direct"
-              : effectiveMode === "cc"
-                ? "cc"
-                : "forward",
-          userName,
-          siteUrl,
-          tools: emailTools,
-          modules: selection.modules,
-          answerDepth: selection.answerDepth,
-          maxToolCalls: 10,
-          canSendEmail: canDirectInternalTools,
-          emailUnavailableReason: canDirectInternalTools
-            ? undefined
-            : "only direct requests from the organization's own domain can send email",
-          extras: promptExtras,
-          attachments: attachmentContext.names,
-          policyFocus: policyFocusBlock,
-          summary: boundedHistory.summary,
-        });
         const turn = await runAgentTurn(ctx, {
           orgId,
           task: "email_reply",
           options: {
             maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
-            system: systemContext,
+            ...turnTools,
             messages,
-            tools: emailTools,
             stopWhen: stepCountIs(10),
           },
           run: {

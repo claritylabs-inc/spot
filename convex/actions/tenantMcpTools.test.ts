@@ -241,3 +241,27 @@ test("deprecated write names preserve results and reject read-only tokens", asyn
   expect(runMutation).toHaveBeenCalledTimes(2);
   expect(runAction).toHaveBeenCalledTimes(1);
 });
+
+test("direct email projections reject read-only MCP tokens before reaching execution", async () => {
+  const { ctx, runQuery, runMutation, runAction } = context();
+  for (const name of [
+    "draft_email",
+    "update_email_draft",
+    "send_email_draft",
+    "send_email_drafts",
+    "cancel_email_draft",
+  ]) {
+    await expect(
+      executeTenantMcpTool(ctx, {
+        orgId,
+        userId,
+        name,
+        input: { draftId: "draft-1" },
+        canWrite: false,
+      }),
+    ).rejects.toThrow(/write scope/i);
+  }
+  expect(runQuery).not.toHaveBeenCalled();
+  expect(runMutation).not.toHaveBeenCalled();
+  expect(runAction).not.toHaveBeenCalled();
+});

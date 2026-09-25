@@ -130,7 +130,25 @@ const operatorToolCategories = {
   clear_all_agent_memory: "delete",
 } satisfies Record<OperatorAgentToolName, keyof typeof toolActivityCategories>;
 
+const clientToolCategories: Record<
+  string,
+  keyof typeof toolActivityCategories
+> = {
+  draft_email: "email",
+  update_email_draft: "email",
+  attach_policy_pdf_to_draft: "files",
+  attach_file_to_draft: "files",
+  attach_coi_to_draft: "compliance",
+  list_email_drafts: "email",
+  send_email_draft: "send",
+  cancel_email_draft: "delete",
+  expand_tools: "settings",
+};
+
 export function toolActivityIcon(name: string) {
+  if (Object.hasOwn(clientToolCategories, name)) {
+    return toolActivityCategories[clientToolCategories[name]].icon;
+  }
   if (Object.hasOwn(operatorToolCategories, name)) {
     return toolActivityCategories[
       operatorToolCategories[name as OperatorAgentToolName]

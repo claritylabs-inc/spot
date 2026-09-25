@@ -4,7 +4,11 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
-import { resolveTenantMcpToolCall } from "../lib/tenantMcpToolCatalog";
+import {
+  isTenantMcpEmailTool,
+  resolveTenantMcpToolCall,
+} from "../lib/tenantMcpToolCatalog";
+import { executeMcpEmailTool } from "./emailDrafts";
 import type { Id } from "../_generated/dataModel";
 import {
   toCertificateDto,
@@ -29,6 +33,9 @@ export async function executeTenantMcpTool(
   const input = call.input as Record<string, unknown>;
   if (call.compatibility || !call.sharedName) {
     throw new Error(`Unknown shared tenant tool: ${args.name}`);
+  }
+  if (isTenantMcpEmailTool(args.name)) {
+    return await executeMcpEmailTool(ctx, args);
   }
   const scope = await ctx.runQuery(internal.lib.agentScope.resolveForAction, {
     orgId: args.orgId,
