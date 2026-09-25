@@ -90,7 +90,7 @@ export function ChatAssistantTurn({
     working && (!streamResponses || !content) ? (
       <AgentThinkingBubble />
     ) : (
-      <div className="min-w-0 max-w-[min(max(32rem,75vw),100%)]">
+      <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
         {body ?? (
           <ChatMessageBubble role="agent" channel={channel} isError={isError}>
             <ChatPresentationView
