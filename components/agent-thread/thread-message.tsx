@@ -21,16 +21,13 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { PresentationFollowUp } from "@/components/chat-presentation/context";
 import { ChatAttachmentGrid } from "@/components/chat/attachment-grid";
 import {
-  ChatAnswer,
-  ChatAssistantMessage,
+  ChatAssistantTurn,
   ChatAvatar,
   ChatCopyButton,
   ChatErrorNotice,
-  ChatUserMessage,
+  ChatUserTurn,
 } from "@/components/chat/chat-message";
-import { ChatMessageBubble } from "@/components/chat/message-bubble";
 import { useChatAction } from "@/components/chat/use-chat-action";
-import { QuotedContent } from "@/components/conversation-message";
 import {
   ContextReferenceCard,
   PolicyReferenceCard,
@@ -59,7 +56,7 @@ import {
   mailboxTaskDisplayName,
   normalizeMailboxTask,
 } from "./artifacts";
-import { ThreadAttachmentChip } from "./thread-attachment-chip";
+import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import {
   isMessageFromViewer,
   messageSenderName,
@@ -164,7 +161,7 @@ function ThreadAttachmentGrid({
           key={`${attachment.fileId ?? attachment.filename}-${index}`}
           className="min-w-0"
         >
-          <ThreadAttachmentChip
+          <ChatAttachmentChip
             attachment={attachment}
             threadId={threadId}
             className="w-fit"
@@ -185,7 +182,7 @@ function ThreadAttachmentList({
   const [isExpanded, setIsExpanded] = useState(false);
   if (attachments.length === 1) {
     return (
-      <ThreadAttachmentChip
+      <ChatAttachmentChip
         attachment={attachments[0]}
         threadId={threadId}
         className="w-fit"
@@ -384,7 +381,7 @@ function MessageFooterActions({
             </>
           )}
           {attachmentList.length === 1 ? (
-            <ThreadAttachmentChip
+            <ChatAttachmentChip
               attachment={attachmentList[0]}
               threadId={threadId}
               className="w-fit"
@@ -611,7 +608,6 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   onOpenMailboxArtifact?: (ref: MailboxArtifactRef) => void;
   openMailboxArtifactRef?: MailboxArtifactRef | null;
 }) {
-  const [showQuoted, setShowQuoted] = useState(false);
   const agentTargets = useCachedAgentTargets(msg.orgId);
   const promptReferences = useMemo(
     () => messagePromptReferences(msg, agentTargets, threadContext),
@@ -653,20 +649,6 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
           ? (msg.error ?? "An error occurred processing this message.")
           : msg.content,
     );
-    const answer = (
-      <ChatAnswer
-        content={displayContent}
-        channel={msg.channel}
-        isError={isError}
-        markdownClassName={markdownStylesForChannel(msg.channel)}
-        markdownComponents={markdownComponents}
-        organizationId={msg.orgId}
-        presentation={working ? undefined : msg.presentation}
-        structuredReferences
-        onFollowUp={onPresentationFollowUp}
-        presentationDisabled={presentationDisabled}
-      />
-    );
     const artifacts = (
       <>
         <VendorComplianceArtifacts
@@ -688,45 +670,41 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
       </>
     );
 
-    if (working) {
-      return (
-        <ChatAssistantMessage
-          working
-          hasText={Boolean(msg.content)}
-          tools={msg.usedTools}
-          aside={<CancelButton messageId={msg._id} />}
-          after={artifacts}
-        >
-          {answer}
-        </ChatAssistantMessage>
-      );
-    }
-
     // Policy references are intentional presentation selections, not retrieval evidence.
     const refs = [...new Set(msg.referencedPolicyIds ?? [])].map((id) => ({
       type: "policy" as const,
       id: id as string,
     }));
     return (
-      <ChatAssistantMessage
-        working={false}
-        hasText
+      <ChatAssistantTurn
+        working={working}
+        hasText={working ? Boolean(msg.content) : true}
         tools={msg.usedTools}
+        aside={working ? <CancelButton messageId={msg._id} /> : undefined}
         after={
-          msg.status === "pending_send" && msg.pendingEmailId ? (
+          working ? artifacts : msg.status === "pending_send" && msg.pendingEmailId ? (
             <PendingSendCountdown pendingEmailId={msg.pendingEmailId} />
           ) : null
         }
-      >
-        {collapseEmailMessages && msg.channel === "email" ? (
+        content={displayContent}
+        channel={msg.channel}
+        isError={isError}
+        markdownClassName={markdownStylesForChannel(msg.channel)}
+        markdownComponents={markdownComponents}
+        organizationId={msg.orgId}
+        presentation={working ? undefined : msg.presentation}
+        structuredReferences
+        onFollowUp={onPresentationFollowUp}
+        presentationDisabled={presentationDisabled}
+        body={!working && collapseEmailMessages && msg.channel === "email" ? (
           <EmailSummaryCard
             message={msg}
             onOpen={onOpenEmail}
             isOpen={openEmailMessageId === msg._id}
           />
-        ) : (
+        ) : undefined}
+        belowAnswer={!working && !(collapseEmailMessages && msg.channel === "email") ? (
           <>
-            {answer}
             {msg.channel === "slack" &&
             msg.slackDeliveryStatus !== undefined &&
             msg.slackDeliveryStatus !== "sent" ? (
@@ -761,8 +739,8 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
             />
             {artifacts}
           </>
-        )}
-      </ChatAssistantMessage>
+        ) : undefined}
+      />
     );
   }
 
@@ -773,7 +751,7 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   const channelIconClass = "h-3 w-3 text-muted-foreground/45";
 
   return (
-    <ChatUserMessage
+    <ChatUserTurn
       own={isOwnMessage}
       name={displayName}
       nameTitle={
@@ -810,62 +788,46 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
         ) : null
       }
       createdAt={msg._creationTime}
-    >
-      {collapseEmailMessages && isEmail ? (
+      channel={msg.channel}
+      customBody={collapseEmailMessages && isEmail}
+      body={collapseEmailMessages && isEmail ? (
         <EmailSummaryCard
           message={msg}
           onOpen={onOpenEmail}
           isOpen={openEmailMessageId === msg._id}
         />
       ) : (
-        <ChatMessageBubble
-          role="user"
-          channel={msg.channel}
-          isOwnMessage={isOwnMessage}
-        >
-          {msg.channel === "slack" ? (
-            <ProseMarkdown
-              sourceFormat="slack-mrkdwn"
-              gfm
-              breaks
-              className={MARKDOWN_STYLES}
-              components={markdownComponents}
-            >
-              {msg.content}
-            </ProseMarkdown>
-          ) : (
-            <PromptReferenceText
-              content={msg.content}
-              references={promptReferences}
-              className="block"
-            />
-          )}
-          {quoted && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowQuoted(!showQuoted)}
-                className={`mt-1.5 text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors ${typeStyle("control.buttonCompact")}`}
-              >
-                {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
-              </button>
-              {showQuoted && <QuotedContent text={quoted} />}
-            </>
-          )}
-          {msg.attachments && msg.attachments.length > 0 && (
-            <div className="mt-2">
-              <ThreadAttachmentList
-                attachments={msg.attachments}
-                threadId={msg.threadId}
-              />
-            </div>
-          )}
-        </ChatMessageBubble>
+        msg.channel === "slack" ? (
+          <ProseMarkdown
+            sourceFormat="slack-mrkdwn"
+            gfm
+            breaks
+            className={MARKDOWN_STYLES}
+            components={markdownComponents}
+          >
+            {msg.content}
+          </ProseMarkdown>
+        ) : (
+          <PromptReferenceText
+            content={msg.content}
+            references={promptReferences}
+            className="block"
+          />
+        )
       )}
-      {isOwnMessage && receiptStatus ? (
+      quotedText={quoted}
+      attachments={msg.attachments?.length ? (
+        <div className="mt-2">
+          <ThreadAttachmentList
+            attachments={msg.attachments}
+            threadId={msg.threadId}
+          />
+        </div>
+      ) : null}
+      after={isOwnMessage && receiptStatus ? (
         <WebMessageReceipt status={receiptStatus} />
       ) : null}
-    </ChatUserMessage>
+    />
   );
 });
 

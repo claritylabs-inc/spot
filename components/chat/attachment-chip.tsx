@@ -1,13 +1,16 @@
 "use client";
 
 import { Loader2, Paperclip } from "lucide-react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
 export type ChatAttachmentChipProps = {
-  attachment: { filename: string; contentType?: string };
-  /** Resolved by the surface adapter; `undefined` while unknown. */
+  attachment: { filename: string; contentType?: string; fileId?: Id<"_storage"> };
+  threadId?: Id<"threads">;
   url?: string | null;
   className?: string;
   size?: "default" | "compact";
@@ -19,6 +22,7 @@ export type ChatAttachmentChipProps = {
 
 export function ChatAttachmentChip({
   attachment,
+  threadId,
   url,
   className,
   size = "default",
@@ -28,13 +32,21 @@ export function ChatAttachmentChip({
   unavailableTitle,
 }: ChatAttachmentChipProps) {
   const { openWithUrl } = usePdf();
+  const storedUrl = useCachedQuery(
+    "threads.getAttachmentUrl",
+    api.threads.getAttachmentUrl,
+    threadId && attachment.fileId
+      ? { threadId, fileId: attachment.fileId }
+      : "skip",
+  );
+  const resolvedUrl = url === undefined ? storedUrl : url;
   const isPdf =
     attachment.contentType?.toLowerCase().includes("pdf") ||
     attachment.filename.toLowerCase().endsWith(".pdf");
   const isCompact = size === "compact";
   const handleOpen =
-    onOpen ?? (isPdf && url ? () => openWithUrl(url) : undefined);
-  const canOpen = Boolean(handleOpen || url);
+    onOpen ?? (isPdf && resolvedUrl ? () => openWithUrl(resolvedUrl) : undefined);
+  const canOpen = Boolean(handleOpen || resolvedUrl);
 
   const title = canOpen
     ? attachment.filename
@@ -89,11 +101,11 @@ export function ChatAttachmentChip({
 
   return (
     <a
-      href={isPdf ? undefined : (url ?? undefined)}
+      href={isPdf ? undefined : (resolvedUrl ?? undefined)}
       target={isPdf ? undefined : "_blank"}
       rel={isPdf ? undefined : "noopener noreferrer"}
       title={title}
-      aria-label={url ? `Open ${attachment.filename}` : attachment.filename}
+      aria-label={resolvedUrl ? `Open ${attachment.filename}` : attachment.filename}
       style={{ maxWidth: isCompact ? "11rem" : "13rem" }}
       className={classNames}
     >

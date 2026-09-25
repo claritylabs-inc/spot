@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import type { PresentationFollowUp } from "@/components/chat-presentation/context";
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
+import { QuotedContent } from "@/components/conversation-message";
 import { useChatDisplayPreferences } from "@/components/profile/streaming-preference";
 import {
   ProseMarkdown,
@@ -145,6 +146,42 @@ export function ChatAnswer({
   );
 }
 
+export function ChatAssistantTurn({
+  working,
+  hasText,
+  tools,
+  toolCalls,
+  aside,
+  after,
+  body,
+  belowAnswer,
+  children,
+  ...answer
+}: ComponentProps<typeof ChatAnswer> & {
+  working: boolean;
+  hasText?: boolean;
+  tools?: string[];
+  toolCalls?: { name: string; input?: string }[];
+  aside?: ReactNode;
+  after?: ReactNode;
+  body?: ReactNode;
+  belowAnswer?: ReactNode;
+}) {
+  return (
+    <ChatAssistantMessage
+      working={working}
+      hasText={hasText ?? Boolean(answer.content)}
+      tools={tools}
+      toolCalls={toolCalls}
+      aside={aside}
+      after={after}
+    >
+      {body ?? <ChatAnswer {...answer}>{children}</ChatAnswer>}
+      {belowAnswer}
+    </ChatAssistantMessage>
+  );
+}
+
 export function chatInitials(name: string) {
   return name
     .split(/\s+/)
@@ -242,6 +279,58 @@ export function ChatUserMessage({
         {children}
       </div>
     </div>
+  );
+}
+
+export function ChatUserTurn({
+  channel,
+  isError,
+  body,
+  attachments,
+  quotedText,
+  customBody = false,
+  after,
+  ...sender
+}: Omit<ComponentProps<typeof ChatUserMessage>, "children"> & {
+  channel?: ChatChannel;
+  isError?: boolean;
+  body: ReactNode;
+  attachments?: ReactNode;
+  quotedText?: string | null;
+  customBody?: boolean;
+  after?: ReactNode;
+}) {
+  const [showQuoted, setShowQuoted] = useState(false);
+  return (
+    <ChatUserMessage {...sender}>
+      {customBody ? body : (
+        <ChatMessageBubble
+          role="user"
+          channel={channel}
+          isOwnMessage={sender.own}
+          isError={isError}
+        >
+          {body}
+          {quotedText ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowQuoted(!showQuoted)}
+                className={cn(
+                  "mt-1.5 text-muted-foreground/40 transition-colors hover:text-muted-foreground/60",
+                  typeStyle("control.buttonCompact"),
+                )}
+              >
+                {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
+              </button>
+              {showQuoted ? <QuotedContent text={quotedText} /> : null}
+            </>
+          ) : null}
+          {attachments}
+        </ChatMessageBubble>
+      )}
+      {after}
+    </ChatUserMessage>
   );
 }
 
