@@ -40,7 +40,7 @@ These lifecycle controls are internal, not new agent or MCP tools.
 - Channel-specific tenant tools are assembled in `convex/actions/processThreadChat.ts`, `convex/actions/handleInboundEmail.ts`, `convex/actions/handleInboundImessage.ts`, and `convex/actions/mcpChat.ts`.
 - `convex/lib/channelAgentRunner.ts` owns shared conversational turn execution, tool-outcome auditing, and tool-free synthesis of incomplete responses. Web, Slack, email, iMessage, and MCP retain channel-local ingress, authorization, persistence, and delivery. Normal router tool selection handles policy lookups; there is no separate policy-evidence classifier, completed-lookup gate, or evidence-recovery generation.
 - Internal mailbox- and email-subagent tools live in `convex/actions/mailboxCoordinator.ts` and `convex/lib/emailSubagent.ts`.
-- Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the typed `MCP_TOOLS` catalog in `convex/http.ts`.
+- Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the shared projection and compatibility metadata in `convex/lib/tenantMcpToolCatalog.ts`.
 - MCP OAuth revocation accepts form-encoded access or refresh tokens (and legacy Bearer access tokens), invalidates the stored token pair, and rejects a supplied mismatched client ID before any change.
 
 When any source above adds, removes, renames, or materially changes a tool, update this inventory in the same change. Availability, capability, effect, required role, confirmation policy, execution boundary, and MCP access changes count as material.
@@ -216,7 +216,7 @@ Operator Slack/iMessage runs that outlast the synchronous request continue throu
 
 ## Client conversational agent
 
-There is no single client registry equivalent to `OPERATOR_AGENT_TOOL_REGISTRY`. The client agent receives a shared executable tool set and channel-specific additions. In the tables below, **MCP chat** means the model loop behind the tenant `ask_spot`/`ask_glass` MCP tools, not the full tenant MCP catalog documented later.
+There is no single client registry equivalent to `OPERATOR_AGENT_TOOL_REGISTRY`. The client agent receives a shared executable tool set and channel-specific additions. In the tables below, **MCP chat** means the model loop behind the tenant `ask_spot` MCP tool, not the full tenant MCP catalog documented later.
 
 ### Shared tools
 
@@ -269,7 +269,7 @@ Shared customer confirmation records for email send/cancel, draft snapshots, mul
 | `send_connected_vendor_invite`                   | Send a user-authorized connected-vendor invitation.                                 | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
 | `extract_policy_attachment`                      | Start extraction for one policy represented by one or more inbound PDF attachments. | Inbound email only.                                                                                                                                      |
 
-For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot`/`ask_glass` calls exclude `save_note`, `confirm_policy_fact`, `generate_coi`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
+For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot` calls exclude `save_note`, `confirm_policy_fact`, `generate_coi`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
 
 ### Internal client-agent subagents
 
@@ -301,45 +301,18 @@ Email expert:
 
 ## Tenant OAuth MCP catalog
 
-The tenant MCP catalog is separate from the model-callable tools above. It currently contains 33 tools. “Write” means the catalog requires OAuth write scope; runtime organization, role, and resource authorization still apply. Access annotations and the pre-dispatch scope check are derived from the same typed catalog entry, so adding a write tool requires declaring `effect: "write"` in that entry. Procurement proposals, broker outreach, packets, and imported request email are intentionally absent.
+`convex/lib/tenantMcpToolCatalog.ts` projects shared client tool definitions into MCP names, JSON schemas, OAuth scopes, and annotations. `convex/actions/tenantMcpTools.ts` executes direct shared tools with the same tenant scope as agent chat. Existing policy, email-draft, vendor, and `ask_spot` names retain their prior handlers and response shapes as compatibility entries. The catalog effect is checked before dispatch; resource authorization is checked by the executor. `ask_spot` passes the token's write capability to its nested client and mailbox catalogs.
 
-| Tool                             | Purpose                                                                  | MCP access                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `list_policies`                  | List policies with optional carrier, year, or LOB filters.               | read                                                                               |
-| `get_policy`                     | Get full details for one policy.                                         | read                                                                               |
-| `get_policy_pdf`                 | Get a temporary URL for the original policy PDF.                         | read                                                                               |
-| `search_policies`                | Search carrier, policy number, insured, summary, and LOB text.           | read                                                                               |
-| `get_policy_stats`               | Get policy totals and type, carrier, and year breakdowns.                | read                                                                               |
-| `list_policy_certificates`       | List generated certificates and lifecycle metadata for a policy.         | read                                                                               |
-| `list_certificate_holders`       | List or search the certificate-holder registry.                          | read                                                                               |
-| `list_policy_versions`           | List policy document-event versions.                                     | read                                                                               |
-| `list_certificate_versions`      | List certificate issue and reissue versions.                             | read                                                                               |
-| `list_certificate_review_jobs`   | List certificate renewal, endorsement, and manual-review jobs.           | read                                                                               |
-| `generate_policy_certificate`    | Generate certificates in policy or requirements mode.                    | write                                                                              |
-| `list_threads`                   | List recent tenant conversation threads.                                 | read                                                                               |
-| `get_thread_messages`            | Get all messages in one accessible thread.                               | read                                                                               |
-| `get_org_info`                   | Get the current organization's identity and agent context.            | read                                                                               |
-| `ask_glass`                      | Legacy alias for `ask_spot`.                                             | read; nested tools are read-only unless the token also has write scope; open-world |
-| `ask_spot`                       | Run the client conversational agent for policy and compliance workflows. | read; nested tools are read-only unless the token also has write scope; open-world |
-| `list_email_drafts`              | List durable outbound email drafts.                                      | read                                                                               |
-| `draft_email`                    | Create a durable outbound email draft.                                   | write                                                                              |
-| `update_email_draft`             | Update an existing durable email draft in place.                         | write                                                                              |
-| `send_email_draft`               | Send one durable email draft.                                            | write; open-world side effect                                                      |
-| `send_email_drafts`              | Send a batch of durable email drafts.                                    | write; open-world side effect                                                      |
-| `cancel_email_draft`             | Cancel one durable email draft.                                          | write                                                                              |
-| `list_client_files`              | List client-visible shared files in the caller's readable client scope.  | read                                                                               |
-| `get_client_file`                | Get metadata and a temporary URL for one client-visible shared file.     | read                                                                               |
-| `read_company_wiki`              | Read the whole company wiki for the token's exact organization.          | read                                                                               |
-| `write_company_wiki`     | Replace the shared client company .md file with YAML front matter and an expected revision.   | write; current direct organization admin only                                      |
-| `list_connected_vendors`         | List connected vendors that approved insurance access.                   | read                                                                               |
-| `get_connected_vendor`           | Get one connected vendor's profile and policy count.                     | read                                                                               |
-| `list_connected_vendor_policies` | List policies for one connected vendor.                                  | read                                                                               |
-| `list_my_policies`               | List policies for the caller's client organization.                      | read; client only                                                                  |
-| `list_insurance_requirements`    | List the caller organization's compliance requirements.                  | read                                                                               |
-| `create_insurance_requirement`   | Create a typed insurance coverage requirement.                           | write; organization admin only                                                     |
-| `list_vendor_compliance`         | List connected-vendor compliance against requirements.                   | read                                                                               |
+| MCP tools | Access |
+| --- | --- |
+| `ask_spot`, `list_policies`, `get_policy`, `get_policy_pdf`, `search_policies` | read; `ask_spot` can invoke nested writes only with write scope |
+| `list_email_drafts` | read |
+| `draft_email`, `update_email_draft`, `send_email_draft`, `send_email_drafts`, `cancel_email_draft` | write; sends are open-world |
+| `list_connected_vendors`, `get_connected_vendor`, `list_connected_vendor_policies`, `list_vendor_compliance` | read |
+| `lookup_policy`, `lookup_company_context`, `lookup_client_requests`, `lookup_client_files`, `read_client_file`, `compare_coverages`, `lookup_compliance_requirements`, `lookup_connected_vendors`, `lookup_vendor_policies`, `lookup_vendor_compliance`, `lookup_policy_section`, `lookup_address`, `web_research` | read; `web_research` is open-world |
+| `save_note`, `confirm_policy_fact`, `generate_coi`, `coordinate_mailbox_task` | write; mailbox coordination is open-world |
 
-The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP action also passes the caller's write-scope state into the shared client-tool executors and mailbox coordinator, which removes nested write tools from the executable map for read-only tokens.
+The former direct MCP names `get_policy_stats`, `list_policy_certificates`, `list_certificate_holders`, `list_policy_versions`, `list_certificate_versions`, `generate_policy_certificate`, `list_threads`, `get_thread_messages`, `get_org_info`, `list_client_files`, `get_client_file`, `read_company_wiki`, `write_company_wiki`, `list_my_policies`, `list_insurance_requirements`, and `create_insurance_requirement` are retired. Use `lookup_policy` for policy inventory, `generate_coi` for certificate creation, `lookup_company_context` for company facts, `lookup_client_files` and `read_client_file` for shared files, `lookup_compliance_requirements` for requirement reads, or `ask_spot` for conversational access. Certificate-history lists, raw thread-message lists, whole-document wiki replacement, typed requirement creation, and aggregate policy statistics have no direct MCP equivalent; use the authorized portal workflows.
 
 ## Browser WebMCP tools
 
