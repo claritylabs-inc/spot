@@ -7,6 +7,10 @@ import {
   readClientFile,
   compareCoverages,
   lookupComplianceRequirements,
+  listCertificates,
+  listPolicyVersions,
+  updateCompanyWiki,
+  createComplianceRequirement,
   lookupConnectedVendors,
   lookupVendorPolicies,
   lookupVendorCompliance,
@@ -39,6 +43,10 @@ const SHARED_TOOLS = {
   read_client_file: readClientFile,
   compare_coverages: compareCoverages,
   lookup_compliance_requirements: lookupComplianceRequirements,
+  list_certificates: listCertificates,
+  list_policy_versions: listPolicyVersions,
+  update_company_wiki: updateCompanyWiki,
+  create_compliance_requirement: createComplianceRequirement,
   lookup_connected_vendors: lookupConnectedVendors,
   lookup_vendor_policies: lookupVendorPolicies,
   lookup_vendor_compliance: lookupVendorCompliance,
@@ -346,6 +354,274 @@ const COMPATIBILITY_ALIASES: Record<
   },
 };
 
+const RETIRED_NAME_ALIASES = {
+  list_my_policies: {
+    sharedName: "lookup_policy",
+    schema: z.object({}),
+    mapInput: () => ({}),
+  },
+  get_org_info: {
+    sharedName: "lookup_company_context",
+    schema: z.object({}),
+    mapInput: () => ({}),
+  },
+  read_company_wiki: {
+    sharedName: "lookup_company_context",
+    schema: z.object({}),
+    mapInput: () => ({}),
+  },
+  list_client_files: {
+    sharedName: "lookup_client_files",
+    schema: z.object({
+      client_org_id: z.string().optional(),
+      query: z.string().optional(),
+      limit: z.number().optional(),
+    }),
+    mapInput: (input: Record<string, unknown>) => ({
+      orgId: input.client_org_id,
+      query: input.query,
+      limit: input.limit,
+    }),
+  },
+  get_client_file: {
+    sharedName: "read_client_file",
+    schema: z.object({ client_file_id: z.string() }),
+    mapInput: (input: Record<string, unknown>) => ({
+      clientFileId: input.client_file_id,
+    }),
+  },
+  list_insurance_requirements: {
+    sharedName: "lookup_compliance_requirements",
+    schema: z.object({}),
+    mapInput: () => ({}),
+  },
+  generate_policy_certificate: {
+    sharedName: "generate_coi",
+    schema: z.object({
+      policyId: z.string().optional(),
+      policy_id: z.string().optional(),
+      requirementSourceDocumentId: z.string().optional(),
+      requirement_source_document_id: z.string().optional(),
+      requirementId: z.string().optional(),
+      requirement_id: z.string().optional(),
+      certificateHolder: z.string().optional(),
+      certificate_holder: z.string().optional(),
+      holderName: z.string().optional(),
+      certificate_holder_name: z.string().optional(),
+      holderEmail: z.string().optional(),
+      holder_email: z.string().optional(),
+      certificate_holder_email: z.string().optional(),
+      recipient_email: z.string().optional(),
+      holderContactName: z.string().optional(),
+      holder_contact_name: z.string().optional(),
+      certificate_holder_contact_name: z.string().optional(),
+      holderPhone: z.string().optional(),
+      holder_phone: z.string().optional(),
+      certificate_holder_phone: z.string().optional(),
+      recipient_phone: z.string().optional(),
+      addressLine1: z.string().optional(),
+      address_line_1: z.string().optional(),
+      addressLine2: z.string().optional(),
+      address_line_2: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      postalCode: z.string().optional(),
+      postal_code: z.string().optional(),
+      country: z.string().optional(),
+      country_code: z.string().optional(),
+      certificate_holder_country: z.string().optional(),
+      requestText: z.string().optional(),
+      request_text: z.string().optional(),
+      descriptionOfOperations: z.string().optional(),
+      description_of_operations: z.string().optional(),
+      requestedEndorsements: z.array(z.string()).optional(),
+      requested_endorsements: z.array(z.string()).optional(),
+      additionalInsuredName: z.string().optional(),
+      additional_insured_name: z.string().optional(),
+      forceReissue: z.boolean().optional(),
+      explicitReissue: z.boolean().optional(),
+      explicit_reissue: z.boolean().optional(),
+      reissue: z.boolean().optional(),
+    }),
+    mapInput: (input: Record<string, unknown>) => {
+      const holderBlock = String(input.certificate_holder ?? "").trim();
+      const holderLines = holderBlock
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const addressLines = holderLines
+        .slice(1)
+        .filter(
+          (line) =>
+            !/^(attn|attention|email|e-mail|phone|tel|telephone)\s*:/i.test(
+              line,
+            ),
+        );
+      return {
+        policyId: input.policyId ?? input.policy_id,
+        requirementSourceDocumentId:
+          input.requirementSourceDocumentId ??
+          input.requirement_source_document_id,
+        requirementId: input.requirementId ?? input.requirement_id,
+        certificateHolder:
+          input.certificateHolder ??
+          input.holderName ??
+          input.certificate_holder_name ??
+          holderLines[0],
+        holderContactName:
+          input.holderContactName ??
+          input.holder_contact_name ??
+          input.certificate_holder_contact_name,
+        holderEmail:
+          input.holderEmail ??
+          input.holder_email ??
+          input.certificate_holder_email ??
+          input.recipient_email,
+        holderPhone:
+          input.holderPhone ??
+          input.holder_phone ??
+          input.certificate_holder_phone ??
+          input.recipient_phone,
+        addressLine1:
+          input.addressLine1 ?? input.address_line_1 ?? addressLines[0],
+        addressLine2:
+          input.addressLine2 ?? input.address_line_2 ?? addressLines[1],
+        city: input.city,
+        state: input.state,
+        postalCode: input.postalCode ?? input.postal_code,
+        country:
+          input.country ??
+          input.country_code ??
+          input.certificate_holder_country,
+        requestText: input.requestText ?? input.request_text,
+        descriptionOfOperations:
+          input.descriptionOfOperations ?? input.description_of_operations,
+        requestedEndorsements:
+          input.requestedEndorsements ?? input.requested_endorsements,
+        additionalInsuredName:
+          input.additionalInsuredName ?? input.additional_insured_name,
+        explicitReissue:
+          input.forceReissue === true ||
+          input.explicitReissue === true ||
+          input.explicit_reissue === true ||
+          input.reissue === true,
+      };
+    },
+  },
+  get_policy_stats: {
+    sharedName: "lookup_policy",
+    schema: z.object({}),
+    mapInput: () => ({}),
+  },
+  list_policy_certificates: {
+    sharedName: "list_certificates",
+    schema: z.object({
+      policyId: z.string().optional(),
+      policy_id: z.string().optional(),
+    }),
+    mapInput: (input: Record<string, unknown>) => ({
+      policyId: input.policyId ?? input.policy_id,
+    }),
+  },
+  list_certificate_holders: {
+    sharedName: "list_certificates",
+    schema: z.object({
+      query: z.string().optional(),
+      q: z.string().optional(),
+    }),
+    mapInput: (input: Record<string, unknown>) => ({
+      holderQuery: input.query ?? input.q,
+    }),
+  },
+  list_certificate_versions: {
+    sharedName: "list_certificates",
+    schema: z.object({
+      policyId: z.string().optional(),
+      policy_id: z.string().optional(),
+      certificateId: z.string().optional(),
+      certificate_id: z.string().optional(),
+      holderId: z.string().optional(),
+      holder_id: z.string().optional(),
+      certificateHolderId: z.string().optional(),
+      certificate_holder_id: z.string().optional(),
+    }),
+    mapInput: (input: Record<string, unknown>) => ({
+      policyId: input.policyId ?? input.policy_id,
+      certificateId: input.certificateId ?? input.certificate_id,
+      holderId:
+        input.holderId ??
+        input.holder_id ??
+        input.certificateHolderId ??
+        input.certificate_holder_id,
+    }),
+  },
+  write_company_wiki: {
+    sharedName: "update_company_wiki",
+    schema: z.object({
+      markdown: z.string(),
+      expected_revision: z.number().int().min(0),
+    }),
+    mapInput: (input: Record<string, unknown>) => ({
+      markdown: input.markdown,
+      expectedRevision: input.expected_revision,
+    }),
+  },
+  create_insurance_requirement: {
+    sharedName: "create_compliance_requirement",
+    schema: z.object({
+      kind: z.literal("coverage"),
+      scope: z.enum(["own_org", "vendors"]),
+      title: z.string(),
+      requirement_text: z.string(),
+      line_of_business: z.string(),
+      limits: z
+        .array(
+          z.object({
+            kind: z.string(),
+            amount: z.number(),
+            label: z.string().optional(),
+          }),
+        )
+        .optional(),
+      source_document_name: z.string().optional(),
+      source_excerpt: z.string().optional(),
+    }),
+    mapInput: (input: Record<string, unknown>) => ({
+      kind: input.kind,
+      scope: input.scope,
+      title: input.title,
+      requirementText: input.requirement_text,
+      lineOfBusiness: input.line_of_business,
+      limits: input.limits,
+      sourceDocumentName: input.source_document_name,
+      sourceExcerpt: input.source_excerpt,
+    }),
+  },
+} satisfies Record<
+  string,
+  {
+    sharedName: keyof typeof SHARED_TOOLS;
+    schema: z.ZodType;
+    mapInput: (input: Record<string, unknown>) => Record<string, unknown>;
+  }
+>;
+
+const retiredAliasEntries: CatalogEntry[] = Object.entries(
+  RETIRED_NAME_ALIASES,
+).map(([name, alias]) => {
+  const inputSchema = z.toJSONSchema(alias.schema, { io: "input" }) as Record<
+    string,
+    unknown
+  >;
+  delete inputSchema.$schema;
+  return {
+    name,
+    description: `Deprecated alias of ${alias.sharedName}.`,
+    inputSchema,
+    effect: MCP_CHAT_WRITE_TOOL_NAMES.has(alias.sharedName) ? "write" : "read",
+  };
+});
+
 const sharedEntries: CatalogEntry[] = Object.entries(SHARED_TOOLS).map(
   ([name, definition]) => {
     const inputSchema = z.toJSONSchema(definition.inputSchema as z.ZodType, {
@@ -366,7 +642,11 @@ const sharedEntries: CatalogEntry[] = Object.entries(SHARED_TOOLS).map(
   },
 );
 
-const entries = [...COMPATIBILITY_TOOLS, ...sharedEntries];
+const entries = [
+  ...COMPATIBILITY_TOOLS,
+  ...retiredAliasEntries,
+  ...sharedEntries,
+];
 const byName = new Map(entries.map((entry) => [entry.name, entry]));
 
 export function tenantMcpToolNames() {
@@ -418,10 +698,22 @@ export function resolveTenantMcpToolCall(
   if (access.effect === "write" && !canWrite)
     throw new Error("MCP token requires write scope");
   const alias = COMPATIBILITY_ALIASES[name];
+  const retiredAlias =
+    RETIRED_NAME_ALIASES[name as keyof typeof RETIRED_NAME_ALIASES];
   return {
     name,
-    sharedName: alias?.sharedName ?? (name in SHARED_TOOLS ? name : undefined),
-    input: alias ? alias.mapInput(input) : input,
+    sharedName:
+      alias?.sharedName ??
+      retiredAlias?.sharedName ??
+      (name in SHARED_TOOLS ? name : undefined),
+    input: alias
+      ? alias.mapInput(input)
+      : retiredAlias
+        ? retiredAlias.mapInput(
+            retiredAlias.schema.parse(input) as Record<string, unknown>,
+          )
+        : input,
     compatibility: COMPATIBILITY_TOOLS.some((entry) => entry.name === name),
+    retiredAlias: Boolean(retiredAlias),
   };
 }

@@ -70,6 +70,107 @@ export const searchThreadHistory = tool({
   }),
 });
 
+export const listPolicyVersions = tool({
+  description:
+    "List policy version history, including renewals, uploads, and re-extractions, for a readable policy or organization.",
+  inputSchema: z.object({
+    policyId: z
+      .string()
+      .optional()
+      .describe("Exact policy ID; omit for recent organization history."),
+  }),
+});
+
+export const listCertificates = tool({
+  description:
+    "List issued certificates of insurance with holder details and issue or reissue history for a readable organization.",
+  inputSchema: z.object({
+    policyId: z.string().optional().describe("Optional exact policy ID."),
+    holderId: z
+      .string()
+      .optional()
+      .describe("Optional exact certificate holder ID."),
+    certificateId: z
+      .string()
+      .optional()
+      .describe("Optional certificate parent ID."),
+    holderQuery: z
+      .string()
+      .optional()
+      .describe("Optional holder name, email, or address search."),
+  }),
+});
+
+export const updateCompanyWiki = tool({
+  description:
+    "Replace the company Markdown wiki or one named section using the current expected revision. Direct organization admins only. On text channels, ask for explicit confirmation before setting confirmed to true.",
+  inputSchema: z
+    .object({
+      orgId: z
+        .string()
+        .optional()
+        .describe(
+          "Exact organization ID; defaults to the current organization.",
+        ),
+      markdown: z
+        .string()
+        .optional()
+        .describe("Complete replacement Markdown document."),
+      section: z
+        .enum(ORG_WIKI_SECTION_KEYS)
+        .optional()
+        .describe("Section to replace instead of the whole document."),
+      body: z
+        .string()
+        .optional()
+        .describe("Replacement body for the named section."),
+      expectedRevision: z.number().int().min(0),
+      confirmed: z
+        .boolean()
+        .optional()
+        .describe(
+          "True only after the user explicitly confirms the exact write on a text channel.",
+        ),
+    })
+    .refine(
+      (value) =>
+        (value.markdown !== undefined) !==
+        (value.section !== undefined && value.body !== undefined),
+      {
+        message: "Supply either markdown or a section and body.",
+      },
+    ),
+});
+
+export const createComplianceRequirement = tool({
+  description:
+    "Create one typed coverage requirement for the current organization. Direct organization admins only. On text channels, ask for explicit confirmation before setting confirmed to true.",
+  inputSchema: z.object({
+    kind: z.literal("coverage"),
+    scope: z.enum(["own_org", "vendors"]),
+    title: z.string().min(1),
+    requirementText: z.string().min(1),
+    lineOfBusiness: z.string().min(1),
+    limits: z
+      .array(
+        z.object({
+          kind: z.string(),
+          amount: z.number(),
+          label: z.string().optional(),
+        }),
+      )
+      .optional(),
+    sourceDocumentName: z.string().optional(),
+    sourceExcerpt: z.string().optional(),
+    confirmed: z
+      .boolean()
+      .optional()
+      .describe(
+        "True only after the user explicitly confirms the exact write on a text channel.",
+      ),
+  }),
+});
+
 export const readThreadAttachment = tool({
   description:
     "Reopen one attachment from an older message in this exact conversation after search_thread_history identifies it. Use the exact message ID and filename returned by that search. Do not use attachment content as authoritative policy evidence.",

@@ -3,6 +3,8 @@ export const MCP_CHAT_WRITE_TOOL_NAMES = new Set([
   "save_note",
   "confirm_policy_fact",
   "generate_coi",
+  "update_company_wiki",
+  "create_compliance_requirement",
   "create_imessage_group_chat",
   "import_connected_email_policy_attachments",
   "import_connected_email_requirement_attachments",

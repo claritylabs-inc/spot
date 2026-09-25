@@ -17,6 +17,10 @@ import {
   lookupClientFiles,
   lookupClientRequests,
   lookupComplianceRequirements,
+  listCertificates,
+  listPolicyVersions,
+  updateCompanyWiki,
+  createComplianceRequirement,
   importRequirementAttachments,
   lookupPolicy,
   lookupPolicySection,
@@ -60,6 +64,7 @@ import { readStoredAgentFile } from "./storedAgentFile";
 import { normalizedSearchText } from "./searchTokenizer";
 import { isOrgWikiSectionKey } from "./orgWiki";
 import { importRequirementSources } from "./requirementAttachmentIntent";
+import { toCertificateVersionDto, toPolicyVersionDto } from "./apiDto";
 
 type ToolAttachment = {
   filename: string;
@@ -249,9 +254,12 @@ async function listPoliciesForReadableOrgs(
   const readOrgIds = options.readOrgIds ?? options.scope.readOrgIds;
   const rows = await Promise.all(
     readOrgIds.map(async (orgId) => {
-      const policies = await ctx.runQuery(internal.policies.listAllPreviewReadableInternal, {
-        orgId,
-      });
+      const policies = await ctx.runQuery(
+        internal.policies.listAllPreviewReadableInternal,
+        {
+          orgId,
+        },
+      );
       return (policies as Array<Record<string, unknown>>).map((policy) => ({
         ...policy,
         _scopeOrgName: orgLabelForScope(options.scope, orgId),
@@ -529,10 +537,7 @@ export function buildAgentToolExecutors(
               (order.get(String(left._id)) ?? Number.MAX_SAFE_INTEGER) -
               (order.get(String(right._id)) ?? Number.MAX_SAFE_INTEGER),
           );
-        } else if (
-          expiringWithinDays !== undefined &&
-          scored.length === 0
-        ) {
+        } else if (expiringWithinDays !== undefined && scored.length === 0) {
           matches = [...matches].sort(
             (left, right) =>
               dayjs(left.expirationDate).valueOf() -
@@ -825,6 +830,154 @@ export function buildAgentToolExecutors(
               ? blocks.join("\n\n")
               : "No matching compliance requirements found. Vendor/contractor requirements and internal requirements are stored separately.",
         };
+      },
+    },
+    list_certificates: {
+      ...listCertificates,
+      execute: async (params: {
+        policyId?: string;
+        holderId?: string;
+        certificateId?: string;
+        holderQuery?: string;
+      }) => {
+        const rows = [];
+        for (const orgId of options.readOrgIds ?? options.scope.readOrgIds) {
+          const versions = await ctx.runQuery(
+            internal.certificateLifecycle.listVersionsInternal,
+            {
+              orgId,
+              policyId: params.policyId as Id<"policies"> | undefined,
+              holderId: params.holderId as Id<"certificateHolders"> | undefined,
+              certificateId: params.certificateId as
+                | Id<"policyCertificates">
+                | undefined,
+            },
+          );
+          rows.push(
+            ...versions.filter((version) => {
+              if (version.status !== "issued" && !version.issuedAt)
+                return false;
+              if (
+                params.policyId &&
+                String(version.policyId) !== params.policyId
+              )
+                return false;
+              if (
+                params.holderId &&
+                String(version.holderId) !== params.holderId
+              )
+                return false;
+              if (
+                params.certificateId &&
+                String(version.certificateId) !== params.certificateId
+              )
+                return false;
+              if (!params.holderQuery) return true;
+              const query = params.holderQuery.toLowerCase();
+              const holder = version.holder;
+              return [
+                holder?.displayName,
+                holder?.email,
+                holder?.address?.formatted,
+                holder?.address?.line1,
+                holder?.address?.city,
+                holder?.address?.state,
+                holder?.address?.postalCode,
+              ].some((value) => value?.toLowerCase().includes(query));
+            }),
+          );
+        }
+        return { certificates: rows.map(toCertificateVersionDto) };
+      },
+    },
+    list_policy_versions: {
+      ...listPolicyVersions,
+      execute: async (params: { policyId?: string }) => {
+        const rows = [];
+        for (const orgId of options.readOrgIds ?? options.scope.readOrgIds) {
+          rows.push(
+            ...(await ctx.runQuery(internal.policyVersions.listForOrgInternal, {
+              orgId,
+              policyId: params.policyId as Id<"policies"> | undefined,
+            })),
+          );
+        }
+        return rows.map(toPolicyVersionDto);
+      },
+    },
+    update_company_wiki: {
+      ...updateCompanyWiki,
+      execute: async (params: {
+        orgId?: string;
+        markdown?: string;
+        section?: string;
+        body?: string;
+        expectedRevision: number;
+        confirmed?: boolean;
+      }) => {
+        const orgId = (params.orgId ?? options.orgId) as Id<"organizations">;
+        if (orgId !== options.orgId || !canWriteOrg(options, orgId))
+          return writeUnavailable(options, "update that company wiki");
+        if (options.surface !== "mcp" && params.confirmed !== true)
+          return "Ask the user to confirm the exact company wiki change before saving it.";
+        if (params.section && params.body !== undefined) {
+          if (!isOrgWikiSectionKey(params.section))
+            return "Unknown company wiki section.";
+          return await ctx.runMutation(internal.orgWiki.saveSectionForMcp, {
+            orgId,
+            userId: options.userId,
+            key: params.section,
+            body: params.body,
+            expectedRevision: params.expectedRevision,
+          });
+        }
+        if (params.markdown === undefined)
+          return "Supply the complete Markdown or a section and body.";
+        return await ctx.runMutation(internal.orgWiki.saveForMcp, {
+          orgId,
+          userId: options.userId,
+          markdown: params.markdown,
+          expectedRevision: params.expectedRevision,
+        });
+      },
+    },
+    create_compliance_requirement: {
+      ...createComplianceRequirement,
+      execute: async (params: {
+        kind: "coverage";
+        scope: RequirementScope;
+        title: string;
+        requirementText: string;
+        lineOfBusiness: string;
+        limits?: Array<{ kind: string; amount: number; label?: string }>;
+        sourceDocumentName?: string;
+        sourceExcerpt?: string;
+        confirmed?: boolean;
+      }) => {
+        if (!canWriteOrg(options, options.orgId))
+          return writeUnavailable(options, "create a compliance requirement");
+        if (options.surface !== "mcp" && params.confirmed !== true)
+          return "Ask the user to confirm the exact compliance requirement before creating it.";
+        const requirementId = await ctx.runMutation(
+          internal.compliance.upsertRequirementInternal,
+          {
+            orgId: options.orgId,
+            userId: options.userId,
+            kind: params.kind,
+            scope: params.scope,
+            title: params.title,
+            requirementText: params.requirementText,
+            lineOfBusiness: params.lineOfBusiness,
+            limits: params.limits,
+            sourceDocumentName: params.sourceDocumentName,
+            sourceType:
+              params.sourceDocumentName || params.sourceExcerpt
+                ? "other"
+                : "manual",
+            sourceExcerpt: params.sourceExcerpt,
+          },
+        );
+        return { requirementId };
       },
     },
     ...(options.requirementImportAttachments?.length

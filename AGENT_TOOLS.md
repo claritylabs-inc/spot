@@ -209,16 +209,20 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `attach_client_file`             | Attach one readable client dropbox file to the response.                           | All channels; the file must be explicitly client-visible.                       |
 | `lookup_address`                 | Validate and standardize a user-supplied postal address.                           | All channels; Mapbox must be configured.                                        |
 | `lookup_policy`                  | Retrieve fresh policy summaries by IDs, text, LOB, carrier, or expiry window.      | All channels.                                                                   |
+| `list_policy_versions`           | Read renewal, upload, and re-extraction history for a policy or organization.      | All channels; history prompt module.                                            |
+| `list_certificates`              | Read issued COIs, holder details, and issue or reissue history.                    | All channels; COI prompt module.                                                |
 | `present_policy_card`            | Select a current-turn resolved policy for rich-card presentation.                  | Web, Slack, and iMessage only.                                                  |
 | `lookup_company_context`         | Retrieve durable company-profile facts and preferences, never policy facts.        | All channels.                                                                   |
 | `compare_coverages`              | Compare two readable policies side by side.                                        | All channels.                                                                   |
 | `lookup_compliance_requirements` | Retrieve saved insurance requirements by topic and scope, including typed saved compliance findings.                          | All channels.                                                                   |
+| `create_compliance_requirement`  | Save a typed coverage requirement.                                                 | All channels; write capability, direct admin role, and text-channel confirmation required. |
 | `import_requirement_attachments` | Persist and extract server-authorized requirement files from the current message.  | Web, Slack, email, and iMessage only, and only when eligible files are present. |
 | `lookup_connected_vendors`       | List connected vendors and compliance status.                                      | All channels.                                                                   |
 | `lookup_vendor_policies`         | List policies for a connected vendor.                                              | All channels.                                                                   |
 | `lookup_vendor_compliance`       | Retrieve requirement-by-requirement vendor compliance.                             | All channels.                                                                   |
 | `lookup_policy_section`          | Search source-native policy hierarchy and exact PDF evidence, with the resolved policy ID.                      | All channels; final policies only.                                              |
 | `save_note`                      | Add an explicit stable company fact to the shared company Markdown file.                     | All channels; write permission required.                                        |
+| `update_company_wiki`            | Replace the company Markdown or one section with a revision check.                | All channels; exact org, direct admin role, write capability, and text-channel confirmation required. |
 | `attach_policy_document`         | Attach the original full policy PDF to the response.                               | All channels; final readable policy and stored PDF required.                    |
 | `confirm_policy_fact`            | Confirm a source-backed policy fact and optionally patch allowed top-level fields. | All channels; final writable policy and exact source spans required.            |
 | `generate_coi`                   | Generate or reuse certificates from a policy or requirements source.               | All channels; write permission and final supporting policies required.          |
@@ -244,7 +248,7 @@ Shared customer confirmation records for email send/cancel, draft snapshots, mul
 | `send_connected_vendor_invite`                   | Send a user-authorized connected-vendor invitation.                                 | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
 | `extract_policy_attachment`                      | Start extraction for one policy represented by one or more inbound PDF attachments. | Inbound email only.                                                                                                                                      |
 
-For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot` calls exclude `save_note`, `confirm_policy_fact`, `generate_coi`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
+For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot` calls exclude `save_note`, `confirm_policy_fact`, `generate_coi`, `update_company_wiki`, `create_compliance_requirement`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
 
 ### Internal client-agent subagents
 
@@ -276,7 +280,7 @@ Email expert:
 
 ## Tenant OAuth MCP catalog
 
-`convex/lib/tenantMcpToolCatalog.ts` projects shared client tool definitions into MCP names, JSON schemas, OAuth scopes, and annotations. `convex/actions/tenantMcpTools.ts` executes direct shared tools with the same tenant scope as agent chat. Existing policy, email-draft, vendor, and `ask_spot` names retain their prior handlers and response shapes as compatibility entries. The catalog effect is checked before dispatch; resource authorization is checked by the executor. `ask_spot` passes the token's write capability to its nested client and mailbox catalogs.
+`convex/lib/tenantMcpToolCatalog.ts` projects shared client tool definitions into MCP names, JSON schemas, OAuth scopes, and annotations. `convex/actions/tenantMcpTools.ts` executes direct shared tools with the same tenant scope as agent chat. Existing policy, email-draft, vendor, and `ask_spot` names retain their prior handlers and response shapes as compatibility entries. Deprecated aliases advertise their replacement in `tools/list`; legacy response adapters preserve the old shapes where the shared result differs. The catalog effect is checked before dispatch; resource authorization is checked by the executor. `ask_spot` passes the token's write capability to its nested client and mailbox catalogs.
 
 | MCP tools | Access |
 | --- | --- |
@@ -285,9 +289,12 @@ Email expert:
 | `draft_email`, `update_email_draft`, `send_email_draft`, `send_email_drafts`, `cancel_email_draft` | write; sends are open-world |
 | `list_connected_vendors`, `get_connected_vendor`, `list_connected_vendor_policies`, `list_vendor_compliance` | read |
 | `lookup_policy`, `lookup_company_context`, `lookup_client_requests`, `lookup_client_files`, `read_client_file`, `compare_coverages`, `lookup_compliance_requirements`, `lookup_connected_vendors`, `lookup_vendor_policies`, `lookup_vendor_compliance`, `lookup_policy_section`, `lookup_address`, `web_research` | read; `web_research` is open-world |
-| `save_note`, `confirm_policy_fact`, `generate_coi`, `coordinate_mailbox_task` | write; mailbox coordination is open-world |
+| `list_certificates`, `list_policy_versions` | read; issued COIs with holder/version history, and policy version history |
+| `save_note`, `confirm_policy_fact`, `generate_coi`, `coordinate_mailbox_task`, `update_company_wiki`, `create_compliance_requirement` | write; mailbox coordination is open-world |
+| `list_my_policies`, `get_org_info`, `read_company_wiki`, `list_client_files`, `get_client_file`, `list_insurance_requirements`, `get_policy_stats`, `list_policy_certificates`, `list_certificate_holders`, `list_certificate_versions` | deprecated read aliases |
+| `generate_policy_certificate`, `write_company_wiki`, `create_insurance_requirement` | deprecated write aliases; write scope required |
 
-The former direct MCP names `get_policy_stats`, `list_policy_certificates`, `list_certificate_holders`, `list_policy_versions`, `list_certificate_versions`, `generate_policy_certificate`, `list_threads`, `get_thread_messages`, `get_org_info`, `list_client_files`, `get_client_file`, `read_company_wiki`, `write_company_wiki`, `list_my_policies`, `list_insurance_requirements`, and `create_insurance_requirement` are retired. Use `lookup_policy` for policy inventory, `generate_coi` for certificate creation, `lookup_company_context` for company facts, `lookup_client_files` and `read_client_file` for shared files, `lookup_compliance_requirements` for requirement reads, or `ask_spot` for conversational access. Certificate-history lists, raw thread-message lists, whole-document wiki replacement, typed requirement creation, and aggregate policy statistics have no direct MCP equivalent; use the authorized portal workflows.
+`list_threads` and `get_thread_messages` remain retired. `search_thread_history` searches excerpts in the active conversation; it cannot reproduce `get_thread_messages`' complete message list for an arbitrary thread ID. The other former direct names above remain available as deprecated aliases. `list_policy_versions` is now the shared policy history tool under its original name.
 
 ## Browser WebMCP tools
 
@@ -329,7 +336,7 @@ Effect and access:
 - Company knowledge is a standard `.md` document with YAML front matter. Direct members can read it; direct admins can import, edit, download and save it using revision checks. Automated facts preserve arbitrary authored prose and surface conflicts as proposed changes.
 - Operators manage company knowledge at `/operator/clients/:clientOrgId/wiki`. Impersonation remains read-only. Agent writes use the registry's exact approval gate and company-context policy.
 - Shared procurement content comes from `public.md` and is identical for authorized client and broker-market readers. Internal intake, broker observations, follow-ups, and file-handling prose live in `private.md`; no separate intake, log, or file-note documents exist. Every active packet link reflects saved public.md and currently released files immediately within its audience; stored issuance snapshots remain immutable audit evidence.
-- Tenant MCP exposes `read_company_wiki` and `write_company_wiki`; write requires the token's exact organization, current direct-admin membership, write scope, and expected document revision. Procurement remains absent from tenant MCP.
+- Tenant MCP exposes `lookup_company_context` and `update_company_wiki`, with `read_company_wiki` and `write_company_wiki` as deprecated aliases. Wiki writes require the token's exact organization, current direct-admin membership, write scope, and expected document revision. Procurement remains absent from tenant MCP.
 - Operator MCP derives the whole-document wiki/packet tools and research tool from the same registry as web, email, Slack and iMessage. It retains role, approval, audit and no-impersonation checks.
 
 ## Operator MCP server sources
