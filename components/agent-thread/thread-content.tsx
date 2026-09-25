@@ -27,9 +27,11 @@ import {
 } from "@/lib/sync/spot-cached-queries";
 import { PillButton } from "@/components/ui/pill-button";
 import { EditableBreadcrumbTitle } from "@/components/editable-breadcrumb-title";
+import { chatChannelLabel } from "@/components/chat/channel-icon";
 import { ChatComposer, type ChatComposerHandle } from "@/components/chat/chat-composer";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatErrorNotice } from "@/components/chat/chat-message";
+import { useChatAction } from "@/components/chat/use-chat-action";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
 import { PromptReferenceText } from "@/components/prompt-reference-tag";
@@ -41,12 +43,7 @@ import {
   uploadPromptFiles,
 } from "@/lib/thread-prompt";
 import { getThreadDisplayLabel } from "@/lib/thread-display";
-import type {
-  MailboxArtifactRef,
-  ThreadMessage,
-  ToolArtifactData,
-  VendorComplianceArtifactRef,
-} from "./types";
+import type { ThreadArtifactRef, ThreadMessage } from "./types";
 import {
   EmailThreadSidebar,
   MailboxTaskSidebar,
@@ -65,17 +62,7 @@ import {
 } from "./thread-messages";
 import { typeStyle } from "@/lib/typography";
 
-export {
-  assistantPdfAttachments,
-  latestOwnWebMessageReceipt,
-  threadMessageGroupingFingerprint,
-  type AssistantPdfAttachment,
-} from "./thread-messages";
-export {
-  UnifiedMessageBubble,
-  ThreadContextLink,
-  WebMessageReceipt,
-} from "./thread-message";
+export { ThreadContextLink, UnifiedMessageBubble } from "./thread-message";
 
 function UnifiedThreadActions({
   threadId,
@@ -83,12 +70,7 @@ function UnifiedThreadActions({
   messages,
 }: {
   threadId: Id<"threads">;
-  thread: {
-    title: string;
-    archivedAt?: number;
-    originChannel?: "chat" | "email" | "imessage" | "slack";
-    threadEmail?: string;
-  };
+  thread: { title: string; archivedAt?: number };
   messages?: ThreadMessage[];
 }) {
   const archiveThread = useMutation(api.threads.archive);
@@ -125,16 +107,8 @@ function UnifiedThreadActions({
       if (msg.status === "processing") continue;
       const time = formatDisplayDateTime(msg._creationTime);
       const sender = msg.role === "agent" ? "Spot" : messageSenderName(msg);
-      const channel =
-        msg.channel === "email"
-          ? " [Email]"
-          : msg.channel === "imessage"
-            ? " [iMessage]"
-            : msg.channel === "slack"
-              ? " [Slack]"
-              : " [Chat]";
       lines.push("");
-      lines.push(`${sender}${channel} — ${time}`);
+      lines.push(`${sender} [${chatChannelLabel(msg.channel, "Chat")}] — ${time}`);
       if (msg.operatorInitiated?.operatorEmail) {
         lines.push(`Operator: ${msg.operatorInitiated.operatorEmail}`);
       }
@@ -184,7 +158,6 @@ function UnifiedThreadActions({
   );
 }
 
-/* ── Shared markdown container styles ── */
 function slackConversationUrl(thread: {
   slackChannelId?: string;
   slackThreadTs?: string;
@@ -249,7 +222,7 @@ function QueuedThreadMessage({
   );
 }
 
-/* ── Unified thread content ── */
+/** Tenant thread: data, artifact side panels and sending, on the shared chat list. */
 export function UnifiedThreadContent({
   threadId,
   onMeta,
@@ -280,16 +253,31 @@ export function UnifiedThreadContent({
     api.connectedEmailAutomation.reviewForThread,
     { threadId },
   );
-  const mailboxReviewArtifact = useMemo<ToolArtifactData | null>(
-    () => mailboxReview ? { type: "mailbox_task", data: mailboxReview } : null,
-    [mailboxReview],
-  );
-  const mailboxReviewMessageId = useMemo(
+  // A live mailbox review renders as an extra artifact on the first agent message.
+  const reviewMessage = mailboxReview
+    ? messages?.find((message) => message.role === "agent")
+    : undefined;
+  const reviewRendered = useMemo(
     () =>
-      mailboxReviewArtifact
-        ? messages?.find((message) => message.role === "agent")?._id
+      reviewMessage && mailboxReview
+        ? {
+            ...reviewMessage,
+            toolArtifacts: [
+              ...(reviewMessage.toolArtifacts ?? []),
+              { type: "mailbox_task", data: mailboxReview },
+            ],
+          }
         : undefined,
-    [mailboxReviewArtifact, messages],
+    [mailboxReview, reviewMessage],
+  );
+  const renderedMessages = useMemo(
+    () =>
+      reviewRendered
+        ? messages?.map((message) =>
+            message._id === reviewRendered._id ? reviewRendered : message,
+          )
+        : messages,
+    [messages, reviewRendered],
   );
   const messageGroupingFingerprint = threadMessageGroupingFingerprint(
     threadId,
@@ -304,32 +292,16 @@ export function UnifiedThreadContent({
   );
   const visibleMessages = useMemo(
     () =>
-      (messages ?? []).filter(
+      (renderedMessages ?? []).filter(
         (message) =>
           !messageRenderPlan.hiddenStatusMessageIds.has(message._id) &&
           !messageRenderPlan.attachedEmailMessageIds.has(message._id),
       ),
-    [messageRenderPlan, messages],
+    [messageRenderPlan, renderedMessages],
   );
   const latestOwnReceipt = useMemo(
     () => latestOwnWebMessageReceipt(messages ?? [], viewerId, viewerEmail),
     [messages, viewerEmail, viewerId],
-  );
-  const mailboxReviewSourceMessage = mailboxReviewArtifact
-    ? messages?.find((message) => message._id === mailboxReviewMessageId)
-    : undefined;
-  const mailboxReviewRenderedMessage = useMemo(
-    () =>
-      mailboxReviewArtifact && mailboxReviewSourceMessage
-        ? {
-            ...mailboxReviewSourceMessage,
-            toolArtifacts: [
-              ...(mailboxReviewSourceMessage.toolArtifacts ?? []),
-              mailboxReviewArtifact,
-            ],
-          }
-        : mailboxReviewSourceMessage,
-    [mailboxReviewArtifact, mailboxReviewSourceMessage],
   );
   const pdf = usePdf();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -353,81 +325,27 @@ export function UnifiedThreadContent({
       ? { threadId, fileId: autoOpenPdfAttachment.fileId }
       : "skip",
   );
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const sendInFlight = useRef(false);
+  const {
+    pending: isSubmitting,
+    run: runSend,
+    isRunning: sendInFlight,
+  } = useChatAction();
   const [queuedMessage, setQueuedMessage] = useState<PromptInputMessage | null>(
     null,
   );
   const [sendingQueuedNow, setSendingQueuedNow] = useState(false);
-  const [openEmailMessageId, setOpenEmailMessageId] =
-    useState<Id<"threadMessages"> | null>(null);
-  const [openVendorComplianceArtifactRef, setOpenVendorComplianceArtifactRef] =
-    useState<VendorComplianceArtifactRef | null>(null);
-  const [openMailboxArtifactRef, setOpenMailboxArtifactRef] =
-    useState<MailboxArtifactRef | null>(null);
-  const handleOpenEmail = useCallback((message: ThreadMessage) => {
-    setOpenVendorComplianceArtifactRef(null);
-    setOpenMailboxArtifactRef(null);
-    setOpenEmailMessageId(message._id);
-  }, []);
-  const handleOpenVendorCompliance = useCallback(
-    (ref: VendorComplianceArtifactRef) => {
-      setOpenEmailMessageId(null);
-      setOpenMailboxArtifactRef(null);
-      setOpenVendorComplianceArtifactRef(ref);
-    },
-    [],
+  const [openArtifact, setOpenArtifact] = useState<ThreadArtifactRef | null>(
+    null,
   );
-  const handleOpenMailboxArtifact = useCallback((ref: MailboxArtifactRef) => {
-    setOpenEmailMessageId(null);
-    setOpenVendorComplianceArtifactRef(null);
-    setOpenMailboxArtifactRef(ref);
-  }, []);
-  const openEmailMessage = useMemo(
-    () =>
-      messages?.find((message) => message._id === openEmailMessageId) ?? null,
-    [messages, openEmailMessageId],
-  );
-  const openVendorComplianceArtifact = useMemo(() => {
-    if (!openVendorComplianceArtifactRef) return null;
-    const message = messages?.find(
-      (candidate) =>
-        candidate._id === openVendorComplianceArtifactRef.messageId,
-    );
-    const artifacts =
-      message?.toolArtifacts?.filter(
-        (artifact) => artifact.type === "vendor_compliance",
-      ) ?? [];
-    return artifacts[openVendorComplianceArtifactRef.index] ?? null;
-  }, [messages, openVendorComplianceArtifactRef]);
-  const openMailboxArtifact = useMemo(() => {
-    if (!openMailboxArtifactRef) return null;
-    const message = messages?.find(
-      (candidate) => candidate._id === openMailboxArtifactRef.messageId,
-    );
-    const storedArtifacts =
-      message?.toolArtifacts?.filter(
-        (artifact) => artifact.type === "mailbox_task",
-      ) ?? [];
-    const artifacts =
-      mailboxReviewArtifact && message?._id === mailboxReviewMessageId
-        ? [...storedArtifacts, mailboxReviewArtifact]
-        : storedArtifacts;
-    const artifact = artifacts[openMailboxArtifactRef.index];
-    return artifact
-      ? {
-          artifact,
-          orgId: message?.orgId,
-          threadId: message?.threadId,
-          emailIndex: openMailboxArtifactRef.emailIndex,
-        }
-      : null;
-  }, [
-    mailboxReviewArtifact,
-    mailboxReviewMessageId,
-    messages,
-    openMailboxArtifactRef,
-  ]);
+  const openMessage = openArtifact
+    ? renderedMessages?.find((message) => message._id === openArtifact.messageId)
+    : undefined;
+  const openToolArtifact =
+    openArtifact && openArtifact.kind !== "email"
+      ? openMessage?.toolArtifacts?.filter(
+          (artifact) => artifact.type === openArtifact.kind,
+        )[openArtifact.index]
+      : undefined;
 
   // Error state for chat — stored as { threadId, message } so switching threads auto-clears it
   const [chatErrorState, setChatErrorState] = useState<{
@@ -486,47 +404,32 @@ export function UnifiedThreadContent({
 
   useEffect(() => {
     if (!onRightPanel) return;
+    const close = () => setOpenArtifact(null);
     onRightPanel(
-      openEmailMessage ? (
-        <EmailThreadSidebar
-          message={openEmailMessage}
-          onClose={() => setOpenEmailMessageId(null)}
-        />
-      ) : openVendorComplianceArtifact ? (
-        <VendorComplianceSidebar
-          artifact={openVendorComplianceArtifact}
-          onClose={() => setOpenVendorComplianceArtifactRef(null)}
-        />
-      ) : openMailboxArtifact?.artifact &&
-        openMailboxArtifact.orgId &&
-        openMailboxArtifact.threadId ? (
+      !openArtifact || !openMessage ? null
+      : openArtifact.kind === "email" ? (
+        <EmailThreadSidebar message={openMessage} onClose={close} />
+      ) : !openToolArtifact ? null
+      : openArtifact.kind === "vendor_compliance" ? (
+        <VendorComplianceSidebar artifact={openToolArtifact} onClose={close} />
+      ) : (
         <MailboxTaskSidebar
-          key={`${openMailboxArtifactRef?.index ?? 0}:${openMailboxArtifact.emailIndex ?? "task"}`}
-          artifact={openMailboxArtifact.artifact}
-          orgId={openMailboxArtifact.orgId}
-          threadId={openMailboxArtifact.threadId}
-          emailIndex={openMailboxArtifact.emailIndex}
-          onClose={() => setOpenMailboxArtifactRef(null)}
+          key={`${openArtifact.index}:${openArtifact.emailIndex ?? "task"}`}
+          artifact={openToolArtifact}
+          orgId={openMessage.orgId}
+          threadId={openMessage.threadId}
+          emailIndex={openArtifact.emailIndex}
+          onClose={close}
         />
-      ) : null,
+      ),
     );
     return () => onRightPanel(null);
-  }, [
-    onRightPanel,
-    openEmailMessage,
-    openVendorComplianceArtifact,
-    openMailboxArtifact,
-    openMailboxArtifactRef?.index,
-  ]);
+  }, [onRightPanel, openArtifact, openMessage, openToolArtifact]);
 
   // Reset thread-local panels when the selected thread changes.
   useEffect(() => {
     lastAutoOpenedEmailId.current = null;
-    const frame = window.requestAnimationFrame(() => {
-      setOpenEmailMessageId(null);
-      setOpenVendorComplianceArtifactRef(null);
-      setOpenMailboxArtifactRef(null);
-    });
+    const frame = window.requestAnimationFrame(() => setOpenArtifact(null));
     return () => window.cancelAnimationFrame(frame);
   }, [threadId]);
 
@@ -542,9 +445,7 @@ export function UnifiedThreadContent({
     if (!latestDraftEmail) return;
     if (lastAutoOpenedEmailId.current === latestDraftEmail._id) return;
     lastAutoOpenedEmailId.current = latestDraftEmail._id;
-    setOpenVendorComplianceArtifactRef(null);
-    setOpenMailboxArtifactRef(null);
-    setOpenEmailMessageId(latestDraftEmail._id);
+    setOpenArtifact({ kind: "email", messageId: latestDraftEmail._id });
   }, [messages]);
 
   useEffect(() => {
@@ -576,95 +477,72 @@ export function UnifiedThreadContent({
     pdf.openWithUrl(autoOpenPdfUrl);
   }, [autoOpenPdfAttachment, autoOpenPdfUrl, isDesktop, pdf]);
 
-  const isAgentProcessing = useMemo(
-    () =>
-      messages?.some((m) => m.role === "agent" && m.status === "processing") ??
-      false,
-    [messages],
-  );
-  const isAwaitingAgent = useMemo(() => {
-    if (!messages || messages.length === 0) return false;
-    const lastUserIndex = messages.reduce(
-      (acc, m, i) => (m.role === "user" ? i : acc),
-      -1,
+  const isAgentActive = useMemo(() => {
+    if (!messages) return false;
+    const lastIndex = (role: ThreadMessage["role"]) =>
+      messages.reduce((acc, m, i) => (m.role === role ? i : acc), -1);
+    return (
+      messages.some((m) => m.role === "agent" && m.status === "processing") ||
+      lastIndex("user") > lastIndex("agent")
     );
-    const lastAgentIndex = messages.reduce(
-      (acc, m, i) => (m.role === "agent" ? i : acc),
-      -1,
-    );
-    return lastUserIndex > lastAgentIndex;
   }, [messages]);
-  const isAgentActive = isAgentProcessing || isAwaitingAgent;
   const isInputBusy = isSubmitting || sendingQueuedNow;
-  const inputBusyLabel = "Sending";
 
   const sendThreadMessage = useCallback(
-    async (message: PromptInputMessage) => {
+    (message: PromptInputMessage) => {
       const text = message.text.trim();
-      if (!text && message.files.length === 0) return;
-      if (!thread || sendInFlight.current) return;
-      sendInFlight.current = true;
-      setIsSubmitting(true);
-      const content = text || "(attached files)";
-      const clientMutationId = createClientMutationId("message");
-      const referenceIds = promptReferenceIds(message.references);
+      if ((!text && message.files.length === 0) || !thread) {
+        return Promise.resolve();
+      }
+      return runSend(async () => {
+        const content = text || "(attached files)";
+        const clientMutationId = createClientMutationId("message");
+        const referenceIds = promptReferenceIds(message.references);
 
-      try {
-        await appendOptimisticSend({
-          threadId,
-          orgId: thread.orgId,
-          content,
-          clientMutationId,
-          userId: viewerId as Id<"users"> | undefined,
-          userName: viewerEmail ?? "You",
-          attachments: optimisticPromptAttachments(message.files),
-          ...referenceIds,
-        });
-        setChatError(null);
+        try {
+          await appendOptimisticSend({
+            threadId,
+            orgId: thread.orgId,
+            content,
+            clientMutationId,
+            userId: viewerId as Id<"users"> | undefined,
+            userName: viewerEmail ?? "You",
+            attachments: optimisticPromptAttachments(message.files),
+            ...referenceIds,
+          });
+          setChatError(null);
 
-        const attachments = await uploadPromptFiles(
-          message.files,
-          generateUploadUrl,
-        );
-
-        if (attachments.length > 0) {
+          const attachments = await uploadPromptFiles(
+            message.files,
+            generateUploadUrl,
+          );
           await sendMessage({
             threadId,
             content,
-            attachments,
+            ...(attachments.length > 0 ? { attachments } : {}),
             ...referenceIds,
             clientMutationId,
           });
-          return;
+        } catch (error) {
+          const message = getUserFacingErrorMessage(
+            error,
+            "Failed to send message",
+          );
+          await markOptimisticSendFailed({
+            threadId,
+            clientMutationId,
+            error: message,
+          });
+          setChatError(message);
+          toast.error("Failed to send message");
         }
-
-        await sendMessage({
-          threadId,
-          content,
-          ...referenceIds,
-          clientMutationId,
-        });
-      } catch (error) {
-        const message = getUserFacingErrorMessage(
-          error,
-          "Failed to send message",
-        );
-        await markOptimisticSendFailed({
-          threadId,
-          clientMutationId,
-          error: message,
-        });
-        setChatError(message);
-        toast.error("Failed to send message");
-      } finally {
-        sendInFlight.current = false;
-        setIsSubmitting(false);
-      }
+      });
     },
     [
       appendOptimisticSend,
       generateUploadUrl,
       markOptimisticSendFailed,
+      runSend,
       sendMessage,
       setChatError,
       thread,
@@ -719,14 +597,12 @@ export function UnifiedThreadContent({
     async (content: string, selectedReferences?: PresentationReference[]) => {
       if (
         !thread || thread.archivedAt || thread.originChannel === "slack" ||
-        isAgentActive || isInputBusy || sendInFlight.current || queuedMessage
+        isAgentActive || isInputBusy || sendInFlight() || queuedMessage
       ) {
         throw new Error("Wait for the current task to finish.");
       }
-      sendInFlight.current = true;
-      setIsSubmitting(true);
-      try {
-        await sendMessage({
+      await runSend(() =>
+        sendMessage({
           threadId,
           content,
           ...promptReferenceIds(selectedReferences?.flatMap(reference =>
@@ -735,13 +611,19 @@ export function UnifiedThreadContent({
               : [],
           )),
           clientMutationId: createClientMutationId("message"),
-        });
-      } finally {
-        sendInFlight.current = false;
-        setIsSubmitting(false);
-      }
+        }),
+      );
     },
-    [thread, isAgentActive, isInputBusy, queuedMessage, sendMessage, threadId],
+    [
+      thread,
+      isAgentActive,
+      isInputBusy,
+      sendInFlight,
+      queuedMessage,
+      runSend,
+      sendMessage,
+      threadId,
+    ],
   );
 
   const collapseEmailMessages = thread?.originChannel !== "email";
@@ -796,7 +678,7 @@ export function UnifiedThreadContent({
             showAttach
             disabled={isInputBusy}
             busy={isInputBusy}
-            busyLabel={inputBusyLabel}
+            busyLabel="Sending"
             orgId={thread.orgId}
             banner={queuedMessage ? (
               <QueuedThreadMessage
@@ -810,75 +692,58 @@ export function UnifiedThreadContent({
         )
       }
     >
-          {messages && messages.length === 0 && (
-            <NewChatEmptyState
-              orgId={thread.orgId}
-              onSelectPrompt={(prompt) =>
-                chatInputRef.current?.setValueAndFocus(prompt)
+      {messages && messages.length === 0 && (
+        <NewChatEmptyState
+          orgId={thread.orgId}
+          onSelectPrompt={(prompt) =>
+            chatInputRef.current?.setValueAndFocus(prompt)
+          }
+        />
+      )}
+      {visibleMessages.map((msg) => {
+        const isFirstUser = msg._id === messageRenderPlan.firstUserMessageId;
+        const firstUserIsOwn =
+          isFirstUser && isMessageFromViewer(msg, viewerId, viewerEmail);
+        return (
+          <div key={msg._id}>
+            <UnifiedMessageBubble
+              msg={msg}
+              onPresentationFollowUp={sendPresentationFollowUp}
+              presentationDisabled={
+                isAgentActive || isInputBusy || Boolean(queuedMessage) ||
+                thread.originChannel === "slack" || Boolean(thread.archivedAt)
               }
+              relatedEmailMessages={messageRenderPlan.relatedEmailsByMessageId.get(msg._id)}
+              viewerId={viewerId}
+              viewerEmail={viewerEmail}
+              receiptStatus={
+                latestOwnReceipt?.messageId === msg._id
+                  ? latestOwnReceipt.status
+                  : undefined
+              }
+              mirroredToImessage={
+                thread.originChannel === "imessage" && msg.channel === "chat"
+              }
+              threadContext={isFirstUser ? thread.initialContext : undefined}
+              collapseEmailMessages={collapseEmailMessages}
+              openArtifact={openArtifact}
+              onOpenArtifact={setOpenArtifact}
             />
-          )}
-          {visibleMessages.map((msg) => {
-            const renderedMessage =
-              msg._id === mailboxReviewMessageId
-                ? (mailboxReviewRenderedMessage ?? msg)
-                : msg;
-            const isFirstUser =
-              msg._id === messageRenderPlan.firstUserMessageId;
-            const firstUserIsOwn =
-              isFirstUser && isMessageFromViewer(msg, viewerId, viewerEmail);
-            const relatedEmailMessages =
-              messageRenderPlan.relatedEmailsByMessageId.get(msg._id);
-            const receiptStatus =
-              latestOwnReceipt?.messageId === msg._id
-                ? latestOwnReceipt.status
-                : null;
-
-            return (
-              <div key={msg._id}>
-                <UnifiedMessageBubble
-                  msg={renderedMessage}
-                  onPresentationFollowUp={sendPresentationFollowUp}
-                  presentationDisabled={
-                    isAgentActive || isInputBusy || Boolean(queuedMessage) ||
-                    thread.originChannel === "slack" || Boolean(thread.archivedAt)
-                  }
-                  relatedEmailMessages={relatedEmailMessages}
-                  viewerId={viewerId}
-                  viewerEmail={viewerEmail}
-                  receiptStatus={receiptStatus ?? undefined}
-                  mirroredToImessage={
-                    thread.originChannel === "imessage" &&
-                    msg.channel === "chat"
-                  }
-                  threadContext={
-                    isFirstUser ? thread?.initialContext : undefined
-                  }
-                  collapseEmailMessages={collapseEmailMessages}
-                  onOpenEmail={handleOpenEmail}
-                  openEmailMessageId={openEmailMessageId}
-                  onOpenVendorCompliance={handleOpenVendorCompliance}
-                  openVendorComplianceArtifactRef={
-                    openVendorComplianceArtifactRef
-                  }
-                  onOpenMailboxArtifact={handleOpenMailboxArtifact}
-                  openMailboxArtifactRef={openMailboxArtifactRef}
-                />
-                {isFirstUser && thread?.initialContext && (
-                  <div
-                    className={`mt-2 flex ${firstUserIsOwn ? "justify-end mr-9.5" : "ml-9.5"}`}
-                  >
-                    <ThreadContextLink context={thread.initialContext} />
-                  </div>
-                )}
+            {isFirstUser && thread.initialContext && (
+              <div
+                className={`mt-2 flex ${firstUserIsOwn ? "justify-end mr-9.5" : "ml-9.5"}`}
+              >
+                <ThreadContextLink context={thread.initialContext} />
               </div>
-            );
-          })}
-          {chatError && (
-            <ChatErrorNotice className={`mx-4 mb-4 px-4 py-3 ${typeStyle("body.default")}`}>
-              {chatError}
-            </ChatErrorNotice>
-          )}
+            )}
+          </div>
+        );
+      })}
+      {chatError && (
+        <ChatErrorNotice className={`mx-4 mb-4 px-4 py-3 ${typeStyle("body.default")}`}>
+          {chatError}
+        </ChatErrorNotice>
+      )}
     </ChatMessageList>
   );
 }

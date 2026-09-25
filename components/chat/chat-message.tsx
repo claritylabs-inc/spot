@@ -4,7 +4,6 @@ import { useState, type ComponentProps, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
-import type { PresentationFollowUp } from "@/components/chat-presentation/context";
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
 import { QuotedContent } from "@/components/conversation-message";
 import { useChatDisplayPreferences } from "@/components/profile/streaming-preference";
@@ -18,6 +17,8 @@ import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { ChatMessageBubble, type ChatChannel } from "./message-bubble";
 import { ThinkingSummary } from "./thinking-summary";
+
+export { ChatErrorNotice } from "./message-bubble";
 
 function AgentThinkingBubble() {
   return (
@@ -41,57 +42,19 @@ function AgentThinkingBubble() {
 }
 
 /**
- * Assistant turn shell. Applies the viewer's Stream responses and Show
- * thinking preferences: while `working`, the answer is replaced by the
- * thinking indicator until streamed text arrives (or always, when streaming
- * is off).
+ * Assistant turn: optional tool-activity summary, then the Markdown answer
+ * with any generated presentation. While `working`, the viewer's Stream
+ * responses and Show thinking preferences decide whether streamed text or the
+ * thinking indicator shows. `body` replaces the answer bubble entirely.
  */
-export function ChatAssistantMessage({
+export function ChatAssistantTurn({
   working,
-  hasText,
   tools,
   toolCalls,
   aside,
   after,
-  children,
-}: {
-  working: boolean;
-  hasText: boolean;
-  tools?: string[];
-  toolCalls?: { name: string; input?: string }[];
-  /** Rendered beside the answer or thinking indicator, e.g. a stop control. */
-  aside?: ReactNode;
-  /** Rendered below the answer regardless of pending state. */
-  after?: ReactNode;
-  children: ReactNode;
-}) {
-  const { streamResponses, showThinking } = useChatDisplayPreferences();
-  const body =
-    working && (!streamResponses || !hasText) ? (
-      <AgentThinkingBubble />
-    ) : (
-      children
-    );
-  return (
-    <div className="w-full">
-      {showThinking ? (
-        <ThinkingSummary tools={tools} toolCalls={toolCalls} working={working} />
-      ) : null}
-      {aside ? (
-        <div className="flex items-start gap-2">
-          {body}
-          {aside}
-        </div>
-      ) : (
-        body
-      )}
-      {after}
-    </div>
-  );
-}
-
-/** Assistant answer bubble: Markdown text plus any generated presentation. */
-export function ChatAnswer({
+  body,
+  belowAnswer,
   content,
   channel,
   isError,
@@ -104,91 +67,75 @@ export function ChatAnswer({
   onFollowUp,
   presentationDisabled,
   children,
-}: {
+}: Omit<ComponentProps<typeof ChatPresentationView>, "answer" | "disabled"> & {
+  working: boolean;
+  tools?: string[];
+  toolCalls?: { name: string; input?: string }[];
+  /** Rendered beside the answer or thinking indicator, e.g. a stop control. */
+  aside?: ReactNode;
+  /** Rendered below the answer regardless of pending state. */
+  after?: ReactNode;
+  body?: ReactNode;
+  belowAnswer?: ReactNode;
   content: string;
   channel?: ChatChannel;
   isError?: boolean;
   markdownClassName?: string;
   markdownComponents?: ProseMarkdownProps["components"];
-  presentation?: unknown;
-  audience?: "operator" | "client";
-  organizationId?: string;
-  structuredReferences?: boolean;
-  onFollowUp?: PresentationFollowUp;
   presentationDisabled?: boolean;
   children?: ReactNode;
 }) {
+  const { streamResponses, showThinking } = useChatDisplayPreferences();
+  const answer =
+    working && (!streamResponses || !content) ? (
+      <AgentThinkingBubble />
+    ) : (
+      <>
+        {body ?? (
+          <ChatMessageBubble role="agent" channel={channel} isError={isError}>
+            <ChatPresentationView
+              audience={audience}
+              organizationId={organizationId}
+              presentation={isError ? undefined : presentation}
+              onFollowUp={onFollowUp}
+              structuredReferences={structuredReferences}
+              disabled={presentationDisabled}
+              answer={
+                content ? (
+                  <ProseMarkdown
+                    gfm
+                    breaks
+                    compact={channel === "imessage"}
+                    className={markdownClassName}
+                    components={markdownComponents}
+                  >
+                    {content}
+                  </ProseMarkdown>
+                ) : null
+              }
+            />
+            {children}
+          </ChatMessageBubble>
+        )}
+        {belowAnswer}
+      </>
+    );
   return (
-    <ChatMessageBubble role="agent" channel={channel} isError={isError}>
-      <ChatPresentationView
-        audience={audience}
-        organizationId={organizationId}
-        presentation={isError ? undefined : presentation}
-        onFollowUp={onFollowUp}
-        structuredReferences={structuredReferences}
-        disabled={presentationDisabled}
-        answer={
-          content ? (
-            <ProseMarkdown
-              gfm
-              breaks
-              compact={channel === "imessage"}
-              className={markdownClassName}
-              components={markdownComponents}
-            >
-              {content}
-            </ProseMarkdown>
-          ) : null
-        }
-      />
-      {children}
-    </ChatMessageBubble>
+    <div className="w-full">
+      {showThinking ? (
+        <ThinkingSummary tools={tools} toolCalls={toolCalls} working={working} />
+      ) : null}
+      {aside ? (
+        <div className="flex items-start gap-2">
+          {answer}
+          {aside}
+        </div>
+      ) : (
+        answer
+      )}
+      {after}
+    </div>
   );
-}
-
-export function ChatAssistantTurn({
-  working,
-  hasText,
-  tools,
-  toolCalls,
-  aside,
-  after,
-  body,
-  belowAnswer,
-  children,
-  ...answer
-}: ComponentProps<typeof ChatAnswer> & {
-  working: boolean;
-  hasText?: boolean;
-  tools?: string[];
-  toolCalls?: { name: string; input?: string }[];
-  aside?: ReactNode;
-  after?: ReactNode;
-  body?: ReactNode;
-  belowAnswer?: ReactNode;
-}) {
-  return (
-    <ChatAssistantMessage
-      working={working}
-      hasText={hasText ?? Boolean(answer.content)}
-      tools={tools}
-      toolCalls={toolCalls}
-      aside={aside}
-      after={after}
-    >
-      {body ?? <ChatAnswer {...answer}>{children}</ChatAnswer>}
-      {belowAnswer}
-    </ChatAssistantMessage>
-  );
-}
-
-export function chatInitials(name: string) {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
 }
 
 export function ChatAvatar({
@@ -202,6 +149,12 @@ export function ChatAvatar({
   className?: string;
   children?: ReactNode;
 }) {
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
   return (
     <div
       className={cn(
@@ -212,15 +165,15 @@ export function ChatAvatar({
     >
       {children ?? (
         <span className={cn("text-foreground/60", typeStyle("caption.medium"))}>
-          {chatInitials(name)}
+          {initials}
         </span>
       )}
     </div>
   );
 }
 
-/** A person's turn: avatar, sender line, then the adapter's message body. */
-export function ChatUserMessage({
+/** A person's turn: avatar, sender line, then the bubble or a custom body. */
+export function ChatUserTurn({
   own,
   name,
   nameTitle,
@@ -228,7 +181,13 @@ export function ChatUserMessage({
   meta,
   channelIcon,
   createdAt,
-  children,
+  channel,
+  isError,
+  body,
+  attachments,
+  quotedText,
+  customBody = false,
+  after,
 }: {
   own: boolean;
   name: string;
@@ -238,8 +197,15 @@ export function ChatUserMessage({
   meta?: ReactNode;
   channelIcon?: ReactNode;
   createdAt: number;
-  children: ReactNode;
+  channel?: ChatChannel;
+  isError?: boolean;
+  body: ReactNode;
+  attachments?: ReactNode;
+  quotedText?: string | null;
+  customBody?: boolean;
+  after?: ReactNode;
 }) {
+  const [showQuoted, setShowQuoted] = useState(false);
   return (
     <div
       className={cn(
@@ -276,79 +242,36 @@ export function ChatUserMessage({
             {formatDisplayDateTime(createdAt)}
           </span>
         </div>
-        {children}
+        {customBody ? (
+          body
+        ) : (
+          <ChatMessageBubble
+            role="user"
+            channel={channel}
+            isOwnMessage={own}
+            isError={isError}
+          >
+            {body}
+            {quotedText ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowQuoted(!showQuoted)}
+                  className={cn(
+                    "mt-1.5 text-muted-foreground/40 transition-colors hover:text-muted-foreground/60",
+                    typeStyle("control.buttonCompact"),
+                  )}
+                >
+                  {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
+                </button>
+                {showQuoted ? <QuotedContent text={quotedText} /> : null}
+              </>
+            ) : null}
+            {attachments}
+          </ChatMessageBubble>
+        )}
+        {after}
       </div>
-    </div>
-  );
-}
-
-export function ChatUserTurn({
-  channel,
-  isError,
-  body,
-  attachments,
-  quotedText,
-  customBody = false,
-  after,
-  ...sender
-}: Omit<ComponentProps<typeof ChatUserMessage>, "children"> & {
-  channel?: ChatChannel;
-  isError?: boolean;
-  body: ReactNode;
-  attachments?: ReactNode;
-  quotedText?: string | null;
-  customBody?: boolean;
-  after?: ReactNode;
-}) {
-  const [showQuoted, setShowQuoted] = useState(false);
-  return (
-    <ChatUserMessage {...sender}>
-      {customBody ? body : (
-        <ChatMessageBubble
-          role="user"
-          channel={channel}
-          isOwnMessage={sender.own}
-          isError={isError}
-        >
-          {body}
-          {quotedText ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowQuoted(!showQuoted)}
-                className={cn(
-                  "mt-1.5 text-muted-foreground/40 transition-colors hover:text-muted-foreground/60",
-                  typeStyle("control.buttonCompact"),
-                )}
-              >
-                {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
-              </button>
-              {showQuoted ? <QuotedContent text={quotedText} /> : null}
-            </>
-          ) : null}
-          {attachments}
-        </ChatMessageBubble>
-      )}
-      {after}
-    </ChatUserMessage>
-  );
-}
-
-export function ChatErrorNotice({
-  className,
-  children,
-}: {
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border border-destructive/20 bg-destructive/5 text-destructive",
-        className,
-      )}
-    >
-      {children}
     </div>
   );
 }

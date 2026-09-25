@@ -79,29 +79,6 @@ export function messageSenderName(message: ThreadMessage) {
   return message.userName ?? message.fromName ?? message.fromEmail ?? "User";
 }
 
-function findRelatedEmailMessages(
-  messages: ThreadMessage[],
-  message: ThreadMessage,
-  attachedEmailMessageIds: Set<string>,
-) {
-  if (
-    message.role !== "agent" ||
-    message.pendingEmailId === undefined ||
-    message.messageKind === "channel_sync"
-  ) {
-    return [];
-  }
-
-  const linked = messages.find(
-    (candidate) =>
-      candidate.channel === "email" &&
-      candidate.role === "agent" &&
-      candidate.pendingEmailId === message.pendingEmailId &&
-      candidate._id !== message._id,
-  );
-  return linked && !attachedEmailMessageIds.has(linked._id) ? [linked] : [];
-}
-
 type ThreadMessageRenderPlan = {
   attachedEmailMessageIds: Set<string>;
   firstUserMessageId?: string;
@@ -172,16 +149,18 @@ export function buildThreadMessageRenderPlan(
       return;
     }
 
-    const relatedEmailMessages = findRelatedEmailMessages(
-      messages,
-      message,
-      attachedEmailMessageIds,
+    if (message.role !== "agent" || message.pendingEmailId === undefined) return;
+    // The sent copy of a pending email renders as a card on the agent turn.
+    const linked = messages.find(
+      (candidate) =>
+        candidate.channel === "email" &&
+        candidate.role === "agent" &&
+        candidate.pendingEmailId === message.pendingEmailId &&
+        candidate._id !== message._id,
     );
-    if (relatedEmailMessages.length === 0) return;
-    relatedEmailsByMessageId.set(message._id, relatedEmailMessages);
-    relatedEmailMessages.forEach((emailMessage) =>
-      attachedEmailMessageIds.add(emailMessage._id),
-    );
+    if (!linked || attachedEmailMessageIds.has(linked._id)) return;
+    relatedEmailsByMessageId.set(message._id, [linked]);
+    attachedEmailMessageIds.add(linked._id);
   });
 
   return {

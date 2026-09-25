@@ -1,7 +1,5 @@
 "use client";
 
-import { X } from "lucide-react";
-
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -9,23 +7,22 @@ import {
   type StatusTagTone,
 } from "@claritylabs-inc/ui/components/status-tag";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { VendorComplianceArtifactData, VendorComplianceArtifactRef } from "../types";
+import type { ThreadArtifactRef, ToolArtifactData } from "../types";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
+import { asNumber, asRecord, asRecords, asString } from "./normalize";
+import { ArtifactSidebar } from "./shell";
 
 type VendorComplianceCheck = {
   requirementId?: string;
   title?: string;
   status?: string;
-  requiredLimits?: Array<{ kind?: string; amount?: number; label?: string }>;
-  expiresAt?: string;
-  daysUntilExpiration?: number;
+  requiredLimits?: Array<{ amount?: number; label?: string }>;
   notes?: string;
   matchedPolicy?: {
     carrier?: string;
     policyNumber?: string;
     insuredName?: string;
-    expectedInsuredName?: string;
     expirationDate?: string;
     coverageName?: string;
     coverageLimit?: string;
@@ -43,36 +40,25 @@ type VendorComplianceRow = {
 };
 
 function normalizeVendorComplianceRows(data: unknown): VendorComplianceRow[] {
-  if (!Array.isArray(data)) return [];
-  return data
-    .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
-    .map((row) => ({
-      vendorOrgId: typeof row.vendorOrgId === "string" ? row.vendorOrgId : undefined,
-      name: typeof row.name === "string" ? row.name : "Vendor",
-      status: typeof row.status === "string" ? row.status : undefined,
-      requirementCount: typeof row.requirementCount === "number" ? row.requirementCount : undefined,
-      policyCount: typeof row.policyCount === "number" ? row.policyCount : undefined,
-      checks: Array.isArray(row.checks)
-        ? row.checks
-            .filter((check): check is Record<string, unknown> => !!check && typeof check === "object")
-            .map((check) => ({
-              requirementId: typeof check.requirementId === "string" ? check.requirementId : undefined,
-              title: typeof check.title === "string" ? check.title : "Requirement",
-              status: typeof check.status === "string" ? check.status : undefined,
-              requiredLimits: Array.isArray(check.requiredLimits)
-                ? (check.requiredLimits as VendorComplianceCheck["requiredLimits"])
-                : undefined,
-              expiresAt: typeof check.expiresAt === "string" ? check.expiresAt : undefined,
-              daysUntilExpiration:
-                typeof check.daysUntilExpiration === "number" ? check.daysUntilExpiration : undefined,
-              notes: typeof check.notes === "string" ? check.notes : undefined,
-              matchedPolicy:
-                check.matchedPolicy && typeof check.matchedPolicy === "object"
-                  ? (check.matchedPolicy as VendorComplianceCheck["matchedPolicy"])
-                  : undefined,
-            }))
-        : [],
-    }));
+  return asRecords(data).map((row) => ({
+    vendorOrgId: asString(row.vendorOrgId),
+    name: asString(row.name) ?? "Vendor",
+    status: asString(row.status),
+    requirementCount: asNumber(row.requirementCount),
+    policyCount: asNumber(row.policyCount),
+    checks: asRecords(row.checks).map((check) => ({
+      requirementId: asString(check.requirementId),
+      title: asString(check.title) ?? "Requirement",
+      status: asString(check.status),
+      requiredLimits: Array.isArray(check.requiredLimits)
+        ? (check.requiredLimits as VendorComplianceCheck["requiredLimits"])
+        : undefined,
+      notes: asString(check.notes),
+      matchedPolicy: asRecord(check.matchedPolicy) as
+        | VendorComplianceCheck["matchedPolicy"]
+        | undefined,
+    })),
+  }));
 }
 
 function vendorStatusLabel(status?: string) {
@@ -95,35 +81,28 @@ function vendorStatusTone(status?: string): StatusTagTone {
   return "neutral";
 }
 
+const CHECK_STATUS: Record<string, { label: string; tone: StatusTagTone }> = {
+  met: { label: "Meets requirement", tone: "success" },
+  expiring_soon: { label: "Expiring soon", tone: "warning" },
+  expired: { label: "Expired", tone: "danger" },
+  unverified: { label: "Unverified", tone: "warning" },
+};
+
 function checkStatusMeta(status?: string) {
-  switch (status) {
-    case "met":
-      return {
-        label: "Meets requirement",
-        tone: "success" as StatusTagTone,
-      };
-    case "expiring_soon":
-      return {
-        label: "Expiring soon",
-        tone: "warning" as StatusTagTone,
-      };
-    case "expired":
-      return {
-        label: "Expired",
-        tone: "danger" as StatusTagTone,
-      };
-    case "unverified":
-      return {
-        label: "Unverified",
-        tone: "warning" as StatusTagTone,
-      };
-    case "not_met":
-    default:
-      return {
-        label: status === "unverified" ? "Unverified" : "Not met",
-        tone: "danger" as StatusTagTone,
-      };
-  }
+  return (status && CHECK_STATUS[status]) || { label: "Not met", tone: "danger" as StatusTagTone };
+}
+
+/** "2/3 met · 1 open · 2 policies" for a vendor row. */
+function vendorRowSummary(row: VendorComplianceRow) {
+  const checks = row.checks ?? [];
+  const openChecks = checks.filter((check) => check.status !== "met").length;
+  const metChecks = checks.length - openChecks;
+  const policyText = typeof row.policyCount === "number"
+    ? row.policyCount === 0
+      ? "no policies"
+      : `${row.policyCount} polic${row.policyCount === 1 ? "y" : "ies"}`
+    : null;
+  return `${metChecks}/${row.requirementCount ?? checks.length} met${openChecks > 0 ? ` · ${openChecks} open` : ""}${policyText ? ` · ${policyText}` : ""}`;
 }
 
 function formatRequiredLimits(limits?: VendorComplianceCheck["requiredLimits"]) {
@@ -148,14 +127,6 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
     <div className="space-y-3">
       {rows.map((row, rowIndex) => {
         const checks = row.checks ?? [];
-        const openChecks = checks.filter((check) => check.status !== "met").length;
-        const metChecks = checks.filter((check) => check.status === "met").length;
-        const requirementCount = row.requirementCount ?? checks.length;
-        const policyText = typeof row.policyCount === "number"
-          ? row.policyCount === 0
-            ? "no policies"
-            : `${row.policyCount} polic${row.policyCount === 1 ? "y" : "ies"}`
-          : null;
         return (
           <section key={`${row.vendorOrgId ?? row.name ?? "vendor"}-${rowIndex}`} className="rounded-md border border-input bg-card">
             <div className="border-b border-border px-3 py-3">
@@ -170,8 +141,7 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
                     </StatusTag>
                   </div>
                   <p className={`mt-1 text-muted-foreground/45 ${typeStyle("caption.default")}`}>
-                    {metChecks}/{requirementCount} met{openChecks > 0 ? ` · ${openChecks} open` : ""}
-                    {policyText ? ` · ${policyText}` : ""}
+                    {vendorRowSummary(row)}
                   </p>
                 </div>
                 {row.vendorOrgId ? (
@@ -238,12 +208,20 @@ function VendorComplianceChecklist({ rows }: { rows: VendorComplianceRow[] }) {
   );
 }
 
+function VendorCountBadge({ count }: { count: number }) {
+  return (
+    <Badge variant="outline" className={`h-5 shrink-0 border-border-emphasized px-1.5 text-muted-foreground/55 ${typeStyle("label.tag")}`}>
+      {count} vendor{count === 1 ? "" : "s"}
+    </Badge>
+  );
+}
+
 function VendorComplianceSummaryCard({
   artifact,
   onOpen,
   isOpen,
 }: {
-  artifact: VendorComplianceArtifactData;
+  artifact: ToolArtifactData;
   onOpen?: () => void;
   isOpen?: boolean;
 }) {
@@ -263,31 +241,17 @@ function VendorComplianceSummaryCard({
         <span className={`truncate text-foreground/85 ${typeStyle("body.medium")}`}>
           Vendor compliance checks
         </span>
-        <Badge variant="outline" className={`h-5 shrink-0 border-border-emphasized px-1.5 text-muted-foreground/55 ${typeStyle("label.tag")}`}>
-          {rows.length} vendor{rows.length === 1 ? "" : "s"}
-        </Badge>
+        <VendorCountBadge count={rows.length} />
       </div>
       <div className="space-y-1.5 px-3 py-3">
-        {rows.slice(0, 3).map((row, index) => {
-          const checks = row.checks ?? [];
-          const openChecks = checks.filter((check) => check.status !== "met").length;
-          const metChecks = checks.filter((check) => check.status === "met").length;
-          const requirementCount = row.requirementCount ?? checks.length;
-          const policyText = typeof row.policyCount === "number"
-            ? row.policyCount === 0
-              ? "no policies"
-              : `${row.policyCount} polic${row.policyCount === 1 ? "y" : "ies"}`
-            : null;
-          return (
-            <div key={`${row.vendorOrgId ?? row.name ?? "vendor"}-${index}`} className={`flex items-center gap-2 ${typeStyle("caption.default")}`}>
-              <span className={`min-w-0 flex-1 truncate text-foreground/75 ${typeStyle("body.medium")}`}>{row.name ?? "Vendor"}</span>
-              <span className="shrink-0 text-muted-foreground/45">
-                {metChecks}/{requirementCount} met{openChecks > 0 ? ` · ${openChecks} open` : ""}
-                {policyText ? ` · ${policyText}` : ""}
-              </span>
-            </div>
-          );
-        })}
+        {rows.slice(0, 3).map((row, index) => (
+          <div key={`${row.vendorOrgId ?? row.name ?? "vendor"}-${index}`} className={`flex items-center gap-2 ${typeStyle("caption.default")}`}>
+            <span className={`min-w-0 flex-1 truncate text-foreground/75 ${typeStyle("body.medium")}`}>{row.name ?? "Vendor"}</span>
+            <span className="shrink-0 text-muted-foreground/45">
+              {vendorRowSummary(row)}
+            </span>
+          </div>
+        ))}
         {rows.length > 3 ? (
           <p className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}>
             +{rows.length - 3} more vendor{rows.length - 3 === 1 ? "" : "s"}
@@ -302,45 +266,32 @@ export function VendorComplianceSidebar({
   artifact,
   onClose,
 }: {
-  artifact: VendorComplianceArtifactData;
+  artifact: ToolArtifactData;
   onClose: () => void;
 }) {
   const rows = normalizeVendorComplianceRows(artifact.data);
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden border-l border-input bg-background">
-      <div className="flex h-12 items-center justify-between gap-3 border-b border-input px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className={`truncate text-foreground ${typeStyle("heading.micro")}`}>Vendor compliance checks</h2>
-          <Badge variant="outline" className={`h-5 shrink-0 border-border-emphasized px-1.5 text-muted-foreground/55 ${typeStyle("label.tag")}`}>
-            {rows.length} vendor{rows.length === 1 ? "" : "s"}
-          </Badge>
-        </div>
-        <PillButton
-          size="compact"
-          variant="icon"
-          onClick={onClose}
-          label="Close vendor compliance checks"
-        >
-          <X className="h-4 w-4" />
-        </PillButton>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <VendorComplianceChecklist rows={rows} />
-      </div>
-    </aside>
+    <ArtifactSidebar
+      title="Vendor compliance checks"
+      status={<VendorCountBadge count={rows.length} />}
+      closeLabel="Close vendor compliance checks"
+      onClose={onClose}
+    >
+      <VendorComplianceChecklist rows={rows} />
+    </ArtifactSidebar>
   );
 }
 
 export function VendorComplianceArtifacts({
   messageId,
   artifacts,
-  openArtifactRef,
+  openArtifact,
   onOpenArtifact,
 }: {
   messageId: Id<"threadMessages">;
-  artifacts?: VendorComplianceArtifactData[];
-  openArtifactRef?: VendorComplianceArtifactRef | null;
-  onOpenArtifact?: (ref: VendorComplianceArtifactRef) => void;
+  artifacts?: ToolArtifactData[];
+  openArtifact: ThreadArtifactRef | null;
+  onOpenArtifact: (ref: ThreadArtifactRef) => void;
 }) {
   const vendorArtifacts = artifacts?.filter((artifact) => artifact.type === "vendor_compliance") ?? [];
   if (vendorArtifacts.length === 0) return null;
@@ -350,8 +301,14 @@ export function VendorComplianceArtifacts({
         <VendorComplianceSummaryCard
           key={`vendor-compliance-${index}`}
           artifact={artifact}
-          isOpen={openArtifactRef != null && openArtifactRef.messageId === messageId && openArtifactRef.index === index}
-          onOpen={() => onOpenArtifact?.({ messageId, index })}
+          isOpen={
+            openArtifact?.kind === "vendor_compliance" &&
+            openArtifact.messageId === messageId &&
+            openArtifact.index === index
+          }
+          onOpen={() =>
+            onOpenArtifact({ kind: "vendor_compliance", messageId, index })
+          }
         />
       ))}
     </div>

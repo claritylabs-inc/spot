@@ -40,6 +40,11 @@ const OPERATOR_ATTACHMENT_MAX_AGGREGATE_BYTES = 50 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_ACCEPT =
   ".pdf,.xlsx,.csv,.tsv,.txt,.md,.markdown,.json,.xml,.docx,.pptx,.jpg,.jpeg,.png,.gif,.webp";
 
+function reportError(fallback: string) {
+  return (error: unknown) =>
+    toast.error(getUserFacingErrorMessage(error, fallback));
+}
+
 export function OperatorAgentPanel({
   pagePanel,
   variant = "rail",
@@ -145,46 +150,29 @@ export function OperatorAgentPanel({
 
   const startNewThread = useCallback(async () => {
     if (!controller) throw new Error("Operator agent is unavailable");
-    const result = await createThread(
+    const newThreadId = await createThread(
       availablePageContext ? { initialContext: availablePageContext } : {},
     );
-    const newThreadId = result;
     controller.setActiveThreadId(newThreadId);
     return newThreadId;
   }, [availablePageContext, controller, createThread]);
-
-  const startNewThreadFromUi = useCallback(async () => {
-    try {
-      await startNewThread();
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not start a task",
-      );
-    }
-  }, [startNewThread]);
 
   const launchIntent = useCallback(
     async (intentId: string) => {
       if (!controller || launchingIntentId) return;
       setLaunchingIntentId(intentId);
-      try {
-        const result = await startIntent({
-          intentId,
-          ...(displayedPageContext
-            ? { pageContext: displayedPageContext }
-            : {}),
-          ...(activeThreadId && detail.messages.length === 0
-            ? { emptyThreadId: activeThreadId }
-            : {}),
-        });
-        controller.setActiveThreadId(result.threadId);
-      } catch (error) {
-        toast.error(
-          getUserFacingErrorMessage(error, "Could not start the operator task"),
-        );
-      } finally {
-        setLaunchingIntentId(null);
-      }
+      await startIntent({
+        intentId,
+        ...(displayedPageContext
+          ? { pageContext: displayedPageContext }
+          : {}),
+        ...(activeThreadId && detail.messages.length === 0
+          ? { emptyThreadId: activeThreadId }
+          : {}),
+      })
+        .then((result) => controller.setActiveThreadId(result.threadId))
+        .catch(reportError("Could not start the operator task"))
+        .finally(() => setLaunchingIntentId(null));
     },
     [
       activeThreadId,
@@ -220,21 +208,17 @@ export function OperatorAgentPanel({
                   });
                 }
               },
-              onUploaded: (attachment) => {
-                if (attachment.uploadIntentId) {
-                  const tracked = uploadedIntents.find(
-                    ({ uploadIntentId }) =>
-                      uploadIntentId === attachment.uploadIntentId,
-                  );
-                  if (tracked) tracked.fileId = attachment.fileId;
-                }
-              },
               finalizeUpload: async (attachment) => {
-                if (!attachment.uploadIntentId) {
+                const tracked = uploadedIntents.find(
+                  ({ uploadIntentId }) =>
+                    uploadIntentId === attachment.uploadIntentId,
+                );
+                if (!tracked) {
                   throw new Error("Operator attachment upload intent is missing");
                 }
+                tracked.fileId = attachment.fileId;
                 await registerUpload({
-                  uploadIntentId: attachment.uploadIntentId,
+                  uploadIntentId: tracked.uploadIntentId,
                   fileId: attachment.fileId,
                 });
               },
@@ -257,11 +241,7 @@ export function OperatorAgentPanel({
               () => undefined,
             );
           }
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "The operator task could not be sent",
-          );
+          reportError("The operator task could not be sent")(error);
           throw error;
         }
       });
@@ -280,17 +260,6 @@ export function OperatorAgentPanel({
     ],
   );
 
-  const stop = useCallback(async () => {
-    if (!activeThreadId) return;
-    try {
-      await cancelRun({ threadId: activeThreadId });
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not stop the task",
-      );
-    }
-  }, [activeThreadId, cancelRun]);
-
   const decide = useCallback(
     async (
       confirmation: OperatorAgentConfirmation,
@@ -298,21 +267,13 @@ export function OperatorAgentPanel({
     ) => {
       if (!activeThreadId) return;
       setConfirmationBusyId(confirmation.id);
-      try {
-        await confirmAction({
-          threadId: activeThreadId,
-          confirmationId: confirmation.id,
-          decision,
-        });
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "Could not record the decision",
-        );
-      } finally {
-        setConfirmationBusyId(null);
-      }
+      await confirmAction({
+        threadId: activeThreadId,
+        confirmationId: confirmation.id,
+        decision,
+      })
+        .catch(reportError("Could not record the decision"))
+        .finally(() => setConfirmationBusyId(null));
     },
     [activeThreadId, confirmAction],
   );
@@ -344,7 +305,9 @@ export function OperatorAgentPanel({
               variant="icon"
               iconOnly
               label="New operator task"
-              onClick={() => void startNewThreadFromUi()}
+              onClick={() =>
+                void startNewThread().catch(reportError("Could not start a task"))
+              }
             >
               <Plus className="size-4" />
             </PillButton>
@@ -414,7 +377,12 @@ export function OperatorAgentPanel({
         composer={
           <ChatComposer
             onSubmit={submit}
-            onStop={() => void stop()}
+            onStop={() => {
+              if (!activeThreadId) return;
+              void cancelRun({ threadId: activeThreadId }).catch(
+                reportError("Could not stop the task"),
+              );
+            }}
             placeholder="Ask the operator agent…"
             attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
             multipleAttachments
