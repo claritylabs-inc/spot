@@ -60,12 +60,13 @@ type ToolSet = Record<string, unknown>;
 /** Tools that belong to exactly one optional module and load with it. */
 const MODULE_TOOLS: Record<OptionalPromptModule, readonly string[]> = {
   policy_qa: [],
-  coi: ["generate_coi", "lookup_address"],
+  coi: ["generate_coi", "lookup_address", "list_certificates"],
   compliance: [
     "import_requirement_attachments",
     "lookup_connected_vendors",
     "lookup_vendor_policies",
     "lookup_vendor_compliance",
+    "create_compliance_requirement",
   ],
   policy_change_email: [],
   procurement: [],
@@ -80,7 +81,11 @@ const MODULE_TOOLS: Record<OptionalPromptModule, readonly string[]> = {
   ],
   web_research: ["web_research"],
   collaboration: ["create_imessage_group_chat"],
-  history: ["search_thread_history", "read_thread_attachment"],
+  history: [
+    "search_thread_history",
+    "read_thread_attachment",
+    "list_policy_versions",
+  ],
   presentation: ["present_policy_card"],
 };
 
@@ -88,12 +93,12 @@ const MODULE_TOOLS: Record<OptionalPromptModule, readonly string[]> = {
 const MODULE_REQUIRED_TOOLS: Partial<
   Record<OptionalPromptModule, readonly string[]>
 > = {
-  coi: ["generate_coi"],
+  coi: ["generate_coi", "list_certificates"],
   policy_change_email: ["email_expert"],
   mailbox: ["coordinate_mailbox_task", "search_connected_email"],
   web_research: ["web_research"],
   collaboration: ["create_imessage_group_chat"],
-  history: ["search_thread_history"],
+  history: ["search_thread_history", "list_policy_versions"],
   presentation: ["present_policy_card"],
 };
 
@@ -122,7 +127,8 @@ const MODULE_QUESTIONS: Record<OptionalPromptModule, string> = {
 const SLACK_REACTION_CRITERIA: Record<SlackProcessingReaction, string> = {
   eyes: "A general request; the default when nothing else clearly fits.",
   mag: "Searching or looking something up.",
-  thinking_face: "Analyzing whether something is covered or reasoning through a scenario.",
+  thinking_face:
+    "Analyzing whether something is covered or reasoning through a scenario.",
   page_facing_up: "A policy document, policy record, or PDF.",
   memo: "Drafting, notes, or a written summary.",
   shield: "Compliance, requirements, or protection.",
@@ -240,7 +246,10 @@ export async function decideClientAgentTurn(
         },
         ...(args.trace ? { trace: args.trace } : {}),
       },
-      { telemetry: ctx, abortSignal: AbortSignal.timeout(CLIENT_AGENT_TURN_DECIDE_BUDGET_MS) },
+      {
+        telemetry: ctx,
+        abortSignal: AbortSignal.timeout(CLIENT_AGENT_TURN_DECIDE_BUDGET_MS),
+      },
     );
 
     const probabilities: Record<string, number> = {};
@@ -484,7 +493,7 @@ function buildCoreToolInstructions(params: {
   return `
 
 TOOLS AND ANALYSIS:
-Your tool definitions list what you can do on this surface. The core tools look up policies, retrieve source-native policy outline entries and original PDF evidence, compare coverages, attach original policy PDFs, confirm source-backed policy facts, and save notes.
+Your tool definitions list what you can do on this surface. The core tools look up policies, retrieve source-native policy outline entries and original PDF evidence, compare coverages, attach original policy PDFs, confirm source-backed policy facts, and save notes. Use list_policy_versions for renewal, upload, and re-extraction history when it is available. Use update_company_wiki only for an explicit request to change company prose; on text channels, show the exact change and wait for explicit confirmation before setting confirmed to true.
 - Use tools before answering when the request depends on policy numbers, coverage details, exclusions, endorsements, limits, deductibles, premiums, or certificates.
 - ${NO_PROGRESS_NARRATION}
 - Policy-focus IDs from the prompt are routing hints only. Refresh them with lookup_policy using policyIds before stating any policy fact. Do not reuse policy facts from an earlier message or company memory.
@@ -534,6 +543,7 @@ function buildCoiInstructions(canSendEmail: boolean): string {
   return `
 
 CERTIFICATES OF INSURANCE:
+- Use list_certificates for issued COIs, holder details, and issue or reissue history when available.
 - For COI/certificate requests, describe the action as generating or retrieving a COI/certificate from policy data and holder details. Do not offer to "pull COI wording" or "pull the right COI wording"; COIs are generated artifacts, not wording excerpts.
 - Same-holder COI requests return the latest existing certificate for that holder and current policy version unless the user explicitly asks to reissue/regenerate a new version. If the tool returns status "existing", say you found/returned the existing certificate; do not claim a new certificate was generated. Set explicitReissue only when the user clearly asks for a reissue/new version.
 - When the user supplies a certificate-holder or other postal address that will be saved, call lookup_address with the complete address before the write tool. If lookup_address returns status "validated", pass the first candidate's addressLine1, addressLine2, city, state, postalCode, and country to generate_coi. If it returns candidates, not_found, or unavailable, do not silently replace or complete the address and do not claim it was validated; ask for confirmation when the address is required. Do not call lookup_address when the user did not provide an address, and do not use it to replace source-backed policy-party facts.
@@ -556,6 +566,7 @@ function buildComplianceInstructions(canImportRequirements: boolean): string {
   return `
 
 COMPLIANCE REQUIREMENTS:
+- Use create_compliance_requirement only for a user's explicit request to save a typed requirement. On web, email, Slack, and iMessage, show the exact requirement and wait for explicit confirmation before setting confirmed to true.
 - For saved compliance questions, treat currentComplianceStatus and currentComplianceReasons from lookup_compliance_requirements as authoritative. Never call a requirement met by independently comparing a generic policy limit to typed per-claim, per-occurrence, or aggregate requirements. Never treat a policy effective date as a retroactive date. If the saved status is unverified or not_met, describe the exact missing or insufficient evidence and do not claim compliance.
 - Use saved requirement-source holder and deal metadata exactly as returned. Do not expand initials or infer a holder, investor, counterparty, or deal name from a source title or abbreviation.
 - Use the connected-vendor tools for vendor lists, vendor policies, and requirement-by-requirement vendor compliance before answering vendor compliance questions.${
@@ -691,11 +702,16 @@ export function buildClientAgentSystemPrompt(params: {
       isMixedThread: params.isMixedThread,
     }),
     buildAnswerDepthInstructions(params.answerDepth),
-    buildCoreToolInstructions({ maxToolCalls: params.maxToolCalls, canSendEmail }),
+    buildCoreToolInstructions({
+      maxToolCalls: params.maxToolCalls,
+      canSendEmail,
+    }),
     ...modules.map((module) =>
       buildModuleInstructions(module, { tools: params.tools, canSendEmail }),
     ),
-    ...(params.extras ?? []).filter(Boolean).map((extra) => `\n\n${extra.trim()}`),
+    ...(params.extras ?? [])
+      .filter(Boolean)
+      .map((extra) => `\n\n${extra.trim()}`),
     attachments,
     params.policyFocus ? `\n\n${params.policyFocus}` : "",
     buildThreadContinuityPrompt(params.summary),
