@@ -7,6 +7,7 @@ import {
   cancelDurableRouterRequest,
   executeDurableRouterRequest,
   durableRouterClientOptionsWithTrace,
+  RouterJobFailed,
   RouterJobPending,
 } from "./routerJobClient";
 
@@ -66,6 +67,7 @@ function harness() {
       else if (name === "routerJobs:finish") {
         row.status = args.status;
         row.error = args.error;
+        row.failure = args.failure;
       }
       return null;
     }),
@@ -174,6 +176,39 @@ test("unknown provider outcome stops polling without submitting replacement infe
     executeDurableRouterRequest(h.ctx, "generate", {}, "run:0"),
   ).rejects.toThrow("outcome is unknown");
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test("polled router failures keep cl-router's typed error", async () => {
+  const h = harness();
+  const error = {
+    code: "router_unavailable",
+    message: "The router job could not complete.",
+    retryable: true,
+    executionStarted: true,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ jobId: "router-1" }))
+      .mockResolvedValueOnce(
+        Response.json({ jobId: "router-1", status: "failed", error }),
+      ),
+  );
+  await expect(
+    executeDurableRouterRequest(h.ctx, "generate", {}, "run:0"),
+  ).rejects.toBeInstanceOf(RouterJobPending);
+  const failed = await executeDurableRouterRequest(
+    h.ctx,
+    "generate",
+    {},
+    "run:0",
+  ).catch((reason: unknown) => reason);
+  expect(failed).toBeInstanceOf(RouterJobFailed);
+  expect(failed).toMatchObject({
+    message: "The router job could not complete. (router_unavailable)",
+    failure: { code: "router_unavailable", retryable: true, executionStarted: true },
+  });
 });
 
 test("copies referenced assets before yielding and retains only job capability URLs", async () => {

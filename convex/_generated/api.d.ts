@@ -284,6 +284,7 @@ import type * as lib_resend from "../lib/resend.js";
 import type * as lib_routerAssetSignature from "../lib/routerAssetSignature.js";
 import type * as lib_routerCapabilities from "../lib/routerCapabilities.js";
 import type * as lib_routerJobClient from "../lib/routerJobClient.js";
+import type * as lib_routerJobFailure from "../lib/routerJobFailure.js";
 import type * as lib_scanReconciliationSchema from "../lib/scanReconciliationSchema.js";
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
 import type * as lib_searchTokenizer from "../lib/searchTokenizer.js";
@@ -666,6 +667,7 @@ declare const fullApi: ApiFromModules<{
   "lib/routerAssetSignature": typeof lib_routerAssetSignature;
   "lib/routerCapabilities": typeof lib_routerCapabilities;
   "lib/routerJobClient": typeof lib_routerJobClient;
+  "lib/routerJobFailure": typeof lib_routerJobFailure;
   "lib/scanReconciliationSchema": typeof lib_scanReconciliationSchema;
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
   "lib/searchTokenizer": typeof lib_searchTokenizer;
