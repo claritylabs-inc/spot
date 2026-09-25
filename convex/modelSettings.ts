@@ -270,7 +270,39 @@ export const stripRetiredRoutesInternal = internalMutation({
 const CLEAR_OVERRIDES_BATCH_SIZE = 50;
 
 /**
- * Clears every stored operator model-route override: the operator settings
+ * Sets the operator agent's pinned route, the one model setting still read at
+ * runtime. Run with `npx convex run modelSettings:setOperatorAgentRouteInternal
+ * '{"provider":"...","model":"..."}'`.
+ */
+export const setOperatorAgentRouteInternal = internalMutation({
+  args: { provider: v.string(), model: v.string() },
+  handler: async (ctx, args) => {
+    const route = { provider: args.provider, model: args.model } as ModelRoute;
+    assertSupportedRoute(OPERATOR_AGENT_MODEL_ROUTE_ID, route, null);
+    const settings = await ctx.db
+      .query("globalModelSettings")
+      .withIndex("key", (q) => q.eq("key", "default"))
+      .first();
+    const explicit = new Set(settings?.explicitRouteOverrides ?? []);
+    explicit.add(OPERATOR_AGENT_MODEL_ROUTE_ID);
+    const patch = {
+      routes: {
+        ...((settings?.routes as GlobalRoutes | undefined) ?? {}),
+        [OPERATOR_AGENT_MODEL_ROUTE_ID]: route,
+      },
+      explicitRouteOverrides: [...explicit],
+    };
+    if (!settings) {
+      throw new Error("globalModelSettings has no default row to update");
+    }
+    await ctx.db.patch(settings._id, { ...patch, updatedAt: Date.now() });
+    return route;
+  },
+});
+
+/**
+ * Clears every stored operator model-route override except the operator
+ * agent route (still required at runtime): the operator settings
  * UI and its `getGlobal`/`updateGlobalRoutes`/`updateGlobalWebRetrieval`
  * mutations are removed, so `globalModelSettings.routes`,
  * `explicitRouteOverrides`, `webRetrieval`, and `brokerModelSettings.routes`
@@ -295,9 +327,16 @@ export const clearOperatorModelOverridesInternal = internalMutation({
           globalSettings.explicitRouteOverrides?.length ||
           globalSettings.webRetrieval)
       ) {
+        // The operator agent route is still required at runtime
+        // (resolveOperatorAgentRoute), so it survives the cleanup.
+        const operatorAgentRoute = explicitOperatorAgentRoute(globalSettings);
         await ctx.db.patch(globalSettings._id, {
-          routes: undefined,
-          explicitRouteOverrides: undefined,
+          routes: operatorAgentRoute
+            ? { [OPERATOR_AGENT_MODEL_ROUTE_ID]: operatorAgentRoute }
+            : undefined,
+          explicitRouteOverrides: operatorAgentRoute
+            ? [OPERATOR_AGENT_MODEL_ROUTE_ID]
+            : undefined,
           webRetrieval: undefined,
         });
         globalRowCleared = true;

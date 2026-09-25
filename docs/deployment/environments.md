@@ -515,7 +515,7 @@ wildcard asset origins on a cloud router.
 4. Run the [post-deploy operator checklist](../../AGENTS.md#post-deploy-operator-checklist-for-this-extraction-release) after target deployment. `actions/reextractLegacyPolicies:run` defaults to a dry run; page the cleanup mutations until they return `isDone`.
 5. Confirm release readiness and exact-commit health before Vercel production alias assignment.
 
-The operator-agent model and web retrieval route have no UI or supported `npx convex run` setter. `modelSettings:clearOperatorModelOverridesInternal` removes stored overrides as part of post-deploy cleanup; `resolveOperatorAgentRoute` still requires that stored route and throws when absent; resolve this conflict before clearing a live target.
+The operator-agent model route and web retrieval route have no settings UI. Set the operator agent route with `npx convex run modelSettings:setOperatorAgentRouteInternal '{"provider":"openai","model":"..."}'`. `modelSettings:clearOperatorModelOverridesInternal` clears every other stored override but keeps the operator agent route, which `resolveOperatorAgentRoute` still requires. Web retrieval falls back to its default when no override is stored.
 
 ### Durable inference rollout
 

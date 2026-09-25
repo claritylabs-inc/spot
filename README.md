@@ -291,7 +291,7 @@ Connected vendor data is exposed in the same channels as first-party insurance d
 
 All model decisions, generation, embeddings, transcription, and credentialed retrieval go through cl-router using `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. Spot holds no provider credentials or direct-provider fallback. `convex/lib/clRouterClient.ts` owns the transport and `convex/lib/jevThreshold.ts` centralizes the 70% Jev decision threshold. Durable jobs preserve the request and chosen route across continuation; see [router jobs](docs/architecture/router-jobs.md).
 
-The operator model and web retrieval route no longer have a settings UI. There is no supported `npx convex run` setter for them; the post-deploy cleanup clears stored operator overrides. The router owns route policy, but `resolveOperatorAgentRoute` still throws without a stored explicit `operator_agent` route. Resolve that contract before post-deploy cleanup on a live target.
+The operator-agent model route and web retrieval route have no settings UI. Set the operator agent route with `npx convex run modelSettings:setOperatorAgentRouteInternal '{"provider":"openai","model":"..."}'`. `modelSettings:clearOperatorModelOverridesInternal` clears every other stored override but keeps the operator agent route, which `resolveOperatorAgentRoute` still requires. Web retrieval falls back to its default when no override is stored.
 
 ## Convex Rule Of Thumb
 

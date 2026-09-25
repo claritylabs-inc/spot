@@ -46,4 +46,4 @@ After the release deploys to an approved target:
 5. Set `FLAGS_SECRET` and `WEBMCP_ENABLED` where WebMCP should be available.
 6. Run prompt-module evals with `CL_ROUTER_EVALS=1 npx vitest run convex/lib/__evals__/clientAgentModules.eval.test.ts`.
 
-The operator-agent model route and web retrieval route have no UI. The cleanup removes stored overrides. `resolveOperatorAgentRoute` currently still requires an explicit stored `operator_agent` route and throws when it is absent; no supported `npx convex run` setter exists. Resolve that runtime conflict before applying the cleanup on a live target.
+The operator-agent model route and web retrieval route have no settings UI. Set the operator agent route with `npx convex run modelSettings:setOperatorAgentRouteInternal '{"provider":"openai","model":"..."}'`. `modelSettings:clearOperatorModelOverridesInternal` clears every other stored override but keeps the operator agent route, which `resolveOperatorAgentRoute` still requires. Web retrieval falls back to its default when no override is stored.
