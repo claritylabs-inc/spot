@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
   filterToolsForWriteAccess,
-  MAILBOX_COORDINATOR_WRITE_TOOL_NAMES,
   MCP_CHAT_WRITE_TOOL_NAMES,
 } from "./mcpAgentToolAccess";
 
@@ -11,21 +10,14 @@ function namedTools(names: string[]) {
 
 describe("MCP nested agent tool access", () => {
   test("removes every MCP-chat business write for read-only tokens", () => {
-    const tools = namedTools([
-      "lookup_policy",
-      "coordinate_mailbox_task",
-      ...MCP_CHAT_WRITE_TOOL_NAMES,
-    ]);
+    const tools = namedTools(["lookup_policy", ...MCP_CHAT_WRITE_TOOL_NAMES]);
     const filtered = filterToolsForWriteAccess(
       tools,
       false,
       MCP_CHAT_WRITE_TOOL_NAMES,
     );
 
-    expect(Object.keys(filtered).sort()).toEqual([
-      "coordinate_mailbox_task",
-      "lookup_policy",
-    ]);
+    expect(Object.keys(filtered).sort()).toEqual(["lookup_policy"]);
   });
 
   test("allows draft listing but removes all email writes for read-only MCP", () => {
@@ -49,24 +41,17 @@ describe("MCP nested agent tool access", () => {
     ).toEqual(tools);
   });
 
-  test("limits a read-only mailbox coordinator to mailbox reads", () => {
+  test("limits a read-only mailbox family to mailbox reads", () => {
     const readTools = [
       "search_connected_email",
       "read_connected_email",
       "read_connected_email_attachment",
     ];
-    const tools = namedTools([
-      ...readTools,
-      ...MAILBOX_COORDINATOR_WRITE_TOOL_NAMES,
-    ]);
+    const tools = namedTools([...readTools, ...MCP_CHAT_WRITE_TOOL_NAMES]);
 
     expect(
       Object.keys(
-        filterToolsForWriteAccess(
-          tools,
-          false,
-          MAILBOX_COORDINATOR_WRITE_TOOL_NAMES,
-        ),
+        filterToolsForWriteAccess(tools, false, MCP_CHAT_WRITE_TOOL_NAMES),
       ).sort(),
     ).toEqual(readTools.sort());
   });

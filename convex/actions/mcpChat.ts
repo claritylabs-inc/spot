@@ -4,7 +4,6 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { stepCountIs } from "ai";
-import { generateTextForOrg } from "../lib/models";
 import {
   AGENT_MAX_OUTPUT_TOKENS,
   runAgentTurn,
@@ -32,14 +31,7 @@ import {
   loadBoundedAgentHistory,
   scheduleThreadHistoryCompaction,
 } from "../lib/agentHistoryLoader";
-import {
-  searchConnectedEmail,
-  readConnectedEmail,
-  readConnectedEmailAttachment,
-  importConnectedEmailPolicyAttachments,
-  importConnectedEmailRequirementAttachments,
-  sendConnectedVendorInvite,
-} from "../lib/chatTools";
+
 import {
   filterToolsForWriteAccess,
   MCP_CHAT_WRITE_TOOL_NAMES,
@@ -51,12 +43,7 @@ import {
   enforceInputLimits,
 } from "../lib/security";
 import type { Id } from "../_generated/dataModel";
-import {
-  buildTitlePromptContent,
-  fallbackTitle,
-  normalizeGeneratedTitle,
-  TITLE_SYSTEM_PROMPT,
-} from "./threadTitle";
+
 import { getClientPortalUrl } from "../lib/domains";
 
 /**
@@ -222,7 +209,8 @@ export const run = internalAction({
               : undefined,
           imessageGroupChat: true,
           webResearch: true,
-          mailboxCoordinator: { routingParentId: traceId },
+          mailbox: {},
+          routingParentId: traceId,
           onPolicyReferenced: (policyId) => {
             if (!emailReferencedPolicyIds.includes(policyId))
               emailReferencedPolicyIds.push(policyId);
@@ -231,7 +219,12 @@ export const run = internalAction({
             responseAttachments.push(attachment);
           },
           onToolArtifact: (artifact) => {
-            mcpToolArtifacts.push(artifact);
+            const existing =
+              artifact.type === "mailbox_task"
+                ? mcpToolArtifacts.find((item) => item.type === "mailbox_task")
+                : undefined;
+            if (existing) existing.data = artifact.data;
+            else mcpToolArtifacts.push(artifact);
           },
         }),
         ...(emailIdentity.canSend &&
@@ -275,108 +268,6 @@ export const run = internalAction({
               },
             })
           : {}),
-        search_connected_email: {
-          ...searchConnectedEmail,
-          execute: async (params: {
-            query?: string;
-            mailbox?: string;
-            sinceDays?: number;
-            dateFrom?: string;
-            dateTo?: string;
-            limit?: number;
-          }) =>
-            await ctx.runAction(
-              internal.actions.connectedEmail.searchInternal,
-              {
-                orgId: args.orgId,
-                userId: args.userId,
-                query: params.query,
-                mailbox: params.mailbox,
-                sinceDays: params.sinceDays,
-                dateFrom: params.dateFrom,
-                dateTo: params.dateTo,
-                limit: params.limit,
-              },
-            ),
-        },
-        read_connected_email: {
-          ...readConnectedEmail,
-          execute: async (params: { emailRef: string }) =>
-            await ctx.runAction(internal.actions.connectedEmail.readInternal, {
-              orgId: args.orgId,
-              userId: args.userId,
-              emailRef: params.emailRef,
-            }),
-        },
-        read_connected_email_attachment: {
-          ...readConnectedEmailAttachment,
-          execute: async (params: { emailRef: string; filename: string }) =>
-            await ctx.runAction(
-              internal.actions.connectedEmail.readAttachmentInternal,
-              {
-                orgId: args.orgId,
-                userId: args.userId,
-                emailRef: params.emailRef,
-                filename: params.filename,
-              },
-            ),
-        },
-        import_connected_email_policy_attachments: {
-          ...importConnectedEmailPolicyAttachments,
-          execute: async (params: { emailRef: string; filenames?: string[] }) =>
-            await ctx.runAction(
-              internal.actions.connectedEmail.importPolicyAttachmentsInternal,
-              {
-                orgId: args.orgId,
-                userId: args.userId,
-                emailRef: params.emailRef,
-                filenames: params.filenames,
-              },
-            ),
-        },
-        import_connected_email_requirement_attachments: {
-          ...importConnectedEmailRequirementAttachments,
-          execute: async (params: {
-            emailRef: string;
-            filenames?: string[];
-            sourceType?:
-              | "lease_agreement"
-              | "client_contract"
-              | "vendor_requirements"
-              | "other";
-            scope?: "vendors" | "own_org";
-          }) =>
-            await ctx.runAction(
-              internal.actions.connectedEmail
-                .importRequirementAttachmentsInternal,
-              {
-                orgId: args.orgId,
-                userId: args.userId,
-                emailRef: params.emailRef,
-                filenames: params.filenames,
-                sourceType: params.sourceType,
-                scope: params.scope,
-              },
-            ),
-        },
-        send_connected_vendor_invite: {
-          ...sendConnectedVendorInvite,
-          execute: async (params: {
-            vendorEmail: string;
-            relationshipLabel?: string;
-            note?: string;
-          }) =>
-            await ctx.runAction(
-              internal.connectedOrgs.requestVendorAccessByEmailInternal,
-              {
-                clientOrgId: args.orgId,
-                requestedByUserId: args.userId,
-                vendorEmail: params.vendorEmail,
-                relationshipLabel: params.relationshipLabel,
-                note: params.note,
-              },
-            ),
-        },
       },
       args.canWrite,
       MCP_CHAT_WRITE_TOOL_NAMES,
@@ -469,40 +360,11 @@ export const run = internalAction({
       (m: { role?: string }) => m.role === "user",
     );
     if (userMessages.length <= 1) {
-      try {
-        let title = fallbackTitle(args.message);
-        try {
-          const { text: titleText } = await generateTextForOrg(
-            ctx,
-            args.orgId,
-            "summary",
-            {
-              maxOutputTokens: 16,
-              system: TITLE_SYSTEM_PROMPT,
-              messages: [
-                {
-                  role: "user",
-                  content: buildTitlePromptContent({
-                    userMessage: args.message,
-                    assistantReply: content,
-                  }),
-                },
-              ],
-            },
-          );
-          title = normalizeGeneratedTitle(titleText) ?? title;
-        } catch {
-          // The deterministic fallback still gives the thread a useful title.
-        }
-        if (title) {
-          await ctx.runMutation(internal.threads.updateTitleInternal, {
-            threadId,
-            title,
-          });
-        }
-      } catch {
-        // Non-critical
-      }
+      await ctx.scheduler.runAfter(0, internal.actions.threadTitle.generate, {
+        threadId,
+        userMessageId,
+        expectedTitle: "MCP Chat",
+      });
     }
 
     const attachments =

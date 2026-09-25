@@ -407,7 +407,7 @@ export const run = internalAction({
               .filter(Boolean)
               .join(
                 "\n\n",
-              )}\nTreat these as explicit user steering. Prioritize them over generic retrieval. If mailbox work is needed and mailboxes are selected, keep the mailbox coordinator scoped to those accounts unless the user asks to broaden the search.`
+              )}\nTreat these as explicit user steering. Prioritize them over generic retrieval. If mailbox work is needed and mailboxes are selected, keep mailbox searches scoped to those accounts unless the user asks to broaden the search.`
           : "";
 
       const { history: messageHistory, latestAttachmentNames } =
@@ -535,11 +535,8 @@ export const run = internalAction({
             : undefined,
           imessageGroupChat: surface === "web",
           webResearch: true,
-          mailboxCoordinator: {
-            routingParentId: String(agentMsgId),
-            accountIds: referencedMailboxIds,
-            chatMessageId: agentMsgId,
-          },
+          mailbox: { accountIds: referencedMailboxIds },
+          routingParentId: String(agentMsgId),
           onPolicyPresented: (policyId) => {
             presentedPolicyIds.add(policyId);
           },
@@ -569,7 +566,12 @@ export const run = internalAction({
             responseAttachments.push(attachment);
           },
           onToolArtifact: async (artifact) => {
-            toolArtifacts.push(artifact);
+            const existing =
+              artifact.type === "mailbox_task"
+                ? toolArtifacts.find((item) => item.type === "mailbox_task")
+                : undefined;
+            if (existing) existing.data = artifact.data;
+            else toolArtifacts.push(artifact);
             if (surface === "web") {
               await ctx.runMutation(internal.threads.streamAgentProgress, {
                 id: agentMsgId,
@@ -721,7 +723,6 @@ export const run = internalAction({
               })
           : undefined;
 
-      const SUBAGENT_TOOL_NAMES = new Set(["coordinate_mailbox_task"]);
       const chatTask = hasRichInput ? "chat_vision" : "chat";
       const presentationTools: CapturedPresentationTool[] = [];
       const turn = await runAgentTurn(ctx, {
@@ -763,15 +764,11 @@ export const run = internalAction({
       });
       await slackReaction;
       const { usedTools } = turn.audit;
-      const toolCalls = turn.audit.toolCalls.map((call) =>
-        SUBAGENT_TOOL_NAMES.has(call.name)
-          ? call
-          : { name: call.name, input: call.input },
-      );
-      const agentSteps = agentToolStepsFromAudit(
-        turn.audit,
-        SUBAGENT_TOOL_NAMES,
-      );
+      const toolCalls = turn.audit.toolCalls.map((call) => ({
+        name: call.name,
+        input: call.input,
+      }));
+      const agentSteps = agentToolStepsFromAudit(turn.audit, new Set());
       for (const workflowOutcome of turn.audit.workflowOutcomes) {
         toolArtifacts.push({ type: "workflow_outcome", data: workflowOutcome });
       }

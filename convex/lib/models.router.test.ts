@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
-import {
-  generateObjectForPublicTask,
-  generateTextForOrg,
-} from "./models";
+import { generateObjectForPublicTask, generateTextForOrg } from "./models";
 
 const route = {
   provider: "openai" as const,
@@ -71,6 +68,10 @@ describe("router-only model calls", () => {
       "org-1" as Id<"organizations">,
       "chat",
       { prompt: "Hello" },
+      {
+        taskKind: "thread_title",
+        trace: { traceId: "turn-1", parentRequestId: "message-1" },
+      },
     );
 
     expect(result).toMatchObject({
@@ -90,10 +91,13 @@ describe("router-only model calls", () => {
       prompt: "Hello",
       route,
       trace: {
+        traceId: "turn-1",
+        parentRequestId: "message-1",
         caller: "convex.models.generateTextForOrg",
         tags: {
           label: "convex.models.generateTextForOrg",
           task: "chat",
+          taskKind: "thread_title",
         },
       },
     });

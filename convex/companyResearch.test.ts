@@ -27,16 +27,23 @@ beforeEach(() => {
     async (request) =>
       ({
         answers: Object.fromEntries(
-          Object.keys(request.questions).map((key) => [
+          Object.entries(request.questions).map(([key, question]) => [
             key,
-            {
-              type: "noul",
-              noul:
-                request.task === "profile_research_orchestration" &&
-                JSON.parse(request.state as string).evidence.length === 0
-                  ? 0
-                  : 0.95,
-            },
+            question.type === "choice"
+              ? {
+                  type: "choice",
+                  choice: "source_0",
+                  probabilities: { source_0: 0.95, none: 0.05 },
+                  confidence: 0.95,
+                }
+              : {
+                  type: "noul",
+                  noul:
+                    request.task === "profile_research_orchestration" &&
+                    JSON.parse(request.state as string).evidence.length === 0
+                      ? 0
+                      : 0.95,
+                },
           ]),
         ),
       }) as never,
@@ -45,6 +52,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.resetAllMocks();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 async function fixture() {
@@ -67,18 +76,57 @@ async function fixture() {
   return { t, orgId };
 }
 
-test("starts identity research at 0.70 but skips it at 0.69", async () => {
-  for (const probability of [0.69, 0.7]) {
-    const { t, orgId } = await fixture();
-    vi.mocked(clRouterDecide).mockResolvedValueOnce({
-      answers: { searchIdentity: { type: "noul", noul: probability } },
-    } as never);
-    vi.mocked(runProfileWebRetrieval).mockRejectedValueOnce(new Error("offline"));
-    await t.action(run, { orgId });
-    expect(runProfileWebRetrieval).toHaveBeenCalledTimes(probability < 0.7 ? 0 : 1);
-    vi.mocked(runProfileWebRetrieval).mockClear();
-  }
+test("starts identity search deterministically and logs retrieval failure with the lease trace", async () => {
+  const { t, orgId } = await fixture();
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.mocked(runProfileWebRetrieval).mockRejectedValueOnce(new Error("offline"));
+  await t.action(run, { orgId });
+  expect(runProfileWebRetrieval).toHaveBeenCalledTimes(1);
+  expect(clRouterDecide).not.toHaveBeenCalled();
+  expect(warning).toHaveBeenCalledWith(
+    "[company-research] failed",
+    expect.objectContaining({
+      orgId,
+      traceId: expect.stringContaining(`company-research:${orgId}:`),
+      error: "Public identity search returned no cited evidence",
+    }),
+  );
+  expect(
+    (await t.run((ctx) => ctx.db.get(orgId)))?.companyResearch?.status,
+  ).toBe("pending");
 });
+
+test.each([
+  ["source_0", 0.69, undefined],
+  ["none", 0.95, undefined],
+  ["https://invented.example/", 0.99, undefined],
+  ["source_0", 0.79, "0.8"],
+])(
+  "does not enrich an unverified identity (%s, %s, threshold %s)",
+  async (choice, probability, threshold) => {
+    if (threshold) vi.stubEnv("JEV_PROCEED_THRESHOLD", threshold);
+    const { t, orgId } = await fixture();
+    vi.mocked(runProfileWebRetrieval).mockResolvedValueOnce({
+      provider: "parallel",
+      attempts: [],
+      text: "Possible Cove website",
+      sources: [{ url: "https://cove.example/" }],
+    });
+    vi.mocked(clRouterDecide).mockResolvedValueOnce({
+      answers: {
+        identity: {
+          type: "choice",
+          choice,
+          probabilities: { [choice]: probability },
+          confidence: probability,
+        },
+      },
+    } as never);
+    await t.action(run, { orgId });
+    expect(generateObjectForOrg).not.toHaveBeenCalled();
+    expect((await t.run((ctx) => ctx.db.get(orgId)))?.website).toBeUndefined();
+  },
+);
 
 test("intake searches public identity and adds cited facts without replacing manual prose", async () => {
   const { t, orgId } = await fixture();
@@ -99,36 +147,53 @@ test("intake searches public identity and adds cited facts without replacing man
     text: "Cove Software Inc. operates Cove at cove.example, creating business software.",
     sources: [{ url: "https://cove.example/" }],
   });
-  vi.mocked(generateObjectForOrg)
-    .mockResolvedValueOnce({
-      output: {
-        officialWebsite: "https://cove.example/",
-        identityConfirmed: true,
-        sourceUrl: "https://cove.example/",
-        reason: "",
-      },
-    } as never)
-    .mockResolvedValueOnce({
-      output: {
-        identityConfirmed: true,
+  vi.mocked(generateObjectForOrg).mockResolvedValueOnce({
+    output: {
+      identityConfirmed: true,
 
-        facts: [
-          {
-            key: "operations",
-            content: "Cove creates business software.",
-            sourceRef: "https://cove.example/",
-          },
-          {
-            key: "operations",
-            content: "Cove has unsupported revenue.",
-            sourceRef: "https://invented.example/",
-          },
-        ],
-        reason: "",
+      facts: [
+        {
+          key: "operations",
+          content: "Cove creates business software.",
+          sourceRef: "https://cove.example/",
+        },
+        {
+          key: "operations",
+          content: "Cove has unsupported revenue.",
+          sourceRef: "https://invented.example/",
+        },
+      ],
+      reason: "",
+    },
+  } as never);
+  vi.mocked(clRouterDecide).mockResolvedValueOnce({
+    answers: {
+      identity: {
+        type: "choice",
+        choice: "source_0",
+        probabilities: { source_0: 0.7, none: 0.3 },
+        confidence: 0.7,
       },
-    } as never);
+    },
+  } as never);
   await t.action(run, { orgId });
   expect(runProfileWebRetrieval).toHaveBeenCalledTimes(5);
+  expect(generateObjectForOrg).toHaveBeenCalledTimes(1);
+  const traceId = vi.mocked(clRouterDecide).mock.calls[0][0].trace?.traceId;
+  expect(traceId).toEqual(
+    expect.stringContaining(`company-research:${orgId}:`),
+  );
+  for (const [request] of vi.mocked(clRouterDecide).mock.calls)
+    expect(request.trace?.traceId).toBe(traceId);
+  for (const [, , input] of vi.mocked(runProfileWebRetrieval).mock.calls)
+    expect(input.trace?.traceId).toBe(traceId);
+  expect(vi.mocked(generateObjectForOrg).mock.calls[0][4]).toEqual(
+    expect.objectContaining({
+      taskKind: "profile_research_extraction",
+      trace: expect.objectContaining({ traceId }),
+    }),
+  );
+
   const searchInput = vi.mocked(runProfileWebRetrieval).mock.calls[0][2];
   expect(searchInput.query).toContain("Cove");
   expect(JSON.stringify(searchInput)).not.toContain("PRIVATE-TAX-ID");
@@ -153,36 +218,28 @@ test("intake searches public identity and adds cited facts without replacing man
   expect(runProfileWebRetrieval).toHaveBeenCalledTimes(5);
 });
 
-test("research rejects non-www subdomains as different sites", async () => {
+test("router failure cannot verify identity and records a traced failure", async () => {
   const { t, orgId } = await fixture();
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.mocked(runProfileWebRetrieval).mockResolvedValueOnce({
-    provider: "model_default",
+    provider: "parallel",
     attempts: [],
-    text: "A blog mentions Cove Software Inc.",
-    sources: [{ url: "https://blog.cove.example/company" }],
+    text: "Cove company evidence",
+    sources: [{ url: "https://cove.example/" }],
   });
-  vi.mocked(generateObjectForOrg).mockResolvedValueOnce({
-    output: {
-      officialWebsite: "https://cove.example/",
-      identityConfirmed: true,
-      sourceUrl: "https://blog.cove.example/company",
-      reason: "Exact company match",
-    },
-  } as never);
-
+  vi.mocked(clRouterDecide).mockRejectedValueOnce(
+    new Error("router unavailable"),
+  );
   await t.action(run, { orgId });
-
-  expect(runProfileWebRetrieval).toHaveBeenCalledTimes(1);
-  await t.run(async (ctx) => {
-    const org = await ctx.db.get(orgId);
-    expect(org?.website).toBeUndefined();
-    expect(org?.companyResearch).toMatchObject({
-      status: "partial",
-      sourceUrls: [],
-      facts: [],
-      unresolvedFields: ["website", "publicIdentity", "companyFacts"],
-    });
-  });
+  expect(generateObjectForOrg).not.toHaveBeenCalled();
+  expect(warning).toHaveBeenCalledWith(
+    "[company-research] failed",
+    expect.objectContaining({
+      error: "router unavailable",
+      traceId: expect.any(String),
+    }),
+  );
+  expect((await t.run((ctx) => ctx.db.get(orgId)))?.website).toBeUndefined();
 });
 
 test("stale research cannot overwrite a concurrent manual website or update the wiki", async () => {

@@ -6,6 +6,7 @@ import {
   callbackSiteUrl,
   cancelDurableRouterRequest,
   executeDurableRouterRequest,
+  durableRouterClientOptionsWithTrace,
   RouterJobPending,
 } from "./routerJobClient";
 
@@ -16,7 +17,10 @@ afterEach(() => {
 beforeEach(() => {
   vi.stubEnv("SPOT_ENV", "local");
   vi.stubEnv("CL_ROUTER_URL", "http://localhost:8080");
-  vi.stubEnv("CL_ROUTER_SECRET", "router-secret-that-is-at-least-32-chars-long");
+  vi.stubEnv(
+    "CL_ROUTER_SECRET",
+    "router-secret-that-is-at-least-32-chars-long",
+  );
   vi.stubEnv("CONVEX_SITE_URL", "http://localhost:3211");
 });
 
@@ -77,6 +81,40 @@ function harness() {
     },
   };
 }
+
+test("retrieval traces stay in the durable job without changing the router request contract", async () => {
+  const h = harness();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      await h.finish({ provider: "parallel", text: "result", sources: [] });
+      return Response.json({ jobId: "router-1", status: "queued" });
+    }),
+  );
+  const options = durableRouterClientOptionsWithTrace(h.ctx, {
+    traceId: "research-lease",
+    taskKind: "profile_research_identity",
+    channel: "company_research",
+  });
+  await options.executeJob!("retrieve", {
+    orgId: "org",
+    input: { query: "public company" },
+  });
+  expect(h.ctx.runMutation).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({
+      callContext: expect.objectContaining({
+        runId: "research-lease",
+        taskKind: "profile_research_identity",
+        channel: "company_research",
+      }),
+    }),
+  );
+  const request = JSON.parse(
+    await h.blobs.get(h.row().requestStorageId!)!.text(),
+  );
+  expect(request).toEqual({ orgId: "org", input: { query: "public company" } });
+});
 
 test("lost submit acknowledgement yields and resubmits the frozen invocation without new inference identity", async () => {
   const h = harness();

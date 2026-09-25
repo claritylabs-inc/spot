@@ -17,7 +17,7 @@
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { toStrictSchema, withRetry, getPdfPageCount } from "@claritylabs/cl-sdk";
+import { toStrictSchema, getPdfPageCount } from "@claritylabs/cl-sdk";
 import { makeGenerateObject } from "../lib/sdkCallbacks";
 import type { Doc, Id } from "../_generated/dataModel";
 import { extractPdfPlainText } from "../lib/pdfText";
@@ -115,6 +115,8 @@ export const extractOne = internalAction({
     const generateObject = makeGenerateObject("extraction", {
       ctx,
       orgId: policy.orgId as Id<"organizations">,
+      traceId: `supplementary:${args.policyId}`,
+      tracePolicyId: args.policyId,
     });
     const parsedPdfText = await extractPdfPlainText({
       pdfBytes: new Uint8Array(arrayBuffer),
@@ -129,14 +131,14 @@ export const extractOne = internalAction({
       : `${buildSupplementaryPrompt(alreadyExtracted || undefined)}\n\n[Document pages 1-${await getPdfPageCount(pdfBase64)} are provided as a PDF file.]`;
     const strictSchema = toStrictSchema(SupplementarySchema);
 
-    const result: { object: unknown; usage?: unknown } = await withRetry(() =>
-      generateObject({
+    const result: { object: unknown; usage?: unknown } = await generateObject({
+        taskKind: "extraction_supplementary",
+        trace: { phase: "supplementary", label: "Extract supplementary policy facts" },
         prompt,
         schema: strictSchema,
         maxTokens: SUPPLEMENTARY_MAX_TOKENS,
         providerOptions: parsedPdfText ? { parsedPdfText } : { pdfBase64 },
-      }),
-    );
+      });
 
     const facts: unknown[] = (result.object as Record<string, unknown>)?.auxiliaryFacts as unknown[] ?? [];
     if (facts.length === 0) {
@@ -162,7 +164,7 @@ export const extractAll = internalAction({
     orgId: v.id("organizations"),
     batchSize: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ processed: number; totalFacts: number; skipped: number }> => {
     const batchSize = args.batchSize ?? 5;
 
     const policies = await ctx.runQuery(internal.policies.listAllInternal, {

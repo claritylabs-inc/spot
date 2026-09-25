@@ -7,6 +7,14 @@ import {
 } from "./tenantMcpToolCatalog";
 
 const requiredNames = [
+  "search_connected_email",
+  "read_connected_email",
+  "read_connected_email_attachment",
+  "import_connected_email_policy_attachments",
+  "import_connected_email_requirement_attachments",
+  "save_connected_email_attachments_to_thread",
+  "save_connected_email_message_to_thread",
+  "send_connected_vendor_invite",
   "ask_spot",
   "list_policies",
   "get_policy",
@@ -46,6 +54,7 @@ test("tenant MCP catalog preserves external names and projects annotations from 
   expect(new Set(names).size).toBe(names.length);
   const tools = buildTenantMcpToolCatalog();
   expect(tools).toMatchSnapshot();
+  expect(names).not.toContain("coordinate_mailbox_task");
   expect(names).not.toContain("get_thread_messages");
   expect(names).not.toContain("list_threads");
   for (const tool of tools) {
@@ -67,6 +76,11 @@ test("read-only tokens cannot dispatch write tools or alias around the scope gat
     "save_note",
     "update_company_wiki",
     "create_compliance_requirement",
+    "save_connected_email_attachments_to_thread",
+    "save_connected_email_message_to_thread",
+    "import_connected_email_policy_attachments",
+    "import_connected_email_requirement_attachments",
+    "send_connected_vendor_invite",
     "write_company_wiki",
     "create_insurance_requirement",
     "generate_policy_certificate",

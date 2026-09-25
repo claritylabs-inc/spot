@@ -12,15 +12,7 @@ import {
   AGENT_MAX_OUTPUT_TOKENS,
   runAgentTurn,
 } from "../lib/channelAgentRunner";
-import {
-  extractPolicyAttachment,
-  searchConnectedEmail,
-  readConnectedEmail,
-  readConnectedEmailAttachment,
-  importConnectedEmailPolicyAttachments,
-  importConnectedEmailRequirementAttachments,
-  sendConnectedVendorInvite,
-} from "../lib/chatTools";
+import { extractPolicyAttachment } from "../lib/chatTools";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import { Webhook } from "svix";
 import {
@@ -1149,9 +1141,8 @@ export const processInbound = internalAction({
           requirementImportDefaultScope,
           imessageGroupChat: canDirectInternalTools,
           webResearch: canDirectInternalTools,
-          mailboxCoordinator: canDirectInternalTools
-            ? { routingParentId: String(inboundMessageId) }
-            : undefined,
+          mailbox: canDirectInternalTools ? {} : undefined,
+          routingParentId: String(inboundMessageId),
           onPolicyReferenced: (policyId) => {
             referencedPolicySourceIds.add(String(policyId));
             if (!emailReferencedPolicyIds.some((id) => id === policyId)) {
@@ -1169,7 +1160,14 @@ export const processInbound = internalAction({
             });
           },
           onToolArtifact: (artifact) => {
-            emailToolArtifacts.push(artifact);
+            const existing =
+              artifact.type === "mailbox_task"
+                ? emailToolArtifacts.find(
+                    (item) => item.type === "mailbox_task",
+                  )
+                : undefined;
+            if (existing) existing.data = artifact.data;
+            else emailToolArtifacts.push(artifact);
           },
         }),
         ...(isInternal && effectiveMode === "direct"
@@ -1230,122 +1228,6 @@ export const processInbound = internalAction({
                   emailToolState.result = result;
                 },
               }),
-            }
-          : {}),
-        ...(canDirectInternalTools
-          ? {
-              search_connected_email: {
-                ...searchConnectedEmail,
-                execute: async (params: {
-                  query?: string;
-                  mailbox?: string;
-                  sinceDays?: number;
-                  dateFrom?: string;
-                  dateTo?: string;
-                  limit?: number;
-                }) =>
-                  await ctx.runAction(
-                    internal.actions.connectedEmail.searchInternal,
-                    {
-                      orgId,
-                      userId: primaryUserId,
-                      query: params.query,
-                      mailbox: params.mailbox,
-                      sinceDays: params.sinceDays,
-                      dateFrom: params.dateFrom,
-                      dateTo: params.dateTo,
-                      limit: params.limit,
-                    },
-                  ),
-              },
-              read_connected_email: {
-                ...readConnectedEmail,
-                execute: async (params: { emailRef: string }) =>
-                  await ctx.runAction(
-                    internal.actions.connectedEmail.readInternal,
-                    {
-                      orgId,
-                      userId: primaryUserId,
-                      emailRef: params.emailRef,
-                    },
-                  ),
-              },
-              read_connected_email_attachment: {
-                ...readConnectedEmailAttachment,
-                execute: async (params: {
-                  emailRef: string;
-                  filename: string;
-                }) =>
-                  await ctx.runAction(
-                    internal.actions.connectedEmail.readAttachmentInternal,
-                    {
-                      orgId,
-                      userId: primaryUserId,
-                      emailRef: params.emailRef,
-                      filename: params.filename,
-                    },
-                  ),
-              },
-              import_connected_email_policy_attachments: {
-                ...importConnectedEmailPolicyAttachments,
-                execute: async (params: {
-                  emailRef: string;
-                  filenames?: string[];
-                }) =>
-                  await ctx.runAction(
-                    internal.actions.connectedEmail
-                      .importPolicyAttachmentsInternal,
-                    {
-                      orgId,
-                      userId: primaryUserId,
-                      emailRef: params.emailRef,
-                      filenames: params.filenames,
-                    },
-                  ),
-              },
-              import_connected_email_requirement_attachments: {
-                ...importConnectedEmailRequirementAttachments,
-                execute: async (params: {
-                  emailRef: string;
-                  filenames?: string[];
-                  sourceType?:
-                    | "lease_agreement"
-                    | "client_contract"
-                    | "vendor_requirements"
-                    | "other";
-                  scope?: "vendors" | "own_org";
-                }) =>
-                  await ctx.runAction(
-                    internal.actions.connectedEmail
-                      .importRequirementAttachmentsInternal,
-                    {
-                      orgId,
-                      userId: primaryUserId,
-                      emailRef: params.emailRef,
-                      filenames: params.filenames,
-                      sourceType: params.sourceType,
-                      scope: params.scope,
-                    },
-                  ),
-              },
-              send_connected_vendor_invite: {
-                ...sendConnectedVendorInvite,
-                execute: async (params: {
-                  vendorEmail: string;
-                  relationshipLabel?: string;
-                  note?: string;
-                }) =>
-                  await ctx.runAction(
-                    internal.connectedOrgs.requestVendorAccessByEmailInternal,
-                    {
-                      clientOrgId: orgId,
-                      requestedByUserId: primaryUserId,
-                      vendorEmail: params.vendorEmail,
-                      relationshipLabel: params.relationshipLabel,
-                      note: params.note,
-                    },
-                  ),
-              },
             }
           : {}),
         extract_policy_attachment: {

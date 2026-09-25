@@ -48,7 +48,8 @@ export async function executeTenantMcpTool(
     userId: args.userId,
     scope,
     canWrite: args.canWrite,
-    mailboxCoordinator: { routingParentId: crypto.randomUUID() },
+    mailbox: {},
+    routingParentId: crypto.randomUUID(),
     webResearch: true,
   });
   if (call.retiredAlias) {

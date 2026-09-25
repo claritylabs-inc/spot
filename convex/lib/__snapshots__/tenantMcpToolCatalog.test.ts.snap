@@ -2010,25 +2010,150 @@ exports[`tenant MCP catalog preserves external names and projects annotations fr
   {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": false,
-      "openWorldHint": true,
-      "readOnlyHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
     },
-    "description": "Delegate a complex connected-mailbox workflow to the Spot mailbox coordinator. Use this for multi-step requests like finding policies and importing them, finding a lease and extracting insurance requirements, or investigating vendor email history.",
+    "description": "Search connected IMAP email accounts live without persisting mailbox contents. Use this iteratively with targeted search terms and date windows when the user asks to find emails, policies, leases, vendor messages, requirements, receipts, or attachments in connected mailboxes.",
     "inputSchema": {
       "properties": {
-        "task": {
-          "description": "The full mailbox task to complete, including any target vendor, address, policy, lease, or date details.",
-          "minLength": 1,
+        "dateFrom": {
+          "description": "Inclusive start date for a targeted search window in YYYY-MM-DD format.",
+          "type": "string",
+        },
+        "dateTo": {
+          "description": "Inclusive end date for a targeted search window in YYYY-MM-DD format.",
+          "type": "string",
+        },
+        "limit": {
+          "description": "Maximum matching emails to return.",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "mailbox": {
+          "description": "Mailbox/folder name. Defaults to INBOX.",
+          "type": "string",
+        },
+        "query": {
+          "description": "Text to search for in subject, sender, recipients, or message body.",
+          "type": "string",
+        },
+        "sinceDays": {
+          "description": "Fallback rolling lookback when dateFrom/dateTo are not known. Defaults to 14.",
+          "maximum": 90,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "search_connected_email",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Search connected IMAP email accounts live without persisting mailbox contents",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read one connected-email message returned by search_connected_email, including bounded body text and attachment metadata.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
           "type": "string",
         },
       },
       "required": [
-        "task",
+        "emailRef",
       ],
       "type": "object",
     },
-    "name": "coordinate_mailbox_task",
+    "name": "read_connected_email",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read one connected-email message returned by search_connected_email, including bounded body text and attachment metadata",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read text from a specific PDF, DOCX, TXT, Markdown, CSV, or JSON attachment on a connected-email message without persisting the mailbox message. Use after read_connected_email returns attachment metadata and the user needs the attachment contents inspected before deciding whether to import it.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filename": {
+          "description": "Exact attachment filename returned by read_connected_email.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+        "filename",
+      ],
+      "type": "object",
+    },
+    "name": "read_connected_email_attachment",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read text from a specific PDF, DOCX, TXT, Markdown, CSV, or JSON attachment on a connected-email message without persisting the mailbox message",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Import PDF attachments from a connected-email message into the Spot policy library. Use after search/read confirms the attachments are bound policies, declarations, binders, endorsements, COIs, or other post-binding insurance documents.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filenames": {
+          "description": "Specific PDF filenames to import. Omit to import all PDF attachments on the email as one policy package.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "import_connected_email_policy_attachments",
     "securitySchemes": [
       {
         "scopes": [
@@ -2038,7 +2163,193 @@ exports[`tenant MCP catalog preserves external names and projects annotations fr
         "type": "oauth2",
       },
     ],
-    "title": "Delegate a complex connected-mailbox workflow to the Spot mailbox coordinator",
+    "title": "Import PDF attachments from a connected-email message into the Spot policy library",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Import PDF/DOCX/TXT/CSV/JSON attachments and optionally the email body from a connected-email message as source-backed insurance compliance requirements. Use after search/read confirms the email or attachments contain leases, contracts, vendor requirement packets, or other insurance requirement language.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filenames": {
+          "description": "Specific attachment filenames to import. Omit to import all requirement-like attachments on the email.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "includeEmailBody": {
+          "description": "Set true when the email body itself contains requirement language that should be imported.",
+          "type": "boolean",
+        },
+        "scope": {
+          "description": "Requirement scope. Use own_org for the org's lease/client obligations or vendors for vendor/customer standards.",
+          "enum": [
+            "vendors",
+            "own_org",
+          ],
+          "type": "string",
+        },
+        "sourceType": {
+          "description": "Source document type. Infer lease_agreement for leases and client_contract for customer/client contracts.",
+          "enum": [
+            "lease_agreement",
+            "client_contract",
+            "vendor_requirements",
+            "other",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "import_connected_email_requirement_attachments",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Import PDF/DOCX/TXT/CSV/JSON attachments and optionally the email body from a connected-email message as source-backed insurance compliance requirements",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Save attachments from a connected-email message into the current Spot thread so they can be reused later and attached to outbound email drafts without searching the mailbox again. Use after search/read identifies documents that are relevant to the user's task.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filenames": {
+          "description": "Specific attachment filenames to save. Omit to save all attachments on the email that fit size limits.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "threadId": {
+          "description": "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "save_connected_email_attachments_to_thread",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Save attachments from a connected-email message into the current Spot thread so they can be reused later and attached to outbound email drafts without searching the mailbox again",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Export the connected-email message itself into the current Spot thread as an attachable .eml proof document. Use this when the user asks to attach, forward, preserve, or provide proof of an email whose relevant content is in the email body rather than an attachment, such as a cancellation email, receipt, confirmation, notice, or correspondence.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email or read_connected_email.",
+          "type": "string",
+        },
+        "filename": {
+          "description": "Optional filename for the saved email export. Defaults to a subject-based .eml name.",
+          "type": "string",
+        },
+        "threadId": {
+          "description": "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "save_connected_email_message_to_thread",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Export the connected-email message itself into the current Spot thread as an attachable ",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "description": "Send a connected-vendor access invitation to a vendor email address so the org can monitor that vendor's insurance records. Use only when the user asks to invite or connect a vendor, or explicitly approves doing so.",
+    "inputSchema": {
+      "properties": {
+        "note": {
+          "description": "Optional note to include in the vendor invitation email.",
+          "type": "string",
+        },
+        "relationshipLabel": {
+          "description": "Optional vendor/company label for the connected-org relationship.",
+          "type": "string",
+        },
+        "vendorEmail": {
+          "description": "Vendor contact email address to invite.",
+          "format": "email",
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "vendorEmail",
+      ],
+      "type": "object",
+    },
+    "name": "send_connected_vendor_invite",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Send a connected-vendor access invitation to a vendor email address so the org can monitor that vendor's insurance records",
   },
   {
     "annotations": {

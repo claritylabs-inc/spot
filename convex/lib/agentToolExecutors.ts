@@ -9,7 +9,6 @@ import {
   attachPolicyDocument,
   compareCoverages,
   confirmPolicyFact,
-  coordinateMailboxTask,
   createImessageGroupChat,
   generateCoi,
   lookupAddress,
@@ -32,6 +31,7 @@ import {
   searchThreadHistory,
   webResearch,
 } from "./chatTools";
+import { buildMailboxTools } from "./mailboxTools";
 import { runWebRetrieval, type WebRetrievalInput } from "./webRetrieval";
 import { COI_GENERATION_FAILED_MESSAGE } from "./actionFailures";
 import {
@@ -114,14 +114,11 @@ export type BuildAgentToolExecutorsOptions = {
   imessageGroupChat?: boolean;
   /** Registers web_research through the org's configured retrieval provider. */
   webResearch?: boolean;
-  /** Registers coordinate_mailbox_task with this surface's routing context. */
-  mailboxCoordinator?: {
-    routingParentId: string;
+  /** Registers the discrete mailbox family for an authorized surface. */
+  mailbox?: {
     accountIds?: Id<"connectedEmailAccounts">[];
-    chatMessageId?: Id<"threadMessages">;
-    statusToPhone?: string;
-    statusChatGuid?: string;
   };
+  routingParentId?: string;
   onPolicyReferenced?: (policyId: Id<"policies">) => void | Promise<void>;
   onPolicyPresented?: (policyId: Id<"policies">) => void | Promise<void>;
   onPolicySourceEvidence?: (evidence: unknown) => void | Promise<void>;
@@ -1583,42 +1580,31 @@ export function buildAgentToolExecutors(
           },
         }
       : {}),
-    ...(options.mailboxCoordinator
-      ? {
-          coordinate_mailbox_task: {
-            ...coordinateMailboxTask,
-            execute: async (params: { task: string }) => {
-              const coordinator = options.mailboxCoordinator!;
-              const result = await ctx.runAction(
-                internal.actions.mailboxCoordinator.runInternal,
-                {
-                  orgId: options.orgId,
-                  userId: options.userId,
-                  task: params.task,
-                  accountIds: coordinator.accountIds,
-                  chatMessageId: coordinator.chatMessageId,
-                  threadId: options.threadId,
-                  routingParentId: coordinator.routingParentId,
-                  statusToPhone: coordinator.statusToPhone,
-                  statusChatGuid: coordinator.statusChatGuid,
-                  canWrite: options.canWrite,
-                },
-              );
-              await options.onToolArtifact?.({
-                type: "mailbox_task",
-                data: result,
-              });
-              return result;
-            },
-          },
-        }
+    ...(options.mailbox
+      ? buildMailboxTools(ctx, {
+          orgId: options.orgId,
+          userId: options.userId,
+          canWrite: canWriteOrg(options, options.orgId),
+          accountIds: options.mailbox.accountIds,
+          threadId: options.threadId,
+          onToolArtifact: options.onToolArtifact,
+        })
       : {}),
     ...(options.webResearch
       ? {
           web_research: {
             ...webResearch,
             execute: async (params: WebRetrievalInput) => {
-              const result = await runWebRetrieval(ctx, options.orgId, params);
+              const result = await runWebRetrieval(ctx, options.orgId, {
+                ...params,
+                taskKind: "agent_web_research",
+                trace: {
+                  traceId:
+                    options.routingParentId ??
+                    String(options.threadId ?? options.orgId),
+                  channel: options.surface,
+                },
+              });
               if (!result.text) {
                 return {
                   status: "unavailable",
