@@ -53,6 +53,12 @@ function StatusDot({
   return null;
 }
 
+/** Shared by the new-chat button and chat tabs so the row reads as one set. */
+const TAB_ITEM_CLASS = cn(
+  "relative flex h-full min-w-0 items-center gap-1.5 rounded-full px-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
+  typeStyle("control.button"),
+);
+
 function TabButton({
   active,
   label,
@@ -75,13 +81,13 @@ function TabButton({
     <div
       ref={ref}
       role="presentation"
-      className="group/tab relative flex h-8 max-w-52 shrink-0 items-center"
+      className="group/tab relative flex h-7 max-w-52 shrink-0 items-center"
     >
       {active ? (
         <motion.span
           layoutId="agent-dock-active-tab"
           aria-hidden="true"
-          className="absolute inset-0 rounded-md bg-foreground/6 dark:bg-foreground/10"
+          className="absolute inset-0 rounded-full bg-foreground/6 dark:bg-foreground/10"
           transition={{ type: "spring", stiffness: 520, damping: 42 }}
         />
       ) : null}
@@ -91,23 +97,29 @@ function TabButton({
         aria-selected={active}
         onClick={onSelect}
         className={cn(
-          "relative flex h-full min-w-0 items-center gap-1.5 rounded-md pl-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-          onClose ? "pr-5" : "pr-2.5",
+          TAB_ITEM_CLASS,
           active
             ? "text-foreground"
-            : "text-muted-foreground hover:text-foreground",
-          typeStyle("control.button"),
+            : "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
         )}
       >
         {leading}
-        <span className="truncate">{label}</span>
+        <span
+          className={cn(
+            "truncate",
+            onClose &&
+              "group-hover/tab:[mask-image:linear-gradient(to_left,transparent_18px,black_34px)] group-focus-within/tab:[mask-image:linear-gradient(to_left,transparent_18px,black_34px)]",
+          )}
+        >
+          {label}
+        </span>
       </button>
       {onClose ? (
         <button
           type="button"
           aria-label={`Close ${label}`}
           onClick={onClose}
-          className="absolute right-0.5 flex size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
+          className="absolute right-1.5 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
         >
           <X className="size-3" />
         </button>
@@ -178,21 +190,23 @@ export function AgentDockBar({
   return (
     <div
       className={cn(
-        "flex h-11 shrink-0 items-center gap-2 px-2 md:px-3",
+        "flex h-11 shrink-0 items-center gap-1.5 px-2 md:px-3",
         open && "border-t border-border",
       )}
     >
-      <PillButton
+      <button
         type="button"
-        variant="secondary"
-        size="compact"
-        className="shrink-0"
         aria-label={adapter.newChatLabel}
         onClick={dock.newChat}
+        className={cn(
+          TAB_ITEM_CLASS,
+          "h-7 shrink-0 text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+        )}
       >
         <Plus className="size-3.5" />
         {mobile && dock.tabs.length > 0 ? null : adapter.newChatLabel}
-      </PillButton>
+      </button>
+      <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
       <div
         role="tablist"
         aria-label="Open chats"
