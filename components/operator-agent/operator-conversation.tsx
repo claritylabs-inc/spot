@@ -18,13 +18,11 @@ import {
 } from "@/components/chat/approval-card";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import {
-  ChatAnswer,
-  ChatAssistantMessage,
+  ChatAssistantTurn,
   ChatCopyButton,
-  ChatUserMessage,
+  ChatUserTurn,
 } from "@/components/chat/chat-message";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
-import { ChatMessageBubble } from "@/components/chat/message-bubble";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { LogoIcon } from "@/components/ui/logo-icon";
@@ -351,61 +349,53 @@ function OperatorMessageRow({
     if (!working && !content && !attachments && !message.presentation)
       return null;
     return (
-      <ChatAssistantMessage
+      <ChatAssistantTurn
         working={working}
         hasText={Boolean(content)}
         tools={message.usedTools}
         toolCalls={message.toolCalls}
+        audience="operator"
+        content={content}
+        channel={bubbleChannel}
+        isError={message.status === "error"}
+        presentation={message.status ? undefined : message.presentation}
+        onFollowUp={onFollowUp}
+        presentationDisabled={presentationDisabled}
       >
-        <ChatAnswer
-          audience="operator"
-          content={content}
-          channel={bubbleChannel}
-          isError={message.status === "error"}
-          presentation={message.status ? undefined : message.presentation}
-          onFollowUp={onFollowUp}
-          presentationDisabled={presentationDisabled}
-        >
-          {attachments}
-        </ChatAnswer>
-      </ChatAssistantMessage>
+        {attachments}
+      </ChatAssistantTurn>
     );
   }
 
   return (
-    <ChatUserMessage
+    <ChatUserTurn
       own
       name={message.userName?.trim() || "Operator"}
       createdAt={message.createdAt}
+      channel={bubbleChannel}
+      isError={message.status === "error"}
+      customBody={message.channel === "email" && Boolean(content)}
       channelIcon={
         <OperatorThreadChannelIcon
           channel={message.channel}
           className="size-3 shrink-0 text-muted-foreground/45"
         />
       }
-    >
-      {message.channel === "email" && content ? (
+      body={message.channel === "email" && content ? (
         <OperatorEmailMessage message={message} attachments={attachments} />
       ) : (
-        <ChatMessageBubble
-          role="user"
-          channel={bubbleChannel}
-          isOwnMessage
-          isError={message.status === "error"}
-        >
-          {content ? (
-            message.channel === "slack" ? (
-              <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
-                {content}
-              </ProseMarkdown>
-            ) : (
-              <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
-            )
-          ) : null}
-          {attachments}
-        </ChatMessageBubble>
+        content ? (
+          message.channel === "slack" ? (
+            <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
+              {content}
+            </ProseMarkdown>
+          ) : (
+            <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
+          )
+        ) : null
       )}
-    </ChatUserMessage>
+      attachments={message.channel === "email" && content ? null : attachments}
+    />
   );
 }
 

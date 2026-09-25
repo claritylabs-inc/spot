@@ -18,7 +18,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { isFeatureEnabled } from "@/convex/lib/featureFlags";
 import { usePdf } from "@/components/pdf-context";
-import { ThreadAttachmentChip } from "@/components/agent-thread/thread-attachment-chip";
+import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { cn } from "@/lib/utils";
@@ -497,7 +497,7 @@ export function MailboxEmailReviewSidebar({
                       previewingAttachmentKey ===
                       `${attachmentIndex}:${attachment.filename}`;
                     return (
-                      <ThreadAttachmentChip
+                      <ChatAttachmentChip
                         key={`${attachment.filename}-${index}`}
                         attachment={attachment}
                         className="w-fit"

@@ -7,7 +7,7 @@ The thread route is intentionally thin. Reusable message UI and artifact surface
 - `types.ts` defines the shared thread message, artifact data and side-panel reference shapes. Artifact modules must import types from here instead of from the route.
 - `thread-content.tsx` adapts tenant thread data, mutations, artifact sidebars, and queued messages to the shared `components/chat/` list and composer. Route files pass thread identity, viewer metadata, and shell callbacks into this component.
 - `thread-message.tsx` renders tenant-specific message details and artifacts through the shared chat message components. `thread-messages.ts` groups and stabilizes tenant records.
-- `thread-attachment-chip.tsx` resolves tenant file URLs for the shared attachment chip and PDF preview.
+- `components/chat/attachment-chip.tsx` resolves tenant file URLs when given a thread ID and handles PDF preview.
 - `artifacts/` contains one module per artifact family. Each module owns its summary card, right-panel detail view and normalization helpers for that artifact's data shape.
 
 ## Adding An Artifact

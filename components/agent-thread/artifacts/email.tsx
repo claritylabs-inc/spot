@@ -12,7 +12,7 @@ import {
   StatusTag,
   type StatusTagTone,
 } from "@claritylabs-inc/ui/components/status-tag";
-import { ThreadAttachmentChip } from "../thread-attachment-chip";
+import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -136,7 +136,7 @@ function EmailHeaderAttachments({
       <dd className="col-span-1 min-w-0">
         <div className="flex min-w-0 flex-wrap gap-1.5">
           {visibleAttachments.map((att, index) => (
-            <ThreadAttachmentChip
+            <ChatAttachmentChip
               key={index}
               attachment={att}
               threadId={threadId}
