@@ -414,9 +414,7 @@ primitive, difficulty, and tiers); trace storage keeps legacy selection fields
 readable for older events.
 
 Before each operator model step, Spot filters tool definitions by current role,
-impersonation, and known integration configuration. It sends all remaining tools
-for router-owned selection, without `toolChoice`, and revalidates exact access
-and approvals at execution. There is no separate chat policy-evidence
+impersonation, and known integration configuration. Jev selects starter tool families; `expand_tools` can add more during a run. Spot sends the selected family definitions without `toolChoice` and revalidates exact access and approvals at execution. There is no separate chat policy-evidence
 classifier, completed-lookup gate, or recovery generation.
 
 Tool-bearing agent loops use `getAgentLanguageModelForOrg`,
@@ -476,9 +474,7 @@ steps and never replays completed business tools after visible output.
 
 `/operator/logs` shows 30-day Spot `modelRoutingEvents` call history with
 router-owned request IDs, the router's selection summary, sanitized failed
-provider attempts, cost, and usage. Workflow feedback is submitted only when
-tool results contain concrete workflow outcomes; an HTTP 200 by itself is never
-scored as success.
+provider attempts, cost, and usage. The retired rating and router feedback paths are not used.
 
 The production router health URL is configured through
 `SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL`. The normal deployment audit includes
@@ -490,7 +486,7 @@ AGENT_HEALTH_ATTEMPTS=1 npm run check:agent-health -- --env=production
 
 The router must report the matching environment and a live database.
 Spot no longer calls `/admin/policy`, `/admin/rollups`, `/admin/score`, or
-`/admin/freeze`. Operator model picks and call history live in Spot.
+`/admin/freeze`. Call history lives in Spot. Operator model and web retrieval route settings have no UI; the retired overrides are cleared by the post-deploy checklist.
 
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.
@@ -513,55 +509,18 @@ wildcard asset origins on a cloud router.
 
 ## Promotion checklist
 
-1. Run root CI, worker builds, Convex typecheck, and the cl-router OpenAPI and
-   full checks.
-2. In the target environment, explicitly save an image-capable route for
-   `operator_agent` and confirm the router capabilities endpoint reports its
-   provider configured. Spot sends this selection to cl-router as a request pin.
-3. Deploy the separate Convex cl-router lane and configure all required AI and
-   retrieval provider credentials there before deploying Spot consumers. State
-   import uses the temporary guarded migration procedure above; cl-router's
-   Convex deployments must not receive Postgres or Railway runtime variables.
-4. Configure the same bearer secret in the caller and router for that lane.
-   Before deploying callers, verify Convex's built-in `CONVEX_SITE_URL`
-   resolves to the same canonical origin; do not run
-   `npx convex env set CONVEX_SITE_URL`. The shared-dev value is
-   `https://acoustic-caiman-755.convex.site` and production is
-   `https://actions.spot.insure`.
-5. Confirm `GET /health` and the Spot deployment health audit.
-6. Validate generation, tool loops, structured output, embeddings,
-   transcription, extraction, and retrieval in shared dev. Include a
-   staged asset whose router request remains small only because it uses the
-   lane's signed Spot reference, and confirm the router performs the bounded
-   allowlisted `GET`. Repeat that staged-reference smoke in production before
-   removing consumer credentials. Compare
-   route, error, latency, token, cost, tool completion, and workflow-failure
-   telemetry in `/operator/routing`.
-7. Keep the router environment panic and diagnostic overrides off. Use the
-   `/operator/routing` global freeze toggle when autonomous route changes should
-   pause or resume, then verify the new posture in the same dashboard.
-8. Page through the value-free legacy key audit with
-   `npx convex run modelSettingsMigration:auditLegacyProviderKeys '{"paginationOpts":{"cursor":null,"numItems":100}}'`, passing each returned opaque cursor until
-   `isDone`. Review `configuredKeyProviders`, `configuredRouteProviders`, and
-   each `routeRows` organization against router capabilities. The audit returns
-   provider names, row IDs, and counts only—never credential values, lengths,
-   prefixes, or hints. Review the dry run from
-   `npx convex run migrations:unsetLegacyBrokerModelProviderKeys '{"dryRun":true}'`,
-   then run `npx convex run migrations:runLegacyBrokerModelProviderKeyCleanup`.
-   Repeat the full paginated audit until every page reports
-   `legacyFieldRows: 0`; only a later narrowing release may remove the optional
-   schema field.
-9. Remove AI and retrieval provider keys from Convex only
-   after the router-backed consumer deploy is verified. Roll back by reverting
-   the consumer release or pinning/freezing router policy—not by restoring
-   consumer provider credentials. Reserve `CL_ROUTER_FROZEN=1` for incidents
-   where the control surface is unavailable.
+1. Run root CI, worker builds, Convex typecheck, and the cl-router checks. Deploy router jobs and its router-owned worker before the Spot consumer.
+2. Configure `CL_ROUTER_URL` and `CL_ROUTER_SECRET` for the approved lane. Confirm the canonical Convex callback origin is reachable by the router; local Convex needs an HTTPS tunnel or local router worker, even for text jobs.
+3. Verify authenticated capabilities and the bounded `actions/operationalRouterSmoke:run` fixture in shared dev. Check the Convex section extraction flow with synthetic documents and confirm `convex-sections-v1` promotion and scanned-page evidence.
+4. Run the [post-deploy operator checklist](../../AGENTS.md#post-deploy-operator-checklist-for-this-extraction-release) after target deployment. `actions/reextractLegacyPolicies:run` defaults to a dry run; page the cleanup mutations until they return `isDone`.
+5. Confirm release readiness and exact-commit health before Vercel production alias assignment.
 
+The operator-agent model and web retrieval route have no UI or supported `npx convex run` setter. `modelSettings:clearOperatorModelOverridesInternal` removes stored overrides as part of post-deploy cleanup; `resolveOperatorAgentRoute` still requires that stored route and throws when absent; resolve this conflict before clearing a live target.
 
 ### Durable inference rollout
 
 Deploy the cl-router job ledger and its separate Node worker before this Spot
-consumer. Follow the router repository's `docs/durable-inference.md` for its
+consumer. Follow the router repository's durable inference documentation for its
 worker secret, provider credentials, callback/asset allowlists, and worker health.
 Spot keeps only its inference bearer; never copy the router worker secret or
 provider credentials here. Then release Spot Convex through its existing lane

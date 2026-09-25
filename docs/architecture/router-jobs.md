@@ -10,7 +10,7 @@ The caller supplies a stable invocation key for one model step. The first call
 freezes the request; resuming that key uses its original stored payload, including
 its selected route. Rebuilding a prompt or refreshing an asset signature does not
 replace an already dispatched request. Callers must allocate a new key for a
-new step. Operator and extraction owners retain these identities across their
+new step. Operator and Convex section-extraction owners retain these identities across their
 own continuation boundaries. Other callers can poll within their existing action;
 that does not make their outer application workflow resumable after process loss.
 
@@ -100,8 +100,7 @@ with `status: "progress"`; Spot validates invocation, token, fingerprint, router
 ID, sequence, active message, and operator checkpoint before updating the reply.
 Only text is streamed; tool execution waits for the terminal model result.
 Cancelled/terminal jobs reject late progress. Router progress delivery is best
-effort and never restarts inference. Deploy the router schema/API and worker
-support before enabling the Spot consumer change.
+effort and never restarts inference. The router schema/API and router-owned worker must support progress callbacks before a Spot consumer uses streaming.
 
 Profile settings store personal `users.streamResponses` (default on) and
 `users.showThinking` (default off). Both operator and client web renderers share

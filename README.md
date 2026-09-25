@@ -4,7 +4,7 @@ Client-facing instructions for web chat, email, iMessage, Slack, connected
 mailboxes, notifications, and document delivery are in the
 [Spot client help](docs/help/README.md) section.
 
-Spot is the insurance intelligence platform from Tools for Enlightenment. It combines document extraction, conversational AI, org memory, broker/client workspaces, connected vendor/client access, and API/MCP surfaces in one system.
+Spot is the insurance intelligence platform from Tools for Enlightenment. It combines Convex section extraction, conversational AI, company Markdown, broker/client workspaces, connected vendor/client access, and API/MCP surfaces.
 
 For contributor-facing implementation detail, see [AGENTS.md](AGENTS.md).
 
@@ -13,7 +13,7 @@ Procurement requests use two ordinary Markdown files: `private.md` for internal 
 ## What Spot Does
 
 - Ingests insurance-related documents from email and uploads
-- Extracts structured bound-policy, renewal, and supporting business data
+- Extracts policy and proposal documents by section in Convex, with cited source evidence
 - Builds a continuously-updated company Markdown wiki (`markdownDocuments`) per organization
 - Supports agent workflows for Q&A, policy-change requests, COI generation, and follow-up analysis
 - Exposes capabilities through UI, REST API (`/api/v1/*`), and OAuth-authenticated MCP (`/mcp`)
@@ -22,8 +22,8 @@ Procurement requests use two ordinary Markdown files: `private.md` for internal 
 ## Stack
 
 - Next.js 16 + React 19 + Tailwind 4
-- Convex (DB, actions, scheduler, storage, vector search, HTTP)
-- Vercel AI SDK (`ai`) for model execution + tool-enabled chat
+- Convex (DB, actions, scheduler, storage, full-text search, HTTP)
+- Vercel AI SDK (`ai`) with cl-router for model execution and tool-enabled chat
 - `@claritylabs/cl-sdk@4.6.0` for insurance-focused primitives, the canonical ACORD policy taxonomy, and schema/prompt helpers used by the Convex extraction pipeline
 - Resend for email ingest and messaging workflows
 
@@ -122,7 +122,7 @@ Spectrum is optional and reserves `$CONDUCTOR_PORT + 2`. Start its interactive
 TUI in a separate terminal with `npm run conductor:spectrum`, or use the
 **Spectrum terminal** Run template. It starts as the Example Risk admin. Use
 `/whoami` to inspect the current sender, `/as broker` for Example Risk,
-`/as client` for Cove, and `/as public` for the unlinked public-demo path.
+`/as client` for Cove, and `/as public` for an unlinked sender that receives no tenant data.
 `/as +<E.164 phone>` can test an explicit local identity; the following message
 uses the newly selected sender.
 Conductor runs are concurrent: each local worktree reserves one port namespace
@@ -217,7 +217,7 @@ cp imessage-worker/.env.template imessage-worker/.env
 npm run container:run:imessage-worker
 ```
 
-Repeat with `slack-worker/.env` or `mailbox-scan-worker/.env` for those services. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
+Repeat with a local Slack environment file or an environment file copied from `mailbox-scan-worker/.env.template` for that service. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
 
 ## Environment
 
@@ -260,14 +260,14 @@ Not every flow requires every variable; requirements depend on which features yo
 2. Store raw files in Convex storage.
 3. Extract structured insurance/business data through the Convex section
    extraction pipeline.
-4. Persist policy data and chunk + embed content for retrieval.
-5. Write key facts into the company wiki.
+4. Persist source spans, nodes, and a grounded policy profile.
+5. Search policy sources with Convex full-text search and Jev ranking.
 
 ### 2) Retrieval + Agent Chat
 
 Agent responses are grounded in:
 
-- `documentChunks` (bound-policy/supporting docs)
+- Convex full-text source search and Jev relevance ranking (`convex/lib/policySearch.ts`, `convex/lib/policyLookup.ts`)
 - `markdownDocuments` (the shared company wiki, read whole)
 
 ### 3) Connected vendor/client accounts
@@ -289,31 +289,9 @@ Connected vendor data is exposed in the same channels as first-party insurance d
 
 ## Model Routing
 
-Every AI and credentialed web-retrieval call runs through the separate
-task-aware `cl-router` service. Spot resolves the global/code settings snapshot
-without provider credentials and sends it with each request; the router owns
-provider credentials, direct-provider execution, failover, cost telemetry,
-calibration, capabilities, and autonomous policy.
+All model decisions, generation, embeddings, transcription, and credentialed retrieval go through cl-router using `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. Spot holds no provider credentials or direct-provider fallback. `convex/lib/clRouterClient.ts` owns the transport and `convex/lib/jevThreshold.ts` centralizes the 70% Jev decision threshold. Durable jobs preserve the request and chosen route across continuation; see [router jobs](docs/architecture/router-jobs.md).
 
-- `CL_ROUTER_URL` and `CL_ROUTER_SECRET` are mandatory for AI execution.
-  There is no task gate or consumer-side direct-provider fallback.
-- Operator global choices are explicit overrides; leaving a task on Automated
-  routing gives the active policy control. The global fallback remains a
-  separate safety route. Broker organizations do not override model routing.
-- The internal `operator_agent` route still requires an explicit image-capable
-  selection, but Spot sends that selection to cl-router as a request pin.
-- `convex/lib/clRouterClient.ts` owns generation, streaming, embeddings,
-  transcription, capabilities, and retrieval contracts.
-  `convex/lib/clRouterLanguageModel.ts` preserves the Spot-owned business-tool
-  loop with one routed stream per model step and a stable route pin.
-- Tool-bearing successes and incomplete responses feed generic quality signals
-  back to the routed request so autonomous `query_reason` policies can learn
-  which candidates reliably complete tool workflows.
-- Defaults are operator-configurable in `/operator/routing`; see `AGENTS.md`
-  and `docs/deployment/environments.md` for rollout and controls.
-
-Only cl-router calls AI and retrieval providers. Spot contains no provider keys,
-provider SDK execution, Vercel AI Gateway fallback, or break-glass provider path.
+The operator model and web retrieval route no longer have a settings UI. There is no supported `npx convex run` setter for them; the post-deploy cleanup clears stored operator overrides. The router owns route policy, but `resolveOperatorAgentRoute` still throws without a stored explicit `operator_agent` route. Resolve that contract before post-deploy cleanup on a live target.
 
 ## Convex Rule Of Thumb
 
@@ -325,7 +303,7 @@ Internal Convex functions do not have user auth context. Do not call public auth
 - `convex/lib/clRouterLanguageModel.ts` - AI SDK chat streaming adapter
 - `convex/lib/models.ts` - settings resolution and router-only task helpers
 - `convex/lib/sdkCallbacks.ts` - `cl-sdk` task bridge
-- `convex/lib/agentPrompts.ts` - retrieval context builders
+- `convex/lib/policyLookup.ts` - policy source lookup
 - `convex/actions/extractFromUpload.ts` - policy extraction entrypoint
 - `convex/connectedOrgs.ts` - connected vendor/client relationship mutations and queries
 - `convex/http.ts` - HTTP, REST, and MCP routes

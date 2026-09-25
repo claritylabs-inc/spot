@@ -47,6 +47,8 @@ When any source above adds, removes, renames, or materially changes a tool, upda
 
 ## Operator agent registry
 
+Operator turns start with Jev-selected tool families. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution.
+
 The [operator activity icon inventory](docs/design/operator-tool-icons.md) groups
 every operator tool by its browser activity icon.
 
@@ -62,10 +64,9 @@ without a count restriction.
 Operator email confirmation replies preserve the current exact approval and
 waiting run; approval still requires the portal controls. Quoted email history
 is not a new operator instruction, and forwards nested in that history are not
-fresh source messages. Workspace reconciliation excludes Spot Operator's own
-outgoing summaries from collected evidence.
+fresh source messages. The read-only `scan_workspace_mailbox` tool excludes Spot Operator's own outgoing summaries from collected evidence.
 
-The operator registry currently contains 79 tools. Writes require an exact, fingerprint-bound confirmation except for the registered private attachment-filing action (`add_client_file`). Exact-confirmed tools run the shared reference preflight in `convex/lib/operatorAgentConfirmationPreflight.ts` before the confirmation is shown, and the write revalidates the same references at execution. Registry schemas expose executable ACORD LOBCd and USPS enums plus ISO dates, email addresses, HTTP(S) URLs, replacement-list semantics, and explicit omit-versus-null guidance instead of relying on prose guesses. `mutation` and `action` identify the Convex execution boundary, not whether the operation writes data. The versioned browser/agent procurement parity contract lives in `convex/lib/procurementCapabilities.ts`.
+The operator registry is defined in `convex/lib/operatorAgentToolRegistry.ts`. Writes require an exact, fingerprint-bound confirmation except for the registered private attachment-filing action (`add_client_file`). Exact-confirmed tools run the shared reference preflight in `convex/lib/operatorAgentConfirmationPreflight.ts` before the confirmation is shown, and the write revalidates the same references at execution. Registry schemas expose executable ACORD LOBCd and USPS enums plus ISO dates, email addresses, HTTP(S) URLs, replacement-list semantics, and explicit omit-versus-null guidance instead of relying on prose guesses. `mutation` and `action` identify the Convex execution boundary, not whether the operation writes data. The versioned browser/agent procurement parity contract lives in `convex/lib/procurementCapabilities.ts`.
 
 Operator web chat, authenticated inbound email, iMessage, and the internal Slack adapter all enqueue into the same operator runner, which registers this complete registry without a channel-specific tool allowlist. iMessage voice notes pass through the shared inbound-turn preparation handler before entering that runner, so their labeled transcripts receive the same tools and confirmation policy as typed operator messages. Each channel still keeps its own transport authentication, identity resolution, thread persistence, and attachment ingestion. For Slack, customer connection and Slack Connect binding resolution takes precedence, and every invocation still requires an active operator profile linked to the exact host-workspace Slack identity; Convex applies no channel allowlist, type, privacy, sharing, or membership gate after that identity is resolved. Operator MCP exposes the same registry and executes the same service-backed tools, so “Slack agent” behavior is Spot-agent behavior rather than a Slack-only catalog. Procurement forwarding email is ingested deterministically into the same canonical request/email/artifact records before the agent reads it, rather than granting the tenant email agent access to operator-private proposals.
 
@@ -81,6 +82,7 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | `search_company_email`                     | Search company Gmail with mailbox provenance, continuation, and explicit partial failures.                              | `operator.company_email.read`   | read             | operator | none         | action    |
 | `read_company_email_thread`                | Read bounded original email bodies and attachment references in an exact mailbox.                                      | `operator.company_email.read`   | read             | operator | none         | action    |
 | `get_company_email_attachment`             | Read an original Gmail attachment and return it privately in the operator conversation.                                | `operator.company_email.read`   | read             | operator | none         | action    |
+| `scan_workspace_mailbox` | Scan an authorized company Gmail mailbox on demand for up to 30 days and return up to 25 candidates; makes no writes. | `operator.company_email.read` | read | operator | none | action |
 | `list_policies`                            | List or search policies for one organization.                                                                           | `operator.policies.read`        | read             | operator | none         | mutation  |
 | `lookup_policy`                            | Retrieve rich current policy summaries using policy evidence only; no company-profile fallback.                                                                  | `operator.policies.read`        | read             | operator | none         | action    |
 | `compare_coverages`                        | Compare two policies' coverages, limits, deductibles, and premium.                                                      | `operator.policies.read`        | read             | operator | none         | action    |
@@ -170,34 +172,7 @@ Update confirmations describe supplied field changes in plain language, includin
 
 Company email uses the global connection configured in Channels → Google Workspace. Every active operator can read every configured mailbox; there are no per-mailbox operator permissions. The action boundary revalidates the operator and connection before delegated Gmail reads. These tools require no confirmation, are available to read-scoped operator MCP clients, and are marked open-world because they query Google. They are absent from tenant/client agents and tenant MCP. Search is live and mailbox-scoped with resumable coverage, not a semantic index or guaranteed global recency order. Registered callers receive short continuation references resolved from the existing action audit only for the same operator, thread, and tool. Reuse the reference unchanged with the same query, filters, and page size; raw signed cursors remain backend-side and retain revision/request validation. Results preserve mailbox/message/thread provenance and report failures or truncation. Attachment metadata uses short message-local `part:` references; retrieval refetches the stated parent and rejects absent or ambiguous parts before using the raw provider ID internally. Attachment retrieval reads Google, extracts bounded content, and uses the existing protected operator-thread attachment owner; it does not create client files, change Gmail, or send mail. The service-account key and access tokens remain backend-only. See [Google Workspace setup](docs/deployment/google-workspace.md).
 
-Scheduled Workspace reconciliation has no model-callable or MCP tools. Its
-operator-only portal APIs configure the disabled-by-default schedule, start a
-run, page status/mailboxes/activity and exact match candidates, and resolve,
-dismiss, retry or conditionally correct findings. An active operator explicitly
-authorizes standing writes; the internal executor accepts a strict allowlist,
-rechecks sponsor/settings/source lease/evidence and current targets atomically,
-and attributes each change to automation and that operator. It uses global
-`analysis` through cl-router, treating mail/PDF content as untrusted evidence.
-No fabricated interactive confirmation, operator thread or user account is used.
-
-Scheduled creation grants no users, invitations, memberships, inherited access or
-shared packet links. New requests use sanitized client-visible content; raw
-mail, market activity and findings remain operator-private. Scheduled bound-PDF
-imports share storage/content validation, policy creation and normal extraction
-with interactive imports, using a separate source-bound authorization entrypoint.
-The extraction invocation retains its scan origin so review results remain in
-the portal without client email, Slack or iMessage. A duplicate scan reference
-cannot suppress an interactive upload's notifications; full manual re-extraction
-starts a new invocation with normal behavior. The scan cannot send mail, select
-proposals, confirm reviews, bind coverage, delete or blacklist records, or change
-access/sharing. Interactive tool and MCP exact-confirmation requirements are
-unchanged.
-
-`create_procurement_broker_outreach` and `update_procurement_broker_outreach`,
-both version 4, include the neutral `observed` status for sourced activity that makes no capability
-claim. A declined or quoted message must not imply `can_handle`. Scans update
-the exact existing request/broker log through its owning helper; the status and
-log remain operator-private.
+`scan_workspace_mailbox` is an explicit read-only operator tool. It reads authorized Google Workspace mailboxes and does not create requests, policies, or outbound messages. The former scheduled scan and reconciliation APIs are retired; agent-scheduled workflows are tracked in Linear CLA-171.
 
 ### Operator MCP projection
 
@@ -317,19 +292,16 @@ The former direct MCP names `get_policy_stats`, `list_policy_certificates`, `lis
 ## Browser WebMCP tools
 
 `lib/webmcp/catalog.ts` and `lib/webmcp/definitions/*` define the WebMCP tools
-Chrome agents can call in the Spot web app. `docs/architecture/webmcp.md` holds
-the per-page list and the UI parity table; `/llms.txt` is generated from the
-catalog. There are 137 tools. Seven are declarative, on the signup, login, and
-onboarding forms: `request_signup_code`, `verify_signup_code`,
+Chrome agents can call in the Spot web app when Vercel flag `webmcp-enabled` is on (`WEBMCP_ENABLED`, `FLAGS_SECRET`). `docs/architecture/webmcp.md` describes the runtime; `/llms.txt` is generated from the
+catalog. Declarative signup, login, and onboarding forms include: `request_signup_code`, `verify_signup_code`,
 `request_login_code`, `verify_login_code`, `submit_user_profile`,
 `submit_company_profile`, and `finish_onboarding`. OTP verification stays
-mandatory. The other 130 are imperative. Client tools cover
+mandatory. Imperative client tools cover
 policies, certificates, compliance, requests, shared files, agent threads and
 drafted email, mailbox review items, notifications, connections, organization
 settings, team, agent channels, company wiki, workflow and notification
 settings, integrations, mailboxes, beta features, and the personal profile.
-Public token tools cover shared packets, shared email reviews, vendor
-invitations, and the model routing report.
+Public token tools cover shared packets, shared email reviews, and vendor invitations.
 
 Effect and access:
 
