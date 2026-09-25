@@ -5,7 +5,8 @@ import { clRouterDecide } from "./clRouterClient";
 import { runProfileWebRetrieval } from "./webRetrieval";
 import {
   gatherProfileEvidence,
-  selectBrokerAppetite,
+  gatherProfileEvidenceWithTrace,
+  selectBrokerAppetiteWithTrace,
 } from "./profileResearchOrchestrator";
 
 vi.mock("./clRouterClient", () => ({ clRouterDecide: vi.fn() }));
@@ -60,7 +61,12 @@ test("Jev selects parallel research, reassesses gaps, and retains successful evi
       };
     },
   );
-  const result = await gatherProfileEvidence(ctx, identity);
+  const trace = { traceId: "research-lease", channel: "company_research" };
+  const result = await gatherProfileEvidenceWithTrace(ctx, identity, trace);
+  for (const [request] of vi.mocked(clRouterDecide).mock.calls)
+    expect(request.trace).toEqual(trace);
+  for (const [, , input] of vi.mocked(runProfileWebRetrieval).mock.calls)
+    expect(input.trace).toEqual(trace);
   expect(peak).toBeGreaterThan(1);
   expect(result.unresolvedFields).toEqual(["scale"]);
   expect(result.sourceUrls).toEqual(["https://broker.example/about"]);
@@ -103,14 +109,27 @@ test("independent state and line probabilities proceed at 0.70", async () => {
       ),
     } as never;
   });
-  const result = await selectBrokerAppetite(ctx, orgId, identity, [
-    {
-      topic: "appetite",
-      text: "Cited insurance evidence",
-      urls: ["https://broker.example/products"],
-    },
+  const trace = { traceId: "research-lease", channel: "company_research" };
+  const result = await selectBrokerAppetiteWithTrace(
+    ctx,
+    orgId,
+    identity,
+    [
+      {
+        topic: "appetite",
+        text: "Cited insurance evidence",
+        urls: ["https://broker.example/products"],
+      },
+    ],
+    trace,
+  );
+  for (const [request] of vi.mocked(clRouterDecide).mock.calls)
+    expect(request.trace).toEqual(trace);
+  expect(result.writingStates.map((item) => item.code)).toEqual([
+    "CA",
+    "NV",
+    "OR",
   ]);
-  expect(result.writingStates.map((item) => item.code)).toEqual(["CA", "NV", "OR"]);
   expect(result.lineOfBusinessCodes.map((item) => item.code)).toEqual(
     expect.arrayContaining(["CGL", "PROP"]),
   );

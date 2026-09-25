@@ -22,6 +22,7 @@ import {
   type ClRouterResponseMetadata,
   type ClRouterSettingsSnapshot,
   type ClRouterUsage,
+  type ClRouterTraceInput,
 } from "./clRouterClient";
 import {
   clRouterMessagesHaveVision,
@@ -79,6 +80,7 @@ export type ModelCallTaskKind =
 
 type ModelCallContext = {
   taskKind?: ModelCallTaskKind;
+  trace?: ClRouterTraceInput;
 };
 
 /** `route` is present only when an operator pin forces /v1/manual. */
@@ -325,6 +327,7 @@ function routedMetadataSource(
 function spotGenerateRequest(options: {
   task: ModelTask;
   taskKind?: ModelCallTaskKind;
+  trace?: ClRouterTraceInput;
   orgId?: string;
   input: Pick<
     ClRouterGenerateRequest,
@@ -340,6 +343,7 @@ function spotGenerateRequest(options: {
     hasVision: clRouterMessagesHaveVision(options.input.messages),
   });
   const trace = normalizeClRouterTrace({
+    ...options.trace,
     label: options.label,
     task: options.task,
     ...(options.taskKind ? { taskKind: options.taskKind } : {}),
@@ -789,7 +793,10 @@ function agentLanguageModel(
             payload,
             `${invocationKey}:${jobStep}`,
             abortSignal,
-            { wait: run.durable ? "yield" : "poll", streamTarget: run.streamTarget },
+            {
+              wait: run.durable ? "yield" : "poll",
+              streamTarget: run.streamTarget,
+            },
           );
           jobStep += 1;
           return result;
@@ -1300,6 +1307,7 @@ export async function generateTextForOrg(
       spotGenerateRequest({
         task,
         taskKind: callContext?.taskKind,
+        trace: callContext?.trace,
         orgId,
         input,
         label: "convex.models.generateTextForOrg",
@@ -1329,6 +1337,7 @@ export async function generateObjectForOrg<T>(
       spotGenerateRequest({
         task,
         taskKind: callContext?.taskKind,
+        trace: callContext?.trace,
         orgId,
         input,
         schema: z.toJSONSchema(schema) as Record<string, unknown>,
@@ -1358,6 +1367,7 @@ export async function generateTextForPublicTask(
       spotGenerateRequest({
         task,
         taskKind: callContext?.taskKind,
+        trace: callContext?.trace,
         input,
         label: "convex.models.generateTextForPublicTask",
       }),
@@ -1385,6 +1395,7 @@ export async function generateObjectForPublicTask<T>(
       spotGenerateRequest({
         task,
         taskKind: callContext?.taskKind,
+        trace: callContext?.trace,
         input,
         schema: z.toJSONSchema(schema) as Record<string, unknown>,
         label: "convex.models.generateObjectForPublicTask",

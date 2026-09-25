@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { Id } from "../_generated/dataModel";
 import { runOperatorWebRetrieval, runWebRetrieval } from "./webRetrieval";
+import { durableRouterClientOptionsWithTrace } from "./routerJobClient";
 
 describe("router-owned web retrieval", () => {
   afterEach(() => {
@@ -68,6 +69,8 @@ describe("router-owned web retrieval", () => {
     await expect(
       runOperatorWebRetrieval({ runQuery } as never, {
         query: "synthetic operator search",
+        taskKind: "profile_research_identity",
+        trace: { traceId: "research-1", parentRequestId: "job-1" },
       }),
     ).resolves.toMatchObject({ provider: "openai", text: "Synthetic result" });
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -76,6 +79,15 @@ describe("router-owned web retrieval", () => {
       RequestInit,
     ];
     expect(url).toBe("https://router.example.test/v1/retrieve");
+    expect(durableRouterClientOptionsWithTrace).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        traceId: "research-1",
+        parentRequestId: "job-1",
+        taskKind: "profile_research_identity",
+      }),
+    );
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("trace");
     expect(JSON.parse(String(init.body))).toMatchObject({
       tenantId: "glass",
       input: { query: "synthetic operator search" },
@@ -90,6 +102,7 @@ describe("router-owned web retrieval", () => {
 vi.mock("./routerJobClient", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./routerJobClient")>()),
   durableRouterClientOptions: () => ({}),
+  durableRouterClientOptionsWithTrace: vi.fn(() => ({})),
   executeDurableRouterRequest: async (
     _ctx: unknown,
     operation: string,

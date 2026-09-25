@@ -151,8 +151,11 @@ export function normalizeGeneratedTitle(raw: string): string | null {
   }
   if (
     words.some((word) =>
-      ["analyze", "analyse", "understand", "identify", "determine"].includes(word),
-    ) && words.some((word) => ["request", "intent"].includes(word))
+      ["analyze", "analyse", "understand", "identify", "determine"].includes(
+        word,
+      ),
+    ) &&
+    words.some((word) => ["request", "intent"].includes(word))
   ) {
     return null;
   }
@@ -171,11 +174,10 @@ export function fallbackTitle(seed: string): string {
   const fallbackWords = words.length
     ? words
     : tokenizeSearchText(titleText, { minimumLength: 1 }).slice(0, 4);
-  const titledWords = fallbackWords
-    .map((word) => {
-      const [first, ...rest] = Array.from(word);
-      return `${first?.toLocaleUpperCase("und") ?? ""}${rest.join("")}`;
-    });
+  const titledWords = fallbackWords.map((word) => {
+    const [first, ...rest] = Array.from(word);
+    return `${first?.toLocaleUpperCase("und") ?? ""}${rest.join("")}`;
+  });
   const boundedWords: string[] = [];
   for (const word of titledWords) {
     const candidate = [...boundedWords, word].join(" ");
@@ -194,20 +196,26 @@ export function buildTitlePromptContent(context: TitleContext): string {
 
   if (context.initialContext) {
     const lines = [`Page type: ${context.initialContext.pageType}`];
-    if (context.initialContext.summary) lines.push(`Page summary: ${context.initialContext.summary}`);
+    if (context.initialContext.summary)
+      lines.push(`Page summary: ${context.initialContext.summary}`);
     parts.push(`Starting page context:\n${lines.join("\n")}`);
   }
 
   if (context.attachments?.length) {
     parts.push(
       `Initial attachments:\n${context.attachments
-        .map((attachment) => `- ${attachment.filename}${attachment.contentType ? ` (${attachment.contentType})` : ""}`)
+        .map(
+          (attachment) =>
+            `- ${attachment.filename}${attachment.contentType ? ` (${attachment.contentType})` : ""}`,
+        )
         .join("\n")}`,
     );
   }
 
   if (context.assistantReply?.trim()) {
-    parts.push(`Assistant response summary:\n${context.assistantReply.trim().slice(0, 300)}`);
+    parts.push(
+      `Assistant response summary:\n${context.assistantReply.trim().slice(0, 300)}`,
+    );
   }
 
   return parts.join("\n\n");
@@ -220,7 +228,7 @@ export const generate = internalAction({
     expectedTitle: v.optional(v.string()),
     titlePrefix: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<void> => {
     try {
       const thread = await ctx.runQuery(internal.threads.getInternal, {
         id: args.threadId,
@@ -235,9 +243,7 @@ export const generate = internalAction({
           })
         : undefined;
       const rawSeed = (message?.content ?? "").trim();
-      const seed = args.titlePrefix
-        ? slackThreadTitleSeed(rawSeed)
-        : rawSeed;
+      const seed = args.titlePrefix ? slackThreadTitleSeed(rawSeed) : rawSeed;
       if (!seed) return;
       const context = {
         userMessage: seed,
@@ -259,11 +265,22 @@ export const generate = internalAction({
       try {
         title = await generateThreadTitle(
           (options) =>
-            generateObjectForOrg(ctx, thread.orgId, "summary", options),
+            generateObjectForOrg(ctx, thread.orgId, "summary", options, {
+              taskKind: "thread_title",
+              trace: {
+                traceId: String(args.threadId),
+                parentRequestId: args.userMessageId
+                  ? String(args.userMessageId)
+                  : undefined,
+                channel: "convex",
+              },
+            }),
           { seed, context, titlePrefix: args.titlePrefix },
         );
       } catch (err) {
-        logAiError("threadTitle.generateText", err, { threadId: args.threadId });
+        logAiError("threadTitle.generateText", err, {
+          threadId: args.threadId,
+        });
         title = fallbackThreadTitle(seed, args.titlePrefix);
       }
 
@@ -284,7 +301,7 @@ export const generateOperatorSlack = internalAction({
     expectedTitle: v.string(),
     titlePrefix: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<void> => {
     try {
       const context = await ctx.runQuery(
         internal.operatorAgent.getSlackThreadTitleContextInternal,
@@ -305,7 +322,11 @@ export const generateOperatorSlack = internalAction({
       let title: string;
       try {
         title = await generateThreadTitle(
-          (options) => generateObjectForPublicTask(ctx, "summary", options),
+          (options) =>
+            generateObjectForPublicTask(ctx, "summary", options, {
+              taskKind: "thread_title",
+              trace: { traceId: String(args.threadId), channel: "slack" },
+            }),
           { seed, context: titleContext, titlePrefix: args.titlePrefix },
         );
       } catch (error) {

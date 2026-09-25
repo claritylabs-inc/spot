@@ -30,7 +30,6 @@ import type * as actions_handleInboundImessage from "../actions/handleInboundIme
 import type * as actions_handleInboundOperatorEmail from "../actions/handleInboundOperatorEmail.js";
 import type * as actions_handleInboundOperatorImessage from "../actions/handleInboundOperatorImessage.js";
 import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.js";
-import type * as actions_mailboxCoordinator from "../actions/mailboxCoordinator.js";
 import type * as actions_mcpChat from "../actions/mcpChat.js";
 import type * as actions_mirrorWebChatToImessage from "../actions/mirrorWebChatToImessage.js";
 import type * as actions_modelCallLogs from "../actions/modelCallLogs.js";
@@ -217,6 +216,7 @@ import type * as lib_linesOfBusiness from "../lib/linesOfBusiness.js";
 import type * as lib_localSeedData from "../lib/localSeedData.js";
 import type * as lib_magicLinkTokens from "../lib/magicLinkTokens.js";
 import type * as lib_mailboxAutomation from "../lib/mailboxAutomation.js";
+import type * as lib_mailboxTools from "../lib/mailboxTools.js";
 import type * as lib_mapboxAddress from "../lib/mapboxAddress.js";
 import type * as lib_markdownDocument from "../lib/markdownDocument.js";
 import type * as lib_markdownDocumentSchema from "../lib/markdownDocumentSchema.js";
@@ -412,7 +412,6 @@ declare const fullApi: ApiFromModules<{
   "actions/handleInboundOperatorEmail": typeof actions_handleInboundOperatorEmail;
   "actions/handleInboundOperatorImessage": typeof actions_handleInboundOperatorImessage;
   "actions/handleInboundSlack": typeof actions_handleInboundSlack;
-  "actions/mailboxCoordinator": typeof actions_mailboxCoordinator;
   "actions/mcpChat": typeof actions_mcpChat;
   "actions/mirrorWebChatToImessage": typeof actions_mirrorWebChatToImessage;
   "actions/modelCallLogs": typeof actions_modelCallLogs;
@@ -599,6 +598,7 @@ declare const fullApi: ApiFromModules<{
   "lib/localSeedData": typeof lib_localSeedData;
   "lib/magicLinkTokens": typeof lib_magicLinkTokens;
   "lib/mailboxAutomation": typeof lib_mailboxAutomation;
+  "lib/mailboxTools": typeof lib_mailboxTools;
   "lib/mapboxAddress": typeof lib_mapboxAddress;
   "lib/markdownDocument": typeof lib_markdownDocument;
   "lib/markdownDocumentSchema": typeof lib_markdownDocumentSchema;

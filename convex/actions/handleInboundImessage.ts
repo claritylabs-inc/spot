@@ -626,17 +626,21 @@ export const processInbound = internalAction({
           requirementImportDefaultScope,
           imessageGroupChat: true,
           webResearch: currentSenderIsLinked,
-          mailboxCoordinator: currentSenderIsLinked
-            ? {
-                routingParentId: `${eventKey}:agent`,
-                statusToPhone: fromPhone,
-                statusChatGuid: chatGuid,
-              }
-            : undefined,
+          mailbox: currentSenderIsLinked ? {} : undefined,
+          routingParentId: `${eventKey}:agent`,
           onPolicyPresented: runState.onPolicyPresented,
           onPolicyReferenced,
           onResponseAttachment: runState.onResponseAttachment,
-          onToolArtifact: runState.onToolArtifact,
+          onToolArtifact: (artifact) => {
+            const existing =
+              artifact.type === "mailbox_task"
+                ? runState.toolArtifacts.find(
+                    (item) => item.type === "mailbox_task",
+                  )
+                : undefined;
+            if (existing) existing.data = artifact.data;
+            else runState.onToolArtifact(artifact);
+          },
         }),
         ...(currentSenderIsLinked &&
         emailIdentity.canSend &&

@@ -19,7 +19,14 @@ import {
   saveNote,
   confirmPolicyFact,
   generateCoi,
-  coordinateMailboxTask,
+  searchConnectedEmail,
+  readConnectedEmail,
+  readConnectedEmailAttachment,
+  importConnectedEmailPolicyAttachments,
+  importConnectedEmailRequirementAttachments,
+  saveConnectedEmailAttachmentsToThread,
+  saveConnectedEmailMessageToThread,
+  sendConnectedVendorInvite,
   webResearch,
 } from "./chatTools";
 import { MCP_CHAT_WRITE_TOOL_NAMES } from "./mcpAgentToolAccess";
@@ -55,7 +62,17 @@ const SHARED_TOOLS = {
   save_note: saveNote,
   confirm_policy_fact: confirmPolicyFact,
   generate_coi: generateCoi,
-  coordinate_mailbox_task: coordinateMailboxTask,
+  search_connected_email: searchConnectedEmail,
+  read_connected_email: readConnectedEmail,
+  read_connected_email_attachment: readConnectedEmailAttachment,
+  import_connected_email_policy_attachments:
+    importConnectedEmailPolicyAttachments,
+  import_connected_email_requirement_attachments:
+    importConnectedEmailRequirementAttachments,
+  save_connected_email_attachments_to_thread:
+    saveConnectedEmailAttachmentsToThread,
+  save_connected_email_message_to_thread: saveConnectedEmailMessageToThread,
+  send_connected_vendor_invite: sendConnectedVendorInvite,
   web_research: webResearch,
 } as const;
 
@@ -645,12 +662,9 @@ const sharedEntries: CatalogEntry[] = Object.entries(SHARED_TOOLS).map(
       name,
       description: definition.description ?? name,
       inputSchema,
-      effect:
-        MCP_CHAT_WRITE_TOOL_NAMES.has(name) ||
-        name === "coordinate_mailbox_task"
-          ? "write"
-          : "read",
-      openWorld: name === "web_research" || name === "coordinate_mailbox_task",
+      effect: MCP_CHAT_WRITE_TOOL_NAMES.has(name) ? "write" : "read",
+      openWorld:
+        name === "web_research" || name === "send_connected_vendor_invite",
     };
   },
 );

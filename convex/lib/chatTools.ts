@@ -746,6 +746,12 @@ export const saveConnectedEmailAttachmentsToThread = tool({
   description:
     "Save attachments from a connected-email message into the current Spot thread so they can be reused later and attached to outbound email drafts without searching the mailbox again. Use after search/read identifies documents that are relevant to the user's task.",
   inputSchema: z.object({
+    threadId: z
+      .string()
+      .optional()
+      .describe(
+        "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+      ),
     emailRef: z
       .string()
       .describe("Opaque emailRef returned by search_connected_email."),
@@ -762,6 +768,12 @@ export const saveConnectedEmailMessageToThread = tool({
   description:
     "Export the connected-email message itself into the current Spot thread as an attachable .eml proof document. Use this when the user asks to attach, forward, preserve, or provide proof of an email whose relevant content is in the email body rather than an attachment, such as a cancellation email, receipt, confirmation, notice, or correspondence.",
   inputSchema: z.object({
+    threadId: z
+      .string()
+      .optional()
+      .describe(
+        "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+      ),
     emailRef: z
       .string()
       .describe(
@@ -794,19 +806,6 @@ export const sendConnectedVendorInvite = tool({
       .string()
       .optional()
       .describe("Optional note to include in the vendor invitation email."),
-  }),
-});
-
-export const coordinateMailboxTask = tool({
-  description:
-    "Delegate a complex connected-mailbox workflow to the Spot mailbox coordinator. Use this for multi-step requests like finding policies and importing them, finding a lease and extracting insurance requirements, or investigating vendor email history.",
-  inputSchema: z.object({
-    task: z
-      .string()
-      .min(1)
-      .describe(
-        "The full mailbox task to complete, including any target vendor, address, policy, lease, or date details.",
-      ),
   }),
 });
 

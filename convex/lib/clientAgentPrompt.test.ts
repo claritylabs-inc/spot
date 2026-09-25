@@ -43,7 +43,7 @@ const ALL_TOOLS = {
   present_policy_card: {},
   draft_email: {},
   send_email_draft: {},
-  coordinate_mailbox_task: {},
+  search_connected_email: {},
   web_research: {},
   create_imessage_group_chat: {},
 };

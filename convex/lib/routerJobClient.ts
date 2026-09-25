@@ -1,5 +1,7 @@
 "use node";
 
+import type { ClRouterTraceInput } from "./clRouterClient";
+
 import { modelCallContext } from "./modelCallTelemetry";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -171,6 +173,7 @@ async function prepareJob(
   invocationKey: string,
   signal?: AbortSignal,
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">,
+  trace?: ClRouterTraceInput,
 ): Promise<Doc<"routerJobs">> {
   const existing = await ctx.runQuery(internal.routerJobs.get, {
     invocationKey,
@@ -202,7 +205,10 @@ async function prepareJob(
       invocationKey,
       storageIds: [requestStorageId, ...assets],
     });
-    const callContext = modelCallContext(payload, operation);
+    const callContext = modelCallContext(
+      trace ? { ...(payload as Record<string, unknown>), trace } : payload,
+      operation,
+    );
     let row: Doc<"routerJobs">;
     try {
       row = await ctx.runMutation(internal.routerJobs.prepare, {
@@ -211,9 +217,7 @@ async function prepareJob(
         operation,
         callContext: {
           ...callContext,
-          orgId: callContext.orgId as
-            | Id<"organizations">
-            | undefined,
+          orgId: callContext.orgId as Id<"organizations"> | undefined,
         },
         fingerprint: await sha256(serialized),
         requestToken,
@@ -318,6 +322,28 @@ export async function executeDurableRouterRequest(
     streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
   } = {},
 ): Promise<unknown> {
+  return executeRouterRequest(
+    ctx,
+    operation,
+    payload,
+    invocationKey,
+    abortSignal,
+    options,
+  );
+}
+
+async function executeRouterRequest(
+  ctx: ActionCtx,
+  operation: RouterJobOperation,
+  payload: unknown,
+  invocationKey: string,
+  abortSignal?: AbortSignal,
+  options: {
+    wait?: "yield" | "poll";
+    streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  } = {},
+  trace?: ClRouterTraceInput,
+): Promise<unknown> {
   let row = await prepareJob(
     ctx,
     operation,
@@ -325,6 +351,7 @@ export async function executeDurableRouterRequest(
     invocationKey,
     abortSignal,
     options.streamTarget,
+    trace,
   );
   for (;;) {
     if (abortSignal?.aborted) {
@@ -460,6 +487,25 @@ export function durableRouterClientOptions(
         invocationKey,
         abortSignal,
         { wait: "poll" },
+      ),
+  };
+}
+
+export function durableRouterClientOptionsWithTrace(
+  ctx: ActionCtx,
+  trace: ClRouterTraceInput,
+): import("./clRouterClient").ClRouterClientOptions {
+  const invocationKey = crypto.randomUUID();
+  return {
+    executeJob: (operation, payload, abortSignal) =>
+      executeRouterRequest(
+        ctx,
+        operation,
+        payload,
+        invocationKey,
+        abortSignal,
+        { wait: "poll" },
+        trace,
       ),
   };
 }
