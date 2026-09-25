@@ -24,7 +24,6 @@ import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
 import { buildEmailDraftTextSummary } from "./lib/emailDraftSummary";
-import { canAccessThread } from "./lib/threadAccess";
 import {
   parseSlackEventPayload,
   parseSlackLifecyclePayload,
@@ -51,21 +50,18 @@ import {
   toCertificateDto,
   toCertificateVersionDto,
   toMcpConnectedVendorPolicyDto,
-  toMcpMyPolicyDto,
   toMcpPolicySearchResultDto,
   toMcpPolicySummaryDto,
-  toMcpThreadMessageDto,
-  toMcpThreadSummaryDto,
   toNotificationDto,
   toOrgDto,
   toPolicyDto,
   toPolicyFileDto,
-  toPolicyStatsDto,
   toPolicyVersionDto,
 } from "./lib/apiDto";
 import { OPERATOR_AGENT_TOOL_REGISTRY } from "./lib/operatorAgentToolRegistry";
 import { decodeOperatorMcpAttachments } from "./lib/operatorMcpAttachments";
 import { buildOperatorMcpToolCatalog } from "./lib/operatorMcpToolCatalog";
+import { buildTenantMcpToolCatalog, resolveTenantMcpToolCall, tenantMcpToolAccess } from "./lib/tenantMcpToolCatalog";
 import { observeHttp, provisionHttp } from "./employeeProvisioning";
 const http = httpRouter();
 http.route({
@@ -1537,10 +1533,6 @@ function policyFileUnavailableMessage(policy: Record<string, unknown>) {
 // ── MCP Streamable HTTP Transport ──
 // Single endpoint implementing MCP protocol over HTTP for remote clients (Claude.ai, etc.)
 
-function mcpOAuthSecuritySchemes(scopes: Array<"read" | "write">) {
-  return [{ type: "oauth2" as const, scopes }];
-}
-
 function operatorMcpTools(identity: OperatorMcpIdentity) {
   return buildOperatorMcpToolCatalog({
     canWrite: mcpCanWrite(identity),
@@ -1548,588 +1540,7 @@ function operatorMcpTools(identity: OperatorMcpIdentity) {
   });
 }
 
-type TenantMcpToolCatalogEntry = {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  effect?: "read" | "write";
-  openWorld?: boolean;
-  destructive?: boolean;
-  idempotent?: boolean;
-};
-
-const MCP_TOOLS: TenantMcpToolCatalogEntry[] = [
-  {
-    name: "list_policies",
-    description:
-      "List insurance policies. Optionally filter by carrier, year, or line of business.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        carrier: { type: "string", description: "Filter by carrier name" },
-        year: {
-          type: "string",
-          description: "Filter by policy year (e.g. '2024')",
-        },
-        type: {
-          type: "string",
-          description:
-            "Filter by ACORD line of business code or label (e.g. 'CGL', 'Commercial General Liability')",
-        },
-      },
-    },
-  },
-  {
-    name: "get_policy",
-    description:
-      "Get full details of a specific insurance policy by ID, including coverages, document sections, and metadata.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string", description: "The policy ID" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "get_policy_pdf",
-    description:
-      "Get a temporary download URL for the original full policy PDF document by policy ID.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string", description: "The policy ID" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "search_policies",
-    description:
-      "Search across policies by text query. Searches carrier, policy number, insured name, summary, and lines of business.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { q: { type: "string", description: "Search query text" } },
-      required: ["q"],
-    },
-  },
-  {
-    name: "get_policy_stats",
-    description:
-      "Get dashboard statistics for policies: total count, breakdown by type, carrier, and year.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "list_policy_certificates",
-    description:
-      "List generated Certificates of Insurance for a policy, including download URLs and lifecycle metadata.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: { type: "string", description: "The policy ID" },
-      },
-      required: ["policyId"],
-    },
-  },
-  {
-    name: "list_certificate_holders",
-    description: "List/search the organization's certificate holder registry.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: {
-          type: "string",
-          description: "Optional holder name, email, or address search text",
-        },
-      },
-    },
-  },
-  {
-    name: "list_policy_versions",
-    description:
-      "List policy document-event versions. Use this when the user explicitly asks for policy history, renewals, endorsements, re-extractions, or prior versions; current policy answers should use get_policy/list_policies by default.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: {
-          type: "string",
-          description:
-            "Optional policy ID. Omit to list recent versions for the organization.",
-        },
-      },
-    },
-  },
-  {
-    name: "list_certificate_versions",
-    description:
-      "List certificate issue/reissue versions by policy, certificate parent, or holder.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: { type: "string", description: "Optional policy ID" },
-        certificateId: {
-          type: "string",
-          description: "Optional policy certificate parent ID",
-        },
-        holderId: {
-          type: "string",
-          description: "Optional certificate holder ID",
-        },
-        certificateHolderId: {
-          type: "string",
-          description: "Optional alias for holderId",
-        },
-      },
-    },
-  },
-  {
-    name: "generate_policy_certificate",
-    description:
-      "Generate certificate PDFs in one exclusive mode: policyId plus holder details for one all-coverages certificate, or requirementSourceDocumentId/requirementId for source-owned holder details and requirement-specific certificates across matching policies. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: {
-          type: "string",
-          description: "Policy-mode ID; omit in requirements mode",
-        },
-        requirementSourceDocumentId: {
-          type: "string",
-          description:
-            "Requirements-mode source ID; omit policy and holder inputs",
-        },
-        requirementId: {
-          type: "string",
-          description:
-            "Requirements-mode single requirement ID; Spot uses its connected source",
-        },
-        holderName: { type: "string", description: "Certificate holder name" },
-        holderContactName: {
-          type: "string",
-          description: "Certificate holder contact or attention name",
-        },
-        holderEmail: {
-          type: "string",
-          description: "Certificate holder email for renewal delivery",
-        },
-        holderPhone: {
-          type: "string",
-          description: "Certificate holder phone for renewal delivery",
-        },
-        addressLine1: {
-          type: "string",
-          description: "Certificate holder street address",
-        },
-        addressLine2: {
-          type: "string",
-          description: "Suite, floor, or attention line",
-        },
-        city: { type: "string", description: "Certificate holder city" },
-        state: { type: "string", description: "Certificate holder state" },
-        postalCode: {
-          type: "string",
-          description: "Certificate holder ZIP or postal code",
-        },
-        country: {
-          type: "string",
-          description: "Certificate holder country",
-        },
-        requestText: {
-          type: "string",
-          description:
-            "Full certificate request text, especially endorsement or special wording language",
-        },
-        requestedEndorsements: {
-          type: "array",
-          items: { type: "string" },
-          description: "Requested endorsements or special wording",
-        },
-        descriptionOfOperations: {
-          type: "string",
-          description:
-            "Concise source-backed operations/location/vehicle/special-item wording for the certificate description box. Do not include carrier, policy number, term, limits, or unsupported endorsement status.",
-        },
-        additionalInsuredName: {
-          type: "string",
-          description: "Requested additional insured name when applicable",
-        },
-        explicitReissue: {
-          type: "boolean",
-          description:
-            "Force a new certificate version even if an issued certificate already exists for this holder and current policy version",
-        },
-      },
-      oneOf: [
-        { required: ["policyId", "holderName"] },
-        { required: ["requirementSourceDocumentId"] },
-        { required: ["requirementId"] },
-      ],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_threads",
-    description: "List recent conversation threads (up to 50, newest first).",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "get_thread_messages",
-    description: "Get all messages in a conversation thread.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        threadId: { type: "string", description: "The thread ID" },
-      },
-      required: ["threadId"],
-    },
-  },
-  {
-    name: "get_org_info",
-    description:
-      "Get organization profile information including name, website, and broker details.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "ask_spot",
-    description:
-      "Ask the Spot AI assistant a question about the organization's insurance portfolio, bound policies, renewals, or coverage details. Spot answers within the selected organization. Optionally pass a threadId to continue an existing conversation.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        message: {
-          type: "string",
-          description: "The question or message to send to Spot",
-        },
-        threadId: {
-          type: "string",
-          description:
-            "Optional thread ID to continue an existing conversation",
-        },
-      },
-      required: ["message"],
-    },
-    openWorld: true,
-  },
-  {
-    name: "list_email_drafts",
-    description:
-      "List durable outbound email drafts for the organization. Returns a compact text summary by default, with a sample and draft IDs. Optionally filter by threadId or set showAll to see every draft.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        threadId: { type: "string", description: "Optional thread ID" },
-        showAll: {
-          type: "boolean",
-          description: "Show every draft instead of a short sample",
-        },
-      },
-    },
-  },
-  {
-    name: "draft_email",
-    description:
-      "Create a durable outbound email draft using the same Spot email artifact used by web chat. Requires write scope. Returns a draft ID that can be updated, sent, or cancelled.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        threadId: {
-          type: "string",
-          description: "Optional thread ID to attach the draft to",
-        },
-        to: { type: "string", description: "Recipient email address" },
-        subject: { type: "string", description: "Email subject" },
-        body: { type: "string", description: "Plain text email body" },
-        cc: {
-          type: "array",
-          items: { type: "string" },
-          description: "CC email addresses",
-        },
-        bcc: {
-          type: "array",
-          items: { type: "string" },
-          description: "BCC email addresses",
-        },
-        originalPolicyIds: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "Policy IDs whose original full policy PDFs should be attached",
-        },
-      },
-      required: ["to", "subject", "body"],
-    },
-    effect: "write",
-  },
-  {
-    name: "update_email_draft",
-    description:
-      "Update an existing durable outbound email draft in place. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftId: {
-          type: "string",
-          description: "Draft ID returned by draft_email or list_email_drafts",
-        },
-        to: { type: "string", description: "Recipient email address" },
-        subject: { type: "string", description: "Email subject" },
-        body: { type: "string", description: "Plain text email body" },
-        cc: {
-          type: "array",
-          items: { type: "string" },
-          description: "CC email addresses",
-        },
-        bcc: {
-          type: "array",
-          items: { type: "string" },
-          description: "BCC email addresses",
-        },
-        originalPolicyIds: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "Policy IDs whose original full policy PDFs should be attached",
-        },
-      },
-      required: ["draftId", "to", "subject", "body"],
-    },
-    effect: "write",
-  },
-  {
-    name: "send_email_draft",
-    description: "Send a durable outbound email draft. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftId: {
-          type: "string",
-          description: "Draft ID returned by draft_email or list_email_drafts",
-        },
-      },
-      required: ["draftId"],
-    },
-    effect: "write",
-    openWorld: true,
-    idempotent: false,
-  },
-  {
-    name: "send_email_drafts",
-    description:
-      "Send multiple durable outbound email drafts in one batch. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftIds: {
-          type: "array",
-          items: { type: "string" },
-          description: "Draft IDs returned by list_email_drafts",
-        },
-      },
-      required: ["draftIds"],
-    },
-    effect: "write",
-    openWorld: true,
-    idempotent: false,
-  },
-  {
-    name: "cancel_email_draft",
-    description: "Cancel a durable outbound email draft. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftId: {
-          type: "string",
-          description: "Draft ID returned by draft_email or list_email_drafts",
-        },
-      },
-      required: ["draftId"],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_client_files",
-    description:
-      "List client-visible shared files across the caller's readable client scope, optionally narrowed to one exact client organization.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        client_org_id: {
-          type: "string",
-          description: "Optional exact readable client organization ID",
-        },
-        query: { type: "string", description: "Optional filename search" },
-        limit: { type: "number", description: "Maximum results, up to 50" },
-      },
-    },
-  },
-  {
-    name: "get_client_file",
-    description:
-      "Get metadata and a temporary download URL for one exact client-visible shared file.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        client_file_id: { type: "string", description: "Exact client file ID" },
-      },
-      required: ["client_file_id"],
-    },
-  },
-  {
-    name: "read_company_wiki",
-    description:
-      "Read the company wiki for the OAuth token's organization: the complete .md file with YAML front matter, filename, body, and revision.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "write_company_wiki",
-    description:
-      "Replace the complete company .md document including YAML front matter for the token's organization. Read it first and send its revision. Requires write scope and direct org admin membership.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        markdown: { type: "string" },
-        expected_revision: { type: "integer", minimum: 0 },
-      },
-      required: ["markdown", "expected_revision"],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_connected_vendors",
-    description:
-      "List vendor organizations that have approved read-only insurance access for the caller's org.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "get_connected_vendor",
-    description: "Get a connected vendor org profile and policy count.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        vendor_org_id: {
-          type: "string",
-          description: "Connected vendor org ID",
-        },
-      },
-      required: ["vendor_org_id"],
-    },
-  },
-  {
-    name: "list_connected_vendor_policies",
-    description:
-      "List policies for a connected vendor org that approved access.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        vendor_org_id: {
-          type: "string",
-          description: "Connected vendor org ID",
-        },
-      },
-      required: ["vendor_org_id"],
-    },
-  },
-  {
-    name: "list_my_policies",
-    description: "List policies for the caller's client org. Client only.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "list_insurance_requirements",
-    description:
-      "List the caller org's insurance compliance requirements, including source document provenance when available.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "create_insurance_requirement",
-    description:
-      "Create a typed insurance coverage requirement checked against policy coverages. Requires write scope and org admin role.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        kind: {
-          type: "string",
-          description: 'Always "coverage"',
-        },
-        scope: {
-          type: "string",
-          description: "vendors or own_org",
-        },
-        title: { type: "string", description: "Short requirement title" },
-        requirement_text: {
-          type: "string",
-          description: "Plain-language requirement text",
-        },
-        line_of_business: {
-          type: "string",
-          description: "ACORD line of business code, e.g. CGL",
-        },
-        limits: {
-          type: "array",
-          description:
-            'Coverage limits: { kind, amount, label }. amount is a plain number (1000000, not "$1M"). Limit kinds include per_occurrence, general_aggregate, combined_single_limit, other.',
-        },
-        source_document_name: {
-          type: "string",
-          description: "Optional lease, contract, or requirement packet name",
-        },
-        source_excerpt: {
-          type: "string",
-          description:
-            "Optional exact original source language supporting the requirement",
-        },
-      },
-      required: [
-        "kind",
-        "scope",
-        "title",
-        "requirement_text",
-        "line_of_business",
-      ],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_vendor_compliance",
-    description:
-      "List connected vendor compliance status against the caller org's insurance requirements.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-];
-
-const AUTHENTICATED_TENANT_MCP_TOOLS = MCP_TOOLS.map((entry) => {
-  const {
-    effect = "read",
-    openWorld = false,
-    destructive = false,
-    idempotent,
-    ...tool
-  } = entry;
-  const write = effect === "write";
-  return {
-    ...tool,
-    title: tool.description.split(".")[0],
-    securitySchemes: mcpOAuthSecuritySchemes(
-      write ? ["read", "write"] : ["read"],
-    ),
-    annotations: {
-      readOnlyHint: !write,
-      destructiveHint: destructive,
-      idempotentHint: idempotent ?? !write,
-      openWorldHint: openWorld,
-    },
-  };
-});
-
-export function tenantMcpToolAccess(name: string) {
-  const tool = MCP_TOOLS.find((entry) => entry.name === name);
-  if (!tool) return null;
-  return {
-    effect: tool.effect ?? ("read" as const),
-    openWorld: tool.openWorld ?? false,
-    destructive: tool.destructive ?? false,
-  };
-}
-
-export function tenantMcpToolNames() {
-  return MCP_TOOLS.map((tool) => tool.name);
-}
+export { tenantMcpToolAccess, tenantMcpToolNames } from "./lib/tenantMcpToolCatalog";
 
 function jsonRpcResponse(
   id: string | number | null,
@@ -2374,78 +1785,62 @@ async function handleToolCall(
   const orgId = identity.orgId as Id<"organizations">;
   const userId = identity.userId as Id<"users">;
 
-  switch (name) {
-    case "list_client_files": {
-      const scope = await ctx.runQuery(
-        internal.lib.agentScope.resolveForAction,
-        {
-          orgId,
-          userId,
-          surface: "mcp",
-        },
-      );
-      const requestedOrgId =
-        typeof args.client_org_id === "string" ? args.client_org_id : undefined;
-      const orgIds = requestedOrgId
-        ? scope.readOrgIds.filter(
-            (readOrgId: Id<"organizations">) =>
-              String(readOrgId) === requestedOrgId,
-          )
-        : scope.readOrgIds;
-      if (requestedOrgId && orgIds.length === 0) {
-        throw new Error("Client organization is not in the readable scope");
-      }
-      const files = await ctx.runQuery(
-        internal.clientFiles.listVisibleInternal,
-        {
-          orgIds,
-          query: typeof args.query === "string" ? args.query : undefined,
-          limit: typeof args.limit === "number" ? args.limit : undefined,
-        },
-      );
-      return mcpTextResult(files);
-    }
-    case "get_client_file": {
-      if (typeof args.client_file_id !== "string") {
-        throw new Error("Missing client_file_id parameter");
-      }
-      const scope = await ctx.runQuery(
-        internal.lib.agentScope.resolveForAction,
-        {
-          orgId,
-          userId,
-          surface: "mcp",
-        },
-      );
-      const file = await ctx.runQuery(internal.clientFiles.getVisibleInternal, {
-        clientFileId: args.client_file_id as Id<"clientFiles">,
-        orgIds: scope.readOrgIds,
-      });
-      if (!file) throw new Error("Client file not found");
-      return mcpTextResult(file);
-    }
-    case "read_company_wiki": {
-      const wiki = await ctx.runQuery(internal.orgWiki.getForMcp, {
+  const call = resolveTenantMcpToolCall(name, args, mcpCanWrite(identity));
+  if (!call.compatibility) {
+    const result = await ctx.runAction((internal as any).actions.tenantMcpTools.execute, {
+      orgId,
+      userId,
+      name,
+      input: args,
+      canWrite: mcpCanWrite(identity),
+    });
+    return mcpTextResult(result);
+  }
+  const upsertEmailDraft = async () => {
+    requireMcpWriteScope(identity);
+    if (name === "update_email_draft" && !args.draftId)
+      throw new Error("Missing draftId parameter");
+    if (!args.to || !args.subject || !args.body)
+      throw new Error("Missing to, subject, or body parameter");
+    const draft = await ctx.runAction(
+      internal.actions.emailDrafts.upsertForMcp,
+      {
         orgId,
         userId,
-      });
-      return mcpTextResult(wiki);
-    }
-    case "write_company_wiki": {
-      if (
-        typeof args.markdown !== "string" ||
-        !Number.isInteger(args.expected_revision)
-      )
-        throw new Error("markdown and expected_revision are required");
-      const wiki = await ctx.runMutation(internal.orgWiki.saveForMcp, {
-        orgId,
-        userId,
-        markdown: args.markdown,
-        expectedRevision: Number(args.expected_revision),
-      });
-      return mcpTextResult(wiki);
-    }
-    case "list_policies": {
+        draftId:
+          typeof args.draftId === "string"
+            ? (args.draftId as Id<"pendingEmails">)
+            : undefined,
+        threadId:
+          typeof args.threadId === "string"
+            ? (args.threadId as Id<"threads">)
+            : undefined,
+        to: args.to as string,
+        subject: args.subject as string,
+        body: args.body as string,
+        cc: Array.isArray(args.cc)
+          ? args.cc.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : undefined,
+        bcc: Array.isArray(args.bcc)
+          ? args.bcc.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : undefined,
+        originalPolicyIds: Array.isArray(args.originalPolicyIds)
+          ? (args.originalPolicyIds.filter(
+              (value): value is Id<"policies"> => typeof value === "string",
+            ) as Id<"policies">[])
+          : undefined,
+      },
+    );
+    return {
+      content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
+    };
+    };
+  const compatibilityHandlers = {
+    list_policies: async () => {
       const policies = (await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
         { orgId },
@@ -2465,8 +1860,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "get_policy": {
+    },
+    get_policy: async () => {
       if (!args.id) throw new Error("Missing id parameter");
       const policies = await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
@@ -2478,8 +1873,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(found, null, 2) }],
       };
-    }
-    case "get_policy_pdf": {
+    },
+    get_policy_pdf: async () => {
       if (!args.id) throw new Error("Missing id parameter");
       const policies = await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
@@ -2504,8 +1899,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "search_policies": {
+    },
+    search_policies: async () => {
       if (!args.q) throw new Error("Missing q parameter");
       const policies = (await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
@@ -2526,219 +1921,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "get_policy_stats": {
-      const policies = (await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        { orgId },
-      )) as McpPolicySummarySource[];
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(toPolicyStatsDto(policies), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_policy_certificates": {
-      const policyId = args.policyId ?? args.policy_id;
-      if (typeof policyId !== "string" || !policyId)
-        throw new Error("Missing policyId parameter");
-      const certificates = await ctx.runQuery(
-        internal.certificates.listByPolicyInternal,
-        {
-          orgId,
-          policyId: policyId as Id<"policies">,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(certificates.map(toCertificateDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_certificate_holders": {
-      const holders = await ctx.runQuery(
-        internal.certificateHolders.listForOrgInternal,
-        {
-          orgId,
-          query:
-            typeof args.query === "string"
-              ? args.query
-              : typeof args.q === "string"
-                ? args.q
-                : undefined,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(holders.map(toCertificateHolderDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_policy_versions": {
-      const policyId = args.policyId ?? args.policy_id;
-      const versions = await ctx.runQuery(
-        internal.policyVersions.listForOrgInternal,
-        {
-          orgId,
-          policyId:
-            typeof policyId === "string" && policyId
-              ? (policyId as Id<"policies">)
-              : undefined,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(versions.map(toPolicyVersionDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_certificate_versions": {
-      const policyId = args.policyId ?? args.policy_id;
-      const certificateId = args.certificateId ?? args.certificate_id;
-      const holderId =
-        args.holderId ??
-        args.holder_id ??
-        args.certificateHolderId ??
-        args.certificate_holder_id;
-      const versions = await ctx.runQuery(
-        internal.certificateLifecycle.listVersionsInternal,
-        {
-          orgId,
-          policyId:
-            typeof policyId === "string" && policyId
-              ? (policyId as Id<"policies">)
-              : undefined,
-          certificateId:
-            typeof certificateId === "string" && certificateId
-              ? (certificateId as Id<"policyCertificates">)
-              : undefined,
-          holderId:
-            typeof holderId === "string" && holderId
-              ? (holderId as Id<"certificateHolders">)
-              : undefined,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              versions.map(toCertificateVersionDto),
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "generate_policy_certificate": {
-      requireMcpWriteScope(identity);
-      const policyId = args.policyId ?? args.policy_id;
-      const certificate = normalizeCertificateRequest(args);
-      const requirementsMode = Boolean(
-        certificate.requirementSourceDocumentId || certificate.requirementId,
-      );
-      if (Boolean(policyId) === requirementsMode)
-        throw new Error("Choose either policyId or a requirement source");
-      if (!requirementsMode && !certificate.holderName)
-        throw new Error("Missing certificate holder");
-      const result = await ctx.runAction(
-        internal.certificates.generateBatchForOrg,
-        {
-          orgId,
-          primaryPolicyId: policyId as Id<"policies"> | undefined,
-          ...certificate,
-          source: "mcp",
-          createdByUserId: userId,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              compatibleCertificateGenerationResponse(result, requirementsMode),
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "list_threads": {
-      const threads = await ctx.runQuery(internal.threads.listByOrg, {
-        orgId,
-        userId,
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(threads.map(toMcpThreadSummaryDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "get_thread_messages": {
-      if (!args.threadId) throw new Error("Missing threadId parameter");
-      const thread = await ctx.runQuery(internal.threads.getInternal, {
-        id: args.threadId as Id<"threads">,
-      });
-      if (
-        !thread ||
-        !canAccessThread({
-          userId,
-          userOrgId: orgId,
-          thread,
-          clientOrg: null,
-        })
-      )
-        throw new Error("Not found");
-      const messages = await ctx.runQuery(internal.threads.messagesInternal, {
-        threadId: args.threadId as Id<"threads">,
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(messages.map(toMcpThreadMessageDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "get_org_info": {
-      const org = await ctx.runQuery(internal.orgs.getInternal, { id: orgId });
-      if (!org) throw new Error("Not found");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                _id: org._id,
-                name: org.name,
-                website: org.website,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "ask_spot": {
+    },
+    ask_spot: async () => {
       if (!args.message) throw new Error("Missing message");
       const result = await ctx.runAction(internal.actions.mcpChat.run, {
         orgId,
@@ -2758,8 +1942,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "list_email_drafts": {
+    },
+    list_email_drafts: async () => {
       const drafts = await ctx.runQuery(
         internal.pendingEmails.listDraftsInternal,
         {
@@ -2780,52 +1964,10 @@ async function handleToolCall(
             })
           : "No email drafts found.";
       return { content: [{ type: "text", text: summary }] };
-    }
-    case "draft_email":
-    case "update_email_draft": {
-      requireMcpWriteScope(identity);
-      if (name === "update_email_draft" && !args.draftId)
-        throw new Error("Missing draftId parameter");
-      if (!args.to || !args.subject || !args.body)
-        throw new Error("Missing to, subject, or body parameter");
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.upsertForMcp,
-        {
-          orgId,
-          userId,
-          draftId:
-            typeof args.draftId === "string"
-              ? (args.draftId as Id<"pendingEmails">)
-              : undefined,
-          threadId:
-            typeof args.threadId === "string"
-              ? (args.threadId as Id<"threads">)
-              : undefined,
-          to: args.to as string,
-          subject: args.subject as string,
-          body: args.body as string,
-          cc: Array.isArray(args.cc)
-            ? args.cc.filter(
-                (value): value is string => typeof value === "string",
-              )
-            : undefined,
-          bcc: Array.isArray(args.bcc)
-            ? args.bcc.filter(
-                (value): value is string => typeof value === "string",
-              )
-            : undefined,
-          originalPolicyIds: Array.isArray(args.originalPolicyIds)
-            ? (args.originalPolicyIds.filter(
-                (value): value is Id<"policies"> => typeof value === "string",
-              ) as Id<"policies">[])
-            : undefined,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
-      };
-    }
-    case "send_email_draft": {
+    },
+    draft_email: upsertEmailDraft,
+    update_email_draft: upsertEmailDraft,
+    send_email_draft: async () => {
       requireMcpWriteScope(identity);
       if (typeof args.draftId !== "string" || !args.draftId)
         throw new Error("Missing draftId parameter");
@@ -2839,8 +1981,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
       };
-    }
-    case "send_email_drafts": {
+    },
+    send_email_drafts: async () => {
       requireMcpWriteScope(identity);
       const draftIds = Array.isArray(args.draftIds)
         ? (args.draftIds.filter(
@@ -2858,8 +2000,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
-    }
-    case "cancel_email_draft": {
+    },
+    cancel_email_draft: async () => {
       requireMcpWriteScope(identity);
       if (typeof args.draftId !== "string" || !args.draftId)
         throw new Error("Missing draftId parameter");
@@ -2873,8 +2015,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
       };
-    }
-    case "list_connected_vendors": {
+    },
+    list_connected_vendors: async () => {
       const vendors = await ctx.runQuery(
         (internal as any).connectedOrgs.listActiveVendorsInternal,
         { clientOrgId: orgId },
@@ -2882,8 +2024,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(vendors, null, 2) }],
       };
-    }
-    case "get_connected_vendor": {
+    },
+    get_connected_vendor: async () => {
       const vendorOrgId = args.vendor_org_id as Id<"organizations">;
       if (!vendorOrgId) throw new Error("Missing vendor_org_id");
       const allowed = await ctx.runQuery(
@@ -2913,8 +2055,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "list_connected_vendor_policies": {
+    },
+    list_connected_vendor_policies: async () => {
       const vendorOrgId = args.vendor_org_id as Id<"organizations">;
       if (!vendorOrgId) throw new Error("Missing vendor_org_id");
       const allowed = await ctx.runQuery(
@@ -2941,68 +2083,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "list_my_policies": {
-      const policies = (await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        { orgId },
-      )) as McpPolicySummarySource[];
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(policies.map(toMcpMyPolicyDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_insurance_requirements": {
-      const requirements = await ctx.runQuery(
-        (internal as any).compliance.listRequirementsInternal,
-        { orgId },
-      );
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(requirements, null, 2) },
-        ],
-      };
-    }
-    case "create_insurance_requirement": {
-      requireMcpWriteScope(identity);
-      if (!args.kind || !args.scope || !args.title || !args.requirement_text)
-        throw new Error("Missing kind, scope, title, or requirement_text");
-      const requirementId = await ctx.runMutation(
-        (internal as any).compliance.upsertRequirementInternal,
-        {
-          orgId,
-          userId,
-          kind: String(args.kind),
-          scope: String(args.scope),
-          title: String(args.title),
-          requirementText: String(args.requirement_text),
-          lineOfBusiness: args.line_of_business
-            ? String(args.line_of_business)
-            : undefined,
-          limits: Array.isArray(args.limits) ? args.limits : undefined,
-          sourceDocumentName: args.source_document_name
-            ? String(args.source_document_name)
-            : undefined,
-          sourceType:
-            args.source_document_name || args.source_excerpt
-              ? "other"
-              : "manual",
-          sourceExcerpt: args.source_excerpt
-            ? String(args.source_excerpt)
-            : undefined,
-        },
-      );
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ requirementId }, null, 2) },
-        ],
-      };
-    }
-    case "list_vendor_compliance": {
+    },
+    list_vendor_compliance: async () => {
       const compliance = await ctx.runQuery(
         (internal as any).compliance.listVendorComplianceInternal,
         { clientOrgId: orgId },
@@ -3011,9 +2093,10 @@ async function handleToolCall(
         content: [{ type: "text", text: JSON.stringify(compliance, null, 2) }],
       };
     }
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
+  };
+  const handler = compatibilityHandlers[name as keyof typeof compatibilityHandlers];
+  if (!handler) throw new Error(`Unknown tool: ${name}`);
+  return handler() as Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
 
 http.route({
@@ -3078,7 +2161,7 @@ http.route({
             tools:
               identity.principalKind === "operator"
                 ? operatorMcpTools(identity)
-                : AUTHENTICATED_TENANT_MCP_TOOLS,
+                : buildTenantMcpToolCatalog(),
           });
         }
         case "tools/call": {
