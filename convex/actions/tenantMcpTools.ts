@@ -14,7 +14,7 @@ export const execute = internalAction({
     input: v.any(),
     canWrite: v.boolean(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<unknown> => {
     const call = resolveTenantMcpToolCall(args.name, args.input, args.canWrite);
     if (call.compatibility || !call.sharedName) {
       throw new Error(`Unknown shared tenant tool: ${args.name}`);
@@ -39,6 +39,6 @@ export const execute = internalAction({
     const parsed = (
       selected.inputSchema as { parse: (value: unknown) => unknown }
     ).parse(call.input);
-    return selected.execute(parsed as never);
+    return (await selected.execute(parsed as never)) as unknown;
   },
 });
