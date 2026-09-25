@@ -86,8 +86,6 @@ type ThreadMessageRenderPlan = {
   relatedEmailsByMessageId: Map<string, ThreadMessage[]>;
 };
 
-export type WebMessageReceiptStatus = "delivered" | "read";
-
 export function isMessageFromViewer(
   message: ThreadMessage,
   viewerId?: string,
@@ -100,35 +98,14 @@ export function isMessageFromViewer(
   );
 }
 
-export function latestOwnWebMessageReceipt(
-  messages: ThreadMessage[],
-  viewerId?: string,
-  viewerEmail?: string,
-): { messageId: Id<"threadMessages">; status: WebMessageReceiptStatus } | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      message.role !== "user" ||
-      message.channel !== "chat" ||
-      !isMessageFromViewer(message, viewerId, viewerEmail)
-    ) {
-      continue;
-    }
-
-    const reply = messages.find(
-      (candidate) => candidate.replyToMessageId === message._id,
-    );
-    const isOptimistic = String(message._id).includes(":local:");
-    if (isOptimistic) return null;
-
-    const status: WebMessageReceiptStatus =
-      reply?.agentRunStartedAt != null ||
-      (reply != null && reply.status !== "processing")
-        ? "read"
-        : "delivered";
-    return { messageId: message._id, status };
-  }
-  return null;
+/** Sender details only matter once more than one person has written. */
+export function hasMultipleSenders(messages: ThreadMessage[]) {
+  const senders = new Set(
+    messages
+      .filter((message) => message.role === "user")
+      .map((message) => messageSenderName(message)),
+  );
+  return senders.size > 1;
 }
 
 export function buildThreadMessageRenderPlan(

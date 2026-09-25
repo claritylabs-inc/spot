@@ -187,6 +187,7 @@ export function ChatUserTurn({
   attachments,
   quotedText,
   customBody = false,
+  showSender = true,
   after,
 }: {
   own: boolean;
@@ -203,6 +204,8 @@ export function ChatUserTurn({
   attachments?: ReactNode;
   quotedText?: string | null;
   customBody?: boolean;
+  /** Avatar, name and time; threads with a single sender leave them out. */
+  showSender?: boolean;
   after?: ReactNode;
 }) {
   const [showQuoted, setShowQuoted] = useState(false);
@@ -213,35 +216,37 @@ export function ChatUserTurn({
         own && "ml-auto flex-row-reverse",
       )}
     >
-      {avatar ?? <ChatAvatar name={name} />}
+      {showSender ? (avatar ?? <ChatAvatar name={name} />) : null}
       <div className="min-w-0 flex-1">
-        <div
-          className={cn(
-            "mb-1 flex min-w-0 items-center gap-2",
-            own && "justify-end",
-          )}
-        >
-          <p
+        {showSender ? (
+          <div
             className={cn(
-              "min-w-0 max-w-[min(24rem,70vw)] truncate text-muted-foreground/50",
-              typeStyle("caption.medium"),
-            )}
-            title={nameTitle ?? name}
-          >
-            {name}
-          </p>
-          {meta}
-          {channelIcon}
-          <span className="text-muted-foreground/30">·</span>
-          <span
-            className={cn(
-              "shrink-0 text-muted-foreground/45",
-              typeStyle("caption.default"),
+              "mb-1 flex min-w-0 items-center gap-2",
+              own && "justify-end",
             )}
           >
-            {formatDisplayDateTime(createdAt)}
-          </span>
-        </div>
+            <p
+              className={cn(
+                "min-w-0 max-w-[min(24rem,70vw)] truncate text-muted-foreground/50",
+                typeStyle("caption.medium"),
+              )}
+              title={nameTitle ?? name}
+            >
+              {name}
+            </p>
+            {meta}
+            {channelIcon}
+            <span className="text-muted-foreground/30">·</span>
+            <span
+              className={cn(
+                "shrink-0 text-muted-foreground/45",
+                typeStyle("caption.default"),
+              )}
+            >
+              {formatDisplayDateTime(createdAt)}
+            </span>
+          </div>
+        ) : null}
         {customBody ? (
           body
         ) : (

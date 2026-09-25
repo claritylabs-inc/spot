@@ -4,8 +4,6 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import dayjs from "dayjs";
 import {
-  Check,
-  CheckCheck,
   FileText,
   Mail as MailIcon,
   RotateCcw,
@@ -53,7 +51,6 @@ import {
 import {
   isMessageFromViewer,
   messageSenderName,
-  type WebMessageReceiptStatus,
 } from "./thread-messages";
 import type {
   ThreadArtifactRef,
@@ -325,23 +322,6 @@ function PendingSendCountdown({
   );
 }
 
-function WebMessageReceipt({ status }: { status: WebMessageReceiptStatus }) {
-  const isRead = status === "read";
-  return (
-    <div
-      className={`mt-1 flex items-center justify-end gap-1 text-muted-foreground/45 ${typeStyle("caption.default")}`}
-      aria-label={isRead ? "Read by Spot" : "Delivered to Spot"}
-    >
-      {isRead ? (
-        <CheckCheck className="h-3 w-3" aria-hidden="true" />
-      ) : (
-        <Check className="h-3 w-3" aria-hidden="true" />
-      )}
-      <span>{isRead ? "Read" : "Delivered"}</span>
-    </div>
-  );
-}
-
 const EMPTY_RELATED_EMAIL_MESSAGES: ThreadMessage[] = [];
 
 /** Tenant thread message rendered through the shared chat turns. */
@@ -350,7 +330,7 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   relatedEmailMessages = EMPTY_RELATED_EMAIL_MESSAGES,
   viewerId,
   viewerEmail,
-  receiptStatus,
+  showSender = true,
   mirroredToImessage,
   threadContext,
   collapseEmailMessages,
@@ -363,7 +343,8 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   relatedEmailMessages?: ThreadMessage[];
   viewerId?: string;
   viewerEmail?: string;
-  receiptStatus?: WebMessageReceiptStatus;
+  /** Avatar, name and time; hidden while only one person is writing. */
+  showSender?: boolean;
   mirroredToImessage?: boolean;
   threadContext?: ThreadContext;
   collapseEmailMessages?: boolean;
@@ -566,9 +547,7 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
           {userFiles.grid}
         </div>
       ) : null}
-      after={isOwnMessage && receiptStatus ? (
-        <WebMessageReceipt status={receiptStatus} />
-      ) : null}
+      showSender={showSender}
     />
   );
 });
