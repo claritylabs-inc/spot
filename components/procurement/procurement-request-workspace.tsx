@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,6 +66,7 @@ import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
+  OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { StatusLabel, StatusTag } from "@claritylabs-inc/ui/components/status-tag";
@@ -93,6 +95,13 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NONE = "__none__";
+
+function openRowOnKeyboard(event: KeyboardEvent<HTMLTableRowElement>, open: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    open();
+  }
+}
 
 type PolicyOption = {
   policyId: Id<"policies">;
@@ -1821,14 +1830,7 @@ export function ProcurementRequestWorkspace({
     brokers === undefined ||
     proposals === undefined
   ) {
-    return (
-      <OperationalPanel
-        as="div"
-        className="flex h-40 items-center justify-center"
-      >
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </OperationalPanel>
-    );
+    return <OperationalSkeletonList rows={4} />;
   }
 
   if (!details || details.request.clientOrgId !== clientOrgId) {
@@ -1859,24 +1861,9 @@ export function ProcurementRequestWorkspace({
           <TabsList variant="pill" aria-label="Procurement request view">
             <TabsTrigger value="notes">Notes</TabsTrigger>
             <TabsTrigger value="shared">Shared</TabsTrigger>
-            <TabsTrigger value="proposals">
-              Brokers
-              <span className="text-muted-foreground/60">
-                {details.outreaches.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="files">
-              Files
-              <span className="text-muted-foreground/60">
-                {details.files.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="email">
-              Imported email
-              <span className="text-muted-foreground/60">
-                {details.emailThreads.length}
-              </span>
-            </TabsTrigger>
+            <TabsTrigger value="proposals">Brokers</TabsTrigger>
+            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="email">Imported email</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -1915,7 +1902,7 @@ export function ProcurementRequestWorkspace({
         details.outreaches.length === 0 ? (
           <EmptyStateCard
             title="No brokers contacted yet"
-            description="Add a broker from the network directory and track each response independently."
+            description="Add a broker to track outreach and proposals."
           />
         ) : (
           <OperationalPanel as="section">
@@ -1951,12 +1938,7 @@ export function ProcurementRequestWorkspace({
                       key={outreach._id}
                       tabIndex={0}
                       onClick={() => openOutreachEditor(outreach)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openOutreachEditor(outreach);
-                        }
-                      }}
+                      onKeyDown={(event) => openRowOnKeyboard(event, () => openOutreachEditor(outreach))}
                       className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       <TableCell className="min-w-52 max-w-96 whitespace-normal">
@@ -2091,12 +2073,7 @@ export function ProcurementRequestWorkspace({
                       key={item._id}
                       tabIndex={0}
                       onClick={() => openFileEditor(item)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openFileEditor(item);
-                        }
-                      }}
+                      onKeyDown={(event) => openRowOnKeyboard(event, () => openFileEditor(item))}
                       className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       <TableCell className="min-w-64 whitespace-normal">
@@ -2169,7 +2146,7 @@ export function ProcurementRequestWorkspace({
           {details.emailThreads.length === 0 ? (
             <EmptyStateCard
               title="No email imported for this request"
-              description="Forward a thread to this request’s address. Original forwarded participants drive automatic categorization."
+              description="Forward a thread to this request’s address."
               icon={<Mail className="size-6" />}
             />
           ) : (
@@ -2190,12 +2167,7 @@ export function ProcurementRequestWorkspace({
                       tabIndex={0}
                       className="cursor-pointer"
                       onClick={() => openEmail(email._id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openEmail(email._id);
-                        }
-                      }}
+                      onKeyDown={(event) => openRowOnKeyboard(event, () => void openEmail(email._id))}
                     >
                       <TableCell className="min-w-64 whitespace-normal">
                         <p

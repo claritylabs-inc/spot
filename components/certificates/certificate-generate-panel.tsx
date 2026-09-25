@@ -6,10 +6,8 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { AlertTriangle, BadgeCheck, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
-import { Input } from "@claritylabs-inc/ui/components/input";
-import { Label } from "@claritylabs-inc/ui/components/label";
-import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
+import { CertificateHolderFields } from "./certificate-holder-fields";
+import { certificateHolderDraft } from "./certificate-workspace";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
@@ -208,16 +206,7 @@ export function CertificateGeneratePanel({
   const [mode, setMode] = useState<GenerationMode>(initialMode);
   const [policyId, setPolicyId] = useState<string>(initialPolicyId ?? "");
   const [requirementSourceId, setRequirementSourceId] = useState<string>(initialRequirementSourceId ?? "");
-  const [holderName, setHolderName] = useState("");
-  const [holderContactName, setHolderContactName] = useState("");
-  const [holderEmail, setHolderEmail] = useState("");
-  const [holderPhone, setHolderPhone] = useState("");
-  const [addressLine1, setAddressLine1] = useState("");
-  const [addressLine2, setAddressLine2] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [country, setCountry] = useState("");
+  const [holderDraft, setHolderDraft] = useState(() => certificateHolderDraft());
   const [generating, setGenerating] = useState(false);
   const [batchResult, setBatchResult] = useState<CertificateBatchResult | null>(null);
 
@@ -241,10 +230,10 @@ export function CertificateGeneratePanel({
       requirement.status === "met" || requirement.status === "expiring_soon",
   ).length;
   const holderPhoneInvalid = Boolean(
-    holderPhone.trim() && !isValidPhoneNumber(holderPhone),
+    holderDraft.phone.trim() && !isValidPhoneNumber(holderDraft.phone),
   );
   const canGenerate = mode === "policy"
-    ? Boolean(policyId && holderName.trim() && !holderPhoneInvalid)
+    ? Boolean(policyId && holderDraft.displayName.trim() && !holderPhoneInvalid)
     : Boolean(
         requirementSourceId &&
         selectedSource?.holder &&
@@ -255,16 +244,7 @@ export function CertificateGeneratePanel({
     setMode(initialMode);
     setPolicyId(initialPolicyId ?? "");
     setRequirementSourceId(initialRequirementSourceId ?? "");
-    setHolderName("");
-    setHolderContactName("");
-    setHolderEmail("");
-    setHolderPhone("");
-    setAddressLine1("");
-    setAddressLine2("");
-    setCity("");
-    setState("");
-    setPostalCode("");
-    setCountry("");
+    setHolderDraft(certificateHolderDraft());
     setBatchResult(null);
   };
 
@@ -284,16 +264,16 @@ export function CertificateGeneratePanel({
       const result = await generateCertificates(mode === "policy" ? {
         orgId,
         primaryPolicyId: policyId as Id<"policies">,
-        holderName: holderName.trim(),
-        holderContactName: holderContactName.trim() || undefined,
-        holderEmail: holderEmail.trim() || undefined,
-        holderPhone: holderPhone.trim() || undefined,
-        addressLine1: addressLine1.trim() || undefined,
-        addressLine2: addressLine2.trim() || undefined,
-        city: city.trim() || undefined,
-        state: state.trim() || undefined,
-        postalCode: postalCode.trim() || undefined,
-        country: country.trim() || undefined,
+        holderName: holderDraft.displayName.trim(),
+        holderContactName: holderDraft.contactName.trim() || undefined,
+        holderEmail: holderDraft.email.trim() || undefined,
+        holderPhone: holderDraft.phone.trim() || undefined,
+        addressLine1: holderDraft.addressLine1.trim() || undefined,
+        addressLine2: holderDraft.addressLine2.trim() || undefined,
+        city: holderDraft.city.trim() || undefined,
+        state: holderDraft.state.trim() || undefined,
+        postalCode: holderDraft.postalCode.trim() || undefined,
+        country: holderDraft.country.trim() || undefined,
       } : initialRequirementId ? {
         orgId,
         requirementId: initialRequirementId,
@@ -432,55 +412,14 @@ export function CertificateGeneratePanel({
               </section>
 
               <section className="space-y-4 border-t border-border pt-5">
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-holder-name">Certificate holder</Label>
-                  <Input id="certificate-holder-name" value={holderName} onChange={(event) => setHolderName(event.target.value)} placeholder="Company or individual name" autoComplete="organization" disabled={generating} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-holder-contact">Holder contact</Label>
-                  <Input id="certificate-holder-contact" value={holderContactName} onChange={(event) => setHolderContactName(event.target.value)} placeholder="Attention contact" autoComplete="name" disabled={generating} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-holder-email">Holder email</Label>
-                  <Input id="certificate-holder-email" type="email" value={holderEmail} onChange={(event) => setHolderEmail(event.target.value)} placeholder="certificates@example.com" autoComplete="email" disabled={generating} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-holder-phone">Holder phone</Label>
-                  <PhoneInput id="certificate-holder-phone" value={holderPhone || undefined} onChange={(value) => setHolderPhone(value ?? "")} defaultCountry="US" placeholder="Enter phone number" autoComplete="tel" disabled={generating} aria-invalid={holderPhoneInvalid} />
-                  {holderPhoneInvalid ? <p className={`text-destructive ${typeStyle("caption.default")}`}>Enter a valid phone number with country code.</p> : null}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-address-1">Address</Label>
-                  <AddressAutofillInput
-                    id="certificate-address-1"
-                    value={{ street1: addressLine1, street2: addressLine2, city, state, zip: postalCode, country }}
-                    onChange={(address) => {
-                      setAddressLine1(address.street1 ?? "");
-                      setAddressLine2(address.street2 ?? "");
-                      setCity(address.city ?? "");
-                      setState(address.state ?? "");
-                      setPostalCode(address.zip ?? "");
-                      setCountry(address.country ?? "");
-                    }}
-                    display="street1"
-                    placeholder="Search for an address"
-                    autoComplete="section-certificate address-line1"
-                    disabled={generating}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-address-2">Address line 2</Label>
-                  <Input id="certificate-address-2" value={addressLine2} onChange={(event) => setAddressLine2(event.target.value)} placeholder="Suite, floor, attention line" autoComplete="section-certificate address-line2" disabled={generating} />
-                </div>
-                <div className="grid grid-cols-[minmax(0,1fr)_72px_96px] gap-2">
-                  <div className="space-y-2"><Label htmlFor="certificate-city">City</Label><Input id="certificate-city" value={city} onChange={(event) => setCity(event.target.value)} autoComplete="section-certificate address-level2" disabled={generating} /></div>
-                  <div className="space-y-2"><Label htmlFor="certificate-state">State</Label><Input id="certificate-state" value={state} onChange={(event) => setState(event.target.value)} autoComplete="section-certificate address-level1" disabled={generating} /></div>
-                  <div className="space-y-2"><Label htmlFor="certificate-postal">ZIP</Label><Input id="certificate-postal" value={postalCode} onChange={(event) => setPostalCode(event.target.value)} autoComplete="section-certificate postal-code" disabled={generating} /></div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="certificate-country">Country</Label>
-                  <Input id="certificate-country" value={country} onChange={(event) => setCountry(event.target.value)} autoComplete="section-certificate country-name" disabled={generating} />
-                </div>
+                <CertificateHolderFields
+                  value={holderDraft}
+                  onChange={(patch) => setHolderDraft((current) => ({ ...current, ...patch }))}
+                  idPrefix="certificate"
+                  disabled={generating}
+                  invalidPhone={holderPhoneInvalid}
+                  phonePlaceholder="Enter phone number"
+                />
               </section>
             </>
           ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent, ReactNode, Ref } from "react";
+import type { FormEvent, KeyboardEvent, ReactNode, Ref } from "react";
 import { useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
@@ -92,6 +92,29 @@ type StatusFilter = "all" | ComplianceStatus | "defined";
 type ComplianceView = "overview" | "requirements" | "sources" | "certificates";
 type RequirementKind = "coverage" | "insurer" | "condition";
 type RequirementSourceDocumentType = Exclude<RequirementSourceType, "manual" | "bulk_import">;
+
+const emptySourceDetails = {
+  holderName: "",
+  holderContactName: "",
+  holderEmail: "",
+  holderPhone: "",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "",
+  dealName: "",
+  dealType: "",
+  internalNotes: "",
+};
+
+function openOnKeyboard(event: KeyboardEvent<HTMLElement>, open: () => void) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    open();
+  }
+}
 
 export type ComplianceWorkspaceOrgContext = {
   orgId: Id<"organizations">;
@@ -576,12 +599,7 @@ function OverviewTab({
               role="button"
               tabIndex={0}
               onClick={() => onOpenRequirements(lob)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onOpenRequirements(lob);
-                }
-              }}
+              onKeyDown={(event) => openOnKeyboard(event, () => onOpenRequirements(lob))}
               className="cursor-pointer px-4 py-3"
             >
               <div className="flex min-w-0 items-start justify-between gap-3">
@@ -653,12 +671,7 @@ function RequirementsTable({
                 className="cursor-pointer"
                 onClick={() => onSelect(requirement._id)}
                 tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onSelect(requirement._id);
-                  }
-                }}
+                onKeyDown={(event) => openOnKeyboard(event, () => onSelect(requirement._id))}
               >
                 <TableCell className={`text-foreground ${typeStyle("body.medium")}`}>
                   {lineDisplayLabel(requirement.lineOfBusiness)}
@@ -1774,12 +1787,7 @@ function RequirementSourcesTable({
               className="cursor-pointer"
               onClick={() => onSelect(source._id)}
               tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(source._id);
-                }
-              }}
+              onKeyDown={(event) => openOnKeyboard(event, () => onSelect(source._id))}
             >
               <TableCell className="max-w-72 px-4">
                 <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>{source.title}</p>
@@ -1897,19 +1905,9 @@ function ComplianceWorkspace({
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceName, setSourceName] = useState("");
   const [sourceTypeValue, setSourceTypeValue] = useState<RequirementSourceDocumentType>("vendor_requirements");
-  const [sourceHolderName, setSourceHolderName] = useState("");
-  const [sourceHolderContactName, setSourceHolderContactName] = useState("");
-  const [sourceHolderEmail, setSourceHolderEmail] = useState("");
-  const [sourceHolderPhone, setSourceHolderPhone] = useState("");
-  const [sourceAddressLine1, setSourceAddressLine1] = useState("");
-  const [sourceAddressLine2, setSourceAddressLine2] = useState("");
-  const [sourceCity, setSourceCity] = useState("");
-  const [sourceState, setSourceState] = useState("");
-  const [sourcePostalCode, setSourcePostalCode] = useState("");
-  const [sourceCountry, setSourceCountry] = useState("");
-  const [sourceDealName, setSourceDealName] = useState("");
-  const [sourceDealType, setSourceDealType] = useState("");
-  const [sourceInternalNotes, setSourceInternalNotes] = useState("");
+  const [sourceDetails, setSourceDetails] = useState(emptySourceDetails);
+  const setSourceDetail = (key: keyof typeof emptySourceDetails, value: string) =>
+    setSourceDetails((current) => ({ ...current, [key]: value }));
   const [title, setTitle] = useState("");
   const [manualRequirementSourceId, setManualRequirementSourceId] = useState<
     Id<"requirementSourceDocuments"> | typeof INTERNAL_REQUIREMENT_SOURCE
@@ -1962,27 +1960,16 @@ function ComplianceWorkspace({
           : []),
       ]
     : [{ value: "requirements", label: "Requirements" }];
-  const navigationOptions: Array<{ value: string; label: string }> =
-    surface === "operator"
-      ? [
-          ...requirementNavigationOptions,
-          ...((requirementSources?.length ?? 0) > 0
-            ? [{ value: "sources", label: "Sources" }]
-            : []),
-          ...(hasCertificatesTab
-            ? [{ value: "certificates", label: "Certificates" }]
-            : []),
-        ]
-      : [
-          { value: "overview", label: "Overview" },
-          ...requirementNavigationOptions,
-          ...((requirementSources?.length ?? 0) > 0
-            ? [{ value: "sources", label: "Sources" }]
-            : []),
-          ...(hasCertificatesTab
-            ? [{ value: "certificates", label: "Certificates" }]
-            : []),
-        ];
+  const navigationOptions: Array<{ value: string; label: string }> = [
+    ...(surface === "operator" ? [] : [{ value: "overview", label: "Overview" }]),
+    ...requirementNavigationOptions,
+    ...((requirementSources?.length ?? 0) > 0
+      ? [{ value: "sources", label: "Sources" }]
+      : []),
+    ...(hasCertificatesTab
+      ? [{ value: "certificates", label: "Certificates" }]
+      : []),
+  ];
 
   function changeNavigation(value: string | null) {
     if (!value) return;
@@ -2230,7 +2217,7 @@ function ComplianceWorkspace({
       toast.error("Paste text or upload a document first");
       return;
     }
-    if (activeRequirementScope === "own_org" && !sourceHolderName.trim()) {
+    if (activeRequirementScope === "own_org" && !sourceDetails.holderName.trim()) {
       toast.error("Add the certificate holder requesting these requirements");
       return;
     }
@@ -2258,23 +2245,23 @@ function ComplianceWorkspace({
         sourceType: sourceTypeValue,
         sourceName: sourceName.trim() || undefined,
         scope: activeRequirementScope,
-        holder: sourceHolderName.trim() ? {
-          displayName: sourceHolderName.trim(),
-          contactName: sourceHolderContactName.trim() || undefined,
-          email: sourceHolderEmail.trim() || undefined,
-          phone: sourceHolderPhone.trim() || undefined,
+        holder: sourceDetails.holderName.trim() ? {
+          displayName: sourceDetails.holderName.trim(),
+          contactName: sourceDetails.holderContactName.trim() || undefined,
+          email: sourceDetails.holderEmail.trim() || undefined,
+          phone: sourceDetails.holderPhone.trim() || undefined,
           address: {
-            line1: sourceAddressLine1.trim() || undefined,
-            line2: sourceAddressLine2.trim() || undefined,
-            city: sourceCity.trim() || undefined,
-            state: sourceState.trim() || undefined,
-            postalCode: sourcePostalCode.trim() || undefined,
-            country: sourceCountry.trim() || undefined,
+            line1: sourceDetails.addressLine1.trim() || undefined,
+            line2: sourceDetails.addressLine2.trim() || undefined,
+            city: sourceDetails.city.trim() || undefined,
+            state: sourceDetails.state.trim() || undefined,
+            postalCode: sourceDetails.postalCode.trim() || undefined,
+            country: sourceDetails.country.trim() || undefined,
           },
         } : undefined,
-        dealName: sourceDealName.trim() || undefined,
-        dealType: sourceDealType.trim() || undefined,
-        internalNotes: sourceInternalNotes.trim() || undefined,
+        dealName: sourceDetails.dealName.trim() || undefined,
+        dealType: sourceDetails.dealType.trim() || undefined,
+        internalNotes: sourceDetails.internalNotes.trim() || undefined,
       })) as { createdCount: number };
       toast[result.createdCount === 0 ? "info" : "success"](
         result.createdCount === 0
@@ -2285,19 +2272,7 @@ function ComplianceWorkspace({
       setSourceText("");
       setSourceFile(null);
       setSourceName("");
-      setSourceHolderName("");
-      setSourceHolderContactName("");
-      setSourceHolderEmail("");
-      setSourceHolderPhone("");
-      setSourceAddressLine1("");
-      setSourceAddressLine2("");
-      setSourceCity("");
-      setSourceState("");
-      setSourcePostalCode("");
-      setSourceCountry("");
-      setSourceDealName("");
-      setSourceDealType("");
-      setSourceInternalNotes("");
+      setSourceDetails(emptySourceDetails);
       setCreationDrawer(null);
     } catch (error) {
       toast.error(getUserFacingErrorMessage(error, "Unable to generate requirements"), { id: importToast });
@@ -2486,38 +2461,39 @@ function ComplianceWorkspace({
             description="The person or organization requesting this proof of insurance."
           >
             <div className="space-y-3">
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Holder name<Input value={sourceHolderName} onChange={(event) => setSourceHolderName(event.target.value)} placeholder="Landlord, lender, investor, or client" required /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Contact<Input value={sourceHolderContactName} onChange={(event) => setSourceHolderContactName(event.target.value)} /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Email<Input type="email" value={sourceHolderEmail} onChange={(event) => setSourceHolderEmail(event.target.value)} /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Phone<PhoneInput value={sourceHolderPhone || undefined} onChange={(value) => setSourceHolderPhone(value ?? "")} defaultCountry="US" /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Holder name<Input value={sourceDetails.holderName} onChange={(event) => setSourceDetail("holderName", event.target.value)} placeholder="Landlord, lender, investor, or client" required /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Contact<Input value={sourceDetails.holderContactName} onChange={(event) => setSourceDetail("holderContactName", event.target.value)} /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Email<Input type="email" value={sourceDetails.holderEmail} onChange={(event) => setSourceDetail("holderEmail", event.target.value)} /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Phone<PhoneInput value={sourceDetails.holderPhone || undefined} onChange={(value) => setSourceDetail("holderPhone", value ?? "")} defaultCountry="US" /></label>
               <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
                 Address
                 <AddressAutofillInput
                   id="new-requirement-source-holder-address"
-                  value={{ street1: sourceAddressLine1, street2: sourceAddressLine2, city: sourceCity, state: sourceState, zip: sourcePostalCode, country: sourceCountry }}
-                  onChange={(address) => {
-                    setSourceAddressLine1(address.street1 ?? "");
-                    setSourceAddressLine2(address.street2 ?? "");
-                    setSourceCity(address.city ?? "");
-                    setSourceState(address.state ?? "");
-                    setSourcePostalCode(address.zip ?? "");
-                    setSourceCountry(address.country ?? "");
-                  }}
+                  value={{ street1: sourceDetails.addressLine1, street2: sourceDetails.addressLine2, city: sourceDetails.city, state: sourceDetails.state, zip: sourceDetails.postalCode, country: sourceDetails.country }}
+                  onChange={(address) => setSourceDetails((current) => ({
+                    ...current,
+                    addressLine1: address.street1 ?? "",
+                    addressLine2: address.street2 ?? "",
+                    city: address.city ?? "",
+                    state: address.state ?? "",
+                    postalCode: address.zip ?? "",
+                    country: address.country ?? "",
+                  }))}
                   display="street1"
                 />
               </label>
               <div className="grid grid-cols-[minmax(0,1fr)_72px_96px] gap-2">
-                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>City<Input value={sourceCity} onChange={(event) => setSourceCity(event.target.value)} /></label>
-                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>State<Input value={sourceState} onChange={(event) => setSourceState(event.target.value)} /></label>
-                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>ZIP<Input value={sourcePostalCode} onChange={(event) => setSourcePostalCode(event.target.value)} /></label>
+                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>City<Input value={sourceDetails.city} onChange={(event) => setSourceDetail("city", event.target.value)} /></label>
+                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>State<Input value={sourceDetails.state} onChange={(event) => setSourceDetail("state", event.target.value)} /></label>
+                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>ZIP<Input value={sourceDetails.postalCode} onChange={(event) => setSourceDetail("postalCode", event.target.value)} /></label>
               </div>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={sourceDealName} onChange={(event) => setSourceDealName(event.target.value)} placeholder="Office lease, financing, or client engagement" /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={sourceDealType} onChange={(event) => setSourceDealType(event.target.value)} placeholder="Lease, investment, contract" /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={sourceDetails.dealName} onChange={(event) => setSourceDetail("dealName", event.target.value)} placeholder="Office lease, financing, or client engagement" /></label>
+              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={sourceDetails.dealType} onChange={(event) => setSourceDetail("dealType", event.target.value)} placeholder="Lease, investment, contract" /></label>
               <div className="space-y-2">
                 <p className={`text-muted-foreground ${typeStyle("label.field")}`}>Notes</p>
                 <MarkdownEditor
-                  value={sourceInternalNotes}
-                  onChange={setSourceInternalNotes}
+                  value={sourceDetails.internalNotes}
+                  onChange={(value) => setSourceDetail("internalNotes", value)}
                   label="New requirement source notes"
                   readOnly={importing}
                           />
@@ -2765,17 +2741,7 @@ function ComplianceWorkspace({
             </div>
           </OperationalPanel>
         ) : null}
-        {!renderShell && navigationOptions.length > 1 ? (
-          <Tabs value={navigationValue} onValueChange={changeNavigation}>
-            <TabsList variant="pill">
-              {navigationOptions.map((option) => (
-                <TabsTrigger key={option.value} value={option.value}>
-                  {option.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        ) : null}
+        {!renderShell ? toolbar : null}
         {view === "certificates" && renderCertificatesTab ? (
           renderCertificatesTab({
             onActions: setCertificateTabActions,
