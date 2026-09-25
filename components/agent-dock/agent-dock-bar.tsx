@@ -19,7 +19,7 @@ import type { AgentDockAdapter } from "./types";
 
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
 const TAB_ITEM_CLASS = cn(
-  "relative flex h-full min-w-0 items-center gap-1.5 rounded-full px-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
+  "relative flex h-full min-w-0 items-center gap-1.5 rounded-full px-3.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
   typeStyle("control.button"),
 );
 
@@ -80,7 +80,7 @@ function TabButton({
           type="button"
           aria-label={`Close ${label}`}
           onClick={onClose}
-          className="absolute right-1.5 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
+          className="absolute right-2 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
         >
           <X className="size-3" />
         </button>
