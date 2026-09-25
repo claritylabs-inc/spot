@@ -265,7 +265,7 @@ export function AgentDockLayout({
         className={cn(
           "absolute inset-x-0 top-0 z-10 origin-top overflow-hidden bg-background",
           enabled &&
-            "shadow-[0_1px_2px_rgba(0,0,0,0.06),0_12px_32px_-12px_rgba(0,0,0,0.22)] ring-1 ring-foreground/6",
+            "shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.1)] ring-1 ring-foreground/[0.04]",
         )}
         initial={false}
         animate={{
