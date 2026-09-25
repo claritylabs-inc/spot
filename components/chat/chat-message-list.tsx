@@ -43,7 +43,7 @@ export function ChatMessageList({
         ref={scrollRef}
         className="absolute inset-0 overflow-y-auto scrollbar-hide px-4 py-4 md:px-6"
       >
-        <div ref={contentRef} className="flex min-h-full w-full flex-col gap-4">
+        <div ref={contentRef} className="flex min-h-full w-full flex-col justify-end gap-4">
           {children}
           {clearanceClassName ? <div className={clearanceClassName} /> : null}
         </div>

@@ -6,7 +6,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input/prompt-input";
-import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
+import {
+  AgentDockContextChip,
+  AgentDockContextToggle,
+} from "@/components/agent-dock/agent-dock-context-chip";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { pageSuggestions } from "@/components/agent-dock/page-suggestions";
 import type { AgentDockChatProps } from "@/components/agent-dock/types";
@@ -106,6 +109,13 @@ export function OperatorAgentChat({
     [displayedPageContext],
   );
   const running = detail.activeRun || submitting;
+  const toggleContext = () => {
+    if (availablePageContext) {
+      if (currentPageContextKey) dock.detachContext(currentPageContextKey);
+    } else {
+      dock.attachContext();
+    }
+  };
   const { registerComposer } = dock;
 
   useEffect(() => {
@@ -302,13 +312,21 @@ export function OperatorAgentChat({
               href={activeThread ? operatorThreadContextHref(activeThread) : null}
               retained={Boolean(retainedThreadContext)}
               detached={!displayedPageContext}
-              onRemove={() => {
-                if (currentPageContextKey) {
-                  dock.detachContext(currentPageContextKey);
-                }
-              }}
-              onAttach={dock.attachContext}
+              onRemove={toggleContext}
             />
+          }
+          toolbarEnd={
+            retainedThreadContext ? null : (
+              <AgentDockContextToggle
+                label={
+                  currentPageContext
+                    ? operatorPageContextLabel(currentPageContext)
+                    : null
+                }
+                attached={Boolean(availablePageContext)}
+                onToggle={toggleContext}
+              />
+            )
           }
         />
       }

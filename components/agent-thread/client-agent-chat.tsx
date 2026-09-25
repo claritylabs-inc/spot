@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
+import {
+  AgentDockContextChip,
+  AgentDockContextToggle,
+} from "@/components/agent-dock/agent-dock-context-chip";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { pageSuggestions } from "@/components/agent-dock/page-suggestions";
 import type { AgentDockChatProps } from "@/components/agent-dock/types";
@@ -95,6 +98,11 @@ function NewClientChat({ onThreadCreated }: AgentDockChatProps) {
   const pageContext = detached ? null : currentContext;
   const suggestions = useMemo(() => pageSuggestions(pageContext), [pageContext]);
   const { registerComposer } = dock;
+  const toggleContext = () => {
+    if (!currentContext) return;
+    if (detached) dock.attachContext();
+    else dock.detachContext(contextKey(currentContext));
+  };
 
   useEffect(() => {
     registerComposer({ focus: () => composerRef.current?.focus() });
@@ -138,10 +146,14 @@ function NewClientChat({ onThreadCreated }: AgentDockChatProps) {
             <AgentDockContextChip
               label={currentContext?.summary ?? null}
               detached={detached}
-              onRemove={() => {
-                if (currentContext) dock.detachContext(contextKey(currentContext));
-              }}
-              onAttach={dock.attachContext}
+              onRemove={toggleContext}
+            />
+          }
+          toolbarEnd={
+            <AgentDockContextToggle
+              label={currentContext?.summary ?? null}
+              attached={!detached}
+              onToggle={toggleContext}
             />
           }
         />

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { motion, useReducedMotion, type Transition } from "framer-motion";
+import { ArrowDown } from "lucide-react";
 import { useMediaQuery } from "@/components/app-sidebar/utils";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,8 @@ export const AGENT_DOCK_BAR_HEIGHT = 44;
 /** Frame around the lifted app card while the agent is open. */
 const CARD_GAP = 8;
 const CARD_RADIUS = 12;
+/** In full screen, this much of the app card stays visible at the top. */
+const CARD_LIP = 20;
 
 const SPRING: Transition = { type: "spring", stiffness: 380, damping: 40, mass: 0.9 };
 
@@ -186,20 +189,29 @@ export function AgentDockLayout({
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const [actions, setActions] = useState<ReactNode>(null);
   const barHeight = enabled ? AGENT_DOCK_BAR_HEIGHT : 0;
+  const expandedDockHeight =
+    dragHeight ?? Math.round(viewport.height * dock.height);
   const dockHeight =
     mode === "collapsed"
       ? barHeight
       : mode === "full"
-        ? viewport.height
-        : (dragHeight ?? Math.round(viewport.height * dock.height));
+        ? viewport.height - CARD_GAP - CARD_LIP
+        : expandedDockHeight;
   const lifted = mode !== "collapsed";
   const cardScale = lifted
     ? (viewport.width - CARD_GAP * 2) / viewport.width
     : 1;
   const restingCardHeight = viewport.height - barHeight;
   const cardHeight = lifted
-    ? (viewport.height - dockHeight - CARD_GAP) / cardScale
+    ? (viewport.height - expandedDockHeight - CARD_GAP) / cardScale
     : restingCardHeight;
+  // Full screen slides the card up until only its bottom lip shows.
+  const cardY =
+    mode === "full"
+      ? CARD_GAP + CARD_LIP - cardHeight * cardScale
+      : lifted
+        ? CARD_GAP
+        : 0;
   const geometryKey = `${mode}:${cardHeight}`;
   const [settledGeometryKey, setSettledGeometryKey] = useState(geometryKey);
   const moving =
@@ -225,6 +237,7 @@ export function AgentDockLayout({
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col",
             mode === "expanded" && "pt-2",
+            mode === "full" && "pt-4",
           )}
           initial={false}
           animate={{ height: dockHeight }}
@@ -271,22 +284,32 @@ export function AgentDockLayout({
         animate={{
           height: cardHeight,
           scale: cardScale,
-          y: mode === "full" ? -viewport.height : lifted ? CARD_GAP : 0,
-          opacity: mode === "full" ? 0 : 1,
+          y: cardY,
           borderRadius: lifted
             ? `${CARD_RADIUS}px ${CARD_RADIUS}px ${CARD_RADIUS}px ${CARD_RADIUS}px`
             : `0px 0px ${enabled ? CARD_RADIUS : 0}px ${enabled ? CARD_RADIUS : 0}px`,
         }}
-        transition={{
-          ...transition,
-          opacity: { duration: reduceMotion ? 0.15 : 0.2, delay: mode === "full" && !reduceMotion ? 0.12 : 0 },
-        }}
+        transition={transition}
         onAnimationComplete={() => setSettledGeometryKey(geometryKey)}
         inert={mode === "full"}
         aria-hidden={mode === "full" || undefined}
       >
         <div style={{ height: moving ? restingCardHeight : "100%" }}>{app}</div>
       </motion.div>
+      {mode === "full" ? (
+        <motion.button
+          type="button"
+          aria-label="Show page"
+          onClick={() => setMode("expanded")}
+          className="absolute left-1/2 z-20 flex size-7 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+          style={{ top: CARD_GAP + CARD_LIP - 14 }}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18, delay: reduceMotion ? 0 : 0.15 }}
+        >
+          <ArrowDown className="size-3.5" />
+        </motion.button>
+      ) : null}
     </div>
   );
 }
