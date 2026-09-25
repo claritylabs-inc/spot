@@ -28,6 +28,27 @@ describe("MCP nested agent tool access", () => {
     ]);
   });
 
+  test("allows draft listing but removes all email writes for read-only MCP", () => {
+    const writes = [
+      "draft_email",
+      "update_email_draft",
+      "attach_policy_pdf_to_draft",
+      "attach_file_to_draft",
+      "attach_coi_to_draft",
+      "send_email_draft",
+      "cancel_email_draft",
+    ];
+    const tools = namedTools(["list_email_drafts", ...writes]);
+    expect(
+      Object.keys(
+        filterToolsForWriteAccess(tools, false, MCP_CHAT_WRITE_TOOL_NAMES),
+      ),
+    ).toEqual(["list_email_drafts"]);
+    expect(
+      filterToolsForWriteAccess(tools, true, MCP_CHAT_WRITE_TOOL_NAMES),
+    ).toEqual(tools);
+  });
+
   test("limits a read-only mailbox coordinator to mailbox reads", () => {
     const readTools = [
       "search_connected_email",

@@ -1,5 +1,12 @@
 import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
+import {
+  activeAgentToolNames,
+  agentToolFamiliesOf,
+  expandToolsSpec,
+  type AgentToolFamilyCatalog,
+} from "./agentToolSelection";
+export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
@@ -2044,7 +2051,19 @@ export function availableOperatorAgentToolNames(access: {
   });
 }
 
-export const EXPAND_TOOLS_NAME = "expand_tools";
+export const OPERATOR_TOOL_FAMILY_CATALOG = Object.fromEntries<
+  AgentToolFamilyCatalog<OperatorToolFamily>[OperatorToolFamily]
+>(
+  Object.entries(OPERATOR_TOOL_FAMILIES).map(([family, description]) => [
+    family,
+    {
+      description,
+      tools: Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
+        .filter(([, spec]) => spec.family === family)
+        .map(([name]) => name),
+    },
+  ]),
+) as AgentToolFamilyCatalog<OperatorToolFamily>;
 
 export type OperatorToolFamilySelection = {
   families: OperatorToolFamily[];
@@ -2063,37 +2082,24 @@ export function isOperatorToolFamily(
 export function operatorToolFamiliesOf(
   toolNames: Iterable<string>,
 ): OperatorToolFamily[] {
-  const families = new Set<OperatorToolFamily>();
-  for (const name of toolNames) {
-    const family = isOperatorAgentToolName(name)
-      ? OPERATOR_AGENT_TOOL_REGISTRY[name].family
-      : undefined;
-    if (family) families.add(family);
-  }
-  return (Object.keys(OPERATOR_TOOL_FAMILIES) as OperatorToolFamily[]).filter(
-    (family) => families.has(family),
-  );
+  return agentToolFamiliesOf(OPERATOR_TOOL_FAMILY_CATALOG, toolNames);
 }
 
 export function operatorAgentToolNamesForFamilies(
   toolNames: readonly OperatorAgentToolName[],
   families: readonly OperatorToolFamily[],
 ): OperatorAgentToolName[] {
-  return toolNames.filter((name) => {
-    const family = OPERATOR_AGENT_TOOL_REGISTRY[name].family;
-    return !family || families.includes(family);
-  });
+  return activeAgentToolNames(
+    OPERATOR_TOOL_FAMILY_CATALOG,
+    toolNames,
+    families,
+  );
 }
 
 export function expandOperatorToolsSpec(
   families: readonly OperatorToolFamily[],
 ) {
-  return {
-    description: `Request tool families for the next step. Already selected families stay available; this call changes no records. Families: ${families
-      .map((family) => `${family} (${OPERATOR_TOOL_FAMILIES[family]})`)
-      .join("; ")}.`,
-    inputSchema: z.object({ families: z.array(z.enum(families)).min(1) }),
-  };
+  return expandToolsSpec(OPERATOR_TOOL_FAMILY_CATALOG, families);
 }
 
 export type ResolvedOperatorToolSpec = {

@@ -27,9 +27,8 @@ import {
 import { stripMarkdown, markdownToHtml, logAiError } from "../lib/aiUtils";
 import { stripConfidenceMarkers } from "../lib/confidence";
 import {
-  buildClientAgentSystemPrompt,
+  buildClientAgentTurnTools,
   decideClientAgentTurn,
-  filterToolsForModules,
   promptModuleArtifact,
 } from "../lib/clientAgentPrompt";
 import { getNotificationFromAddress, sendResendEmail } from "../lib/resend";
@@ -42,10 +41,10 @@ import {
   storedAttachmentsToImessageOutbound,
 } from "../lib/imessageOutbound";
 import {
-  buildEmailExpertTool,
+  buildEmailTools,
   resolveEmailAgentIdentity,
-  type EmailSubagentResult,
-} from "../lib/emailSubagent";
+  type EmailToolResult,
+} from "../lib/emailTools";
 import {
   classifyPromptInjection,
   collectAllowedRecipients,
@@ -498,7 +497,7 @@ export const run = internalAction({
               ),
             ].join("\n\n")
           : "";
-      const emailToolResult: { current: EmailSubagentResult | null } = {
+      const emailToolResult: { current: EmailToolResult | null } = {
         current: null,
       };
       let content = "";
@@ -628,7 +627,8 @@ export const run = internalAction({
         emailIdentity.agentAddress &&
         emailIdentity.fromHeader
           ? {
-              email_expert: buildEmailExpertTool(ctx, {
+              ...buildEmailTools(ctx, {
+                scope,
                 orgId: args.orgId,
                 userId: args.userId,
                 threadId: args.threadId,
@@ -682,21 +682,25 @@ export const run = internalAction({
         },
       });
       toolArtifacts.push(
-        promptModuleArtifact(selection, { traceId: String(agentMsgId), surface }),
+        promptModuleArtifact(selection, {
+          traceId: String(agentMsgId),
+          surface,
+        }),
       );
-      const tools = filterToolsForModules(registeredTools, selection.modules);
-      const fullSystemPrompt = buildClientAgentSystemPrompt({
+      const turnTools = buildClientAgentTurnTools(registeredTools, selection, {
         surface,
         org,
         userName,
         siteUrl,
-        tools,
-        modules: selection.modules,
         answerDepth: selection.answerDepth,
         maxToolCalls: 25,
         canSendEmail,
         isMixedThread,
-        extras: [pageContextBlock, operatorInitiatedBlock, selectedSteeringBlock],
+        extras: [
+          pageContextBlock,
+          operatorInitiatedBlock,
+          selectedSteeringBlock,
+        ],
         attachments: latestAttachmentNames,
         policyFocus: policyFocusBlock,
         summary: boundedHistory.summary,
@@ -710,14 +714,14 @@ export const run = internalAction({
                 name: selection.slackReaction,
               })
               .catch((error) => {
-                console.warn("[processThreadChat] Slack reaction failed", error);
+                console.warn(
+                  "[processThreadChat] Slack reaction failed",
+                  error,
+                );
               })
           : undefined;
 
-      const SUBAGENT_TOOL_NAMES = new Set([
-        "email_expert",
-        "coordinate_mailbox_task",
-      ]);
+      const SUBAGENT_TOOL_NAMES = new Set(["coordinate_mailbox_task"]);
       const chatTask = hasRichInput ? "chat_vision" : "chat";
       const presentationTools: CapturedPresentationTool[] = [];
       const turn = await runAgentTurn(ctx, {
@@ -725,9 +729,8 @@ export const run = internalAction({
         task: chatTask,
         options: {
           maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
-          system: fullSystemPrompt,
+          ...turnTools,
           messages: messageHistory,
-          tools,
           stopWhen: stepCountIs(25),
           onStepFinish: async (step) => {
             if (surface !== "web") return;

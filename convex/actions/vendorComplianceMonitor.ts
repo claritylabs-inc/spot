@@ -9,7 +9,7 @@ import type { ComplianceCheckResult } from "../lib/complianceCheck";
 import {
   resolveEmailAgentIdentity,
   upsertEmailDraftArtifact,
-} from "../lib/emailSubagent";
+} from "../lib/emailTools";
 
 export type ComplianceEvent = {
   type:

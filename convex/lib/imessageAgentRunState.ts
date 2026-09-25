@@ -1,6 +1,6 @@
 import type { Id } from "../_generated/dataModel";
 import type { WorkflowOutcome } from "./workflows/types";
-import type { EmailSubagentResult } from "./emailSubagent";
+import type { EmailToolResult } from "./emailTools";
 
 type ToolAttachment = {
   filename: string;
@@ -21,7 +21,7 @@ export function createImessageAgentRunState() {
   const responseFileAttachments: ImessageResponseFileAttachment[] = [];
   const toolArtifacts: ToolArtifact[] = [];
   const presentedPolicyIds: Id<"policies">[] = [];
-  let emailResult: EmailSubagentResult | null = null;
+  let emailResult: EmailToolResult | null = null;
 
   return {
     responseFileAttachments,
@@ -50,7 +50,7 @@ export function createImessageAgentRunState() {
         });
       }
     },
-    setEmailResult(result: EmailSubagentResult) {
+    setEmailResult(result: EmailToolResult) {
       emailResult = result;
     },
     getEmailResult() {

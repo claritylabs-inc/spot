@@ -209,3 +209,26 @@ test("preserved aliases map inputs to their shared handler contracts", () => {
     input: { vendorOrgId: "org-1" },
   });
 });
+
+test("email compatibility shapes dispatch to shared tools without bypassing write scope", () => {
+  for (const name of [
+    "draft_email",
+    "update_email_draft",
+    "list_email_drafts",
+    "send_email_draft",
+    "send_email_drafts",
+    "cancel_email_draft",
+  ]) {
+    const input = { draftId: "draft-1", originalPolicyIds: ["policy-1"] };
+    expect(resolveTenantMcpToolCall(name, input, true)).toMatchObject({
+      sharedName: name === "send_email_drafts" ? "send_email_draft" : name,
+      compatibility: false,
+      input,
+    });
+    if (name !== "list_email_drafts") {
+      expect(() => resolveTenantMcpToolCall(name, input, false)).toThrow(
+        /write scope/i,
+      );
+    }
+  }
+});

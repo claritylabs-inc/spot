@@ -1,4 +1,11 @@
 export const MCP_CHAT_WRITE_TOOL_NAMES = new Set([
+  "draft_email",
+  "update_email_draft",
+  "attach_policy_pdf_to_draft",
+  "attach_file_to_draft",
+  "attach_coi_to_draft",
+  "send_email_draft",
+  "cancel_email_draft",
   "import_requirement_attachments",
   "save_note",
   "confirm_policy_fact",

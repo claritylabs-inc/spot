@@ -283,7 +283,7 @@ Rules:
 - Prefer explicit dateFrom/dateTo windows over broad sinceDays searches. If the user gives a trip, claim, renewal, lease, or meeting date, search around that date first, then expand outward.
 - Use targeted terms before generic ones: company names, vendors, carriers, airline/travel providers, passenger names, locations, policy numbers, addresses, "receipt", "itinerary", "booking", "confirmation", "invoice", "policy", "binder", "declarations", "requirements", "lease", and attachment names.
 - Iterate through different term/window combinations before saying something is missing. Avoid repeating the exact same query and date range.
-- When you identify attachments or documents that the user may need again, save them to the thread with save_connected_email_attachments_to_thread before drafting or sending emails. This prevents repeated mailbox searches and makes the files available to the email expert.
+- When you identify attachments or documents that the user may need again, save them to the thread with save_connected_email_attachments_to_thread before drafting or sending emails. This prevents repeated mailbox searches and makes the files available to attach_file_to_draft.
 - When the user asks to attach, forward, preserve, or provide proof of an email itself and the important content is in the message body rather than an attachment, use save_connected_email_message_to_thread to export the email as an attachable .eml document before drafting or sending.
 - If the user asks for work Spot can do but the exact tool is unavailable, explain what you found and the specific next action needed.
 - Follow this plan unless tool results show a better path:

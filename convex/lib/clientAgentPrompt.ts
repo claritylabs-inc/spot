@@ -19,7 +19,17 @@ import {
   SLACK_STYLE,
   WEB_STYLE,
 } from "./channelStyle";
-import { clRouterDecide } from "./clRouterClient";
+import {
+  activeAgentToolNames,
+  agentToolFamiliesOf,
+  agentToolSelectionArtifact,
+  assembleFamilyGuidance,
+  availableAgentToolFamilies,
+  expandToolsSpec,
+  selectAgentToolFamilies,
+  type AgentToolFamilyCatalog,
+} from "./agentToolSelection";
+import { EMAIL_FAMILY_GUIDANCE } from "./emailTools";
 import { getClientPortalUrl } from "./domains";
 import { jevProceeds } from "./jevThreshold";
 import {
@@ -30,11 +40,12 @@ import {
 export type ClientAgentSurface = "web" | "email" | "imessage" | "slack" | "mcp";
 export type ClientAgentMode = "direct" | "cc" | "forward";
 
-export const OPTIONAL_PROMPT_MODULES = [
+export const CLIENT_TOOL_FAMILIES = [
   "policy_qa",
   "coi",
   "compliance",
   "policy_change_email",
+  "email",
   "procurement",
   "mailbox",
   "web_research",
@@ -42,7 +53,9 @@ export const OPTIONAL_PROMPT_MODULES = [
   "history",
   "presentation",
 ] as const;
-export type OptionalPromptModule = (typeof OPTIONAL_PROMPT_MODULES)[number];
+export type ClientToolFamily = (typeof CLIENT_TOOL_FAMILIES)[number];
+export const OPTIONAL_PROMPT_MODULES = CLIENT_TOOL_FAMILIES;
+export type OptionalPromptModule = ClientToolFamily;
 export type PromptModule = "core" | OptionalPromptModule;
 
 export const ANSWER_DEPTHS = [
@@ -58,7 +71,7 @@ export const CLIENT_AGENT_TURN_DECIDE_BUDGET_MS = 2_000;
 type ToolSet = Record<string, unknown>;
 
 /** Tools that belong to exactly one optional module and load with it. */
-const MODULE_TOOLS: Record<OptionalPromptModule, readonly string[]> = {
+const FAMILY_TOOLS: Record<ClientToolFamily, readonly string[]> = {
   policy_qa: [],
   coi: ["generate_coi", "lookup_address", "list_certificates"],
   compliance: [
@@ -69,6 +82,16 @@ const MODULE_TOOLS: Record<OptionalPromptModule, readonly string[]> = {
     "create_compliance_requirement",
   ],
   policy_change_email: [],
+  email: [
+    "draft_email",
+    "update_email_draft",
+    "attach_policy_pdf_to_draft",
+    "attach_file_to_draft",
+    "attach_coi_to_draft",
+    "list_email_drafts",
+    "send_email_draft",
+    "cancel_email_draft",
+  ],
   procurement: [],
   mailbox: [
     "coordinate_mailbox_task",
@@ -90,11 +113,13 @@ const MODULE_TOOLS: Record<OptionalPromptModule, readonly string[]> = {
 };
 
 /** Modules whose rules only make sense when one of these tools is registered. */
-const MODULE_REQUIRED_TOOLS: Partial<
+const FAMILY_REQUIRED_TOOLS: Partial<
   Record<OptionalPromptModule, readonly string[]>
 > = {
   coi: ["generate_coi", "list_certificates"],
-  policy_change_email: ["email_expert"],
+  compliance: [],
+  policy_change_email: ["draft_email"],
+  email: FAMILY_TOOLS.email,
   mailbox: ["coordinate_mailbox_task", "search_connected_email"],
   web_research: ["web_research"],
   collaboration: ["create_imessage_group_chat"],
@@ -102,7 +127,7 @@ const MODULE_REQUIRED_TOOLS: Partial<
   presentation: ["present_policy_card"],
 };
 
-const MODULE_QUESTIONS: Record<OptionalPromptModule, string> = {
+const FAMILY_QUESTIONS: Record<ClientToolFamily, string> = {
   policy_qa:
     "Could this turn require reading policy wording or policy details: coverage, exclusions, endorsements, conditions, definitions, limits, deductibles, premiums, whether something is covered, or a policy summary?",
   coi: "Could this turn involve a certificate of insurance (COI), a certificate holder, an additional insured, or delivering a certificate?",
@@ -110,6 +135,8 @@ const MODULE_QUESTIONS: Record<OptionalPromptModule, string> = {
     "Could this turn involve insurance requirements, compliance status, a lease, contract, or requirement document, or vendor compliance?",
   policy_change_email:
     "Could this turn involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
+  email:
+    "Could this turn require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and broker follow-ups.",
   procurement:
     "Could this turn involve buying new coverage, quotes, applications, carrier submissions, or a procurement project?",
   mailbox:
@@ -140,7 +167,38 @@ const SLACK_REACTION_CRITERIA: Record<SlackProcessingReaction, string> = {
   sparkles: "A greeting, thanks, or a light request.",
 };
 
+const FAMILY_DESCRIPTIONS: Record<ClientToolFamily, string> = {
+  policy_qa: "Policy wording, coverage, limits, exclusions, and summaries",
+  coi: "Certificates of insurance and certificate holders",
+  compliance: "Insurance requirements and vendor compliance",
+  policy_change_email: "Policy changes and broker follow-up guidance",
+  email: "Email drafts, attachments, review, sending, and cancellation",
+  procurement: "Coverage procurement and quote guidance",
+  mailbox: "Connected mailbox search, messages, and imports",
+  web_research: "Public websites and current public information",
+  collaboration: "iMessage group conversations with authorized contacts",
+  history: "Earlier thread messages, attachments, and policy versions",
+  presentation: "Policy record cards and links",
+};
+
+export const CLIENT_TOOL_FAMILY_CATALOG: AgentToolFamilyCatalog<ClientToolFamily> =
+  Object.fromEntries(
+    CLIENT_TOOL_FAMILIES.map((family) => [
+      family,
+      {
+        description: FAMILY_DESCRIPTIONS[family],
+        question: FAMILY_QUESTIONS[family],
+        tools: FAMILY_TOOLS[family],
+        ...(FAMILY_REQUIRED_TOOLS[family]
+          ? { availabilityTools: FAMILY_REQUIRED_TOOLS[family] }
+          : {}),
+      },
+    ]),
+  ) as AgentToolFamilyCatalog<ClientToolFamily>;
+
 export type ClientAgentTurnSelection = {
+  families: ClientToolFamily[];
+  availableFamilies: ClientToolFamily[];
   modules: OptionalPromptModule[];
   availableModules: OptionalPromptModule[];
   answerDepth?: AnswerDepth;
@@ -153,25 +211,26 @@ export type ClientAgentTurnSelection = {
 export function availableClientAgentModules(
   tools: ToolSet,
 ): OptionalPromptModule[] {
-  return OPTIONAL_PROMPT_MODULES.filter((module) => {
-    const required = MODULE_REQUIRED_TOOLS[module];
-    return !required || required.some((name) => name in tools);
-  });
+  return availableAgentToolFamilies(
+    CLIENT_TOOL_FAMILY_CATALOG,
+    Object.keys(tools),
+  );
 }
 
 export function fallbackClientAgentSelection(
   tools: ToolSet,
 ): ClientAgentTurnSelection {
-  const availableModules = availableClientAgentModules(tools);
-  return { modules: availableModules, availableModules, source: "fallback" };
+  const families = availableClientAgentModules(tools);
+  return {
+    families,
+    availableFamilies: families,
+    modules: families,
+    availableModules: families,
+    source: "fallback",
+  };
 }
 
-/**
- * One Jev decision per user turn: which optional prompt modules (and their
- * tools) this turn needs, the answer depth, and on Slack the processing
- * reaction. Tool availability is decided in code first; Jev only narrows
- * among the available modules. Any failure or timeout keeps every module.
- */
+/** One selection call also chooses answer depth and the Slack reaction. */
 export async function decideClientAgentTurn(
   ctx: ActionCtx,
   args: {
@@ -185,18 +244,13 @@ export async function decideClientAgentTurn(
     trace?: { traceId: string; parentRequestId?: string };
   },
 ): Promise<ClientAgentTurnSelection> {
-  const availableModules = availableClientAgentModules(args.tools);
-  const fallback: ClientAgentTurnSelection = {
-    modules: availableModules,
-    availableModules,
-    source: "fallback",
-  };
   const message = args.message.trim();
-  if (!message) return fallback;
-
-  try {
-    const result = await clRouterDecide(
-      {
+  if (!message) return fallbackClientAgentSelection(args.tools);
+  const result = await selectAgentToolFamilies(
+    {
+      catalog: CLIENT_TOOL_FAMILY_CATALOG,
+      toolNames: Object.keys(args.tools),
+      request: {
         orgId: String(args.orgId),
         task: CLIENT_AGENT_TURN_DECIDE_TASK,
         executionBudgetMs: CLIENT_AGENT_TURN_DECIDE_BUDGET_MS,
@@ -210,85 +264,61 @@ export async function decideClientAgentTurn(
             ? { conversationSummaryTail: args.summary.trim().slice(-600) }
             : {}),
         },
-        questions: {
-          ...Object.fromEntries(
-            availableModules.map((module) => [
-              module,
-              {
-                type: "noul" as const,
-                instructions: MODULE_QUESTIONS[module],
-              },
-            ]),
-          ),
-          answer_depth: {
-            type: "choice",
-            instructions:
-              "How much policy detail does this turn call for? Prefer basic_summary for broad policy detail or summary requests, specific_section when the user names a section, clause, term, or fact, and comprehensive only when the user explicitly asks for full details or a complete breakdown.",
-            criteria: {
-              basic_summary:
-                "A basic policy summary: carrier, line, period, named insured, and the main limit or deductible",
-              specific_section:
-                "One named section, clause, endorsement, exclusion, definition, or fact",
-              comprehensive:
-                "An explicit request for full details or a complete breakdown",
-            },
-          },
-          ...(args.slackReaction
-            ? {
-                slack_reaction: {
-                  type: "choice" as const,
-                  instructions:
-                    "Pick the Slack emoji reaction that best matches this request while Spot works on it.",
-                  criteria: SLACK_REACTION_CRITERIA,
-                },
-              }
-            : {}),
-        },
         ...(args.trace ? { trace: args.trace } : {}),
       },
-      {
-        telemetry: ctx,
-        abortSignal: AbortSignal.timeout(CLIENT_AGENT_TURN_DECIDE_BUDGET_MS),
+      extraQuestions: {
+        answer_depth: {
+          type: "choice",
+          instructions:
+            "How much policy detail does this turn call for? Prefer basic_summary for broad policy detail or summary requests, specific_section when the user names a section, clause, term, or fact, and comprehensive only when the user explicitly asks for full details or a complete breakdown.",
+          criteria: {
+            basic_summary:
+              "A basic policy summary: carrier, line, period, named insured, and the main limit or deductible",
+            specific_section:
+              "One named section, clause, endorsement, exclusion, definition, or fact",
+            comprehensive:
+              "An explicit request for full details or a complete breakdown",
+          },
+        },
+        ...(args.slackReaction
+          ? {
+              slack_reaction: {
+                type: "choice" as const,
+                instructions:
+                  "Pick the Slack emoji reaction that best matches this request while Spot works on it.",
+                criteria: SLACK_REACTION_CRITERIA,
+              },
+            }
+          : {}),
       },
-    );
-
-    const probabilities: Record<string, number> = {};
-    const modules = availableModules.filter((module) => {
-      const answer = result.answers[module];
-      const probability = answer?.type === "noul" ? answer.noul : undefined;
-      if (probability !== undefined) probabilities[module] = probability;
-      return jevProceeds(probability);
-    });
-    const depth = result.answers.answer_depth;
-    const answerDepth =
-      depth?.type === "choice" &&
-      isAnswerDepth(depth.choice) &&
-      jevProceeds(depth.probabilities[depth.choice])
-        ? depth.choice
-        : undefined;
-    const reaction = result.answers.slack_reaction;
-    const slackReaction =
-      reaction?.type === "choice" &&
-      isSlackProcessingReaction(reaction.choice) &&
-      jevProceeds(reaction.probabilities[reaction.choice])
-        ? reaction.choice
-        : undefined;
-    return {
-      modules,
-      availableModules,
-      answerDepth,
-      slackReaction,
-      source: "jev",
-      requestId: result.requestId,
-      probabilities,
-    };
-  } catch (error) {
-    console.warn("[client-agent] Module selection failed; using all modules", {
-      surface: args.surface,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return fallback;
-  }
+    },
+    { telemetry: ctx },
+  );
+  const depth = result.answers?.answer_depth;
+  const answerDepth =
+    depth?.type === "choice" &&
+    isAnswerDepth(depth.choice) &&
+    jevProceeds(depth.probabilities[depth.choice])
+      ? depth.choice
+      : undefined;
+  const reaction = result.answers?.slack_reaction;
+  const slackReaction =
+    reaction?.type === "choice" &&
+    isSlackProcessingReaction(reaction.choice) &&
+    jevProceeds(reaction.probabilities[reaction.choice])
+      ? reaction.choice
+      : undefined;
+  return {
+    families: result.families,
+    availableFamilies: result.availableFamilies,
+    modules: result.families,
+    availableModules: result.availableFamilies,
+    answerDepth,
+    slackReaction,
+    source: result.source === "jev" ? "jev" : "fallback",
+    requestId: result.requestId,
+    probabilities: result.probabilities,
+  };
 }
 
 function isAnswerDepth(value: string): value is AnswerDepth {
@@ -301,19 +331,20 @@ function isSlackProcessingReaction(
   return (SLACK_PROCESSING_REACTIONS as readonly string[]).includes(value);
 }
 
-/** Drops tools whose only module was not selected; core tools always stay. */
+/** Compatibility helper for callers that only need the initial tool subset. */
 export function filterToolsForModules<T extends ToolSet>(
   tools: T,
   modules: ReadonlyArray<OptionalPromptModule>,
 ): T {
-  const selected = new Set(modules);
-  const excluded = new Set(
-    OPTIONAL_PROMPT_MODULES.filter((module) => !selected.has(module)).flatMap(
-      (module) => MODULE_TOOLS[module],
+  const active = new Set(
+    activeAgentToolNames(
+      CLIENT_TOOL_FAMILY_CATALOG,
+      Object.keys(tools),
+      modules,
     ),
   );
   return Object.fromEntries(
-    Object.entries(tools).filter(([name]) => !excluded.has(name)),
+    Object.entries(tools).filter(([name]) => active.has(name)),
   ) as T;
 }
 
@@ -322,20 +353,79 @@ export function promptModuleArtifact(
   selection: ClientAgentTurnSelection,
   trace: { traceId: string; surface: ClientAgentSurface },
 ) {
-  const data = {
-    surface: trace.surface,
-    modules: selection.modules,
-    availableModules: selection.availableModules,
+  return agentToolSelectionArtifact(selection, {
+    ...trace,
     answerDepth: selection.answerDepth ?? null,
     slackReaction: selection.slackReaction ?? null,
-    source: selection.source,
-    requestId: selection.requestId ?? null,
-  };
-  console.log("[client-agent] prompt modules", {
-    traceId: trace.traceId,
-    ...data,
   });
-  return { type: "prompt_modules", data };
+}
+
+export function buildClientAgentTurnTools<T extends ToolSet>(
+  registeredTools: T,
+  selection: ClientAgentTurnSelection,
+  prompt: Omit<
+    Parameters<typeof buildClientAgentSystemPrompt>[0],
+    "tools" | "modules"
+  >,
+) {
+  const toolNames = Object.keys(registeredTools);
+  const available = availableClientAgentModules(registeredTools);
+  const required = new Set<ClientToolFamily>();
+  const families = () =>
+    available.filter(
+      (family) => selection.families.includes(family) || required.has(family),
+    );
+  const system = () =>
+    buildClientAgentSystemPrompt({
+      ...prompt,
+      tools: registeredTools,
+      modules: families(),
+    });
+  const tools = {
+    ...registeredTools,
+    expand_tools: {
+      ...expandToolsSpec(CLIENT_TOOL_FAMILY_CATALOG, available),
+      execute: async ({
+        families: requested,
+      }: {
+        families: ClientToolFamily[];
+      }) => {
+        const unavailable = requested.filter(
+          (family) => !available.includes(family),
+        );
+        for (const family of requested) {
+          if (available.includes(family)) required.add(family);
+        }
+        return { families: families(), unavailable };
+      },
+    },
+  };
+  return {
+    tools,
+    system: system(),
+    prepareStep: ({
+      steps,
+    }: {
+      steps: ReadonlyArray<{ toolCalls: ReadonlyArray<{ toolName: string }> }>;
+    }) => {
+      for (const family of agentToolFamiliesOf(
+        CLIENT_TOOL_FAMILY_CATALOG,
+        steps.flatMap((step) => step.toolCalls.map((call) => call.toolName)),
+      ))
+        required.add(family);
+      return {
+        activeTools: [
+          ...activeAgentToolNames(
+            CLIENT_TOOL_FAMILY_CATALOG,
+            toolNames,
+            families(),
+          ),
+          "expand_tools",
+        ] as Array<keyof typeof tools>,
+        system: system(),
+      };
+    },
+  };
 }
 
 /* ── Prompt text ── */
@@ -500,7 +590,7 @@ Your tool definitions list what you can do on this surface. The core tools look 
 - Use lookup_company_context only for durable company-profile facts and preferences. Never use it for policy terms, limits, endorsements, coverage, certificates, policy parties, or policy status; those always require policy tools.
 - Use lookup_policy with expiringWithinDays for current expiration-window questions instead of inferring dates from prior messages or loading the whole portfolio into the prompt.
 - For simple policy-number requests, look up the relevant policy and answer with the carrier/type/context needed to disambiguate.
-- For requests for a copy of the policy, policy PDF, full policy, declarations PDF, wording, or original policy document, identify the correct policy and use the attachment/delivery tool rather than only summarizing policy data.${params.canSendEmail ? " If the user asks to email it, use the email expert and attach kind original_policy." : ""}
+- For requests for a copy of the policy, policy PDF, full policy, declarations PDF, wording, or original policy document, identify the correct policy and use the attachment/delivery tool rather than only summarizing policy data.${params.canSendEmail ? " If the user asks to email it, use draft_email, attach_policy_pdf_to_draft, and send_email_draft." : ""}
 - If extracted policy summaries or structured fields do not answer the question, conflict, or are low-confidence, use lookup_policy_section to search the document's source-native outline and original PDF source evidence before saying the information is unavailable.
 - Treat lookup_policy_section results with evidenceSource "original_pdf" or sourceSpanIds as stronger evidence than extracted summaries for exact numeric, date, named-insured, endorsement, exclusion, condition, and definition facts.
 - Use lookup_policy structured insured address and operationsDescription before source search. Producer, insurer, carrier, and General Agent details are policy-scoped under policyParties; never treat them as client organization profile facts.
@@ -556,7 +646,7 @@ CERTIFICATES OF INSURANCE:
 - If the user mentions a certificate holder and "insured" ambiguously, ask whether they mean ordinary COI certificate holder or a policy named-insured/additional-insured endorsement before creating a broker follow-up.${
     canSendEmail
       ? `
-- For requests to generate and email/send COIs, use the email expert tool. A chat response that says you are sending is not enough. Generating a corrected COI in chat does not replace the attachment in an existing email draft; call the email expert to update that exact draft. For multiple distinct recipients, call the email expert once per recipient. Never say COIs were generated, attached, sent, emailed, or are being emailed unless a COI or email tool result confirms that action.`
+- For requests to generate and email/send COIs, use draft_email, attach_coi_to_draft, and send_email_draft. A chat response that says you are sending is not enough. Generating a corrected COI in chat does not replace the attachment in an existing email draft; call attach_coi_to_draft to update that exact draft. For multiple distinct recipients, create one draft per recipient. Never say COIs were generated, attached, sent, emailed, or are being emailed unless a COI or email tool result confirms that action.`
       : `
 - Email sending is unavailable here, so a certificate can only be generated and attached to this response; say so if the user asks to email it.`
   }`;
@@ -633,6 +723,10 @@ function buildModuleInstructions(
       );
     case "policy_change_email":
       return POLICY_CHANGE_EMAIL_INSTRUCTIONS;
+    case "email":
+      return params.canSendEmail && "draft_email" in params.tools
+        ? `\n\n${EMAIL_FAMILY_GUIDANCE}`
+        : "\n\nEMAIL DRAFTS:\nUse list_email_drafts to review existing drafts. Email writes and sends are unavailable on this turn.";
     case "procurement":
       return PROCUREMENT_INSTRUCTIONS;
     case "mailbox":
@@ -674,7 +768,10 @@ export function buildClientAgentSystemPrompt(params: {
   now?: Date;
   timeZone?: string;
 }): string {
-  const canSendEmail = params.canSendEmail === true;
+  const canSendEmail =
+    params.canSendEmail === true &&
+    "draft_email" in params.tools &&
+    "send_email_draft" in params.tools;
   const available = new Set(availableClientAgentModules(params.tools));
   const modules = OPTIONAL_PROMPT_MODULES.filter(
     (module) => available.has(module) && params.modules.includes(module),
@@ -706,9 +803,18 @@ export function buildClientAgentSystemPrompt(params: {
       maxToolCalls: params.maxToolCalls,
       canSendEmail,
     }),
-    ...modules.map((module) =>
-      buildModuleInstructions(module, { tools: params.tools, canSendEmail }),
+    ...assembleFamilyGuidance(
+      CLIENT_TOOL_FAMILY_CATALOG,
+      modules,
+      modules.map((family) => ({
+        families: [family],
+        text: buildModuleInstructions(family, {
+          tools: params.tools,
+          canSendEmail,
+        }),
+      })),
     ),
+    "\n\nTOOL FAMILIES:\nUse expand_tools when the current task needs an additional family. Its tools and guidance become available on your next step. Families already used remain available.",
     ...(params.extras ?? [])
       .filter(Boolean)
       .map((extra) => `\n\n${extra.trim()}`),

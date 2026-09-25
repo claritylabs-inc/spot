@@ -2,7 +2,7 @@
 
 This reference lists the tools that Spot exposes to its operator agent, tenant-facing conversational agent, internal agent subagents, and OAuth MCP clients. It describes the current executable catalogs; it does not include deterministic controls, ordinary Convex functions, REST routes, or browser actions that are not model-callable or MCP-callable tools.
 
-Spot supplies every available tool on each router step in `request.tools`; an empty array means no tools. Definitions carry name, description, and JSON input schema. Before each operator step, `getRunContextInternal` validates the active operator/thread and filters the registry by role, impersonation, and configured Google Workspace, Slack, Mapbox, and MCP access. Exact target authorization and approval are rechecked at execution; a tool's availability cannot authorize an arbitrary target. Spot does not send `toolChoice` or preselect tools for relevance. Router-owned Jev selects one offered tool or abstains, the generation model fills arguments, and Spot executes the call.
+Spot supplies the tools active on each router step in `request.tools`; an empty array means no tools. `convex/lib/agentToolSelection.ts` selects available families through Jev, retains used or expanded families, assembles guidance, and falls back to all available families on failure or timeout. `expand_tools` requests additional families for the next step without changing business records. Definitions carry name, description, and JSON input schema. Before each operator step, `getRunContextInternal` validates the active operator/thread and filters the registry by role, impersonation, and configured Google Workspace, Slack, Mapbox, and MCP access. Exact target authorization and approval are rechecked at execution; a tool's availability cannot authorize an arbitrary target. Family selection narrows the offered catalog; Spot does not force a business tool with `toolChoice`. Router-owned Jev selects one offered tool or abstains, the generation model fills arguments, and Spot executes the call.
 
 `clRouterDecide` uses authenticated `/v1/decide` for typed Jev Choice/Noul decisions, with native probabilities and request-bound response validation. Classifications for forwarded-email direction, requirement import intent, certificate-holder matching, policy intake, mailbox automation, Workspace PDF acceptance, and prompt-injection screening use this path. Extraction and prose remain generation tasks; legacy classification/security generation settings remain schema-compatible but are not active UI routes. SDK generation callbacks reject classification instead of silently using generation. The chat policy-evidence classifier, deterministic completed-lookup check, and recovery generation are removed. Normal tool selection handles evidence retrieval; incomplete tool responses may still receive a tool-free final synthesis that cannot replay actions.
 
@@ -39,7 +39,7 @@ These lifecycle controls are internal, not new agent or MCP tools.
 - Shared tenant conversational tools are defined in `convex/lib/chatTools.ts` and executed by `convex/lib/agentToolExecutors.ts` plus `convex/lib/vendorComplianceTools.ts`. Policy lookup treats nullable optional filters as omitted, including the expiry window, before applying exact policy IDs and tenant scope.
 - Channel-specific tenant tools are assembled in `convex/actions/processThreadChat.ts`, `convex/actions/handleInboundEmail.ts`, `convex/actions/handleInboundImessage.ts`, and `convex/actions/mcpChat.ts`.
 - `convex/lib/channelAgentRunner.ts` owns shared conversational turn execution, tool-outcome auditing, and tool-free synthesis of incomplete responses. Web, Slack, email, iMessage, and MCP retain channel-local ingress, authorization, persistence, and delivery. Normal router tool selection handles policy lookups; there is no separate policy-evidence classifier, completed-lookup gate, or evidence-recovery generation.
-- Internal mailbox- and email-subagent tools live in `convex/actions/mailboxCoordinator.ts` and `convex/lib/emailSubagent.ts`.
+- Discrete email tools and their shared executors live in `convex/lib/emailTools.ts`; no nested email model loop remains. Internal mailbox tools live in `convex/actions/mailboxCoordinator.ts`.
 - Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the shared projection and compatibility metadata in `convex/lib/tenantMcpToolCatalog.ts`.
 - MCP OAuth revocation accepts form-encoded access or refresh tokens (and legacy Bearer access tokens), invalidates the stored token pair, and rejects a supplied mismatched client ID before any change.
 
@@ -47,7 +47,7 @@ When any source above adds, removes, renames, or materially changes a tool, upda
 
 ## Operator agent registry
 
-Operator turns start with Jev-selected tool families. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution.
+Operator steps use the shared family selector with the existing 13-family catalog. Starter intents keep their shortcuts; resumed durable steps offer all available families, and tools used or expanded earlier in the run remain loaded. Operator MCP continues to expose its complete authorized catalog. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution.
 
 The [operator activity icon inventory](docs/design/operator-tool-icons.md) groups
 every operator tool by its browser activity icon.
@@ -193,6 +193,8 @@ Operator Slack/iMessage runs that outlast the synchronous request continue throu
 
 There is no single client registry equivalent to `OPERATOR_AGENT_TOOL_REGISTRY`. The client agent receives a shared executable tool set and channel-specific additions. In the tables below, **MCP chat** means the model loop behind the tenant `ask_spot` MCP tool, not the full tenant MCP catalog documented later.
 
+Client prompt families are `policy_qa`, `coi`, `compliance`, `policy_change_email`, `email`, `procurement`, `mailbox`, `web_research`, `collaboration`, `history`, and `presentation`. One Jev call selects families, answer depth, and the optional Slack reaction. All authorized tools are registered with AI SDK; `prepareStep` selects `activeTools` and current family guidance. Every surface includes `expand_tools`, which adds the requested available families on the next step of the same turn. Used families remain active. Surface, OAuth, and requirement-import authorization determine availability before selection; expansion cannot grant those permissions. `tool_selection` artifacts record the selection and decision metadata.
+
 ### Shared tools
 
 “All channels” means web, Slack, inbound email, iMessage, and MCP chat. Runtime authorization and readable/writable organization scope still apply.
@@ -209,8 +211,8 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `attach_client_file`             | Attach one readable client dropbox file to the response.                           | All channels; the file must be explicitly client-visible.                       |
 | `lookup_address`                 | Validate and standardize a user-supplied postal address.                           | All channels; Mapbox must be configured.                                        |
 | `lookup_policy`                  | Retrieve fresh policy summaries by IDs, text, LOB, carrier, or expiry window.      | All channels.                                                                   |
-| `list_policy_versions`           | Read renewal, upload, and re-extraction history for a policy or organization.      | All channels; history prompt module.                                            |
-| `list_certificates`              | Read issued COIs, holder details, and issue or reissue history.                    | All channels; COI prompt module.                                                |
+| `list_policy_versions`           | Read renewal, upload, and re-extraction history for a policy or organization.      | All channels; history family.                                            |
+| `list_certificates`              | Read issued COIs, holder details, and issue or reissue history.                    | All channels; COI family.                                                |
 | `present_policy_card`            | Select a current-turn resolved policy for rich-card presentation.                  | Web, Slack, and iMessage only.                                                  |
 | `lookup_company_context`         | Retrieve durable company-profile facts and preferences, never policy facts.        | All channels.                                                                   |
 | `compare_coverages`              | Compare two readable policies side by side.                                        | All channels.                                                                   |
@@ -233,13 +235,11 @@ Shared customer confirmation records for email send/cancel, draft snapshots, mul
 
 | Tool                                             | Purpose                                                                             | Root-agent availability or condition                                                                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `choose_slack_reaction`                          | Choose the temporary processing reaction on a Slack message.                        | Slack only; forced as the first model step and excluded from visible work traces.                                                                        |
 | `request_human_service`                          | Pause a Slack AI thread and request operator help.                                  | Slack only, when a Slack actor was resolved.                                                                                                             |
 | `create_imessage_group_chat`                     | Create a confirmed outbound iMessage group.                                         | Web; iMessage for a linked sender; direct internal email; MCP chat.                                                                                      |
 | `coordinate_mailbox_task`                        | Delegate a multi-step connected-mailbox workflow.                                   | Web and Slack; direct internal email; linked-user iMessage; MCP chat.                                                                                    |
 | `web_research`                                   | Retrieve public web facts through the configured provider.                          | Web and Slack; direct internal email; linked-user iMessage; MCP chat.                                                                                    |
 | `render_email_preview`                           | Render a durable email draft as PNG or PDF.                                         | Web and Slack only.                                                                                                                                      |
-| `email_expert`                                   | Delegate validated email drafting, attachment preparation, and delivery.            | Web/Slack with a send-capable identity; direct internal email; linked-user iMessage with a send-capable identity. MCP uses explicit draft tools instead. |
 | `search_connected_email`                         | Search connected IMAP accounts.                                                     | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
 | `read_connected_email`                           | Read one connected-mailbox message.                                                 | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
 | `read_connected_email_attachment`                | Read a supported connected-email attachment.                                        | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
@@ -248,11 +248,26 @@ Shared customer confirmation records for email send/cancel, draft snapshots, mul
 | `send_connected_vendor_invite`                   | Send a user-authorized connected-vendor invitation.                                 | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
 | `extract_policy_attachment`                      | Start extraction for one policy represented by one or more inbound PDF attachments. | Inbound email only.                                                                                                                                      |
 
-For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot` calls exclude `save_note`, `confirm_policy_fact`, `generate_coi`, `update_company_wiki`, `create_compliance_requirement`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
+For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot` calls exclude email writes, `save_note`, `confirm_policy_fact`, `generate_coi`, `update_company_wiki`, `create_compliance_requirement`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
+
+### Email family
+
+| Tool | Purpose |
+| --- | --- |
+| `draft_email` | Persist recipient direction, To/CC/BCC, subject, and body as a draft. |
+| `update_email_draft` | Replace the exact draft, clearing removed copies and attachments and invalidating its approval. |
+| `attach_policy_pdf_to_draft` | Add an available original policy PDF from authorized policy scope. |
+| `attach_file_to_draft` | Add a file available in the current conversation. |
+| `attach_coi_to_draft` | Generate or reuse a COI through the existing endorsement and evidence gates. |
+| `list_email_drafts` | List drafts in authorized organization/thread scope. |
+| `send_email_draft` | Send or queue an authorized draft; otherwise retain it and return its confirmation prompt. |
+| `cancel_email_draft` | Cancel an authorized draft. |
+
+Email tools are available on web/Slack with a send-capable identity, direct internal email, linked-user iMessage, and write-scoped MCP chat. Copies, recipient direction, known contacts, attachment kinds, original-policy evidence, duplicates, and COI batch approvals are validated in shared executors. `send_email_draft` reads the stored `emailSendAuthorization` on the current actor-bound user message and applies `jevProceeds`; absent, failed, negated, or low-confidence decisions cannot send. Existing fingerprint-bound confirmation and review-link delivery paths remain authoritative. Direct MCP send actions retain their explicit-action authorization; conversational `ask_spot` never receives it. Email style uses the shared `channelStyle.ts` constants in family guidance. Failed requested attachments remain a send blocker across turns; a successful retry clears its failure within the turn, while a later turn must explicitly replace the draft to revise those attachment requirements. Read-only MCP chat can list drafts.
 
 ### Internal client-agent subagents
 
-The root agent sees `coordinate_mailbox_task` and `email_expert`; the delegated models receive these narrower tool sets.
+The root agent sees `coordinate_mailbox_task`; its delegated model receives these narrower tools.
 
 Mailbox coordinator:
 
@@ -269,18 +284,9 @@ Mailbox coordinator:
 
 When invoked from read-only tenant MCP chat, only the first three read tools in this table are registered.
 
-Email expert:
-
-| Tool                      | Purpose                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| `attach_original_policy`  | Prepare an original policy PDF attachment.                 |
-| `attach_uploaded_file`    | Prepare a file already available in the conversation.      |
-| `generate_coi_attachment` | Generate and prepare one or more certificate attachments.  |
-| `send_or_draft_email`     | Finalize exactly one safe draft, queued send, or delivery. |
-
 ## Tenant OAuth MCP catalog
 
-`convex/lib/tenantMcpToolCatalog.ts` projects shared client tool definitions into MCP names, JSON schemas, OAuth scopes, and annotations. `convex/actions/tenantMcpTools.ts` executes direct shared tools with the same tenant scope as agent chat. Existing policy, email-draft, vendor, and `ask_spot` names retain their prior handlers and response shapes as compatibility entries. Deprecated aliases advertise their replacement in `tools/list`; legacy response adapters preserve the old shapes where the shared result differs. The catalog effect is checked before dispatch; resource authorization is checked by the executor. `ask_spot` passes the token's write capability to its nested client and mailbox catalogs.
+`convex/lib/tenantMcpToolCatalog.ts` projects shared client tool definitions into MCP names, JSON schemas, OAuth scopes, and annotations. `convex/actions/tenantMcpTools.ts` executes direct shared tools with the same tenant scope as agent chat. Existing policy, vendor, and `ask_spot` names retain their compatibility handlers. Email draft names project the shared email tools through adapters that preserve external schemas and response shapes, including batch sending and the text draft list. Deprecated aliases advertise their replacement in `tools/list`; legacy response adapters preserve the old shapes where the shared result differs. The catalog effect is checked before dispatch; resource authorization is checked by the executor. `ask_spot` passes the token's write capability to its nested client and mailbox catalogs.
 
 | MCP tools | Access |
 | --- | --- |

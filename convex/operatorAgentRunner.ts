@@ -41,7 +41,7 @@ import {
   expandOperatorToolsSpec,
   isOperatorToolFamily,
   OPERATOR_AGENT_TOOL_REGISTRY,
-  OPERATOR_TOOL_FAMILIES,
+  OPERATOR_TOOL_FAMILY_CATALOG,
   operatorAgentToolNamesForFamilies,
   operatorToolFamiliesOf,
   parseOperatorAgentToolInput,
@@ -49,8 +49,11 @@ import {
   type OperatorToolFamily,
   type OperatorToolFamilySelection,
 } from "./lib/operatorAgentToolRegistry";
-import { clRouterDecide, type ClRouterClientOptions } from "./lib/clRouterClient";
-import { jevProceeds } from "./lib/jevThreshold";
+import type { ClRouterClientOptions } from "./lib/clRouterClient";
+import {
+  assembleFamilyGuidance,
+  selectAgentToolFamilies,
+} from "./lib/agentToolSelection";
 import { preflightOperatorToolFailure } from "./lib/operatorAgentToolFailure";
 import { SPOT_ACQUISITION_GUIDANCE } from "./lib/brokerProfileValidation";
 import {
@@ -117,9 +120,11 @@ function buildOperatorSystemPrompt(
   families: readonly OperatorToolFamily[],
   availableFamilies: readonly OperatorToolFamily[],
 ) {
-  const guidance = OPERATOR_GUIDANCE_MODULES.filter((module) =>
-    module.families.some((family) => families.includes(family)),
-  ).map((module) => `- ${module.text}`);
+  const guidance = assembleFamilyGuidance(
+    OPERATOR_TOOL_FAMILY_CATALOG,
+    families,
+    OPERATOR_GUIDANCE_MODULES,
+  ).map((text) => `- ${text}`);
   return [
     OPERATOR_SYSTEM_PROMPT,
     guidance.length ? `\n\nTOOL GUIDANCE:\n${guidance.join("\n")}` : "",
@@ -191,25 +196,14 @@ export async function selectOperatorToolFamilies(
   },
   options: ClRouterClientOptions = {},
 ): Promise<OperatorToolFamilySelection> {
-  const available = operatorToolFamiliesOf(args.toolNames);
-  const selection = (
-    families: readonly OperatorToolFamily[],
-    source: OperatorToolFamilySelection["source"],
-  ) => ({
-    families: available.filter(
-      (family) => families.includes(family) || args.required.includes(family),
-    ),
-    source,
-  });
-  if (args.intentFamilies) return selection(args.intentFamilies, "intent");
-  if (args.resumed) return selection(available, "resume");
-  const candidates = available.filter(
-    (family) => !args.required.includes(family),
-  );
-  if (candidates.length === 0) return selection([], "jev");
-  try {
-    const result = await clRouterDecide(
-      {
+  const result = await selectAgentToolFamilies(
+    {
+      catalog: OPERATOR_TOOL_FAMILY_CATALOG,
+      toolNames: args.toolNames,
+      required: args.required,
+      intentFamilies: args.intentFamilies,
+      resumed: args.resumed,
+      request: {
         task: "operator_agent_families",
         state: {
           request: args.request.slice(0, 2_000),
@@ -218,33 +212,15 @@ export async function selectOperatorToolFamilies(
             ? { recentToolActivity: args.recentToolActivity.slice(-1_500) }
             : {}),
         },
-        questions: Object.fromEntries(
-          candidates.map((family) => [
-            family,
-            {
-              type: "noul" as const,
-              instructions: `Does Spot's internal operator agent need tools for ${OPERATOR_TOOL_FAMILIES[family]} to handle the operator's request, given its recent tool activity?`,
-            },
-          ]),
-        ),
         executionBudgetMs: 10_000,
         ...(args.trace ? { trace: args.trace } : {}),
       },
-      options,
-    );
-    return selection(
-      candidates.filter((family) => {
-        const answer = result.answers[family];
-        return answer?.type === "noul" && jevProceeds(answer.noul);
-      }),
-      "jev",
-    );
-  } catch (error) {
-    console.warn("Operator tool family selection unavailable", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return selection(available, "fallback");
-  }
+      question: (_family, description) =>
+        `Does Spot's internal operator agent need tools for ${description} to handle the operator's request, given its recent tool activity?`,
+    },
+    options,
+  );
+  return { families: result.families, source: result.source };
 }
 
 function buildPageContextBlock(

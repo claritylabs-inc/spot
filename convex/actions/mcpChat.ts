@@ -15,12 +15,18 @@ import {
   validatePolicyFocusIds,
 } from "../lib/agentPolicyFocus";
 import {
-  buildClientAgentSystemPrompt,
+  buildClientAgentTurnTools,
   decideClientAgentTurn,
-  filterToolsForModules,
   promptModuleArtifact,
 } from "../lib/clientAgentPrompt";
-import { buildTextModelHistory } from "../lib/agentMessageHistory";
+import {
+  buildRecentAgentConversationContext,
+  buildTextModelHistory,
+} from "../lib/agentMessageHistory";
+import { buildEmailTools, type EmailToolResult } from "../lib/emailTools";
+import { resolveEmailAgentIdentity } from "../lib/emailIdentity";
+import { canAccessThread } from "../lib/threadAccess";
+import { ensureEmailSendAuthorizationDecision } from "../lib/emailSendAuthorization";
 import { cleanAgentMarkdownForTransport } from "../lib/transportRenderers";
 import {
   loadBoundedAgentHistory,
@@ -39,7 +45,11 @@ import {
   MCP_CHAT_WRITE_TOOL_NAMES,
 } from "../lib/mcpAgentToolAccess";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
-import { classifyPromptInjection, enforceInputLimits } from "../lib/security";
+import {
+  classifyPromptInjection,
+  collectAllowedRecipients,
+  enforceInputLimits,
+} from "../lib/security";
 import type { Id } from "../_generated/dataModel";
 import {
   buildTitlePromptContent,
@@ -50,9 +60,8 @@ import {
 import { getClientPortalUrl } from "../lib/domains";
 
 /**
- * Simplified chat action for MCP — no streaming. Programmatic email draft/send
- * operations are exposed as explicit MCP tools so clients can update the same
- * durable draft artifact instead of relying on free-form chat approval.
+ * MCP chat shares the client tool families and durable email drafts. Sends read
+ * the current message's stored authorization, as on the other client surfaces.
  * Creates/reuses a thread, generates a response, persists it, and returns.
  */
 export const run = internalAction({
@@ -102,8 +111,25 @@ export const run = internalAction({
       };
     }
 
+    const scope = await ctx.runQuery(internal.lib.agentScope.resolveForAction, {
+      orgId: args.orgId,
+      userId: args.userId,
+      surface: "mcp",
+    });
+
     // Get or create thread
     let threadId = args.threadId;
+    if (threadId) {
+      const thread = await ctx.runQuery(internal.threads.getInternal, {
+        id: threadId,
+      });
+      if (
+        !thread ||
+        !canAccessThread({ userId: args.userId, userOrgId: args.orgId, thread })
+      ) {
+        throw new Error("Thread not found");
+      }
+    }
     if (!threadId) {
       threadId = await ctx.runMutation(internal.threads.createInternal, {
         orgId: args.orgId,
@@ -130,12 +156,6 @@ export const run = internalAction({
       },
     );
 
-    const scope = await ctx.runQuery(internal.lib.agentScope.resolveForAction, {
-      orgId: args.orgId,
-      userId: args.userId,
-      surface: "mcp",
-    });
-
     const history = await loadBoundedAgentHistory(ctx, {
       threadId,
       currentMessageId: userMessageId,
@@ -160,6 +180,33 @@ export const run = internalAction({
       fileId?: Id<"_storage">;
     }> = [];
     const mcpToolArtifacts: Array<{ type: string; data: unknown }> = [];
+    const emailIdentity = resolveEmailAgentIdentity(org);
+    const members = await ctx.runQuery(internal.users.listByOrgInternal, {
+      orgId: args.orgId,
+    });
+    const memberEmails = members.flatMap((member) =>
+      member?.email ? [member.email] : [],
+    );
+    const emailResult: { current: EmailToolResult | null } = { current: null };
+    const emailReferencedPolicyIds: Id<"policies">[] = [];
+    if (args.canWrite !== false) {
+      const pendingDrafts = await ctx.runQuery(
+        internal.pendingEmails.listDraftsInternal,
+        {
+          threadId,
+          orgId: args.orgId,
+        },
+      );
+      await ensureEmailSendAuthorizationDecision(ctx, {
+        message: {
+          _id: userMessageId,
+          orgId: args.orgId,
+          threadId,
+          content: args.message,
+        },
+        pendingDrafts,
+      });
+    }
     const registeredTools = filterToolsForWriteAccess(
       {
         ...buildAgentToolExecutors(ctx, {
@@ -176,6 +223,10 @@ export const run = internalAction({
           imessageGroupChat: true,
           webResearch: true,
           mailboxCoordinator: { routingParentId: traceId },
+          onPolicyReferenced: (policyId) => {
+            if (!emailReferencedPolicyIds.includes(policyId))
+              emailReferencedPolicyIds.push(policyId);
+          },
           onResponseAttachment: (attachment) => {
             responseAttachments.push(attachment);
           },
@@ -183,6 +234,47 @@ export const run = internalAction({
             mcpToolArtifacts.push(artifact);
           },
         }),
+        ...(emailIdentity.canSend &&
+        emailIdentity.agentAddress &&
+        emailIdentity.fromHeader
+          ? buildEmailTools(ctx, {
+              orgId: args.orgId,
+              userId: args.userId,
+              threadId,
+              sourceUserMessageId: userMessageId,
+              routingParentId: traceId,
+              channel: "mcp",
+              scope,
+              fromHeader: emailIdentity.fromHeader,
+              agentAddress: emailIdentity.agentAddress,
+              senderEmail: user?.email,
+              defaultTo: user?.email,
+              defaultRecipientName: user?.name,
+              defaultBcc:
+                org.bccRequesterOnAgentEmails !== false && user?.email
+                  ? [user.email]
+                  : undefined,
+              allowedRecipients: collectAllowedRecipients(
+                allMessages,
+                memberEmails,
+              ),
+              availableAttachments: allMessages.flatMap((message) =>
+                (message.attachments ?? []).flatMap((attachment) =>
+                  attachment.fileId &&
+                  (message.role !== "agent" || attachment.kind !== "coi")
+                    ? [{ ...attachment, fileId: attachment.fileId }]
+                    : [],
+                ),
+              ),
+              referencedPolicyIds: emailReferencedPolicyIds,
+              emailSendDelay: org.emailSendDelay,
+              conversationContext:
+                buildRecentAgentConversationContext(allMessages),
+              onResult: (result) => {
+                emailResult.current = result;
+              },
+            })
+          : {}),
         search_connected_email: {
           ...searchConnectedEmail,
           execute: async (params: {
@@ -301,16 +393,18 @@ export const run = internalAction({
     mcpToolArtifacts.push(
       promptModuleArtifact(selection, { traceId, surface: "mcp" }),
     );
-    const tools = filterToolsForModules(registeredTools, selection.modules);
-    const fullSystemPrompt = buildClientAgentSystemPrompt({
+    const turnTools = buildClientAgentTurnTools(registeredTools, selection, {
       surface: "mcp",
       org,
       userName,
       siteUrl,
-      tools,
-      modules: selection.modules,
       answerDepth: selection.answerDepth,
       maxToolCalls: 10,
+      canSendEmail: args.canWrite !== false && emailIdentity.canSend,
+      emailUnavailableReason:
+        args.canWrite === false
+          ? "the MCP token has read-only scope"
+          : emailIdentity.reason,
       policyFocus: policyFocusBlock,
       summary: history.summary,
     });
@@ -322,9 +416,8 @@ export const run = internalAction({
       task: "chat",
       options: {
         maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
-        system: fullSystemPrompt,
+        ...turnTools,
         messages: messageHistory,
-        tools,
         stopWhen: stepCountIs(10),
       },
       run: {
@@ -359,6 +452,7 @@ export const run = internalAction({
       id: agentMsgId,
       content,
       routerRequestId: turn.routerRequestId,
+      pendingEmailId: emailResult.current?.pendingEmailId,
       usedTools:
         turn.audit.usedTools.length > 0 ? turn.audit.usedTools : undefined,
       toolCalls:
