@@ -48,7 +48,6 @@ function HistoryRow({
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       >
-        <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-foreground/50" />
         <span
           className={cn("min-w-0 flex-1 truncate text-foreground", typeStyle("body.default"))}
         >

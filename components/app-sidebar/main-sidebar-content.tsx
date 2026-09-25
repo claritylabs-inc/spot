@@ -1,9 +1,24 @@
 "use client";
 
-import { Bell, LogOut, MessageSquare, Settings, User } from "lucide-react";
+import Link from "next/link";
+import { Bell, ChevronUp, LogOut, MessageSquare, Settings, User } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { NotificationsPanel } from "@/components/notifications-panel";
-import { commandShortcut, navShortcut } from "./nav-config";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@claritylabs-inc/ui/components/dropdown-menu";
+import {
+  commandShortcut,
+  MENU_ITEM_BASE,
+  MENU_ITEM_ACTIVE,
+  MENU_ITEM_INACTIVE,
+} from "./nav-config";
+import { cn } from "@/lib/utils";
 import { SidebarMenuItem, SectionHeader } from "./nav-item";
 import { SidebarHeader } from "./sidebar-header";
 import type { NavItemConfig } from "./types";
@@ -136,32 +151,48 @@ export function MainSidebarContent({
         ) : null}
       </nav>
 
-      <div className="border-t border-border px-2 py-2 space-y-0.5">
-        {canManageSettings ? (
-          <SidebarMenuItem
-            href="/settings"
-            label="Settings"
-            icon={Settings}
-            active={isActive("/settings")}
-            collapsed={collapsed}
-            shortcut={navShortcut("s")}
-          />
-        ) : null}
-        <SidebarMenuItem
-          href="/profile"
-          label="Profile"
-          icon={User}
-          active={isActive("/profile")}
-          collapsed={collapsed}
-          shortcut={navShortcut("u")}
-        />
-        <SidebarMenuItem
-          onClick={onSignOut}
-          label="Sign out"
-          icon={LogOut}
-          active={false}
-          collapsed={collapsed}
-        />
+      <div className="border-t border-border px-2 py-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label="Account"
+            className={cn(
+              "flex w-full items-center gap-2.5 px-3 py-1.5",
+              MENU_ITEM_BASE,
+              typeStyle("body.default"),
+              collapsed && "justify-center",
+              isActive("/profile") || (canManageSettings && isActive("/settings"))
+                ? MENU_ITEM_ACTIVE
+                : MENU_ITEM_INACTIVE,
+            )}
+          >
+            <User className="size-4 shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left">Account</span>
+                <ChevronUp className="size-3.5 shrink-0" />
+              </>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="min-w-48">
+            <DropdownMenuItem render={<Link href="/profile" />}>
+              <User />
+              Profile
+              <DropdownMenuShortcut>G U</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            {canManageSettings && (
+              <DropdownMenuItem render={<Link href="/settings" />}>
+                <Settings />
+                Settings
+                <DropdownMenuShortcut>G S</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onSignOut}>
+              <LogOut />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
