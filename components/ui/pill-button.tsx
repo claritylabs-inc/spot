@@ -7,6 +7,11 @@ import {
   PillButtonSizeProvider,
   usePillButtonSize,
 } from "@claritylabs-inc/ui/components/brand/pill-button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@claritylabs-inc/ui/components/tooltip";
 
 import { isInternalAppHref } from "@/lib/internal-link";
 
@@ -39,45 +44,51 @@ function PillButton(props: PillButtonProps) {
   const resolvedVariant =
     variant === "icon" || variant === "iconLabel" ? "ghost" : variant;
   const resolvedSize = size === "small" ? "xs" : size;
-  const expandable =
+  // `expandLabel` used to grow the pill on hover, which shifted neighbouring
+  // controls. Render those as icon-only pills with a tooltip instead.
+  const withTooltip =
     !iconOnly &&
     (variant === "icon" || variant === "secondary") &&
     expandLabel &&
     Boolean(label);
-  const icon = Boolean(iconOnly || variant === "icon");
-  const content = expandable
+  const icon = Boolean(iconOnly || variant === "icon" || withTooltip);
+  const content = icon
     ? {
-        expandLabel: true as const,
-        iconOnly: false as const,
+        iconOnly: true as const,
+        expandLabel: false as const,
         label: label ?? "",
       }
-    : icon
-      ? {
-          iconOnly: true as const,
-          expandLabel: false as const,
-          label: label ?? "",
-        }
-      : {
-          iconOnly: false as const,
-          expandLabel: false as const,
-          label: variant === "iconLabel" ? label : undefined,
-        };
+    : {
+        iconOnly: false as const,
+        expandLabel: false as const,
+        label: variant === "iconLabel" ? label : undefined,
+      };
   const shared = {
     ...content,
     variant: resolvedVariant,
     size: resolvedSize,
     "aria-label": props["aria-label"] ?? label,
     preset: "spot" as const,
+    ...(withTooltip ? { title: rest.title ?? "" } : {}),
   };
+  let button: React.ReactElement;
   if (rest.href !== undefined) {
     const render =
       rest.render ??
       (isInternalAppHref(rest.href) && rest.download === undefined ? (
         <Link href={rest.href} prefetch />
       ) : undefined);
-    return <BasePillButton {...rest} {...shared} render={render} />;
+    button = <BasePillButton {...rest} {...shared} render={render} />;
+  } else {
+    button = <BasePillButton {...rest} {...shared} />;
   }
-  return <BasePillButton {...rest} {...shared} />;
+  if (!withTooltip) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export {
