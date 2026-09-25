@@ -95,15 +95,19 @@ test("restoring stored tabs keeps tabs opened before storage was read", () => {
       { threadId: "linked", seenAt: 2 },
     ],
     activeThreadId: "stored",
+    mode: "expanded",
   });
   expect(restored.tabs.map((tab) => tab.threadId)).toEqual(["stored", "linked"]);
   expect(restored.activeThreadId).toBe("linked");
+  expect(restored.mode).toBe(deepLinked.mode);
   const cold = agentDockReducer(initialAgentDockState, {
     type: "restore",
     tabs: [{ threadId: "stored", seenAt: 1 }],
     activeThreadId: "missing",
+    mode: "expanded",
   });
   expect(cold.activeThreadId).toBeNull();
+  expect(cold.mode).toBe("expanded");
 });
 
 test("a background tab is unread until its latest reply is seen", () => {

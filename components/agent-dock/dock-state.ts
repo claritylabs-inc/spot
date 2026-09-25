@@ -37,6 +37,7 @@ export type AgentDockAction =
       type: "restore";
       tabs: AgentDockTab[];
       activeThreadId: string | null;
+      mode: AgentDockMode;
     };
 
 export const AGENT_DOCK_MAX_TABS = 8;
@@ -155,7 +156,9 @@ export function agentDockReducer(
       const activeThreadId = tabs.some((tab) => tab.threadId === candidate)
         ? candidate
         : null;
-      return { ...state, tabs, activeThreadId };
+      // A dock already opened before storage was read keeps its mode.
+      const mode = state.mode === "collapsed" ? action.mode : state.mode;
+      return { ...state, mode, tabs, activeThreadId };
     }
   }
 }

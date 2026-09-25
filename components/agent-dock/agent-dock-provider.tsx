@@ -98,6 +98,7 @@ export function AgentDockProvider({
       type: "restore",
       tabs: stored.tabs,
       activeThreadId: stored.activeThreadId,
+      mode: stored.mode,
     });
     setHeightState(stored.height);
   }
@@ -108,8 +109,16 @@ export function AgentDockProvider({
       tabs: state.tabs,
       activeThreadId: state.activeThreadId,
       height,
+      mode: state.mode,
     });
-  }, [height, restoredKey, state.activeThreadId, state.tabs, storageKey]);
+  }, [
+    height,
+    restoredKey,
+    state.activeThreadId,
+    state.mode,
+    state.tabs,
+    storageKey,
+  ]);
 
   const search = searchParams.toString();
 
