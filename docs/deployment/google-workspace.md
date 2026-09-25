@@ -7,10 +7,7 @@ can use the same configured mailbox set through operator chat, Slack, iMessage,
 and MCP.
 
 Google access is read-only: Spot searches and reads messages, threads and
-attachments without sending mail or changing Gmail. A separate, disabled-by-default
-schedule can reconcile that evidence into Spot records after an operator explicitly
-authorizes automatic writes. Neither path is available to tenant agents or tenant
-MCP clients, and neither creates a searchable company-mail archive.
+attachments without sending mail or changing Gmail. The `scan_workspace_mailbox` operator tool scans on demand and returns read-only candidates. Google Workspace access is unavailable to tenant agents or tenant MCP clients and creates no searchable company-mail archive.
 
 The service-account JSON is a backend secret. Never paste it into the Spot web
 app, commit it, attach it to an issue, or send it through chat. The browser sees
@@ -32,7 +29,7 @@ Live search includes mailbox listing, Gmail search, full thread reads, and origi
 attachment retrieval into the protected operator thread. It has one global
 active-operator access gate, not per-operator or per-mailbox ACLs. It does not
 send or modify Gmail, change labels, create drafts, or build an automatic email
-index. Scheduled reconciliation has its own settings and authorization below.
+index. The scheduled reconciliation flow is retired.
 
 Acceptance criteria:
 
@@ -205,93 +202,11 @@ per-mailbox results separately. A bounded verification may sample mailbox
 access; it must not be read as proof that every mailbox in the organization was
 checked. Review partial and failed rows before enabling operator use.
 
-## Scheduled reconciliation
+## On-demand mailbox scan
 
-Open **Channels → Google Workspace** after configuring an enabled Directory
-connection. Scheduling starts paused on existing installations; configuring or
-verifying the connector does not authorize automatic record changes.
+The `scan_workspace_mailbox` operator tool accepts Gmail search terms and an optional authorized mailbox and date window. It covers at most 30 days and returns at most 25 candidates with suggested next actions and partial-result status. It never writes records or sends messages. The operator must use ordinary read tools to inspect source messages and normal exact-confirmed tools for any subsequent change. Mail content remains untrusted evidence.
 
-Use **Enable automatic updates**, then **Authorize and enable**, to review the
-disclosure and enable the schedule as the signed-in active operator. This authorization permits automatic Spot writes
-from clear evidence. Choose 15 minutes, 30 minutes, one hour (default), six hours
-or one day. **Scan now** requests a run under the same standing authorization;
-it does not enable a paused schedule. **Pause** stops subsequent work. An open
-settings draft rejects concurrent settings or authorization changes.
-
-The first enable fixes a 90-day lookback anchor. Each run refreshes every page
-of the eligible Directory roster and includes received, sent and archived mail,
-excluding drafts, spam and trash. Each mailbox captures its history checkpoint
-before enumerating messages, saves pages durably, then drains history to cover
-arrivals during backfill. Later runs use incremental Gmail history. An expired
-checkpoint triggers paginated resynchronization from the original window,
-preserving deduplication and missed mail. This follows Google's
-[Gmail synchronization contract](https://developers.google.com/workspace/gmail/api/guides/sync).
-
-Convex's cron dispatcher owns the schedule and durable mailbox/source jobs.
-Collection and reconciliation progress are separate. At most four mailbox
-leases and eight combined source jobs are active at a time; abandoned leases
-recover and provider failures back off. A partial run remains visible and does
-not advance the last successful scan. There is no new Railway service, and
-tenant connected-email automation retains its separate worker and settings.
-
-The scan panel shows the authorizing operator, initial coverage, last success,
-next run and paginated per-mailbox errors. Changing connector access or
-credentials invalidates in-flight authorization. Losing the sponsor's active
-operator access pauses the schedule. Review the connection and explicitly
-re-enable under a current active operator to resume. Preserved source work is
-recollected when necessary; retry does not treat a pruned body as complete.
-
-### Automatic changes and review
-
-Clear evidence can create standalone clients, prospect brokers and immediately
-client-visible requests; update company facts, broker capabilities, request
-dates/progress and private procurement prose in `private.md`; and import clearly
-bound policy PDFs
-through the normal extraction pipeline. New organizations receive no users,
-invitations or inherited access. Scan-created requests do not generate shared
-packet links. Existing public/private Markdown and visibility remain intact.
-
-Newer, explicitly dated evidence may replace a manual value. Ambiguous dates,
-identity, request coverage, conflicting values or attachment grouping require
-review. Exact existing entities are resolved before creation; a name or domain
-alone is insufficient. A reported completed purchase elsewhere can complete only
-the exact unneeded request, with an optional reported provider and purchase date.
-It does not deactivate the client, complete other requests or create a verified
-policy from email prose. Quotes remain procurement evidence.
-
-**Updated**, **Needs attention** and **Failed** activity rows open a sidebar with
-before/after values, explanation, source excerpts, mailbox/thread provenance and
-record links. Source-thread links open Gmail under the selected mailbox; normal
-Google access still applies. Related activity also appears on operator client,
-broker, request and policy surfaces. Raw source evidence and private market
-activity never appear in the client request DTO.
-
-Use the sidebar footer to:
-
-- **Resolve match** for an identity by explicitly selecting its organization and, where
-  applicable, exact request. Candidate lists can load further pages. Re-evaluation
-  uses fresh source and target authorization. Resolving without a target requires
-  a note and acknowledges the finding without domain changes.
-- **Dismiss** a finding while retaining its evidence, or **Retry** to recollect
-  and re-evaluate under current authorization.
-- **Restore prior values** for an applied update only while its saved values remain current.
-  Superseding changes produce a conflict. Created records use their normal
-  lifecycle controls; there is no cascading undo.
-
-Imported PDFs preserve their originals and use content deduplication and normal
-extraction gates. Queued, extracting, complete and error describe the import
-pipeline; extraction completion does not independently verify a purchase.
-A lazy content-fingerprint inventory pages existing policies before a scheduled
-import commits; upload and hash-update owners maintain the index afterward. No
-offline migration is required. An import retry after a committed policy reuses
-that policy and retains its original file. Scheduled extraction results stay in
-the portal. Ordinary interactive uploads and later manual full re-extractions
-retain their normal notification behavior.
-
-The scanner records observed activity only. It cannot send messages, invite
-users, alter access/sharing, select proposals, confirm reviews, bind coverage,
-delete records or blacklist organizations. Ordinary interactive agent and MCP
-writes retain exact confirmations. Scan controls and evidence are portal-only.
+The former scheduled scan and reconciliation settings, automatic writes, and review activity are removed. Agent-scheduled workflows are tracked in Linear CLA-171. The [old acceptance ledger](../testing/workspace-scan.md) is historical.
 
 ## Search behavior and provenance
 

@@ -168,7 +168,6 @@ threads and automation preferences are preserved.
   `chat.stopStream` only for compatibility with presentations started before
   the reaction-first delivery change;
 - `chat.postEphemeral` for interaction confirmations;
-- `views.open` for optional negative-feedback detail;
 - `files.getUploadURLExternal` plus `files.completeUploadExternal` for outbound
   files (never retired `files.upload`);
 - `files.info` and authenticated private downloads for inbound files;
@@ -222,7 +221,7 @@ health must report `tokenBrokerConfigured`, `outboundEnabled`,
 `actorResolutionEnabled`, `clarityTeamConfigured`, `channelInventoryEnabled`,
 `publicChannelJoinEnabled`, `blockKitEnabled`, `messageUpdatesEnabled`,
 `reactionsEnabled`, `agentStatusEnabled`, `streamingEnabled`,
-`interactivityResponsesEnabled`, and `feedbackModalsEnabled`.
+`interactivityResponsesEnabled`.
 The Convex agent health endpoint separately verifies that the Clarity host
 workspace has an active encrypted installation; worker configuration alone
 cannot prove that OAuth installation exists.
@@ -322,7 +321,7 @@ selected reaction is removed on both success and failure and is not included in
 the visible completed-work trace. Finalization posts one completed emoji-free
 Block Kit answer and adds policy cards, linked policy details, native
 certificate-file delivery, an optional human-service action in shared threads,
-and per-response feedback. Progress narration, model reasoning, and raw tool
+without response ratings. Progress narration, model reasoning, and raw tool
 input or output are never projected into Slack.
 
 Internal operator Slack uses a deterministic acknowledgement lifecycle instead
@@ -333,8 +332,7 @@ Spot adds `white_check_mark` and removes `eyes`. Failed runs remove `eyes`
 without adding a completion reaction. Reaction API failures remain advisory and
 do not block response delivery.
 
-The final renderer uses current Slack `card`, `context_actions`, and
-`feedback_buttons` primitives. If Slack rejects a newer block type for a
+The final renderer uses current Slack `card` and `context_actions` primitives. If Slack rejects a newer block type for a
 particular surface, that same message is retried immediately with classic
 `section` and `actions` blocks. This automatic protocol degradation is part of
 the renderer and is not a rollout gate. If both renderers fail, Spot preserves
@@ -346,8 +344,7 @@ is stored with the presentation; plaintext tokens are never persisted. Controls
 have no time-based expiry. Plaintext fallback explicitly revokes them, and
 legacy fallback revocations remain enforced. Convex binds every action back to the exact team, channel, provider
 message, connection, tenant, and resolved Slack actor. It idempotently records
-`slackInteractionEvents`, stores one `agentResponseFeedback` row per actor and
-response, opens an optional detail modal after negative feedback, and routes
+`slackInteractionEvents` and routes
 human requests through the existing audited handoff mutation. URL buttons
 remain ordinary access-controlled Spot deep links.
 
@@ -366,7 +363,7 @@ In production, apply the complete manifest and verify OAuth, native signature
 rejection/acceptance, uninstall and reinstall, Connect actor identity, App Home
 DMs, mentions, thread replies, edits, processing-reaction cleanup, Markdown
 rendering, policy cards,
-feedback, human handoff, multiple inbound files, outbound certificate/PDF
+human handoff, multiple inbound files, outbound certificate/PDF
 upload and proactive alerts. The processing reaction requires
 `reactions:write`; apply the manifest and reauthorize both the Clarity host and
 existing customer installations. Until an installation is reauthorized,

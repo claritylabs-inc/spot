@@ -45,10 +45,7 @@ sent to the runner as a new instruction. Existing plain-text messages receive
 card formatting where their stored text contains recognizable reply/forward
 boundaries; quotes stripped before structured storage cannot be recovered.
 
-Spot's sending address cannot authenticate as a human operator. Workspace
-scanning also excludes mail from the Spot Operator inbox identity before
-collecting body or attachment evidence, preventing generated status summaries
-from feeding back into reconciliation. Approval and completion notices are
+Spot's sending address cannot authenticate as a human operator. The read-only `scan_workspace_mailbox` operator tool excludes mail from the Spot Operator inbox identity before returning mailbox evidence. Scheduled Workspace scanning is retired. Approval and completion notices are
 separate expected deliveries, not evidence of another incoming task.
 
 ## Authentication and storage

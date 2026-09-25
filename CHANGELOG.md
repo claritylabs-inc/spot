@@ -1,37 +1,8 @@
 # Changelog
 
-## Unreleased
+## Convex section extraction and simplification (2026-09-25)
 
-### Added
-- cl-pipelines extraction pipeline for policies (`policyExtraction.ts`)
-- cl-pipelines extraction pipeline for org documents (`orgDocumentExtraction.ts`)
-- `pipelineFields()` on `policies`, `policyFiles`, `orgDocuments`, `emailConnections` schema tables
-- Shared `ExtractionBanner` at `components/shared/extraction-banner.tsx` (PolicyExtractionBanner + OrgDocumentExtractionBanner)
-- `makePipelineMutations()` factory at `convex/lib/pipelineMutations.ts`
-- `dismissed` boolean field on `policies` to replace `extractionStatus: "not_insurance"` semantics
-- `convex/migrations/removeDeprecatedExtractionFields.ts` — run to strip old fields from existing documents
-
-### Changed
-- All policy extraction entry points now fire-and-forget via cl-pipelines
-- `extractFromDocument` is now fire-and-forget; callers receive `{ orgDocumentId }` immediately
-- Policy detail page shows live `PolicyExtractionBanner`
-- Documents sections show live `OrgDocumentExtractionBanner` per row
-- `policies.dismiss` now sets `dismissed: true` instead of `extractionStatus: "not_insurance"`
-- `policies.cancelExtraction` now sets `dismissed: true` + `pipelineError` instead of `extractionStatus: "not_insurance"`
-- `policies.pauseExtraction` / `resumeExtraction` now read/write `pipelineStatus` directly
-
-### Removed
-- `policies.extractionStatus` / `policies.extractionCheckpoint` / `policies.extractionLog` / `policies.extractionError`
-  — all code now reads `pipelineStatus` / `pipelineCheckpoint` / `pipelineLog` / `pipelineError`
-- `policyFiles.extractionStatus` / `policyFiles.extractionError` / `policyFiles.extractionLog`
-- `orgDocuments.extractionStatus` / `orgDocuments.extractionError`
-- Note: deprecated fields remain as `v.optional` in schema until the migration mutation runs against existing documents.
-  After running `internal.migrations.removeDeprecatedExtractionFields` for all three tables, remove the optional
-  schema declarations.
-- Railway extraction worker (`extraction-worker/`), LiteParse/Poppler/Tesseract preprocessing, the provisional preview
-  queue, and the `source-tree-v2` worker protocol — policy and procurement-proposal extraction now run entirely in
-  Convex through a section-based pipeline (durable per-section router jobs, `convex-sections-v1` promotion protocol).
-  `policyExtractionQueue`, `policyExtractionPreviewQueue`, and `workerRouterTransportSmokeRuns` remain in the schema
-  but are deprecated and unwritten; drop them after data cleanup.
-- Note: decommission the Railway `spot-extraction-worker` service and remove `EXTRACTION_WORKER_*`/`LITEPARSE_*` env
-  vars from Convex deployments after this ships — not done as part of this change.
+- Moved policy and proposal extraction into Convex section jobs with pdf.js source spans, scanned-page transcription evidence, declarations preview, and `convex-sections-v1` promotion. Removed the Railway extraction worker, LiteParse/Poppler/OCR, preview queue, `source-tree-v2`, and legacy policy support.
+- Removed cl-sdk extraction-engine usage, chunk retrieval, ratings and feedback, public demo agent, certificate renewal jobs/settings, iMessage app cards, scheduled Workspace scans, retired routes, and legacy MCP REST/`ask_glass` paths. Policy search now uses Convex full-text search and Jev ranking. Jev decisions share a 70% threshold.
+- Added the read-only `scan_workspace_mailbox` operator tool, shared tenant MCP projection, WebMCP flag `webmcp-enabled`, unified chat components, and an operator Sections view.
+- Post-deploy operator checklist: (1) decommission Railway `spot-extraction-worker`; (2) remove `EXTRACTION_WORKER_*` and `LITEPARSE_*` from Convex; (3) dry-run and then run `actions/reextractLegacyPolicies:run`, then page `modelSettings:stripRetiredRoutesInternal` and `modelSettings:clearOperatorModelOverridesInternal`; (4) drop `// Deprecated` schema entries after data cleanup; (5) set `FLAGS_SECRET` and `WEBMCP_ENABLED` where WebMCP should be on; (6) run prompt-module evals with `CL_ROUTER_EVALS=1 npx vitest run convex/lib/__evals__/clientAgentModules.eval.test.ts`. See [AGENTS.md](AGENTS.md#post-deploy-operator-checklist-for-this-extraction-release) for exact commands and deployment safeguards.
