@@ -12,7 +12,6 @@ export default defineConfig({
       ...configDefaults.exclude,
       ".claude/**",
       ".context/**",
-      "extraction-worker/tests/**",
       "slack-worker/**",
     ],
   },

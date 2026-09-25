@@ -26,7 +26,7 @@ import {
   userFacingErrorCodes,
 } from "../lib/userFacingErrors";
 import { threadActionActorsMatch } from "../lib/threadActionConfirmationValidators";
-import { isActorBoundExplicitEmailSendSource } from "../lib/emailSendIntent";
+import { isActorBoundExplicitEmailSendSource } from "../lib/emailSendAuthorization";
 
 type SendEmailResult = { recipientEmail: string } | null;
 type BulkDraftSendResult = {

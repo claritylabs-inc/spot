@@ -480,7 +480,7 @@ export function ProcurementEmailDrawer({
       toast.success(
         filed.status === "already_filed"
           ? "Email attachments were already filed"
-          : "Email quote filed and extraction queued",
+          : "Email quote filed",
       );
     } catch (error) {
       toast.error(

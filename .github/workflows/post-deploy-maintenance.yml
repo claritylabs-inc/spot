@@ -1,0 +1,77 @@
+name: post-deploy-maintenance
+
+# Manual production maintenance for the Convex section-extraction release.
+# See the post-deploy checklist in AGENTS.md.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Maintenance task to run against production Convex
+        required: true
+        type: choice
+        options:
+          - reextract-legacy-dry-run
+          - reextract-legacy
+          - strip-retired-routes
+          - clear-operator-model-overrides
+          - remove-extraction-worker-env
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --loglevel=error
+
+      - name: Run paged maintenance function
+        if: inputs.task != 'remove-extraction-worker-env'
+        env:
+          TASK: ${{ inputs.task }}
+        run: |
+          node --input-type=module <<'SCRIPT'
+          import { execFileSync } from "node:child_process";
+          const task = process.env.TASK;
+          const targets = {
+            "reextract-legacy-dry-run": ["actions/reextractLegacyPolicies:run", { dryRun: true }],
+            "reextract-legacy": ["actions/reextractLegacyPolicies:run", { dryRun: false }],
+            "strip-retired-routes": ["modelSettings:stripRetiredRoutesInternal", {}],
+            "clear-operator-model-overrides": ["modelSettings:clearOperatorModelOverridesInternal", {}],
+          };
+          const [fn, baseArgs] = targets[task];
+          let cursor = null;
+          for (let page = 1; page <= 500; page += 1) {
+            const args = cursor ? { ...baseArgs, cursor } : baseArgs;
+            const output = execFileSync(
+              "npx",
+              ["convex", "run", "--prod", fn, JSON.stringify(args)],
+              { encoding: "utf8" },
+            );
+            console.log(`page ${page}: ${output.trim()}`);
+            const result = JSON.parse(output.slice(output.indexOf("{")));
+            cursor = result.continueCursor ?? result.nextCursor ?? result.cursor ?? null;
+            if (result.isDone !== false || !cursor) break;
+          }
+          SCRIPT
+
+      - name: Remove extraction worker environment variables
+        if: inputs.task == 'remove-extraction-worker-env'
+        run: |
+          names="$(npx convex env list --prod | cut -d= -f1 | grep -E '^(EXTRACTION_WORKER_|LITEPARSE_)' || true)"
+          for name in $names; do
+            echo "Removing $name"
+            npx convex env remove --prod "$name"
+          done

@@ -2,9 +2,9 @@
 
 This reference lists the tools that Spot exposes to its operator agent, tenant-facing conversational agent, internal agent subagents, and OAuth MCP clients. It describes the current executable catalogs; it does not include deterministic controls, ordinary Convex functions, REST routes, or browser actions that are not model-callable or MCP-callable tools.
 
-Spot supplies every available tool on each router step in `request.tools`; an empty array means no tools. Definitions carry name, description, and JSON input schema. Before each operator step, `getRunContextInternal` validates the active operator/thread and filters the registry by role, impersonation, and configured Google Workspace, Slack, Mapbox, and MCP access. Exact target authorization and approval are rechecked at execution; a tool's availability cannot authorize an arbitrary target. Spot does not send `toolChoice` or preselect tools for relevance. Router-owned Jev selects one offered tool or abstains, the generation model fills arguments, and Spot executes the call.
+Spot supplies the tools active on each router step in `request.tools`; an empty array means no tools. `convex/lib/agentToolSelection.ts` selects available families through Jev, retains used or expanded families, assembles guidance, and falls back to all available families on failure or timeout. `expand_tools` requests additional families for the next step without changing business records. Definitions carry name, description, and JSON input schema. Before each operator step, `getRunContextInternal` validates the active operator/thread and filters the registry by role, impersonation, and configured Google Workspace, Slack, Mapbox, and MCP access. Exact target authorization and approval are rechecked at execution; a tool's availability cannot authorize an arbitrary target. Family selection narrows the offered catalog; Spot does not force a business tool with `toolChoice`. Router-owned Jev selects one offered tool or abstains, the generation model fills arguments, and Spot executes the call.
 
-`clRouterDecide` uses authenticated `/v1/decide` for typed Jev Choice/Noul decisions, with native probabilities and request-bound response validation. Classifications for forwarded-email direction, requirement import intent, certificate-holder matching, policy intake, mailbox automation, Workspace PDF acceptance, and prompt-injection screening use this path. Extraction and prose remain generation tasks; legacy classification/security generation settings remain schema-compatible but are not active UI routes. SDK generation callbacks reject classification instead of silently using generation. The chat policy-evidence classifier, deterministic completed-lookup check, and recovery generation are removed. Normal tool selection handles evidence retrieval; incomplete tool responses may still receive a tool-free final synthesis that cannot replay actions.
+`clRouterDecide` uses authenticated `/v1/decide` for typed Jev Choice/Noul decisions, with native probabilities and request-bound response validation. Classifications for forwarded-email direction, requirement import intent, certificate-holder matching and endorsement eligibility, carrier identity, compliance manual review, public company identity, policy intake, mailbox automation, Workspace PDF acceptance, and prompt-injection screening use this path. Extraction and prose remain generation tasks; legacy classification/security generation settings remain schema-compatible but are not active UI routes. SDK generation callbacks reject classification instead of silently using generation. The chat policy-evidence classifier, deterministic completed-lookup check, and recovery generation are removed. Normal tool selection handles evidence retrieval; incomplete tool responses may still receive a tool-free final synthesis that cannot replay actions.
 
 ## Operator approval policy
 
@@ -39,13 +39,15 @@ These lifecycle controls are internal, not new agent or MCP tools.
 - Shared tenant conversational tools are defined in `convex/lib/chatTools.ts` and executed by `convex/lib/agentToolExecutors.ts` plus `convex/lib/vendorComplianceTools.ts`. Policy lookup treats nullable optional filters as omitted, including the expiry window, before applying exact policy IDs and tenant scope.
 - Channel-specific tenant tools are assembled in `convex/actions/processThreadChat.ts`, `convex/actions/handleInboundEmail.ts`, `convex/actions/handleInboundImessage.ts`, and `convex/actions/mcpChat.ts`.
 - `convex/lib/channelAgentRunner.ts` owns shared conversational turn execution, tool-outcome auditing, and tool-free synthesis of incomplete responses. Web, Slack, email, iMessage, and MCP retain channel-local ingress, authorization, persistence, and delivery. Normal router tool selection handles policy lookups; there is no separate policy-evidence classifier, completed-lookup gate, or evidence-recovery generation.
-- Internal mailbox- and email-subagent tools live in `convex/actions/mailboxCoordinator.ts` and `convex/lib/emailSubagent.ts`.
-- Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the typed `MCP_TOOLS` catalog in `convex/http.ts`.
+- Discrete email tools and their shared executors live in `convex/lib/emailTools.ts`; no nested email model loop remains. The discrete mailbox family and shared account search/evidence helper live in `convex/lib/mailboxTools.ts`; every operation runs in the parent agent.
+- Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the shared projection and compatibility metadata in `convex/lib/tenantMcpToolCatalog.ts`.
 - MCP OAuth revocation accepts form-encoded access or refresh tokens (and legacy Bearer access tokens), invalidates the stored token pair, and rejects a supplied mismatched client ID before any change.
 
 When any source above adds, removes, renames, or materially changes a tool, update this inventory in the same change. Availability, capability, effect, required role, confirmation policy, execution boundary, and MCP access changes count as material.
 
 ## Operator agent registry
+
+Operator steps use the shared family selector with the existing 13-family catalog. Starter intents keep their shortcuts; resumed durable steps offer all available families, and tools used or expanded earlier in the run remain loaded. Operator MCP continues to expose its complete authorized catalog. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution.
 
 The [operator activity icon inventory](docs/design/operator-tool-icons.md) groups
 every operator tool by its browser activity icon.
@@ -62,10 +64,9 @@ without a count restriction.
 Operator email confirmation replies preserve the current exact approval and
 waiting run; approval still requires the portal controls. Quoted email history
 is not a new operator instruction, and forwards nested in that history are not
-fresh source messages. Workspace reconciliation excludes Spot Operator's own
-outgoing summaries from collected evidence.
+fresh source messages. The read-only `scan_workspace_mailbox` tool excludes Spot Operator's own outgoing summaries from collected evidence.
 
-The operator registry currently contains 79 tools. Writes require an exact, fingerprint-bound confirmation except for the registered private attachment-filing action (`add_client_file`). Exact-confirmed tools run the shared reference preflight in `convex/lib/operatorAgentConfirmationPreflight.ts` before the confirmation is shown, and the write revalidates the same references at execution. Registry schemas expose executable ACORD LOBCd and USPS enums plus ISO dates, email addresses, HTTP(S) URLs, replacement-list semantics, and explicit omit-versus-null guidance instead of relying on prose guesses. `mutation` and `action` identify the Convex execution boundary, not whether the operation writes data. The versioned browser/agent procurement parity contract lives in `convex/lib/procurementCapabilities.ts`.
+The operator registry is defined in `convex/lib/operatorAgentToolRegistry.ts`. Writes require an exact, fingerprint-bound confirmation except for the registered private attachment-filing action (`add_client_file`). Exact-confirmed tools run the shared reference preflight in `convex/lib/operatorAgentConfirmationPreflight.ts` before the confirmation is shown, and the write revalidates the same references at execution. Registry schemas expose executable ACORD LOBCd and USPS enums plus ISO dates, email addresses, HTTP(S) URLs, replacement-list semantics, and explicit omit-versus-null guidance instead of relying on prose guesses. `mutation` and `action` identify the Convex execution boundary, not whether the operation writes data. The versioned browser/agent procurement parity contract lives in `convex/lib/procurementCapabilities.ts`.
 
 Operator web chat, authenticated inbound email, iMessage, and the internal Slack adapter all enqueue into the same operator runner, which registers this complete registry without a channel-specific tool allowlist. iMessage voice notes pass through the shared inbound-turn preparation handler before entering that runner, so their labeled transcripts receive the same tools and confirmation policy as typed operator messages. Each channel still keeps its own transport authentication, identity resolution, thread persistence, and attachment ingestion. For Slack, customer connection and Slack Connect binding resolution takes precedence, and every invocation still requires an active operator profile linked to the exact host-workspace Slack identity; Convex applies no channel allowlist, type, privacy, sharing, or membership gate after that identity is resolved. Operator MCP exposes the same registry and executes the same service-backed tools, so “Slack agent” behavior is Spot-agent behavior rather than a Slack-only catalog. Procurement forwarding email is ingested deterministically into the same canonical request/email/artifact records before the agent reads it, rather than granting the tenant email agent access to operator-private proposals.
 
@@ -81,6 +82,7 @@ Operator email to `operator@agent.spot.insure` authenticates the original signed
 | `search_company_email`                     | Search company Gmail with mailbox provenance, continuation, and explicit partial failures.                              | `operator.company_email.read`   | read             | operator | none         | action    |
 | `read_company_email_thread`                | Read bounded original email bodies and attachment references in an exact mailbox.                                      | `operator.company_email.read`   | read             | operator | none         | action    |
 | `get_company_email_attachment`             | Read an original Gmail attachment and return it privately in the operator conversation.                                | `operator.company_email.read`   | read             | operator | none         | action    |
+| `scan_workspace_mailbox` | Scan an authorized company Gmail mailbox on demand for up to 30 days and return up to 25 candidates; makes no writes. | `operator.company_email.read` | read | operator | none | action |
 | `list_policies`                            | List or search policies for one organization.                                                                           | `operator.policies.read`        | read             | operator | none         | mutation  |
 | `lookup_policy`                            | Retrieve rich current policy summaries using policy evidence only; no company-profile fallback.                                                                  | `operator.policies.read`        | read             | operator | none         | action    |
 | `compare_coverages`                        | Compare two policies' coverages, limits, deductibles, and premium.                                                      | `operator.policies.read`        | read             | operator | none         | action    |
@@ -170,34 +172,7 @@ Update confirmations describe supplied field changes in plain language, includin
 
 Company email uses the global connection configured in Channels → Google Workspace. Every active operator can read every configured mailbox; there are no per-mailbox operator permissions. The action boundary revalidates the operator and connection before delegated Gmail reads. These tools require no confirmation, are available to read-scoped operator MCP clients, and are marked open-world because they query Google. They are absent from tenant/client agents and tenant MCP. Search is live and mailbox-scoped with resumable coverage, not a semantic index or guaranteed global recency order. Registered callers receive short continuation references resolved from the existing action audit only for the same operator, thread, and tool. Reuse the reference unchanged with the same query, filters, and page size; raw signed cursors remain backend-side and retain revision/request validation. Results preserve mailbox/message/thread provenance and report failures or truncation. Attachment metadata uses short message-local `part:` references; retrieval refetches the stated parent and rejects absent or ambiguous parts before using the raw provider ID internally. Attachment retrieval reads Google, extracts bounded content, and uses the existing protected operator-thread attachment owner; it does not create client files, change Gmail, or send mail. The service-account key and access tokens remain backend-only. See [Google Workspace setup](docs/deployment/google-workspace.md).
 
-Scheduled Workspace reconciliation has no model-callable or MCP tools. Its
-operator-only portal APIs configure the disabled-by-default schedule, start a
-run, page status/mailboxes/activity and exact match candidates, and resolve,
-dismiss, retry or conditionally correct findings. An active operator explicitly
-authorizes standing writes; the internal executor accepts a strict allowlist,
-rechecks sponsor/settings/source lease/evidence and current targets atomically,
-and attributes each change to automation and that operator. It uses global
-`analysis` through cl-router, treating mail/PDF content as untrusted evidence.
-No fabricated interactive confirmation, operator thread or user account is used.
-
-Scheduled creation grants no users, invitations, memberships, inherited access or
-shared packet links. New requests use sanitized client-visible content; raw
-mail, market activity and findings remain operator-private. Scheduled bound-PDF
-imports share storage/content validation, policy creation and normal extraction
-with interactive imports, using a separate source-bound authorization entrypoint.
-The extraction invocation retains its scan origin so review results remain in
-the portal without client email, Slack or iMessage. A duplicate scan reference
-cannot suppress an interactive upload's notifications; full manual re-extraction
-starts a new invocation with normal behavior. The scan cannot send mail, select
-proposals, confirm reviews, bind coverage, delete or blacklist records, or change
-access/sharing. Interactive tool and MCP exact-confirmation requirements are
-unchanged.
-
-`create_procurement_broker_outreach` and `update_procurement_broker_outreach`,
-both version 4, include the neutral `observed` status for sourced activity that makes no capability
-claim. A declined or quoted message must not imply `can_handle`. Scans update
-the exact existing request/broker log through its owning helper; the status and
-log remain operator-private.
+`scan_workspace_mailbox` is an explicit read-only operator tool. It reads authorized Google Workspace mailboxes and does not create requests, policies, or outbound messages. The former scheduled scan and reconciliation APIs are retired; agent-scheduled workflows are tracked in Linear CLA-171.
 
 ### Operator MCP projection
 
@@ -216,7 +191,9 @@ Operator Slack/iMessage runs that outlast the synchronous request continue throu
 
 ## Client conversational agent
 
-There is no single client registry equivalent to `OPERATOR_AGENT_TOOL_REGISTRY`. The client agent receives a shared executable tool set and channel-specific additions. In the tables below, **MCP chat** means the model loop behind the tenant `ask_spot`/`ask_glass` MCP tools, not the full tenant MCP catalog documented later.
+There is no single client registry equivalent to `OPERATOR_AGENT_TOOL_REGISTRY`. The client agent receives a shared executable tool set and channel-specific additions. In the tables below, **MCP chat** means the model loop behind the tenant `ask_spot` MCP tool, not the full tenant MCP catalog documented later.
+
+Client prompt families are `policy_qa`, `coi`, `compliance`, `policy_change_email`, `email`, `procurement`, `mailbox`, `web_research`, `collaboration`, `history`, and `presentation`. One Jev call selects families, answer depth, and the optional Slack reaction. All authorized tools are registered with AI SDK; `prepareStep` selects `activeTools` and current family guidance. Every surface includes `expand_tools`, which adds the requested available families on the next step of the same turn. Used families remain active. Surface, OAuth, and requirement-import authorization determine availability before selection; expansion cannot grant those permissions. `tool_selection` artifacts record the selection and decision metadata.
 
 ### Shared tools
 
@@ -234,16 +211,20 @@ The client Slack adapter accepts direct mentions from any connected-workspace ch
 | `attach_client_file`             | Attach one readable client dropbox file to the response.                           | All channels; the file must be explicitly client-visible.                       |
 | `lookup_address`                 | Validate and standardize a user-supplied postal address.                           | All channels; Mapbox must be configured.                                        |
 | `lookup_policy`                  | Retrieve fresh policy summaries by IDs, text, LOB, carrier, or expiry window.      | All channels.                                                                   |
+| `list_policy_versions`           | Read renewal, upload, and re-extraction history for a policy or organization.      | All channels; history family.                                            |
+| `list_certificates`              | Read issued COIs, holder details, and issue or reissue history.                    | All channels; COI family.                                                |
 | `present_policy_card`            | Select a current-turn resolved policy for rich-card presentation.                  | Web, Slack, and iMessage only.                                                  |
 | `lookup_company_context`         | Retrieve durable company-profile facts and preferences, never policy facts.        | All channels.                                                                   |
 | `compare_coverages`              | Compare two readable policies side by side.                                        | All channels.                                                                   |
 | `lookup_compliance_requirements` | Retrieve saved insurance requirements by topic and scope, including typed saved compliance findings.                          | All channels.                                                                   |
+| `create_compliance_requirement`  | Save a typed coverage requirement.                                                 | All channels; write capability, direct admin role, and text-channel confirmation required. |
 | `import_requirement_attachments` | Persist and extract server-authorized requirement files from the current message.  | Web, Slack, email, and iMessage only, and only when eligible files are present. |
 | `lookup_connected_vendors`       | List connected vendors and compliance status.                                      | All channels.                                                                   |
 | `lookup_vendor_policies`         | List policies for a connected vendor.                                              | All channels.                                                                   |
 | `lookup_vendor_compliance`       | Retrieve requirement-by-requirement vendor compliance.                             | All channels.                                                                   |
 | `lookup_policy_section`          | Search source-native policy hierarchy and exact PDF evidence, with the resolved policy ID.                      | All channels; final policies only.                                              |
 | `save_note`                      | Add an explicit stable company fact to the shared company Markdown file.                     | All channels; write permission required.                                        |
+| `update_company_wiki`            | Replace the company Markdown or one section with a revision check.                | All channels; exact org, direct admin role, write capability, and text-channel confirmation required. |
 | `attach_policy_document`         | Attach the original full policy PDF to the response.                               | All channels; final readable policy and stored PDF required.                    |
 | `confirm_policy_fact`            | Confirm a source-backed policy fact and optionally patch allowed top-level fields. | All channels; final writable policy and exact source spans required.            |
 | `generate_coi`                   | Generate or reuse certificates from a policy or requirements source.               | All channels; write permission and final supporting policies required.          |
@@ -254,28 +235,38 @@ Shared customer confirmation records for email send/cancel, draft snapshots, mul
 
 | Tool                                             | Purpose                                                                             | Root-agent availability or condition                                                                                                                     |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `choose_slack_reaction`                          | Choose the temporary processing reaction on a Slack message.                        | Slack only; forced as the first model step and excluded from visible work traces.                                                                        |
 | `request_human_service`                          | Pause a Slack AI thread and request operator help.                                  | Slack only, when a Slack actor was resolved.                                                                                                             |
 | `create_imessage_group_chat`                     | Create a confirmed outbound iMessage group.                                         | Web; iMessage for a linked sender; direct internal email; MCP chat.                                                                                      |
-| `coordinate_mailbox_task`                        | Delegate a multi-step connected-mailbox workflow.                                   | Web and Slack; direct internal email; linked-user iMessage; MCP chat.                                                                                    |
 | `web_research`                                   | Retrieve public web facts through the configured provider.                          | Web and Slack; direct internal email; linked-user iMessage; MCP chat.                                                                                    |
 | `render_email_preview`                           | Render a durable email draft as PNG or PDF.                                         | Web and Slack only.                                                                                                                                      |
-| `email_expert`                                   | Delegate validated email drafting, attachment preparation, and delivery.            | Web/Slack with a send-capable identity; direct internal email; linked-user iMessage with a send-capable identity. MCP uses explicit draft tools instead. |
-| `search_connected_email`                         | Search connected IMAP accounts.                                                     | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
-| `read_connected_email`                           | Read one connected-mailbox message.                                                 | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
-| `read_connected_email_attachment`                | Read a supported connected-email attachment.                                        | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
-| `import_connected_email_policy_attachments`      | Import policy PDFs from a connected email.                                          | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
-| `import_connected_email_requirement_attachments` | Import requirement content from a connected email.                                  | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
-| `send_connected_vendor_invite`                   | Send a user-authorized connected-vendor invitation.                                 | Direct internal email and MCP chat; other channels use the mailbox coordinator.                                                                          |
+| `search_connected_email`                         | Search connected IMAP accounts.                                                     | Web/Slack, direct internal email, linked-user iMessage, MCP chat, and tenant MCP.                                                                          |
+| `read_connected_email`                           | Read one connected-mailbox message.                                                 | Web/Slack, direct internal email, linked-user iMessage, MCP chat, and tenant MCP.                                                                          |
+| `read_connected_email_attachment`                | Read a supported connected-email attachment.                                        | Web/Slack, direct internal email, linked-user iMessage, MCP chat, and tenant MCP.                                                                          |
+| `import_connected_email_policy_attachments`      | Import policy PDFs from a connected email.                                          | Web/Slack, direct internal email, linked-user iMessage, MCP chat, and tenant MCP.                                                                          |
+| `import_connected_email_requirement_attachments` | Import requirement content from a connected email.                                  | Web/Slack, direct internal email, linked-user iMessage, MCP chat, and tenant MCP.                                                                          |
+| `send_connected_vendor_invite`                   | Send a user-authorized connected-vendor invitation.                                 | Web/Slack, direct internal email, linked-user iMessage, MCP chat, and tenant MCP.                                                                          |
 | `extract_policy_attachment`                      | Start extraction for one policy represented by one or more inbound PDF attachments. | Inbound email only.                                                                                                                                      |
 
-For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot`/`ask_glass` calls exclude `save_note`, `confirm_policy_fact`, `generate_coi`, iMessage creation, connected-email imports, and vendor invitations. A read-only mailbox coordinator receives only search, message-read, and attachment-read tools; it cannot import, save to a thread, or invite a vendor.
+For tenant MCP chat, the OAuth token's write scope filters the actual nested executable catalog. Read-only `ask_spot` calls exclude email writes, `save_note`, `confirm_policy_fact`, `generate_coi`, `update_company_wiki`, `create_compliance_requirement`, iMessage creation, connected-email imports, and vendor invitations. Read-only mailbox access includes search, message reads, and attachment reads. Imports, both thread-save tools, and vendor invitations require write scope.
 
-### Internal client-agent subagents
+### Email family
 
-The root agent sees `coordinate_mailbox_task` and `email_expert`; the delegated models receive these narrower tool sets.
+| Tool | Purpose |
+| --- | --- |
+| `draft_email` | Persist recipient direction, To/CC/BCC, subject, and body as a draft. |
+| `update_email_draft` | Replace the exact draft, clearing removed copies and attachments and invalidating its approval. |
+| `attach_policy_pdf_to_draft` | Add an available original policy PDF from authorized policy scope. |
+| `attach_file_to_draft` | Add a file available in the current conversation. |
+| `attach_coi_to_draft` | Generate or reuse a COI through the existing endorsement and evidence gates. |
+| `list_email_drafts` | List drafts in authorized organization/thread scope. |
+| `send_email_draft` | Send or queue an authorized draft; otherwise retain it and return its confirmation prompt. |
+| `cancel_email_draft` | Cancel an authorized draft. |
 
-Mailbox coordinator:
+Email tools are available on web/Slack with a send-capable identity, direct internal email, linked-user iMessage, and write-scoped MCP chat. Copies, recipient direction, known contacts, attachment kinds, original-policy evidence, duplicates, and COI batch approvals are validated in shared executors. `send_email_draft` reads the stored `emailSendAuthorization` on the current actor-bound user message and applies `jevProceeds`; absent, failed, negated, or low-confidence decisions cannot send. Existing fingerprint-bound confirmation and review-link delivery paths remain authoritative. Direct MCP send actions retain their explicit-action authorization; conversational `ask_spot` never receives it. Email style uses the shared `channelStyle.ts` constants in family guidance. Failed requested attachments remain a send blocker across turns; a successful retry clears its failure within the turn, while a later turn must explicitly replace the draft to revise those attachment requirements. Read-only MCP chat can list drafts.
+
+### Mailbox family
+
+All eight tools run directly in the parent agent on web/Slack, direct internal email, linked-user iMessage, and MCP chat. Tenant MCP exposes the same tools. Searches fan out across accessible accounts, respect selected account scope, and return account failures alongside bounded results. Search logs are deterministic; evidence includes only email references subsequently used by read, attachment, import, or save tools.
 
 | Tool                                             | Purpose                                                             |
 | ------------------------------------------------ | ------------------------------------------------------------------- |
@@ -288,75 +279,44 @@ Mailbox coordinator:
 | `save_connected_email_message_to_thread`         | Export the message itself into the parent thread as an `.eml` file. |
 | `send_connected_vendor_invite`                   | Send an explicitly requested vendor invitation.                     |
 
-When invoked from read-only tenant MCP chat, only the first three read tools in this table are registered.
+Read-only tenant MCP chat registers only the first three tools. Both save tools use the current conversation thread; direct tenant MCP calls must supply an accessible `threadId`. Private threads remain restricted to their creator. Saved files can be reused by the shared email tools.
 
-Email expert:
-
-| Tool                      | Purpose                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| `attach_original_policy`  | Prepare an original policy PDF attachment.                 |
-| `attach_uploaded_file`    | Prepare a file already available in the conversation.      |
-| `generate_coi_attachment` | Generate and prepare one or more certificate attachments.  |
-| `send_or_draft_email`     | Finalize exactly one safe draft, queued send, or delivery. |
+`coordinate_mailbox_task` has been removed from tenant MCP. External clients should use the discrete mailbox tools; no compatibility alias or nested model loop remains.
 
 ## Tenant OAuth MCP catalog
 
-The tenant MCP catalog is separate from the model-callable tools above. It currently contains 33 tools. “Write” means the catalog requires OAuth write scope; runtime organization, role, and resource authorization still apply. Access annotations and the pre-dispatch scope check are derived from the same typed catalog entry, so adding a write tool requires declaring `effect: "write"` in that entry. Procurement proposals, broker outreach, packets, and imported request email are intentionally absent.
+`convex/lib/tenantMcpToolCatalog.ts` projects shared client tool definitions into MCP names, JSON schemas, OAuth scopes, and annotations. `convex/actions/tenantMcpTools.ts` executes direct shared tools with the same tenant scope as agent chat. Existing policy, vendor, and `ask_spot` names retain their compatibility handlers. Email draft names project the shared email tools through adapters that preserve external schemas and response shapes, including batch sending and the text draft list. Deprecated aliases advertise their replacement in `tools/list`; legacy response adapters preserve the old shapes where the shared result differs. The catalog effect is checked before dispatch; resource authorization is checked by the executor. `ask_spot` passes the token's write capability to the shared client catalog.
 
-| Tool                             | Purpose                                                                  | MCP access                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `list_policies`                  | List policies with optional carrier, year, or LOB filters.               | read                                                                               |
-| `get_policy`                     | Get full details for one policy.                                         | read                                                                               |
-| `get_policy_pdf`                 | Get a temporary URL for the original policy PDF.                         | read                                                                               |
-| `search_policies`                | Search carrier, policy number, insured, summary, and LOB text.           | read                                                                               |
-| `get_policy_stats`               | Get policy totals and type, carrier, and year breakdowns.                | read                                                                               |
-| `list_policy_certificates`       | List generated certificates and lifecycle metadata for a policy.         | read                                                                               |
-| `list_certificate_holders`       | List or search the certificate-holder registry.                          | read                                                                               |
-| `list_policy_versions`           | List policy document-event versions.                                     | read                                                                               |
-| `list_certificate_versions`      | List certificate issue and reissue versions.                             | read                                                                               |
-| `list_certificate_review_jobs`   | List certificate renewal, endorsement, and manual-review jobs.           | read                                                                               |
-| `generate_policy_certificate`    | Generate certificates in policy or requirements mode.                    | write                                                                              |
-| `list_threads`                   | List recent tenant conversation threads.                                 | read                                                                               |
-| `get_thread_messages`            | Get all messages in one accessible thread.                               | read                                                                               |
-| `get_org_info`                   | Get the current organization's identity and agent context.            | read                                                                               |
-| `ask_glass`                      | Legacy alias for `ask_spot`.                                             | read; nested tools are read-only unless the token also has write scope; open-world |
-| `ask_spot`                       | Run the client conversational agent for policy and compliance workflows. | read; nested tools are read-only unless the token also has write scope; open-world |
-| `list_email_drafts`              | List durable outbound email drafts.                                      | read                                                                               |
-| `draft_email`                    | Create a durable outbound email draft.                                   | write                                                                              |
-| `update_email_draft`             | Update an existing durable email draft in place.                         | write                                                                              |
-| `send_email_draft`               | Send one durable email draft.                                            | write; open-world side effect                                                      |
-| `send_email_drafts`              | Send a batch of durable email drafts.                                    | write; open-world side effect                                                      |
-| `cancel_email_draft`             | Cancel one durable email draft.                                          | write                                                                              |
-| `list_client_files`              | List client-visible shared files in the caller's readable client scope.  | read                                                                               |
-| `get_client_file`                | Get metadata and a temporary URL for one client-visible shared file.     | read                                                                               |
-| `read_company_wiki`              | Read the whole company wiki for the token's exact organization.          | read                                                                               |
-| `write_company_wiki`     | Replace the shared client company .md file with YAML front matter and an expected revision.   | write; current direct organization admin only                                      |
-| `list_connected_vendors`         | List connected vendors that approved insurance access.                   | read                                                                               |
-| `get_connected_vendor`           | Get one connected vendor's profile and policy count.                     | read                                                                               |
-| `list_connected_vendor_policies` | List policies for one connected vendor.                                  | read                                                                               |
-| `list_my_policies`               | List policies for the caller's client organization.                      | read; client only                                                                  |
-| `list_insurance_requirements`    | List the caller organization's compliance requirements.                  | read                                                                               |
-| `create_insurance_requirement`   | Create a typed insurance coverage requirement.                           | write; organization admin only                                                     |
-| `list_vendor_compliance`         | List connected-vendor compliance against requirements.                   | read                                                                               |
+| MCP tools | Access |
+| --- | --- |
+| `ask_spot`, `list_policies`, `get_policy`, `get_policy_pdf`, `search_policies` | read; `ask_spot` can invoke nested writes only with write scope |
+| `list_email_drafts` | read |
+| `draft_email`, `update_email_draft`, `send_email_draft`, `send_email_drafts`, `cancel_email_draft` | write; sends are open-world |
+| `list_connected_vendors`, `get_connected_vendor`, `list_connected_vendor_policies`, `list_vendor_compliance` | read |
+| `lookup_policy`, `lookup_company_context`, `lookup_client_requests`, `lookup_client_files`, `read_client_file`, `compare_coverages`, `lookup_compliance_requirements`, `lookup_connected_vendors`, `lookup_vendor_policies`, `lookup_vendor_compliance`, `lookup_policy_section`, `lookup_address`, `web_research` | read; `web_research` is open-world |
+| `list_certificates`, `list_policy_versions` | read; issued COIs with holder/version history, and policy version history |
+| `save_note`, `confirm_policy_fact`, `generate_coi`, `update_company_wiki`, `create_compliance_requirement` | write |
+| `search_connected_email`, `read_connected_email`, `read_connected_email_attachment` | read |
+| `import_connected_email_policy_attachments`, `import_connected_email_requirement_attachments`, `save_connected_email_attachments_to_thread`, `save_connected_email_message_to_thread` | write |
+| `send_connected_vendor_invite` | write; open-world |
+| `list_my_policies`, `get_org_info`, `read_company_wiki`, `list_client_files`, `get_client_file`, `list_insurance_requirements`, `get_policy_stats`, `list_policy_certificates`, `list_certificate_holders`, `list_certificate_versions` | deprecated read aliases |
+| `generate_policy_certificate`, `write_company_wiki`, `create_insurance_requirement` | deprecated write aliases; write scope required |
 
-The `ask_spot`/`ask_glass` MCP annotation describes the outer MCP call. The MCP action also passes the caller's write-scope state into the shared client-tool executors and mailbox coordinator, which removes nested write tools from the executable map for read-only tokens.
+`list_threads` and `get_thread_messages` remain retired. `search_thread_history` searches excerpts in the active conversation; it cannot reproduce `get_thread_messages`' complete message list for an arbitrary thread ID. The other former direct names above remain available as deprecated aliases. `list_policy_versions` is now the shared policy history tool under its original name.
 
 ## Browser WebMCP tools
 
 `lib/webmcp/catalog.ts` and `lib/webmcp/definitions/*` define the WebMCP tools
-Chrome agents can call in the Spot web app. `docs/architecture/webmcp.md` holds
-the per-page list and the UI parity table; `/llms.txt` is generated from the
-catalog. There are 137 tools. Seven are declarative, on the signup, login, and
-onboarding forms: `request_signup_code`, `verify_signup_code`,
+Chrome agents can call in the Spot web app when Vercel flag `webmcp-enabled` is on (`WEBMCP_ENABLED`, `FLAGS_SECRET`). `docs/architecture/webmcp.md` describes the runtime; `/llms.txt` is generated from the
+catalog. Declarative signup, login, and onboarding forms include: `request_signup_code`, `verify_signup_code`,
 `request_login_code`, `verify_login_code`, `submit_user_profile`,
 `submit_company_profile`, and `finish_onboarding`. OTP verification stays
-mandatory. The other 130 are imperative. Client tools cover
+mandatory. Imperative client tools cover
 policies, certificates, compliance, requests, shared files, agent threads and
 drafted email, mailbox review items, notifications, connections, organization
 settings, team, agent channels, company wiki, workflow and notification
 settings, integrations, mailboxes, beta features, and the personal profile.
-Public token tools cover shared packets, shared email reviews, vendor
-invitations, and the model routing report.
+Public token tools cover shared packets, shared email reviews, and vendor invitations.
 
 Effect and access:
 
@@ -384,7 +344,7 @@ Effect and access:
 - Company knowledge is a standard `.md` document with YAML front matter. Direct members can read it; direct admins can import, edit, download and save it using revision checks. Automated facts preserve arbitrary authored prose and surface conflicts as proposed changes.
 - Operators manage company knowledge at `/operator/clients/:clientOrgId/wiki`. Impersonation remains read-only. Agent writes use the registry's exact approval gate and company-context policy.
 - Shared procurement content comes from `public.md` and is identical for authorized client and broker-market readers. Internal intake, broker observations, follow-ups, and file-handling prose live in `private.md`; no separate intake, log, or file-note documents exist. Every active packet link reflects saved public.md and currently released files immediately within its audience; stored issuance snapshots remain immutable audit evidence.
-- Tenant MCP exposes `read_company_wiki` and `write_company_wiki`; write requires the token's exact organization, current direct-admin membership, write scope, and expected document revision. Procurement remains absent from tenant MCP.
+- Tenant MCP exposes `lookup_company_context` and `update_company_wiki`, with `read_company_wiki` and `write_company_wiki` as deprecated aliases. Wiki writes require the token's exact organization, current direct-admin membership, write scope, and expected document revision. Procurement remains absent from tenant MCP.
 - Operator MCP derives the whole-document wiki/packet tools and research tool from the same registry as web, email, Slack and iMessage. It retains role, approval, audit and no-impersonation checks.
 
 ## Operator MCP server sources

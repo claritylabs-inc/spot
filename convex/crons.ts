@@ -4,13 +4,6 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 const internalApi = internal as any;
 
-crons.interval(
-  "dispatch scheduled Workspace reconciliation",
-  { minutes: 1 },
-  internal.operatorGoogleWorkspaceScan.dispatchInternal,
-  {},
-);
-
 crons.cron(
   "monitor vendor compliance",
   "0 14 * * *",
@@ -33,16 +26,16 @@ crons.interval(
 );
 
 crons.interval(
-  "reconcile Slack installation and channel health",
-  { minutes: 15 },
-  internalApi.actions.slackReconciliation.runDue,
+  "sweep stale proposal extractions",
+  { minutes: 10 },
+  internal.actions.proposalExtraction.sweepStale,
   {},
 );
 
 crons.interval(
-  "retry response rating signals",
-  { minutes: 10 },
-  internalApi.actions.agentResponseFeedback.retryPending,
+  "reconcile Slack installation and channel health",
+  { minutes: 15 },
+  internalApi.actions.slackReconciliation.runDue,
   {},
 );
 

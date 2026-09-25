@@ -20,7 +20,6 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
-import { OperatorClientSidebar } from "../operator-client-sidebar";
 import { OperatorCertificatesWorkspace } from "../certificates/operator-certificates-workspace";
 
 export default function OperatorClientCompliancePage() {
@@ -48,30 +47,10 @@ export default function OperatorClientCompliancePage() {
     </span>
   );
 
-  const sidebar = ({
-    collapsed,
-    onToggleCollapse,
-  }: {
-    collapsed: boolean;
-    onToggleCollapse: () => void;
-  }) => (
-    <OperatorClientSidebar
-      collapsed={collapsed}
-      onToggleCollapse={onToggleCollapse}
-      clientOrgId={clientOrgId}
-      activeImpersonation={activeImpersonation}
-      impersonationDisabled={!client}
-    />
-  );
-
   if (clients === undefined) {
     return (
       <AppShell
         breadcrumbDetail={breadcrumb}
-        customSidebar={sidebar}
-        customSidebarStorageKey="operator-sidebar"
-        disablePersistentChat
-        disableCommandPalette
       >
         <OperationalPanel>
           <div className="flex h-40 items-center justify-center text-muted-foreground">
@@ -86,10 +65,6 @@ export default function OperatorClientCompliancePage() {
     return (
       <AppShell
         breadcrumbDetail={breadcrumb}
-        customSidebar={sidebar}
-        customSidebarStorageKey="operator-sidebar"
-        disablePersistentChat
-        disableCommandPalette
       >
         <OperationalPanel>
           <OperationalPanelHeader title="Client not found" />
@@ -133,10 +108,6 @@ export default function OperatorClientCompliancePage() {
           actions={actions}
           breadcrumbDetail={breadcrumb}
           rightPanel={rightPanel}
-          customSidebar={sidebar}
-          customSidebarStorageKey="operator-sidebar"
-          disablePersistentChat
-          disableCommandPalette
         >
           <main className="w-full space-y-6">
             <div className="overflow-x-auto">{toolbar}</div>

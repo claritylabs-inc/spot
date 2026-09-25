@@ -43,9 +43,8 @@ function gmailClient() {
   return {
     users: {
       getProfile: vi.fn().mockResolvedValue({
-        data: { emailAddress: "operator@example.com", historyId: "90071992547409931234" },
+        data: { emailAddress: "operator@example.com" },
       }),
-      history: {list: vi.fn().mockResolvedValue({data:{historyId:"90071992547409939999",history:[]}})},
       messages: {
         list: vi.fn().mockResolvedValue({ data: { messages: [] } }),
         get: vi.fn().mockImplementation(({ id, format }) =>
@@ -210,25 +209,6 @@ describe("Google Workspace provider boundary", () => {
         config: { data: "assertion=LEAK" },
       }),
     ).toBe("Google Workspace request failed.");
-  });
-  it("preserves opaque history IDs and collects additions and label transitions without duplicate identities",async()=>{
-    const client=gmailClient();
-    client.users.history.list.mockResolvedValue({data:{historyId:"90071992547409939999",nextPageToken:"next",history:[
-      {messagesAdded:[{message:{id:"new",threadId:"thread-new"}}],labelsAdded:[{message:{id:"sent-draft",threadId:"thread-draft"}}]},
-      {messagesAdded:[{message:{id:"new",threadId:"thread-new"}}],labelsRemoved:[{message:{id:"unspammed",threadId:"thread-restored"}}]},
-    ]}} as never);
-    googleMocks.gmailFactory.mockReturnValue(client);
-    const provider=createGoogleWorkspaceProvider(credentials,{gmail:["gmail.readonly"],directory:["directory.readonly"]});
-    expect(await provider.getHistoryCheckpoint("mail@example.com")).toBe("90071992547409931234");
-    expect(await provider.listHistory({mailbox:"mail@example.com",startHistoryId:"90071992547409931234",pageToken:"page",maxResults:25})).toEqual({historyId:"90071992547409939999",nextPageToken:"next",messages:[{id:"new",threadId:"thread-new"},{id:"sent-draft",threadId:"thread-draft"},{id:"unspammed",threadId:"thread-restored"}]});
-    expect(client.users.history.list).toHaveBeenCalledWith(expect.objectContaining({startHistoryId:"90071992547409931234",pageToken:"page"}),expect.any(Object));
-  });
-  it("retains a sanitized numeric 404 for expired-history recovery without exposing provider payloads",async()=>{
-    const client=gmailClient();
-    client.users.history.list.mockRejectedValue({response:{status:404,data:"private provider payload"}});
-    googleMocks.gmailFactory.mockReturnValue(client);
-    const provider=createGoogleWorkspaceProvider(credentials,{gmail:["gmail.readonly"],directory:["directory.readonly"]});
-    await expect(provider.listHistory({mailbox:"mail@example.com",startHistoryId:"old",maxResults:25})).rejects.toMatchObject({status:404,message:"The requested Google Workspace resource was not found."});
   });
 
 });

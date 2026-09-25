@@ -13,6 +13,65 @@ import { parseMarkdownDocument } from "./lib/markdownDocument";
 
 const modules = import.meta.glob("./**/*.ts");
 
+test("MCP section edits require a direct admin and the current wiki revision", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizations", {
+      name: "Cove",
+      type: "client",
+    });
+    const adminId = await ctx.db.insert("users", {
+      email: "admin@cove.example",
+    });
+    const memberId = await ctx.db.insert("users", {
+      email: "member@cove.example",
+    });
+    await ctx.db.insert("orgMemberships", {
+      orgId,
+      userId: adminId,
+      role: "admin",
+    });
+    await ctx.db.insert("orgMemberships", {
+      orgId,
+      userId: memberId,
+      role: "member",
+    });
+    return { orgId, adminId, memberId };
+  });
+  await t
+    .withIdentity({ subject: `${ids.adminId}|session` })
+    .mutation(api.orgWiki.save, {
+      orgId: ids.orgId,
+      markdown: "## Operations\n\nCove builds software.",
+      expectedRevision: 0,
+    });
+  const input = {
+    orgId: ids.orgId,
+    key: "operations" as const,
+    body: "Cove builds software for insurers.",
+    expectedRevision: 1,
+  };
+  await expect(
+    t.mutation(internal.orgWiki.saveSectionForMcp, {
+      ...input,
+      userId: ids.memberId,
+    }),
+  ).rejects.toThrow(/admin/i);
+  await expect(
+    t.mutation(internal.orgWiki.saveSectionForMcp, {
+      ...input,
+      userId: ids.adminId,
+      expectedRevision: 0,
+    }),
+  ).rejects.toThrow(/revision changed/i);
+  const saved = await t.mutation(internal.orgWiki.saveSectionForMcp, {
+    ...input,
+    userId: ids.adminId,
+  });
+  expect(saved).toMatchObject({ revision: 2 });
+  expect(saved.body).toContain("Cove builds software for insurers.");
+});
+
 test("supplier company documents are operator-only even when a broker member administers the team", async () => {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {

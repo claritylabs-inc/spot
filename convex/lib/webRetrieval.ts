@@ -1,12 +1,12 @@
 "use node";
-import { durableRouterClientOptions } from "./routerJobClient";
+import { durableRouterClientOptionsWithTrace } from "./routerJobClient";
 
 import { isIP } from "node:net";
 
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { clRouterRetrieve } from "./clRouterClient";
+import { clRouterRetrieve, type ClRouterTraceInput } from "./clRouterClient";
 import {
   WEB_RETRIEVAL_DEFAULT,
   isNativeWebRetrievalProvider,
@@ -21,6 +21,8 @@ const MAX_GOAL_LENGTH = 500;
 const MAX_SOURCE_COUNT = 5;
 
 export type WebRetrievalInput = {
+  taskKind?: string;
+  trace?: ClRouterTraceInput;
   query?: string;
   url?: string;
   goal?: string;
@@ -208,6 +210,9 @@ async function runWebRetrievalWithConfig(
         ...(config.route ? { route: config.route } : {}),
       },
     },
-    durableRouterClientOptions(ctx),
+    durableRouterClientOptionsWithTrace(ctx, {
+      ...rawInput.trace,
+      taskKind: rawInput.taskKind ?? "web_research",
+    }),
   );
 }

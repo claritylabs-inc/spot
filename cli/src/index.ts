@@ -199,18 +199,6 @@ program.command("coi:versions <policyId>").action(async (policyId) => {
   print(res.data, getFormat(program.opts()));
 });
 
-program
-  .command("coi:review-jobs")
-  .option("--policy-id <policyId>")
-  .option("--status <status>")
-  .action(async (opts) => {
-    const res = await new SpotApi(await loadConfig()).certificateReviewJobs(
-      opts.policyId,
-      opts.status,
-    );
-    print(res.data, getFormat(program.opts()));
-  });
-
 program.parseAsync().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Error: ${message}`);

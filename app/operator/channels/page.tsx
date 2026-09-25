@@ -22,7 +22,6 @@ import {
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
-import { OperatorSidebar } from "../operator-sidebar";
 import { typeStyle } from "@/lib/typography";
 import {
   OperatorGoogleWorkspaceContent,
@@ -472,7 +471,6 @@ function OperatorChannelsContent({
   const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
   const [googleSettingsDrawerOpen, setGoogleSettingsDrawerOpen] =
     useState(false);
-  const [scanPanel, setScanPanel] = useState<ReactNode>(null);
   const [busy, setBusy] = useState<"host" | "identity" | null>(null);
   const hostInstallation = hostStatus?.installation;
   const workspaceTeamId = hostStatus?.hostTeamId;
@@ -671,47 +669,30 @@ function OperatorChannelsContent({
       </form>
     </SettingsDrawer>
   );
-  const rightPanel = scanPanel ?? (googleSettingsDrawerOpen ? (
+  const rightPanel = googleSettingsDrawerOpen ? (
     <OperatorGoogleWorkspaceSettingsDrawer
       open
       onOpenChange={setGoogleSettingsDrawerOpen}
     />
   ) : (
     identityDrawer
-  ));
+  );
 
   return (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="channels"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
       rightPanel={rightPanel}
     >
       <main className="w-full">
         <OperatorChannelTabs
           onTabChange={() => {
-            setScanPanel(null);
             setGoogleSettingsDrawerOpen(false);
             setIdentityDrawerOpen(false);
           }}
           imessageContent={<OperatorImessageContent />}
           googleWorkspaceContent={
             <OperatorGoogleWorkspaceContent
-              onRightPanel={(panel) => {
-                setIdentityDrawerOpen(false);
-                setGoogleSettingsDrawerOpen(false);
-                setScanPanel(panel);
-              }}
               onConfigure={() => {
                 setIdentityDrawerOpen(false);
-                setScanPanel(null);
                 setGoogleSettingsDrawerOpen(true);
               }}
             />
@@ -873,16 +854,6 @@ export default function OperatorChannelsPage() {
     />
   ) : (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="channels"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
     >
       <main className="w-full">
         <OperatorChannelTabs>

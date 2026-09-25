@@ -35,7 +35,6 @@
     "cli",
     "operator-cli",
     "imessage-worker",
-    "extraction-worker",
     "slack-worker"
   ]
 }

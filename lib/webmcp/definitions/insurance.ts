@@ -180,17 +180,11 @@ export const insuranceTools = {
   retry_policy_extraction: imperative({
     title: "Retry policy extraction",
     description:
-      "Resume or restart a failed policy extraction, as offered in the policy's error banner. Uses AI extraction time.",
+      "Re-extract a policy from its original file, as offered when Spot couldn't finish reading it. Uses AI extraction time.",
     readOnly: false,
     consequential: true,
     pages: ["/policies"],
-    inputSchema: schema(
-      {
-        policy_id: policyId,
-        mode: param.enum(["resume", "restart"], "resume continues from the failed step; restart runs extraction again."),
-      },
-      ["policy_id"],
-    ),
+    inputSchema: schema({ policy_id: policyId }, ["policy_id"]),
   }),
 
   list_certificates: imperative({
@@ -201,18 +195,6 @@ export const insuranceTools = {
     inputSchema: schema({
       archived: param.boolean("List archived certificates instead of active ones."),
       policy_id: param.string("Optional policy filter."),
-    }),
-  }),
-  list_certificate_review_jobs: imperative({
-    title: "List certificate review jobs",
-    description:
-      "List certificate renewal-reissue and manual-review jobs with status, holder, and policy.",
-    readOnly: true,
-    inputSchema: schema({
-      status: param.enum(
-        ["review_required", "blocked_missing_contact", "sending", "sent", "cancelled", "failed"],
-        "Optional status filter.",
-      ),
     }),
   }),
   generate_certificate: imperative({

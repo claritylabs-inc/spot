@@ -253,7 +253,6 @@ function policyText(policy: Doc<"policies">) {
       policy.carrier,
       policy.security,
       policy.generalAgent?.agencyName,
-      policy.mga,
       policy.broker,
       policy.insuredName,
       policy.formInventory,

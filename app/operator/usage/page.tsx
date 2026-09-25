@@ -30,7 +30,6 @@ import {
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { OperatorSidebar } from "../operator-sidebar";
 import {
   cost,
   displayTask,
@@ -98,10 +97,6 @@ export default function OperatorUsagePage() {
     : null;
   return (
     <AppShell
-      customSidebar={(props) => <OperatorSidebar {...props} active="usage" />}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
       actions={
         <>
           <PillButton

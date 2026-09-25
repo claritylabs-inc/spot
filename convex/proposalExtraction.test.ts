@@ -5,17 +5,17 @@ import { describe, expect, test } from "vitest";
 import schema from "./schema";
 import { seedRequestIntake } from "./lib/procurementNarrative";
 import {
-  claimExternalJobInternal,
-  completeExternalJobInternal,
-  heartbeatExternalJobInternal,
+  acquireLeaseInternal,
+  completeJobInternal,
+  saveCheckpointForLeaseInternal,
 } from "./proposalExtraction";
 import { listByProposalInternal as listSpansByProposalInternal } from "./proposalSourceSpans";
 import { listByProposalInternal as listNodesByProposalInternal } from "./proposalSourceNodes";
 
 const modules = import.meta.glob("./**/*.ts");
-const claimFn = claimExternalJobInternal as any;
-const completeFn = completeExternalJobInternal as any;
-const heartbeatFn = heartbeatExternalJobInternal as any;
+const acquireLeaseFn = acquireLeaseInternal as any;
+const completeFn = completeJobInternal as any;
+const saveCheckpointFn = saveCheckpointForLeaseInternal as any;
 const listSpansFn = listSpansByProposalInternal as any;
 const listNodesFn = listNodesByProposalInternal as any;
 
@@ -103,55 +103,90 @@ async function fixture(fingerprint = "proposal-fingerprint") {
 }
 
 describe("proposal extraction leases", () => {
-  test("claims an isolated proposal job and extends only its exact lease", async () => {
+  test("acquires an isolated proposal job and rejects a concurrent acquire while the lease is live", async () => {
     const seeded = await fixture();
-    const claimed = await seeded.t.mutation(claimFn, {
+    const acquired = await seeded.t.mutation(acquireLeaseFn, {
+      jobId: seeded.jobId,
       leaseId: "lease-one",
       leaseExpiresAt: dayjs().add(5, "minute").valueOf(),
-      workerId: "worker-one",
     });
-    expect(claimed?.job._id).toBe(seeded.jobId);
-    expect(claimed?.documents.map((document: any) => document._id)).toEqual([
-      seeded.proposalDocumentId,
-    ]);
+    expect(acquired?.proposalId).toBe(seeded.proposalId);
+    expect(acquired?.checkpoint).toBeUndefined();
+
+    // A second acquire (e.g. a watchdog firing while the normal chain is
+    // still alive) must not take over the live lease.
     await expect(
-      seeded.t.mutation(heartbeatFn, {
+      seeded.t.mutation(acquireLeaseFn, {
+        jobId: seeded.jobId,
+        leaseId: "lease-two",
+        leaseExpiresAt: dayjs().add(5, "minute").valueOf(),
+      }),
+    ).resolves.toBeNull();
+
+    await expect(
+      seeded.t.mutation(saveCheckpointFn, {
         jobId: seeded.jobId,
         leaseId: "wrong-lease",
-        leaseExpiresAt: dayjs().add(10, "minute").valueOf(),
+        state: { traceId: "t", documents: [] },
       }),
     ).resolves.toBe(false);
     await expect(
-      seeded.t.mutation(heartbeatFn, {
+      seeded.t.mutation(saveCheckpointFn, {
         jobId: seeded.jobId,
         leaseId: "lease-one",
-        leaseExpiresAt: dayjs().add(10, "minute").valueOf(),
+        state: { traceId: "t", documents: [] },
       }),
     ).resolves.toBe(true);
+
+    // The lease was released, so a fresh acquire now succeeds and sees the
+    // saved checkpoint.
+    const resumed = await seeded.t.mutation(acquireLeaseFn, {
+      jobId: seeded.jobId,
+      leaseId: "lease-three",
+      leaseExpiresAt: dayjs().add(5, "minute").valueOf(),
+    });
+    expect(resumed?.checkpoint).toMatchObject({
+      state: { traceId: "t", documents: [] },
+    });
+  });
+
+  test("a normal release-then-resume tick chain never spends a retry attempt", async () => {
+    const seeded = await fixture();
+    for (let tick = 0; tick < 5; tick += 1) {
+      const acquired = await seeded.t.mutation(acquireLeaseFn, {
+        jobId: seeded.jobId,
+        leaseId: `lease-${tick}`,
+        leaseExpiresAt: dayjs().add(5, "minute").valueOf(),
+      });
+      expect(acquired).not.toBeNull();
+      await seeded.t.mutation(saveCheckpointFn, {
+        jobId: seeded.jobId,
+        leaseId: `lease-${tick}`,
+        state: { traceId: "t", documents: [] },
+      });
+    }
+    const job = await seeded.t.run((ctx) => ctx.db.get(seeded.jobId));
+    expect(job?.attempts).toBe(0);
+    expect(job?.status).toBe("running");
+    expect(job?.leaseId).toBeUndefined();
   });
 
   test("rejects stale completion without changing the proposal offer", async () => {
     const seeded = await fixture();
-    await seeded.t.mutation(claimFn, {
+    await seeded.t.mutation(acquireLeaseFn, {
+      jobId: seeded.jobId,
       leaseId: "lease-one",
       leaseExpiresAt: dayjs().add(5, "minute").valueOf(),
-      workerId: "worker-one",
     });
     await seeded.t.run((ctx) =>
       ctx.db.patch(seeded.proposalId, {
         extractionFingerprint: "new-fingerprint",
       }),
     );
-    const payloadId = await seeded.t.run((ctx) =>
-      ctx.storage.store(new Blob(["{}"], { type: "application/json" })),
-    );
     await expect(
       seeded.t.mutation(completeFn, {
         jobId: seeded.jobId,
-        proposalId: seeded.proposalId,
         leaseId: "lease-one",
-        extractionFingerprint: "proposal-fingerprint",
-        completionPayloadStorageId: payloadId,
         extractedOffer: { carrier: "Wrong" },
       }),
     ).resolves.toBe(false);

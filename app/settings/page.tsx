@@ -19,7 +19,6 @@ import { EmailConnectionsSection } from "@/components/settings/email-connections
 import { ConnectionsSection } from "@/components/settings/connections-section";
 import { CompanyWikiSection } from "@/components/settings/company-wiki-section";
 import { AgentBehaviorSection } from "@/components/settings/agent-behavior-section";
-import { CertificateWorkflowSection } from "@/components/settings/certificate-workflow-section";
 import { BetaFeaturesSection } from "@/components/settings/beta-features-section";
 import { NotificationPreferencesSection } from "@/components/settings/notification-preferences-section";
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
@@ -156,15 +155,13 @@ function SectionContent({
     return <AgentBehaviorSection />;
   }
   if (section === "workflows") {
-    if (tab === "notifications" && currentOrg?.orgId) {
-      return (
-        <NotificationPreferencesSection
-          orgId={currentOrg.orgId}
-          orgType="client"
-        />
-      );
-    }
-    return <CertificateWorkflowSection />;
+    if (!currentOrg?.orgId) return null;
+    return (
+      <NotificationPreferencesSection
+        orgId={currentOrg.orgId}
+        orgType="client"
+      />
+    );
   }
   if (section === "integrations") return <ConnectionsSection />;
   if (section === "mailboxes") return <EmailConnectionsSection />;

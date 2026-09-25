@@ -16,17 +16,6 @@ type DraftLike = Pick<
   | "sendBlockedReason"
 >;
 
-const SHOW_MORE_EMAIL_DRAFT_REQUESTS = new Set([
-  "more",
-  "show more",
-  "show all",
-  "list drafts",
-  "show drafts",
-  "show email drafts",
-  "show all drafts",
-  "list email drafts",
-]);
-
 function truncate(value: string | undefined, max: number) {
   const text = (value ?? "").replace(/\s+/g, " ").trim();
   if (text.length <= max) return text;
@@ -38,10 +27,6 @@ function formatAttachmentSummary(draft: DraftLike) {
   if (count === 0) return "no attachments";
   if (count === 1) return draft.attachments?.[0]?.filename ?? "1 attachment";
   return `${count} attachments`;
-}
-
-export function isShowMoreEmailDraftIntent(text: string) {
-  return SHOW_MORE_EMAIL_DRAFT_REQUESTS.has(text.trim().toLowerCase());
 }
 
 export function buildEmailDraftTextSummary(

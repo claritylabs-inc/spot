@@ -20,6 +20,9 @@ import {
   type OperatorGoogleWorkspaceMailbox,
   type OperatorGoogleWorkspaceReadThreadInput,
   type OperatorGoogleWorkspaceReadThreadResult,
+  type OperatorGoogleWorkspaceScanCandidate,
+  type OperatorGoogleWorkspaceScanMailboxInput,
+  type OperatorGoogleWorkspaceScanMailboxResult,
   type OperatorGoogleWorkspaceSearchEmailInput,
   type OperatorGoogleWorkspaceSearchEmailResult,
   type OperatorGoogleWorkspaceSearchMessage,
@@ -42,6 +45,7 @@ const TOOL_WORK_BUDGET_MS = 60_000;
 const MAX_SEARCH_MAILBOXES_PER_CALL = 10;
 const MAX_THREAD_BODY_CHARS_PER_PAGE = 80_000;
 const MAX_EXTERNAL_BODY_PART_BYTES = 2 * 1024 * 1024;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type StoredAttachment = {
   fileId: Id<"_storage">;
@@ -61,7 +65,8 @@ export type GoogleWorkspaceToolDependencies = {
   provider: GoogleWorkspaceProvider;
   cursorSecret: string;
   attachmentStorage: AttachmentStorage;
-  scheduledContext?: boolean;
+  /** The calling operator's address, used when a scan omits its mailbox. */
+  operatorMailbox?: string;
 };
 
 function inputRecord(value: unknown) {
@@ -92,6 +97,10 @@ function optionalLimit(value: unknown) {
 function requiredString(value: unknown, label: string) {
   if (typeof value !== "string") throw new Error(`${label} is required.`);
   return value;
+}
+
+function optionalString(value: unknown, label: string) {
+  return value === undefined ? undefined : requiredString(value, label);
 }
 
 export function parseGoogleWorkspaceToolInput(
@@ -149,6 +158,18 @@ export function parseGoogleWorkspaceToolInput(
         mailbox: requiredString(input.mailbox, "Company mailbox"),
         messageId: requiredString(input.messageId, "Gmail message ID"),
         attachmentId: requiredString(input.attachmentId, "Gmail attachment ID"),
+      },
+    };
+  }
+  if (toolName === "scan_workspace_mailbox") {
+    return {
+      toolName: "scan_workspace_mailbox" as const,
+      input: {
+        mailbox: optionalString(input.mailbox, "Company mailbox"),
+        query: requiredString(input.query, "Gmail search query"),
+        dateFrom: optionalString(input.dateFrom, "Scan start date"),
+        dateTo: optionalString(input.dateTo, "Scan end date"),
+        limit: optionalLimit(input.limit),
       },
     };
   }
@@ -1018,7 +1039,6 @@ export async function readCompanyEmailThread(
     mailbox: requestedMailbox,
     threadId,
     limit,
-    ...(dependencies.scheduledContext ? { scheduledContext: true } : {}),
   });
   const state = decodeCursor<ThreadCursorState>(
     cursorSecret,
@@ -1068,16 +1088,6 @@ export async function readCompanyEmailThread(
       message.id !== messageIds[state.messageIndex]
     ) {
       throw new Error("Gmail returned a message outside the requested thread.");
-    }
-    if (
-      dependencies.scheduledContext &&
-      message.labelIds?.some((label) =>
-        ["DRAFT", "SPAM", "TRASH"].includes(label),
-      )
-    ) {
-      state.messageIndex += 1;
-      state.bodyOffset = 0;
-      continue;
     }
     const unavailable = await loadExternalBodyParts(
       provider,
@@ -1227,6 +1237,202 @@ export async function getCompanyEmailAttachment(
   }
 }
 
+function scanDate(value: string | undefined, label: string) {
+  if (value === undefined) return undefined;
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? dayjs(`${value}T00:00:00Z`).valueOf()
+    : Number.NaN;
+  if (
+    !Number.isFinite(time) ||
+    dayjs(time).toISOString().slice(0, 10) !== value
+  ) {
+    throw new Error(`${label} must be a YYYY-MM-DD date.`);
+  }
+  return time;
+}
+
+function scanRange(input: OperatorGoogleWorkspaceScanMailboxInput) {
+  const maxDays = GOOGLE_WORKSPACE_LIMITS.maxScanDays;
+  const today = Math.floor(dayjs().valueOf() / DAY_MS) * DAY_MS;
+  const to = scanDate(input.dateTo, "Scan end date");
+  const from = scanDate(input.dateFrom, "Scan start date");
+  const end =
+    to ??
+    (from === undefined
+      ? today
+      : Math.min(today, from + (maxDays - 1) * DAY_MS));
+  const start = from ?? end - (maxDays - 1) * DAY_MS;
+  if (start > end) {
+    throw new Error("Scan start date must be on or before its end date.");
+  }
+  if ((end - start) / DAY_MS + 1 > maxDays) {
+    throw new Error(`Scan at most ${maxDays} days at a time.`);
+  }
+  return { start, end };
+}
+
+function isPdfAttachment(attachment: OperatorGoogleWorkspaceThreadAttachment) {
+  return (
+    attachment.contentType.toLowerCase() === "application/pdf" ||
+    attachment.filename.toLowerCase().endsWith(".pdf")
+  );
+}
+
+async function scanCandidate(
+  mailbox: string,
+  message: GoogleWorkspaceMessage,
+): Promise<OperatorGoogleWorkspaceScanCandidate> {
+  const headers = await messageHeaders(message);
+  const attachments = allParts(message)
+    .filter(
+      ({ part }) =>
+        isAttachmentPart(part) &&
+        (part.body.attachmentId || part.body.data !== null),
+    )
+    .map(attachmentMetadata)
+    .filter((attachment) => !attachment.inline);
+  return {
+    messageId: message.id,
+    threadId: message.threadId,
+    subject: headers.value("Subject"),
+    from: headers.value("From"),
+    date: headers.value("Date") ?? message.internalDate,
+    snippet: message.snippet,
+    attachments: attachments.map((attachment) => ({
+      ...attachment,
+      suggestedActions: [
+        {
+          tool: "get_company_email_attachment",
+          input: {
+            mailbox,
+            messageId: message.id,
+            attachmentId: attachment.attachmentId,
+          },
+          reason: "Retrieve the original file and its readable content.",
+        },
+        ...(isPdfAttachment(attachment)
+          ? [
+              {
+                tool: "import_policy_files" as const,
+                reason:
+                  "If the retrieved PDF is a bound policy for a resolved client, import it with exact confirmation. Quotes belong in procurement.",
+              },
+            ]
+          : []),
+      ],
+    })),
+    suggestedActions: [
+      {
+        tool: "read_company_email_thread",
+        input: { mailbox, threadId: message.threadId },
+        reason: "Read the conversation to confirm current facts.",
+      },
+    ],
+  };
+}
+
+/** Bounded, read-only scan of one mailbox; follow-up writes use their own confirmed tools. */
+export async function scanWorkspaceMailbox(
+  dependencies: GoogleWorkspaceToolDependencies,
+  input: OperatorGoogleWorkspaceScanMailboxInput,
+): Promise<OperatorGoogleWorkspaceScanMailboxResult> {
+  const { config, provider } = dependencies;
+  const terms = input.query.trim();
+  if (!terms || terms.length > GOOGLE_WORKSPACE_LIMITS.maxScanQueryChars) {
+    throw new Error(
+      `Mailbox scan query must be 1 to ${GOOGLE_WORKSPACE_LIMITS.maxScanQueryChars} characters.`,
+    );
+  }
+  const limit = input.limit ?? GOOGLE_WORKSPACE_LIMITS.defaultScanCandidates;
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > GOOGLE_WORKSPACE_LIMITS.maxScanCandidates
+  ) {
+    throw new Error(
+      `Mailbox scan limit must be between 1 and ${GOOGLE_WORKSPACE_LIMITS.maxScanCandidates}.`,
+    );
+  }
+  const { start, end } = scanRange(input);
+  const requested = input.mailbox ?? dependencies.operatorMailbox;
+  if (!requested) throw new Error("Choose a company mailbox to scan.");
+  const mailbox = await resolveMailbox(provider, config, requested);
+  const query = `(${terms}) -in:drafts after:${start / 1000} before:${(end + DAY_MS) / 1000}`;
+  const page = await provider.listMessages({
+    mailbox,
+    query,
+    maxResults: limit,
+  });
+  const deadline = dayjs().valueOf() + TOOL_WORK_BUDGET_MS;
+  const candidates: OperatorGoogleWorkspaceScanCandidate[] = [];
+  const errors: OperatorGoogleWorkspaceScanMailboxResult["errors"] = [];
+  for (
+    let offset = 0;
+    offset < Math.min(page.messages.length, limit);
+    offset += 5
+  ) {
+    const references = page.messages.slice(
+      offset,
+      Math.min(offset + 5, limit),
+    );
+    const batch = await Promise.all(
+      references.map(async (reference) => {
+        if (dayjs().valueOf() >= deadline) {
+          errors.push({
+            messageId: reference.id,
+            error: "Scan time budget reached. Narrow the query or date range.",
+          });
+          return null;
+        }
+        try {
+          const message = await provider.getMessageFull({
+            mailbox,
+            messageId: reference.id,
+          });
+          const receivedAt = Number(message.internalDate);
+          if (
+            message.id !== reference.id ||
+            message.threadId !== reference.threadId ||
+            !Number.isFinite(receivedAt) ||
+            receivedAt < start ||
+            receivedAt >= end + DAY_MS ||
+            message.labelIds?.some((label) =>
+              ["DRAFT", "SPAM", "TRASH"].includes(label),
+            )
+          ) {
+            errors.push({
+              messageId: reference.id,
+              error: "Message is outside the eligible scan window.",
+            });
+            return null;
+          }
+          return await scanCandidate(mailbox, message);
+        } catch (error) {
+          errors.push({
+            messageId: reference.id,
+            error: sanitizeGoogleWorkspaceError(error),
+          });
+          return null;
+        }
+      }),
+    );
+    candidates.push(...batch.filter((candidate) => candidate !== null));
+  }
+  return {
+    mailbox,
+    query,
+    dateFrom: dayjs(start).toISOString().slice(0, 10),
+    dateTo: dayjs(end).toISOString().slice(0, 10),
+    candidates,
+    errors,
+    hasMoreMatches: Boolean(page.nextPageToken) || page.messages.length > limit,
+    completeness:
+      page.nextPageToken || page.messages.length > limit || errors.length
+        ? "partial"
+        : "complete",
+  };
+}
+
 async function executeGoogleWorkspaceTool(
   dependencies: GoogleWorkspaceToolDependencies,
   toolName: OperatorGoogleWorkspaceToolName,
@@ -1249,6 +1455,8 @@ async function executeGoogleWorkspaceTool(
       );
       return { result: output.result, attachments: [output.attachment] };
     }
+    case "scan_workspace_mailbox":
+      return { result: await scanWorkspaceMailbox(dependencies, parsed.input) };
   }
 }
 
@@ -1276,79 +1484,4 @@ export async function runGoogleWorkspaceTool(
     );
   }
   return output;
-}
-
-/** Scheduled collection shares MIME/header parsing while persisting the complete body in pages. */
-export async function readGoogleWorkspaceScanMessage(
-  provider: GoogleWorkspaceProvider,
-  mailbox: string,
-  message: GoogleWorkspaceMessage,
-) {
-  const unavailable = await loadExternalBodyParts(provider, mailbox, message, {
-    bytes: 35 * 1024 * 1024,
-    requests: 100,
-    deadline: dayjs().add(3, "minute").valueOf(),
-  });
-  return (
-    await threadMessage(
-      mailbox,
-      message,
-      0,
-      Number.MAX_SAFE_INTEGER,
-      unavailable,
-    )
-  ).value;
-}
-
-/** Resolve the connector's mailbox-bound opaque MIME-part reference to original bytes. */
-export async function readGoogleWorkspaceScanAttachment(
-  provider: GoogleWorkspaceProvider,
-  args: {
-    mailbox: string;
-    messageId: string;
-    threadId: string;
-    attachmentId: string;
-  },
-) {
-  const message = await provider.getMessageFull(args);
-  if (
-    message.id !== args.messageId ||
-    message.threadId !== args.threadId ||
-    message.labelIds?.some((label) =>
-      ["DRAFT", "SPAM", "TRASH"].includes(label),
-    )
-  )
-    throw new Error("The source message is no longer eligible.");
-  const located = args.attachmentId.startsWith("part:")
-    ? locatedAttachment(message, args.attachmentId)
-    : undefined;
-  if (!located)
-    throw new Error("The source attachment is no longer available.");
-  const metadata = attachmentMetadata(located);
-  if (metadata.size > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes)
-    throw new Error("The source attachment exceeds the import limit.");
-  const data = located.part.body.attachmentId
-    ? (
-        await provider.getAttachment({
-          ...args,
-          attachmentId: located.part.body.attachmentId,
-        })
-      ).data
-    : located.part.body.data;
-  if (data === null) throw new Error("The source attachment has no content.");
-  if (
-    data.length >
-    Math.ceil(GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes / 3) * 4 + 4
-  )
-    throw new Error("The source attachment exceeds the import limit.");
-  const bytes = decodePartData(data);
-  if (bytes.byteLength > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes)
-    throw new Error("The source attachment exceeds the import limit.");
-  return {
-    bytes,
-    ...metadata,
-    filename: normalizeAgentAttachmentFilename(metadata.filename),
-    contentType: normalizeAgentAttachmentContentType(metadata.contentType),
-    size: bytes.byteLength,
-  };
 }

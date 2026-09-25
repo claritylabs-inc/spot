@@ -1,15 +1,18 @@
 export const MCP_CHAT_WRITE_TOOL_NAMES = new Set([
+  "draft_email",
+  "update_email_draft",
+  "attach_policy_pdf_to_draft",
+  "attach_file_to_draft",
+  "attach_coi_to_draft",
+  "send_email_draft",
+  "cancel_email_draft",
   "import_requirement_attachments",
   "save_note",
   "confirm_policy_fact",
   "generate_coi",
+  "update_company_wiki",
+  "create_compliance_requirement",
   "create_imessage_group_chat",
-  "import_connected_email_policy_attachments",
-  "import_connected_email_requirement_attachments",
-  "send_connected_vendor_invite",
-]);
-
-export const MAILBOX_COORDINATOR_WRITE_TOOL_NAMES = new Set([
   "import_connected_email_policy_attachments",
   "import_connected_email_requirement_attachments",
   "save_connected_email_attachments_to_thread",

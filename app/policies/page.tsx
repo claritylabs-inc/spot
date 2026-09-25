@@ -28,7 +28,6 @@ type PolicyRow = {
   carrierIdentity?: CarrierIdentity | null;
   policyDetailOverrides?: unknown;
   generalAgent?: { agencyName?: string } | null;
-  mga?: string | null;
   policyNumber?: string | null;
   productIdentity?: unknown;
   programName?: string | null;
@@ -37,6 +36,7 @@ type PolicyRow = {
   expirationDate?: string | null;
   policyTermType?: string | null;
   pipelineStatus?: string;
+  pipelineError?: string | null;
   extractionDataStage?: string | null;
   uploadedBySide?:
     | "broker"
@@ -142,9 +142,7 @@ export default function PoliciesPage() {
                 carrier={policy.carrier ?? "Carrier not identified"}
                 carrierIdentity={policy.carrierIdentity}
                 policyDetailOverrides={policy.policyDetailOverrides}
-                generalAgent={
-                  policy.generalAgent?.agencyName ?? policy.mga ?? undefined
-                }
+                generalAgent={policy.generalAgent?.agencyName ?? undefined}
                 policyNumber={
                   policy.policyNumber ?? "Policy number unavailable"
                 }
@@ -155,6 +153,7 @@ export default function PoliciesPage() {
                 expirationDate={policy.expirationDate ?? undefined}
                 policyTermType={policy.policyTermType ?? undefined}
                 pipelineStatus={policy.pipelineStatus}
+                pipelineError={policy.pipelineError ?? undefined}
                 extractionDataStage={policy.extractionDataStage ?? undefined}
                 uploadedBySide={policy.uploadedBySide}
                 href={`/policies/${policy._id}`}

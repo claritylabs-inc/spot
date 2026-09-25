@@ -17,6 +17,10 @@ import {
 import { typeStyle } from "@/lib/typography";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
+  AppShellPortal,
+  useOptionalAppShellSlots,
+} from "@/components/app-shell-slots";
+import {
   PresentationContext,
   type EvidenceInspection,
   type PresentationFollowUp,
@@ -101,6 +105,18 @@ class PresentationBoundary extends Component<
   render() {
     return this.state.failed ? null : this.props.children;
   }
+}
+
+/** Record and evidence details open in the app shell's right panel. */
+function PresentationDetailPanel({ children }: { children: ReactNode }) {
+  if (useOptionalAppShellSlots()) {
+    return <AppShellPortal slot="artifactPanel">{children}</AppShellPortal>;
+  }
+  return (
+    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-background">
+      {children}
+    </div>
+  );
 }
 
 export function ChatPresentationView({
@@ -209,7 +225,7 @@ export function ChatPresentationView({
             </JSONUIProvider>
           </div>
           {selected ? (
-            <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-background">
+            <PresentationDetailPanel>
               <SettingsDrawer
                 open
                 onOpenChange={(open) => {
@@ -254,7 +270,7 @@ export function ChatPresentationView({
                   </p>
                 )}
               </SettingsDrawer>
-            </div>
+            </PresentationDetailPanel>
           ) : null}
         </PresentationContext.Provider>
       </PresentationBoundary>

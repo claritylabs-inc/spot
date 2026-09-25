@@ -11,10 +11,7 @@ import { Archive, ArchiveRestore, Loader2, Pencil, RefreshCw } from "lucide-reac
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
-import { Input } from "@claritylabs-inc/ui/components/input";
-import { Label } from "@claritylabs-inc/ui/components/label";
 import {
   OperationalItem,
   OperationalLabelValueList,
@@ -24,7 +21,7 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
+import { CertificateHolderFields } from "./certificate-holder-fields";
 import {
   Table,
   TableBody,
@@ -57,7 +54,6 @@ export type CertificatePolicyRecord = {
   _id: Id<"policies">;
   carrier?: string;
   security?: string;
-  mga?: string;
   policyNumber?: string;
   insuredName?: string;
   effectiveDate?: string;
@@ -704,157 +700,16 @@ export function CertificateDetailPanel({
           className="space-y-4"
           onSubmit={submitHolderEdit}
         >
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-holder-name">Certificate holder</Label>
-              <Input
-                id="certificate-edit-holder-name"
-                value={activeDraft.displayName}
-                onChange={(event) => updateDraft({ displayName: event.target.value })}
-                placeholder="Company or individual name"
-                autoComplete="organization"
-                autoFocus
-                disabled={savingHolder}
-                aria-invalid={holderNameInvalid}
-              />
-              {holderNameInvalid ? (
-                <p className={`text-destructive ${typeStyle("caption.default")}`}>
-                  Enter a certificate holder name.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-contact">Holder contact</Label>
-              <Input
-                id="certificate-edit-contact"
-                value={activeDraft.contactName}
-                onChange={(event) => updateDraft({ contactName: event.target.value })}
-                placeholder="Attention contact"
-                autoComplete="name"
-                disabled={savingHolder}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-email">Holder email</Label>
-              <Input
-                id="certificate-edit-email"
-                type="email"
-                value={activeDraft.email}
-                onChange={(event) => updateDraft({ email: event.target.value })}
-                placeholder="certificates@example.com"
-                autoComplete="email"
-                disabled={savingHolder}
-                aria-invalid={holderEmailInvalid}
-              />
-              {holderEmailInvalid ? (
-                <p className={`text-destructive ${typeStyle("caption.default")}`}>
-                  Enter a valid email address.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-phone">Holder phone</Label>
-              <PhoneInput
-                id="certificate-edit-phone"
-                value={activeDraft.phone || undefined}
-                onChange={(phone) => updateDraft({ phone: phone ?? "" })}
-                defaultCountry="US"
-                autoComplete="tel"
-                disabled={savingHolder}
-                aria-invalid={holderPhoneInvalid}
-              />
-              {holderPhoneInvalid ? (
-                <p className={`text-destructive ${typeStyle("caption.default")}`}>
-                  Enter a valid phone number with country code.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-address-1">Address</Label>
-              <AddressAutofillInput
-                id="certificate-edit-address-1"
-                value={{
-                  street1: activeDraft.addressLine1,
-                  street2: activeDraft.addressLine2,
-                  city: activeDraft.city,
-                  state: activeDraft.state,
-                  zip: activeDraft.postalCode,
-                  country: activeDraft.country,
-                }}
-                onChange={(address) => updateDraft({
-                  addressLine1: address.street1 ?? "",
-                  addressLine2: address.street2 ?? "",
-                  city: address.city ?? "",
-                  state: address.state ?? "",
-                  postalCode: address.zip ?? "",
-                  country: address.country ?? "",
-                })}
-                display="street1"
-                placeholder="Search for an address"
-                autoComplete="section-certificate-edit address-line1"
-                disabled={savingHolder}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-address-2">Address line 2</Label>
-              <Input
-                id="certificate-edit-address-2"
-                value={activeDraft.addressLine2}
-                onChange={(event) => updateDraft({ addressLine2: event.target.value })}
-                placeholder="Suite, floor, attention line"
-                autoComplete="section-certificate-edit address-line2"
-                disabled={savingHolder}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_72px_96px]">
-              <div className="space-y-2">
-                <Label htmlFor="certificate-edit-city">City</Label>
-                <Input
-                  id="certificate-edit-city"
-                  value={activeDraft.city}
-                  onChange={(event) => updateDraft({ city: event.target.value })}
-                  autoComplete="section-certificate-edit address-level2"
-                  disabled={savingHolder}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="certificate-edit-state">State</Label>
-                <Input
-                  id="certificate-edit-state"
-                  value={activeDraft.state}
-                  onChange={(event) => updateDraft({ state: event.target.value })}
-                  autoComplete="section-certificate-edit address-level1"
-                  disabled={savingHolder}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="certificate-edit-postal-code">ZIP</Label>
-                <Input
-                  id="certificate-edit-postal-code"
-                  value={activeDraft.postalCode}
-                  onChange={(event) => updateDraft({ postalCode: event.target.value })}
-                  autoComplete="section-certificate-edit postal-code"
-                  disabled={savingHolder}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="certificate-edit-country">Country</Label>
-              <Input
-                id="certificate-edit-country"
-                value={activeDraft.country}
-                onChange={(event) => updateDraft({ country: event.target.value })}
-                placeholder="United States"
-                autoComplete="section-certificate-edit country-name"
-                disabled={savingHolder}
-              />
-            </div>
+          <CertificateHolderFields
+            value={activeDraft}
+            onChange={updateDraft}
+            idPrefix="certificate-edit"
+            disabled={Boolean(savingHolder)}
+            autoFocusName
+            invalidName={holderNameInvalid}
+            invalidEmail={holderEmailInvalid}
+            invalidPhone={holderPhoneInvalid}
+          />
         </form>
       ) : row ? (
         <div className="flex flex-col gap-5">

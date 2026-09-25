@@ -29,7 +29,8 @@ export const SLACK_PROCESSING_REACTIONS = [
   "bar_chart",
   "sparkles",
 ] as const;
-export const SLACK_REACTION_TOOL_NAME = "choose_slack_reaction";
+export type SlackProcessingReaction =
+  (typeof SLACK_PROCESSING_REACTIONS)[number];
 
 const TOOL_LABELS: Record<string, string> = {
   lookup_address: "Validated the address",
@@ -44,12 +45,27 @@ const TOOL_LABELS: Record<string, string> = {
   lookup_vendor_policies: "Reviewed vendor policies",
   lookup_vendor_compliance: "Checked vendor compliance",
   send_email: "Prepared the email",
-  email_expert: "Prepared the email",
+  draft_email: "Prepared the email draft",
+  update_email_draft: "Updated the email draft",
+  attach_policy_pdf_to_draft: "Attached the policy PDF to the draft",
+  attach_file_to_draft: "Attached the file to the draft",
+  attach_coi_to_draft: "Attached the certificate to the draft",
+  list_email_drafts: "Reviewed email drafts",
+  send_email_draft: "Checked email delivery",
+  cancel_email_draft: "Cancelled the email draft",
+  expand_tools: "Loaded more tools",
   save_note: "Saved the note",
   confirm_policy_fact: "Confirmed policy facts",
   generate_coi: "Generated the certificate",
   request_human_service: "Requested human service",
-  coordinate_mailbox_task: "Coordinated the mailbox task",
+  search_connected_email: "Searched the mailbox",
+  read_connected_email: "Read the email",
+  read_connected_email_attachment: "Read the email attachment",
+  import_connected_email_policy_attachments: "Imported policies from email",
+  import_connected_email_requirement_attachments: "Imported requirements from email",
+  save_connected_email_attachments_to_thread: "Saved email attachments",
+  save_connected_email_message_to_thread: "Saved the email",
+  send_connected_vendor_invite: "Sent the vendor invite",
   web_research: "Researched the web",
   render_email_preview: "Rendered the email preview",
 };
@@ -225,33 +241,11 @@ function certificateAttachments(
   );
 }
 
-function feedbackBlock(args: {
-  messageId: Id<"threadMessages">;
-  revision: number;
-  actionToken: string;
-}): SlackBlock {
-  return {
-    type: "context_actions",
-    block_id: blockId("spot-feedback", args.messageId, args.revision),
-    elements: [
-      {
-        type: "feedback_buttons",
-        action_id: "spot_response_feedback",
-        positive_button: {
-          text: { type: "plain_text", text: "Helpful" },
-          value: `positive:${args.actionToken}`,
-          accessibility_label: "Mark this Spot response as helpful",
-        },
-        negative_button: {
-          text: { type: "plain_text", text: "Needs work" },
-          value: `negative:${args.actionToken}`,
-          accessibility_label: "Mark this Spot response as needing work",
-        },
-      },
-    ],
-  };
-}
-
+/**
+ * Final Slack reply. Uses only long-established Block Kit primitives
+ * (section, context, actions) so one shape is accepted for every current
+ * case; callers fall back to plaintext when Slack rejects the message.
+ */
 export function buildSlackFinalBlocks(args: {
   message: Pick<
     Doc<"threadMessages">,
@@ -266,9 +260,7 @@ export function buildSlackFinalBlocks(args: {
   const completedTools = (args.message.agentSteps ?? [])
     .filter(
       (step): step is SlackToolStep =>
-        step.type === "tool" &&
-        step.completed === true &&
-        step.name !== SLACK_REACTION_TOOL_NAME,
+        step.type === "tool" && step.completed === true,
     )
     .slice(-4);
   const blocks: SlackBlock[] = [
@@ -307,155 +299,12 @@ export function buildSlackFinalBlocks(args: {
   if (args.emailDraft) {
     const attachmentLabel =
       args.emailDraft.attachmentCount > 0
-        ? ` · ${args.emailDraft.attachmentCount} attachment${args.emailDraft.attachmentCount === 1 ? "" : "s"}`
-        : "";
-    blocks.push({
-      type: "card",
-      block_id: blockId("spot-email-draft", args.message._id, args.revision),
-      title: { type: "plain_text", text: "Email draft" },
-      subtitle: {
-        type: "plain_text",
-        text: truncate(`To ${args.emailDraft.recipientEmail}`, 150),
-      },
-      body: {
-        type: "plain_text",
-        text: truncate(`${args.emailDraft.subject}${attachmentLabel}`, 200),
-      },
-      actions: [
-        {
-          type: "button",
-          action_id: "spot_open_email_draft",
-          value: args.actionToken,
-          url: args.emailDraft.reviewUrl,
-          text: { type: "plain_text", text: "Review draft" },
-          accessibility_label: `Review email draft to ${args.emailDraft.recipientEmail}`,
-        },
-      ],
-    });
-  }
-
-  for (const [index, policy] of args.policies.slice(0, 3).entries()) {
-    blocks.push({
-      type: "card",
-      block_id: blockId("spot-policy", policy._id, args.revision, index),
-      title: { type: "plain_text", text: truncate(policyTitle(policy), 150) },
-      subtitle: {
-        type: "plain_text",
-        text: policy.extractionDataStage === "preview" ? "Preliminary policy details" : "Policy details",
-      },
-      body: { type: "plain_text", text: policyBody(policy) || "Open this policy in Spot." },
-      actions: [
-        {
-          type: "button",
-          action_id: "spot_open_policy",
-          value: args.actionToken,
-          url: slackPolicyUrl(policy._id),
-          text: { type: "plain_text", text: "Open policy" },
-          accessibility_label: `Open ${policyTitle(policy)} in Spot`,
-        },
-      ],
-    });
-  }
-
-  for (const [index, attachment] of certificateAttachments(args.message)
-    .slice(0, 2)
-    .entries()) {
-    blocks.push({
-      type: "card",
-      block_id: blockId("spot-certificate", args.message._id, args.revision, index),
-      title: { type: "plain_text", text: "Certificate ready" },
-      subtitle: { type: "plain_text", text: "Attached in this Slack conversation" },
-      body: {
-        type: "plain_text",
-        text: truncate(attachment.filename, 200),
-      },
-      actions: [
-        {
-          type: "button",
-          action_id: "spot_open_certificate",
-          value: args.actionToken,
-          url: slackCertificateUrl(args.policies[0]?._id),
-          text: { type: "plain_text", text: "View certificates" },
-          accessibility_label: "Open certificates in Spot",
-        },
-      ],
-    });
-  }
-
-  const actionElements: SlackBlock[] = [];
-  if (args.showHandoff) {
-    actionElements.push({
-      type: "button",
-      action_id: "spot_request_human",
-      value: args.actionToken,
-      text: { type: "plain_text", text: "Ask a human" },
-      accessibility_label: "Request help from a Spot service team member",
-    });
-  }
-  if (actionElements.length) {
-    blocks.push({
-      type: "actions",
-      block_id: blockId("spot-actions", args.message._id, args.revision),
-      elements: actionElements,
-    });
-  }
-
-  blocks.push(feedbackBlock({
-    messageId: args.message._id,
-    revision: args.revision,
-    actionToken: args.actionToken,
-  }));
-  return blocks.slice(0, 50);
-}
-
-/**
- * Uses only long-established Block Kit primitives. Slack can reject a newly
- * introduced block type for an older workspace or surface, so callers retry
- * this renderer automatically before falling back to plaintext.
- */
-export function buildSlackClassicFinalBlocks(args: {
-  message: Pick<
-    Doc<"threadMessages">,
-    "_id" | "content" | "agentSteps" | "status" | "attachments"
-  >;
-  policies: Doc<"policies">[];
-  emailDraft?: SlackEmailDraftCard;
-  actionToken: string;
-  revision: number;
-  showHandoff: boolean;
-}): SlackBlock[] {
-  const blocks: SlackBlock[] = [
-    {
-      type: "section",
-      block_id: blockId(
-        "spot-classic-answer",
-        args.message._id,
-        args.revision,
-      ),
-      text: {
-        type: "mrkdwn",
-        text: truncate(
-          formatSlackAnswerText(args.message.content.trim()) ||
-            "I couldn't complete that request.",
-          3000,
-        ),
-      },
-    },
-  ];
-
-  if (args.emailDraft) {
-    const attachmentLabel =
-      args.emailDraft.attachmentCount > 0
         ? `\n${args.emailDraft.attachmentCount} attachment${args.emailDraft.attachmentCount === 1 ? "" : "s"}`
         : "";
     blocks.push(
       {
         type: "section",
-        block_id: blockId(
-          "spot-classic-email-draft",
-          args.message._id,
-          args.revision,
-        ),
+        block_id: blockId("spot-email-draft", args.message._id, args.revision),
         text: {
           type: "mrkdwn",
           text: `*Email draft*\nTo ${escapeMrkdwn(args.emailDraft.recipientEmail)}\n${escapeMrkdwn(args.emailDraft.subject)}${attachmentLabel}`,
@@ -464,7 +313,7 @@ export function buildSlackClassicFinalBlocks(args: {
       {
         type: "actions",
         block_id: blockId(
-          "spot-classic-email-action",
+          "spot-email-action",
           args.message._id,
           args.revision,
         ),
@@ -486,7 +335,7 @@ export function buildSlackClassicFinalBlocks(args: {
     blocks.push(
       {
         type: "section",
-        block_id: blockId("spot-classic-policy", policy._id, args.revision, index),
+        block_id: blockId("spot-policy", policy._id, args.revision, index),
         text: {
           type: "mrkdwn",
           text: `*${escapeMrkdwn(policyTitle(policy))}*\n${escapeMrkdwn(policyBody(policy) || "Open this policy in Spot.")}`,
@@ -494,7 +343,7 @@ export function buildSlackClassicFinalBlocks(args: {
       },
       {
         type: "actions",
-        block_id: blockId("spot-classic-policy-action", policy._id, args.revision, index),
+        block_id: blockId("spot-policy-action", policy._id, args.revision, index),
         elements: [
           {
             type: "button",
@@ -514,7 +363,7 @@ export function buildSlackClassicFinalBlocks(args: {
     .entries()) {
     blocks.push({
       type: "section",
-      block_id: blockId("spot-classic-certificate", args.message._id, args.revision, index),
+      block_id: blockId("spot-certificate", args.message._id, args.revision, index),
       text: {
         type: "mrkdwn",
         text: `*Certificate ready*\n${escapeMrkdwn(truncate(attachment.filename, 200))}\nAttached in this Slack conversation.`,
@@ -530,24 +379,9 @@ export function buildSlackClassicFinalBlocks(args: {
     });
   }
 
-  const finalActions: SlackBlock[] = [
-    {
-      type: "button",
-      action_id: "spot_response_feedback_positive",
-      value: `positive:${args.actionToken}`,
-      text: { type: "plain_text", text: "Helpful" },
-      accessibility_label: "Mark this Spot response as helpful",
-    },
-    {
-      type: "button",
-      action_id: "spot_response_feedback_negative",
-      value: `negative:${args.actionToken}`,
-      text: { type: "plain_text", text: "Needs work" },
-      accessibility_label: "Mark this Spot response as needing work",
-    },
-  ];
+  const actionElements: SlackBlock[] = [];
   if (args.showHandoff) {
-    finalActions.push({
+    actionElements.push({
       type: "button",
       action_id: "spot_request_human",
       value: args.actionToken,
@@ -555,10 +389,13 @@ export function buildSlackClassicFinalBlocks(args: {
       accessibility_label: "Request help from a Spot service team member",
     });
   }
-  blocks.push({
-    type: "actions",
-    block_id: blockId("spot-classic-actions", args.message._id, args.revision),
-    elements: finalActions,
-  });
+  if (actionElements.length) {
+    blocks.push({
+      type: "actions",
+      block_id: blockId("spot-actions", args.message._id, args.revision),
+      elements: actionElements,
+    });
+  }
+
   return blocks.slice(0, 50);
 }

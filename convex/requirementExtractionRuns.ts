@@ -1,9 +1,7 @@
 import dayjs from "dayjs";
-import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { requireOperator } from "./lib/operatorIdentity";
 
 const TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -186,24 +184,5 @@ export const sweepExpired = internalMutation({
       .take(limit);
     for (const run of expired) await ctx.db.delete(run._id);
     return { deleted: expired.length };
-  },
-});
-
-export const listPaginated = query({
-  args: { paginationOpts: paginationOptsValidator },
-  handler: async (ctx, args) => {
-    await requireOperator(ctx);
-    const result = await ctx.db
-      .query("requirementExtractionRuns")
-      .withIndex("started")
-      .order("desc")
-      .paginate(args.paginationOpts);
-    const page = await Promise.all(
-      result.page.map(async (run) => ({
-        ...run,
-        orgName: (await ctx.db.get(run.orgId))?.name ?? "Unknown org",
-      })),
-    );
-    return { ...result, page };
   },
 });

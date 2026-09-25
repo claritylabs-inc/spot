@@ -659,10 +659,6 @@ describe("sourceTreePolicyFields", () => {
           sourceNodeIds: ["original-carrier"],
           sourceSpanIds: ["original-carrier-span"],
         },
-        carrierBrandId: "legacy-brand-cache",
-        carrierBrandStatus: "ready",
-        carrierBrandAttempts: 1,
-        carrierBrandAttemptedAt: 50,
         carrierIdentityEnrichmentStatus: "failed",
         carrierIdentityEnrichmentAttempts: 3,
         carrierIdentityEnrichmentAttemptedAt: 100,
@@ -679,10 +675,6 @@ describe("sourceTreePolicyFields", () => {
     expect(fields).toHaveProperty("carrierNaicNumber", undefined);
     expect(fields).toHaveProperty("carrierIdentity", undefined);
     expect(fields).toHaveProperty("carrierLegalName", undefined);
-    expect(fields).toHaveProperty("carrierBrandId", undefined);
-    expect(fields).toHaveProperty("carrierBrandStatus", undefined);
-    expect(fields).toHaveProperty("carrierBrandAttempts", undefined);
-    expect(fields).toHaveProperty("carrierBrandAttemptedAt", undefined);
     expect(fields).toHaveProperty("carrierIdentityEnrichmentStatus", undefined);
     expect(fields).toHaveProperty("carrierIdentityEnrichmentAttempts", undefined);
     expect(fields).toHaveProperty(

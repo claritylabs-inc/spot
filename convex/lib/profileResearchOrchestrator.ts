@@ -3,6 +3,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import { runProfileWebRetrieval } from "./webRetrieval";
 import {
   publicResearchAllowedDomains,
@@ -16,8 +17,23 @@ import {
   isLobCode,
 } from "./linesOfBusiness";
 
-export const RESEARCH_CONFIDENCE = 0.7;
 type Evidence = { topic: string; text: string; urls: string[] };
+type ResearchTrace = NonNullable<Parameters<typeof clRouterDecide>[0]["trace"]>;
+type ProfileIdentity = {
+  orgId: Id<"organizations">;
+  name: string;
+  website: string;
+  type: "client" | "broker";
+};
+type ProfileEvidence = {
+  evidence: Evidence[];
+  unresolvedFields: string[];
+  sourceUrls: string[];
+};
+type BrokerAppetite = {
+  writingStates: Array<{ code: string; confidence: number }>;
+  lineOfBusinessCodes: Array<{ code: string; confidence: number }>;
+};
 const COMMON_TOPICS = {
   identity:
     "legal company identity, history, and explicitly stated relationships; for insurance providers distinguish carrier/insurer, MGA, wholesaler, agency, broker and producer roles without inferring roles from partners",
@@ -36,13 +52,19 @@ const BROKER_TOPICS = {
 
 export async function gatherProfileEvidence(
   ctx: ActionCtx,
-  identity: {
-    orgId: Id<"organizations">;
-    name: string;
-    website: string;
-    type: "client" | "broker";
-  },
-) {
+  identity: ProfileIdentity,
+): Promise<ProfileEvidence> {
+  return gatherProfileEvidenceWithTrace(ctx, identity, {
+    traceId: `profile-research:${identity.orgId}`,
+    channel: "company_research",
+  });
+}
+
+export async function gatherProfileEvidenceWithTrace(
+  ctx: ActionCtx,
+  identity: ProfileIdentity,
+  trace: ResearchTrace,
+): Promise<ProfileEvidence> {
   const topics: Record<string, string> = {
     ...COMMON_TOPICS,
     ...(identity.type === "broker" ? BROKER_TOPICS : {}),
@@ -56,6 +78,7 @@ export async function gatherProfileEvidence(
       {
         orgId: identity.orgId,
         task: "profile_research_orchestration",
+        trace,
         state: JSON.stringify({
           identity: {
             name: identity.name,
@@ -82,7 +105,7 @@ export async function gatherProfileEvidence(
     );
     unresolvedFields = Object.keys(topics).filter((key) => {
       const answer = judged.answers[key];
-      return answer?.type !== "noul" || answer.noul <= RESEARCH_CONFIDENCE;
+      return answer?.type !== "noul" || !jevProceeds(answer.noul);
     });
     if (!unresolvedFields.length || wave === 3) break;
     const selected = unresolvedFields
@@ -95,6 +118,8 @@ export async function gatherProfileEvidence(
         attempts[topic] = (attempts[topic] ?? 0) + 1;
         const officialOnly = attempts[topic] === 1;
         const result = await runProfileWebRetrieval(ctx, identity.orgId, {
+          trace,
+          taskKind: "profile_research_topic_retrieval",
           query:
             `${identity.name} ${officialOnly ? `site:${new URL(identity.website).hostname}` : new URL(identity.website).hostname} ${topics[topic]} ${officialOnly ? "" : "regulator registry authoritative public sources"}`.slice(
               0,
@@ -124,6 +149,7 @@ export async function gatherProfileEvidence(
             {
               orgId: identity.orgId,
               task: "profile_research_sources",
+              trace,
               state: JSON.stringify({
                 identity,
                 topic,
@@ -145,7 +171,7 @@ export async function gatherProfileEvidence(
           );
           urls = urls.filter((_, index) => {
             const answer = sourceCheck.answers[`source_${index}`];
-            return answer?.type === "noul" && answer.noul > RESEARCH_CONFIDENCE;
+            return answer?.type === "noul" && jevProceeds(answer.noul);
           });
           if (!urls.length)
             throw new Error(
@@ -155,8 +181,19 @@ export async function gatherProfileEvidence(
         return { topic, text: result.text.slice(0, 12_000), urls };
       }),
     );
-    for (const result of results)
+    for (const [index, result] of results.entries()) {
       if (result.status === "fulfilled") evidence.push(result.value);
+      else
+        console.warn("[company-research] topic retrieval failed", {
+          traceId: trace.traceId,
+          orgId: identity.orgId,
+          topic: selected[index],
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
+        });
+    }
   }
   return {
     evidence,
@@ -173,7 +210,20 @@ export async function selectBrokerAppetite(
   orgId: Id<"organizations">,
   identity: { name: string; website: string },
   evidence: Evidence[],
-) {
+): Promise<BrokerAppetite> {
+  return selectBrokerAppetiteWithTrace(ctx, orgId, identity, evidence, {
+    traceId: `profile-research:${orgId}`,
+    channel: "company_research",
+  });
+}
+
+export async function selectBrokerAppetiteWithTrace(
+  ctx: ActionCtx,
+  orgId: Id<"organizations">,
+  identity: { name: string; website: string },
+  evidence: Evidence[],
+  trace: ResearchTrace,
+): Promise<BrokerAppetite> {
   const options = [
     ...USPS_STATE_CODES.map((code) => ({
       key: `state_${code}`,
@@ -198,6 +248,7 @@ export async function selectBrokerAppetite(
         {
           orgId,
           task: "broker_research_appetite",
+          trace,
           state: JSON.stringify({ identity, evidence }),
           questions: Object.fromEntries(
             batch.map((option) => [
@@ -217,7 +268,7 @@ export async function selectBrokerAppetite(
       );
       return batch.flatMap((option) => {
         const answer = result.answers[option.key];
-        return answer?.type === "noul" && answer.noul > RESEARCH_CONFIDENCE
+        return answer?.type === "noul" && jevProceeds(answer.noul)
           ? [
               {
                 ...option,

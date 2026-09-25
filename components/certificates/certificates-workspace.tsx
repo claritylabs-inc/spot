@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
 import { BadgeCheck } from "lucide-react";
@@ -12,22 +11,15 @@ import { AppShell } from "@/components/app-shell";
 import {
   CertificateDetailPanel,
   CertificatesTable,
-  CERTIFICATE_PANEL_CONTAINER_CLASS,
   certificatePolicyLabel,
   certificateVersionActionInput,
-  formatCertificateTime,
   type CertificateHolderDraft,
-  type CertificateHolderRecord,
-  type CertificatePolicyRecord,
-  type CertificateVersionRecord,
   type PolicyCertificateRecord,
 } from "@/components/certificates/certificate-workspace";
-import { StatusLabel, StatusTag, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
+import { StatusLabel, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import {
-  OperationalItem,
   OperationalPanel,
   OperationalPanelBody,
-  OperationalPanelHeader,
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
@@ -46,7 +38,7 @@ import { usePdf } from "@/components/pdf-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 
-type CertificateWorkspaceTab = "active" | "review" | "archived";
+type CertificateWorkspaceTab = "active" | "archived";
 type CertificatePolicyFilter = "all" | `policy:${string}`;
 
 export type CertificatesWorkspaceShellArgs = {
@@ -59,39 +51,16 @@ export type CertificatesWorkspaceShellArgs = {
 export type CertificatesWorkspaceProps = {
   orgId?: Id<"organizations">;
   readOnly?: boolean;
-  policyHref?: (policyId: Id<"policies">) => string;
   renderShell?: (args: CertificatesWorkspaceShellArgs) => ReactNode;
-};
-
-type CertificateWorkflowJob = {
-  _id: Id<"certificateWorkflowJobs">;
-  certificateId: Id<"policyCertificates">;
-  certificateVersionId?: Id<"certificateVersions">;
-  holderId: Id<"certificateHolders">;
-  policyId: Id<"policies">;
-  policyVersionId?: Id<"policyVersions">;
-  kind: string;
-  status: string;
-  reason?: string;
-  recipientName?: string;
-  recipientEmail?: string;
-  lastError?: string;
-  createdAt: number;
-  updatedAt: number;
-  holder?: CertificateHolderRecord | null;
-  policy?: CertificatePolicyRecord | null;
-  certificateVersion?: CertificateVersionRecord | null;
 };
 
 const TABS: Array<{ value: CertificateWorkspaceTab; label: string }> = [
   { value: "active", label: "Active" },
-  { value: "review", label: "Review" },
   { value: "archived", label: "Archived" },
 ];
 
 const TAB_STATUS: Record<CertificateWorkspaceTab, StatusPresentation> = {
   active: { tone: "success" },
-  review: { tone: "warning", indicator: "waiting" },
   archived: { tone: "neutral", indicator: "inactive" },
 };
 
@@ -120,72 +89,6 @@ function filterCertificates({
 }) {
   return rows.filter((row) =>
     policyFilter === "all" || certificatePolicyFilterValue(row) === policyFilter,
-  );
-}
-
-function jobTone(status: string) {
-  if (status === "failed" || status === "blocked_missing_contact") return "danger" as const;
-  if (status === "review_required") return "warning" as const;
-  if (status === "sent") return "success" as const;
-  if (status === "sending") return "info" as const;
-  return "neutral" as const;
-}
-
-function ReviewJobRow({
-  job,
-  policyHref,
-}: {
-  job: CertificateWorkflowJob;
-  policyHref: (policyId: Id<"policies">) => string;
-}) {
-  const href = policyHref(job.policyId);
-  return (
-    <OperationalItem>
-      <div className="flex min-w-0 flex-col gap-3 @xl/certificates-panel:flex-row @xl/certificates-panel:items-start @xl/certificates-panel:justify-between">
-        <div className="min-w-0 max-w-3xl">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <p className={`min-w-0 max-w-full truncate text-foreground ${typeStyle("body.medium")}`}>
-              {job.holder?.displayName ?? job.recipientName ?? "Certificate holder"}
-            </p>
-            <StatusTag
-              tone={jobTone(job.status)}
-              indicator={job.status === "review_required" ? "waiting" : job.status === "cancelled" ? "cancelled" : undefined}
-              className={typeStyle("label.tag")}
-            >
-              {job.status.replace(/_/g, " ")}
-            </StatusTag>
-          </div>
-          <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-            {job.reason ?? job.lastError ?? "Certificate review queued"}
-          </p>
-          <div className={`mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground/70 ${typeStyle("caption.default")}`}>
-            <Link
-              href={href}
-              className={`min-w-0 max-w-full truncate text-muted-foreground hover:text-foreground hover:underline ${typeStyle("control.button")}`}
-            >
-              {certificatePolicyLabel(job.policy)}
-            </Link>
-            <span className="text-muted-foreground/35" aria-hidden="true">
-              ·
-            </span>
-            <span className={`${typeStyle("body.default")}`}>{job.kind.replace(/_/g, " ")}</span>
-            <span className="text-muted-foreground/35" aria-hidden="true">
-              ·
-            </span>
-            <span>{formatCertificateTime(job.updatedAt)}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center @xl/certificates-panel:justify-end">
-          <PillButton
-            href={href}
-            variant="secondary"
-            size="compact"
-          >
-            Review
-          </PillButton>
-        </div>
-      </div>
-    </OperationalItem>
   );
 }
 
@@ -249,23 +152,19 @@ function CertificateEmptyPanel({
 
 function CertificatesPageContext({
   activeCount,
-  reviewCount,
 }: {
   activeCount: number;
-  reviewCount: number;
 }) {
   const { setPageContext } = usePageContext();
 
   useEffect(() => {
     setPageContext({
       pageType: "certificates",
-      summary: reviewCount > 0
-        ? `${activeCount} active certificate${activeCount === 1 ? "" : "s"} · ${reviewCount} review job${reviewCount === 1 ? "" : "s"}`
-        : `${activeCount} active certificate${activeCount === 1 ? "" : "s"}`,
+      summary: `${activeCount} active certificate${activeCount === 1 ? "" : "s"}`,
     });
 
     return () => setPageContext(null);
-  }, [activeCount, reviewCount, setPageContext]);
+  }, [activeCount, setPageContext]);
 
   return null;
 }
@@ -273,7 +172,6 @@ function CertificatesPageContext({
 export function CertificatesWorkspace({
   orgId: orgIdOverride,
   readOnly = false,
-  policyHref = (policyId) => `/policies/${policyId}?tab=certificates`,
   renderShell,
 }: CertificatesWorkspaceProps = {}) {
   const generateCertificate = useAction(api.certificates.generateForPolicy);
@@ -297,11 +195,6 @@ export function CertificatesWorkspace({
     api.certificateLifecycle.listForOrg,
     orgId ? { orgId } : "skip",
   ) as PolicyCertificateRecord[] | undefined;
-  const jobs = useCachedQuery(
-    "certificateWorkflowJobs.listForOrg",
-    api.certificateWorkflowJobs.listForOrg,
-    orgId ? { orgId } : "skip",
-  ) as CertificateWorkflowJob[] | undefined;
 
   const activeCertificates = useMemo(
     () =>
@@ -323,23 +216,14 @@ export function CertificatesWorkspace({
         ),
     [certificates],
   );
-  const reviewJobs = useMemo(
-    () =>
-      (jobs ?? [])
-        .filter((job) => !["sent", "cancelled"].includes(job.status))
-        .sort((left, right) => right.updatedAt - left.updatedAt),
-    [jobs],
-  );
   const selectedCertificate = useMemo(
     () =>
       (certificates ?? []).find((row) => row._id === selectedCertificateId) ??
       null,
     [certificates, selectedCertificateId],
   );
-  const hasReviewJobs = reviewJobs.length > 0;
   const visibleTabs = TABS.filter((item) =>
     item.value === "active" ||
-    (item.value === "review" && hasReviewJobs) ||
     (item.value === "archived" && archivedCertificates.length > 0),
   );
   const visibleTab = visibleTabs.some((item) => item.value === tab) ? tab : "active";
@@ -363,9 +247,7 @@ export function CertificatesWorkspace({
   );
 
   const isLoading =
-    (!orgIdOverride && viewerOrg === undefined) ||
-    certificates === undefined ||
-    jobs === undefined;
+    (!orgIdOverride && viewerOrg === undefined) || certificates === undefined;
 
   const archiveCertificate = useCallback(async (row: PolicyCertificateRecord) => {
     setArchivingCertificateId(row._id);
@@ -538,10 +420,7 @@ export function CertificatesWorkspace({
   ) : null;
   const content = (
     <>
-      <CertificatesPageContext
-        activeCount={activeCertificates.length}
-        reviewCount={reviewJobs.length}
-      />
+      <CertificatesPageContext activeCount={activeCertificates.length} />
       <div className="space-y-4">
         {!renderShell && visibleTabs.length > 1 ? (
           <Tabs
@@ -562,20 +441,6 @@ export function CertificatesWorkspace({
 
         {isLoading ? (
           <OperationalSkeletonList rows={4} />
-        ) : visibleTab === "review" ? (
-          <OperationalPanel
-            as="div"
-            className={CERTIFICATE_PANEL_CONTAINER_CLASS}
-          >
-            <OperationalPanelHeader title="Certificate review jobs" />
-            {reviewJobs.map((job) => (
-              <ReviewJobRow
-                key={job._id}
-                job={job}
-                policyHref={policyHref}
-              />
-            ))}
-          </OperationalPanel>
         ) : tableCertificates.length > 0 ? (
           <>
             <div>

@@ -11,7 +11,7 @@ import { internal } from "../_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { resolveImapDestination } from "../lib/imapDestination";
-import { preparePdfTextWithParserFallback } from "../lib/liteparsePreprocessor";
+import { extractPdfPlainText } from "../lib/pdfText";
 import {
   accessibleAccount,
   encryptPassword,
@@ -393,12 +393,12 @@ async function extractAttachmentText(attachment: ParsedMail["attachments"][numbe
   copy.set(attachment.content);
   const buffer = copy.buffer;
   if (type.includes("pdf") || lowerName.endsWith(".pdf")) {
-    const prepared = await preparePdfTextWithParserFallback({
+    const text = await extractPdfPlainText({
       pdfBytes: new Uint8Array(buffer),
       documentId: attachment.filename ?? "email-attachment",
       sourceKind: "attachment",
     });
-    return prepared.text;
+    return text ?? "";
   }
   if (type.includes("wordprocessingml") || lowerName.endsWith(".docx")) {
     return await extractDocxText(buffer);

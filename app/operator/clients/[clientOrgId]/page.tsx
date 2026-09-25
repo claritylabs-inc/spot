@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -15,7 +15,6 @@ import {
   setFeatureFlagPatch,
   type FeatureFlagId,
 } from "@/convex/lib/featureFlags";
-import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
@@ -50,13 +49,13 @@ import {
   parseOperatorClientSection,
   type OperatorClientPageTab,
 } from "./operator-client-tabs";
-import { OperatorClientSidebar } from "./operator-client-sidebar";
 import {
   OPERATOR_CLIENT_STATUSES,
   operatorClientStatuses,
   type OperatorClientRow,
 } from "../client-model";
 import { ClientLogoField } from "../client-logo-field";
+import { registerOperatorClientBeforeImpersonationStart } from "./operator-client-sidebar";
 import OperatorClientWikiPage from "./wiki/page";
 import { typeStyle } from "@/lib/typography";
 
@@ -331,13 +330,6 @@ function ClientWorkspace({
                   </div>
                 </OperationalPanelBody>
               </OperationalPanel>
-
-              {current && !current.activeImpersonation ? (
-                <WorkspaceScanActivity
-                  entityId={clientOrgId}
-                  onRightPanel={setRightPanel}
-                />
-              ) : null}
             </TabsContent>
             <TabsContent value="channels">
               <AgentChannelsSection
@@ -394,7 +386,6 @@ export default function OperatorClientPage() {
 function OperatorClientSettingsPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
   const searchParams = useSearchParams();
-  const current = useCachedOperatorCurrent();
   const clients = useCachedOperatorClients();
   const supportDetails = useQuery(api.operator.getClientSupportDetails, {
     clientOrgId: clientOrgId as Id<"organizations">,
@@ -402,15 +393,6 @@ function OperatorClientSettingsPage() {
   const [workspaceActions, setWorkspaceActions] =
     useState<React.ReactNode>(null);
   const [rightPanel, setRightPanel] = useState<React.ReactNode>(null);
-  const beforeImpersonationStartRef = useRef<(() => Promise<boolean>) | null>(
-    null,
-  );
-  const registerBeforeImpersonationStart = useCallback(
-    (handler: (() => Promise<boolean>) | null) => {
-      beforeImpersonationStartRef.current = handler;
-    },
-    [],
-  );
   const client = clients?.find((item) => item._id === clientOrgId) ?? null;
   const activeTab = parseOperatorClientSection(searchParams.get("tab"));
   const breadcrumbSection =
@@ -442,21 +424,6 @@ function OperatorClientSettingsPage() {
         )
       }
       rightPanel={rightPanel}
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorClientSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          clientOrgId={clientOrgId}
-          activeImpersonation={current?.activeImpersonation}
-          impersonationDisabled={!client}
-          beforeImpersonationStart={async () =>
-            beforeImpersonationStartRef.current?.()
-          }
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
     >
       <OperatorPageContextRegistration
         context={{
@@ -487,7 +454,9 @@ function OperatorClientSettingsPage() {
           supportDetails={supportDetails}
           setShellActions={setWorkspaceActions}
           setRightPanel={setRightPanel}
-          registerBeforeImpersonationStart={registerBeforeImpersonationStart}
+          registerBeforeImpersonationStart={
+            registerOperatorClientBeforeImpersonationStart
+          }
         />
       )}
     </AppShell>

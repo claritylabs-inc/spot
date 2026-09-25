@@ -98,10 +98,9 @@ warnings).
 | INTEGRATE | Client / Mailboxes and integrations | Open create/detail panels, validate missing/invalid input, inspect disconnect/recovery and OAuth denial; mark external authentication untested without a disposable account. |
 | CHANNEL | Operator / Channels | Inspect Slack/iMessage/MCP setup and linked identity, edit reversible local identity and restore; exercise mock Slack where configured; do not send to live channels. |
 | GWORKSPACE | Operator / Channels and agent | Sign in with captured local OTP, configure manual and Directory mailbox modes in the Google Workspace tab, verify validation, persistence, disabled/missing-credential failures, role boundaries, and the shared operator tool registry. Exercise a synthetic registered-tool model path and protected attachment behavior without Gmail writes; report live delegated-mailbox search/read/download as blocked unless an authorized service-account credential is present. |
-| GWSCAN | Operator / Channels and affected records | Follow [scheduled Workspace reconciliation acceptance](workspace-scan.md) for synthetic scheduled collection, activity review, conditional correction, safe record creation and client-visible outcome checks. Keep live scanning disabled. |
-| ROUTING | Operator / Routing | Inspect Routing/Models/Tools, refresh, filters and details; verify long data/mobile rendering. Shared router changes are read-only during local QA. |
+| GWSCAN | Operator / Channels and affected records | Use the read-only `scan_workspace_mailbox` operator tool; [retired scheduled-scan coverage](workspace-scan.md) is historical. Verify access control and confirm there are no writes or sends. |
+| ROUTING | Operator / Routing | Inspect routing call history, filters, and details; verify long data/mobile rendering. Model and web retrieval settings have no UI. |
 | TELEMETRY | Operator / Telemetry | Switch extraction/model views, inspect empty/populated failures and drill-down, verify recoverable errors and navigation. |
-| LEADS | Operator / Demo leads | Inspect empty state and synthetic public chat if locally available, open lead details and conversation, preserve prospect privacy. |
 | WEBMCP | Agent / signup, onboarding, client workspace | Run `node scripts/webmcp-e2e.mjs --seeded-client adyan@cove.dev`. Declarative signup/login/onboarding tools respond with structured results. A brand-new business reaches its workspace without an invite. Every client UI action runs directly as a tool through the UI's Convex functions. Tools register only for onboarded clients on their pages, with admin tools for admins only and read-only hints on reads, and all unregister on sign-out. |
 | PUBLIC | Anonymous / share, OAuth, weather | Inspect valid synthetic packet/email/iMessage links where fixture exists; invalid tokens fail safely, OAuth invalid requests disclose no secrets, weather renders responsively. |
 
@@ -128,8 +127,8 @@ baseline evidence, not a substitute for this run's regression checks.
 | REQUEST | Partial | Client seeded packet exposes `public.md` and allowed files without `private.md`, proposals, or market activity. Synthetic client request submitted and persisted in list; attachment sidebar/upload-failure recovery/download and direct navigation after creation passed. |
 | AGENT | Passed exercised local flows | Client policy question returns correct seeded declarations/limits and survives reload; cancellation, archive/restore and mobile rendering passed. A synthetic PDF can be staged/removed/restaged, read accurately, reopened from history and previewed after reload. |
 | PACKET, PROPOSAL, EMAIL | Passed exercised local flows | Packet-file autosave, immutable/revoked snapshots, public download/privacy, proposal gap/staleness, two-PDF extraction/review and email replay/classification/revision/download passed. Concurrency/failed-switch safeguards covered by focused tests; advanced edges listed below. |
-| LEADS | Passed synthetic populated lifecycle | Keyboard detail opening, stored lead facts/conversation, delete cancellation, confirmed deletion and mobile rendering passed. Internal fixture creation does not prove live public-demo ingress. |
-| WEBMCP | Passed scripted headless run (September 24, 2026), with model steps blocked | 171/174 checks passed. The other 3 were blocked because the local router rejected every job with 422: deeper requirement check, requirement import, and agent drafting. Artifact: `.context/qa/webmcp/results.json` plus screenshots. The run executed 95 imperative and all 7 declarative tools against native-local Convex, with email in capture mode. Policy upload: the client drawer, `upload_policy` combined/separate/duplicate/non-PDF, a member-role upload, own-upload archive/restore/cancel, extraction started, and Archive shown only on client uploads. Direct Convex calls: operator upload still works; connected clients, broker orgs, staff-upload archive, and extraction on another user's policy are rejected. Extraction completion needs the extraction worker, which was not running. Not executed: Slack, IMAP mailbox, and destructive profile deletion. It used a stub `modelContext`. |
+| LEADS (historical; public demo removed) | Passed synthetic populated lifecycle before removal | Keyboard detail opening, stored lead facts/conversation, delete cancellation, confirmed deletion and mobile rendering passed. Internal fixture creation does not prove live public-demo ingress. |
+| WEBMCP (historical catalog) | Passed scripted headless run (September 24, 2026), with model steps blocked | 171/174 checks passed. The other 3 were blocked because the local router rejected every job with 422: deeper requirement check, requirement import, and agent drafting. Artifact: `.context/qa/webmcp/results.json` plus screenshots. The run executed 95 imperative and all 7 declarative tools against native-local Convex, with email in capture mode. Policy upload: the client drawer, `upload_policy` combined/separate/duplicate/non-PDF, a member-role upload, own-upload archive/restore/cancel, extraction started, and Archive shown only on client uploads. Direct Convex calls: operator upload still works; connected clients, broker orgs, staff-upload archive, and extraction on another user's policy are rejected. Extraction completion needs the extraction worker, which was not running. Not executed: Slack, IMAP mailbox, and destructive profile deletion. It used a stub `modelContext`. |
 | NOTIFICATIONS | Passed local tray workflow | Empty baseline and two synthetic user-scoped items; opening a thread marks one read, mark-all clears the badge, both read states persist after reload. No outbound deliveries. |
 
 ## Batch 1: broker editing and reusable method
@@ -204,8 +203,7 @@ Browser evidence exposed broken broker Team context wiring, forbidden client
 onboarding upload, wiki/notification close-loss, silent empty organization
 names, PDF downloads opening tabs, and operator rich reads passing an unexpected
 idempotency argument. Repairs reuse existing contexts, auth entrypoints, autosave,
-blob downloads, and the audited action boundary. Native-local operator Models
-now selects the existing OpenAI GPT 5.6 Terra route; a fresh browser task returns
+blob downloads, and the audited action boundary. At the time of this historical run, the native-local operator Models view selected the existing OpenAI GPT 5.6 Terra route; a fresh browser task returned
 Cove limits grounded in Declarations page 1. Shared router configuration was not
 changed.
 
@@ -382,7 +380,7 @@ Final evidence: `procurement-regression.md`, `channel-leads-findings.md`,
 `channel-terminal-browser-mirror.png` under `.context/qa/platform/`.
 
 Remaining coverage limits: no live IMAP/OAuth-provider connection, Slack
-reinstallation, Photon traffic or public-demo provider ingress; these need
+reinstallation or Photon traffic; these need
 disposable external accounts/authorization. No binding, selection or account
 deletion was attempted. Expired-by-clock snapshots/OTPs, same-field broker races,
 two-browser stale packet editing and broker-specific snapshot variants were not
@@ -483,17 +481,13 @@ typecheck, and deployment. Those full checks were not redundantly rerun in this
 workspace.
 
 
-## Scheduled Workspace integration acceptance
+## Workspace scan coverage
 
-The [scheduled reconciliation ledger](workspace-scan.md) records collection,
-authorization, domain/import and UI evidence for the integrated feature. Final
-headless checks used captured local OTPs in isolated operator/client profiles:
-disabled defaults, keyboard activity and provenance, reported external purchase,
-conditional correction and later-change conflict, and client-safe mobile outcome.
-Fixtures were cleaned or restored. Visible desktop and live provider-to-extraction
-browser execution were not run; synthetic action tests cover that backend flow.
+The scheduled Workspace scan was removed. The [historical ledger](workspace-scan.md) is retired; current acceptance should invoke the read-only `scan_workspace_mailbox` operator tool with an authorized operator, then verify that no request, policy, or outbound message was created. Agent-scheduled workflows are tracked in Linear CLA-171.
 
-## Cloud live-review setup — September 14, 2026
+## Historical cloud live-review setup — September 14, 2026
+
+This section records behavior before Convex section extraction and removal of the operator Models UI. Its parser and model-setting steps are no longer runnable acceptance procedures.
 
 This run prepared a live review environment in the cloud workspace.
 It does not replace the platform-wide coverage ledger above. Screenshots,
@@ -510,8 +504,8 @@ untracked. The interactive desktop viewer uses workspace port 6080; the app uses
 | Client boundary | Client renewal detail contained shared packet/files and no proposal or market controls. Seeded policy card matched expected carrier and policy number. Backend authorization attacks and exhaustive policy editing checks were not part of this setup. | Passed visible boundary only |
 | Broker boundary | Profile and Team showed the seeded broker/admin with profile/team navigation. No procurement navigation was exposed. Evidence: `broker-reload.png`, `desktop-viewer.png`. | Passed visible boundary only |
 | Service readiness | Local Convex agent health reported `ok: true`; extraction, mock Slack, customer terminal iMessage, and operator terminal iMessage reported healthy local operation. Email remains capture-only. | Passed |
-| Native PDF conversion | Initial HTTP conversions failed because Amazon Linux glibc was too old for LiteParse. An isolated workspace-local glibc 2.41 loader repaired the worker launch; authenticated synthetic PDF conversion returned 200, expected text, two source spans, and one page image. Evidence: `parser-result.json`, `parser-smoke.mjs`. | Failed setup prerequisite, repaired and passed |
-| Operator agent | Required local operator route was initially unset. Selected OpenAI `gpt-5.6-terra` through the rendered Models tab, verified persistence, then submitted a read-only policy lookup through the portal. The response matched the seeded Cove policy and carrier. Shared router policy was unchanged. | Passed |
+| Historical native PDF conversion (retired worker) | Initial HTTP conversions failed because Amazon Linux glibc was too old for LiteParse. An isolated workspace-local glibc 2.41 loader repaired the worker launch; authenticated synthetic PDF conversion returned 200, expected text, two source spans, and one page image. Evidence: `parser-result.json`, `parser-smoke.mjs`. | Failed setup prerequisite, repaired and passed |
+| Historical operator agent setup | Required local operator route was initially unset. Selected OpenAI `gpt-5.6-terra` through the rendered Models tab, verified persistence, then submitted a read-only policy lookup through the portal. The response matched the seeded Cove policy and carrier. Shared router policy was unchanged. | Passed |
 
 The clearly named local QA agent thread and required local model selection are
 retained for review. Existing business fixtures and database were preserved.

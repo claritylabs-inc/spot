@@ -2,16 +2,12 @@ import type { ModelMessage } from "ai";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { preparePdfTextWithPdfJsMock, tryBuildParsedPdfTextMock } = vi.hoisted(
-  () => ({
-    preparePdfTextWithPdfJsMock: vi.fn(),
-    tryBuildParsedPdfTextMock: vi.fn(),
-  }),
-);
+const { extractPdfPlainTextMock } = vi.hoisted(() => ({
+  extractPdfPlainTextMock: vi.fn(),
+}));
 
-vi.mock("./liteparsePreprocessor", () => ({
-  preparePdfTextWithPdfJs: preparePdfTextWithPdfJsMock,
-  tryBuildParsedPdfText: tryBuildParsedPdfTextMock,
+vi.mock("./pdfText", () => ({
+  extractPdfPlainText: extractPdfPlainTextMock,
 }));
 
 import type { Id } from "../_generated/dataModel";
@@ -27,10 +23,7 @@ import {
 describe("shared agent attachment context", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tryBuildParsedPdfTextMock.mockResolvedValue(null);
-    preparePdfTextWithPdfJsMock.mockRejectedValue(
-      new Error("No readable PDF text"),
-    );
+    extractPdfPlainTextMock.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -161,7 +154,7 @@ describe("shared agent attachment context", () => {
     });
   });
 
-  test("keeps a PDF as required rich chat input when both parsers fail", async () => {
+  test("keeps a PDF as required rich chat input when pdf.js text extraction fails", async () => {
     vi.stubEnv("SPOT_ENV", "production");
     const fileId = "empty-parser-pdf" as Id<"_storage">;
     const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
@@ -195,8 +188,7 @@ describe("shared agent attachment context", () => {
       },
     ];
 
-    expect(tryBuildParsedPdfTextMock).toHaveBeenCalledOnce();
-    expect(preparePdfTextWithPdfJsMock).toHaveBeenCalledOnce();
+    expect(extractPdfPlainTextMock).toHaveBeenCalledOnce();
     expect(context.parts).toContainEqual({
       type: "file",
       data: new URL(reference),
@@ -263,7 +255,7 @@ describe("shared agent attachment context", () => {
     expect(context.names).toHaveLength(9);
 
     const pdfBytes = new Uint8Array(20 * 1024 * 1024);
-    tryBuildParsedPdfTextMock.mockResolvedValueOnce("Parsed policy evidence");
+    extractPdfPlainTextMock.mockResolvedValueOnce("Parsed policy evidence");
     const getUrl = vi.fn();
     const parsed = await buildAgentAttachmentParts(
       {

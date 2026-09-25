@@ -10,8 +10,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { generateObjectForOrg } from "../lib/models";
-import { ClRouterRequestError } from "../lib/clRouterClient";
-import { tryBuildParsedPdfText } from "../lib/liteparsePreprocessor";
+import { extractPdfPlainText } from "../lib/pdfText";
 import {
   REQUIREMENT_LIMIT_KINDS,
   REQUIREMENT_PROVISIONS,
@@ -151,7 +150,6 @@ type ExtractedFileText = {
 };
 
 const MAX_SOURCE_CHARS = 40_000;
-const PDF_REQUIREMENT_WORKER_TIMEOUT_MS = 20_000;
 const REQUIREMENT_EXTRACTION_TIMEOUT_MS = 90_000;
 
 function truncateSource(value: string) {
@@ -248,19 +246,18 @@ async function extractPdfRequirementText(
   fileName?: string,
 ): Promise<ExtractedFileText> {
   const pdfBytes = new Uint8Array(buffer);
-  const liteParsedText = await tryBuildParsedPdfText({
+  const parsedText = await extractPdfPlainText({
     pdfBytes,
     documentId: fileName || "requirement-document",
     sourceKind: "attachment",
     maxChars: MAX_SOURCE_CHARS,
-    timeoutMs: PDF_REQUIREMENT_WORKER_TIMEOUT_MS,
   });
-  if (!liteParsedText) {
+  if (!parsedText) {
     throw new Error("Could not extract text from the requirement PDF");
   }
   return {
-    text: liteParsedText,
-    parserBackend: "liteparse",
+    text: parsedText,
+    parserBackend: "pdfjs",
     parsedAt: dayjs().valueOf(),
   };
 }
@@ -477,45 +474,16 @@ async function runRequirementImport(
         existingRequirements: context.existingRequirements,
         scope,
       }),
+    }, {
+      taskKind: "requirement_extraction",
+      trace: {
+        traceId: runId,
+        channel: trigger === "mailbox_import" ? "mailbox" : "web",
+        phase: "extracting_requirements",
+      },
     });
   } catch (error) {
     await failRun(error);
-    try {
-      const routerError =
-        error instanceof ClRouterRequestError ? error : undefined;
-      await ctx.runMutation(internal.modelRoutingEvents.recordRunInternal, {
-        run: {
-          runId,
-          sessionKey: `requirement:${runId}`,
-          orgId: args.orgId,
-          task: "requirement_extraction",
-          taskKind: "requirement_extraction",
-          channel: trigger === "mailbox_import" ? "mailbox" : "web",
-          label: "Compliance requirement extraction",
-          phase: "extracting_requirements",
-        },
-        status: "error",
-        requestId: routerError?.requestId,
-        routerCode: routerError?.routerCode,
-        routerStatus: routerError?.status,
-        routerRetryable: routerError?.retryable,
-        routerExecutionStarted: routerError?.executionStarted,
-        failureAttempts: routerError?.attempts
-          ? [...routerError.attempts]
-          : undefined,
-        toolCallCount: 0,
-        completedToolCount: 0,
-        toolNames: [],
-        workflowOutcomeCount: 0,
-        workflowFailureCount: 0,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    } catch (telemetryError) {
-      console.warn(
-        "Failed to record requirement model routing error",
-        telemetryError,
-      );
-    }
     if (abortSignal.aborted) {
       throw new Error(
         "Requirement extraction took too long. Try the import again in a moment.",
@@ -544,51 +512,6 @@ async function runRequirementImport(
     ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
     ...(result.clRouter ? { costUsd: result.clRouter.costUsd } : {}),
   });
-  try {
-    await ctx.runMutation(internal.modelRoutingEvents.recordRunInternal, {
-      run: {
-        runId,
-        sessionKey: `requirement:${runId}`,
-        orgId: args.orgId,
-        task: "requirement_extraction",
-        taskKind: "requirement_extraction",
-        channel: trigger === "mailbox_import" ? "mailbox" : "web",
-        label: "Compliance requirement extraction",
-        phase: "extracting_requirements",
-      },
-      status: "complete",
-      ...(result.clRouter?.requestId
-        ? { requestId: result.clRouter.requestId }
-        : {}),
-      provider: result.route.provider,
-      model: result.route.model,
-      ...(result.routeSource ? { routeSource: result.routeSource } : {}),
-      ...(result.transport ? { transport: result.transport } : {}),
-      ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
-      ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
-      ...(usage.outputTokenDetails?.reasoningTokens === undefined
-        ? {}
-        : { reasoningTokens: usage.outputTokenDetails.reasoningTokens }),
-      ...(usage.inputTokenDetails?.cacheReadTokens === undefined
-        ? {}
-        : { cachedInputTokens: usage.inputTokenDetails.cacheReadTokens }),
-      ...(usage.inputTokenDetails?.cacheWriteTokens === undefined
-        ? {}
-        : { cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens }),
-      maxOutputTokens: 3_000,
-      finishReason: result.finishReason,
-      hitOutputLimit: result.finishReason === "length",
-      visibleTextLength: JSON.stringify(result.object).length,
-      toolCallCount: 0,
-      completedToolCount: 0,
-      toolNames: [],
-      workflowOutcomeCount: 0,
-      workflowFailureCount: 0,
-    });
-  } catch (telemetryError) {
-    console.warn("Failed to record requirement model routing event", telemetryError);
-  }
-
   // Do not leave a completed-looking source behind when extraction fails. A
   // successful import still records the source even when every extracted row
   // is an exact duplicate, preserving that audit trail without creating an

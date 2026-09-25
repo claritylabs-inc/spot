@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const {
-  tryBuildParsedPdfTextMock,
+  extractPdfPlainTextMock,
   transcribeAudioForOperatorTaskMock,
   transcribeAudioForOrgMock,
   transcribeAudioForPublicTaskMock,
 } = vi.hoisted(() => ({
-  tryBuildParsedPdfTextMock: vi.fn(),
+  extractPdfPlainTextMock: vi.fn(),
   transcribeAudioForOperatorTaskMock: vi.fn(),
   transcribeAudioForOrgMock: vi.fn(),
   transcribeAudioForPublicTaskMock: vi.fn(),
 }));
 
-vi.mock("./liteparsePreprocessor", () => ({
-  tryBuildParsedPdfText: tryBuildParsedPdfTextMock,
+vi.mock("./pdfText", () => ({
+  extractPdfPlainText: extractPdfPlainTextMock,
 }));
 
 vi.mock("./models", () => ({
@@ -33,7 +33,7 @@ import { MAX_ROUTER_ATTACHMENT_BYTES } from "./agentAttachmentLimits";
 describe("iMessage agent context", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tryBuildParsedPdfTextMock.mockResolvedValue(null);
+    extractPdfPlainTextMock.mockResolvedValue(null);
   });
 
   test("transcribes operator voice notes without dropping other attachments", async () => {

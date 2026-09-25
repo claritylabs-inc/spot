@@ -1,3 +1,18 @@
+"use node";
+
+import {
+  inferLineOfBusinessForOperationalCoverage,
+  inferLinesOfBusinessFromOperationalCoverages,
+  lobLabel,
+  normalizeOperationalLinesOfBusiness,
+  resolveAcordCoverageCode,
+  type OperationalCoverageLine,
+} from "@claritylabs/cl-sdk";
+import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
+
 export type CoverageLike = Record<string, unknown>;
 
 export type CoverageSourceSpan = {
@@ -46,7 +61,7 @@ export type CoverageReviewOption = {
 
 export type CoverageReviewQuestion = {
   id: string;
-  kind: "coverage_limit_conflict";
+  kind: "coverage_limit_conflict" | "coverage_line_of_business";
   status: "open" | "confirmed" | "broker_help_requested" | "dismissed";
   coverageName: string;
   limitType?: string;
@@ -872,6 +887,36 @@ function sameJson(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function declarationScopedFields(
+  fields: Record<string, unknown>,
+  sourceSpans: CoverageSourceSpan[] | undefined,
+  inferLinesOfBusiness: boolean,
+): Record<string, unknown> {
+  const spans = detailSpans(sourceSpans);
+  const pages = spansByPage(spans);
+  const existingCoverages = Array.isArray(fields.coverages)
+    ? fields.coverages.map(recordValue).filter((row): row is CoverageLike => Boolean(row))
+    : [];
+  // Declaration rows borrow a line of business from name-matched existing rows
+  // only on the rule-based path; the classifier path assigns lines itself.
+  const lineReference = inferLinesOfBusiness ? existingCoverages : [];
+  const mainDeclarationCoverages = extractMainDeclarationCoverages(pages, lineReference);
+  const declarationCoverages = [
+    ...mainDeclarationCoverages,
+    ...extractNamedCoverageSections(
+      pages,
+      inferLinesOfBusiness ? [...existingCoverages, ...mainDeclarationCoverages] : [],
+    ),
+  ];
+  const coverages = mergeCoverageRows(existingCoverages, declarationCoverages);
+  const schedules = extractCoverageSchedules(sourceSpans, pages);
+  return applyFinancialSeparation({
+    ...fields,
+    coverages,
+    ...(schedules.length > 0 ? { coverageSchedules: schedules } : {}),
+  }, fields.coverages, spans);
+}
+
 export function applyCoverageDeclarationScoping({
   fields,
   sourceSpans,
@@ -885,33 +930,197 @@ export function applyCoverageDeclarationScoping({
   review: CoverageReviewState;
   changed: boolean;
 } {
+  const nextFields = declarationScopedFields(fields, sourceSpans, true);
+  return {
+    fields: nextFields,
+    review: {
+      strategyVersion: "coverage-declaration-scope-v1",
+      generatedAt: nowMs,
+      questions: [],
+    },
+    changed: !sameJson(fields, nextFields),
+  };
+}
+
+const MAX_COVERAGE_SCOPE_QUESTIONS = 100;
+
+function coverageLineReviewQuestion(
+  coverage: CoverageLike,
+  index: number,
+  candidates: string[],
+  recommended: string | undefined,
+  nowMs: number,
+): CoverageReviewQuestion {
+  const coverageName = textValue(coverage.name) ?? "Coverage";
+  const options = candidates.map((code): CoverageReviewOption => ({
+    id: `line:${code}`,
+    value: code,
+    label: lobLabel(code),
+    coverage: { ...coverage, lineOfBusiness: code },
+    sourceSpanIds: stringList(coverage.sourceSpanIds),
+  }));
+  const recommendedOption = options.find((option) => option.value === recommended);
+  return {
+    id: `coverage_line_of_business:${index}:${normalizedCoverageName(coverageName) || "coverage"}`,
+    kind: "coverage_line_of_business",
+    status: "open",
+    coverageName,
+    ...(textValue(coverage.limit) ? { currentValue: textValue(coverage.limit) } : {}),
+    ...(recommendedOption
+      ? {
+          recommendedOptionId: recommendedOption.id,
+          recommendation: `${recommendedOption.label} is the most likely line, but the declarations do not state it clearly.`,
+        }
+      : {}),
+    question: `Which line of business does ${coverageName} belong to?`,
+    reason: "This coverage appears on a multi-line policy without a clear line of business.",
+    options,
+    sourceSpanIds: stringList(coverage.sourceSpanIds),
+    createdAt: nowMs,
+  };
+}
+
+/**
+ * Declaration scoping with Jev assigning each unscoped coverage row to one of
+ * the policy's ACORD lines. Rows with one deterministic candidate are assigned
+ * without a decision; low-confidence rows stay unscoped with a review question.
+ * Router failures fall back to the rule-based scoping.
+ */
+export async function scopeCoveragesWithClassifier(params: {
+  ctx: ActionCtx;
+  orgId: Id<"organizations">;
+  fields: Record<string, unknown>;
+  sourceSpans?: CoverageSourceSpan[];
+  nowMs: number;
+  traceId?: string;
+}): Promise<{
+  fields: Record<string, unknown>;
+  review: CoverageReviewState;
+  changed: boolean;
+  classifiedCount: number;
+}> {
+  const scoped = declarationScopedFields(params.fields, params.sourceSpans, false);
+  const coverages = (scoped.coverages as CoverageLike[]).map((coverage) => ({ ...coverage }));
+  const policyLines = normalizeOperationalLinesOfBusiness(params.fields.linesOfBusiness)
+    .filter((code) => code !== "UN");
+  const rowLines = coverages.map((coverage) =>
+    inferLineOfBusinessForOperationalCoverage(
+      coverage as OperationalCoverageLine,
+      policyLines,
+    )
+  );
+  const knownLines = [...new Set([
+    ...policyLines,
+    ...rowLines.filter((code): code is NonNullable<typeof code> => Boolean(code)),
+  ])];
+  const pending: Array<{ index: number; key: string; candidates: string[] }> = [];
+  coverages.forEach((coverage, index) => {
+    const line = rowLines[index];
+    if (line) {
+      coverage.lineOfBusiness = line;
+      return;
+    }
+    const candidates = [...new Set([
+      ...inferLinesOfBusinessFromOperationalCoverages([coverage as OperationalCoverageLine]),
+      ...knownLines,
+    ])].filter((code) => code !== "UN");
+    if (candidates.length >= 2 && pending.length < MAX_COVERAGE_SCOPE_QUESTIONS) {
+      pending.push({ index, key: `coverage_${index}`, candidates });
+    }
+  });
+
   const review: CoverageReviewState = {
     strategyVersion: "coverage-declaration-scope-v1",
-    generatedAt: nowMs,
+    generatedAt: params.nowMs,
     questions: [],
   };
-  const spans = detailSpans(sourceSpans);
-  const pages = spansByPage(spans);
-  const existingCoverages = Array.isArray(fields.coverages)
-    ? fields.coverages.map(recordValue).filter((row): row is CoverageLike => Boolean(row))
-    : [];
-  const mainDeclarationCoverages = extractMainDeclarationCoverages(pages, existingCoverages);
-  const declarationCoverages = [
-    ...mainDeclarationCoverages,
-    ...extractNamedCoverageSections(pages, [...existingCoverages, ...mainDeclarationCoverages]),
-  ];
-  const coverages = mergeCoverageRows(existingCoverages, declarationCoverages);
-  const schedules = extractCoverageSchedules(sourceSpans, pages);
-  let nextFields: Record<string, unknown> = {
-    ...fields,
-    coverages,
-    ...(schedules.length > 0 ? { coverageSchedules: schedules } : {}),
-  };
-  nextFields = applyFinancialSeparation(nextFields, fields.coverages, spans);
+  let classifiedCount = 0;
+  if (pending.length > 0) {
+    try {
+      const result = await clRouterDecide({
+        orgId: String(params.orgId),
+        task: "policy_extraction_coverage_scope",
+        state: {
+          policyLinesOfBusiness: knownLines.map((code) => ({ code, label: lobLabel(code) })),
+          coverages: Object.fromEntries(pending.map(({ index, key }) => {
+            const coverage = coverages[index]!;
+            const coverageCode = resolveAcordCoverageCode(coverage.coverageCode, coverage.name);
+            return [key, {
+              name: textValue(coverage.name) ?? "Coverage",
+              ...(coverageCode ? { acordCoverageCode: coverageCode } : {}),
+              ...Object.fromEntries(
+                ["limit", "deductible", "formNumber", "sectionRef", "originalContent"]
+                  .flatMap((field) => {
+                    const value = textValue(coverage[field]);
+                    return value ? [[field, value.slice(0, 300)]] : [];
+                  }),
+              ),
+              ...(typeof coverage.pageNumber === "number" ? { pageNumber: coverage.pageNumber } : {}),
+            }];
+          })),
+        },
+        questions: Object.fromEntries(pending.map(({ key, candidates }) => [key, {
+          type: "choice" as const,
+          instructions: `Which line of business on this policy does coverage ${key} belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
+          criteria: {
+            ...Object.fromEntries(candidates.map((code) => [code, lobLabel(code)])),
+            none: "None of the listed lines of business.",
+          },
+        }])),
+        trace: params.traceId ? { traceId: params.traceId } : undefined,
+      }, { telemetry: params.ctx });
+      for (const { index, key, candidates } of pending) {
+        const answer = result.answers[key];
+        if (answer?.type !== "choice") continue;
+        const confidence = Math.min(
+          answer.confidence,
+          answer.probabilities[answer.choice] ?? 0,
+        );
+        if (!jevProceeds(confidence)) {
+          review.questions.push(coverageLineReviewQuestion(
+            coverages[index]!,
+            index,
+            candidates,
+            answer.choice,
+            params.nowMs,
+          ));
+        } else if (candidates.includes(answer.choice)) {
+          coverages[index]!.lineOfBusiness = answer.choice;
+          classifiedCount += 1;
+        }
+      }
+    } catch {
+      return {
+        ...applyCoverageDeclarationScoping({
+          fields: params.fields,
+          sourceSpans: params.sourceSpans,
+          nowMs: params.nowMs,
+        }),
+        classifiedCount: 0,
+      };
+    }
+  }
 
+  const existingReview = recordValue(params.fields.extractionReview);
+  const nextFields: Record<string, unknown> = {
+    ...scoped,
+    coverages,
+    ...(review.questions.length > 0
+      ? {
+          extractionReview: {
+            ...review,
+            questions: [
+              ...(Array.isArray(existingReview?.questions) ? existingReview.questions : []),
+              ...review.questions,
+            ],
+          },
+        }
+      : {}),
+  };
   return {
     fields: nextFields,
     review,
-    changed: !sameJson(fields, nextFields),
+    changed: !sameJson(params.fields, nextFields),
+    classifiedCount,
   };
 }

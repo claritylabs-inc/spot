@@ -4,7 +4,7 @@ import { useConvexAuth, useMutation } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/convex/_generated/api";
-import { AppShell } from "@/components/app-shell";
+import { AppShellLayout } from "@/components/app-shell";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { useOnboardingCache } from "@/hooks/use-onboarding-cache";
 import { Loader2 } from "lucide-react";
@@ -13,7 +13,7 @@ import {
   useCacheShellRecord,
   useSpotSync,
 } from "@/lib/sync/spot-sync";
-import { OperatorSidebar } from "@/app/operator/operator-sidebar";
+import { appShellRoute } from "@/lib/app-shell-routes";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import {
   endOperatorImpersonationStop,
@@ -59,7 +59,7 @@ const PUBLIC_PATHS = [
   "/share/packet",
   "/connect/request",
 ];
-const AUTH_AGNOSTIC_PATHS = ["/weather"];
+const AUTH_AGNOSTIC_PATHS: string[] = [];
 const ONBOARDING_PATH = "/onboarding";
 const ADMIN_PATHS = ["/settings"];
 const OPERATOR_PATH = "/operator";
@@ -99,12 +99,28 @@ function OnboardingLoading() {
 }
 
 /**
- * Loading state shown when we know the user is onboarded.
- * Shows the dashboard AppShell with skeleton content.
+ * Loading state shown when we know the user is onboarded: the app shell for
+ * the requested route with skeleton content and no agent data yet.
  */
-function DashboardLoading() {
+function ShellLoading({
+  pathname,
+  children,
+}: {
+  pathname: string;
+  children: React.ReactNode;
+}) {
+  const route = appShellRoute(pathname) ?? appShellRoute("/");
+  if (!route) return null;
   return (
-    <AppShell>
+    <AppShellLayout route={route} loading>
+      {children}
+    </AppShellLayout>
+  );
+}
+
+function DashboardLoading({ pathname }: { pathname: string }) {
+  return (
+    <ShellLoading pathname={pathname}>
       <div className="mb-6">
         <Skeleton className="h-7 w-48 mb-2" />
         <Skeleton className="h-4 w-72" />
@@ -114,51 +130,13 @@ function DashboardLoading() {
         <Skeleton className="h-10 w-full rounded-lg" />
         <Skeleton className="h-10 w-full rounded-lg" />
       </div>
-    </AppShell>
+    </ShellLoading>
   );
-}
-
-type OperatorNavSection =
-  | "brokers"
-  | "clients"
-  | "demo-leads"
-  | "channels"
-  | "logs"
-  | "usage"
-  | "profile"
-  | "settings";
-
-function getOperatorActiveSection(pathname: string): OperatorNavSection {
-  if (pathname.startsWith("/operator/brokers")) return "brokers";
-  if (pathname.startsWith("/operator/clients")) return "clients";
-  if (pathname.startsWith("/operator/demo-leads")) return "demo-leads";
-  if (pathname.startsWith("/operator/channels")) return "channels";
-  if (
-    pathname.startsWith("/operator/logs") ||
-    pathname.startsWith("/operator/telemetry")
-  )
-    return "logs";
-  if (pathname.startsWith("/operator/usage")) return "usage";
-  if (pathname.startsWith("/operator/routing")) return "settings";
-  if (pathname.startsWith("/operator/profile")) return "profile";
-  if (pathname.startsWith("/operator/settings")) return "settings";
-  return "clients";
 }
 
 function OperatorLoading({ pathname }: { pathname: string }) {
   return (
-    <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active={getOperatorActiveSection(pathname)}
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
-    >
+    <ShellLoading pathname={pathname}>
       <div className="space-y-4">
         <Skeleton className="h-10 w-full rounded-lg" />
         <div className="rounded-lg border border-input">
@@ -168,7 +146,7 @@ function OperatorLoading({ pathname }: { pathname: string }) {
           </div>
         </div>
       </div>
-    </AppShell>
+    </ShellLoading>
   );
 }
 
@@ -504,7 +482,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     // Default to dashboard loading for:
     // - cachedOnboarding === true (user is onboarded)
     // - cachedOnboarding === null (unknown, first visit - assume onboarded for safety)
-    return <DashboardLoading />;
+    return <DashboardLoading pathname={pathname} />;
   }
 
   if (!isAuthenticated && !isPublic) {

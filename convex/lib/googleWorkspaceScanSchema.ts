@@ -46,6 +46,7 @@ export const scanSourceStatusValidator = v.union(
   v.literal("excluded"),
 );
 export const googleWorkspaceScanTables = {
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorGoogleWorkspaceScanConfig: defineTable({
     key: v.literal("default"),
     enabled: v.boolean(),
@@ -60,7 +61,8 @@ export const googleWorkspaceScanTables = {
     currentRunId: v.optional(v.id("operatorGoogleWorkspaceScanRuns")),
     pausedReason: v.optional(v.string()),
     updatedAt: v.number(),
-  }).index("key", ["key"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorGoogleWorkspaceScanRuns: defineTable({
     authorizationRevision: v.number(),
     phase: v.union(
@@ -88,7 +90,8 @@ export const googleWorkspaceScanTables = {
     nextAttemptAt: v.number(),
     attempts: v.number(),
     error: v.optional(v.string()),
-  }).index("started", ["startedAt"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorGoogleWorkspaceScanMailboxes: defineTable({
     mailbox: v.string(),
     runId: v.id("operatorGoogleWorkspaceScanRuns"),
@@ -115,10 +118,8 @@ export const googleWorkspaceScanTables = {
     attempts: v.number(),
     error: v.optional(v.string()),
     lastSuccessAt: v.optional(v.number()),
-  })
-    .index("mailbox", ["mailbox"])
-    .index("run_status", ["runId", "status", "nextAttemptAt"])
-    .index("run_leases", ["runId", "status", "leaseUntil"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorGoogleWorkspaceScanSources: defineTable({
     mailbox: v.string(),
     messageId: v.string(),
@@ -139,16 +140,11 @@ export const googleWorkspaceScanTables = {
     error: v.optional(v.string()),
     collectedAt: v.optional(v.number()),
     reconciledAt: v.optional(v.number()),
-  })
-    .index("message", ["mailbox", "messageId"])
-    .index("status_due", ["authorizationRevision", "status", "nextAttemptAt"])
-    .index("active", ["authorizationRevision", "active", "leaseUntil"])
-    .index("mailbox_errors", ["mailboxId", "hasError"])
-    .index("run_status", ["runId", "status"])
-    .index("fingerprint", ["evidence.contentFingerprint"]),
+  }),
+  // Deprecated: workspace scan removed; drop after data cleanup.
   operatorGoogleWorkspaceScanSourceParts: defineTable({
     sourceId: v.id("operatorGoogleWorkspaceScanSources"),
     ordinal: v.number(),
     text: v.string(),
-  }).index("source_ordinal", ["sourceId", "ordinal"]),
+  }),
 };

@@ -4,10 +4,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import {
-  latestCompletedRouterRequest,
-  normalizeExtractionTraceRouterFields,
-} from "./lib/extractionTraceRouterFields";
+import { normalizeExtractionTraceRouterFields } from "./lib/extractionTraceRouterFields";
 
 const TRACE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const PIPELINE_LOG_LIMIT = 500;
@@ -474,23 +471,6 @@ export const getSessionCounters = internalQuery({
   },
 });
 
-export const getLatestRouterRequestForTaskKind = internalQuery({
-  args: {
-    traceId: v.string(),
-    taskKind: v.string(),
-    beforeTimestamp: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const events = await ctx.db
-      .query("policyExtractionTraceEvents")
-      .withIndex("trace_time", (q) => q
-        .eq("traceId", args.traceId)
-        .lte("timestamp", args.beforeTimestamp))
-      .order("desc")
-      .take(500);
-    return latestCompletedRouterRequest(events, args.taskKind, args.beforeTimestamp);
-  },
-});
 
 export const reconcileTerminalPolicy = internalMutation({
   args: {

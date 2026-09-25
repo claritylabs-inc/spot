@@ -6,7 +6,6 @@ import { useState, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
-import { WorkspaceScanActivity } from "@/components/operator/workspace-scan/scan-activity";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { ProcurementRequestWorkspace } from "@/components/procurement/procurement-request-workspace";
@@ -23,7 +22,6 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
-import { OperatorClientSidebar } from "../../operator-client-sidebar";
 
 export default function OperatorProcurementRequestPage() {
   const { clientOrgId, requestId } = useParams<{
@@ -79,18 +77,6 @@ export default function OperatorProcurementRequestPage() {
         </span>
       }
       rightPanel={rightPanel}
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorClientSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          clientOrgId={clientOrgId}
-          activeImpersonation={activeImpersonation}
-          impersonationDisabled={!client}
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
     >
       <OperatorPageContextRegistration
         context={{
@@ -145,12 +131,6 @@ export default function OperatorProcurementRequestPage() {
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
           />
-          {!activeImpersonation && view === "notes" ? (
-            <WorkspaceScanActivity
-              entityId={requestId}
-              onRightPanel={setRightPanel}
-            />
-          ) : null}
         </main>
       )}
     </AppShell>

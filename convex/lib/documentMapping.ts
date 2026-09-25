@@ -131,8 +131,6 @@ export function insuranceDocToPolicy(
       normalizeOrgName(d.carrier) || normalizeOrgName(d.security) || "Unknown",
     security: normalizeOrgName(d.security) ?? undefined,
     underwriter: d.underwriter ?? undefined,
-    // Legacy SDK compatibility. New extraction writes structured generalAgent.
-    ...(d.generalAgent ? {} : { mga: normalizeOrgName(d.mga) ?? undefined }),
     broker: normalizeOrgName(d.brokerAgency) ?? undefined,
     policyNumber: normalizeCriticalString(d.policyNumber) || declarationPolicyNumber || "Unknown",
     linesOfBusiness,
@@ -276,8 +274,6 @@ export function policyToInsuranceDoc(p: any): InsuranceDocument {
     carrierAmBestRating: p.carrierAmBestRating,
     carrierAdmittedStatus: p.carrierAdmittedStatus,
     generalAgent: p.generalAgent as unknown,
-    // Legacy read compatibility for policies not yet rematerialized.
-    mga: p.mga,
     underwriter: p.underwriter,
     brokerAgency: p.brokerAgency,
     brokerContactName: p.brokerContactName,
@@ -313,15 +309,9 @@ export function policyToInsuranceDoc(p: any): InsuranceDocument {
     premiumBreakdown: p.premiumBreakdown as unknown,
     minimumPremium: p.minPremium,
     depositPremium: p.depositPremium,
-    // Document structure
-    documentMetadata: (p.documentMetadata as unknown) ?? {},
-    documentOutline: Array.isArray(p.documentOutline) ? p.documentOutline : [],
-    sections: p.document?.sections,
-    definitions: p.document?.definitions,
-    coveredReasons: p.document?.coveredReasons,
-    endorsements: p.document?.endorsements,
-    exclusions: p.document?.exclusions,
-    conditions: p.document?.conditions,
+    // Source-tree projections
+    documentMetadata: p.documentMetadata as unknown,
+    documentOutline: p.documentOutline as unknown,
     // Declarations
     declarations: p.declarations as unknown,
     // Supplementary facts (cl-sdk 0.13+)

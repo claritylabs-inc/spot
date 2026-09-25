@@ -425,7 +425,6 @@ export function conductorPorts(workspaceRoot = repoRoot) {
   }
   return {
     web: basePort,
-    extraction: basePort + 1,
     imessage: basePort + 2,
     convexCloud: basePort + 3,
     convexSite: basePort + 4,
@@ -435,7 +434,7 @@ export function conductorPorts(workspaceRoot = repoRoot) {
 }
 
 export function conductorLocalRuntimeOverrides() {
-  const { web, extraction, imessage, slack, operatorImessage } =
+  const { web, imessage, slack, operatorImessage } =
     conductorPorts();
   const appUrl = `http://localhost:${web}`;
   return {
@@ -443,7 +442,6 @@ export function conductorLocalRuntimeOverrides() {
     AUTH_LINK_SITE_URL: appUrl,
     CLIENT_PORTAL_URL: appUrl,
     SITE_URL: appUrl,
-    EXTRACTION_WORKER_URL: `http://127.0.0.1:${extraction}`,
     IMESSAGE_WORKER_URL: `http://127.0.0.1:${imessage}`,
     OPERATOR_IMESSAGE_WORKER_URL: `http://127.0.0.1:${operatorImessage}`,
     SLACK_WORKER_URL: `http://127.0.0.1:${slack}`,
@@ -466,7 +464,6 @@ export function conductorImageTag(workerName, workspacePath = repoRoot) {
 
 export function conductorImageTags(workspacePath = repoRoot) {
   return [
-    "extraction-worker",
     "imessage-worker",
     "slack-worker",
     "mailbox-scan-worker",

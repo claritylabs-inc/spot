@@ -444,25 +444,6 @@ export type ClRouterRetrieveResponse = {
   warnings?: string[];
 };
 
-export type ClRouterFeedbackRequest = {
-  requestId: string;
-  tenantId?: string;
-  idempotencyKey: string;
-  source?: "web" | "slack" | "imessage" | "operator_extraction" | "system";
-  signals: {
-    rating?: "up" | "down";
-    reviewCorrectionCount?: number;
-    reviewedFieldCount?: number;
-    ungroundedStripCount?: number;
-    sensitiveFieldCount?: number;
-    escalationCount?: number;
-    humanEditCount?: number;
-    editedFieldCount?: number;
-    qualityScore?: number;
-  };
-  trace?: ClRouterTraceInput;
-};
-
 export type ClRouterErrorKind =
   | "configuration"
   | "connection"
@@ -1026,13 +1007,6 @@ const RETRIEVE_BODY_KEYS = [
   "config",
   "executionBudgetMs",
 ] as const satisfies readonly (keyof ClRouterRetrieveRequest)[];
-
-const FEEDBACK_BODY_KEYS = [
-  "requestId",
-  "idempotencyKey",
-  "source",
-  "signals",
-] as const satisfies readonly (keyof ClRouterFeedbackRequest)[];
 
 function requestBody<
   T extends { tenantId?: string; trace?: ClRouterTraceInput },
@@ -1652,24 +1626,3 @@ export async function clRouterTranscribe(
   };
 }
 
-export async function sendClRouterFeedback(
-  request: ClRouterFeedbackRequest,
-  options: ClRouterClientOptions = {},
-): Promise<{ accepted: true; duplicate: boolean }> {
-  const payload = await postJson(
-    "/v1/feedback",
-    requestBody(request, FEEDBACK_BODY_KEYS),
-    options,
-  );
-  if (
-    !isRecord(payload) ||
-    payload.accepted !== true ||
-    typeof payload.duplicate !== "boolean"
-  ) {
-    throw new ClRouterRequestError(
-      "invalid_response",
-      "cl-router feedback response is invalid",
-    );
-  }
-  return { accepted: true, duplicate: payload.duplicate };
-}

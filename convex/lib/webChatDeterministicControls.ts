@@ -3,24 +3,26 @@
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { isPendingEmailCancelConfirmation } from "./emailCancelIntent";
-import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
+import {
+  emailCancelConfirmationPayload,
+  parseTaskControlCommand,
+  resolveChannelEmailControl,
+  resolvePendingActionConfirmation,
+  taskControlResponse,
+} from "./channelControls";
 import {
   executeEmailCommand,
   type EmailCommandDraft,
 } from "./emailCommandExecutor";
 import {
-  parseTaskControlCommand,
-  taskControlResponse,
-} from "./taskControlIntent";
+  emailSendDecisionAuthorizesSend,
+  ensureEmailSendAuthorizationDecision,
+  type EmailSendAuthorizationSource,
+} from "./emailSendAuthorization";
 import {
   confirmedRequirementImportMessage,
   importConfirmedRequirementSources,
 } from "./requirementAttachmentIntent";
-import {
-  isContextualConfirmation,
-  resolveTextChannelEmailControl,
-} from "./textChannelControls";
 
 export type WebChatControlMessage = {
   _id: Id<"threadMessages">;
@@ -38,6 +40,7 @@ export type WebChatDeterministicControlState = {
   pendingEmails: WebChatEmailControlRecord[];
   draftEmails: EmailCommandDraft[];
   latestCancelledEmail?: WebChatEmailControlRecord | null;
+  sourceMessage?: EmailSendAuthorizationSource;
 };
 
 export async function loadWebChatDeterministicControlState(
@@ -67,13 +70,24 @@ export async function loadWebChatDeterministicControlState(
     internal.agentHistory.getRecentControlMessages,
     { threadId: args.threadId },
   );
+  const messageText = userMessage?.content.trim() ?? "";
 
   return {
-    messageText: userMessage?.content.trim() ?? "",
+    messageText,
     threadMessages,
     pendingEmails,
     draftEmails,
     latestCancelledEmail,
+    sourceMessage:
+      userMessage?.role === "user"
+        ? {
+            _id: userMessage._id,
+            orgId: userMessage.orgId,
+            threadId: userMessage.threadId,
+            content: messageText,
+            emailSendAuthorization: userMessage.emailSendAuthorization,
+          }
+        : undefined,
   };
 }
 
@@ -87,122 +101,106 @@ export async function runWebChatEmailControls(
     orgId: Id<"organizations">;
   },
 ): Promise<boolean> {
-  const confirmation = await ctx.runQuery(
-    internal.threadActionConfirmations.latestPendingInternal,
-    { threadId: args.threadId },
+  const { confirmation, resolution } = await resolvePendingActionConfirmation(
+    ctx,
+    {
+      messageText: args.messageText,
+      orgId: args.orgId,
+      threadId: args.threadId,
+      userId: args.userId,
+      currentMessageId: args.userMessageId,
+      draftEmailIds: args.draftEmails.map((draft) => draft._id),
+    },
   );
-  const confirmationRequested =
-    confirmation?.payload.kind === "email_cancel"
-      ? isPendingEmailCancelConfirmation(args.messageText)
-      : isContextualConfirmation(args.messageText);
-  if (confirmationRequested) {
-    if (
-      confirmation &&
-      confirmation.orgId === args.orgId &&
-      confirmation.actor.kind === "user" &&
-      confirmation.actor.userId === args.userId &&
-      confirmation.payload.kind !== "draft_snapshot"
-    ) {
-      const confirmationResult = await ctx.runMutation(
-        internal.threadActionConfirmations.consumeInternal,
-        {
-          id: confirmation._id,
-          actor: { kind: "user", userId: args.userId },
-          currentMessageId: args.userMessageId,
-          requireAdjacentPrompt: true,
-        },
-      );
-      if (confirmationResult !== "completed") {
-        await ctx.runMutation(internal.threads.updateAgentMessage, {
-          id: args.agentMessageId,
-          content:
-            confirmationResult === "expired"
-              ? "That confirmation expired. Refresh the draft and confirm again."
-              : "That draft changed or is no longer the latest confirmation. Refresh it and confirm again.",
-        });
-        return true;
-      }
-      if (confirmation.payload.kind === "coi_batch_delivery") {
-        await ctx.runMutation(internal.threads.updateAgentMessage, {
-          id: args.agentMessageId,
-          content:
-            "The exact COI attachment set is authorized. Use the Send action on the draft to deliver it.",
-          pendingEmailId: confirmation.payload.pendingEmailId,
-        });
-        return true;
-      }
-      if (confirmation.payload.kind === "requirement_import") {
-        const imported = await importConfirmedRequirementSources(ctx, {
-          orgId: args.orgId,
-          userId: args.userId,
-          payload: confirmation.payload,
-        });
-        await ctx.runMutation(internal.threads.updateAgentMessage, {
-          id: args.agentMessageId,
-          content: confirmedRequirementImportMessage(imported),
-          toolArtifacts: [
-            {
-              type: "workflow_outcome",
-              data: imported.workflowOutcome,
-            },
-          ],
-        });
-        return true;
-      }
-      if (confirmation.payload.kind === "email_send") {
-        const result = await executeEmailCommand(
-          ctx,
-          {
-            kind: "send_draft_emails",
-            emailIds: confirmation.payload.pendingEmailIds,
-          },
-          {
-            draftEmails: args.draftEmails,
-            sendConfirmationId: confirmation._id,
-          },
-        );
-        if (result.kind === "send_failed") {
-          await ctx.runMutation(internal.threads.updateAgentError, {
-            id: args.agentMessageId,
-            error: result.error ?? result.responseBody,
-            content: "Failed to send the confirmed draft email.",
-          });
-        } else {
-          await ctx.runMutation(internal.threads.deleteMessageInternal, {
-            id: args.agentMessageId,
-          });
-        }
-        return true;
-      }
-      if (confirmation.payload.kind === "email_cancel") {
-        const emailIds = confirmation.payload.pendingEmailIds;
-        const draftIds = new Set(args.draftEmails.map((draft) => draft._id));
-        const result = await executeEmailCommand(
-          ctx,
-          emailIds.every((id) => draftIds.has(id))
-            ? { kind: "cancel_draft_emails", emailIds }
-            : { kind: "cancel_pending_emails", emailIds },
-          { draftEmails: args.draftEmails },
-        );
-        await ctx.runMutation(internal.threads.updateAgentMessage, {
-          id: args.agentMessageId,
-          content: result.responseBody,
-        });
-        return true;
-      }
+  switch (resolution.kind) {
+    case "stale":
+      await ctx.runMutation(internal.threads.updateAgentMessage, {
+        id: args.agentMessageId,
+        content:
+          resolution.outcome === "expired"
+            ? "That confirmation expired. Refresh the draft and confirm again."
+            : "That draft changed or is no longer the latest confirmation. Refresh it and confirm again.",
+      });
+      return true;
+    case "coi_batch_delivery":
+      await ctx.runMutation(internal.threads.updateAgentMessage, {
+        id: args.agentMessageId,
+        content:
+          "The exact COI attachment set is authorized. Use the Send action on the draft to deliver it.",
+        pendingEmailId: resolution.pendingEmailId,
+      });
+      return true;
+    case "requirement_import": {
+      const imported = await importConfirmedRequirementSources(ctx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        payload: resolution.payload,
+      });
+      await ctx.runMutation(internal.threads.updateAgentMessage, {
+        id: args.agentMessageId,
+        content: confirmedRequirementImportMessage(imported),
+        toolArtifacts: [
+          { type: "workflow_outcome", data: imported.workflowOutcome },
+        ],
+      });
+      return true;
     }
+    case "email_send": {
+      const result = await executeEmailCommand(ctx, resolution.command, {
+        draftEmails: args.draftEmails,
+        sendConfirmationId: resolution.sendConfirmationId,
+      });
+      if (result.kind === "send_failed") {
+        await ctx.runMutation(internal.threads.updateAgentError, {
+          id: args.agentMessageId,
+          error: result.error ?? result.responseBody,
+          content: "Failed to send the confirmed draft email.",
+        });
+      } else {
+        await ctx.runMutation(internal.threads.deleteMessageInternal, {
+          id: args.agentMessageId,
+        });
+      }
+      return true;
+    }
+    case "email_cancel": {
+      const result = await executeEmailCommand(ctx, resolution.command, {
+        draftEmails: args.draftEmails,
+      });
+      await ctx.runMutation(internal.threads.updateAgentMessage, {
+        id: args.agentMessageId,
+        content: result.responseBody,
+      });
+      return true;
+    }
+    case "none":
+      break;
   }
 
-  const emailControl = resolveTextChannelEmailControl({
+  const ensureSendDecision = async () =>
+    args.sourceMessage
+      ? ensureEmailSendAuthorizationDecision(ctx, {
+          message: args.sourceMessage,
+          pendingDrafts: [...args.draftEmails, ...args.pendingEmails],
+        })
+      : null;
+  const emailControl = await resolveChannelEmailControl(ctx, {
+    orgId: args.orgId,
     messageText: args.messageText,
     isCancelConfirmationContext: confirmation?.payload.kind === "email_cancel",
     latestCancelledEmailId: args.latestCancelledEmail?._id,
     draftEmailIds: args.draftEmails.map((draftEmail) => draftEmail._id),
     pendingEmailIds: args.pendingEmails.map((pendingEmail) => pendingEmail._id),
     allowDraftApproval: false,
+    authorizeSend: async () =>
+      emailSendDecisionAuthorizesSend(await ensureSendDecision()),
   });
 
-  if (!emailControl) return false;
+  if (!emailControl) {
+    // The agent turn may send email; decide authorization at ingest.
+    if (!parseTaskControlCommand(args.messageText)) await ensureSendDecision();
+    return false;
+  }
 
   const result = await executeEmailCommand(ctx, emailControl, {
     draftEmails: args.draftEmails,
@@ -254,13 +252,7 @@ export async function runWebChatEmailControls(
         threadId: args.threadId,
         actor: { kind: "user", userId: args.userId },
         promptMessageId: args.agentMessageId,
-        payload: {
-          kind: "email_cancel",
-          pendingEmailIds: targets.map((target) => target._id),
-          draftFingerprints: await Promise.all(
-            targets.map((target) => pendingEmailDraftFingerprint(target)),
-          ),
-        },
+        payload: await emailCancelConfirmationPayload(targets),
       });
     }
   }

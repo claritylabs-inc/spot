@@ -1,0 +1,2407 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`tenant MCP catalog preserves external names and projects annotations from access metadata 1`] = `
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List insurance policies. Optionally filter by carrier, year, or line of business.",
+    "inputSchema": {
+      "properties": {
+        "carrier": {
+          "description": "Filter by carrier name",
+          "type": "string",
+        },
+        "type": {
+          "description": "Filter by ACORD line of business code or label (e.g. 'CGL', 'Commercial General Liability')",
+          "type": "string",
+        },
+        "year": {
+          "description": "Filter by policy year (e.g. '2024')",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_policies",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List insurance policies",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Get full details of a specific insurance policy by ID, including coverages, document sections, and metadata.",
+    "inputSchema": {
+      "properties": {
+        "id": {
+          "description": "The policy ID",
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "get_policy",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Get full details of a specific insurance policy by ID, including coverages, document sections, and metadata",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Get a temporary download URL for the original full policy PDF document by policy ID.",
+    "inputSchema": {
+      "properties": {
+        "id": {
+          "description": "The policy ID",
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "get_policy_pdf",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Get a temporary download URL for the original full policy PDF document by policy ID",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Search across policies by text query. Searches carrier, policy number, insured name, summary, and lines of business.",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "description": "Search query text",
+          "type": "string",
+        },
+      },
+      "required": [
+        "q",
+      ],
+      "type": "object",
+    },
+    "name": "search_policies",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Search across policies by text query",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "description": "Ask the Spot AI assistant a question about the organization's insurance portfolio, bound policies, renewals, or coverage details. Spot answers within the selected organization. Optionally pass a threadId to continue an existing conversation.",
+    "inputSchema": {
+      "properties": {
+        "message": {
+          "description": "The question or message to send to Spot",
+          "type": "string",
+        },
+        "threadId": {
+          "description": "Optional thread ID to continue an existing conversation",
+          "type": "string",
+        },
+      },
+      "required": [
+        "message",
+      ],
+      "type": "object",
+    },
+    "name": "ask_spot",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Ask the Spot AI assistant a question about the organization's insurance portfolio, bound policies, renewals, or coverage details",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List durable outbound email drafts for the organization. Returns a compact text summary by default, with a sample and draft IDs. Optionally filter by threadId or set showAll to see every draft.",
+    "inputSchema": {
+      "properties": {
+        "showAll": {
+          "description": "Show every draft instead of a short sample",
+          "type": "boolean",
+        },
+        "threadId": {
+          "description": "Optional thread ID",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_email_drafts",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List durable outbound email drafts for the organization",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Create a durable outbound email draft using the same Spot email artifact used by web chat. Requires write scope. Returns a draft ID that can be updated, sent, or cancelled.",
+    "inputSchema": {
+      "properties": {
+        "bcc": {
+          "description": "BCC email addresses",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "body": {
+          "description": "Plain text email body",
+          "type": "string",
+        },
+        "cc": {
+          "description": "CC email addresses",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "originalPolicyIds": {
+          "description": "Policy IDs whose original full policy PDFs should be attached",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "subject": {
+          "description": "Email subject",
+          "type": "string",
+        },
+        "threadId": {
+          "description": "Optional thread ID to attach the draft to",
+          "type": "string",
+        },
+        "to": {
+          "description": "Recipient email address",
+          "type": "string",
+        },
+      },
+      "required": [
+        "to",
+        "subject",
+        "body",
+      ],
+      "type": "object",
+    },
+    "name": "draft_email",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Create a durable outbound email draft using the same Spot email artifact used by web chat",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Update an existing durable outbound email draft in place. Requires write scope.",
+    "inputSchema": {
+      "properties": {
+        "bcc": {
+          "description": "BCC email addresses",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "body": {
+          "description": "Plain text email body",
+          "type": "string",
+        },
+        "cc": {
+          "description": "CC email addresses",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "draftId": {
+          "description": "Draft ID returned by draft_email or list_email_drafts",
+          "type": "string",
+        },
+        "originalPolicyIds": {
+          "description": "Policy IDs whose original full policy PDFs should be attached",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "subject": {
+          "description": "Email subject",
+          "type": "string",
+        },
+        "to": {
+          "description": "Recipient email address",
+          "type": "string",
+        },
+      },
+      "required": [
+        "draftId",
+        "to",
+        "subject",
+        "body",
+      ],
+      "type": "object",
+    },
+    "name": "update_email_draft",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Update an existing durable outbound email draft in place",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "description": "Send a durable outbound email draft. Requires write scope.",
+    "inputSchema": {
+      "properties": {
+        "draftId": {
+          "description": "Draft ID returned by draft_email or list_email_drafts",
+          "type": "string",
+        },
+      },
+      "required": [
+        "draftId",
+      ],
+      "type": "object",
+    },
+    "name": "send_email_draft",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Send a durable outbound email draft",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "description": "Send multiple durable outbound email drafts in one batch. Requires write scope.",
+    "inputSchema": {
+      "properties": {
+        "draftIds": {
+          "description": "Draft IDs returned by list_email_drafts",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+      },
+      "required": [
+        "draftIds",
+      ],
+      "type": "object",
+    },
+    "name": "send_email_drafts",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Send multiple durable outbound email drafts in one batch",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Cancel a durable outbound email draft. Requires write scope.",
+    "inputSchema": {
+      "properties": {
+        "draftId": {
+          "description": "Draft ID returned by draft_email or list_email_drafts",
+          "type": "string",
+        },
+      },
+      "required": [
+        "draftId",
+      ],
+      "type": "object",
+    },
+    "name": "cancel_email_draft",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Cancel a durable outbound email draft",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List vendor organizations that have approved read-only insurance access for the caller's org.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "list_connected_vendors",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List vendor organizations that have approved read-only insurance access for the caller's org",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Get a connected vendor org profile and policy count.",
+    "inputSchema": {
+      "properties": {
+        "vendor_org_id": {
+          "description": "Connected vendor org ID",
+          "type": "string",
+        },
+      },
+      "required": [
+        "vendor_org_id",
+      ],
+      "type": "object",
+    },
+    "name": "get_connected_vendor",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Get a connected vendor org profile and policy count",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List policies for a connected vendor org that approved access.",
+    "inputSchema": {
+      "properties": {
+        "vendor_org_id": {
+          "description": "Connected vendor org ID",
+          "type": "string",
+        },
+      },
+      "required": [
+        "vendor_org_id",
+      ],
+      "type": "object",
+    },
+    "name": "list_connected_vendor_policies",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List policies for a connected vendor org that approved access",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List connected vendor compliance status against the caller org's insurance requirements.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "list_vendor_compliance",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List connected vendor compliance status against the caller org's insurance requirements",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of lookup_policy.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "list_my_policies",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of lookup_policy",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of lookup_company_context.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "get_org_info",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of lookup_company_context",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of lookup_company_context.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "read_company_wiki",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of lookup_company_context",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of lookup_client_files.",
+    "inputSchema": {
+      "properties": {
+        "client_org_id": {
+          "type": "string",
+        },
+        "limit": {
+          "type": "number",
+        },
+        "query": {
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_client_files",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of lookup_client_files",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of read_client_file.",
+    "inputSchema": {
+      "properties": {
+        "client_file_id": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "client_file_id",
+      ],
+      "type": "object",
+    },
+    "name": "get_client_file",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of read_client_file",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of lookup_compliance_requirements.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "list_insurance_requirements",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of lookup_compliance_requirements",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Deprecated alias of generate_coi.",
+    "inputSchema": {
+      "properties": {
+        "additionalInsuredName": {
+          "type": "string",
+        },
+        "additional_insured_name": {
+          "type": "string",
+        },
+        "addressLine1": {
+          "type": "string",
+        },
+        "addressLine2": {
+          "type": "string",
+        },
+        "address_line_1": {
+          "type": "string",
+        },
+        "address_line_2": {
+          "type": "string",
+        },
+        "certificateHolder": {
+          "type": "string",
+        },
+        "certificate_holder": {
+          "type": "string",
+        },
+        "certificate_holder_contact_name": {
+          "type": "string",
+        },
+        "certificate_holder_country": {
+          "type": "string",
+        },
+        "certificate_holder_email": {
+          "type": "string",
+        },
+        "certificate_holder_name": {
+          "type": "string",
+        },
+        "certificate_holder_phone": {
+          "type": "string",
+        },
+        "city": {
+          "type": "string",
+        },
+        "country": {
+          "type": "string",
+        },
+        "country_code": {
+          "type": "string",
+        },
+        "descriptionOfOperations": {
+          "type": "string",
+        },
+        "description_of_operations": {
+          "type": "string",
+        },
+        "explicitReissue": {
+          "type": "boolean",
+        },
+        "explicit_reissue": {
+          "type": "boolean",
+        },
+        "forceReissue": {
+          "type": "boolean",
+        },
+        "holderContactName": {
+          "type": "string",
+        },
+        "holderEmail": {
+          "type": "string",
+        },
+        "holderName": {
+          "type": "string",
+        },
+        "holderPhone": {
+          "type": "string",
+        },
+        "holder_contact_name": {
+          "type": "string",
+        },
+        "holder_email": {
+          "type": "string",
+        },
+        "holder_phone": {
+          "type": "string",
+        },
+        "policyId": {
+          "type": "string",
+        },
+        "policy_id": {
+          "type": "string",
+        },
+        "postalCode": {
+          "type": "string",
+        },
+        "postal_code": {
+          "type": "string",
+        },
+        "recipient_email": {
+          "type": "string",
+        },
+        "recipient_phone": {
+          "type": "string",
+        },
+        "reissue": {
+          "type": "boolean",
+        },
+        "requestText": {
+          "type": "string",
+        },
+        "request_text": {
+          "type": "string",
+        },
+        "requestedEndorsements": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "requested_endorsements": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "requirementId": {
+          "type": "string",
+        },
+        "requirementSourceDocumentId": {
+          "type": "string",
+        },
+        "requirement_id": {
+          "type": "string",
+        },
+        "requirement_source_document_id": {
+          "type": "string",
+        },
+        "state": {
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "generate_policy_certificate",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of generate_coi",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of lookup_policy.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+    },
+    "name": "get_policy_stats",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of lookup_policy",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of list_certificates.",
+    "inputSchema": {
+      "properties": {
+        "policyId": {
+          "type": "string",
+        },
+        "policy_id": {
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_policy_certificates",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of list_certificates",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of list_certificates.",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "type": "string",
+        },
+        "query": {
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_certificate_holders",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of list_certificates",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Deprecated alias of list_certificates.",
+    "inputSchema": {
+      "properties": {
+        "certificateHolderId": {
+          "type": "string",
+        },
+        "certificateId": {
+          "type": "string",
+        },
+        "certificate_holder_id": {
+          "type": "string",
+        },
+        "certificate_id": {
+          "type": "string",
+        },
+        "holderId": {
+          "type": "string",
+        },
+        "holder_id": {
+          "type": "string",
+        },
+        "policyId": {
+          "type": "string",
+        },
+        "policy_id": {
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_certificate_versions",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of list_certificates",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Deprecated alias of update_company_wiki.",
+    "inputSchema": {
+      "properties": {
+        "expected_revision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "markdown": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "markdown",
+        "expected_revision",
+      ],
+      "type": "object",
+    },
+    "name": "write_company_wiki",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of update_company_wiki",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Deprecated alias of create_compliance_requirement.",
+    "inputSchema": {
+      "properties": {
+        "kind": {
+          "const": "coverage",
+          "type": "string",
+        },
+        "limits": {
+          "items": {
+            "properties": {
+              "amount": {
+                "type": "number",
+              },
+              "kind": {
+                "type": "string",
+              },
+              "label": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "amount",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "line_of_business": {
+          "type": "string",
+        },
+        "requirement_text": {
+          "type": "string",
+        },
+        "scope": {
+          "enum": [
+            "own_org",
+            "vendors",
+          ],
+          "type": "string",
+        },
+        "source_document_name": {
+          "type": "string",
+        },
+        "source_excerpt": {
+          "type": "string",
+        },
+        "title": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "scope",
+        "title",
+        "requirement_text",
+        "line_of_business",
+      ],
+      "type": "object",
+    },
+    "name": "create_insurance_requirement",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Deprecated alias of create_compliance_requirement",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Look up insurance policies on demand by exact policy IDs, expiration window, carrier name, policy number, ACORD line of business, or keywords. Returns fresh policy summaries with source-backed client facts and policy-scoped Producer, insurer, carrier, and General Agent parties when available.",
+    "inputSchema": {
+      "properties": {
+        "carrier": {
+          "description": "Filter by carrier/insurer name",
+          "type": "string",
+        },
+        "expiringWithinDays": {
+          "description": "Return policies expiring between today and this many days from now.",
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "lineOfBusiness": {
+          "description": "Filter by ACORD LOB code or label (e.g., CGL, AUTOB, WORK, Commercial General Liability)",
+          "type": "string",
+        },
+        "policyIds": {
+          "description": "Up to five exact policy IDs supplied by the current request or policy-focus hints. Use this to refresh those policies before answering; IDs are routing hints, not policy facts.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 5,
+          "type": "array",
+        },
+        "policyType": {
+          "description": "Deprecated alias for lineOfBusiness.",
+          "type": "string",
+        },
+        "query": {
+          "description": "Search query — carrier name, policy number, or keywords",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_policy",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Look up insurance policies on demand by exact policy IDs, expiration window, carrier name, policy number, ACORD line of business, or keywords",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read the whole company wiki for the readable organizations: durable company-profile facts and preferences as one markdown document each. Use this for company operations, identity, stable preferences, or saved risk context. Never use the company wiki for policy terms, limits, endorsements, coverage, certificates, or other policy facts; use policy tools for those.",
+    "inputSchema": {
+      "properties": {
+        "orgId": {
+          "description": "Readable organization ID when the request targets a specific company.",
+          "type": "string",
+        },
+        "query": {
+          "description": "Company name to narrow which readable organizations are returned. The whole wiki is returned either way.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_company_context",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read the whole company wiki for the readable organizations: durable company-profile facts and preferences as one markdown document each",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read client-visible insurance requests, current client-facing stage, target dates, shared notes, and shared file metadata. Returns only the client request view, never private proposals or market activity.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "requestId": {
+          "description": "Optional exact request ID from an earlier request lookup.",
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_client_requests",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read client-visible insurance requests, current client-facing stage, target dates, shared notes, and shared file metadata",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List client-visible files from the readable client organizations. Use this for shared contracts, schedules, reports, forms, and other miscellaneous documents that are not bound policy PDFs.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "orgId": {
+          "description": "Optional exact readable client organization ID.",
+          "type": "string",
+        },
+        "query": {
+          "maxLength": 200,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_client_files",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List client-visible files from the readable client organizations",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read one exact client-visible shared file after lookup_client_files identifies it. Returns bounded extracted text for supported documents.",
+    "inputSchema": {
+      "properties": {
+        "clientFileId": {
+          "description": "Exact client file ID.",
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "clientFileId",
+      ],
+      "type": "object",
+    },
+    "name": "read_client_file",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read one exact client-visible shared file after lookup_client_files identifies it",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Compare two policies side by side — lines of business, limits, deductibles, and premium.",
+    "inputSchema": {
+      "properties": {
+        "policyId1": {
+          "description": "Policy reference for the first policy to compare",
+          "type": "string",
+        },
+        "policyId2": {
+          "description": "Policy reference for the second policy to compare",
+          "type": "string",
+        },
+      },
+      "required": [
+        "policyId1",
+        "policyId2",
+      ],
+      "type": "object",
+    },
+    "name": "compare_coverages",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Compare two policies side by side — lines of business, limits, deductibles, and premium",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Look up the organization's saved insurance coverage requirements. Use this when the user asks what contractors/vendors must carry, asks about my requirements, minimum required limits, deductibles, endorsements, or compliance checklist requirements. Results distinguish scope.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "Requirement topic to search for, such as contractors, general liability, cyber, auto, workers comp, additional insured, waiver, or a limit amount.",
+          "type": "string",
+        },
+        "scope": {
+          "description": "Filter by scope. Use vendors for contractor/vendor obligations, own_org for requirements owned by this org, or all to search every requirement.",
+          "enum": [
+            "vendors",
+            "own_org",
+            "all",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_compliance_requirements",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Look up the organization's saved insurance coverage requirements",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List issued certificates of insurance with holder details and issue or reissue history for a readable organization.",
+    "inputSchema": {
+      "properties": {
+        "certificateId": {
+          "description": "Optional certificate parent ID.",
+          "type": "string",
+        },
+        "holderId": {
+          "description": "Optional exact certificate holder ID.",
+          "type": "string",
+        },
+        "holderQuery": {
+          "description": "Optional holder name, email, or address search.",
+          "type": "string",
+        },
+        "policyId": {
+          "description": "Optional exact policy ID.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_certificates",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List issued certificates of insurance with holder details and issue or reissue history for a readable organization",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List policy version history, including renewals, uploads, and re-extractions, for a readable policy or organization.",
+    "inputSchema": {
+      "properties": {
+        "policyId": {
+          "description": "Exact policy ID; omit for recent organization history.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_policy_versions",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List policy version history, including renewals, uploads, and re-extractions, for a readable policy or organization",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Replace the company Markdown wiki or one named section using the current expected revision. Direct organization admins only. On text channels, ask for explicit confirmation before setting confirmed to true.",
+    "inputSchema": {
+      "properties": {
+        "body": {
+          "description": "Replacement body for the named section.",
+          "type": "string",
+        },
+        "confirmed": {
+          "description": "True only after the user explicitly confirms the exact write on a text channel.",
+          "type": "boolean",
+        },
+        "expectedRevision": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "markdown": {
+          "description": "Complete replacement Markdown document.",
+          "type": "string",
+        },
+        "orgId": {
+          "description": "Exact organization ID; defaults to the current organization.",
+          "type": "string",
+        },
+        "section": {
+          "description": "Section to replace instead of the whole document.",
+          "enum": [
+            "profile",
+            "operations",
+            "scale",
+            "compliance",
+            "preferences",
+            "notes",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "expectedRevision",
+      ],
+      "type": "object",
+    },
+    "name": "update_company_wiki",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Replace the company Markdown wiki or one named section using the current expected revision",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Create one typed coverage requirement for the current organization. Direct organization admins only. On text channels, ask for explicit confirmation before setting confirmed to true.",
+    "inputSchema": {
+      "properties": {
+        "confirmed": {
+          "description": "True only after the user explicitly confirms the exact write on a text channel.",
+          "type": "boolean",
+        },
+        "kind": {
+          "const": "coverage",
+          "type": "string",
+        },
+        "limits": {
+          "items": {
+            "properties": {
+              "amount": {
+                "type": "number",
+              },
+              "kind": {
+                "type": "string",
+              },
+              "label": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "amount",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "lineOfBusiness": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "requirementText": {
+          "minLength": 1,
+          "type": "string",
+        },
+        "scope": {
+          "enum": [
+            "own_org",
+            "vendors",
+          ],
+          "type": "string",
+        },
+        "sourceDocumentName": {
+          "type": "string",
+        },
+        "sourceExcerpt": {
+          "type": "string",
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "scope",
+        "title",
+        "requirementText",
+        "lineOfBusiness",
+      ],
+      "type": "object",
+    },
+    "name": "create_compliance_requirement",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Create one typed coverage requirement for the current organization",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Look up connected vendor organizations and their compliance status. Use this when the user asks which vendors are non-compliant, compliant, waiting on policies, invited, or asks for vendor status.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "Vendor name, website, email, or relationship label to filter by.",
+          "type": "string",
+        },
+        "status": {
+          "description": "Optional compliance/status filter.",
+          "enum": [
+            "all",
+            "compliant",
+            "non_compliant",
+            "attention",
+            "waiting_on_policies",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_connected_vendors",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Look up connected vendor organizations and their compliance status",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "List policies for a specific connected vendor. Use this before answering questions about a vendor's current insurance, carriers, policy numbers, limits, named insured, or expiration dates.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "Optional carrier, policy number, coverage, or line-of-business filter.",
+          "type": "string",
+        },
+        "vendorName": {
+          "description": "Vendor name if the ID is not known.",
+          "type": "string",
+        },
+        "vendorOrgId": {
+          "description": "Connected vendor organization ID.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_vendor_policies",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "List policies for a specific connected vendor",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Return the requirement-by-requirement compliance checklist for connected vendors, including matched policy details, expiration dates, limits, named insured, and the reason each requirement is met or not met. Use this for non-compliant vendor questions and vendor compliance diffs.",
+    "inputSchema": {
+      "properties": {
+        "includeCompliant": {
+          "description": "Include met requirements as well as open issues. Defaults to true for specific vendors and false for all vendors.",
+          "type": "boolean",
+        },
+        "vendorName": {
+          "description": "Vendor name if the ID is not known.",
+          "type": "string",
+        },
+        "vendorOrgId": {
+          "description": "Connected vendor organization ID.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "lookup_vendor_compliance",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Return the requirement-by-requirement compliance checklist for connected vendors, including matched policy details, expiration dates, limits, named insured, and the reason each requirement is met or not met",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Search within a specific policy's source-native document outline and original PDF evidence for detailed content about a topic. Use this for coverage wording, declarations, forms, endorsements, exclusions, conditions, definitions, certificate wording, or any exact policy language that is not answered by summary data. Returns matching outline entries, source evidence, and sourceSpanIds for original-PDF evidence when available.",
+    "inputSchema": {
+      "properties": {
+        "policyId": {
+          "description": "The policy reference to search within. This may be a policy number, exact policy ID, filename, carrier, or other policy reference returned by lookup_policy.",
+          "type": "string",
+        },
+        "query": {
+          "description": "What to search for — coverage name, form number, original heading, topic, clause label, or keywords",
+          "type": "string",
+        },
+      },
+      "required": [
+        "policyId",
+        "query",
+      ],
+      "type": "object",
+    },
+    "name": "lookup_policy_section",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Search within a specific policy's source-native document outline and original PDF evidence for detailed content about a topic",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Validate and standardize a user-provided postal address with Mapbox before saving it or passing it to generate_coi. Use the returned structured fields only when Mapbox validates the first candidate. If the result is ambiguous or not found, ask the user to confirm a complete address instead of guessing.",
+    "inputSchema": {
+      "properties": {
+        "countryCode": {
+          "description": "Optional ISO 3166-1 alpha-2 country code used only to disambiguate the lookup, such as US or CA.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "query": {
+          "description": "Full address exactly as the user supplied it, including city, region, postal code, and country when available.",
+          "maxLength": 256,
+          "minLength": 3,
+          "type": "string",
+        },
+      },
+      "required": [
+        "query",
+      ],
+      "type": "object",
+    },
+    "name": "lookup_address",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Validate and standardize a user-provided postal address with Mapbox before saving it or passing it to generate_coi",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Add an explicit stable company-profile fact to the company wiki, only when the user asks Spot to remember it. Do not save policy details, endorsements, COI/certificate details, draft/email metadata, agent capabilities, tool limitations, workflow status, or one-off requests.",
+    "inputSchema": {
+      "properties": {
+        "content": {
+          "description": "The company fact to write into the wiki",
+          "type": "string",
+        },
+        "policyId": {
+          "description": "Deprecated. Policy-specific notes are rejected by wiki policy.",
+          "type": "string",
+        },
+        "section": {
+          "description": "The company-wiki section this fact belongs in",
+          "enum": [
+            "profile",
+            "operations",
+            "scale",
+            "compliance",
+            "preferences",
+            "notes",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "content",
+        "section",
+      ],
+      "type": "object",
+    },
+    "name": "save_note",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Add an explicit stable company-profile fact to the company wiki, only when the user asks Spot to remember it",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Confirm a policy fact from original PDF source evidence and optionally update a small set of top-level extracted policy fields. Use only after lookup_policy_section returns original-PDF sourceSpanIds that directly support the fact. This does not save policy details to long-term org memory.",
+    "inputSchema": {
+      "properties": {
+        "fact": {
+          "description": "Concise policy fact confirmed from the original PDF",
+          "type": "string",
+        },
+        "fieldUpdates": {
+          "description": "Optional top-level extracted fields to update when directly supported by the cited PDF evidence",
+          "properties": {
+            "broker": {
+              "type": "string",
+            },
+            "carrier": {
+              "type": "string",
+            },
+            "depositPremium": {
+              "type": "string",
+            },
+            "effectiveDate": {
+              "type": "string",
+            },
+            "expirationDate": {
+              "type": "string",
+            },
+            "generalAgentName": {
+              "type": "string",
+            },
+            "insuredName": {
+              "type": "string",
+            },
+            "minPremium": {
+              "type": "string",
+            },
+            "policyNumber": {
+              "type": "string",
+            },
+            "premium": {
+              "type": "string",
+            },
+            "security": {
+              "type": "string",
+            },
+            "summary": {
+              "type": "string",
+            },
+            "totalCost": {
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
+        "policyId": {
+          "description": "Policy reference for the fact being confirmed",
+          "type": "string",
+        },
+        "sourceSpanIds": {
+          "description": "Stable source span IDs returned by lookup_policy_section",
+          "items": {
+            "type": "string",
+          },
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "policyId",
+        "fact",
+        "sourceSpanIds",
+      ],
+      "type": "object",
+    },
+    "name": "confirm_policy_fact",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Confirm a policy fact from original PDF source evidence and optionally update a small set of top-level extracted policy fields",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Generate certificate PDFs in exactly one of two modes. Policy mode uses policyId plus a holder and includes all available policy coverages; when the user provides an address, call lookup_address first. Requirements mode uses requirementSourceDocumentId or one requirementId; the saved source supplies the holder and Spot creates the necessary certificates from matching policies with only the relevant coverages. Do not combine these modes. Additional-insured, waiver, primary/non-contributory, loss payee, and mortgagee requests issue only when existing policy evidence supports them; otherwise Spot gates the certificate and returns a drafted broker email.",
+    "inputSchema": {
+      "properties": {
+        "additionalInsuredName": {
+          "description": "Name of the requested additional insured when the user asks to add or show one on the certificate.",
+          "type": "string",
+        },
+        "addressLine1": {
+          "description": "Certificate holder street address line 1 when the user provides it.",
+          "type": "string",
+        },
+        "addressLine2": {
+          "description": "Certificate holder street address line 2 when the user provides it.",
+          "type": "string",
+        },
+        "certificateHolder": {
+          "description": "Certificate holder name. Include the address in this block only when the user already provided it.",
+          "type": "string",
+        },
+        "city": {
+          "description": "Certificate holder city when provided.",
+          "type": "string",
+        },
+        "country": {
+          "description": "Certificate holder country when provided.",
+          "type": "string",
+        },
+        "descriptionOfOperations": {
+          "description": "Source-backed description-of-operations wording to place in the certificate description box when the user explicitly provides wording or the policy source facts clearly support operations, locations, covered autos, or special items. Do not invent this wording. Do not use this for generic policy summaries, carrier names, policy numbers, limits, terms, or unsupported endorsement status.",
+          "type": "string",
+        },
+        "explicitReissue": {
+          "description": "Set true only when the user explicitly asks to reissue/regenerate a new certificate version even if one already exists for this holder and current policy version",
+          "type": "boolean",
+        },
+        "holderContactName": {
+          "description": "Specific certificate holder contact name or attention line when the user provides one",
+          "type": "string",
+        },
+        "holderEmail": {
+          "description": "Certificate holder email address only when the user explicitly asks Spot to email/send the certificate or already provides the email. Do not ask for this for ordinary certificate generation.",
+          "type": "string",
+        },
+        "holderPhone": {
+          "description": "Certificate holder phone number only when the user provides one",
+          "type": "string",
+        },
+        "policyId": {
+          "description": "Policy-mode reference. Omit in requirements mode.",
+          "type": "string",
+        },
+        "postalCode": {
+          "description": "Certificate holder postal code when provided.",
+          "type": "string",
+        },
+        "requestText": {
+          "description": "The user's full certificate request. Include explicit endorsement-bearing wording only if the user asked for it.",
+          "type": "string",
+        },
+        "requestedEndorsements": {
+          "description": "Specific endorsement requests only when the user explicitly asks for them, such as additional insured, waiver of subrogation, primary and non-contributory, loss payee, or mortgagee. Do not invent extra wording.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "requirementId": {
+          "description": "Requirements-mode exact requirement ID. Spot uses its connected source and generates only for this requirement.",
+          "type": "string",
+        },
+        "requirementSourceDocumentId": {
+          "description": "Requirements-mode source ID returned by lookup_compliance_requirements. The source provides the holder and all active requirements.",
+          "type": "string",
+        },
+        "state": {
+          "description": "Certificate holder state/province when provided.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "generate_coi",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Generate certificate PDFs in exactly one of two modes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Search connected IMAP email accounts live without persisting mailbox contents. Use this iteratively with targeted search terms and date windows when the user asks to find emails, policies, leases, vendor messages, requirements, receipts, or attachments in connected mailboxes.",
+    "inputSchema": {
+      "properties": {
+        "dateFrom": {
+          "description": "Inclusive start date for a targeted search window in YYYY-MM-DD format.",
+          "type": "string",
+        },
+        "dateTo": {
+          "description": "Inclusive end date for a targeted search window in YYYY-MM-DD format.",
+          "type": "string",
+        },
+        "limit": {
+          "description": "Maximum matching emails to return.",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "mailbox": {
+          "description": "Mailbox/folder name. Defaults to INBOX.",
+          "type": "string",
+        },
+        "query": {
+          "description": "Text to search for in subject, sender, recipients, or message body.",
+          "type": "string",
+        },
+        "sinceDays": {
+          "description": "Fallback rolling lookback when dateFrom/dateTo are not known. Defaults to 14.",
+          "maximum": 90,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "search_connected_email",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Search connected IMAP email accounts live without persisting mailbox contents",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read one connected-email message returned by search_connected_email, including bounded body text and attachment metadata.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "read_connected_email",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read one connected-email message returned by search_connected_email, including bounded body text and attachment metadata",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Read text from a specific PDF, DOCX, TXT, Markdown, CSV, or JSON attachment on a connected-email message without persisting the mailbox message. Use after read_connected_email returns attachment metadata and the user needs the attachment contents inspected before deciding whether to import it.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filename": {
+          "description": "Exact attachment filename returned by read_connected_email.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+        "filename",
+      ],
+      "type": "object",
+    },
+    "name": "read_connected_email_attachment",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Read text from a specific PDF, DOCX, TXT, Markdown, CSV, or JSON attachment on a connected-email message without persisting the mailbox message",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Import PDF attachments from a connected-email message into the Spot policy library. Use after search/read confirms the attachments are bound policies, declarations, binders, endorsements, COIs, or other post-binding insurance documents.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filenames": {
+          "description": "Specific PDF filenames to import. Omit to import all PDF attachments on the email as one policy package.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "import_connected_email_policy_attachments",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Import PDF attachments from a connected-email message into the Spot policy library",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Import PDF/DOCX/TXT/CSV/JSON attachments and optionally the email body from a connected-email message as source-backed insurance compliance requirements. Use after search/read confirms the email or attachments contain leases, contracts, vendor requirement packets, or other insurance requirement language.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filenames": {
+          "description": "Specific attachment filenames to import. Omit to import all requirement-like attachments on the email.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "includeEmailBody": {
+          "description": "Set true when the email body itself contains requirement language that should be imported.",
+          "type": "boolean",
+        },
+        "scope": {
+          "description": "Requirement scope. Use own_org for the org's lease/client obligations or vendors for vendor/customer standards.",
+          "enum": [
+            "vendors",
+            "own_org",
+          ],
+          "type": "string",
+        },
+        "sourceType": {
+          "description": "Source document type. Infer lease_agreement for leases and client_contract for customer/client contracts.",
+          "enum": [
+            "lease_agreement",
+            "client_contract",
+            "vendor_requirements",
+            "other",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "import_connected_email_requirement_attachments",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Import PDF/DOCX/TXT/CSV/JSON attachments and optionally the email body from a connected-email message as source-backed insurance compliance requirements",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Save attachments from a connected-email message into the current Spot thread so they can be reused later and attached to outbound email drafts without searching the mailbox again. Use after search/read identifies documents that are relevant to the user's task.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email.",
+          "type": "string",
+        },
+        "filenames": {
+          "description": "Specific attachment filenames to save. Omit to save all attachments on the email that fit size limits.",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "threadId": {
+          "description": "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "save_connected_email_attachments_to_thread",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Save attachments from a connected-email message into the current Spot thread so they can be reused later and attached to outbound email drafts without searching the mailbox again",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Export the connected-email message itself into the current Spot thread as an attachable .eml proof document. Use this when the user asks to attach, forward, preserve, or provide proof of an email whose relevant content is in the email body rather than an attachment, such as a cancellation email, receipt, confirmation, notice, or correspondence.",
+    "inputSchema": {
+      "properties": {
+        "emailRef": {
+          "description": "Opaque emailRef returned by search_connected_email or read_connected_email.",
+          "type": "string",
+        },
+        "filename": {
+          "description": "Optional filename for the saved email export. Defaults to a subject-based .eml name.",
+          "type": "string",
+        },
+        "threadId": {
+          "description": "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "emailRef",
+      ],
+      "type": "object",
+    },
+    "name": "save_connected_email_message_to_thread",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Export the connected-email message itself into the current Spot thread as an attachable ",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "description": "Send a connected-vendor access invitation to a vendor email address so the org can monitor that vendor's insurance records. Use only when the user asks to invite or connect a vendor, or explicitly approves doing so.",
+    "inputSchema": {
+      "properties": {
+        "note": {
+          "description": "Optional note to include in the vendor invitation email.",
+          "type": "string",
+        },
+        "relationshipLabel": {
+          "description": "Optional vendor/company label for the connected-org relationship.",
+          "type": "string",
+        },
+        "vendorEmail": {
+          "description": "Vendor contact email address to invite.",
+          "format": "email",
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "vendorEmail",
+      ],
+      "type": "object",
+    },
+    "name": "send_connected_vendor_invite",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+          "write",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Send a connected-vendor access invitation to a vendor email address so the org can monitor that vendor's insurance records",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "description": "Search or retrieve public web content using the operator-configured browsing provider. Use only for public/current web facts, company websites, news, or source-backed public research. Do not include private policy text, mailbox bodies, policy numbers, source spans, personal data, or confidential customer data in the query.",
+    "inputSchema": {
+      "properties": {
+        "allowedDomains": {
+          "description": "Optional public domains to restrict search results to.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 5,
+          "type": "array",
+        },
+        "goal": {
+          "description": "Short public research goal, such as verifying company services or recent public news.",
+          "maxLength": 500,
+          "type": "string",
+        },
+        "maxResults": {
+          "description": "Maximum public sources to return. Defaults to 5.",
+          "maximum": 5,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "query": {
+          "description": "Public web search query. Omit when retrieving a specific URL.",
+          "maxLength": 500,
+          "type": "string",
+        },
+        "url": {
+          "description": "Specific public http(s) URL to retrieve. Use this for known public pages.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "web_research",
+    "securitySchemes": [
+      {
+        "scopes": [
+          "read",
+        ],
+        "type": "oauth2",
+      },
+    ],
+    "title": "Search or retrieve public web content using the operator-configured browsing provider",
+  },
+]
+`;

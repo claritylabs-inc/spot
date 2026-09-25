@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
+import { reserveLegacyOperatorEmailIdentity } from "./lib/operatorIdentity";
 import { normalizeUserPhone } from "./lib/userPhone";
 
 import { LOCAL_FIXTURE } from "./lib/localSeedData";
@@ -51,9 +52,6 @@ type VerificationCleanupResult = {
   participants: number;
   threads: number;
   messages: number;
-  publicConversations: number;
-  publicLogs: number;
-  publicTranscripts: number;
 };
 
 function assertLocalSeed() {
@@ -173,6 +171,45 @@ async function ensureMembership(
   });
 }
 
+// The production operator-email-identity backfill migration has already run;
+// local/preview deployments start from an empty table and need the same
+// "legacy" readiness row so operator alias login works against seed data.
+export const seedOperatorEmailIdentityReadinessInternal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db
+      .query("operatorEmailIdentityBackfill")
+      .withIndex("key", (q) => q.eq("key", "legacy"))
+      .unique();
+    if (existing) return { ready: true };
+
+    for (const user of await ctx.db.query("users").collect()) {
+      await reserveLegacyOperatorEmailIdentity(ctx, user.email, user._id);
+    }
+    for (const profile of await ctx.db.query("operatorProfiles").collect()) {
+      await reserveLegacyOperatorEmailIdentity(
+        ctx,
+        profile.email,
+        profile.userId,
+      );
+    }
+    for (const account of await ctx.db.query("authAccounts").collect()) {
+      if (account.provider === "resend-otp") {
+        await reserveLegacyOperatorEmailIdentity(
+          ctx,
+          account.providerAccountId,
+          account.userId,
+        );
+      }
+    }
+    await ctx.db.insert("operatorEmailIdentityBackfill", {
+      key: "legacy",
+      completedAt: dayjs().valueOf(),
+    });
+    return { ready: true };
+  },
+});
+
 export const seed = action({
   args: {
     brokerPhone: v.optional(v.string()),
@@ -249,44 +286,10 @@ export const seed = action({
     }
     const workflow = await seedWorkflowFixtures(ctx, fixture);
     await ctx.runMutation(
-      internal.migrations.runOperatorEmailIdentityBackfill,
-      {},
-    );
-    // Local setup waits for its bounded fixture backfill; production uses the
-    // explicitly invoked migration and completion commands.
-    const setupDeadline = dayjs().add(60, "second").valueOf();
-    for (;;) {
-      const status = await ctx.runQuery(
-        internal.migrations.operatorEmailIdentityBackfillStatus,
-        {},
-      );
-      if (
-        status.statuses.length === 3 &&
-        status.statuses.every((migration) => migration.isDone)
-      )
-        break;
-      if (dayjs().valueOf() >= setupDeadline) {
-        throw new Error(
-          "Local operator identity backfill is still running. Rerun seed after checking its migration status.",
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    await ctx.runMutation(
-      internal.migrations.finishOperatorEmailIdentityBackfill,
+      internal.seed.seedOperatorEmailIdentityReadinessInternal,
       {},
     );
     return { ...fixture, ...workflow };
-  },
-});
-
-export const cleanupLegacyDemoFixture = action({
-  args: { dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, args): Promise<LegacyDemoCleanupResult> => {
-    assertLocalSeed();
-    return await ctx.runMutation(internal.seed.removeLegacyDemoFixture, {
-      dryRun: args.dryRun ?? true,
-    });
   },
 });
 
@@ -324,34 +327,11 @@ export const removeLocalVerificationArtifacts = internalMutation({
       (row) => threadIds.has(String(row.threadId)),
     );
 
-    const initialPublicLogs = (
-      await ctx.db.query("publicDemoChatLogs").collect()
-    ).filter((row) =>
-      isVerificationGuid(
-        (row.metadata as { chatGuid?: string } | undefined)?.chatGuid,
-      ),
-    );
-    const publicConversationIds = new Set(
-      initialPublicLogs.map(({ conversationId }) => String(conversationId)),
-    );
-    const publicLogs = (
-      await ctx.db.query("publicDemoChatLogs").collect()
-    ).filter((row) => publicConversationIds.has(String(row.conversationId)));
-    const publicConversations = (
-      await ctx.db.query("publicDemoConversations").collect()
-    ).filter((row) => publicConversationIds.has(String(row._id)));
-    const publicTranscripts = (
-      await ctx.db.query("publicDemoSalesTranscripts").collect()
-    ).filter((row) => publicConversationIds.has(String(row.conversationId)));
-
     for (const row of messages) await ctx.db.delete(row._id);
     for (const row of threads) await ctx.db.delete(row._id);
     for (const row of participants) await ctx.db.delete(row._id);
     for (const row of chats) await ctx.db.delete(row._id);
     for (const row of events) await ctx.db.delete(row._id);
-    for (const row of publicLogs) await ctx.db.delete(row._id);
-    for (const row of publicTranscripts) await ctx.db.delete(row._id);
-    for (const row of publicConversations) await ctx.db.delete(row._id);
 
     return {
       chats: chats.length,
@@ -359,9 +339,6 @@ export const removeLocalVerificationArtifacts = internalMutation({
       participants: participants.length,
       threads: threads.length,
       messages: messages.length,
-      publicConversations: publicConversations.length,
-      publicLogs: publicLogs.length,
-      publicTranscripts: publicTranscripts.length,
     };
   },
 });

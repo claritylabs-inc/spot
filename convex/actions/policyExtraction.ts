@@ -1,15 +1,11 @@
 "use node";
 
-import {
-  routingSelectionValidator,
-  type ExtractionTraceRouting,
-} from "../lib/extractionTraceRouterFields";
+import type { ExtractionTraceRouting } from "../lib/extractionTraceRouterFields";
 
 import { randomUUID } from "crypto";
 import dayjs from "dayjs";
-import { PDFDocument } from "pdf-lib";
 import { v } from "convex/values";
-import { action, internalAction } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { runPipeline } from "@claritylabs/cl-pipelines";
 import {
@@ -17,36 +13,19 @@ import {
   createConvexSchedulerAdapter,
 } from "@claritylabs/cl-pipelines/convex";
 import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
-import { buildExtractor } from "../lib/extraction";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
-import {
-  preparePdfTextWithParserFallback,
-  preparePdfTextWithPdfJs,
-  tryConvertPdfWithLiteParse,
-} from "../lib/liteparsePreprocessor";
-import type { ExtractionResult, PipelineCheckpoint } from "../lib/extraction";
-import type { ExtractOptions } from "../lib/extraction";
-import {
-  makeEmbedTexts,
-  makeGenerateObject,
-  type EmbedTexts,
-} from "../lib/sdkCallbacks";
-import { clRouterDecide } from "../lib/clRouterClient";
+import { cancelDurableRouterRequest } from "../lib/routerJobClient";
+import { makeGenerateObject } from "../lib/sdkCallbacks";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import {
-  isSpecimenPolicyDocument,
-  buildDocumentGateEvidence,
-  NON_INSURANCE_DOCUMENT_ERROR,
-} from "../lib/policyDocumentGate";
+import { NON_INSURANCE_DOCUMENT_ERROR } from "../lib/policyDocumentGate";
 import {
   buildExtractionCompletionManifest,
   buildPromotionEvidenceLedger,
-  buildPromotionSourceCoverageMap,
-  type ExtractionCompletionManifest,
+  extractionContractHash,
+  extractionSourceFingerprint,
+  sectionPageCoverageReasons,
 } from "../lib/extractionPromotion";
-
-type ExtractionState = Record<string, unknown>;
 import {
   openExtractionReviewQuestions,
   postProcessExtractionDocument,
@@ -59,35 +38,56 @@ import {
   type PolicyOperationalProfile,
   type SourceSpanLike,
 } from "../lib/sourceTree";
+import { extractPdfText, type PdfPageText } from "../lib/pdfText";
+import {
+  classifyPolicyIntake,
+  type ExistingPolicyCandidate,
+  type PolicyIntakeDecision,
+} from "../lib/policyIntakeClassification";
+import {
+  planPolicySections,
+  type PolicySection,
+  type PolicySectionKind,
+  type PolicySectionPlan,
+} from "../lib/policySectioning";
+import {
+  resolveCarrierIdentityDecision,
+  type CarrierIdentityDecision,
+} from "../lib/carrierIdentitySource";
+import type { ModelRoute } from "../lib/modelCatalog";
+import {
+  declarationsPreviewFields,
+  mergeSectionResults,
+  modelTranscriptionSpans,
+  parseSectionResult,
+  type SectionResult,
+} from "../lib/sectionExtraction/merge";
+import { buildDeclarationsSummary } from "../lib/sectionExtraction/prompts";
+import {
+  SECTION_EXTRACTOR_VERSION,
+  type DeclarationsSectionOutput,
+} from "../lib/sectionExtraction/schemas";
+import {
+  SECTION_TASK_KIND,
+  runSectionJob,
+  sectionExtractionRoute,
+  sectionInvocationKey,
+  sectionLabel,
+  type SectionJobOutcome,
+} from "../lib/sectionExtraction/sectionJobs";
 import { z } from "zod";
 
 const CANCELLED_BY_USER = "Cancelled by user";
 const ADVANCE_LEASE_MS = 2 * 60 * 1000;
 const ADVANCE_LEASE_HEARTBEAT_MS = 30 * 1000;
 const ADVANCE_LEASE_WATCHDOG_GRACE_MS = 15 * 1000;
-const EMBEDDING_CONCURRENCY = readBoundedIntEnv(
-  "EXTRACTION_EMBEDDING_CONCURRENCY",
-  8,
-  1,
-  16,
-);
-const EXTERNAL_WORKER_MODE = process.env.EXTRACTION_WORKER_MODE === "external";
-const EXPECTED_EXTERNAL_WORKER_PROTOCOL_VERSION =
-  process.env.EXTRACTION_WORKER_EXPECTED_PROTOCOL_VERSION;
-const EXPECTED_EXTERNAL_WORKER_CL_SDK_VERSION =
-  process.env.EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION;
-const EXTERNAL_WORKER_LEASE_MS = readBoundedIntEnv(
-  "EXTRACTION_WORKER_LEASE_MS",
-  5 * 60 * 1000,
-  60 * 1000,
-  30 * 60 * 1000,
-);
-const EMBEDDING_BATCH_SIZE = readBoundedIntEnv(
-  "EXTRACTION_EMBEDDING_BATCH_SIZE",
-  128,
-  1,
-  512,
-);
+// Delay before an advance polls section router jobs that are still running.
+const ROUTER_JOB_POLL_DELAY_MS = 3_000;
+const SECTION_SUBMISSIONS_PER_ADVANCE = 6;
+const SECTION_POLL_CONCURRENCY = 6;
+// One automatic retry per section, like cl-sdk safeGenerateObject's default.
+const SECTION_AUTO_RETRIES = 1;
+const INTAKE_CANDIDATE_LIMIT = 20;
 const SOURCE_STORAGE_BATCH_SIZE = readBoundedIntEnv(
   "EXTRACTION_SOURCE_STORAGE_BATCH_SIZE",
   200,
@@ -102,6 +102,13 @@ type StoredArtifact = {
   durationMs: number;
 };
 type PipelineLogLevel = "info" | "warn" | "error";
+type PipelineArtifactKind =
+  | "cl_sdk_checkpoint"
+  | "embedding_payload"
+  | "source_bundle"
+  | "section_result"
+  | "parsed_source"
+  | "section_plan";
 
 type LeasedPolicyCheckpoint = {
   nextPhase: string;
@@ -114,6 +121,47 @@ type LeasedPolicyCheckpoint = {
     heartbeatAt?: number;
   };
 };
+
+/** pdf.js text for the whole PDF, written by parse and read by later phases. */
+type ParsedSourceArtifact = {
+  version: "parsed-source-v1";
+  pageCount: number;
+  pages: PdfPageText[];
+  sourceSpans: SourceSpanLike[];
+  textLayerMissing: boolean;
+};
+
+type StoredSectionResult = {
+  version: "section-result-v1";
+  sectionId: string;
+  kind: PolicySectionKind;
+  pageStart: number;
+  pageEnd: number;
+  attempt: number;
+  status: "succeeded" | "failed";
+  output?: unknown;
+  error?: string;
+  model?: ModelRoute;
+  routerRequestId?: string;
+};
+
+type SectionResultArtifact = {
+  storageId: string;
+  status: StoredSectionResult["status"];
+  resultHash: string;
+};
+
+// Checkpoints from before the section pipeline that still map to a phase.
+const LEGACY_PHASE_ALIASES: Record<string, string> = {
+  embed_and_store: "store_sources",
+};
+
+class WaitingForRouterJobs extends Error {
+  constructor(readonly pending: number) {
+    super(`Waiting for ${pending} section extraction jobs`);
+    this.name = "WaitingForRouterJobs";
+  }
+}
 
 function sourceSpanIdentity(span: SourceSpanLike) {
   const table = span.table && typeof span.table === "object" ? span.table : {};
@@ -168,20 +216,23 @@ function sourceSpanOrder(span: SourceSpanLike, fallbackIndex: number) {
 
 function canonicalSourceSpans(sourceSpans: SourceSpanLike[]) {
   const seen = new Set<string>();
-  const deduped: SourceSpanLike[] = [];
-  sourceSpans.forEach((span) => {
+  const deduped: Array<{
+    span: SourceSpanLike;
+    order: ReturnType<typeof sourceSpanOrder>;
+  }> = [];
+  sourceSpans.forEach((span, index) => {
     const key = sourceSpanIdentity(span);
     if (seen.has(key)) return;
     seen.add(key);
-    deduped.push(span);
+    deduped.push({ span, order: sourceSpanOrder(span, index) });
   });
-  return deduped.sort((left, right) => {
-    const leftOrder = sourceSpanOrder(left, sourceSpans.indexOf(left));
-    const rightOrder = sourceSpanOrder(right, sourceSpans.indexOf(right));
-    return (
-      leftOrder.page - rightOrder.page || leftOrder.index - rightOrder.index
-    );
-  });
+  return deduped
+    .sort(
+      (left, right) =>
+        left.order.page - right.order.page ||
+        left.order.index - right.order.index,
+    )
+    .map(({ span }) => span);
 }
 
 function sourceKindForStorage(value: unknown) {
@@ -221,22 +272,50 @@ export type PolicyExtractionState = {
    */
   replacementPromotionStarted?: boolean;
   traceId?: string;
+  /** Set by the removed extraction worker; such checkpoints restart from load_pdf. */
   externalWorker?: boolean;
-  /** Deprecated inline SDK checkpoint. Kept only so legacy stored state can deserialize. */
-  clSdkCheckpoint?: PipelineCheckpoint<ExtractionState>;
-  /** Deprecated storage-backed SDK checkpoint. New source-span SDK runs do not write it. */
-  clSdkCheckpointFileId?: string;
-  chunkIds?: string[];
-  sourceSpanIds?: string[];
-  sourceChunkIds?: string[];
-  /** Storage-backed embedding payload produced by extraction and consumed by embed_and_store. */
-  embeddingPayloadFileId?: string;
-  documentChunksForEmbedding?: Array<{
-    id: string;
-    type: string;
-    text: string;
-    metadata: Record<string, unknown>;
-  }>;
+  pdfByteLength?: number;
+  pageCount?: number;
+  /** Fingerprint of the parsed source spans that section results are bound to. */
+  sourceFingerprint?: string;
+  sectionPlanHash?: string;
+  /** Current attempt per section; each attempt is a separate router invocation. */
+  sectionAttempts?: Record<string, number>;
+  /** Automatic retries used per section since the run or its latest Resume started. */
+  sectionRetries?: Record<string, number>;
+  previewWritten?: boolean;
+  /** Set while extract_sections waits on router jobs between advances. */
+  routerWaitStartedAt?: number;
+};
+
+function isReplacementRun(state: Pick<PolicyExtractionState, "policyVersionKind">) {
+  return (
+    state.policyVersionKind === "re_extraction" ||
+    state.policyVersionKind === "renewal"
+  );
+}
+
+/** The source fields a restarted extraction keeps from an unsupported checkpoint. */
+function restartState(state: PolicyExtractionState): PolicyExtractionState {
+  return {
+    workspaceScanImportId: state.workspaceScanImportId,
+    sourceKind: state.sourceKind ?? "upload",
+    fileId: state.fileId,
+    fileName: state.fileName,
+    orgId: state.orgId,
+    userId: state.userId,
+    policyFileId: state.policyFileId,
+    policyVersionKind: state.policyVersionKind,
+    replacementPromotionStarted: state.replacementPromotionStarted,
+    traceId: state.traceId,
+  };
+}
+
+/**
+ * Evidence merge hands to store_sources. Stored under the embedding_payload
+ * artifact kind that in-flight runs from earlier deploys also use.
+ */
+type SourceStoragePayload = {
   sourceSpansForStorage?: Array<{
     id: string;
     documentId?: string;
@@ -254,92 +333,7 @@ export type PolicyExtractionState = {
     bbox?: unknown;
     metadata?: Record<string, unknown>;
   }>;
-  sourceChunksForEmbedding?: Array<{
-    id: string;
-    documentId?: string;
-    sourceSpanIds?: string[];
-    text: string;
-    metadata?: Record<string, unknown>;
-  }>;
-  sourceNodesForStorage?: Array<DocumentSourceNode>;
-  operationalProfile?: PolicyOperationalProfile;
-};
-
-function shouldArchiveRejectedPolicy(
-  policyVersionKind: PolicyExtractionState["policyVersionKind"],
-) {
-  return !policyVersionKind || policyVersionKind === "new_policy";
-}
-
-type EmbeddingPayload = Pick<
-  PolicyExtractionState,
-  | "documentChunksForEmbedding"
-  | "sourceSpansForStorage"
-  | "sourceChunksForEmbedding"
-  | "sourceNodesForStorage"
->;
-
-type ExternalCompletionPayload = {
-  protocolVersion?: "source-tree-v1" | "source-tree-v2";
-  extractorVersion?: string;
-  sections?: ExtractionCompletionManifest["sections"];
-  document: unknown;
-  chunks: unknown[];
-  sourceSpans: unknown[];
-  sourceChunks: unknown[];
-  sourceTree?: unknown[];
-  operationalProfile?: unknown;
-  warnings?: string[];
-  tokenUsage?: unknown;
-  performanceReport?: unknown;
-};
-
-type ExternalClaimResult = {
-  policyId: string;
-  leaseId: string;
-  leaseExpiresAt: number;
-  state: PolicyExtractionState;
-  fileUrl: string;
-  modelSettings?: {
-    routes?: Record<string, { provider: string; model: string }>;
-    routeSources?: Record<string, string>;
-  };
-} | null;
-
-type ExternalPreviewClaimResult = {
-  policyId: string;
-  leaseId: string;
-  leaseExpiresAt: number;
-  state: PolicyExtractionState;
-  fileUrl: string;
-  modelSettings?: {
-    routes?: Record<string, { provider: string; model: string }>;
-    routeSources?: Record<string, string>;
-  };
-} | null;
-
-type ExternalAckResult = {
-  ok: boolean;
-  leaseExpiresAt?: number;
-};
-
-type ExternalCompleteArgs = {
-  policyId: string;
-  leaseId: string;
-  state: unknown;
-  payloadStorageId?: string;
-  document?: unknown;
-  chunks?: unknown[];
-  sourceSpans?: unknown[];
-  sourceChunks?: unknown[];
-  sourceTree?: unknown[];
-  operationalProfile?: unknown;
-  warnings?: string[];
-  tokenUsage?: unknown;
-  performanceReport?: unknown;
-  protocolVersion?: "source-tree-v1" | "source-tree-v2";
-  extractorVersion?: string;
-  sections?: ExtractionCompletionManifest["sections"];
+  sourceNodesForStorage?: DocumentSourceNode[];
 };
 
 function readBoundedIntEnv(
@@ -385,14 +379,7 @@ async function traceEvent(
   ctx: ActionCtx,
   traceId: string | undefined,
   event: {
-    kind:
-      | "session"
-      | "phase"
-      | "log"
-      | "model_call"
-      | "embedding_batch"
-      | "worker"
-      | "artifact";
+    kind: "session" | "phase" | "model_call";
     phase?: string;
     level?: string;
     message?: string;
@@ -447,52 +434,6 @@ async function completeTraceSession(
   }
 }
 
-function requireExtractionWorkerSecret(secret: string): void {
-  const expected = process.env.EXTRACTION_WORKER_SECRET;
-  if (!expected || secret !== expected) {
-    throw new Error("Unauthorized extraction worker");
-  }
-}
-
-function normalizeVersionSpec(value: string | undefined): string | undefined {
-  return value?.trim().replace(/^[~^=v]+/, "");
-}
-
-function validateExternalWorkerCompatibility(args: {
-  workerId?: string;
-  workerVersion?: string;
-  workerProtocolVersion?: string;
-  clSdkVersion?: string;
-}): string | undefined {
-  const allowedProtocols =
-    EXPECTED_EXTERNAL_WORKER_PROTOCOL_VERSION === "source-tree-v2"
-      ? new Set(["source-tree-v2"])
-      : new Set(["source-tree-v1", "source-tree-v2"]);
-  if (
-    EXPECTED_EXTERNAL_WORKER_PROTOCOL_VERSION &&
-    (!args.workerProtocolVersion ||
-      !allowedProtocols.has(args.workerProtocolVersion))
-  ) {
-    return [
-      `External worker ${args.workerId ?? "unknown"} is incompatible`,
-      `(protocol ${args.workerProtocolVersion ?? "missing"}; expected ${EXPECTED_EXTERNAL_WORKER_PROTOCOL_VERSION})`,
-    ].join(" ");
-  }
-  if (EXPECTED_EXTERNAL_WORKER_CL_SDK_VERSION) {
-    const expected = normalizeVersionSpec(
-      EXPECTED_EXTERNAL_WORKER_CL_SDK_VERSION,
-    );
-    const actual = normalizeVersionSpec(args.clSdkVersion);
-    if (actual !== expected) {
-      return [
-        `External worker ${args.workerId ?? "unknown"} has cl-sdk ${args.clSdkVersion ?? "missing"}`,
-        `(expected ${EXPECTED_EXTERNAL_WORKER_CL_SDK_VERSION})`,
-      ].join(" ");
-    }
-  }
-  return undefined;
-}
-
 async function runBounded<T>(
   items: T[],
   concurrency: number,
@@ -519,88 +460,6 @@ function chunkItems<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-async function embedAndStoreBatch<T>({
-  items,
-  embedTexts,
-  textForItem,
-  storeItem,
-  describeItem,
-  logWarning,
-  isCancelled,
-}: {
-  items: T[];
-  embedTexts: EmbedTexts;
-  textForItem: (item: T) => string;
-  storeItem: (item: T, embedding: number[]) => Promise<void>;
-  describeItem: (item: T) => string;
-  logWarning: (message: string) => Promise<void>;
-  isCancelled: () => Promise<boolean>;
-}) {
-  let embedded = 0;
-  let failures = 0;
-
-  const storeWithFailureTracking = async (item: T, embedding: number[]) => {
-    try {
-      await storeItem(item, embedding);
-      embedded++;
-    } catch (err) {
-      if (isCancelledError(err)) throw err;
-      failures++;
-      await logWarning(
-        `Warning: failed to store embedding for ${describeItem(item)}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  };
-
-  for (const batch of chunkItems(items, EMBEDDING_BATCH_SIZE)) {
-    if (await isCancelled()) {
-      throw new Error(CANCELLED_BY_USER);
-    }
-    try {
-      const embeddings = await embedTexts(batch.map(textForItem));
-      await runBounded(batch, EMBEDDING_CONCURRENCY, async (item, index) => {
-        if (await isCancelled()) {
-          throw new Error(CANCELLED_BY_USER);
-        }
-        const embedding = embeddings[index];
-        if (!embedding) {
-          failures++;
-          await logWarning(
-            `Warning: embedding provider returned no vector for ${describeItem(item)}`,
-          );
-          return;
-        }
-        await storeWithFailureTracking(item, embedding);
-      });
-    } catch (err) {
-      if (isCancelledError(err)) throw err;
-      await logWarning(
-        `Warning: failed to embed batch of ${batch.length}; retrying individually: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      await runBounded(batch, EMBEDDING_CONCURRENCY, async (item) => {
-        if (await isCancelled()) {
-          throw new Error(CANCELLED_BY_USER);
-        }
-        try {
-          const [embedding] = await embedTexts([textForItem(item)]);
-          if (!embedding) {
-            throw new Error("Embedding provider returned no vector");
-          }
-          await storeWithFailureTracking(item, embedding);
-        } catch (retryErr) {
-          if (isCancelledError(retryErr)) throw retryErr;
-          failures++;
-          await logWarning(
-            `Warning: failed to embed ${describeItem(item)}: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
-          );
-        }
-      });
-    }
-  }
-
-  return { embedded, failures };
-}
-
 async function isExtractionCancelled(
   ctx: ActionCtx,
   policyId: string,
@@ -611,38 +470,32 @@ async function isExtractionCancelled(
   return policy?.pipelineError === CANCELLED_BY_USER;
 }
 
-function isCancelledError(error: unknown): boolean {
-  return error instanceof Error && error.message === CANCELLED_BY_USER;
-}
-
-async function externalLeaseMatches(
-  ctx: ActionCtx,
-  args: { policyId: string; leaseId: string; state?: unknown },
-): Promise<boolean> {
-  const job = (await ctx.runQuery(internal.policies.pipelineGetJob, {
-    jobId: args.policyId,
-  })) as {
-    status?: string;
-    checkpoint?: LeasedPolicyCheckpoint | null;
-  } | null;
-  const checkpoint = job?.checkpoint;
-  if (
-    job?.status !== "running" ||
-    checkpoint?.nextPhase !== "extract" ||
-    checkpoint.lease?.id !== args.leaseId
-  ) {
-    return false;
+/**
+ * Best effort: a cancelled run's section router jobs that cannot be cancelled
+ * finish, and their results are never read.
+ */
+async function cancelSectionRouterJobs(ctx: ActionCtx, jobId: string) {
+  const invocationKeys: string[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const result: { page: string[]; isDone: boolean; continueCursor: string } =
+      await ctx.runQuery(internal.policies.pipelineListCancelledSectionJobs, {
+        jobId,
+        paginationOpts: { numItems: 100, cursor },
+      });
+    invocationKeys.push(...result.page);
+    if (result.isDone) break;
+    cursor = result.continueCursor;
   }
-  const claimedState = args.state as PolicyExtractionState | undefined;
-  const currentState = checkpoint.state;
-  if (
-    claimedState?.traceId &&
-    currentState.traceId &&
-    claimedState.traceId !== currentState.traceId
-  ) {
-    return false;
-  }
-  return true;
+  await runBounded(invocationKeys, SECTION_POLL_CONCURRENCY, async (invocationKey) => {
+    try {
+      await cancelDurableRouterRequest(ctx, invocationKey);
+    } catch (error) {
+      console.warn(
+        `Could not cancel section router job ${invocationKey}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  });
 }
 
 async function loadPdfBytes(
@@ -658,12 +511,7 @@ async function loadPdfBytes(
 async function storeJsonArtifact(
   ctx: ActionCtx,
   jobId: string,
-  kind:
-    | "cl_sdk_checkpoint"
-    | "embedding_payload"
-    | "external_completion_payload"
-    | "source_bundle"
-    | "section_result",
+  kind: PipelineArtifactKind,
   value: unknown,
   metadata?: {
     sourceFingerprint?: string;
@@ -708,18 +556,131 @@ async function loadJsonArtifact<T>(
 async function getLatestArtifactStorageId(
   ctx: ActionCtx,
   jobId: string,
-  kind:
-    | "cl_sdk_checkpoint"
-    | "embedding_payload"
-    | "external_completion_payload"
-    | "source_bundle"
-    | "section_result",
+  kind: PipelineArtifactKind,
 ): Promise<string | undefined> {
   const artifact = (await ctx.runQuery(internal.policies.pipelineGetArtifact, {
     jobId,
     kind,
   })) as { storageId?: string } | null;
   return artifact?.storageId ? String(artifact.storageId) : undefined;
+}
+
+async function loadParsedSource(ctx: ActionCtx, jobId: string) {
+  return await loadJsonArtifact<ParsedSourceArtifact>(
+    ctx,
+    await getLatestArtifactStorageId(ctx, jobId, "parsed_source"),
+  );
+}
+
+async function loadSectionPlan(ctx: ActionCtx, jobId: string) {
+  return await loadJsonArtifact<PolicySectionPlan>(
+    ctx,
+    await getLatestArtifactStorageId(ctx, jobId, "section_plan"),
+  );
+}
+
+async function currentRunLease(ctx: ActionCtx, jobId: string) {
+  const context = (await ctx.runQuery(
+    internal.policies.pipelineGetPromotionContext,
+    { jobId },
+  )) as { runId: Id<"policyExtractionRuns">; leaseId: string } | null;
+  if (!context) throw new Error("Pipeline phase lease lost");
+  return context;
+}
+
+function sectionResultHash(result: StoredSectionResult): string {
+  return extractionContractHash({
+    sectionId: result.sectionId,
+    kind: result.kind,
+    pageStart: result.pageStart,
+    pageEnd: result.pageEnd,
+    status: result.status,
+    output: result.output ?? null,
+    error: result.error ?? null,
+  });
+}
+
+/** This run's section results for the current plan, by section ID. */
+async function listSectionResults(
+  ctx: ActionCtx,
+  jobId: string,
+  planHash: string,
+): Promise<Map<string, SectionResultArtifact>> {
+  const artifacts = (await ctx.runQuery(
+    internal.policies.pipelineListSectionResults,
+    { jobId },
+  )) as Array<{ sectionId?: string; storageId: string; metadata?: unknown }>;
+  const results = new Map<string, SectionResultArtifact>();
+  for (const artifact of artifacts) {
+    const metadata = (artifact.metadata ?? {}) as Partial<
+      SectionResultArtifact & { planHash: string }
+    >;
+    if (
+      !artifact.sectionId ||
+      metadata.planHash !== planHash ||
+      !metadata.status ||
+      !metadata.resultHash
+    ) {
+      continue;
+    }
+    results.set(artifact.sectionId, {
+      storageId: artifact.storageId,
+      status: metadata.status,
+      resultHash: metadata.resultHash,
+    });
+  }
+  return results;
+}
+
+async function storeSectionResult(
+  ctx: ActionCtx,
+  jobId: string,
+  args: {
+    state: PolicyExtractionState;
+    planHash: string;
+    result: StoredSectionResult;
+  },
+) {
+  const resultHash = sectionResultHash(args.result);
+  await storeJsonArtifact(ctx, jobId, "section_result", args.result, {
+    sourceFingerprint: args.state.sourceFingerprint,
+    extractorVersion: SECTION_EXTRACTOR_VERSION,
+    sectionId: args.result.sectionId,
+    metadata: {
+      sectionId: args.result.sectionId,
+      status: args.result.status,
+      resultHash,
+      planHash: args.planHash,
+      kind: args.result.kind,
+      pageStart: args.result.pageStart,
+      pageEnd: args.result.pageEnd,
+      attempt: args.result.attempt,
+    },
+  });
+}
+
+/** Loads and validates succeeded section results; undefined when any is missing. */
+async function loadSectionOutputs(
+  ctx: ActionCtx,
+  sections: PolicySection[],
+  artifacts: Map<string, SectionResultArtifact>,
+): Promise<Array<{ result: SectionResult; resultHash: string }> | undefined> {
+  const loaded: Array<{ result: SectionResult; resultHash: string }> = [];
+  for (const section of sections) {
+    const artifact = artifacts.get(section.sectionId);
+    if (artifact?.status !== "succeeded") return undefined;
+    const stored = await loadJsonArtifact<StoredSectionResult>(
+      ctx,
+      artifact.storageId,
+    );
+    const result =
+      stored && sectionResultHash(stored) === artifact.resultHash
+        ? parseSectionResult(section, stored.output)
+        : undefined;
+    if (!result) return undefined;
+    loaded.push({ result, resultHash: artifact.resultHash });
+  }
+  return loaded;
 }
 
 async function persistEvidenceAndPromote(
@@ -729,33 +690,38 @@ async function persistEvidenceAndPromote(
     sourceSpans: SourceSpanLike[];
     sourceNodes: DocumentSourceNode[];
     fields: Record<string, unknown>;
-    protocolVersion?: "source-tree-v1" | "source-tree-v2";
-    extractorVersion?: string;
-    sections?: ExtractionCompletionManifest["sections"];
+    plan: PolicySectionPlan;
+    sections: Array<{ section: PolicySection; resultHash: string }>;
   },
 ) {
-  const extractorVersion =
-    normalizeVersionSpec(args.extractorVersion) ??
-    normalizeVersionSpec(EXPECTED_EXTERNAL_WORKER_CL_SDK_VERSION) ??
-    "4.6.0";
+  const extractorVersion = SECTION_EXTRACTOR_VERSION;
   const ledger = buildPromotionEvidenceLedger({
     sourceSpans: args.sourceSpans,
     sourceTree: args.sourceNodes,
   });
-  const protocolVersion = args.protocolVersion ?? "source-tree-v1";
-  const sourceCoverageMap =
-    protocolVersion === "source-tree-v2"
-      ? buildPromotionSourceCoverageMap({
-          sourceSpans: args.sourceSpans,
-          sourceTree: args.sourceNodes,
-        })
-      : undefined;
+  const spanIdsOnPages = (pageStart: number, pageEnd: number) =>
+    args.sourceSpans.flatMap((span) => {
+      const id = span.id ?? span.spanId;
+      return id &&
+        typeof span.pageStart === "number" &&
+        span.pageStart >= pageStart &&
+        span.pageStart <= pageEnd
+        ? [id]
+        : [];
+    });
   const manifest = buildExtractionCompletionManifest({
-    protocolVersion,
     extractorVersion,
     ledger,
-    sourceCoverageMap,
-    sections: args.sections,
+    pageCount: args.plan.pageCount,
+    sectionPlanHash: args.plan.planHash,
+    sections: args.sections.map(({ section, resultHash }) => ({
+      id: section.sectionId,
+      kind: section.kind,
+      pageStart: section.pageStart,
+      pageEnd: section.pageEnd,
+      sourceSpanIds: spanIdsOnPages(section.pageStart, section.pageEnd),
+      resultHash,
+    })),
   });
   const promotionContext = (await ctx.runQuery(
     (internal as any).policies.pipelineGetPromotionContext,
@@ -836,36 +802,16 @@ async function persistEvidenceAndPromote(
       jobId: args.policyId,
       timestamp: nowMs(),
       message: `Extraction promotion ${result.decision.mode === "enforce" ? "blocked" : "shadow violation"}: ${result.decision.reasons.join("; ")}`,
-      phase: "extract",
+      phase: "merge",
       level: "warn",
     });
   }
   if (!result.promoted) {
-    await ctx.runMutation(internal.policies.pipelineClearArtifacts, {
-      jobId: args.policyId,
-      kind: "external_completion_payload",
-    });
     throw new Error(
       `Extraction promotion blocked: ${result.decision.reasons.join("; ")}`,
     );
   }
   return result.decision;
-}
-
-async function storeEmbeddingPayload(
-  ctx: ActionCtx,
-  jobId: string,
-  payload: EmbeddingPayload,
-): Promise<string> {
-  return (await storeJsonArtifact(ctx, jobId, "embedding_payload", payload))
-    .storageId;
-}
-
-async function loadExternalCompletionPayload(
-  ctx: ActionCtx,
-  storageId: string | undefined,
-): Promise<ExternalCompletionPayload | undefined> {
-  return await loadJsonArtifact<ExternalCompletionPayload>(ctx, storageId);
 }
 
 function asOptionalId<T extends string>(value: unknown): T | undefined {
@@ -874,39 +820,10 @@ function asOptionalId<T extends string>(value: unknown): T | undefined {
     : undefined;
 }
 
-async function loadEmbeddingPayload(
-  ctx: ActionCtx,
-  jobId: string,
-  state: PolicyExtractionState,
-): Promise<EmbeddingPayload> {
-  if (
-    state.documentChunksForEmbedding ||
-    state.sourceSpansForStorage ||
-    state.sourceChunksForEmbedding ||
-    state.sourceNodesForStorage
-  ) {
-    return {
-      documentChunksForEmbedding: state.documentChunksForEmbedding,
-      sourceSpansForStorage: state.sourceSpansForStorage,
-      sourceChunksForEmbedding: state.sourceChunksForEmbedding,
-      sourceNodesForStorage: state.sourceNodesForStorage,
-    };
-  }
-  const storageId =
-    state.embeddingPayloadFileId ??
-    (await getLatestArtifactStorageId(ctx, jobId, "embedding_payload"));
-  return (await loadJsonArtifact<EmbeddingPayload>(ctx, storageId)) ?? {};
-}
-
 async function clearArtifacts(
   ctx: ActionCtx,
   jobId: string,
-  kind?:
-    | "cl_sdk_checkpoint"
-    | "embedding_payload"
-    | "external_completion_payload"
-    | "source_bundle"
-    | "section_result",
+  kind?: PipelineArtifactKind,
 ): Promise<void> {
   await ctx.runMutation(internal.policies.pipelineClearArtifacts, {
     jobId,
@@ -920,22 +837,6 @@ function stripLease(
   const { lease: _lease, ...rest } = checkpoint;
   return rest;
 }
-
-const extractionGateSchema = z.object({
-  shouldExtract: z.boolean(),
-  classification: z.enum([
-    "bound_policy_document",
-    "specimen_policy_document",
-    "insurance_related_but_not_bound_policy",
-    "non_insurance",
-    "unknown",
-  ]),
-  confidence: z.number().min(0).max(1),
-  reason: z.string(),
-  detectedTitle: z.string().nullable(),
-});
-
-type ExtractionGateDecision = z.infer<typeof extractionGateSchema>;
 
 const additionalInsuredEligibilityTermSchema = z.object({
   category: z.string(),
@@ -1287,119 +1188,118 @@ ${excerpt.text}`,
   }
 }
 
-async function classifyInsuranceExtractability(params: {
-  ctx: ActionCtx;
-  orgId: Id<"organizations">;
-  traceId?: string;
-  policyId?: string;
-  pdfBytes: Uint8Array;
-  sourceSpans: Array<{
-    pageStart?: number;
-    text: string;
-    metadata?: Record<string, unknown>;
-  }>;
-}): Promise<ExtractionGateDecision> {
-  if (isSpecimenPolicyDocument(params.sourceSpans)) {
-    return {
-      shouldExtract: true,
-      classification: "specimen_policy_document",
-      confidence: 1,
-      reason:
-        "The PDF is explicitly labeled as a specimen policy and is allowed as a testing fixture.",
-      detectedTitle: "Specimen policy",
-    };
-  }
-
-  const pdf = await PDFDocument.load(params.pdfBytes, {
-    ignoreEncryption: true,
-  });
-  const evidence = buildDocumentGateEvidence(
-    params.sourceSpans,
-    pdf.getPageCount(),
-  );
-  if (!evidence.complete) {
-    return {
-      shouldExtract: true,
-      classification: "unknown",
-      confidence: 0,
-      reason:
-        "Complete parsed page evidence is unavailable within the intake budget; continuing rich document extraction.",
-      detectedTitle: null,
-    };
-  }
-  const result = await clRouterDecide({
-    orgId: String(params.orgId),
-    task: "policy_extraction_intake",
-    state: { documentText: evidence.text },
-    questions: {
-      classification: {
-        type: "choice",
-        instructions: `Classify this uploaded document for post-binding insurance extraction. Use only the document evidence. A premium payment in a trust ledger, closing statement, or disbursement statement does not make it a bound policy artifact. A disclaimer that a specimen is not actual insurance does not disqualify an otherwise valid specimen. Choose unknown when the excerpts cannot establish the document type.`,
-        criteria: {
-          bound_policy_document:
-            "An already-bound insurance policy, binder, declarations page, renewal policy, insurance schedule, policy wording, endorsement, or post-binding supplement containing bound policy terms.",
-          specimen_policy_document:
-            "A specimen, sample, or testing-only insurance policy artifact suitable for extraction testing.",
-          insurance_related_but_not_bound_policy:
-            "An unbound quote, proposal, submission, application, marketing material, invoice, or other insurance-related document that is not a bound policy artifact.",
-          non_insurance:
-            "A novel, textbook, resume, generic contract, unrelated legal document, trust ledger, closing statement, disbursement statement, or other non-policy document.",
-          unknown: "Insufficient evidence to determine the document type.",
-        },
-      },
-    },
-    trace: params.traceId ? { traceId: params.traceId } : undefined,
-  }, { telemetry: params.ctx });
-  const answer = result.answers.classification;
-  if (answer?.type !== "choice") {
-    throw new Error("Policy intake decision did not return a choice");
-  }
-  const classification = extractionGateSchema.shape.classification.parse(
-    answer.choice,
-  );
-  const reasons: Record<ExtractionGateDecision["classification"], string> = {
-    bound_policy_document:
-      "The excerpts describe a bound or post-binding policy artifact.",
-    specimen_policy_document:
-      "The excerpts describe a specimen policy testing fixture.",
-    insurance_related_but_not_bound_policy:
-      "The excerpts describe insurance-related material without bound policy terms.",
-    non_insurance: "The excerpts describe a non-policy document.",
-    unknown: "The excerpts do not establish the document type.",
-  };
-  return {
-    classification,
-    shouldExtract:
-      classification === "bound_policy_document" ||
-      classification === "specimen_policy_document" ||
-      classification === "unknown",
-    confidence: answer.confidence,
-    reason: reasons[classification],
-    detectedTitle: null,
-  };
+function percent(confidence: number) {
+  return `${Math.round(confidence * 100)}% confidence`;
 }
 
-function shouldRejectDocument(decision: ExtractionGateDecision): boolean {
-  if (
-    (decision.classification === "bound_policy_document" ||
-      decision.classification === "specimen_policy_document") &&
-    decision.shouldExtract
-  ) {
-    return false;
+function intakeSummary(
+  decision: PolicyIntakeDecision,
+  candidates: ExistingPolicyCandidate[],
+) {
+  const { relationship } = decision;
+  const related = candidates.find(
+    (candidate) => candidate.policyId === relationship.policyId,
+  );
+  const target = relationship.policyId
+    ? ` of ${related?.policyNumber ?? relationship.policyId}`
+    : "";
+  return `Document gate: ${decision.classification} (${percent(decision.confidence)}) — ${decision.reason.replace(/\.$/, "")}; relationship (advisory): ${relationship.kind}${target} (${percent(relationship.confidence)})`;
+}
+
+async function rejectDocument(
+  ctx: ActionCtx,
+  policyId: string,
+  state: PolicyExtractionState,
+  reason: string,
+): Promise<PhaseResult<PolicyExtractionState>> {
+  const rejectionSummary = `${NON_INSURANCE_DOCUMENT_ERROR} ${reason}`.slice(
+    0,
+    1000,
+  );
+  // Rejection during re-extraction or renewal keeps the existing bound policy.
+  if (!isReplacementRun(state)) {
+    await ctx.runMutation((internal as any).policies.updateExtractionInternal, {
+      id: policyId,
+      fields: {
+        carrier: "Non-insurance document",
+        policyNumber: "Not applicable",
+        linesOfBusiness: ["UN"],
+        insuredName: "Not applicable",
+        effectiveDate: "Not applicable",
+        expirationDate: "Not applicable",
+        summary: rejectionSummary,
+        excludeFromSearch: true,
+      },
+    });
+    if (state.fileId) {
+      await ctx.runMutation((internal as any).policies.updateFiles, {
+        id: policyId,
+        files: [
+          {
+            fileId: state.fileId as Id<"_storage">,
+            fileName: state.fileName || "upload.pdf",
+            fileType: "unknown",
+            status: "not_insurance",
+          },
+        ],
+      });
+    }
+    await ctx.runMutation(
+      (internal as any).policies.archiveRejectedDocumentInternal,
+      {
+        id: policyId,
+        userId: state.userId,
+      },
+    );
   }
-  if (
-    decision.classification === "non_insurance" &&
-    decision.confidence >= 0.5
-  ) {
-    return true;
+  return { kind: "error", error: rejectionSummary };
+}
+
+async function writeDeclarationsPreview(
+  ctx: ActionCtx,
+  jobId: string,
+  outputs: DeclarationsSectionOutput[],
+  previewModel: string | undefined,
+): Promise<{ updated: boolean; reason?: string }> {
+  const lease = await currentRunLease(ctx, jobId);
+  return (await ctx.runMutation(
+    internal.policies.updatePreviewExtractionInternal,
+    {
+      id: jobId as Id<"policies">,
+      runId: lease.runId,
+      leaseId: lease.leaseId,
+      fields: declarationsPreviewFields(outputs),
+      previewVersion: SECTION_EXTRACTOR_VERSION,
+      previewModel,
+    },
+  )) as { updated: boolean; reason?: string };
+}
+
+async function resolveCarrierDecision(params: {
+  ctx: ActionCtx;
+  orgId: Id<"organizations">;
+  operationalProfile: PolicyOperationalProfile;
+  sourceTree: DocumentSourceNode[];
+  sourceSpans: SourceSpanLike[];
+  traceId?: string;
+  log: (message: string, level?: PipelineLogLevel) => Promise<void>;
+}): Promise<CarrierIdentityDecision | null> {
+  try {
+    const decision = await resolveCarrierIdentityDecision(params);
+    // reviewReason is optional on decisions that need operator review.
+    const reviewReason = (decision as { reviewReason?: string } | null)
+      ?.reviewReason;
+    if (reviewReason) {
+      await params.log(`Carrier identity needs review: ${reviewReason}`, "warn");
+    }
+    return decision;
+  } catch (error) {
+    await params.log(
+      `Carrier identity decision unavailable; using source evidence only (${error instanceof Error ? error.message : String(error)})`,
+      "warn",
+    );
+    return null;
   }
-  if (
-    decision.classification === "insurance_related_but_not_bound_policy" &&
-    decision.confidence >= 0.65
-  ) {
-    return true;
-  }
-  return !decision.shouldExtract && decision.confidence >= 0.7;
 }
 
 async function advanceLeasedPhase(
@@ -1408,7 +1308,7 @@ async function advanceLeasedPhase(
   phases: Phase<PolicyExtractionState>[],
 ): Promise<void> {
   const leaseId = randomUUID();
-  const leaseExpiresAt = Date.now() + ADVANCE_LEASE_MS;
+  const leaseExpiresAt = nowMs() + ADVANCE_LEASE_MS;
   const checkpoint = (await ctx.runMutation(
     internal.policies.pipelineAcquireLease,
     { jobId, leaseId, leaseExpiresAt },
@@ -1418,42 +1318,82 @@ async function advanceLeasedPhase(
     const reconciled = (await ctx.runMutation(
       (internal as any).policies.pipelineReconcileTerminalState,
       { jobId },
-    )) as { terminal?: boolean } | null;
+    )) as { terminal?: boolean; error?: string } | null;
     if (reconciled?.terminal) {
       await ctx.runMutation(
         (internal as any).extractionTraces.reconcileTerminalPolicy,
         { policyId: jobId },
       );
+      // Operator stops cancel the run without scheduling cancelSectionJobs.
+      if (reconciled.error === CANCELLED_BY_USER) {
+        await cancelSectionRouterJobs(ctx, jobId);
+      }
     }
     return;
   }
   const traceId = checkpoint.state?.traceId;
 
+  const watchdogs: Id<"_scheduled_functions">[] = [];
   const scheduleWatchdog = async (expiresAt: number) => {
-    await ctx.scheduler.runAfter(
-      Math.max(0, expiresAt - Date.now() + ADVANCE_LEASE_WATCHDOG_GRACE_MS),
-      internal.actions.policyExtraction.advance,
-      { jobId },
+    watchdogs.push(
+      await ctx.scheduler.runAfter(
+        Math.max(0, expiresAt - nowMs() + ADVANCE_LEASE_WATCHDOG_GRACE_MS),
+        internal.actions.policyExtraction.advance,
+        { jobId },
+      ),
     );
+  };
+  // Once this advance completes its lease it schedules its own continuation;
+  // its watchdogs would only start duplicate polling advances.
+  const completeLease = async (args: {
+    status?: "complete" | "error";
+    error?: string | null;
+    checkpoint: unknown;
+  }) => {
+    const completed = await ctx.runMutation(
+      internal.policies.pipelineCompleteLease,
+      { jobId, leaseId, ...args },
+    );
+    if (completed) {
+      await Promise.all(watchdogs.map((id) => ctx.scheduler.cancel(id)));
+    }
+    return completed;
   };
 
   await scheduleWatchdog(leaseExpiresAt);
 
-  const phase = phases.find((p) => p.name === checkpoint.nextPhase);
-  if (!phase) {
-    await ctx.runMutation(internal.policies.pipelineCompleteLease, {
+  const phaseName =
+    LEGACY_PHASE_ALIASES[checkpoint.nextPhase] ?? checkpoint.nextPhase;
+  const phase = phases.find((p) => p.name === phaseName);
+  if (!phase || checkpoint.state?.externalWorker) {
+    await ctx.runMutation(internal.policies.pipelineAppendLog, {
       jobId,
-      leaseId,
-      status: "error",
-      error: `Unknown phase: ${checkpoint.nextPhase}`,
-      checkpoint: stripLease(checkpoint),
+      timestamp: nowMs(),
+      message: `Restarting extraction from load_pdf; the ${checkpoint.nextPhase} checkpoint is no longer supported`,
+      phase: "load_pdf",
+      level: "warn",
     });
+    await clearArtifacts(ctx, jobId);
+    const restarted = await completeLease({
+      checkpoint: {
+        nextPhase: "load_pdf",
+        state: restartState(checkpoint.state),
+        createdAt: nowMs(),
+      },
+    });
+    if (restarted) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.policyExtraction.advance,
+        { jobId },
+      );
+    }
     return;
   }
 
   let latestCheckpoint = stripLease(checkpoint);
   const saveState = async (state: PolicyExtractionState) => {
-    const createdAt = Date.now();
+    const createdAt = nowMs();
     const ok = await ctx.runMutation(
       internal.policies.pipelineSaveStateForLease,
       {
@@ -1476,7 +1416,7 @@ async function advanceLeasedPhase(
   };
 
   const log = async (message: string, level: string = "info") => {
-    const timestamp = Date.now();
+    const timestamp = nowMs();
     await ctx.runMutation(internal.policies.pipelineAppendLog, {
       jobId,
       timestamp,
@@ -1493,7 +1433,7 @@ async function advanceLeasedPhase(
     heartbeatInFlight = true;
     heartbeatPromise = (async () => {
       try {
-        const nextExpiresAt = Date.now() + ADVANCE_LEASE_MS;
+        const nextExpiresAt = nowMs() + ADVANCE_LEASE_MS;
         const ok = await ctx.runMutation(
           internal.policies.pipelineExtendLease,
           {
@@ -1522,9 +1462,7 @@ async function advanceLeasedPhase(
     });
 
     if (result.kind === "done") {
-      await ctx.runMutation(internal.policies.pipelineCompleteLease, {
-        jobId,
-        leaseId,
+      await completeLease({
         status: "complete",
         error: null,
         checkpoint: null,
@@ -1534,9 +1472,7 @@ async function advanceLeasedPhase(
     }
 
     if (result.kind === "error") {
-      await ctx.runMutation(internal.policies.pipelineCompleteLease, {
-        jobId,
-        leaseId,
+      await completeLease({
         status: "error",
         error: result.error,
         checkpoint: latestCheckpoint,
@@ -1550,18 +1486,13 @@ async function advanceLeasedPhase(
       return;
     }
 
-    const checkpointUpdated = await ctx.runMutation(
-      internal.policies.pipelineCompleteLease,
-      {
-        jobId,
-        leaseId,
-        checkpoint: {
-          nextPhase: result.nextPhase,
-          state: result.state,
-          createdAt: Date.now(),
-        },
+    const checkpointUpdated = await completeLease({
+      checkpoint: {
+        nextPhase: result.nextPhase,
+        state: result.state,
+        createdAt: nowMs(),
       },
-    );
+    });
     if (checkpointUpdated) {
       await ctx.scheduler.runAfter(
         0,
@@ -1570,11 +1501,20 @@ async function advanceLeasedPhase(
       );
     }
   } catch (err) {
+    if (err instanceof WaitingForRouterJobs) {
+      // Release the lease while router jobs run; a later advance polls them.
+      if (await completeLease({ checkpoint: latestCheckpoint })) {
+        await ctx.scheduler.runAfter(
+          ROUTER_JOB_POLL_DELAY_MS,
+          internal.actions.policyExtraction.advance,
+          { jobId },
+        );
+      }
+      return;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     await log(`Phase "${phase.name}" threw: ${msg}`, "error");
-    await ctx.runMutation(internal.policies.pipelineCompleteLease, {
-      jobId,
-      leaseId,
+    await completeLease({
       status: "error",
       error: msg,
       checkpoint: latestCheckpoint,
@@ -1626,226 +1566,560 @@ export function makePhases(
       const pdfBytes = await loadPdfBytes(convexCtx, state.fileId);
       if (!pdfBytes)
         return { kind: "error", error: "File not found in storage" };
+      // Section artifacts from an earlier attempt must not satisfy this one.
+      for (const kind of ["parsed_source", "section_plan", "section_result"] as const) {
+        await clearArtifacts(convexCtx, pCtx.jobId, kind);
+      }
       await pCtx.log(`PDF ready for extraction (${pdfBytes.byteLength} bytes)`);
-      return { kind: "next", nextPhase: "extract", state };
+      return {
+        kind: "next",
+        nextPhase: "parse",
+        state: { ...state, pdfByteLength: pdfBytes.byteLength },
+      };
     },
   };
 
-  // ── Phase 2: extract ──────────────────────────────────────────────────────────
-  const extractPhase: Phase<PolicyExtractionState> = {
-    name: "extract",
+  // ── Phase 2: parse (pdf.js text + intake gate) ────────────────────────────────
+  const parsePhase: Phase<PolicyExtractionState> = {
+    name: "parse",
     run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
       const { state } = pCtx.checkpoint;
-      if (await isExtractionCancelled(convexCtx, pCtx.jobId)) {
+      const policyId = pCtx.jobId;
+      if (await isExtractionCancelled(convexCtx, policyId)) {
         return { kind: "error", error: CANCELLED_BY_USER };
       }
-
       if (!state.fileId) {
-        return {
-          kind: "error",
-          error: "extract: missing fileId — load_pdf phase must run first",
-        };
+        return { kind: "error", error: "parse: missing fileId" };
       }
-
-      await pCtx.log("Starting policy extraction…");
-
       const pdfBytes = await loadPdfBytes(convexCtx, state.fileId);
       if (!pdfBytes)
         return { kind: "error", error: "File not found in storage" };
 
-      const policyId = pCtx.jobId;
-      const pdfSource = await preparePdfTextWithParserFallback({
+      const pdf = await extractPdfText({
         pdfBytes,
         documentId: policyId,
         sourceKind: "policy_pdf",
       });
-      if (pdfSource.sourceSpans.length > 0) {
-        await pCtx.log(
-          `Prepared ${pdfSource.sourceSpans.length} ${pdfSource.parserBackend} source spans for source-grounded extraction`,
-        );
+      if (pdf.pageCount < 1) {
+        return { kind: "error", error: "The PDF has no pages" };
       }
+      const sourceSpans = canonicalSourceSpans(pdf.sourceSpans);
+      const orgId = state.orgId as Id<"organizations">;
 
-      await pCtx.log("Checking whether the PDF is a bound policy document…");
+      let decision: PolicyIntakeDecision | undefined;
+      let existingPolicies: ExistingPolicyCandidate[] = [];
       try {
-        const gateDecision = await classifyInsuranceExtractability({
+        existingPolicies = await convexCtx.runQuery(
+          internal.policies.listIntakeCandidatesInternal,
+          {
+            orgId,
+            excludePolicyId: policyId as Id<"policies">,
+            limit: INTAKE_CANDIDATE_LIMIT,
+          },
+        );
+        decision = await classifyPolicyIntake({
           ctx: convexCtx,
-          orgId: state.orgId as Id<"organizations">,
+          orgId,
+          pageCount: pdf.pageCount,
+          pages: pdf.pages,
+          existingPolicies,
           traceId: state.traceId,
           policyId,
-          pdfBytes,
-          sourceSpans: pdfSource.sourceSpans,
         });
-        await pCtx.log(
-          `Document gate: ${gateDecision.classification} (${Math.round(gateDecision.confidence * 100)}% confidence) — ${gateDecision.reason}`,
-        );
-
-        if (shouldRejectDocument(gateDecision)) {
-          const rejectionSummary =
-            `${NON_INSURANCE_DOCUMENT_ERROR} ${gateDecision.reason}`.slice(
-              0,
-              1000,
-            );
-          if (shouldArchiveRejectedPolicy(state.policyVersionKind)) {
-            await convexCtx.runMutation(
-              (internal as any).policies.updateExtractionInternal,
-              {
-                id: policyId,
-                fields: {
-                  carrier: "Non-insurance document",
-                  policyNumber: "Not applicable",
-                  linesOfBusiness: ["UN"],
-                  insuredName: "Not applicable",
-                  effectiveDate: "Not applicable",
-                  expirationDate: "Not applicable",
-                  summary: rejectionSummary,
-                  excludeFromSearch: true,
-                },
-              },
-            );
-
-            if (state.fileId) {
-              await convexCtx.runMutation(
-                (internal as any).policies.updateFiles,
-                {
-                  id: policyId,
-                  files: [
-                    {
-                      fileId: state.fileId as Id<"_storage">,
-                      fileName: state.fileName || "upload.pdf",
-                      fileType: "unknown",
-                      status: "not_insurance",
-                    },
-                  ],
-                },
-              );
-            }
-
-            await convexCtx.runMutation(
-              (internal as any).policies.archiveRejectedDocumentInternal,
-              {
-                id: policyId,
-                userId: state.userId,
-              },
-            );
-          }
-
-          return { kind: "error", error: rejectionSummary };
-        }
       } catch (error) {
         await pCtx.log(
           `Warning: document gate failed; continuing extraction (${error instanceof Error ? error.message : String(error)})`,
           "warn",
         );
       }
-
-      const extractor = buildExtractor({
-        ctx: convexCtx,
-        orgId: state.orgId as Id<"organizations">,
-        traceId: state.traceId,
-        tracePolicyId: policyId,
-        log: async (msg) => {
-          await pCtx.log(msg);
-        },
-        onProgress: async (msg) => {
-          await pCtx.log(msg);
-        },
-        shouldCancel: async () => isExtractionCancelled(convexCtx, policyId),
-        pageScreenshots: pdfSource.pageScreenshots,
-      });
-
-      const extractOptions: ExtractOptions = {
-        ...(pdfSource.sourceSpans.length > 0
-          ? {
-              sourceSpans: pdfSource.sourceSpans as Array<Record<string, any>>,
-            }
-          : {}),
-        coverageRecovery: { enabled: false },
-      };
-
-      let result: ExtractionResult;
-      try {
-        result = await extractor.extract(pdfBytes, policyId, extractOptions);
-      } catch (error) {
-        if (isCancelledError(error)) {
-          await pCtx.log("Extraction cancelled by user", "warn");
-          return { kind: "error", error: CANCELLED_BY_USER };
-        }
-        throw error;
+      await pCtx.log(
+        [
+          `Parsed ${pdf.pageCount} pages into ${sourceSpans.length} source spans.`,
+          decision ? intakeSummary(decision, existingPolicies) : undefined,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+      if (decision && !decision.shouldExtract) {
+        return await rejectDocument(convexCtx, policyId, state, decision.reason);
+      }
+      if (pdf.textLayerMissing) {
+        await pCtx.log(
+          "The PDF has no text layer; sections are read from the PDF and cite page-level evidence",
+          "warn",
+        );
       }
 
-      if (await isExtractionCancelled(convexCtx, pCtx.jobId)) {
+      const parsed: ParsedSourceArtifact = {
+        version: "parsed-source-v1",
+        pageCount: pdf.pageCount,
+        pages: pdf.pages,
+        sourceSpans,
+        textLayerMissing: pdf.textLayerMissing,
+      };
+      await storeJsonArtifact(convexCtx, policyId, "parsed_source", parsed);
+      return {
+        kind: "next",
+        nextPhase: "plan_sections",
+        state: {
+          ...state,
+          pageCount: pdf.pageCount,
+          sourceFingerprint: extractionSourceFingerprint(sourceSpans),
+        },
+      };
+    },
+  };
+
+  // ── Phase 3: plan_sections ────────────────────────────────────────────────────
+  const planSectionsPhase: Phase<PolicyExtractionState> = {
+    name: "plan_sections",
+    run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
+      const { state } = pCtx.checkpoint;
+      const policyId = pCtx.jobId;
+      if (await isExtractionCancelled(convexCtx, policyId)) {
+        return { kind: "error", error: CANCELLED_BY_USER };
+      }
+      const parsed = await loadParsedSource(convexCtx, policyId);
+      if (!parsed || state.pdfByteLength === undefined) {
+        return {
+          kind: "error",
+          error: "plan_sections: parsed source is missing; restart the extraction",
+        };
+      }
+      const plan = await planPolicySections({
+        ctx: convexCtx,
+        orgId: state.orgId as Id<"organizations">,
+        pageCount: parsed.pageCount,
+        pages: parsed.pages,
+        pdfByteLength: state.pdfByteLength,
+        traceId: state.traceId,
+        policyId,
+      });
+      const planProblems = sectionPageCoverageReasons({
+        pageCount: parsed.pageCount,
+        sections: plan.sections.map((section) => ({
+          id: section.sectionId,
+          pageStart: section.pageStart,
+          pageEnd: section.pageEnd,
+        })),
+      });
+      if (planProblems.length > 0) {
+        return {
+          kind: "error",
+          error: `Section plan is invalid: ${planProblems.join("; ")}`,
+        };
+      }
+      await storeJsonArtifact(convexCtx, policyId, "section_plan", plan, {
+        metadata: { planHash: plan.planHash, sectionCount: plan.sections.length },
+      });
+      await pCtx.log(
+        `Planned ${plan.sections.length} sections: ${plan.sections
+          .map((section) => `${section.kind} ${section.pageStart}-${section.pageEnd}`)
+          .join(", ")}`.slice(0, 2000),
+      );
+      return {
+        kind: "next",
+        nextPhase: "extract_sections",
+        state: {
+          ...state,
+          sectionPlanHash: plan.planHash,
+          sectionAttempts: {},
+          sectionRetries: {},
+          previewWritten: false,
+        },
+      };
+    },
+  };
+
+  // ── Phase 4: extract_sections (one durable router job per section) ────────────
+  const extractSectionsPhase: Phase<PolicyExtractionState> = {
+    name: "extract_sections",
+    run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
+      const { state } = pCtx.checkpoint;
+      const policyId = pCtx.jobId;
+      if (await isExtractionCancelled(convexCtx, policyId)) {
+        return { kind: "error", error: CANCELLED_BY_USER };
+      }
+      const plan = await loadSectionPlan(convexCtx, policyId);
+      if (
+        !plan ||
+        plan.planHash !== state.sectionPlanHash ||
+        !state.sourceFingerprint ||
+        !state.fileId
+      ) {
+        return {
+          kind: "error",
+          error: "extract_sections: section plan is missing; restart the extraction",
+        };
+      }
+      const fileId = state.fileId;
+      const orgId = state.orgId as Id<"organizations">;
+      const { runId } = await currentRunLease(convexCtx, policyId);
+      const stored = await listSectionResults(convexCtx, policyId, plan.planHash);
+      const completed = new Set(
+        [...stored]
+          .filter(([, artifact]) => artifact.status === "succeeded")
+          .map(([sectionId]) => sectionId),
+      );
+      const succeeded = (section: PolicySection) =>
+        completed.has(section.sectionId);
+      const declarations = plan.sections.filter(
+        (section) => section.kind === "declarations",
+      );
+      const declarationsDone = declarations.every(succeeded);
+      // Declarations complete first; the rest run with their summary as context.
+      const pending = plan.sections.filter(
+        (section) =>
+          !succeeded(section) &&
+          (declarationsDone || section.kind === "declarations"),
+      );
+      const declarationOutputs = declarationsDone
+        ? ((await loadSectionOutputs(convexCtx, declarations, stored)) ?? [])
+        : [];
+      const declarationsSummary = buildDeclarationsSummary(
+        declarationOutputs.flatMap(({ result }) =>
+          result.kind === "declarations" ? [result.output] : [],
+        ),
+      );
+
+      const attempts = { ...state.sectionAttempts };
+      const retries = { ...state.sectionRetries };
+      const route = await sectionExtractionRoute(convexCtx, orgId);
+      let pdfBytes: Uint8Array | null = null;
+      const loadPdf = async () => {
+        pdfBytes ??= await loadPdfBytes(convexCtx, fileId);
+        if (!pdfBytes) throw new Error("File not found in storage");
+        return pdfBytes;
+      };
+      const runJob = (section: PolicySection, allowSubmission: boolean) =>
+        runSectionJob(convexCtx, {
+          invocationKey: sectionInvocationKey({
+            runId,
+            traceId: state.traceId,
+            planHash: plan.planHash,
+            section,
+            attempt: attempts[section.sectionId] ?? 1,
+            declarationsSummary:
+              section.kind === "declarations" ? undefined : declarationsSummary,
+          }),
+          allowSubmission,
+          orgId,
+          policyId,
+          traceId: state.traceId,
+          section,
+          pageCount: plan.pageCount,
+          declarationsSummary:
+            section.kind === "declarations" ? undefined : declarationsSummary,
+          route,
+          loadPdf,
+        });
+
+      // Poll submitted jobs concurrently, then submit a bounded number of new
+      // ones one at a time so only one PDF slice is in memory.
+      const outcomes = new Map<string, SectionJobOutcome>();
+      await runBounded(pending, SECTION_POLL_CONCURRENCY, async (section) => {
+        outcomes.set(section.sectionId, await runJob(section, false));
+      });
+      const unsubmitted = pending.filter(
+        (section) => outcomes.get(section.sectionId)?.status === "not_submitted",
+      );
+      const toSubmit = unsubmitted.slice(0, SECTION_SUBMISSIONS_PER_ADVANCE);
+      for (const section of toSubmit) {
+        outcomes.set(section.sectionId, await runJob(section, true));
+      }
+      // A cancel that landed during these submissions could not see their jobs.
+      if (toSubmit.length > 0 && (await isExtractionCancelled(convexCtx, policyId))) {
+        await cancelSectionRouterJobs(convexCtx, policyId);
         return { kind: "error", error: CANCELLED_BY_USER };
       }
 
-      const resultSourceSpans = Array.isArray((result as any).sourceSpans)
-        ? ((result as any).sourceSpans as Array<Record<string, any>>)
-        : [];
-      const resultSourceChunks = Array.isArray((result as any).sourceChunks)
-        ? ((result as any).sourceChunks as Array<Record<string, any>>)
-        : [];
-      const resultSourceTree = Array.isArray((result as any).sourceTree)
-        ? ((result as any).sourceTree as Array<Record<string, any>>)
-        : [];
-      const sourceSpans =
-        resultSourceSpans.length > 0
-          ? resultSourceSpans
-          : (pdfSource.sourceSpans as Array<Record<string, any>>);
-      const canonicalSpans = canonicalSourceSpans(
-        sourceSpans as SourceSpanLike[],
-      );
-      const sourceChunks =
-        resultSourceChunks.length > 0
-          ? resultSourceChunks
-          : (pdfSource.sourceChunks as Array<Record<string, any>>);
-      const chunks = result.chunks;
-      const tokenUsage = result.tokenUsage;
-
-      await pCtx.log(
-        `Extraction complete. Type: ${(result.document as Record<string, unknown>).type}. ${chunks.length} chunks, ${sourceSpans.length} source spans. Tokens: ${tokenUsage.inputTokens}in/${tokenUsage.outputTokens}out`,
-      );
-      if (result.performanceReport) {
-        const totalSeconds = Math.round(
-          result.performanceReport.totalModelCallDurationMs / 1000,
-        );
+      let waiting = 0;
+      let deferred = 0;
+      let declarationsModel: string | undefined;
+      const exhausted: Array<{ section: PolicySection; error: string }> = [];
+      const submitted: PolicySection[] = [];
+      for (const section of pending) {
+        const outcome = outcomes.get(section.sectionId)!;
+        const attempt = attempts[section.sectionId] ?? 1;
+        if (outcome.status === "not_submitted") {
+          deferred += 1;
+          continue;
+        }
+        if (outcome.status === "pending") {
+          waiting += 1;
+          if (unsubmitted.includes(section)) submitted.push(section);
+          continue;
+        }
+        if (outcome.status === "succeeded") {
+          const { response } = outcome;
+          await storeSectionResult(convexCtx, policyId, {
+            state,
+            planHash: plan.planHash,
+            result: {
+              version: "section-result-v1",
+              sectionId: section.sectionId,
+              kind: section.kind,
+              pageStart: section.pageStart,
+              pageEnd: section.pageEnd,
+              attempt,
+              status: "succeeded",
+              output: outcome.output,
+              model: response.model,
+              routerRequestId: response.requestId,
+            },
+          });
+          completed.add(section.sectionId);
+          if (section.kind === "declarations") {
+            declarationsModel ??= response.model.model;
+          }
+          await traceEvent(convexCtx, state.traceId, {
+            kind: "model_call",
+            phase: "extract_sections",
+            label: sectionLabel(section),
+            task: "extraction",
+            taskKind: SECTION_TASK_KIND,
+            provider: response.model.provider,
+            model: response.model.model,
+            routeSource: response.routing.source ?? response.routing.decision,
+            transport: "cl-router",
+            attempt,
+            status: "complete",
+            durationMs: outcome.durationMs,
+            inputTokens: response.usage.inputTokens,
+            outputTokens: response.usage.outputTokens,
+            cachedInputTokens: response.usage.cachedInputTokens,
+            routerRequestId: response.requestId,
+            costUsd: response.costUsd,
+            costStatus: response.costStatus,
+            routingDecision: response.routing.decision,
+            routing: response.routing,
+            details: { sectionId: section.sectionId, kind: section.kind },
+          });
+          await pCtx.log(`Extracted ${section.kind} pages ${section.pageStart}-${section.pageEnd}`);
+          continue;
+        }
+        await storeSectionResult(convexCtx, policyId, {
+          state,
+          planHash: plan.planHash,
+          result: {
+            version: "section-result-v1",
+            sectionId: section.sectionId,
+            kind: section.kind,
+            pageStart: section.pageStart,
+            pageEnd: section.pageEnd,
+            attempt,
+            status: "failed",
+            error: outcome.error.slice(0, 1000),
+          },
+        });
+        await traceEvent(convexCtx, state.traceId, {
+          kind: "model_call",
+          phase: "extract_sections",
+          label: sectionLabel(section),
+          task: "extraction",
+          taskKind: SECTION_TASK_KIND,
+          attempt,
+          status: "error",
+          error: outcome.error,
+          details: { sectionId: section.sectionId, kind: section.kind },
+        });
+        // A failed attempt is final for its invocation key; the next attempt
+        // submits a new router job.
+        attempts[section.sectionId] = attempt + 1;
+        if ((retries[section.sectionId] ?? 0) < SECTION_AUTO_RETRIES) {
+          retries[section.sectionId] = (retries[section.sectionId] ?? 0) + 1;
+          await pCtx.log(
+            `Retrying ${section.kind} pages ${section.pageStart}-${section.pageEnd} after a failed extraction: ${outcome.error}`,
+            "warn",
+          );
+        } else {
+          // Resume starts with a fresh retry budget.
+          retries[section.sectionId] = 0;
+          exhausted.push({ section, error: outcome.error });
+        }
+      }
+      if (submitted.length > 0) {
         await pCtx.log(
-          `Extraction model calls: ${result.performanceReport.modelCalls.length}; total model time: ${totalSeconds}s`,
+          `Submitted ${submitted.length} section extraction ${submitted.length === 1 ? "job" : "jobs"}: ${submitted
+            .map((section) => `${section.kind} ${section.pageStart}-${section.pageEnd}`)
+            .join(", ")}`,
         );
       }
 
+      const nextState: PolicyExtractionState = {
+        ...state,
+        sectionAttempts: attempts,
+        sectionRetries: retries,
+      };
+      if (exhausted.length > 0) {
+        await pCtx.saveState({ ...nextState, routerWaitStartedAt: undefined });
+        return {
+          kind: "error",
+          error: `Section extraction failed for ${exhausted
+            .map(({ section }) => `${section.kind} pages ${section.pageStart}-${section.pageEnd}`)
+            .join(", ")}: ${exhausted[0].error}. Retry to resume from the completed sections.`,
+        };
+      }
+
+      if (
+        !nextState.previewWritten &&
+        !isReplacementRun(state) &&
+        declarations.length > 0 &&
+        declarations.every(succeeded)
+      ) {
+        const outputs = await loadSectionOutputs(
+          convexCtx,
+          declarations,
+          await listSectionResults(convexCtx, policyId, plan.planHash),
+        );
+        if (outputs) {
+          // The preview is provisional; it never fails the extraction.
+          try {
+            const preview = await writeDeclarationsPreview(
+              convexCtx,
+              policyId,
+              outputs.flatMap(({ result }) =>
+                result.kind === "declarations" ? [result.output] : [],
+              ),
+              declarationsModel,
+            );
+            await pCtx.log(
+              preview.updated
+                ? "Provisional policy details are ready from the declarations"
+                : `Provisional policy details skipped (${preview.reason ?? "not updated"})`,
+            );
+          } catch (error) {
+            await pCtx.log(
+              `Provisional policy details failed: ${error instanceof Error ? error.message : String(error)}`,
+              "warn",
+            );
+          }
+          nextState.previewWritten = true;
+        }
+      }
+
+      if (plan.sections.every(succeeded)) {
+        return {
+          kind: "next",
+          nextPhase: "merge",
+          state: { ...nextState, routerWaitStartedAt: undefined },
+        };
+      }
+      if (waiting === 0) {
+        // Declarations just finished, a retry is due, or submissions were
+        // capped: start the next jobs right away.
+        return { kind: "next", nextPhase: "extract_sections", state: nextState };
+      }
+      await pCtx.saveState({
+        ...nextState,
+        routerWaitStartedAt: state.routerWaitStartedAt ?? nowMs(),
+      });
+      throw new WaitingForRouterJobs(waiting + deferred);
+    },
+  };
+
+  // ── Phase 5: merge (citations → evidence → promotion) ─────────────────────────
+  const mergePhase: Phase<PolicyExtractionState> = {
+    name: "merge",
+    run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
+      const { state } = pCtx.checkpoint;
+      const policyId = pCtx.jobId;
+      if (await isExtractionCancelled(convexCtx, policyId)) {
+        return { kind: "error", error: CANCELLED_BY_USER };
+      }
+      if (!state.fileId) {
+        return { kind: "error", error: "merge: missing fileId" };
+      }
+      const [parsed, plan] = await Promise.all([
+        loadParsedSource(convexCtx, policyId),
+        loadSectionPlan(convexCtx, policyId),
+      ]);
+      if (!parsed || !plan || plan.planHash !== state.sectionPlanHash) {
+        return {
+          kind: "error",
+          error: "merge: parsed source or section plan is missing; restart the extraction",
+        };
+      }
+      const sections = await loadSectionOutputs(
+        convexCtx,
+        plan.sections,
+        await listSectionResults(convexCtx, policyId, plan.planHash),
+      );
+      if (!sections) {
+        return {
+          kind: "error",
+          error: "merge: section results are incomplete; retry to resume the extraction",
+        };
+      }
+      const log = async (message: string, level?: PipelineLogLevel) => {
+        await pCtx.log(message, level);
+      };
+      const orgId = state.orgId as Id<"organizations">;
+      const results = sections.map(({ result }) => result);
+      const transcriptions = modelTranscriptionSpans({
+        documentId: policyId,
+        results,
+        sourceSpans: parsed.sourceSpans,
+      });
+      const sourceSpans = canonicalSourceSpans([
+        ...parsed.sourceSpans,
+        ...transcriptions,
+      ]);
+      const sourceNodes = normalizeSourceTree([], sourceSpans, policyId);
+      const merged = mergeSectionResults({
+        policyId,
+        results,
+        sourceSpans,
+        sourceTree: sourceNodes,
+      });
+      const matches = merged.citationMatches;
+      await pCtx.log(
+        [
+          transcriptions.length > 0
+            ? `Transcribed cited quotes on ${transcriptions.length} ${transcriptions.length === 1 ? "page" : "pages"} without a text layer.`
+            : undefined,
+          `Merged ${sections.length} sections. Citations: ${matches.exact} exact, ${matches.normalized} normalized, ${matches.page_only} page-level, ${matches.unresolved} unresolved; ${merged.uncitedFactCount} uncited facts dropped`,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+
       const processed = await postProcessExtractionDocument({
         ctx: convexCtx,
-        orgId: state.orgId as Id<"organizations">,
-        document: result.document as Record<string, unknown>,
-        sourceSpans: canonicalSpans as Array<Record<string, any>>,
+        orgId,
+        document: merged.document,
+        sourceSpans,
         traceId: state.traceId,
         policyId,
-        log: async (message, level) => {
-          await pCtx.log(message, level);
-        },
+        log,
       });
-      result.document = processed.document as typeof result.document;
       const doc = processed.document;
-      const sourceNodes = normalizeSourceTree(
-        resultSourceTree,
-        canonicalSpans,
-        policyId,
-      );
-      const normalizedOperationalProfile = normalizeOperationalProfile(
-        (result as any).operationalProfile,
-        sourceNodes,
-        canonicalSpans,
-      );
       const operationalProfile = await extractAdditionalInsuredEligibility({
         ctx: convexCtx,
-        orgId: state.orgId as Id<"organizations">,
+        orgId,
         traceId: state.traceId,
         policyId,
         sourceTree: sourceNodes,
-        profile: normalizedOperationalProfile,
-        log: async (message, level) => {
-          await pCtx.log(message, level);
-        },
+        profile: normalizeOperationalProfile(
+          merged.operationalProfile,
+          sourceNodes,
+          sourceSpans,
+        ),
+        log,
       });
+      const carrierDecision = await resolveCarrierDecision({
+        ctx: convexCtx,
+        orgId,
+        operationalProfile,
+        sourceTree: sourceNodes,
+        sourceSpans,
+        traceId: state.traceId,
+        log,
+      });
+      if (await isExtractionCancelled(convexCtx, policyId)) {
+        return { kind: "error", error: CANCELLED_BY_USER };
+      }
+
       const fields = processed.fields;
       const docName = doc.policyNumber || "policy";
       const resolvedFileName = state.fileName || `${String(docName)}.pdf`;
@@ -1858,11 +2132,9 @@ export function makePhases(
         linesOfBusiness?: string[];
         carrierIdentity?: unknown;
       } | null;
-      const promotionState: PolicyExtractionState =
-        state.policyVersionKind === "re_extraction" ||
-        state.policyVersionKind === "renewal"
-          ? { ...state, replacementPromotionStarted: true }
-          : state;
+      const promotionState: PolicyExtractionState = isReplacementRun(state)
+        ? { ...state, replacementPromotionStarted: true }
+        : state;
       if (promotionState !== state) {
         await pCtx.saveState(promotionState);
       }
@@ -1873,7 +2145,7 @@ export function makePhases(
         ...sourceTreePolicyFields({
           sourceTree: sourceNodes,
           operationalProfile,
-          sourceSpans: canonicalSpans,
+          sourceSpans,
           existingDocumentMetadata: doc.documentMetadata,
           existingDeclarations: doc.declarations,
           existingLinesOfBusiness: existingPolicy?.linesOfBusiness,
@@ -1881,13 +2153,19 @@ export function makePhases(
             fields,
             existingPolicy,
           ),
+          carrierDecision,
         }),
       };
       await persistEvidenceAndPromote(convexCtx, {
         policyId,
-        sourceSpans: canonicalSpans,
+        sourceSpans,
         sourceNodes,
         fields: finalFields,
+        plan,
+        sections: sections.map(({ result, resultHash }) => ({
+          section: result.section,
+          resultHash,
+        })),
       });
 
       await convexCtx.runMutation((internal as any).policies.updateFiles, {
@@ -1903,34 +2181,23 @@ export function makePhases(
         primaryFileId: state.fileId as Id<"_storage">,
       });
 
-      const embeddingPayloadFileId = await storeEmbeddingPayload(
-        convexCtx,
-        policyId,
-        {
-          documentChunksForEmbedding: chunks,
-          sourceSpansForStorage:
-            canonicalSpans as PolicyExtractionState["sourceSpansForStorage"],
-          sourceNodesForStorage: sourceNodes,
-        },
-      );
-      const chunkIds = chunks.map((c: { id: string }) => c.id);
-      const nextState: PolicyExtractionState = {
-        ...promotionState,
-        embeddingPayloadFileId,
-        chunkIds,
-        sourceSpanIds: canonicalSpans.map((span) => String(span.id)),
-        sourceChunkIds: sourceChunks.map((chunk) => String(chunk.id)),
-        operationalProfile,
-        fileName: resolvedFileName,
+      const payload: SourceStoragePayload = {
+        sourceSpansForStorage:
+          sourceSpans as SourceStoragePayload["sourceSpansForStorage"],
+        sourceNodesForStorage: sourceNodes,
       };
-
-      return { kind: "next", nextPhase: "embed_and_store", state: nextState };
+      await storeJsonArtifact(convexCtx, policyId, "embedding_payload", payload);
+      return {
+        kind: "next",
+        nextPhase: "store_sources",
+        state: { ...promotionState, fileName: resolvedFileName },
+      };
     },
   };
 
-  // ── Phase 3: embed_and_store ──────────────────────────────────────────────────
-  const embedAndStorePhase: Phase<PolicyExtractionState> = {
-    name: "embed_and_store",
+  // ── Phase 6: store_sources ────────────────────────────────────────────────────
+  const storeSourcesPhase: Phase<PolicyExtractionState> = {
+    name: "store_sources",
     run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
       const { state } = pCtx.checkpoint;
       const policyId = pCtx.jobId;
@@ -1938,76 +2205,14 @@ export function makePhases(
         return { kind: "error", error: CANCELLED_BY_USER };
       }
 
-      const embeddingPayload = await loadEmbeddingPayload(
-        convexCtx,
-        policyId,
-        state,
-      );
-      const chunks = embeddingPayload.documentChunksForEmbedding;
-      const sourceSpans = embeddingPayload.sourceSpansForStorage;
-      const sourceNodes = embeddingPayload.sourceNodesForStorage;
-      const embedTexts = makeEmbedTexts(
-        convexCtx,
-        state.orgId as Id<"organizations">,
-        {
-          maxParallelCalls: EMBEDDING_CONCURRENCY,
-        },
-      );
-      const isCancelled = () => isExtractionCancelled(convexCtx, policyId);
-      const logEmbedWarning = (message: string) => pCtx.log(message, "warn");
-
-      if (!chunks || chunks.length === 0) {
-        await pCtx.log(
-          "No chunks to embed (phase resumed or no chunks extracted)",
-        );
-      } else {
-        await pCtx.log(`Embedding ${chunks.length} chunks for vector search…`);
-        await deletePolicyRowsInBatches(
+      const payload =
+        (await loadJsonArtifact<SourceStoragePayload>(
           convexCtx,
-          (internal as any).documentChunks.deleteByPolicy,
-          policyId as Id<"policies">,
-        );
-        const embedStartedAt = nowMs();
-        const { embedded, failures: embedFailures } = await embedAndStoreBatch({
-          items: chunks,
-          embedTexts,
-          textForItem: (chunk) => chunk.text,
-          describeItem: (chunk) => `chunk ${chunk.id}`,
-          isCancelled,
-          logWarning: logEmbedWarning,
-          storeItem: async (chunk, embedding) => {
-            await convexCtx.runMutation(
-              (internal as any).documentChunks.insert,
-              {
-                orgId: state.orgId,
-                policyId,
-                chunkId: chunk.id,
-                chunkType: chunk.type,
-                text: chunk.text,
-                metadata: chunk.metadata,
-                embedding,
-                createdAt: nowMs(),
-              },
-            );
-          },
-        });
-        await traceEvent(convexCtx, state.traceId, {
-          kind: "embedding_batch",
-          label: "document chunks",
-          task: "embeddings",
-          provider: "openai",
-          model: "text-embedding-3-small",
-          status: embedFailures > 0 ? "partial" : "complete",
-          durationMs: nowMs() - embedStartedAt,
-          details: {
-            requested: chunks.length,
-            embedded,
-            failures: embedFailures,
-            batchSize: EMBEDDING_BATCH_SIZE,
-          },
-        });
-        await pCtx.log(`Stored ${embedded}/${chunks.length} chunks`);
-      }
+          await getLatestArtifactStorageId(convexCtx, policyId, "embedding_payload"),
+        )) ?? {};
+      const sourceSpans = payload.sourceSpansForStorage;
+      const sourceNodes = payload.sourceNodesForStorage;
+      const isCancelled = () => isExtractionCancelled(convexCtx, policyId);
 
       if (sourceSpans?.length || sourceNodes?.length) {
         await pCtx.log(
@@ -2102,21 +2307,11 @@ export function makePhases(
 
       await clearArtifacts(convexCtx, policyId, "embedding_payload");
       await clearArtifacts(convexCtx, policyId, "cl_sdk_checkpoint");
-
-      // Drop the raw chunks from state after durable storage.
-      const {
-        documentChunksForEmbedding: _dropped,
-        sourceSpansForStorage: _droppedSpans,
-        sourceChunksForEmbedding: _droppedSourceChunks,
-        sourceNodesForStorage: _droppedSourceNodes,
-        embeddingPayloadFileId: _droppedEmbeddingPayload,
-        ...cleanState
-      } = state;
-      return { kind: "next", nextPhase: "post_process", state: cleanState };
+      return { kind: "next", nextPhase: "post_process", state };
     },
   };
 
-  // ── Phase 4: post_process (terminal — persists enrichment and downstream work)
+  // ── Phase 7: post_process (terminal — persists enrichment and downstream work)
   const postProcessPhase: Phase<PolicyExtractionState> = {
     name: "post_process",
     run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
@@ -2127,14 +2322,13 @@ export function makePhases(
       }
 
       // Record the document-event policy version after the current policy row has
-      // been materialized and before downstream certificate workflows inspect it.
-      let policyVersionId: Id<"policyVersions"> | undefined;
+      // been materialized.
       try {
         if (
           state.policyVersionKind === "re_extraction" ||
           state.policyVersionKind === "renewal"
         ) {
-          policyVersionId = await convexCtx.runMutation(
+          await convexCtx.runMutation(
             (internal as any).policyVersions.createInternal,
             {
               policyId,
@@ -2149,7 +2343,7 @@ export function makePhases(
             },
           );
         } else {
-          policyVersionId = await convexCtx.runMutation(
+          await convexCtx.runMutation(
             (internal as any).policyVersions.ensureInitialInternal,
             {
               policyId,
@@ -2164,25 +2358,6 @@ export function makePhases(
         );
       }
 
-      if (state.policyVersionKind === "renewal" && policyVersionId) {
-        try {
-          await convexCtx.runMutation(
-            (internal as any).certificateWorkflowJobs
-              .createRenewalJobsForPolicyInternal,
-            {
-              orgId: state.orgId as Id<"organizations">,
-              policyId,
-              policyVersionId,
-              createdByUserId: state.userId as Id<"users">,
-            },
-          );
-        } catch (error) {
-          console.warn(
-            "[policyExtraction] renewal certificate job creation failed",
-            error,
-          );
-        }
-      }
 
       // Audit log
       try {
@@ -2264,14 +2439,17 @@ export function makePhases(
   ): Phase<PolicyExtractionState> => ({
     ...phase,
     run: async (pCtx) => {
-      const traceId = pCtx.checkpoint.state.traceId;
-      const startedAt = nowMs();
-      await traceEvent(convexCtx, traceId, {
-        kind: "phase",
-        phase: phase.name,
-        label: phase.name,
-        status: "started",
-      });
+      const { traceId, routerWaitStartedAt } = pCtx.checkpoint.state;
+      const startedAt = routerWaitStartedAt ?? nowMs();
+      // Polling advances of extract_sections continue one traced phase.
+      if (routerWaitStartedAt === undefined) {
+        await traceEvent(convexCtx, traceId, {
+          kind: "phase",
+          phase: phase.name,
+          label: phase.name,
+          status: "started",
+        });
+      }
       try {
         const result = await phase.run(pCtx);
         await traceEvent(convexCtx, traceId, {
@@ -2284,6 +2462,7 @@ export function makePhases(
         });
         return result;
       } catch (error) {
+        if (error instanceof WaitingForRouterJobs) throw error;
         await traceEvent(convexCtx, traceId, {
           kind: "phase",
           phase: phase.name,
@@ -2297,9 +2476,15 @@ export function makePhases(
     },
   });
 
-  return [loadPdfPhase, extractPhase, embedAndStorePhase, postProcessPhase].map(
-    withTrace,
-  );
+  return [
+    loadPdfPhase,
+    parsePhase,
+    planSectionsPhase,
+    extractSectionsPhase,
+    mergePhase,
+    storeSourcesPhase,
+    postProcessPhase,
+  ].map(withTrace);
 }
 
 // ─── advance internal action ───────────────────────────────────────────────────
@@ -2309,6 +2494,14 @@ export const advance = internalAction({
   handler: async (ctx, { jobId }) => {
     const phases = makePhases(ctx);
     await advanceLeasedPhase(ctx, jobId, phases);
+  },
+});
+
+/** Scheduled by cancelExtraction once the run is marked cancelled. */
+export const cancelSectionJobs = internalAction({
+  args: { jobId: v.string() },
+  handler: async (ctx, { jobId }) => {
+    await cancelSectionRouterJobs(ctx, jobId);
   },
 });
 
@@ -2355,979 +2548,6 @@ export const sweepStale = internalAction({
       );
     }
     return { ...result, traces };
-  },
-});
-
-export const claimExternalJob = action({
-  args: {
-    secret: v.string(),
-    workerId: v.optional(v.string()),
-    workerVersion: v.optional(v.string()),
-    workerProtocolVersion: v.optional(v.string()),
-    clSdkVersion: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<ExternalClaimResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    const incompatibility = validateExternalWorkerCompatibility(args);
-    if (incompatibility) {
-      console.warn(incompatibility);
-      return null;
-    }
-    const leaseId = `${args.workerId ?? "worker"}:${randomUUID()}`;
-    const leaseExpiresAt = nowMs() + EXTERNAL_WORKER_LEASE_MS;
-    const claimed = (await ctx.runMutation(
-      (internal as any).policies.pipelineClaimExternalWorkerJob,
-      { leaseId, leaseExpiresAt },
-    )) as {
-      policyId: string;
-      checkpoint: {
-        state: PolicyExtractionState;
-      };
-    } | null;
-
-    if (!claimed) return null;
-    const fileId = claimed.checkpoint.state.fileId;
-    if (!fileId) {
-      await ctx.runMutation((internal as any).policies.pipelineCompleteLease, {
-        jobId: claimed.policyId,
-        leaseId,
-        status: "error",
-        error: "External worker claimed job without fileId",
-        checkpoint: null,
-      });
-      await completeTraceSession(
-        ctx,
-        claimed.checkpoint.state.traceId,
-        "error",
-        "External worker claimed job without fileId",
-      );
-      return null;
-    }
-
-    const fileUrl = await ctx.storage.getUrl(fileId as Id<"_storage">);
-    if (!fileUrl) {
-      await ctx.runMutation((internal as any).policies.pipelineCompleteLease, {
-        jobId: claimed.policyId,
-        leaseId,
-        status: "error",
-        error: "External worker could not resolve source file URL",
-        checkpoint: null,
-      });
-      await completeTraceSession(
-        ctx,
-        claimed.checkpoint.state.traceId,
-        "error",
-        "External worker could not resolve source file URL",
-      );
-      return null;
-    }
-    await traceEvent(ctx, claimed.checkpoint.state.traceId, {
-      kind: "worker",
-      phase: "worker",
-      label: "external worker claim",
-      status: "claimed",
-      message: `External worker claimed job${args.workerId ? ` (${args.workerId})` : ""}`,
-      details: { workerId: args.workerId, leaseId },
-    });
-
-    let modelSettings:
-      | {
-          routes?: Record<string, { provider: string; model: string }>;
-          routeSources?: Record<string, string>;
-        }
-      | undefined;
-    try {
-      modelSettings = (await ctx.runQuery(
-        (internal as any).modelSettings.resolveForOrg,
-        {
-          orgId: claimed.checkpoint.state.orgId as Id<"organizations">,
-        },
-      )) as typeof modelSettings;
-    } catch (error) {
-      console.warn(
-        `External worker model settings unavailable for ${claimed.policyId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-
-    return {
-      policyId: claimed.policyId,
-      leaseId,
-      leaseExpiresAt,
-      state: claimed.checkpoint.state,
-      fileUrl,
-      modelSettings,
-    };
-  },
-});
-
-export const claimExternalPreviewJob = action({
-  args: {
-    secret: v.string(),
-    workerId: v.optional(v.string()),
-    workerVersion: v.optional(v.string()),
-    workerProtocolVersion: v.optional(v.string()),
-    clSdkVersion: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<ExternalPreviewClaimResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    const incompatibility = validateExternalWorkerCompatibility(args);
-    if (incompatibility) {
-      console.warn(incompatibility);
-      return null;
-    }
-    const leaseId = `${args.workerId ?? "worker"}:preview:${randomUUID()}`;
-    const leaseExpiresAt = nowMs() + EXTERNAL_WORKER_LEASE_MS;
-    const claimed = (await ctx.runMutation(
-      (internal as any).policies.pipelineClaimExternalPreviewWorkerJob,
-      { leaseId, leaseExpiresAt },
-    )) as {
-      policyId: string;
-      checkpoint: {
-        state: PolicyExtractionState;
-      };
-    } | null;
-
-    if (!claimed) return null;
-    const fileId = claimed.checkpoint.state.fileId;
-    if (!fileId) {
-      await ctx.runMutation(
-        (internal as any).policies.pipelineCompletePreviewLease,
-        {
-          jobId: claimed.policyId,
-          leaseId,
-        },
-      );
-      return null;
-    }
-
-    const fileUrl = await ctx.storage.getUrl(fileId as Id<"_storage">);
-    if (!fileUrl) {
-      await ctx.runMutation(
-        (internal as any).policies.pipelineCompletePreviewLease,
-        {
-          jobId: claimed.policyId,
-          leaseId,
-        },
-      );
-      return null;
-    }
-    await traceEvent(ctx, claimed.checkpoint.state.traceId, {
-      kind: "worker",
-      phase: "preview",
-      label: "external worker preview claim",
-      status: "claimed",
-      message: `External worker claimed preview job${args.workerId ? ` (${args.workerId})` : ""}`,
-      details: { workerId: args.workerId, leaseId },
-    });
-
-    let modelSettings:
-      | {
-          routes?: Record<string, { provider: string; model: string }>;
-          routeSources?: Record<string, string>;
-        }
-      | undefined;
-    try {
-      modelSettings = (await ctx.runQuery(
-        (internal as any).modelSettings.resolveForOrg,
-        {
-          orgId: claimed.checkpoint.state.orgId as Id<"organizations">,
-        },
-      )) as typeof modelSettings;
-    } catch (error) {
-      console.warn(
-        `External worker preview model settings unavailable for ${claimed.policyId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-
-    return {
-      policyId: claimed.policyId,
-      leaseId,
-      leaseExpiresAt,
-      state: claimed.checkpoint.state,
-      fileUrl,
-      modelSettings,
-    };
-  },
-});
-
-export const heartbeatExternalJob = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    const leaseExpiresAt = nowMs() + EXTERNAL_WORKER_LEASE_MS;
-    const ok = (await ctx.runMutation(
-      (internal as any).policies.pipelineExtendLease,
-      {
-        jobId: args.policyId,
-        leaseId: args.leaseId,
-        leaseExpiresAt,
-      },
-    )) as boolean;
-    return { ok, leaseExpiresAt };
-  },
-});
-
-export const heartbeatExternalPreviewJob = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    const leaseExpiresAt = nowMs() + EXTERNAL_WORKER_LEASE_MS;
-    const ok = (await ctx.runMutation(
-      (internal as any).policies.pipelineExtendPreviewLease,
-      {
-        jobId: args.policyId,
-        leaseId: args.leaseId,
-        leaseExpiresAt,
-      },
-    )) as boolean;
-    return { ok, leaseExpiresAt };
-  },
-});
-
-export const logExternalJob = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    message: v.string(),
-    phase: v.optional(v.string()),
-    level: v.optional(
-      v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
-    ),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    if (!(await externalLeaseMatches(ctx, args))) return { ok: false };
-    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-      jobId: args.policyId,
-      timestamp: nowMs(),
-      message: args.message,
-      phase: args.phase ?? "worker",
-      level: args.level ?? "info",
-    });
-    return { ok: true };
-  },
-});
-
-export const createExternalExtractionArtifactUploadUrl = action({
-  args: { secret: v.string() },
-  handler: async (ctx, args) => {
-    requireExtractionWorkerSecret(args.secret);
-    return { uploadUrl: await ctx.storage.generateUploadUrl() };
-  },
-});
-
-export const finalizeExternalExtractionArtifact = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    kind: v.union(v.literal("source_bundle"), v.literal("section_result")),
-    storageId: v.string(),
-    sourceFingerprint: v.string(),
-    extractorVersion: v.string(),
-    sectionId: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<
-    { ok: false; artifactId?: undefined } | { ok: true; artifactId: string }
-  > => {
-    requireExtractionWorkerSecret(args.secret);
-    if (!(await externalLeaseMatches(ctx, args))) return { ok: false };
-    if (args.kind === "section_result" && !args.sectionId) {
-      throw new Error("section_result artifacts require sectionId");
-    }
-    const artifactId: unknown = await ctx.runMutation(
-      (internal as any).policies.pipelineSaveArtifact,
-      {
-        jobId: args.policyId,
-        kind: args.kind,
-        storageId: args.storageId as Id<"_storage">,
-        sourceFingerprint: args.sourceFingerprint,
-        extractorVersion: args.extractorVersion,
-        sectionId: args.sectionId,
-        metadata: args.metadata,
-      },
-    );
-    return { ok: true, artifactId: String(artifactId) };
-  },
-});
-
-export const getExternalExtractionResumeArtifacts = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    requireExtractionWorkerSecret(args.secret);
-    if (!(await externalLeaseMatches(ctx, args)))
-      return { ok: false, artifacts: [] };
-    const result = (await ctx.runQuery(
-      (internal as any).policies.pipelineListResumableArtifacts,
-      { jobId: args.policyId },
-    )) as {
-      runId: Id<"policyExtractionRuns">;
-      artifacts: Array<{
-        _id: Id<"policyExtractionArtifacts">;
-        kind: "source_bundle" | "section_result";
-        storageId: Id<"_storage">;
-        sourceFingerprint?: string;
-        extractorVersion?: string;
-        sectionId?: string;
-        metadata?: unknown;
-      }>;
-    } | null;
-    if (!result) return { ok: true, artifacts: [] };
-    const artifacts = await Promise.all(
-      result.artifacts.map(async (artifact) => ({
-        artifactId: String(artifact._id),
-        kind: artifact.kind,
-        url: await ctx.storage.getUrl(artifact.storageId),
-        sourceFingerprint: artifact.sourceFingerprint,
-        extractorVersion: artifact.extractorVersion,
-        sectionId: artifact.sectionId,
-        metadata: artifact.metadata,
-      })),
-    );
-    return {
-      ok: true,
-      runId: String(result.runId),
-      artifacts: artifacts.filter((artifact) => Boolean(artifact.url)),
-    };
-  },
-});
-
-export const recordExternalTraceEvent = action({
-  args: {
-    secret: v.string(),
-    traceId: v.optional(v.string()),
-    kind: v.union(
-      v.literal("model_call"),
-      v.literal("worker"),
-      v.literal("phase"),
-      v.literal("embedding_batch"),
-      v.literal("artifact"),
-    ),
-    phase: v.optional(v.string()),
-    label: v.optional(v.string()),
-    task: v.optional(v.string()),
-    taskKind: v.optional(v.string()),
-    provider: v.optional(v.string()),
-    model: v.optional(v.string()),
-    routeSource: v.optional(v.string()),
-    transport: v.optional(v.string()),
-    attempt: v.optional(v.number()),
-    status: v.optional(v.string()),
-    durationMs: v.optional(v.number()),
-    inputTokens: v.optional(v.number()),
-    outputTokens: v.optional(v.number()),
-    cachedInputTokens: v.optional(v.number()),
-    routerRequestId: v.optional(v.string()),
-    costUsd: v.optional(v.union(v.number(), v.null())),
-    costStatus: v.optional(v.union(v.literal("priced"), v.literal("unpriced"))),
-    routingDecision: v.optional(v.string()),
-    routing: v.optional(
-      v.object({
-        decision: v.string(),
-        attemptCount: v.optional(v.number()),
-        primitive: v.optional(v.string()),
-        difficulty: v.optional(
-          v.union(
-            v.literal("simple"),
-            v.literal("standard"),
-            v.literal("complex"),
-            v.null(),
-          ),
-        ),
-        requiredTier: v.optional(
-          v.union(v.literal(1), v.literal(2), v.literal(3)),
-        ),
-        selectedTier: v.optional(
-          v.union(v.literal(1), v.literal(2), v.literal(3)),
-        ),
-        route: v.optional(v.object({ provider: v.string(), model: v.string() })),
-        source: v.optional(v.string()),
-        candidatesConsidered: v.optional(
-          v.array(v.object({ provider: v.string(), model: v.string() })),
-        ),
-        policyVersion: v.optional(v.union(v.string(), v.null())),
-        cacheStickinessApplied: v.optional(v.boolean()),
-        routeSource: v.optional(v.string()),
-        shadowMode: v.optional(v.boolean()),
-        wouldHaveChosen: v.optional(
-          v.object({
-            provider: v.string(),
-            model: v.string(),
-            decision: v.string(),
-          }),
-        ),
-        wouldHaveMatched: v.optional(v.boolean()),
-        selection: v.optional(routingSelectionValidator),
-      }),
-    ),
-    error: v.optional(v.string()),
-    details: v.optional(v.any()),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    await traceEvent(ctx, args.traceId, {
-      kind: args.kind,
-      phase: args.phase,
-      label: args.label,
-      task: args.task,
-      taskKind: args.taskKind,
-      provider: args.provider,
-      model: args.model,
-      routeSource: args.routeSource,
-      transport: args.transport,
-      attempt: args.attempt,
-      status: args.status,
-      durationMs: args.durationMs,
-      inputTokens: args.inputTokens,
-      outputTokens: args.outputTokens,
-      cachedInputTokens: args.cachedInputTokens,
-      routerRequestId: args.routerRequestId,
-      costUsd: args.costUsd,
-      costStatus: args.costStatus,
-      routingDecision: args.routingDecision,
-      routing: args.routing,
-      error: args.error,
-      details: args.details,
-    });
-    return { ok: true };
-  },
-});
-
-async function externalCompletionLeaseIsCurrent(
-  ctx: ActionCtx,
-  args: ExternalCompleteArgs,
-): Promise<boolean> {
-  return await externalLeaseMatches(ctx, args);
-}
-
-async function completeExternalExtractFromPayload(
-  ctx: ActionCtx,
-  args: ExternalCompleteArgs,
-): Promise<ExternalAckResult> {
-  if (!(await externalCompletionLeaseIsCurrent(ctx, args))) {
-    return { ok: false };
-  }
-  const state = args.state as PolicyExtractionState;
-  const policyId = args.policyId;
-  const payload = args.payloadStorageId
-    ? await loadExternalCompletionPayload(ctx, args.payloadStorageId)
-    : undefined;
-  if (args.payloadStorageId && !payload) {
-    throw new Error(
-      "External extraction completion payload artifact is missing",
-    );
-  }
-  const document = payload?.document ?? args.document;
-  const chunks = (payload?.chunks ?? args.chunks ?? []) as Array<{
-    id?: string;
-  }>;
-  const sourceSpans = (payload?.sourceSpans ??
-    args.sourceSpans ??
-    []) as SourceSpanLike[];
-  const canonicalSpans = canonicalSourceSpans(sourceSpans);
-  const sourceChunks = (payload?.sourceChunks ??
-    args.sourceChunks ??
-    []) as Array<{ id?: unknown }>;
-  const rawSourceTree = payload?.sourceTree ?? args.sourceTree ?? [];
-  const operationalProfileInput =
-    payload?.operationalProfile ?? args.operationalProfile;
-  const performanceReport = (payload?.performanceReport ??
-    args.performanceReport) as
-    | {
-        modelCallCount?: number;
-        modelCalls?: unknown[];
-        totalModelCallDurationMs?: number;
-      }
-    | undefined;
-  const protocolVersion = payload?.protocolVersion ?? args.protocolVersion;
-  const extractorVersion = payload?.extractorVersion ?? args.extractorVersion;
-  const rawSections = payload?.sections ?? args.sections;
-  const sections = Array.isArray(rawSections)
-    ? rawSections.flatMap((value): ExtractionCompletionManifest["sections"] => {
-        if (!value || typeof value !== "object" || Array.isArray(value))
-          return [];
-        const section = value as Record<string, unknown>;
-        const id = section.id ?? section.sectionId;
-        if (
-          id !== "extraction_policy_core" &&
-          id !== "extraction_policy_coverage" &&
-          id !== "extraction_coverage_cleanup"
-        ) {
-          return [];
-        }
-        const status = section.status;
-        if (
-          status !== "complete" &&
-          status !== "not_applicable" &&
-          status !== "degraded"
-        ) {
-          return [];
-        }
-        return [
-          {
-            id,
-            status,
-            sourceSpanIds: Array.isArray(section.sourceSpanIds)
-              ? section.sourceSpanIds.filter(
-                  (spanId): spanId is string => typeof spanId === "string",
-                )
-              : [],
-            ...(typeof section.resultHash === "string" && section.resultHash
-              ? { resultHash: section.resultHash }
-              : {}),
-          },
-        ];
-      })
-    : undefined;
-  let doc = document as Record<string, unknown>;
-  if (!state.orgId || !state.userId) {
-    throw new Error("External extraction completion missing orgId or userId");
-  }
-
-  await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-    jobId: policyId,
-    timestamp: nowMs(),
-    message: `External extraction complete. Type: ${String(doc.type ?? "policy")}. ${chunks.length} chunks, ${sourceSpans.length} source spans.`,
-    phase: "extract",
-    level: "info",
-  });
-  const traceCounters = (await ctx.runQuery(
-    (internal as any).extractionTraces.getSessionCounters,
-    {
-      traceId: state.traceId,
-    },
-  )) as { modelCallCount?: number; modelDurationMs?: number } | null;
-  const modelCallCount =
-    traceCounters?.modelCallCount ||
-    performanceReport?.modelCallCount ||
-    performanceReport?.modelCalls?.length;
-  if (modelCallCount) {
-    const totalModelCallDurationMs =
-      traceCounters?.modelDurationMs ??
-      performanceReport?.totalModelCallDurationMs ??
-      0;
-    const totalSeconds = Math.round(totalModelCallDurationMs / 1000);
-    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-      jobId: policyId,
-      timestamp: nowMs(),
-      message: `External extraction model calls: ${modelCallCount}; total model time: ${totalSeconds}s`,
-      phase: "extract",
-      level: "info",
-    });
-  }
-  const processed = await postProcessExtractionDocument({
-    ctx,
-    orgId: state.orgId as Id<"organizations">,
-    document: doc,
-    sourceSpans: canonicalSpans,
-    traceId: state.traceId,
-    policyId,
-    runModelReview: false,
-    log: async (message, level = "info") => {
-      await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-        jobId: policyId,
-        timestamp: nowMs(),
-        message,
-        phase: "extract",
-        level,
-      });
-    },
-  });
-  doc = processed.document;
-  const sourceNodes = normalizeSourceTree(
-    rawSourceTree,
-    canonicalSpans,
-    policyId,
-  );
-  const normalizedOperationalProfile = normalizeOperationalProfile(
-    operationalProfileInput,
-    sourceNodes,
-    canonicalSpans,
-  );
-  const operationalProfile = normalizedOperationalProfile;
-  const fields = processed.fields;
-  if (processed.coverageReviewQuestionCount > 0) {
-    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-      jobId: policyId,
-      timestamp: nowMs(),
-      message: `Extraction review has ${processed.coverageReviewQuestionCount} open question${processed.coverageReviewQuestionCount === 1 ? "" : "s"}`,
-      phase: "extract",
-      level: "warn",
-    });
-  }
-  const docName = doc.policyNumber || "policy";
-  const resolvedFileName = state.fileName || `${String(docName)}.pdf`;
-  const existingPolicy = (await ctx.runQuery(internal.policies.getInternal, {
-    id: policyId as Id<"policies">,
-  })) as {
-    linesOfBusiness?: string[];
-    carrierIdentity?: unknown;
-  } | null;
-  const promotionState: PolicyExtractionState =
-    state.policyVersionKind === "re_extraction" ||
-    state.policyVersionKind === "renewal"
-      ? { ...state, replacementPromotionStarted: true }
-      : state;
-  const promotionLeaseCurrent = (await ctx.runMutation(
-    (internal as any).policies.pipelineSaveStateForLease,
-    {
-      jobId: policyId,
-      leaseId: args.leaseId,
-      nextPhase: "extract",
-      state: promotionState,
-      leaseExpiresAt: nowMs() + EXTERNAL_WORKER_LEASE_MS,
-    },
-  )) as boolean;
-  if (!promotionLeaseCurrent) {
-    return { ok: false };
-  }
-
-  const finalFields = {
-    fileName: resolvedFileName,
-    ...fields,
-    ...sourceTreePolicyFields({
-      sourceTree: sourceNodes,
-      operationalProfile: normalizedOperationalProfile,
-      sourceSpans: canonicalSpans,
-      existingDocumentMetadata: doc.documentMetadata,
-      existingDeclarations: doc.declarations,
-      existingLinesOfBusiness: existingPolicy?.linesOfBusiness,
-      existingPolicyFields: fieldsWithPersistedCarrierIdentity(
-        fields,
-        existingPolicy,
-      ),
-    }),
-  };
-  await persistEvidenceAndPromote(ctx, {
-    policyId,
-    sourceSpans: canonicalSpans,
-    sourceNodes,
-    fields: finalFields,
-    protocolVersion,
-    extractorVersion,
-    sections,
-  });
-
-  if (state.fileId) {
-    await ctx.runMutation((internal as any).policies.updateFiles, {
-      id: policyId,
-      files: [
-        {
-          fileId: state.fileId as Id<"_storage">,
-          fileName: resolvedFileName,
-          fileType: "unknown",
-          status: "complete",
-        },
-      ],
-      primaryFileId: state.fileId as Id<"_storage">,
-    });
-  }
-
-  const embeddingPayloadFileId = await storeEmbeddingPayload(ctx, policyId, {
-    documentChunksForEmbedding:
-      chunks as PolicyExtractionState["documentChunksForEmbedding"],
-    sourceSpansForStorage:
-      canonicalSpans as PolicyExtractionState["sourceSpansForStorage"],
-    sourceNodesForStorage: sourceNodes,
-  });
-  const nextState: PolicyExtractionState = {
-    ...promotionState,
-    embeddingPayloadFileId,
-    chunkIds: chunks.map((chunk) => String(chunk.id)),
-    sourceSpanIds: canonicalSpans.map((span) => String(span.id)),
-    sourceChunkIds: sourceChunks.map((chunk) => String(chunk.id)),
-    operationalProfile,
-    fileName: resolvedFileName,
-    externalWorker: undefined,
-  };
-  const checkpointUpdated = (await ctx.runMutation(
-    (internal as any).policies.pipelineCompleteLease,
-    {
-      jobId: policyId,
-      leaseId: args.leaseId,
-      checkpoint: {
-        nextPhase: "embed_and_store",
-        state: nextState,
-        createdAt: nowMs(),
-      },
-    },
-  )) as boolean;
-  if (checkpointUpdated) {
-    await ctx.scheduler.runAfter(
-      0,
-      (internal as any).actions.policyExtraction.advance,
-      { jobId: policyId },
-    );
-    await traceEvent(ctx, state.traceId, {
-      kind: "phase",
-      phase: "external_extract",
-      label: "external_extract",
-      status: "next",
-      message: "External extraction handed off to embed_and_store",
-    });
-  }
-  return { ok: checkpointUpdated };
-}
-
-export const completeExternalExtract = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    state: v.any(),
-    payloadStorageId: v.optional(v.string()),
-    document: v.optional(v.any()),
-    chunks: v.optional(v.array(v.any())),
-    sourceSpans: v.optional(v.array(v.any())),
-    sourceChunks: v.optional(v.array(v.any())),
-    sourceTree: v.optional(v.array(v.any())),
-    operationalProfile: v.optional(v.any()),
-    warnings: v.optional(v.array(v.string())),
-    tokenUsage: v.optional(v.any()),
-    performanceReport: v.optional(v.any()),
-    protocolVersion: v.optional(
-      v.union(v.literal("source-tree-v1"), v.literal("source-tree-v2")),
-    ),
-    extractorVersion: v.optional(v.string()),
-    sections: v.optional(v.array(v.any())),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    return await completeExternalExtractFromPayload(ctx, args);
-  },
-});
-
-export const completeExternalExtractFromStoredPayload = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    state: v.any(),
-  },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<ExternalAckResult & { replayed?: boolean }> => {
-    requireExtractionWorkerSecret(args.secret);
-    const payloadStorageId = await getLatestArtifactStorageId(
-      ctx,
-      args.policyId,
-      "external_completion_payload",
-    );
-    if (!payloadStorageId) return { ok: false, replayed: false };
-    const result = await completeExternalExtractFromPayload(ctx, {
-      policyId: args.policyId,
-      leaseId: args.leaseId,
-      state: args.state,
-      payloadStorageId,
-    });
-    return { ...result, replayed: true };
-  },
-});
-
-export const completeExternalPreview = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    state: v.any(),
-    fields: v.any(),
-    previewVersion: v.string(),
-    previewModel: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    const ok = (await ctx.runMutation(
-      (internal as any).policies.pipelineCompletePreviewLease,
-      {
-        jobId: args.policyId,
-        leaseId: args.leaseId,
-      },
-    )) as boolean;
-    if (!ok) return { ok: false };
-
-    const updated = (await ctx.runMutation(
-      (internal as any).policies.updatePreviewExtractionInternal,
-      {
-        id: args.policyId as Id<"policies">,
-        fields: args.fields,
-        previewVersion: args.previewVersion,
-        previewModel: args.previewModel,
-      },
-    )) as { updated: boolean; reason?: string };
-
-    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-      jobId: args.policyId,
-      timestamp: nowMs(),
-      message: updated.updated
-        ? "Provisional policy extraction is ready"
-        : `Provisional policy extraction skipped${updated.reason ? ` (${updated.reason})` : ""}`,
-      phase: "preview",
-      level: updated.updated ? "info" : "warn",
-    });
-    await traceEvent(
-      ctx,
-      (args.state as PolicyExtractionState | undefined)?.traceId,
-      {
-        kind: "phase",
-        phase: "preview",
-        label: "external_preview_extract",
-        status: updated.updated ? "complete" : "skipped",
-        message: updated.updated
-          ? "External preview extraction completed"
-          : `External preview extraction skipped${updated.reason ? ` (${updated.reason})` : ""}`,
-        details: {
-          previewVersion: args.previewVersion,
-          previewModel: args.previewModel,
-          updated,
-        },
-      },
-    );
-    return { ok: true };
-  },
-});
-
-export const failExternalPreviewJob = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    state: v.optional(v.any()),
-    error: v.string(),
-    previewVersion: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<ExternalAckResult> => {
-    requireExtractionWorkerSecret(args.secret);
-    const ok = (await ctx.runMutation(
-      (internal as any).policies.pipelineCompletePreviewLease,
-      {
-        jobId: args.policyId,
-        leaseId: args.leaseId,
-      },
-    )) as boolean;
-    if (!ok) return { ok: false };
-    await ctx.runMutation(
-      (internal as any).policies.failPreviewExtractionInternal,
-      {
-        id: args.policyId as Id<"policies">,
-        error: args.error,
-        previewVersion: args.previewVersion,
-      },
-    );
-    await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-      jobId: args.policyId,
-      timestamp: nowMs(),
-      message: `Provisional policy extraction failed: ${args.error}`,
-      phase: "preview",
-      level: "warn",
-    });
-    await traceEvent(
-      ctx,
-      (args.state as PolicyExtractionState | undefined)?.traceId,
-      {
-        kind: "phase",
-        phase: "preview",
-        label: "external_preview_extract",
-        status: "error",
-        message: args.error,
-        details: { previewVersion: args.previewVersion },
-      },
-    );
-    return { ok: true };
-  },
-});
-
-export const failExternalJob = action({
-  args: {
-    secret: v.string(),
-    policyId: v.string(),
-    leaseId: v.string(),
-    state: v.optional(v.any()),
-    error: v.string(),
-  },
-  handler: async (ctx, args) => {
-    requireExtractionWorkerSecret(args.secret);
-    if (!(await externalLeaseMatches(ctx, args))) return { ok: false };
-    const checkpoint = args.state
-      ? {
-          nextPhase: "extract",
-          state: args.state,
-          createdAt: nowMs(),
-        }
-      : null;
-    const hasReplayableCompletionPayload =
-      args.error !== CANCELLED_BY_USER
-        ? Boolean(
-            await getLatestArtifactStorageId(
-              ctx,
-              args.policyId,
-              "external_completion_payload",
-            ),
-          )
-        : false;
-    if (checkpoint && hasReplayableCompletionPayload) {
-      // Keep the same extraction run recoverable so the next worker claim can
-      // replay the stored completion payload instead of recomputing models.
-      const ok = (await ctx.runMutation(
-        (internal as any).policies.pipelineCompleteLease,
-        {
-          jobId: args.policyId,
-          leaseId: args.leaseId,
-          status: "running",
-          error: args.error,
-          checkpoint,
-        },
-      )) as boolean;
-      if (ok) {
-        await ctx.runMutation((internal as any).policies.pipelineAppendLog, {
-          jobId: args.policyId,
-          timestamp: nowMs(),
-          message: `External extraction failed after saving completion payload; next worker claim will replay stored payload: ${args.error}`,
-          phase: "worker",
-          level: "warn",
-        });
-      }
-      return { ok, replayable: ok };
-    }
-    const ok = (await ctx.runMutation(
-      (internal as any).policies.pipelineCompleteLease,
-      {
-        jobId: args.policyId,
-        leaseId: args.leaseId,
-        status: "error",
-        error: args.error,
-        checkpoint,
-      },
-    )) as boolean;
-    if (!ok) return { ok: false };
-    await completeTraceSession(
-      ctx,
-      (args.state as PolicyExtractionState | undefined)?.traceId,
-      args.error === CANCELLED_BY_USER ? "cancelled" : "error",
-      args.error,
-    );
-    return { ok: true };
   },
 });
 
@@ -3408,115 +2628,6 @@ export const ensurePolicyV3SourceTree = internalAction({
 
 // ─── Entry point: start from upload ───────────────────────────────────────────
 
-/**
- * Mirrors the in-Convex extract-phase document gate for external worker mode,
- * where the worker never runs `classifyInsuranceExtractability`. Runs before the
- * job is handed to the external queue so non-policy documents are rejected with
- * a user-facing error instead of completing as empty "Unknown" policies.
- * Returns true when the document was rejected and the handoff must not happen.
- */
-async function rejectedByDocumentGateBeforeExternalHandoff(
-  ctx: ActionCtx,
-  params: {
-    policyId: string;
-    state: {
-      fileId?: string;
-      fileName?: string;
-      orgId?: string;
-      userId?: string;
-      traceId?: string;
-      policyVersionKind?: PolicyExtractionState["policyVersionKind"];
-    };
-  },
-): Promise<boolean> {
-  const { fileId, fileName, orgId, userId, traceId } = params.state;
-  if (!fileId || !orgId) return false;
-  let gateDecision: ExtractionGateDecision;
-  try {
-    const pdfBytes = await loadPdfBytes(ctx, fileId);
-    if (!pdfBytes) return false;
-    const converted = await tryConvertPdfWithLiteParse({
-      pdfBytes,
-      documentId: params.policyId,
-      sourceKind: "policy_pdf",
-    });
-    const sourceSpans = converted?.sourceSpans?.length
-      ? converted.sourceSpans
-      : (
-          await preparePdfTextWithPdfJs({
-            pdfBytes,
-            documentId: params.policyId,
-            sourceKind: "policy_pdf",
-          })
-        ).sourceSpans;
-    gateDecision = await classifyInsuranceExtractability({
-      ctx,
-      orgId: orgId as Id<"organizations">,
-      traceId,
-      policyId: params.policyId,
-      pdfBytes,
-      sourceSpans,
-    });
-  } catch (error) {
-    // Gate parity with the in-Convex path: never block extraction on gate
-    // infrastructure failures.
-    await traceEvent(ctx, traceId, {
-      kind: "log",
-      phase: "gate",
-      level: "warn",
-      message: `Document gate failed; continuing extraction (${error instanceof Error ? error.message : String(error)})`,
-    });
-    return false;
-  }
-  await traceEvent(ctx, traceId, {
-    kind: "log",
-    phase: "gate",
-    message: `Document gate: ${gateDecision.classification} (${Math.round(gateDecision.confidence * 100)}% confidence) — ${gateDecision.reason}`,
-  });
-  if (!shouldRejectDocument(gateDecision)) return false;
-
-  const rejectionSummary =
-    `${NON_INSURANCE_DOCUMENT_ERROR} ${gateDecision.reason}`.slice(0, 1000);
-  const archivePolicy = shouldArchiveRejectedPolicy(
-    params.state.policyVersionKind,
-  );
-  if (archivePolicy) {
-    await ctx.runMutation((internal as any).policies.updateExtractionInternal, {
-      id: params.policyId,
-      fields: {
-        carrier: "Non-insurance document",
-        policyNumber: "Not applicable",
-        linesOfBusiness: ["UN"],
-        insuredName: "Not applicable",
-        effectiveDate: "Not applicable",
-        expirationDate: "Not applicable",
-        summary: rejectionSummary,
-        excludeFromSearch: true,
-      },
-    });
-    await ctx.runMutation((internal as any).policies.updateFiles, {
-      id: params.policyId,
-      files: [
-        {
-          fileId: fileId as Id<"_storage">,
-          fileName: fileName || "upload.pdf",
-          fileType: "unknown",
-          status: "not_insurance",
-        },
-      ],
-    });
-  }
-  await ctx.runMutation((internal as any).policies.pipelineRejectExternalJob, {
-    jobId: params.policyId,
-    error: rejectionSummary,
-    userId,
-    archivePolicy,
-    state: archivePolicy ? undefined : params.state,
-  });
-  await completeTraceSession(ctx, traceId, "error", rejectionSummary);
-  return true;
-}
-
 export const startPolicyExtractionFromUpload = internalAction({
   args: {
     policyId: v.id("policies"),
@@ -3557,45 +2668,6 @@ export const startPolicyExtractionFromUpload = internalAction({
       trigger: "upload",
       fileName,
     });
-    if (EXTERNAL_WORKER_MODE) {
-      const externalState = {
-        sourceKind: "upload",
-        fileId: String(fileId),
-        fileName,
-        orgId: String(orgId),
-        userId: String(userId),
-        policyFileId: policyFileId ? String(policyFileId) : undefined,
-        workspaceScanImportId,
-        policyVersionKind,
-        replacementPromotionStarted:
-          policyVersionKind === "re_extraction" ||
-          policyVersionKind === "renewal"
-            ? false
-            : undefined,
-        traceId,
-      };
-      if (
-        await rejectedByDocumentGateBeforeExternalHandoff(ctx, {
-          policyId: String(policyId),
-          state: externalState,
-        })
-      ) {
-        return;
-      }
-      await ctx.runMutation(internal.policies.pipelineClearLog, {
-        jobId: String(policyId),
-      });
-      await clearArtifacts(ctx, String(policyId));
-      await ctx.runMutation(
-        (internal as any).policies.pipelineStartExternalWorkerJob,
-        {
-          jobId: String(policyId),
-          state: externalState,
-        },
-      );
-      return;
-    }
-
     const mutations = makeMutations();
     const storage = createConvexStorageAdapter<PolicyExtractionState>({
       ctx: ctx as any,
@@ -3740,36 +2812,6 @@ export const retryPolicyExtraction = internalAction({
         status: "resumed",
         message: "Extraction retry resumed existing trace",
       });
-    }
-    if (EXTERNAL_WORKER_MODE) {
-      const nextState = {
-        ...retrySource,
-        traceId,
-      };
-      if (!nextState.fileId) throw new Error("Policy source file is missing");
-      if (
-        mode === "full" &&
-        (await rejectedByDocumentGateBeforeExternalHandoff(ctx, {
-          policyId: String(policyId),
-          state: nextState,
-        }))
-      ) {
-        return { success: true, traceId };
-      }
-      if (mode === "full") {
-        await ctx.runMutation(internal.policies.pipelineClearLog, {
-          jobId: String(policyId),
-        });
-        await clearArtifacts(ctx, String(policyId));
-      }
-      await ctx.runMutation(
-        (internal as any).policies.pipelineStartExternalWorkerJob,
-        {
-          jobId: String(policyId),
-          state: nextState,
-        },
-      );
-      return { success: true, traceId };
     }
 
     const phases = makePhases(ctx);

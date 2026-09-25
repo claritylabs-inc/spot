@@ -60,6 +60,9 @@ function buildSpan(input: {
   index: number;
   sectionId?: string;
   formNumber?: string;
+  sourceUnit?: string;
+  parentSpanId?: string;
+  bbox?: Array<{ page: number; x: number; y: number; width: number; height: number }>;
   metadata?: Record<string, string>;
 }): SpotSourceSpan | undefined {
   const text = normalizeWhitespace(input.text);
@@ -75,6 +78,9 @@ function buildSpan(input: {
     pageEnd: input.pageNumber,
     sectionId: input.sectionId,
     formNumber: input.formNumber,
+    sourceUnit: input.sourceUnit,
+    parentSpanId: input.parentSpanId,
+    bbox: input.bbox,
     text,
     textHash,
     hash: textHash,
@@ -86,6 +92,80 @@ function buildSpan(input: {
     },
     metadata: input.metadata,
   };
+}
+
+type PdfLineItem = {
+  str: string;
+  width: number;
+  height: number;
+  transform: number[];
+  hasEOL?: boolean;
+};
+
+const LINE_BASELINE_TOLERANCE = 2;
+
+type LineBox = { x: number; y: number; width: number; height: number };
+
+function itemBboxTopLeft(item: PdfLineItem, viewportHeight: number): LineBox {
+  const height = item.height || Math.hypot(item.transform[2] ?? 0, item.transform[3] ?? 0) || 10;
+  const baseline = item.transform[5] ?? 0;
+  const x = item.transform[4] ?? 0;
+  const width = item.width || 0;
+  return { x, y: viewportHeight - (baseline + height), width, height };
+}
+
+function unionLineBox(boxes: LineBox[]): LineBox {
+  const x = Math.min(...boxes.map((box) => box.x));
+  const y = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+  return { x, y, width: maxX - x, height: maxY - y };
+}
+
+/**
+ * Groups pdf.js text items into visual lines using `hasEOL` plus baseline
+ * proximity (items are already in reading order), then converts each line's
+ * bbox from pdf.js's bottom-left origin to top-left origin via `viewportHeight`.
+ */
+function groupItemsIntoLines(
+  items: PdfLineItem[],
+  viewportHeight: number,
+): Array<{ text: string; bbox: LineBox }> {
+  const lines: PdfLineItem[][] = [];
+  let current: PdfLineItem[] = [];
+  let currentBaseline: number | undefined;
+
+  for (const item of items) {
+    if (!item.str) {
+      if (item.hasEOL && current.length > 0) {
+        lines.push(current);
+        current = [];
+        currentBaseline = undefined;
+      }
+      continue;
+    }
+    const baseline = item.transform[5] ?? 0;
+    if (current.length > 0 && currentBaseline !== undefined && Math.abs(baseline - currentBaseline) > LINE_BASELINE_TOLERANCE) {
+      lines.push(current);
+      current = [];
+    }
+    current.push(item);
+    currentBaseline = baseline;
+    if (item.hasEOL) {
+      lines.push(current);
+      current = [];
+      currentBaseline = undefined;
+    }
+  }
+  if (current.length > 0) lines.push(current);
+
+  const result: Array<{ text: string; bbox: LineBox }> = [];
+  for (const lineItems of lines) {
+    const text = normalizeWhitespace(lineItems.map((item) => item.str).join(" "));
+    if (!text) continue;
+    result.push({ text, bbox: unionLineBox(lineItems.map((item) => itemBboxTopLeft(item, viewportHeight))) });
+  }
+  return result;
 }
 
 function splitPageIntoSectionCandidates(text: string): Array<{ title: string; text: string; formNumber?: string }> {
@@ -157,7 +237,9 @@ export async function buildPdfSourceSpans(params: {
   pdfBytes: Uint8Array;
   documentId: string;
   sourceKind?: SpotSourceKind;
-}): Promise<{ sourceSpans: SpotSourceSpan[]; sourceChunks: SpotSourceChunk[] }> {
+  /** Invoked once per page with the raw extracted text, in page order. */
+  onPageText?: (page: number, text: string) => void;
+}): Promise<{ sourceSpans: SpotSourceSpan[]; sourceChunks: SpotSourceChunk[]; pageCount: number }> {
   try {
     const { getDocument, VerbosityLevel } = await import("pdfjs-dist/legacy/build/pdf.mjs");
     const loadingTask = getDocument({
@@ -181,6 +263,7 @@ export async function buildPdfSourceSpans(params: {
             return `${item.str}${item.hasEOL ? "\n" : " "}`;
           })
           .join("");
+        params.onPageText?.(pageNumber, text);
         const span = buildSpan({
           documentId: params.documentId,
           sourceKind: params.sourceKind ?? "policy_pdf",
@@ -189,6 +272,29 @@ export async function buildPdfSourceSpans(params: {
           index,
         });
         if (span) sourceSpans.push(span);
+
+        const viewport = page.getViewport({ scale: 1 });
+        const lineItems: PdfLineItem[] = textContent.items.flatMap((item) =>
+          "str" in item ? [item as unknown as PdfLineItem] : [],
+        );
+        for (const line of groupItemsIntoLines(lineItems, viewport.height)) {
+          const lineSpan = buildSpan({
+            documentId: params.documentId,
+            sourceKind: params.sourceKind ?? "policy_pdf",
+            pageNumber,
+            text: line.text,
+            index: sourceSpans.length,
+            sourceUnit: "line",
+            parentSpanId: span?.id,
+            bbox: [{ page: pageNumber, ...line.bbox }],
+            metadata: {
+              sourceUnit: "line",
+              bboxCoordinateWidth: String(viewport.width),
+              bboxCoordinateHeight: String(viewport.height),
+            },
+          });
+          if (lineSpan) sourceSpans.push(lineSpan);
+        }
 
         for (const section of splitPageIntoSectionCandidates(text)) {
           const sectionSpan = buildSpan({
@@ -211,10 +317,11 @@ export async function buildPdfSourceSpans(params: {
 
     return {
       sourceSpans,
-      sourceChunks: chunkSpotSourceSpans(sourceSpans),
+      sourceChunks: chunkSpotSourceSpans(sourceSpans.filter((entry) => entry.sourceUnit !== "line")),
+      pageCount: doc.numPages,
     };
   } catch (error) {
     console.warn(`PDF source span extraction failed: ${error instanceof Error ? error.message : String(error)}`);
-    return { sourceSpans: [], sourceChunks: [] };
+    return { sourceSpans: [], sourceChunks: [], pageCount: 0 };
   }
 }

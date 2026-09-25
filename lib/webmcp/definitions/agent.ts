@@ -83,20 +83,6 @@ export const agentTools = {
     pages: AGENT_PAGES,
     inputSchema: schema({ message_id: messageId }, ["message_id"]),
   }),
-  rate_agent_response: imperative({
-    title: "Rate agent response",
-    description: "Give an agent reply a thumbs up or down with an optional comment. The first rating is kept.",
-    readOnly: false,
-    pages: AGENT_PAGES,
-    inputSchema: schema(
-      {
-        message_id: messageId,
-        rating: param.enum(["positive", "negative"], "Rating."),
-        comment: param.string("Optional comment."),
-      },
-      ["message_id", "rating"],
-    ),
-  }),
   get_thread_attachment_urls: imperative({
     title: "Get thread attachment links",
     description: "Get temporary download links for files attached to messages in a thread.",

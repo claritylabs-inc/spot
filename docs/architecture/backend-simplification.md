@@ -1,5 +1,7 @@
 # Backend simplification and client intake plan
 
+> Historical audit and migration record. Current extraction, routing, search, and tool behavior is documented in [Convex section extraction](convex-section-extraction.md), [router jobs](router-jobs.md), [AGENTS.md](../../AGENTS.md), and [AGENT_TOOLS.md](../../AGENT_TOOLS.md). Retired procedures below are not current rollout instructions.
+
 Status: the primary simplification shipped in [PR 350](https://github.com/claritylabs-inc/spot/pull/350). The follow-up implementation in [PR 352](https://github.com/claritylabs-inc/spot/pull/352) passed [production release 34911026220](https://github.com/claritylabs-inc/spot/actions/runs/34911026220), including its migration and exact-commit worker/health gates; `a58d9503` was verified serving `app.spot.insure`. Production and shared-dev have both passed the final storage-cleanup audit. [PR 353](https://github.com/claritylabs-inc/spot/pull/353) removes the converted fields and completed migration machinery. Historical-data recovery remains cancelled under the accepted legacy data loss.
 
 ## Final storage cleanup

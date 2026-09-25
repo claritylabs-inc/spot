@@ -1,16 +1,16 @@
 "use client";
 
 import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
-import {
-  OperationalPanel,
-  OperationalPanelHeader,
-} from "@claritylabs-inc/ui/components/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import type { Id } from "@/convex/_generated/dataModel";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
 import type { CarrierIdentity } from "@/convex/lib/carrierIdentity";
-import { isNonInsuranceDocument } from "@/convex/lib/policyDocumentGate";
+import {
+  NOT_A_POLICY_MESSAGE,
+  type ExtractionState,
+} from "@/lib/extraction-state";
 import { typeStyle } from "@/lib/typography";
 
 import { PolicySummary } from "./policy-summary";
@@ -19,6 +19,7 @@ import type { PolicyDetailsEditSection } from "./policy-details-editor";
 
 export function PolicyDetailsTab({
   policy,
+  state,
   fileUrl,
   canEdit = false,
   onEdit,
@@ -39,28 +40,21 @@ export function PolicyDetailsTab({
     isRenewal?: boolean;
     programName?: string;
     productIdentity?: unknown;
-    pipelineStatus?: string;
-    pipelineError?: string;
   };
+  state: ExtractionState;
   fileUrl?: string | null;
   canEdit?: boolean;
   onEdit?: (section: PolicyDetailsEditSection) => void;
   }) {
   const linesOfBusiness = policyLobCodes(policy as { linesOfBusiness?: string[] });
-  const isProvisional =
-    policy.extractionDataStage === "preview" &&
-    policy.pipelineStatus !== "complete";
   const partyContext = resolvePolicyPartyContext(policy);
 
-  if (
-    policy.pipelineStatus === "error" &&
-    isNonInsuranceDocument(policy.pipelineError)
-  ) {
+  if (state.kind === "not_a_policy") {
     return (
       <OperationalPanel className="p-5">
         <StatusTag tone="warning">Not a policy</StatusTag>
         <p className={`mt-3 text-muted-foreground ${typeStyle("body.default")}`}>
-          {policy.pipelineError}
+          {NOT_A_POLICY_MESSAGE}
         </p>
       </OperationalPanel>
     );
@@ -68,20 +62,6 @@ export function PolicyDetailsTab({
 
   return (
     <FadeIn when={true} staggerIndex={1} duration={0.5}>
-      {isProvisional ? (
-        <OperationalPanel as="div" className="mb-4">
-          <OperationalPanelHeader
-            title="Extraction complete"
-            description="Enrichment is running. Certificates, policy changes, and source-backed edits unlock when it finishes."
-            action={
-              <StatusTag tone="info">
-                Enriching
-              </StatusTag>
-            }
-            className="border-b-0"
-          />
-        </OperationalPanel>
-      ) : null}
       <PolicySummary
         carrier={policy.carrier}
         carrierDisplayName={partyContext.carrierDisplayName}
@@ -99,10 +79,12 @@ export function PolicyDetailsTab({
         operationsDescription={partyContext.operationsDescription}
         isRenewal={policy.isRenewal}
         pdfUrl={fileUrl ?? undefined}
-        isExtracting={
-          !policy.deletedAt &&
-          (policy.pipelineStatus === "idle" || policy.pipelineStatus === "running")
+        extracting={
+          !policy.deletedAt && state.kind === "extracting"
+            ? { progress: state.progress }
+            : undefined
         }
+        failed={state.kind === "failed"}
         onEdit={canEdit && onEdit ? () => onEdit("overview") : undefined}
       />
       <PolicyPartiesPanel

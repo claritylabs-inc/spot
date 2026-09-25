@@ -15,7 +15,7 @@ import {
   type RawImessageAttachment,
   type StoredImessageAttachmentRecord,
 } from "./imessageIngress";
-import { tryBuildParsedPdfText } from "./liteparsePreprocessor";
+import { extractPdfPlainText } from "./pdfText";
 import {
   transcribeAudioForOperatorTask,
   transcribeAudioForOrg,
@@ -31,7 +31,6 @@ export type ImessageHistoryMessage = {
   userName?: string;
   responseMessageId?: string;
   routerRequestId?: string;
-  feedbackPromptedAt?: number;
   messageKind?: "conversation" | "workflow_status" | "channel_sync";
   toolArtifacts?: Array<{ type: string; data: unknown }>;
   usedTools?: string[];
@@ -245,16 +244,15 @@ export async function buildImessageModelMessages(args: {
     if (!attachment.buffer) continue;
 
     if (attachment.contentType === "application/pdf") {
-      const parsedPdfText = await tryBuildParsedPdfText({
+      const parsedPdfText = await extractPdfPlainText({
         pdfBytes: attachment.buffer,
         documentId: attachment.filename,
         sourceKind: "attachment",
-        timeoutMs: 20_000,
       });
       if (parsedPdfText) {
         parts.push({
           type: "text",
-          text: `--- PDF attachment: ${attachment.filename} (LiteParse text) ---\n${parsedPdfText}\n--- End PDF attachment ---`,
+          text: `--- PDF attachment: ${attachment.filename} (PDF text) ---\n${parsedPdfText}\n--- End PDF attachment ---`,
         });
       } else {
         accountRouterAttachment(richAssets, {

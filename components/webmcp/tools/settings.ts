@@ -316,23 +316,6 @@ export function settingsToolImplementations(ctx: ClientToolContext): ToolMap {
           expectedRevision: num(input, "expected_revision") ?? -1,
         }),
       ),
-    get_certificate_workflow_settings: async () => {
-      const settings = await convex.query(
-        api.certificateWorkflowSettings.getEffectiveForCurrentOrg,
-        {},
-      );
-      return {
-        status: "ok",
-        renewal_reissue_enabled: settings.renewalReissueEnabled,
-        source: settings.source,
-      };
-    },
-    set_certificate_renewal_reissue: async (input) => {
-      await convex.mutation(api.certificateWorkflowSettings.updateClientOverride, {
-        renewalReissueEnabled: requiredBool(input, "enabled"),
-      });
-      return { status: "updated" };
-    },
     get_notification_preferences: async () => {
       const rows = await convex.query(api.notificationPreferences.getForUser, { orgId });
       return {
@@ -441,7 +424,7 @@ export function settingsToolImplementations(ctx: ClientToolContext): ToolMap {
     },
     set_beta_feature: async (input) => {
       await convex.mutation(api.orgs.setFeatureFlag, {
-        flagId: requiredText(input, "flag") as "connect_features" | "imessage_app_cards",
+        flagId: requiredText(input, "flag") as "connect_features",
         enabled: requiredBool(input, "enabled"),
       });
       return { status: "updated" };

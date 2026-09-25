@@ -2,45 +2,41 @@
 
 import { v } from "convex/values";
 import { action } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 
-/**
- * Retry policy extraction via cl-pipelines.
- * Resume keeps the checkpoint, restart reseeds its staged file, and full
- * re-extracts the active policy PDF.
- * Thin wrapper — all logic lives in policyExtraction.ts.
- */
+/** Full re-extraction of the policy's original file. */
 export const retryExtraction = action({
-  args: {
-    policyId: v.id("policies"),
-    mode: v.optional(v.union(
-      v.literal("resume"),
-      v.literal("restart"),
-      v.literal("full"),
-    )),
-  },
-  returns: v.any(),
-  handler: async (ctx, args): Promise<{ error: string } | { success: boolean }> => {
-    const viewer = await ctx.runQuery(api.users.viewer);
-    if (!viewer) return { error: "Not authenticated" };
+  args: { policyId: v.id("policies") },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, { policyId }): Promise<{ success: boolean }> => {
+    const access = await ctx.runQuery(
+      internal.extractionAccess.authorizeReextractInternal,
+      { policyId },
+    );
 
-    const policy = await ctx.runQuery(api.policies.get, { id: args.policyId });
-    if (!policy) return { error: "Policy not found" };
-
-    const mode = args.mode ?? "resume";
-
-    await ctx.runMutation(internal.policyAuditLog.append, {
-      policyId: args.policyId,
-      userId: viewer._id,
-      action: "re_extraction",
-      detail: `Mode: ${mode}`,
-    });
+    if (access.isOperator) {
+      await ctx.runMutation(
+        internal.operator.recordPolicyExtractionOperationInternal,
+        {
+          operatorUserId: access.userId,
+          policyId,
+          operation: "full_extraction",
+        },
+      );
+    } else {
+      await ctx.runMutation(internal.policyAuditLog.append, {
+        policyId,
+        userId: access.userId,
+        orgId: access.orgId,
+        action: "re_extraction",
+        detail: "Full re-extraction",
+      });
+    }
 
     await ctx.runAction(internal.actions.policyExtraction.retryPolicyExtraction, {
-      policyId: args.policyId,
-      mode,
+      policyId,
+      mode: "full",
     });
-
     return { success: true };
   },
 });

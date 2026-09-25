@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { isValidPhoneNumber } from "react-phone-number-input";
-import dayjs from "dayjs";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -37,6 +36,7 @@ import { useViewerCacheActions } from "@/lib/sync/spot-cached-queries";
 import {
   cachedQueryArgsKey,
   cachedQueryCollectionFor,
+  cachedQueryResult,
   useCachedQuery,
 } from "@/lib/sync/use-cached-query";
 import { typeStyle } from "@/lib/typography";
@@ -193,16 +193,12 @@ export default function ProfilePage() {
       const current = store.getCollection(collection, argsKey)?.[0]?.value;
       if (!current) return;
       void store.upsertCollection(collection, argsKey, [
-        {
-          _id: "result",
-          value: {
-            ...current,
-            name: next.name,
-            title: next.title,
-            phone: next.phone,
-          },
-          updatedAt: dayjs().valueOf(),
-        },
+        cachedQueryResult(argsKey, {
+          ...current,
+          name: next.name,
+          title: next.title,
+          phone: next.phone,
+        }),
       ]);
     },
     flush: saveProfile,

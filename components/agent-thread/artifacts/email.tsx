@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState } from "react";
 import { useAction, useMutation } from "convex/react";
-import { Loader2, Mail as MailIcon, RotateCcw, X } from "lucide-react";
+import { Mail as MailIcon, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { api } from "@/convex/_generated/api";
@@ -10,9 +10,9 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   StatusTag,
-  type StatusTagTone,
+  type StatusPresentation,
 } from "@claritylabs-inc/ui/components/status-tag";
-import { ThreadAttachmentChip } from "../thread-attachment-chip";
+import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -20,6 +20,83 @@ import {
 import type { ThreadMessage } from "../types";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
+import { ActionPill, ArtifactSidebar } from "./shell";
+
+type PendingEmailAction = "send" | "cancel" | "restore";
+
+const PENDING_EMAIL_ACTIONS: Record<
+  PendingEmailAction,
+  { status: "sent" | "cancelled" | "draft"; success: string; failure: string }
+> = {
+  send: { status: "sent", success: "Email sent", failure: "Failed to send email" },
+  cancel: {
+    status: "cancelled",
+    success: "Email draft cancelled",
+    failure: "Failed to cancel email",
+  },
+  restore: {
+    status: "draft",
+    success: "Email restored as draft",
+    failure: "Failed to restore email",
+  },
+};
+
+/**
+ * Pending-email record plus send/cancel/restore actions that keep the named
+ * cache in step with the server. Each caller uses its own cache name.
+ */
+export function usePendingEmailActions(
+  cacheKey: "summary" | "detail" | "countdown",
+  pendingEmailId: Id<"pendingEmails"> | undefined,
+) {
+  const cacheName = `pendingEmails.get.${cacheKey}`;
+  const pendingEmail = useCachedQuery(
+    cacheName,
+    api.pendingEmails.get,
+    pendingEmailId ? { id: pendingEmailId } : "skip",
+  );
+  const updatePendingEmail = useUpdateCachedQuery<
+    typeof pendingEmail,
+    { id: Id<"pendingEmails"> }
+  >(cacheName);
+  const sendDraft = useAction(api.actions.sendPendingEmail.sendDraftNow);
+  const cancelDraft = useMutation(api.pendingEmails.cancel);
+  const restoreDraft = useMutation(api.pendingEmails.restoreAsDraft);
+  const [busy, setBusy] = useState<PendingEmailAction | null>(null);
+
+  async function run(
+    action: PendingEmailAction,
+    messages: { success?: string; failure?: string } = {},
+  ) {
+    if (!pendingEmailId) return;
+    const id = pendingEmailId;
+    const spec = PENDING_EMAIL_ACTIONS[action];
+    setBusy(action);
+    try {
+      let success = messages.success ?? spec.success;
+      if (action === "send") {
+        const result = await sendDraft({ id });
+        success = `Email sent to ${result.recipientEmail}`;
+      } else if (action === "cancel") {
+        await cancelDraft({ id });
+      } else {
+        await restoreDraft({ id });
+      }
+      await updatePendingEmail({ id }, (current) =>
+        current ? { ...current, status: spec.status } : current,
+      );
+      toast.success(success);
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(error, messages.failure ?? spec.failure),
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return { pendingEmail, busy, run };
+}
 
 function formatEmailAddressList(
   addresses: string[] | undefined,
@@ -119,44 +196,43 @@ function EmailHeaderAttachments({
   attachments: ThreadMessage["attachments"];
   threadId: Id<"threads">;
 }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   if (!attachments?.length) return null;
-
-  const hasHiddenAttachments = attachments.length > 2;
-  const hiddenAttachmentCount = Math.max(attachments.length - 2, 0);
-  const visibleAttachments =
-    hasHiddenAttachments && !isExpanded ? attachments.slice(0, 2) : attachments;
-
   return (
     <>
       <dt className={`col-span-1 pt-0.5 text-muted-foreground/50 ${typeStyle("caption.medium")}`}>
         Attachments
       </dt>
       <dd className="col-span-1 min-w-0">
-        <div className="flex min-w-0 flex-wrap gap-1.5">
-          {visibleAttachments.map((att, index) => (
-            <ThreadAttachmentChip
-              key={index}
-              attachment={att}
-              threadId={threadId}
-              size="compact"
-            />
-          ))}
-          {hasHiddenAttachments ? (
-            <button
-              type="button"
-              aria-expanded={isExpanded}
-              onClick={() => setIsExpanded((value) => !value)}
-              className={`inline-flex h-5 shrink-0 items-center rounded-full bg-foreground/5 px-1.5 text-foreground/40 transition-colors hover:bg-foreground/8 hover:text-foreground/80 ${typeStyle("control.button")}`}
-            >
-              {isExpanded ? "Hide" : `+ ${hiddenAttachmentCount} more`}
-            </button>
-          ) : null}
-        </div>
+        <ChatAttachmentList attachments={attachments} threadId={threadId} size="compact" collapseAfter={2} />
       </dd>
     </>
   );
+}
+
+function emailRecipients(message: ThreadMessage) {
+  return message.toAddresses?.length
+    ? message.toAddresses.join(", ")
+    : (message.fromEmail ?? "Email");
+}
+
+function emailPreview(message: ThreadMessage) {
+  return (
+    message.subject ||
+    message.content.split(/\n+/).find((line) => line.trim()) ||
+    "Email"
+  );
+}
+
+function emailStatus(
+  message: ThreadMessage,
+): { label: string; summary: string } & StatusPresentation {
+  if (message.status === "draft_email")
+    return { label: "Draft", summary: "Email draft", tone: "warning", indicator: "draft" };
+  if (message.status === "cancelled")
+    return { label: "Cancelled", summary: "Email cancelled", tone: "danger", indicator: "cancelled" };
+  if (message.role === "agent")
+    return { label: "Sent", summary: "Email sent", tone: "success", indicator: "complete" };
+  return { label: "Email", summary: "Email received", tone: "neutral", indicator: "complete" };
 }
 
 export function EmailSummaryCard({
@@ -170,78 +246,20 @@ export function EmailSummaryCard({
   compact?: boolean;
   isOpen?: boolean;
 }) {
-  const sendDraft = useAction(api.actions.sendPendingEmail.sendDraftNow);
-  const restoreDraft = useMutation(api.pendingEmails.restoreAsDraft);
-  const pendingEmail = useCachedQuery(
-    "pendingEmails.get.summary",
-    api.pendingEmails.get,
-    message.pendingEmailId ? { id: message.pendingEmailId } : "skip",
+  const { pendingEmail, busy, run } = usePendingEmailActions(
+    "summary",
+    message.pendingEmailId,
   );
-  const updatePendingEmail = useUpdateCachedQuery<
-    typeof pendingEmail,
-    { id: Id<"pendingEmails"> }
-  >("pendingEmails.get.summary");
-  const [isSending, setIsSending] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
-  const recipients = message.toAddresses?.length
-    ? message.toAddresses.join(", ")
-    : (message.fromEmail ?? "Email");
-  const preview =
-    message.subject ||
-    message.content.split(/\n+/).find((line) => line.trim()) ||
-    "Email";
-  const label =
-    message.status === "draft_email"
-      ? "Email draft"
-      : message.status === "cancelled"
-        ? "Email cancelled"
-        : message.role === "agent"
-          ? "Email sent"
-          : "Email received";
   const canQuickSend =
     message.status === "draft_email" && pendingEmail?.status === "draft";
-  const canRestore =
-    message.pendingEmailId &&
-    (message.status === "cancelled" || pendingEmail?.status === "cancelled");
+  const isCancelled =
+    message.status === "cancelled" || pendingEmail?.status === "cancelled";
+  const canRestore = message.pendingEmailId && isCancelled;
   const reviewLabel = canQuickSend
     ? "Review draft"
-    : message.status === "cancelled" || pendingEmail?.status === "cancelled"
+    : isCancelled
       ? "View cancelled email"
       : "View sent email";
-
-  async function handleQuickSend(event: MouseEvent) {
-    event.stopPropagation();
-    if (!message.pendingEmailId) return;
-    setIsSending(true);
-    try {
-      const result = await sendDraft({ id: message.pendingEmailId });
-      await updatePendingEmail({ id: message.pendingEmailId }, (current) =>
-        current ? { ...current, status: "sent" } : current,
-      );
-      toast.success(`Email sent to ${result.recipientEmail}`);
-    } catch (err) {
-      toast.error(getUserFacingErrorMessage(err, "Failed to send email"));
-    } finally {
-      setIsSending(false);
-    }
-  }
-
-  async function handleRestore(event: MouseEvent) {
-    event.stopPropagation();
-    if (!message.pendingEmailId) return;
-    setIsRestoring(true);
-    try {
-      await restoreDraft({ id: message.pendingEmailId });
-      await updatePendingEmail({ id: message.pendingEmailId }, (current) =>
-        current ? { ...current, status: "draft" } : current,
-      );
-      toast.success("Email restored as draft");
-    } catch (err) {
-      toast.error(getUserFacingErrorMessage(err, "Failed to restore email"));
-    } finally {
-      setIsRestoring(false);
-    }
-  }
 
   return (
     <div
@@ -254,13 +272,13 @@ export function EmailSummaryCard({
       >
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}>
-            {label}
+            {emailStatus(message).summary}
           </span>
           <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
-            {preview}
+            {emailPreview(message)}
           </span>
           <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-            {recipients}
+            {emailRecipients(message)}
           </span>
         </span>
       </button>
@@ -270,77 +288,40 @@ export function EmailSummaryCard({
             type="button"
             size="compact"
             variant="secondary"
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpen?.(message);
-            }}
+            onClick={() => onOpen?.(message)}
           >
             {reviewLabel}
           </PillButton>
           {canQuickSend ? (
-            <PillButton
+            <ActionPill
               type="button"
               size="compact"
               variant="primary"
-              onClick={handleQuickSend}
-              disabled={isSending}
+              onClick={() => void run("send")}
+              disabled={busy === "send"}
+              busy={busy === "send"}
+              icon={MailIcon}
             >
-              {isSending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <MailIcon className="h-3.5 w-3.5" />
-              )}
               Send
-            </PillButton>
+            </ActionPill>
           ) : null}
           {canRestore ? (
-            <PillButton
+            <ActionPill
               type="button"
               size="compact"
               variant="primary"
-              onClick={handleRestore}
-              disabled={isRestoring}
+              onClick={() => void run("restore")}
+              disabled={busy === "restore"}
+              busy={busy === "restore"}
+              icon={RotateCcw}
             >
-              {isRestoring ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RotateCcw className="h-3.5 w-3.5" />
-              )}
               Restore
-            </PillButton>
+            </ActionPill>
           ) : null}
         </div>
       )}
     </div>
   );
-}
-
-function getEmailSummaryRecipients(message: ThreadMessage) {
-  return message.toAddresses?.length
-    ? message.toAddresses.join(", ")
-    : (message.fromEmail ?? "Email");
-}
-
-function getEmailSummaryPreview(message: ThreadMessage) {
-  return (
-    message.subject ||
-    message.content.split(/\n+/).find((line) => line.trim()) ||
-    "Email"
-  );
-}
-
-function getEmailStatusLabel(message: ThreadMessage) {
-  if (message.status === "draft_email") return "Draft";
-  if (message.status === "cancelled") return "Cancelled";
-  if (message.role === "agent") return "Sent";
-  return "Email";
-}
-
-function getEmailStatusTone(message: ThreadMessage): StatusTagTone {
-  if (message.status === "draft_email") return "warning";
-  if (message.status === "cancelled") return "danger";
-  if (message.role === "agent") return "success";
-  return "neutral";
 }
 
 export function EmailStackCard({
@@ -377,20 +358,16 @@ export function EmailStackCard({
       ? `${orderedMessages.length} email drafts`
       : `${orderedMessages.length} emails`;
 
-  async function handleSendAll(event: MouseEvent) {
-    event.stopPropagation();
+  async function handleSendAll() {
     if (draftPendingEmailIds.length === 0) return;
     setIsSendingAll(true);
     try {
       const result = await sendDrafts({ ids: draftPendingEmailIds });
+      const sent = `${result.sent.length} email${result.sent.length === 1 ? "" : "s"}`;
       if (result.failed.length > 0) {
-        toast.error(
-          `Sent ${result.sent.length} email${result.sent.length === 1 ? "" : "s"}; ${result.failed.length} failed.`,
-        );
+        toast.error(`Sent ${sent}; ${result.failed.length} failed.`);
       } else {
-        toast.success(
-          `Sent ${result.sent.length} email${result.sent.length === 1 ? "" : "s"}.`,
-        );
+        toast.success(`Sent ${sent}.`);
       }
     } catch (err) {
       toast.error(getUserFacingErrorMessage(err, "Failed to send emails"));
@@ -418,26 +395,24 @@ export function EmailStackCard({
           {stackLabel}
         </p>
         {draftCount > 1 ? (
-          <PillButton
+          <ActionPill
             type="button"
             size="compact"
             variant="primary"
             onClick={handleSendAll}
             disabled={isSendingAll}
+            busy={isSendingAll}
+            icon={MailIcon}
           >
-            {isSendingAll ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <MailIcon className="h-3.5 w-3.5" />
-            )}
             Send all
-          </PillButton>
+          </ActionPill>
         ) : null}
       </div>
       <div className="divide-y divide-border">
         {orderedMessages.map((message) => {
           const attachmentCount = message.attachments?.length ?? 0;
           const isOpen = isOpenMessageId === message._id;
+          const status = emailStatus(message);
           return (
             <button
               key={message._id}
@@ -450,10 +425,10 @@ export function EmailStackCard({
               <span className="flex min-w-0 items-start justify-between gap-3">
                 <span className="min-w-0">
                   <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
-                    {getEmailSummaryPreview(message)}
+                    {emailPreview(message)}
                   </span>
                   <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                    {getEmailSummaryRecipients(message)}
+                    {emailRecipients(message)}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
@@ -462,8 +437,8 @@ export function EmailStackCard({
                       {attachmentCount} file{attachmentCount === 1 ? "" : "s"}
                     </span>
                   ) : null}
-                  <StatusTag tone={getEmailStatusTone(message)} indicator={message.status === "draft_email" ? "draft" : message.status === "cancelled" ? "cancelled" : "complete"}>
-                    {getEmailStatusLabel(message)}
+                  <StatusTag tone={status.tone} indicator={status.indicator}>
+                    {status.label}
                   </StatusTag>
                 </span>
               </span>
@@ -482,21 +457,10 @@ export function EmailThreadSidebar({
   message: ThreadMessage | null;
   onClose: () => void;
 }) {
-  const sendDraft = useAction(api.actions.sendPendingEmail.sendDraftNow);
-  const cancelDraft = useMutation(api.pendingEmails.cancel);
-  const restoreDraft = useMutation(api.pendingEmails.restoreAsDraft);
-  const pendingEmail = useCachedQuery(
-    "pendingEmails.get.detail",
-    api.pendingEmails.get,
-    message?.pendingEmailId ? { id: message.pendingEmailId } : "skip",
+  const { pendingEmail, busy, run } = usePendingEmailActions(
+    "detail",
+    message?.pendingEmailId,
   );
-  const updatePendingEmail = useUpdateCachedQuery<
-    typeof pendingEmail,
-    { id: Id<"pendingEmails"> }
-  >("pendingEmails.get.detail");
-  const [isSending, setIsSending] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
 
   if (!message) return null;
   const isDraft =
@@ -504,6 +468,11 @@ export function EmailThreadSidebar({
   const isSent = pendingEmail?.status === "sent" || !!message.responseMessageId;
   const isCancelled =
     pendingEmail?.status === "cancelled" || message.status === "cancelled";
+  const status: { label: string } & StatusPresentation = isDraft
+    ? { label: "Draft", tone: "warning", indicator: "draft" }
+    : isCancelled
+      ? { label: "Cancelled", tone: "danger", indicator: "cancelled" }
+      : { label: isSent ? "Sent" : "Email", tone: isSent ? "success" : "neutral", indicator: "complete" };
   const fromLine =
     pendingEmail?.fromHeader ??
     (message.fromEmail
@@ -521,163 +490,83 @@ export function EmailThreadSidebar({
     pendingEmail ? pendingEmail.bccAddresses : message.bccAddresses,
   );
   const previewBody = pendingEmail?.renderedText ?? pendingEmail?.emailBody ?? message.content;
-  const previewHtml = pendingEmail?.renderedHtml;
-  const sentAt = formatDisplayDateTime(message._creationTime);
-
-  async function handleSend() {
-    if (!message?.pendingEmailId) return;
-    setIsSending(true);
-    try {
-      const result = await sendDraft({ id: message.pendingEmailId });
-      await updatePendingEmail({ id: message.pendingEmailId }, (current) =>
-        current ? { ...current, status: "sent" } : current,
-      );
-      toast.success(`Email sent to ${result.recipientEmail}`);
-    } catch (err) {
-      toast.error(getUserFacingErrorMessage(err, "Failed to send email"));
-    } finally {
-      setIsSending(false);
-    }
-  }
-
-  async function handleCancel() {
-    if (!message?.pendingEmailId) return;
-    setIsCancelling(true);
-    try {
-      await cancelDraft({ id: message.pendingEmailId });
-      await updatePendingEmail({ id: message.pendingEmailId }, (current) =>
-        current ? { ...current, status: "cancelled" } : current,
-      );
-      toast.success("Email draft cancelled");
-    } catch (err) {
-      toast.error(getUserFacingErrorMessage(err, "Failed to cancel email"));
-    } finally {
-      setIsCancelling(false);
-    }
-  }
-
-  async function handleRestore() {
-    if (!message?.pendingEmailId) return;
-    setIsRestoring(true);
-    try {
-      await restoreDraft({ id: message.pendingEmailId });
-      await updatePendingEmail({ id: message.pendingEmailId }, (current) =>
-        current ? { ...current, status: "draft" } : current,
-      );
-      toast.success("Email restored as draft");
-    } catch (err) {
-      toast.error(getUserFacingErrorMessage(err, "Failed to restore email"));
-    } finally {
-      setIsRestoring(false);
-    }
-  }
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden border-l border-input bg-background">
-      <div className="flex h-12 items-center justify-between gap-3 border-b border-input px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className={`truncate text-foreground ${typeStyle("heading.micro")}`}>
-            {pendingEmail?.subject || message.subject ||
-              (message.role === "agent" ? "Sent email" : "Received email")}
-          </h2>
-          <StatusTag
-            indicator={isDraft ? "draft" : isCancelled ? "cancelled" : "complete"}
-            tone={
-              isDraft
-                ? "warning"
-                : isCancelled
-                  ? "danger"
-                  : isSent
-                    ? "success"
-                    : "neutral"
-            }
-            className="shrink-0"
-          >
-            {isDraft
-              ? "Draft"
-              : isCancelled
-                ? "Cancelled"
-                : isSent
-                  ? "Sent"
-                  : "Email"}
-          </StatusTag>
-        </div>
-        <PillButton
-          size="compact"
-          variant="icon"
-          onClick={onClose}
-          label="Close email"
+    <ArtifactSidebar
+      title={
+        pendingEmail?.subject || message.subject ||
+          (message.role === "agent" ? "Sent email" : "Received email")
+      }
+      status={
+        <StatusTag indicator={status.indicator} tone={status.tone} className="shrink-0">
+          {status.label}
+        </StatusTag>
+      }
+      closeLabel="Close email"
+      onClose={onClose}
+      header={
+        <dl
+          className="grid items-start gap-x-4 border-b border-input px-5 py-5"
+          style={{
+            gridTemplateColumns: "5rem minmax(0, 1fr)",
+            rowGap: "0.375rem",
+          }}
         >
-          <X className="h-4 w-4" />
-        </PillButton>
-      </div>
-      <dl
-        className="grid items-start gap-x-4 border-b border-input px-5 py-5"
-        style={{
-          gridTemplateColumns: "5rem minmax(0, 1fr)",
-          rowGap: "0.375rem",
-        }}
-      >
-        <EmailHeaderRow label="From" value={fromLine} />
-        <EmailHeaderRow label="To" value={toLine} />
-        <EmailHeaderRow label="Cc" value={ccLine} />
-        <EmailHeaderRow label="Bcc" value={bccLine} />
-        <EmailHeaderRow label="Time" value={sentAt} />
-        <EmailHeaderAttachments
-          attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
-          threadId={message.threadId}
-        />
-      </dl>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <EmailBodyPreview html={previewHtml} text={previewBody} />
-      </div>
-      {isDraft ? (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-input px-4 py-3">
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            onClick={handleCancel}
-            disabled={isSending || isCancelling}
-          >
-            {isCancelling ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : null}
-            Cancel
-          </PillButton>
-          <PillButton
-            type="button"
-            size="compact"
-            variant="primary"
-            onClick={handleSend}
-            disabled={isSending || isCancelling}
-          >
-            {isSending ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <MailIcon className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            Send Email
-          </PillButton>
-        </div>
-      ) : isCancelled ? (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-input px-4 py-3">
-          <PillButton
+          <EmailHeaderRow label="From" value={fromLine} />
+          <EmailHeaderRow label="To" value={toLine} />
+          <EmailHeaderRow label="Cc" value={ccLine} />
+          <EmailHeaderRow label="Bcc" value={bccLine} />
+          <EmailHeaderRow label="Time" value={formatDisplayDateTime(message._creationTime)} />
+          <EmailHeaderAttachments
+            attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
+            threadId={message.threadId}
+          />
+        </dl>
+      }
+      footer={
+        isDraft ? (
+          <>
+            <ActionPill
+              type="button"
+              variant="ghost"
+              size="compact"
+              onClick={() => void run("cancel")}
+              disabled={busy !== null}
+              busy={busy === "cancel"}
+              iconClassName="mr-1.5 h-3.5 w-3.5"
+            >
+              Cancel
+            </ActionPill>
+            <ActionPill
+              type="button"
+              size="compact"
+              variant="primary"
+              onClick={() => void run("send")}
+              disabled={busy !== null}
+              busy={busy === "send"}
+              icon={MailIcon}
+              iconClassName="mr-1.5 h-3.5 w-3.5"
+            >
+              Send Email
+            </ActionPill>
+          </>
+        ) : isCancelled ? (
+          <ActionPill
             type="button"
             size="compact"
             variant="primary"
-            onClick={handleRestore}
-            disabled={isRestoring}
+            onClick={() => void run("restore")}
+            disabled={busy === "restore"}
+            busy={busy === "restore"}
+            icon={RotateCcw}
+            iconClassName="mr-1.5 h-3.5 w-3.5"
           >
-            {isRestoring ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-            )}
             Restore draft
-          </PillButton>
-        </div>
-      ) : null}
-    </aside>
+          </ActionPill>
+        ) : null
+      }
+    >
+      <EmailBodyPreview html={pendingEmail?.renderedHtml} text={previewBody} />
+    </ArtifactSidebar>
   );
 }

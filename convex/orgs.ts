@@ -528,10 +528,7 @@ export const updateOrg = mutation({
 
 export const setFeatureFlag = mutation({
   args: {
-    flagId: v.union(
-      v.literal("connect_features"),
-      v.literal("imessage_app_cards"),
-    ),
+    flagId: v.literal("connect_features"),
     enabled: v.boolean(),
   },
   handler: async (ctx, args) => {

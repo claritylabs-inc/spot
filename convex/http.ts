@@ -23,8 +23,6 @@ import { spotIconResponse } from "./lib/brandIcon";
 import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
-import { buildEmailDraftTextSummary } from "./lib/emailDraftSummary";
-import { canAccessThread } from "./lib/threadAccess";
 import {
   parseSlackEventPayload,
   parseSlackLifecyclePayload,
@@ -41,11 +39,8 @@ import { getOperatorSlackConfig } from "./lib/operatorSlackConfig";
 import { missingSlackHostScopes } from "./lib/slackOAuthPolicy";
 import {
   resolveRouterAssetSigningSecret,
-  routerAssetSigningConfiguration,
-  signRouterAsset,
   verifyRouterAssetSignature,
 } from "./lib/routerAssetSignature";
-import { ROUTER_ASSET_MAX_BYTES, ROUTER_ASSET_TTL_MS } from "./routerAssets";
 import {
   type McpPolicySummarySource,
   policyMatchesMcpFilters,
@@ -53,23 +48,19 @@ import {
   toCertificateHolderDto,
   toCertificateDto,
   toCertificateVersionDto,
-  toCertificateWorkflowJobDto,
   toMcpConnectedVendorPolicyDto,
-  toMcpMyPolicyDto,
   toMcpPolicySearchResultDto,
   toMcpPolicySummaryDto,
-  toMcpThreadMessageDto,
-  toMcpThreadSummaryDto,
   toNotificationDto,
   toOrgDto,
   toPolicyDto,
   toPolicyFileDto,
-  toPolicyStatsDto,
   toPolicyVersionDto,
 } from "./lib/apiDto";
 import { OPERATOR_AGENT_TOOL_REGISTRY } from "./lib/operatorAgentToolRegistry";
 import { decodeOperatorMcpAttachments } from "./lib/operatorMcpAttachments";
 import { buildOperatorMcpToolCatalog } from "./lib/operatorMcpToolCatalog";
+import { buildTenantMcpToolCatalog, resolveTenantMcpToolCall, tenantMcpToolAccess } from "./lib/tenantMcpToolCatalog";
 import { observeHttp, provisionHttp } from "./employeeProvisioning";
 const http = httpRouter();
 http.route({
@@ -84,195 +75,6 @@ http.route({
 });
 const internalApi = internal as any;
 const JSON_HEADERS = { "Content-Type": "application/json" };
-
-function routerAssetMediaType(value: string | null): string | null {
-  const mediaType = value?.trim().toLowerCase().split(";", 1)[0] ?? "";
-  return mediaType === "application/pdf" ||
-    mediaType.startsWith("image/") ||
-    mediaType.startsWith("audio/")
-    ? mediaType
-    : null;
-}
-
-async function readRouterAssetBody(
-  request: Request,
-  declaredBytes: number,
-): Promise<Uint8Array | null> {
-  if (!request.body) return null;
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    receivedBytes += value.byteLength;
-    if (
-      receivedBytes > declaredBytes ||
-      receivedBytes > ROUTER_ASSET_MAX_BYTES
-    ) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  if (receivedBytes !== declaredBytes) return null;
-  const bytes = new Uint8Array(receivedBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
-const routerAssetUpload = httpAction(async (ctx, request) => {
-  const expectedSecret = process.env.EXTRACTION_WORKER_SECRET?.trim();
-  const authorization = request.headers.get("authorization");
-  const jobKind = request.headers.get("x-spot-router-asset-job-kind");
-  const jobId = request.headers.get("x-spot-router-asset-job-id");
-  const leaseId = request.headers.get("x-spot-router-asset-lease-id");
-  const orgId = request.headers.get("x-spot-router-asset-org-id");
-  const filename = request.headers
-    .get("x-spot-router-asset-filename")
-    ?.trim()
-    .slice(0, 255);
-  const mediaType = routerAssetMediaType(request.headers.get("content-type"));
-  const declaredBytes = Number(request.headers.get("content-length"));
-  if (!expectedSecret || authorization !== `Bearer ${expectedSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  if (
-    !jobId ||
-    !leaseId ||
-    !orgId ||
-    !mediaType ||
-    (jobKind !== "policy" && jobKind !== "preview" && jobKind !== "proposal")
-  ) {
-    return new Response("Invalid router asset metadata", { status: 400 });
-  }
-  if (
-    !Number.isSafeInteger(declaredBytes) ||
-    declaredBytes <= 0 ||
-    declaredBytes > ROUTER_ASSET_MAX_BYTES
-  ) {
-    return new Response("Router asset exceeds the 12 MiB limit", {
-      status: 413,
-    });
-  }
-  let signing: { secret: string; siteUrl: string };
-  try {
-    signing = routerAssetSigningConfiguration();
-  } catch {
-    return new Response("Router asset signing is unavailable", { status: 503 });
-  }
-  const lease = await ctx
-    .runQuery(internal.routerAssets.validateWorkerLease, {
-      jobKind,
-      jobId,
-      leaseId,
-      orgId: orgId as Id<"organizations">,
-    })
-    .catch(() => ({ leaseExpiresAt: null }));
-  if (!lease.leaseExpiresAt)
-    return new Response("Stale or mismatched extraction worker lease", {
-      status: 409,
-    });
-  const bytes = await readRouterAssetBody(request, declaredBytes);
-  if (!bytes) {
-    return new Response("Router asset size does not match Content-Length", {
-      status: 400,
-    });
-  }
-  const ownedBytes = new Uint8Array(bytes.byteLength);
-  ownedBytes.set(bytes);
-  const ownedBuffer = ownedBytes.buffer as ArrayBuffer;
-  const storageId = await ctx.storage.store(
-    new Blob([ownedBuffer], { type: mediaType }),
-  );
-  let registeredAssetId: Id<"routerAssets"> | undefined;
-  try {
-    const sha256 = Array.from(
-      new Uint8Array(await crypto.subtle.digest("SHA-256", ownedBuffer)),
-    )
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-    const expiresAt = Math.min(
-      dayjs().valueOf() + ROUTER_ASSET_TTL_MS,
-      lease.leaseExpiresAt,
-    );
-    const assetId = await ctx.runMutation(
-      internal.routerAssets.registerWorkerAsset,
-      {
-        jobKind,
-        jobId,
-        leaseId,
-        orgId: orgId as Id<"organizations">,
-        storageId,
-        mediaType,
-        ...(filename ? { filename } : {}),
-        sizeBytes: bytes.byteLength,
-        sha256,
-        expiresAt,
-      },
-    );
-    registeredAssetId = assetId;
-    const signature = await signRouterAsset(
-      String(assetId),
-      expiresAt,
-      signing.secret,
-    );
-    const query = new URLSearchParams({
-      assetId: String(assetId),
-      expiresAt: String(expiresAt),
-      signature,
-    });
-    return new Response(
-      JSON.stringify({
-        assetId,
-        reference: {
-          url: `${signing.siteUrl}/router-assets?${query.toString()}`,
-          mediaType,
-          ...(filename ? { filename } : {}),
-          sizeBytes: bytes.byteLength,
-          sha256,
-        },
-        cleanup: { expiresAt, signature },
-      }),
-      { status: 201, headers: JSON_HEADERS },
-    );
-  } catch (error) {
-    try {
-      await ctx.storage.delete(storageId);
-      if (registeredAssetId) {
-        await ctx.runMutation(internal.routerAssets.completeCleanup, {
-          assetId: registeredAssetId,
-          storageId,
-        });
-      }
-    } catch {
-      if (registeredAssetId) {
-        await ctx
-          .runMutation(internal.routerAssets.recordCleanupFailure, {
-            assetId: registeredAssetId,
-            storageId,
-          })
-          .catch(() => {});
-      } else {
-        await ctx
-          .runMutation(internal.routerAssets.scheduleUnregisteredCleanup, {
-            storageId,
-            attempt: 1,
-          })
-          .catch(() => {});
-      }
-    }
-    console.error(
-      "Router asset upload registration failed",
-      error instanceof Error ? error.name : "unknown",
-    );
-    return new Response("Router asset registration failed", { status: 500 });
-  }
-});
 
 const routerAssetDownload = httpAction(async (ctx, request) => {
   const url = new URL(request.url);
@@ -313,12 +115,6 @@ http.route({
   method: "GET",
   handler: routerAssetDownload,
 });
-http.route({
-  path: "/router-assets/upload",
-  method: "POST",
-  handler: routerAssetUpload,
-});
-
 http.route({
   path: "/quo-brokers/webhook",
   method: "POST",
@@ -507,24 +303,15 @@ http.route({
     if (!payload)
       return jsonResponse({ error: "Unsupported Slack interaction" }, 400);
     if (payload.type === "view_submission") {
-      if (payload.callbackId !== "spot_negative_feedback") {
-        return jsonResponse({ response_action: "clear" });
-      }
-      try {
-        await ctx.runMutation(
-          internalApi.slackPresentation.submitFeedbackComment,
-          {
-            interactionId: payload.privateMetadata,
-            teamId: payload.teamId,
-            actorTeamId: payload.actorTeamId,
-            slackUserId: payload.userId,
-            comment: payload.comment,
-          },
-        );
-      } catch (error) {
-        console.warn("[slack] Rejected feedback submission", error);
-      }
       return jsonResponse({ response_action: "clear" });
+    }
+    const retiredActionIds = new Set([
+      "spot_response_feedback",
+      "spot_response_feedback_positive",
+      "spot_response_feedback_negative",
+    ]);
+    if (payload.type === "block_actions" && retiredActionIds.has(payload.actionId)) {
+      return jsonResponse({ ok: true });
     }
     const operatorDecision = operatorSlackConfirmationDecision(
       payload.actionId,
@@ -593,41 +380,10 @@ http.route({
         },
       );
       if (claim.claimed) {
-        let feedbackModalOpened = false;
-        if (action.value === "negative" && payload.triggerId) {
-          try {
-            const workerUrl = process.env.SLACK_WORKER_URL?.trim().replace(
-              /\/$/,
-              "",
-            );
-            const workerSecret = process.env.SLACK_WORKER_SECRET?.trim();
-            if (workerUrl && workerSecret) {
-              const response = await fetch(`${workerUrl}/view/open`, {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${workerSecret}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  teamId: payload.teamId,
-                  triggerId: payload.triggerId,
-                  privateMetadata: claim.interaction._id,
-                }),
-                signal: AbortSignal.timeout(1_500),
-              });
-              feedbackModalOpened = response.ok;
-            }
-          } catch (error) {
-            console.warn("[slack] Could not open feedback detail modal", error);
-          }
-        }
         await ctx.scheduler.runAfter(
           0,
           internalApi.actions.slackPresentation.processInteraction,
-          {
-            interactionId: claim.interaction._id,
-            feedbackModalOpened,
-          },
+          { interactionId: claim.interaction._id },
         );
       }
       return jsonResponse({ ok: true });
@@ -765,13 +521,6 @@ http.route({
         emailDeliveryMode: getEmailDeliveryMode(),
         clientPortalUrl: getClientPortalUrl(),
         authSiteUrl: getAuthSiteUrl(),
-        extractionWorker: {
-          mode: process.env.EXTRACTION_WORKER_MODE ?? "internal",
-          expectedProtocolVersion:
-            process.env.EXTRACTION_WORKER_EXPECTED_PROTOCOL_VERSION ?? null,
-          expectedClSdkVersion:
-            process.env.EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION ?? null,
-        },
         operatorImessage: {
           inboundEnabled: operatorImessageEnabled,
           contactPhoneConfigured: Boolean(getOperatorImessageContactPhone()),
@@ -1761,20 +1510,6 @@ function compatibleCertificateGenerationResponse(
     : batch;
 }
 
-function certificateWorkflowJobStatusParam(status: string | null) {
-  if (
-    status === "review_required" ||
-    status === "blocked_missing_contact" ||
-    status === "sending" ||
-    status === "sent" ||
-    status === "cancelled" ||
-    status === "failed"
-  ) {
-    return status;
-  }
-  return undefined;
-}
-
 function effectivePolicyDataStage(policy: Record<string, unknown>) {
   const stage = policy.extractionDataStage;
   if (stage === "placeholder" || stage === "preview" || stage === "final") {
@@ -1794,432 +1529,8 @@ function policyFileUnavailableMessage(policy: Record<string, unknown>) {
   return `Policy ${String(policy.policyNumber ?? policy._id ?? "record")} must finish extraction before its original PDF is available.`;
 }
 
-// GET /mcp/policies/list
-http.route({
-  path: "/mcp/policies/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const policies = await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-        },
-      );
-
-      // Apply optional filters from query params
-      const carrier = getQueryParam(request, "carrier");
-      const year = getQueryParam(request, "year");
-      const type = getQueryParam(request, "type");
-
-      const filtered = policies.filter((policy: McpPolicySummarySource) =>
-        policyMatchesMcpFilters(policy, { carrier, year, type }),
-      );
-
-      // Return lightweight summaries
-      return jsonResponse(filtered.map(toMcpPolicySummaryDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/get
-http.route({
-  path: "/mcp/policies/get",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const id = getQueryParam(request, "id");
-      if (!id) return jsonResponse({ error: "Missing id parameter" }, 400);
-
-      const policy = await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-        },
-      );
-      const found = policy.find((p: any) => p._id === id);
-      if (!found) return jsonResponse({ error: "Not found" }, 404);
-
-      return jsonResponse(found);
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/file
-http.route({
-  path: "/mcp/policies/file",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const id = getQueryParam(request, "id");
-      if (!id) return jsonResponse({ error: "Missing id parameter" }, 400);
-
-      const policies = await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-        },
-      );
-      const found = policies.find((p: any) => p._id === id);
-      if (!found) return jsonResponse({ error: "Not found" }, 404);
-      if (!policyFileIsAvailable(found as Record<string, unknown>)) {
-        return jsonResponse(
-          {
-            error: policyFileUnavailableMessage(
-              found as Record<string, unknown>,
-            ),
-          },
-          409,
-        );
-      }
-      if (!found.fileId) {
-        return jsonResponse(
-          { error: "Original policy PDF is not available" },
-          404,
-        );
-      }
-      const url = await ctx.storage.getUrl(found.fileId as Id<"_storage">);
-      if (!url)
-        return jsonResponse(
-          { error: "Original policy PDF is not available" },
-          404,
-        );
-      return jsonResponse(toPolicyFileDto(found, url));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/search
-http.route({
-  path: "/mcp/policies/search",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const q = getQueryParam(request, "q");
-      if (!q) return jsonResponse({ error: "Missing q parameter" }, 400);
-
-      const policies = await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-        },
-      );
-
-      const results = policies.filter((policy: McpPolicySummarySource) =>
-        policyMatchesSearch(policy, q),
-      );
-
-      return jsonResponse(results.map(toMcpPolicySearchResultDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/stats
-http.route({
-  path: "/mcp/policies/stats",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const policies = await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-        },
-      );
-
-      return jsonResponse(toPolicyStatsDto(policies));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/certificates/list
-http.route({
-  path: "/mcp/policies/certificates/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const policyId =
-        getQueryParam(request, "policyId") ??
-        getQueryParam(request, "policy_id");
-      if (!policyId)
-        return jsonResponse({ error: "Missing policyId parameter" }, 400);
-
-      const certificates = await ctx.runQuery(
-        internal.certificates.listByPolicyInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          policyId: policyId as Id<"policies">,
-        },
-      );
-      return jsonResponse(certificates.map(toCertificateDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/certificates/holders/list
-http.route({
-  path: "/mcp/certificates/holders/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const holders = await ctx.runQuery(
-        internal.certificateHolders.listForOrgInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          query:
-            getQueryParam(request, "query") ??
-            getQueryParam(request, "q") ??
-            undefined,
-        },
-      );
-      return jsonResponse(holders.map(toCertificateHolderDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/versions/list
-http.route({
-  path: "/mcp/policies/versions/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const policyId =
-        getQueryParam(request, "policyId") ??
-        getQueryParam(request, "policy_id");
-      const versions = await ctx.runQuery(
-        internal.policyVersions.listForOrgInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          policyId: policyId ? (policyId as Id<"policies">) : undefined,
-        },
-      );
-      return jsonResponse(versions.map(toPolicyVersionDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/policies/certificates/versions/list
-http.route({
-  path: "/mcp/policies/certificates/versions/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const versions = await ctx.runQuery(
-        internal.certificateLifecycle.listVersionsInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          policyId: (getQueryParam(request, "policyId") ??
-            getQueryParam(request, "policy_id") ??
-            undefined) as Id<"policies"> | undefined,
-          certificateId: (getQueryParam(request, "certificateId") ??
-            getQueryParam(request, "certificate_id") ??
-            undefined) as Id<"policyCertificates"> | undefined,
-          holderId: (getQueryParam(request, "holderId") ??
-            getQueryParam(request, "holder_id") ??
-            getQueryParam(request, "certificateHolderId") ??
-            getQueryParam(request, "certificate_holder_id") ??
-            undefined) as Id<"certificateHolders"> | undefined,
-        },
-      );
-      return jsonResponse(versions.map(toCertificateVersionDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/certificates/review-jobs/list
-http.route({
-  path: "/mcp/certificates/review-jobs/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const jobs = await ctx.runQuery(
-        internal.certificateWorkflowJobs.listForOrgInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          policyId: (getQueryParam(request, "policyId") ??
-            getQueryParam(request, "policy_id") ??
-            undefined) as Id<"policies"> | undefined,
-          status: certificateWorkflowJobStatusParam(
-            getQueryParam(request, "status"),
-          ),
-        },
-      );
-      return jsonResponse(jobs.map(toCertificateWorkflowJobDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// POST /mcp/policies/certificates/generate
-http.route({
-  path: "/mcp/policies/certificates/generate",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      requireMcpWriteScope(identity);
-      const body = (await request.json()) as Record<string, unknown>;
-      const policyId = body.policyId ?? body.policy_id;
-      const certificate = normalizeCertificateRequest(body);
-      const requirementsMode = Boolean(
-        certificate.requirementSourceDocumentId || certificate.requirementId,
-      );
-      if (Boolean(policyId) === requirementsMode) {
-        return jsonResponse(
-          { error: "Choose either policyId or a requirement source" },
-          400,
-        );
-      }
-      if (!requirementsMode && !certificate.holderName) {
-        return jsonResponse({ error: "Missing certificate holder" }, 400);
-      }
-
-      const result = await ctx.runAction(
-        internal.certificates.generateBatchForOrg,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          primaryPolicyId: policyId as Id<"policies"> | undefined,
-          ...certificate,
-          source: "mcp",
-          createdByUserId: identity.userId as Id<"users">,
-        },
-      );
-      return jsonResponse(
-        compatibleCertificateGenerationResponse(result, requirementsMode),
-        201,
-      );
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/threads/list
-http.route({
-  path: "/mcp/threads/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const threads = await ctx.runQuery(internal.threads.listByOrg, {
-        orgId: identity.orgId as Id<"organizations">,
-        userId: identity.userId as Id<"users">,
-      });
-      return jsonResponse(threads.map(toMcpThreadSummaryDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/threads/messages
-http.route({
-  path: "/mcp/threads/messages",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const threadId = getQueryParam(request, "threadId");
-      if (!threadId)
-        return jsonResponse({ error: "Missing threadId parameter" }, 400);
-
-      // Verify thread belongs to org
-      const thread = await ctx.runQuery(internal.threads.getInternal, {
-        id: threadId as Id<"threads">,
-      });
-      if (
-        !thread ||
-        !canAccessThread({
-          userId: identity.userId as Id<"users">,
-          userOrgId: identity.orgId as Id<"organizations">,
-          thread,
-          clientOrg: null,
-        })
-      ) {
-        return jsonResponse({ error: "Not found" }, 404);
-      }
-
-      const messages = await ctx.runQuery(internal.threads.messagesInternal, {
-        threadId: threadId as Id<"threads">,
-      });
-      return jsonResponse(messages.map(toMcpThreadMessageDto));
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/org/info
-http.route({
-  path: "/mcp/org/info",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const org = await ctx.runQuery(internal.orgs.getInternal, {
-        id: identity.orgId as Id<"organizations">,
-      });
-      if (!org) return jsonResponse({ error: "Not found" }, 404);
-      return jsonResponse({
-        _id: org._id,
-        name: org.name,
-        website: org.website,
-      });
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
 // ── MCP Streamable HTTP Transport ──
 // Single endpoint implementing MCP protocol over HTTP for remote clients (Claude.ai, etc.)
-
-function mcpOAuthSecuritySchemes(scopes: Array<"read" | "write">) {
-  return [{ type: "oauth2" as const, scopes }];
-}
 
 function operatorMcpTools(identity: OperatorMcpIdentity) {
   return buildOperatorMcpToolCatalog({
@@ -2228,625 +1539,7 @@ function operatorMcpTools(identity: OperatorMcpIdentity) {
   });
 }
 
-type TenantMcpToolCatalogEntry = {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  effect?: "read" | "write";
-  openWorld?: boolean;
-  destructive?: boolean;
-  idempotent?: boolean;
-};
-
-const MCP_TOOLS: TenantMcpToolCatalogEntry[] = [
-  {
-    name: "list_policies",
-    description:
-      "List insurance policies. Optionally filter by carrier, year, or line of business.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        carrier: { type: "string", description: "Filter by carrier name" },
-        year: {
-          type: "string",
-          description: "Filter by policy year (e.g. '2024')",
-        },
-        type: {
-          type: "string",
-          description:
-            "Filter by ACORD line of business code or label (e.g. 'CGL', 'Commercial General Liability')",
-        },
-      },
-    },
-  },
-  {
-    name: "get_policy",
-    description:
-      "Get full details of a specific insurance policy by ID, including coverages, document sections, and metadata.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string", description: "The policy ID" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "get_policy_pdf",
-    description:
-      "Get a temporary download URL for the original full policy PDF document by policy ID.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string", description: "The policy ID" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "search_policies",
-    description:
-      "Search across policies by text query. Searches carrier, policy number, insured name, summary, and lines of business.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { q: { type: "string", description: "Search query text" } },
-      required: ["q"],
-    },
-  },
-  {
-    name: "get_policy_stats",
-    description:
-      "Get dashboard statistics for policies: total count, breakdown by type, carrier, and year.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "list_policy_certificates",
-    description:
-      "List generated Certificates of Insurance for a policy, including download URLs and lifecycle metadata.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: { type: "string", description: "The policy ID" },
-      },
-      required: ["policyId"],
-    },
-  },
-  {
-    name: "list_certificate_holders",
-    description: "List/search the organization's certificate holder registry.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        query: {
-          type: "string",
-          description: "Optional holder name, email, or address search text",
-        },
-      },
-    },
-  },
-  {
-    name: "list_policy_versions",
-    description:
-      "List policy document-event versions. Use this when the user explicitly asks for policy history, renewals, endorsements, re-extractions, or prior versions; current policy answers should use get_policy/list_policies by default.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: {
-          type: "string",
-          description:
-            "Optional policy ID. Omit to list recent versions for the organization.",
-        },
-      },
-    },
-  },
-  {
-    name: "list_certificate_versions",
-    description:
-      "List certificate issue/reissue versions by policy, certificate parent, or holder.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: { type: "string", description: "Optional policy ID" },
-        certificateId: {
-          type: "string",
-          description: "Optional policy certificate parent ID",
-        },
-        holderId: {
-          type: "string",
-          description: "Optional certificate holder ID",
-        },
-        certificateHolderId: {
-          type: "string",
-          description: "Optional alias for holderId",
-        },
-      },
-    },
-  },
-  {
-    name: "list_certificate_review_jobs",
-    description:
-      "List certificate renewal/post-endorsement/manual review jobs.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: { type: "string", description: "Optional policy ID" },
-        status: {
-          type: "string",
-          description:
-            "Optional job status: review_required, blocked_missing_contact, sending, sent, cancelled, or failed",
-        },
-      },
-    },
-  },
-  {
-    name: "generate_policy_certificate",
-    description:
-      "Generate certificate PDFs in one exclusive mode: policyId plus holder details for one all-coverages certificate, or requirementSourceDocumentId/requirementId for source-owned holder details and requirement-specific certificates across matching policies. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        policyId: {
-          type: "string",
-          description: "Policy-mode ID; omit in requirements mode",
-        },
-        requirementSourceDocumentId: {
-          type: "string",
-          description:
-            "Requirements-mode source ID; omit policy and holder inputs",
-        },
-        requirementId: {
-          type: "string",
-          description:
-            "Requirements-mode single requirement ID; Spot uses its connected source",
-        },
-        holderName: { type: "string", description: "Certificate holder name" },
-        holderContactName: {
-          type: "string",
-          description: "Certificate holder contact or attention name",
-        },
-        holderEmail: {
-          type: "string",
-          description: "Certificate holder email for renewal delivery",
-        },
-        holderPhone: {
-          type: "string",
-          description: "Certificate holder phone for renewal delivery",
-        },
-        addressLine1: {
-          type: "string",
-          description: "Certificate holder street address",
-        },
-        addressLine2: {
-          type: "string",
-          description: "Suite, floor, or attention line",
-        },
-        city: { type: "string", description: "Certificate holder city" },
-        state: { type: "string", description: "Certificate holder state" },
-        postalCode: {
-          type: "string",
-          description: "Certificate holder ZIP or postal code",
-        },
-        country: {
-          type: "string",
-          description: "Certificate holder country",
-        },
-        requestText: {
-          type: "string",
-          description:
-            "Full certificate request text, especially endorsement or special wording language",
-        },
-        requestedEndorsements: {
-          type: "array",
-          items: { type: "string" },
-          description: "Requested endorsements or special wording",
-        },
-        descriptionOfOperations: {
-          type: "string",
-          description:
-            "Concise source-backed operations/location/vehicle/special-item wording for the certificate description box. Do not include carrier, policy number, term, limits, or unsupported endorsement status.",
-        },
-        additionalInsuredName: {
-          type: "string",
-          description: "Requested additional insured name when applicable",
-        },
-        explicitReissue: {
-          type: "boolean",
-          description:
-            "Force a new certificate version even if an issued certificate already exists for this holder and current policy version",
-        },
-      },
-      oneOf: [
-        { required: ["policyId", "holderName"] },
-        { required: ["requirementSourceDocumentId"] },
-        { required: ["requirementId"] },
-      ],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_threads",
-    description: "List recent conversation threads (up to 50, newest first).",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "get_thread_messages",
-    description: "Get all messages in a conversation thread.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        threadId: { type: "string", description: "The thread ID" },
-      },
-      required: ["threadId"],
-    },
-  },
-  {
-    name: "get_org_info",
-    description:
-      "Get organization profile information including name, website, and broker details.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "ask_glass",
-    description:
-      "Legacy alias for ask_spot. Ask the Spot AI assistant a question about the organization's insurance portfolio.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        message: {
-          type: "string",
-          description: "The question or message to send to Spot",
-        },
-        threadId: {
-          type: "string",
-          description:
-            "Optional thread ID to continue an existing conversation",
-        },
-      },
-      required: ["message"],
-    },
-    openWorld: true,
-  },
-  {
-    name: "ask_spot",
-    description:
-      "Ask the Spot AI assistant a question about the organization's insurance portfolio, bound policies, renewals, or coverage details. Spot answers within the selected organization. Optionally pass a threadId to continue an existing conversation.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        message: {
-          type: "string",
-          description: "The question or message to send to Spot",
-        },
-        threadId: {
-          type: "string",
-          description:
-            "Optional thread ID to continue an existing conversation",
-        },
-      },
-      required: ["message"],
-    },
-    openWorld: true,
-  },
-  {
-    name: "list_email_drafts",
-    description:
-      "List durable outbound email drafts for the organization. Returns a compact text summary by default, with a sample and draft IDs. Optionally filter by threadId or set showAll to see every draft.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        threadId: { type: "string", description: "Optional thread ID" },
-        showAll: {
-          type: "boolean",
-          description: "Show every draft instead of a short sample",
-        },
-      },
-    },
-  },
-  {
-    name: "draft_email",
-    description:
-      "Create a durable outbound email draft using the same Spot email artifact used by web chat. Requires write scope. Returns a draft ID that can be updated, sent, or cancelled.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        threadId: {
-          type: "string",
-          description: "Optional thread ID to attach the draft to",
-        },
-        to: { type: "string", description: "Recipient email address" },
-        subject: { type: "string", description: "Email subject" },
-        body: { type: "string", description: "Plain text email body" },
-        cc: {
-          type: "array",
-          items: { type: "string" },
-          description: "CC email addresses",
-        },
-        bcc: {
-          type: "array",
-          items: { type: "string" },
-          description: "BCC email addresses",
-        },
-        originalPolicyIds: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "Policy IDs whose original full policy PDFs should be attached",
-        },
-      },
-      required: ["to", "subject", "body"],
-    },
-    effect: "write",
-  },
-  {
-    name: "update_email_draft",
-    description:
-      "Update an existing durable outbound email draft in place. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftId: {
-          type: "string",
-          description: "Draft ID returned by draft_email or list_email_drafts",
-        },
-        to: { type: "string", description: "Recipient email address" },
-        subject: { type: "string", description: "Email subject" },
-        body: { type: "string", description: "Plain text email body" },
-        cc: {
-          type: "array",
-          items: { type: "string" },
-          description: "CC email addresses",
-        },
-        bcc: {
-          type: "array",
-          items: { type: "string" },
-          description: "BCC email addresses",
-        },
-        originalPolicyIds: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "Policy IDs whose original full policy PDFs should be attached",
-        },
-      },
-      required: ["draftId", "to", "subject", "body"],
-    },
-    effect: "write",
-  },
-  {
-    name: "send_email_draft",
-    description: "Send a durable outbound email draft. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftId: {
-          type: "string",
-          description: "Draft ID returned by draft_email or list_email_drafts",
-        },
-      },
-      required: ["draftId"],
-    },
-    effect: "write",
-    openWorld: true,
-    idempotent: false,
-  },
-  {
-    name: "send_email_drafts",
-    description:
-      "Send multiple durable outbound email drafts in one batch. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftIds: {
-          type: "array",
-          items: { type: "string" },
-          description: "Draft IDs returned by list_email_drafts",
-        },
-      },
-      required: ["draftIds"],
-    },
-    effect: "write",
-    openWorld: true,
-    idempotent: false,
-  },
-  {
-    name: "cancel_email_draft",
-    description: "Cancel a durable outbound email draft. Requires write scope.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        draftId: {
-          type: "string",
-          description: "Draft ID returned by draft_email or list_email_drafts",
-        },
-      },
-      required: ["draftId"],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_client_files",
-    description:
-      "List client-visible shared files across the caller's readable client scope, optionally narrowed to one exact client organization.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        client_org_id: {
-          type: "string",
-          description: "Optional exact readable client organization ID",
-        },
-        query: { type: "string", description: "Optional filename search" },
-        limit: { type: "number", description: "Maximum results, up to 50" },
-      },
-    },
-  },
-  {
-    name: "get_client_file",
-    description:
-      "Get metadata and a temporary download URL for one exact client-visible shared file.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        client_file_id: { type: "string", description: "Exact client file ID" },
-      },
-      required: ["client_file_id"],
-    },
-  },
-  {
-    name: "read_company_wiki",
-    description:
-      "Read the company wiki for the OAuth token's organization: the complete .md file with YAML front matter, filename, body, and revision.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "write_company_wiki",
-    description:
-      "Replace the complete company .md document including YAML front matter for the token's organization. Read it first and send its revision. Requires write scope and direct org admin membership.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        markdown: { type: "string" },
-        expected_revision: { type: "integer", minimum: 0 },
-      },
-      required: ["markdown", "expected_revision"],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_connected_vendors",
-    description:
-      "List vendor organizations that have approved read-only insurance access for the caller's org.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "get_connected_vendor",
-    description: "Get a connected vendor org profile and policy count.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        vendor_org_id: {
-          type: "string",
-          description: "Connected vendor org ID",
-        },
-      },
-      required: ["vendor_org_id"],
-    },
-  },
-  {
-    name: "list_connected_vendor_policies",
-    description:
-      "List policies for a connected vendor org that approved access.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        vendor_org_id: {
-          type: "string",
-          description: "Connected vendor org ID",
-        },
-      },
-      required: ["vendor_org_id"],
-    },
-  },
-  {
-    name: "list_my_policies",
-    description: "List policies for the caller's client org. Client only.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "list_insurance_requirements",
-    description:
-      "List the caller org's insurance compliance requirements, including source document provenance when available.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "create_insurance_requirement",
-    description:
-      "Create a typed insurance coverage requirement checked against policy coverages. Requires write scope and org admin role.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        kind: {
-          type: "string",
-          description: 'Always "coverage"',
-        },
-        scope: {
-          type: "string",
-          description: "vendors or own_org",
-        },
-        title: { type: "string", description: "Short requirement title" },
-        requirement_text: {
-          type: "string",
-          description: "Plain-language requirement text",
-        },
-        line_of_business: {
-          type: "string",
-          description: "ACORD line of business code, e.g. CGL",
-        },
-        limits: {
-          type: "array",
-          description:
-            'Coverage limits: { kind, amount, label }. amount is a plain number (1000000, not "$1M"). Limit kinds include per_occurrence, general_aggregate, combined_single_limit, other.',
-        },
-        source_document_name: {
-          type: "string",
-          description: "Optional lease, contract, or requirement packet name",
-        },
-        source_excerpt: {
-          type: "string",
-          description:
-            "Optional exact original source language supporting the requirement",
-        },
-      },
-      required: [
-        "kind",
-        "scope",
-        "title",
-        "requirement_text",
-        "line_of_business",
-      ],
-    },
-    effect: "write",
-  },
-  {
-    name: "list_vendor_compliance",
-    description:
-      "List connected vendor compliance status against the caller org's insurance requirements.",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-];
-
-const AUTHENTICATED_TENANT_MCP_TOOLS = MCP_TOOLS.map((entry) => {
-  const {
-    effect = "read",
-    openWorld = false,
-    destructive = false,
-    idempotent,
-    ...tool
-  } = entry;
-  const write = effect === "write";
-  return {
-    ...tool,
-    title: tool.description.split(".")[0],
-    securitySchemes: mcpOAuthSecuritySchemes(
-      write ? ["read", "write"] : ["read"],
-    ),
-    annotations: {
-      readOnlyHint: !write,
-      destructiveHint: destructive,
-      idempotentHint: idempotent ?? !write,
-      openWorldHint: openWorld,
-    },
-  };
-});
-
-export function tenantMcpToolAccess(name: string) {
-  const tool = MCP_TOOLS.find((entry) => entry.name === name);
-  if (!tool) return null;
-  return {
-    effect: tool.effect ?? ("read" as const),
-    openWorld: tool.openWorld ?? false,
-    destructive: tool.destructive ?? false,
-  };
-}
-
-export function tenantMcpToolNames() {
-  return MCP_TOOLS.map((tool) => tool.name);
-}
+export { tenantMcpToolAccess, tenantMcpToolNames } from "./lib/tenantMcpToolCatalog";
 
 function jsonRpcResponse(
   id: string | number | null,
@@ -3091,78 +1784,21 @@ async function handleToolCall(
   const orgId = identity.orgId as Id<"organizations">;
   const userId = identity.userId as Id<"users">;
 
-  switch (name) {
-    case "list_client_files": {
-      const scope = await ctx.runQuery(
-        internal.lib.agentScope.resolveForAction,
-        {
-          orgId,
-          userId,
-          surface: "mcp",
-        },
-      );
-      const requestedOrgId =
-        typeof args.client_org_id === "string" ? args.client_org_id : undefined;
-      const orgIds = requestedOrgId
-        ? scope.readOrgIds.filter(
-            (readOrgId: Id<"organizations">) =>
-              String(readOrgId) === requestedOrgId,
-          )
-        : scope.readOrgIds;
-      if (requestedOrgId && orgIds.length === 0) {
-        throw new Error("Client organization is not in the readable scope");
-      }
-      const files = await ctx.runQuery(
-        internal.clientFiles.listVisibleInternal,
-        {
-          orgIds,
-          query: typeof args.query === "string" ? args.query : undefined,
-          limit: typeof args.limit === "number" ? args.limit : undefined,
-        },
-      );
-      return mcpTextResult(files);
-    }
-    case "get_client_file": {
-      if (typeof args.client_file_id !== "string") {
-        throw new Error("Missing client_file_id parameter");
-      }
-      const scope = await ctx.runQuery(
-        internal.lib.agentScope.resolveForAction,
-        {
-          orgId,
-          userId,
-          surface: "mcp",
-        },
-      );
-      const file = await ctx.runQuery(internal.clientFiles.getVisibleInternal, {
-        clientFileId: args.client_file_id as Id<"clientFiles">,
-        orgIds: scope.readOrgIds,
-      });
-      if (!file) throw new Error("Client file not found");
-      return mcpTextResult(file);
-    }
-    case "read_company_wiki": {
-      const wiki = await ctx.runQuery(internal.orgWiki.getForMcp, {
-        orgId,
-        userId,
-      });
-      return mcpTextResult(wiki);
-    }
-    case "write_company_wiki": {
-      if (
-        typeof args.markdown !== "string" ||
-        !Number.isInteger(args.expected_revision)
-      )
-        throw new Error("markdown and expected_revision are required");
-      const wiki = await ctx.runMutation(internal.orgWiki.saveForMcp, {
-        orgId,
-        userId,
-        markdown: args.markdown,
-        expectedRevision: Number(args.expected_revision),
-      });
-      return mcpTextResult(wiki);
-    }
-    case "list_policies": {
+  const call = resolveTenantMcpToolCall(name, args, mcpCanWrite(identity));
+  if (!call.compatibility) {
+    const result = await ctx.runAction((internal as any).actions.tenantMcpTools.execute, {
+      orgId,
+      userId,
+      name,
+      input: args,
+      canWrite: mcpCanWrite(identity),
+    });
+    return name === "list_email_drafts" && typeof result === "string"
+      ? { content: [{ type: "text", text: result }] }
+      : mcpTextResult(result);
+  }
+  const compatibilityHandlers = {
+    list_policies: async () => {
       const policies = (await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
         { orgId },
@@ -3182,8 +1818,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "get_policy": {
+    },
+    get_policy: async () => {
       if (!args.id) throw new Error("Missing id parameter");
       const policies = await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
@@ -3195,8 +1831,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(found, null, 2) }],
       };
-    }
-    case "get_policy_pdf": {
+    },
+    get_policy_pdf: async () => {
       if (!args.id) throw new Error("Missing id parameter");
       const policies = await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
@@ -3221,8 +1857,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "search_policies": {
+    },
+    search_policies: async () => {
       if (!args.q) throw new Error("Missing q parameter");
       const policies = (await ctx.runQuery(
         internal.policies.listAllPreviewReadableInternal,
@@ -3243,248 +1879,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "get_policy_stats": {
-      const policies = (await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        { orgId },
-      )) as McpPolicySummarySource[];
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(toPolicyStatsDto(policies), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_policy_certificates": {
-      const policyId = args.policyId ?? args.policy_id;
-      if (typeof policyId !== "string" || !policyId)
-        throw new Error("Missing policyId parameter");
-      const certificates = await ctx.runQuery(
-        internal.certificates.listByPolicyInternal,
-        {
-          orgId,
-          policyId: policyId as Id<"policies">,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(certificates.map(toCertificateDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_certificate_holders": {
-      const holders = await ctx.runQuery(
-        internal.certificateHolders.listForOrgInternal,
-        {
-          orgId,
-          query:
-            typeof args.query === "string"
-              ? args.query
-              : typeof args.q === "string"
-                ? args.q
-                : undefined,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(holders.map(toCertificateHolderDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_policy_versions": {
-      const policyId = args.policyId ?? args.policy_id;
-      const versions = await ctx.runQuery(
-        internal.policyVersions.listForOrgInternal,
-        {
-          orgId,
-          policyId:
-            typeof policyId === "string" && policyId
-              ? (policyId as Id<"policies">)
-              : undefined,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(versions.map(toPolicyVersionDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_certificate_versions": {
-      const policyId = args.policyId ?? args.policy_id;
-      const certificateId = args.certificateId ?? args.certificate_id;
-      const holderId =
-        args.holderId ??
-        args.holder_id ??
-        args.certificateHolderId ??
-        args.certificate_holder_id;
-      const versions = await ctx.runQuery(
-        internal.certificateLifecycle.listVersionsInternal,
-        {
-          orgId,
-          policyId:
-            typeof policyId === "string" && policyId
-              ? (policyId as Id<"policies">)
-              : undefined,
-          certificateId:
-            typeof certificateId === "string" && certificateId
-              ? (certificateId as Id<"policyCertificates">)
-              : undefined,
-          holderId:
-            typeof holderId === "string" && holderId
-              ? (holderId as Id<"certificateHolders">)
-              : undefined,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              versions.map(toCertificateVersionDto),
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "list_certificate_review_jobs": {
-      const policyId = args.policyId ?? args.policy_id;
-      const jobs = await ctx.runQuery(
-        internal.certificateWorkflowJobs.listForOrgInternal,
-        {
-          orgId,
-          policyId:
-            typeof policyId === "string" && policyId
-              ? (policyId as Id<"policies">)
-              : undefined,
-          status: certificateWorkflowJobStatusParam(
-            typeof args.status === "string" ? args.status : null,
-          ),
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              jobs.map(toCertificateWorkflowJobDto),
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "generate_policy_certificate": {
-      requireMcpWriteScope(identity);
-      const policyId = args.policyId ?? args.policy_id;
-      const certificate = normalizeCertificateRequest(args);
-      const requirementsMode = Boolean(
-        certificate.requirementSourceDocumentId || certificate.requirementId,
-      );
-      if (Boolean(policyId) === requirementsMode)
-        throw new Error("Choose either policyId or a requirement source");
-      if (!requirementsMode && !certificate.holderName)
-        throw new Error("Missing certificate holder");
-      const result = await ctx.runAction(
-        internal.certificates.generateBatchForOrg,
-        {
-          orgId,
-          primaryPolicyId: policyId as Id<"policies"> | undefined,
-          ...certificate,
-          source: "mcp",
-          createdByUserId: userId,
-        },
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              compatibleCertificateGenerationResponse(result, requirementsMode),
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "list_threads": {
-      const threads = await ctx.runQuery(internal.threads.listByOrg, {
-        orgId,
-        userId,
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(threads.map(toMcpThreadSummaryDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "get_thread_messages": {
-      if (!args.threadId) throw new Error("Missing threadId parameter");
-      const thread = await ctx.runQuery(internal.threads.getInternal, {
-        id: args.threadId as Id<"threads">,
-      });
-      if (
-        !thread ||
-        !canAccessThread({
-          userId,
-          userOrgId: orgId,
-          thread,
-          clientOrg: null,
-        })
-      )
-        throw new Error("Not found");
-      const messages = await ctx.runQuery(internal.threads.messagesInternal, {
-        threadId: args.threadId as Id<"threads">,
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(messages.map(toMcpThreadMessageDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "get_org_info": {
-      const org = await ctx.runQuery(internal.orgs.getInternal, { id: orgId });
-      if (!org) throw new Error("Not found");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                _id: org._id,
-                name: org.name,
-                website: org.website,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-    case "ask_glass":
-    case "ask_spot": {
+    },
+    ask_spot: async () => {
       if (!args.message) throw new Error("Missing message");
       const result = await ctx.runAction(internal.actions.mcpChat.run, {
         orgId,
@@ -3504,123 +1900,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "list_email_drafts": {
-      const drafts = await ctx.runQuery(
-        internal.pendingEmails.listDraftsInternal,
-        {
-          orgId,
-          threadId:
-            typeof args.threadId === "string" && args.threadId
-              ? (args.threadId as Id<"threads">)
-              : undefined,
-        },
-      );
-      const showAll = args.showAll === true;
-      const summary =
-        drafts.length > 0
-          ? buildEmailDraftTextSummary(drafts, {
-              sampleSize: showAll ? drafts.length : 3,
-              includeIds: true,
-              commands: "mcp",
-            })
-          : "No email drafts found.";
-      return { content: [{ type: "text", text: summary }] };
-    }
-    case "draft_email":
-    case "update_email_draft": {
-      requireMcpWriteScope(identity);
-      if (name === "update_email_draft" && !args.draftId)
-        throw new Error("Missing draftId parameter");
-      if (!args.to || !args.subject || !args.body)
-        throw new Error("Missing to, subject, or body parameter");
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.upsertForMcp,
-        {
-          orgId,
-          userId,
-          draftId:
-            typeof args.draftId === "string"
-              ? (args.draftId as Id<"pendingEmails">)
-              : undefined,
-          threadId:
-            typeof args.threadId === "string"
-              ? (args.threadId as Id<"threads">)
-              : undefined,
-          to: args.to as string,
-          subject: args.subject as string,
-          body: args.body as string,
-          cc: Array.isArray(args.cc)
-            ? args.cc.filter(
-                (value): value is string => typeof value === "string",
-              )
-            : undefined,
-          bcc: Array.isArray(args.bcc)
-            ? args.bcc.filter(
-                (value): value is string => typeof value === "string",
-              )
-            : undefined,
-          originalPolicyIds: Array.isArray(args.originalPolicyIds)
-            ? (args.originalPolicyIds.filter(
-                (value): value is Id<"policies"> => typeof value === "string",
-              ) as Id<"policies">[])
-            : undefined,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
-      };
-    }
-    case "send_email_draft": {
-      requireMcpWriteScope(identity);
-      if (typeof args.draftId !== "string" || !args.draftId)
-        throw new Error("Missing draftId parameter");
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.sendForMcp,
-        {
-          orgId,
-          draftId: args.draftId as Id<"pendingEmails">,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
-      };
-    }
-    case "send_email_drafts": {
-      requireMcpWriteScope(identity);
-      const draftIds = Array.isArray(args.draftIds)
-        ? (args.draftIds.filter(
-            (value): value is Id<"pendingEmails"> => typeof value === "string",
-          ) as Id<"pendingEmails">[])
-        : [];
-      if (draftIds.length === 0) throw new Error("Missing draftIds parameter");
-      const result = await ctx.runAction(
-        internal.actions.emailDrafts.sendManyForMcp,
-        {
-          orgId,
-          draftIds,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    }
-    case "cancel_email_draft": {
-      requireMcpWriteScope(identity);
-      if (typeof args.draftId !== "string" || !args.draftId)
-        throw new Error("Missing draftId parameter");
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.cancelForMcp,
-        {
-          orgId,
-          draftId: args.draftId as Id<"pendingEmails">,
-        },
-      );
-      return {
-        content: [{ type: "text", text: JSON.stringify(draft, null, 2) }],
-      };
-    }
-    case "list_connected_vendors": {
+    },
+    list_connected_vendors: async () => {
       const vendors = await ctx.runQuery(
         (internal as any).connectedOrgs.listActiveVendorsInternal,
         { clientOrgId: orgId },
@@ -3628,8 +1909,8 @@ async function handleToolCall(
       return {
         content: [{ type: "text", text: JSON.stringify(vendors, null, 2) }],
       };
-    }
-    case "get_connected_vendor": {
+    },
+    get_connected_vendor: async () => {
       const vendorOrgId = args.vendor_org_id as Id<"organizations">;
       if (!vendorOrgId) throw new Error("Missing vendor_org_id");
       const allowed = await ctx.runQuery(
@@ -3659,8 +1940,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "list_connected_vendor_policies": {
+    },
+    list_connected_vendor_policies: async () => {
       const vendorOrgId = args.vendor_org_id as Id<"organizations">;
       if (!vendorOrgId) throw new Error("Missing vendor_org_id");
       const allowed = await ctx.runQuery(
@@ -3687,68 +1968,8 @@ async function handleToolCall(
           },
         ],
       };
-    }
-    case "list_my_policies": {
-      const policies = (await ctx.runQuery(
-        internal.policies.listAllPreviewReadableInternal,
-        { orgId },
-      )) as McpPolicySummarySource[];
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(policies.map(toMcpMyPolicyDto), null, 2),
-          },
-        ],
-      };
-    }
-    case "list_insurance_requirements": {
-      const requirements = await ctx.runQuery(
-        (internal as any).compliance.listRequirementsInternal,
-        { orgId },
-      );
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(requirements, null, 2) },
-        ],
-      };
-    }
-    case "create_insurance_requirement": {
-      requireMcpWriteScope(identity);
-      if (!args.kind || !args.scope || !args.title || !args.requirement_text)
-        throw new Error("Missing kind, scope, title, or requirement_text");
-      const requirementId = await ctx.runMutation(
-        (internal as any).compliance.upsertRequirementInternal,
-        {
-          orgId,
-          userId,
-          kind: String(args.kind),
-          scope: String(args.scope),
-          title: String(args.title),
-          requirementText: String(args.requirement_text),
-          lineOfBusiness: args.line_of_business
-            ? String(args.line_of_business)
-            : undefined,
-          limits: Array.isArray(args.limits) ? args.limits : undefined,
-          sourceDocumentName: args.source_document_name
-            ? String(args.source_document_name)
-            : undefined,
-          sourceType:
-            args.source_document_name || args.source_excerpt
-              ? "other"
-              : "manual",
-          sourceExcerpt: args.source_excerpt
-            ? String(args.source_excerpt)
-            : undefined,
-        },
-      );
-      return {
-        content: [
-          { type: "text", text: JSON.stringify({ requirementId }, null, 2) },
-        ],
-      };
-    }
-    case "list_vendor_compliance": {
+    },
+    list_vendor_compliance: async () => {
       const compliance = await ctx.runQuery(
         (internal as any).compliance.listVendorComplianceInternal,
         { clientOrgId: orgId },
@@ -3757,9 +1978,10 @@ async function handleToolCall(
         content: [{ type: "text", text: JSON.stringify(compliance, null, 2) }],
       };
     }
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
+  };
+  const handler = compatibilityHandlers[name as keyof typeof compatibilityHandlers];
+  if (!handler) throw new Error(`Unknown tool: ${name}`);
+  return handler() as Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
 
 http.route({
@@ -3824,7 +2046,7 @@ http.route({
             tools:
               identity.principalKind === "operator"
                 ? operatorMcpTools(identity)
-                : AUTHENTICATED_TENANT_MCP_TOOLS,
+                : buildTenantMcpToolCatalog(),
           });
         }
         case "tools/call": {
@@ -3969,164 +2191,6 @@ http.route({
       });
 
       return jsonResponse(result);
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// GET /mcp/email/drafts/list
-http.route({
-  path: "/mcp/email/drafts/list",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      const url = new URL(request.url);
-      const threadId = url.searchParams.get("threadId");
-      const showAll = url.searchParams.get("showAll") === "true";
-      const drafts = await ctx.runQuery(
-        internal.pendingEmails.listDraftsInternal,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          threadId: threadId ? (threadId as Id<"threads">) : undefined,
-        },
-      );
-      return jsonResponse({
-        summary:
-          drafts.length > 0
-            ? buildEmailDraftTextSummary(drafts, {
-                sampleSize: showAll ? drafts.length : 3,
-                includeIds: true,
-                commands: "mcp",
-              })
-            : "No email drafts found.",
-        drafts,
-      });
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// POST /mcp/email/drafts/upsert
-http.route({
-  path: "/mcp/email/drafts/upsert",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      requireMcpWriteScope(identity);
-      const body = await request.json();
-      if (!body.to || !body.subject || !body.body) {
-        return jsonResponse({ error: "Missing to, subject, or body" }, 400);
-      }
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.upsertForMcp,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          userId: identity.userId as Id<"users">,
-          draftId: body.draftId
-            ? (body.draftId as Id<"pendingEmails">)
-            : undefined,
-          threadId: body.threadId
-            ? (body.threadId as Id<"threads">)
-            : undefined,
-          to: body.to,
-          subject: body.subject,
-          body: body.body,
-          cc: Array.isArray(body.cc) ? body.cc : undefined,
-          bcc: Array.isArray(body.bcc) ? body.bcc : undefined,
-          originalPolicyIds: Array.isArray(body.originalPolicyIds)
-            ? body.originalPolicyIds
-            : undefined,
-        },
-      );
-      return jsonResponse(draft);
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// POST /mcp/email/drafts/send
-http.route({
-  path: "/mcp/email/drafts/send",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      requireMcpWriteScope(identity);
-      const body = await request.json();
-      if (!body.draftId) return jsonResponse({ error: "Missing draftId" }, 400);
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.sendForMcp,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          draftId: body.draftId as Id<"pendingEmails">,
-        },
-      );
-      return jsonResponse(draft);
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// POST /mcp/email/drafts/send-batch
-http.route({
-  path: "/mcp/email/drafts/send-batch",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      requireMcpWriteScope(identity);
-      const body = await request.json();
-      const draftIds = Array.isArray(body.draftIds)
-        ? body.draftIds.filter(
-            (value: unknown): value is Id<"pendingEmails"> =>
-              typeof value === "string",
-          )
-        : [];
-      if (draftIds.length === 0)
-        return jsonResponse({ error: "Missing draftIds" }, 400);
-      const result = await ctx.runAction(
-        internal.actions.emailDrafts.sendManyForMcp,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          draftIds,
-        },
-      );
-      return jsonResponse(result);
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse({ error: String(e) }, 500);
-    }
-  }),
-});
-
-// POST /mcp/email/drafts/cancel
-http.route({
-  path: "/mcp/email/drafts/cancel",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireMcpAuth(ctx, request);
-      requireMcpWriteScope(identity);
-      const body = await request.json();
-      if (!body.draftId) return jsonResponse({ error: "Missing draftId" }, 400);
-      const draft = await ctx.runAction(
-        internal.actions.emailDrafts.cancelForMcp,
-        {
-          orgId: identity.orgId as Id<"organizations">,
-          draftId: body.draftId as Id<"pendingEmails">,
-        },
-      );
-      return jsonResponse(draft);
     } catch (e) {
       if (e instanceof Response) return e;
       return jsonResponse({ error: String(e) }, 500);
@@ -4661,39 +2725,6 @@ http.route({
   }),
 });
 
-// ── GET /api/v1/certificate-review-jobs ──
-http.route({
-  path: "/api/v1/certificate-review-jobs",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const identity = await requireApiAuth(ctx, request);
-      const jobs = await ctx.runQuery(
-        internal.certificateWorkflowJobs.listForOrgInternal,
-        {
-          orgId: identity.orgId,
-          policyId: (getQueryParam(request, "policy_id") ??
-            getQueryParam(request, "policyId") ??
-            undefined) as Id<"policies"> | undefined,
-          status: certificateWorkflowJobStatusParam(
-            getQueryParam(request, "status"),
-          ),
-        },
-      );
-      return jsonResponse({
-        data: jobs.map(toCertificateWorkflowJobDto),
-        next_cursor: null,
-      });
-    } catch (e) {
-      if (e instanceof Response) return e;
-      return jsonResponse(
-        { error: { code: "internal_error", message: String(e) } },
-        500,
-      );
-    }
-  }),
-});
-
 // ── GET /api/v1/vendors ──
 http.route({
   path: "/api/v1/vendors",
@@ -5046,13 +3077,6 @@ http.route({
             responses: { "200": { description: "Certificate versions" } },
           },
         },
-        "/api/v1/certificate-review-jobs": {
-          get: {
-            tags: ["Certificates"],
-            summary: "List certificate renewal/post-endorsement review jobs",
-            responses: { "200": { description: "Certificate review jobs" } },
-          },
-        },
         "/api/v1/vendors": {
           get: {
             tags: ["Vendors"],
@@ -5118,54 +3142,6 @@ http.route({
   path: "/favicon.ico",
   method: "GET",
   handler: httpAction(async () => spotIconResponse()),
-});
-
-http.route({
-  path: "/router-jobs/worker",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const secret = process.env.EXTRACTION_WORKER_SECRET?.trim();
-    if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
-      return new Response(null, { status: 401 });
-    const length = Number(request.headers.get("content-length"));
-    if (
-      !Number.isSafeInteger(length) ||
-      length <= 0 ||
-      length > 4 * 1024 * 1024
-    )
-      return new Response(null, { status: 413 });
-    const bytes = await readRouterAssetBody(request, length);
-    if (!bytes) return new Response(null, { status: 400 });
-    let input: {
-      jobKind: "policy" | "preview" | "proposal";
-      jobId: string;
-      leaseId: string;
-      orgId: Id<"organizations">;
-      invocationKey: string;
-      payload: unknown;
-    };
-    try {
-      input = JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-      return new Response(null, { status: 400 });
-    }
-    // Router payloads carry JSON Schemas whose `$schema` keys are not valid Convex values.
-    const result = await ctx.runAction(internal.actions.routerJobs.worker, {
-      ...input,
-      payload: JSON.stringify(input.payload ?? null),
-    });
-    if ("resultJson" in result)
-      return new Response(`{"result":${result.resultJson}}`, {
-        headers: {
-          "content-type": "application/json",
-          "cache-control": "no-store",
-        },
-      });
-    return Response.json(result, {
-      status: "statusCode" in result ? result.statusCode : 202,
-      headers: { "cache-control": "no-store" },
-    });
-  }),
 });
 
 http.route({

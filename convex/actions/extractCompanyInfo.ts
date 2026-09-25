@@ -146,11 +146,3 @@ export const importMissingOrgLogoInternal = internalAction({
     return null;
   },
 });
-
-export const extractCompanyInfoForOrgInternal = internalAction({
-  args: { url: v.optional(v.string()), orgId: v.id("organizations") },
-  returns: v.any(),
-  handler: async (ctx, args): Promise<CompanyResearchRequestResult> => {
-    return await ctx.runMutation(internal.companyResearch.request, { orgId: args.orgId });
-  },
-});

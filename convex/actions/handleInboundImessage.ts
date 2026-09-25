@@ -1,22 +1,16 @@
 "use node";
 
-import { createHash } from "node:crypto";
-import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { stepCountIs } from "ai";
-import {
-  createImessageGroupChat,
-  coordinateMailboxTask,
-  webResearch,
-} from "../lib/chatTools";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import {
-  buildSystemPromptForContext,
-  buildChannelInstructions,
-  buildPolicyToolInstructions,
-} from "../lib/aiUtils";
+  buildClientAgentTurnTools,
+  decideClientAgentTurn,
+  promptModuleArtifact,
+} from "../lib/clientAgentPrompt";
+import { unknownSenderReply } from "../lib/channelStyle";
 import { classifyPromptInjection, enforceInputLimits } from "../lib/security";
 import type { Doc, Id } from "../_generated/dataModel";
 import { isImessageInboundEnabled } from "../lib/imessageConfig";
@@ -30,14 +24,10 @@ import {
   resolveImessageConversationScope,
   type ResolvedImessageParticipant,
 } from "../lib/imessageGroupResolution";
-import {
-  buildEmailExpertTool,
-  resolveEmailAgentIdentity,
-} from "../lib/emailSubagent";
+import { buildEmailTools, resolveEmailAgentIdentity } from "../lib/emailTools";
 import { FATAL_ACTION_FAILED_MESSAGE } from "../lib/actionFailures";
 import { buildPendingEmailConfirmation } from "../lib/actionConfirmationFingerprint";
 import { buildEmailDraftTextSummary } from "../lib/emailDraftSummary";
-import { runWebRetrieval, type WebRetrievalInput } from "../lib/webRetrieval";
 import {
   buildImessageModelMessages,
   buildRecentImessageTextContext,
@@ -52,15 +42,10 @@ import {
   validatePolicyFocusIds,
 } from "../lib/agentPolicyFocus";
 import {
-  mintImessageAppCards,
   mintImessageEmailDraftReviewCard,
   type ImessageAppCard,
 } from "../lib/imessageAppCards";
 import { runImessageDeterministicControls } from "../lib/imessageDeterministicControls";
-import {
-  buildThreadContinuityPrompt,
-  buildThreadHistoryToolInstructions,
-} from "../lib/agentMessageHistory";
 import { cleanAgentMarkdownForTransport } from "../lib/transportRenderers";
 import {
   loadBoundedAgentHistory,
@@ -82,7 +67,6 @@ import {
   buildRequirementImportConfirmation,
   decideRequirementAttachmentImport,
 } from "../lib/requirementAttachmentIntent";
-import { sendClRouterFeedback } from "../lib/clRouterClient";
 
 export { buildFallbackImessageChatGuid } from "../lib/imessageIngress";
 
@@ -120,20 +104,6 @@ function appendAttachmentFailureNotice(responseText: string): string {
   if (!trimmed) return notice;
   if (trimmed.includes(notice)) return trimmed;
   return `${trimmed}\n\n${notice}`;
-}
-
-const internalApi = internal as any;
-const IMESSAGE_RATING_PROMPT = "Was this helpful? Reply 👍 or 👎.";
-
-function imessageRating(messageText: string): "positive" | "negative" | null {
-  const normalized = messageText.trim();
-  if (normalized === "👍") return "positive";
-  if (normalized === "👎") return "negative";
-  return null;
-}
-
-function shouldPromptForImessageRating(eventKey: string): boolean {
-  return createHash("sha256").update(eventKey).digest()[0]! < 26;
 }
 
 export const processInbound = internalAction({
@@ -357,20 +327,10 @@ export const processInbound = internalAction({
             sendContactCard: chatSync.shouldSendContactCard,
           });
         }
-        const demo = await ctx.runAction(
-          internal.actions.publicDemoAgent.respond,
-          {
-            channel: "imessage",
-            senderContact: fromPhone,
-            messageText: inboundMessageText,
-            sourceMessageId: args.sourceMessageId,
-            chatGuid,
-          },
-        );
         if (isGroup) {
           await ctx.runMutation(internal.imessageChats.markLeft, { chatGuid });
         }
-        return await finish(demo.text, undefined, {
+        return await finish(unknownSenderReply(), undefined, {
           leaveGroup: isGroup,
           sendContactCard: chatSync.shouldSendContactCard,
         });
@@ -381,17 +341,7 @@ export const processInbound = internalAction({
         (candidate) => candidate?._id === scope.primaryUserId,
       );
       if (!user) {
-        const demo = await ctx.runAction(
-          internal.actions.publicDemoAgent.respond,
-          {
-            channel: "imessage",
-            senderContact: fromPhone,
-            messageText: inboundMessageText,
-            sourceMessageId: args.sourceMessageId,
-            chatGuid,
-          },
-        );
-        return await finish(demo.text, undefined, {
+        return await finish(unknownSenderReply(), undefined, {
           sendContactCard: chatSync.shouldSendContactCard,
         });
       }
@@ -543,60 +493,6 @@ export const processInbound = internalAction({
       const recentConversationContext =
         buildRecentImessageTextContext(historyForContext);
 
-      const inboundRating = imessageRating(inboundMessageText);
-      const ratingTarget = inboundRating ? historyForContext.at(-1) : undefined;
-      if (
-        inboundRating &&
-        ratingTarget &&
-        ratingTarget.role === "agent" &&
-        ratingTarget.feedbackPromptedAt &&
-        !isGroup &&
-        currentSenderIsLinked
-      ) {
-        const feedback = await ctx.runMutation(
-          internalApi.agentResponseFeedback.recordImessageInternal,
-          {
-            messageId: ratingTarget._id,
-            senderAddress,
-            rating: inboundRating,
-          },
-        );
-        if (feedback.shouldSubmit && feedback.routerRequestId) {
-          try {
-            await sendClRouterFeedback({
-              requestId: feedback.routerRequestId,
-              idempotencyKey: `agent-response:${ratingTarget._id}:${createHash("sha256").update(senderAddress).digest("hex")}`,
-              source: "imessage",
-              signals: { rating: inboundRating === "positive" ? "up" : "down" },
-              trace: {
-                traceId: String(ratingTarget._id),
-                channel: "imessage",
-                taskKind: "query_reason",
-              },
-            });
-            await ctx.runMutation(
-              internalApi.agentResponseFeedback.markRouterSignalInternal,
-              { feedbackId: feedback.id, status: "submitted" },
-            );
-          } catch (error) {
-            console.warn(
-              "Could not submit iMessage response rating to cl-router",
-              error,
-            );
-            await ctx.runMutation(
-              internalApi.agentResponseFeedback.markRouterSignalInternal,
-              {
-                feedbackId: feedback.id,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-              },
-            );
-          }
-        }
-        await scheduleThreadHistoryCompaction(ctx, threadId);
-        return await finish("Thanks — that helps improve future responses.");
-      }
-
       const draftEmails = await ctx.runQuery(
         internal.pendingEmails.listDraftsInternal,
         { threadId, orgId },
@@ -661,32 +557,6 @@ export const processInbound = internalAction({
         ? "chat_vision"
         : "chat";
 
-      const systemPrompt =
-        buildSystemPromptForContext({
-          org: {
-            name: org.name,
-          },
-          mode: "direct",
-          userName,
-          siteUrl,
-        }) +
-        buildChannelInstructions({
-          platform: "imessage",
-          canSendEmail: emailIdentity.canSend,
-          emailUnavailableReason: emailIdentity.reason,
-        }) +
-        "\n\n" +
-        buildImessageRosterContext({
-          senderAddress,
-          participants: resolvedParticipants,
-          orgNamesById,
-          scopeKind: scope.kind,
-        }) +
-        buildPolicyToolInstructions(8) +
-        buildThreadHistoryToolInstructions() +
-        buildThreadContinuityPrompt(boundedHistory.summary) +
-        (policyFocusBlock ? `\n\n${policyFocusBlock}` : "");
-
       const runState = createImessageAgentRunState();
       const onPolicyReferenced = (policyId: Id<"policies">) => {
         if (!emailReferencedPolicyIds.some((id) => id === policyId)) {
@@ -739,7 +609,7 @@ export const processInbound = internalAction({
           : requirementImportResolution.scope;
       const imessageWritableOrgIds = agentScope.writableOrgIds;
 
-      const imessageTools = {
+      const registeredTools = {
         ...buildAgentToolExecutors(ctx, {
           surface: "imessage",
           orgId,
@@ -754,83 +624,31 @@ export const processInbound = internalAction({
           availableFileIds,
           requirementImportAttachments,
           requirementImportDefaultScope,
+          imessageGroupChat: true,
+          webResearch: currentSenderIsLinked,
+          mailbox: currentSenderIsLinked ? {} : undefined,
+          routingParentId: `${eventKey}:agent`,
           onPolicyPresented: runState.onPolicyPresented,
           onPolicyReferenced,
           onResponseAttachment: runState.onResponseAttachment,
-          onToolArtifact: runState.onToolArtifact,
-        }),
-        create_imessage_group_chat: {
-          ...createImessageGroupChat,
-          execute: async (params: {
-            recipients: string[];
-            openingMessage: string;
-            title?: string;
-            confirmed: boolean;
-          }) => {
-            if (!currentSenderIsLinked) {
-              return "Only a linked Spot user can start a new group chat.";
-            }
-            if (!params.confirmed) {
-              return "Ask the user to confirm before creating a new iMessage group chat.";
-            }
-            return await ctx.runAction(
-              internal.actions.createOutboundImessageGroup
-                .createOutboundImessageGroupInternal,
-              {
-                orgId,
-                userId: user._id,
-                recipients: params.recipients,
-                openingMessage: params.openingMessage,
-                title: params.title,
-              },
-            );
+          onToolArtifact: (artifact) => {
+            const existing =
+              artifact.type === "mailbox_task"
+                ? runState.toolArtifacts.find(
+                    (item) => item.type === "mailbox_task",
+                  )
+                : undefined;
+            if (existing) existing.data = artifact.data;
+            else runState.onToolArtifact(artifact);
           },
-        },
-        ...(currentSenderIsLinked
-          ? {
-              coordinate_mailbox_task: {
-                ...coordinateMailboxTask,
-                execute: async (params: { task: string }) =>
-                  await ctx.runAction(
-                    internal.actions.mailboxCoordinator.runInternal,
-                    {
-                      orgId,
-                      userId: user._id,
-                      task: params.task,
-                      routingParentId: `${eventKey}:agent`,
-                      statusToPhone: fromPhone,
-                      statusChatGuid: chatGuid,
-                    },
-                  ),
-              },
-              web_research: {
-                ...webResearch,
-                execute: async (params: WebRetrievalInput) => {
-                  const result = await runWebRetrieval(ctx, orgId, params);
-                  if (!result.text) {
-                    return {
-                      status: "unavailable",
-                      attempts: result.attempts,
-                      warnings: result.warnings,
-                    };
-                  }
-                  return {
-                    status: "ok",
-                    provider: result.provider,
-                    text: result.text,
-                    sources: result.sources,
-                    warnings: result.warnings,
-                  };
-                },
-              },
-            }
-          : {}),
+        }),
         ...(currentSenderIsLinked &&
         emailIdentity.canSend &&
         emailIdentity.agentAddress &&
         emailIdentity.fromHeader
           ? {
-              email_expert: buildEmailExpertTool(ctx, {
+              ...buildEmailTools(ctx, {
+                scope: agentScope,
                 orgId,
                 userId: user._id,
                 threadId,
@@ -867,21 +685,54 @@ export const processInbound = internalAction({
           : {}),
       };
 
+      const traceId = `${eventKey}:agent`;
+      const selection = await decideClientAgentTurn(ctx, {
+        orgId,
+        surface: "imessage",
+        message: inboundMessageText,
+        tools: registeredTools,
+        summary: boundedHistory.summary,
+        attachments: attachmentRecords.map((record) => record.filename),
+        trace: { traceId, parentRequestId: args.sourceMessageId ?? eventKey },
+      });
+      runState.onToolArtifact(
+        promptModuleArtifact(selection, { traceId, surface: "imessage" }),
+      );
+      const turnTools = buildClientAgentTurnTools(registeredTools, selection, {
+        surface: "imessage",
+        org: { name: org.name },
+        userName,
+        siteUrl,
+        answerDepth: selection.answerDepth,
+        maxToolCalls: 8,
+        canSendEmail: emailIdentity.canSend,
+        emailUnavailableReason: emailIdentity.reason,
+        extras: [
+          buildImessageRosterContext({
+            senderAddress,
+            participants: resolvedParticipants,
+            orgNamesById,
+            scopeKind: scope.kind,
+          }),
+        ],
+        policyFocus: policyFocusBlock,
+        summary: boundedHistory.summary,
+      });
+
       const turn = await runAgentTurn(ctx, {
         orgId,
         task: chatTask,
         options: {
           maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
-          system: systemPrompt,
+          ...turnTools,
           messages: modelMessages,
-          tools: imessageTools,
           stopWhen: stepCountIs(8),
         },
         run: {
           taskKind: "query_reason",
           sessionKey: String(threadId),
           trace: {
-            traceId: `${eventKey}:agent`,
+            traceId,
             parentRequestId: args.sourceMessageId ?? eventKey,
             label: "convex.handleInboundImessage",
             phase: "query_reason",
@@ -980,20 +831,6 @@ export const processInbound = internalAction({
           "I couldn't format that response. Please try again in a moment.";
       }
 
-      const feedbackPromptedAt =
-        !isGroup &&
-        currentSenderIsLinked &&
-        !responseAlreadySent &&
-        !emailConfirmationPrompt &&
-        requirementImportResolution.authorization !== "confirmation" &&
-        Boolean(turn.routerRequestId) &&
-        shouldPromptForImessageRating(eventKey)
-          ? dayjs().valueOf()
-          : undefined;
-      if (feedbackPromptedAt) {
-        responseText = `${responseText.trim()}\n\n${IMESSAGE_RATING_PROMPT}`;
-      }
-
       const responseAttachments: Array<{
         url: string;
         filename: string;
@@ -1057,7 +894,6 @@ export const processInbound = internalAction({
             role: "agent",
             content: responseText,
             routerRequestId: turn.routerRequestId,
-            feedbackPromptedAt,
             responseMessageId: `${eventKey}:response`,
             referencedPolicyIds:
               runState.presentedPolicyIds.length > 0
@@ -1138,17 +974,7 @@ export const processInbound = internalAction({
               sourceThreadMessageId: agentResponseMessageId,
             })
           : null;
-      const appCards = [
-        ...(emailDraftCard ? [emailDraftCard] : []),
-        ...(await mintImessageAppCards(ctx, {
-          org,
-          threadId,
-          sourceThreadMessageId: agentResponseMessageId,
-          createdByUserId: user._id,
-          presentedPolicyIds: runState.presentedPolicyIds,
-          artifacts: imessageToolArtifacts,
-        })),
-      ];
+      const appCards = emailDraftCard ? [emailDraftCard] : [];
       await scheduleThreadHistoryCompaction(ctx, threadId);
 
       return await finish(

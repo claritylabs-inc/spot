@@ -4,6 +4,7 @@ import { ChevronRight, CircleAlert, SquareTerminal } from "lucide-react";
 
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { StatusTag, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
+import { ChatDisclosure } from "@/components/chat/disclosure";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import type {
   OperatorAgentConfirmation,
@@ -12,6 +13,8 @@ import type {
 } from "@/lib/operator-agent-api";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
+
+const DISCLOSURE_SUMMARY = "text-muted-foreground hover:text-foreground";
 
 function formatToolValue(value: string) {
   try {
@@ -48,16 +51,20 @@ function activityStatus(
   return { label: "Finished", tone: "neutral", indicator: "complete" };
 }
 
-type ActivityEntry = {
+export type OperatorActivityEntry = {
   request: OperatorAgentMessage;
   response?: OperatorAgentMessage;
   confirmations: OperatorAgentConfirmation[];
 };
 
 type ConversationEntry =
-  | { kind: "message"; activity: ActivityEntry }
-  | { kind: "tool_calls"; activities: ActivityEntry[] };
+  | { kind: "message"; activity: OperatorActivityEntry }
+  | { kind: "tool_calls"; activities: OperatorActivityEntry[] };
 
+/**
+ * Pairs direct tool requests with their responses and confirmations, and
+ * folds consecutive settled read-only calls into one collapsible group.
+ */
 export function operatorConversationEntries(
   detail: Pick<OperatorAgentThreadDetail, "messages" | "confirmations">,
 ): ConversationEntry[] {
@@ -93,7 +100,7 @@ export function operatorConversationEntries(
     const response = request.isDirectToolRequest
       ? responses.get(request.id)
       : undefined;
-    const activity: ActivityEntry = {
+    const activity: OperatorActivityEntry = {
       request,
       response,
       confirmations: [
@@ -125,27 +132,23 @@ export function operatorConversationEntries(
 export function OperatorToolActivityGroup({
   activities,
 }: {
-  activities: ActivityEntry[];
+  activities: OperatorActivityEntry[];
 }) {
   const errorCount = activities.filter(
     ({ response }) => activityStatus(response, false).label === "Failed",
   ).length;
   return (
-    <details className="group/calls min-w-0">
-      <summary
-        className={cn(
-          "flex w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden",
-          typeStyle("caption.default"),
-        )}
-      >
-        <ChevronRight className="size-4 shrink-0 group-open/calls:rotate-90" />
+    <ChatDisclosure
+      summaryClassName={DISCLOSURE_SUMMARY}
+      summary={
         <span>
           {activities.length} tool {activities.length === 1 ? "call" : "calls"}
           {errorCount > 0
             ? `, ${errorCount} ${errorCount === 1 ? "error" : "errors"}`
             : ""}
         </span>
-      </summary>
+      }
+    >
       <div>
         {activities.map(({ request, response }) => (
           <OperatorToolActivity
@@ -156,47 +159,26 @@ export function OperatorToolActivityGroup({
           />
         ))}
       </div>
-    </details>
+    </ChatDisclosure>
   );
 }
 
-export function OperatorToolActivity({
+function ToolCallDetails({
   request,
   response,
-  awaitingApproval,
-  detailsOnly = false,
 }: {
   request: OperatorAgentMessage;
   response?: OperatorAgentMessage;
-  awaitingApproval: boolean;
-  detailsOnly?: boolean;
 }) {
-  const status = activityStatus(response, awaitingApproval);
   const calls = response?.toolCalls ?? [];
-  const result = response?.content.trim();
-  const showResult =
-    result &&
-    result !== `Completed: ${request.content}.` &&
-    !(awaitingApproval && result.startsWith("Confirmation required:"));
-
-  const toolDetails = (
+  return (
     <div>
-      <p
-        className={cn(
-          "pt-3 text-muted-foreground",
-          typeStyle("caption.default"),
-        )}
-      >
+      <p className={cn("pt-3 text-muted-foreground", typeStyle("caption.default"))}>
         API · {formatDisplayDateTime(request.createdAt)}
       </p>
       <div className="space-y-4 py-3">
         {calls.length === 0 ? (
-          <p
-            className={cn(
-              "text-muted-foreground",
-              typeStyle("caption.default"),
-            )}
-          >
+          <p className={cn("text-muted-foreground", typeStyle("caption.default"))}>
             No tool details recorded yet.
           </p>
         ) : (
@@ -245,6 +227,25 @@ export function OperatorToolActivity({
       </div>
     </div>
   );
+}
+
+export function OperatorToolActivity({
+  request,
+  response,
+  awaitingApproval,
+  detailsOnly = false,
+}: {
+  request: OperatorAgentMessage;
+  response?: OperatorAgentMessage;
+  awaitingApproval: boolean;
+  detailsOnly?: boolean;
+}) {
+  const status = activityStatus(response, awaitingApproval);
+  const result = response?.content.trim();
+  const showResult =
+    result &&
+    result !== `Completed: ${request.content}.` &&
+    !(awaitingApproval && result.startsWith("Confirmation required:"));
 
   if (detailsOnly || status.tone === "danger" || status.tone === "warning") {
     return (
@@ -264,30 +265,16 @@ export function OperatorToolActivity({
                 {showResult ? result : request.content}
               </p>
               {awaitingApproval ? (
-                <p
-                  className={cn(
-                    "mt-1 text-muted-foreground",
-                    typeStyle("caption.default"),
-                  )}
-                >
+                <p className={cn("mt-1 text-muted-foreground", typeStyle("caption.default"))}>
                   {status.label}
                 </p>
               ) : null}
             </div>
           </div>
         ) : null}
-        <details className="group/activity">
-          <summary
-            className={cn(
-              "flex w-fit cursor-pointer list-none items-center gap-1 rounded-md py-1 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden",
-              typeStyle("caption.default"),
-            )}
-          >
-            <ChevronRight className="size-3.5 shrink-0 group-open/activity:rotate-90" />
-            Details
-          </summary>
-          {toolDetails}
-        </details>
+        <ChatDisclosure compact summaryClassName={DISCLOSURE_SUMMARY} summary="Details">
+          <ToolCallDetails request={request} response={response} />
+        </ChatDisclosure>
       </div>
     );
   }
@@ -316,7 +303,7 @@ export function OperatorToolActivity({
           </div>
           <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground group-open/activity:rotate-90" />
         </summary>
-        {toolDetails}
+        <ToolCallDetails request={request} response={response} />
       </details>
       {showResult ? (
         <p

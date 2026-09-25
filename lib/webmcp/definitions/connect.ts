@@ -148,12 +148,4 @@ export const connectTools = {
     pages: ["/share/imessage"],
     inputSchema: schema(),
   }),
-  get_model_routing_report: imperative({
-    title: "Get model routing report",
-    description: "Read which AI model and provider Spot currently uses for each task.",
-    readOnly: true,
-    audience: "public",
-    pages: ["/weather"],
-    inputSchema: schema(),
-  }),
 };

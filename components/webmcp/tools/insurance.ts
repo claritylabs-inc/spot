@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { extractionState } from "@/lib/extraction-state";
 import { webMcpError } from "@/lib/webmcp/runtime";
 import {
   assertDate,
@@ -32,6 +33,8 @@ type Policy = {
   expirationDate?: string;
   extractionDataStage?: string;
   pipelineStatus?: string;
+  pipelineError?: string;
+  extractionReview?: unknown;
   uploadedBySide?: string;
 };
 
@@ -44,8 +47,7 @@ export function policyRow(policy: Policy) {
     lines_of_business: policy.linesOfBusiness ?? [],
     effective_date: policy.effectiveDate ?? null,
     expiration_date: policy.expirationDate ?? null,
-    extraction_status: policy.extractionDataStage ?? policy.pipelineStatus ?? null,
-    pipeline_status: policy.pipelineStatus ?? null,
+    extraction_state: extractionState(policy).kind,
     uploaded_by: policy.uploadedBySide ?? null,
     url: `/policies/${policy._id}`,
   };
@@ -399,7 +401,7 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
         mode,
         policies,
         message:
-          "Extraction runs in the background. Check progress with get_policy (extraction_status); use retry_policy_extraction if it fails.",
+          "Extraction runs in the background. Check progress with get_policy (extraction_state); use retry_policy_extraction if it fails.",
         next_tool: "get_policy",
       };
     },
@@ -416,13 +418,10 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
       return { status: "cancelled" };
     },
     retry_policy_extraction: async (input) => {
-      const result = await convex.action(api.actions.retryExtraction.retryExtraction, {
+      await convex.action(api.actions.retryExtraction.retryExtraction, {
         policyId: id<"policies">(input, "policy_id"),
-        mode: text(input, "mode") as "resume" | "restart" | undefined,
       });
-      return "error" in result && result.error
-        ? webMcpError(String(result.error))
-        : { status: "extraction_started" };
+      return { status: "extraction_started" };
     },
 
     list_certificates: async (input) => {
@@ -449,32 +448,6 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
               pdf_url: version.url,
             })),
           })),
-      };
-    },
-    list_certificate_review_jobs: async (input) => {
-      const jobs = await convex.query(api.certificateWorkflowJobs.listForOrg, {
-        orgId,
-        status: text(input, "status") as
-          | "review_required"
-          | "blocked_missing_contact"
-          | "sending"
-          | "sent"
-          | "cancelled"
-          | "failed"
-          | undefined,
-      });
-      return {
-        status: "ok",
-        jobs: jobs.map((job) => ({
-          job_id: job._id,
-          kind: job.kind,
-          status: job.status,
-          holder: job.holder?.displayName ?? null,
-          policy_id: job.policyId,
-          policy_number: job.policy?.policyNumber ?? null,
-          recipient_email: job.recipientEmail ?? null,
-          review_notes: job.reviewNotes ?? null,
-        })),
       };
     },
     generate_certificate: async (input) =>

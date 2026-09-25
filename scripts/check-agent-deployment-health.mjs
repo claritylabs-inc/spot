@@ -8,14 +8,6 @@ const RETRY_DELAY_MS = Number(
 const DEPLOYMENTS = JSON.parse(
   readFileSync(new URL("../config/deployments.json", import.meta.url), "utf8"),
 );
-const EXTRACTION_WORKER_PACKAGE = JSON.parse(
-  readFileSync(
-    new URL("../extraction-worker/package.json", import.meta.url),
-    "utf8",
-  ),
-);
-const EXPECTED_CL_SDK_VERSION =
-  EXTRACTION_WORKER_PACKAGE.dependencies?.["@claritylabs/cl-sdk"];
 
 function argValue(name) {
   const prefix = `--${name}=`;
@@ -117,13 +109,6 @@ const urls = {
       "iMessage worker health URL",
     ),
   operatorImessageWorkerHealth: optionalOperatorImessageWorkerHealthUrl(),
-  extractionWorkerHealth:
-    process.env.SPOT_EXTRACTION_WORKER_HEALTH_URL ??
-    envOrDefault(
-      deployment.extractionWorkerHealthUrlEnv,
-      deployment.extractionWorkerHealthUrl,
-      "extraction worker health URL",
-    ),
   clRouterHealth: optionalClRouterHealthUrl(),
   slackWorkerHealth: optionalSlackWorkerHealthUrl(),
 };
@@ -136,35 +121,6 @@ function validateSpotEnv(payload) {
     );
   }
 }
-
-function normalizeVersionSpec(value) {
-  return typeof value === "string"
-    ? value.trim().replace(/^[~^=v]+/, "")
-    : undefined;
-}
-
-function requireString(value, label) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${label} is missing`);
-  }
-  return value.trim();
-}
-
-function assertSameVersion(label, actual, expected) {
-  const normalizedActual = normalizeVersionSpec(actual);
-  const normalizedExpected = normalizeVersionSpec(expected);
-  if (
-    !normalizedActual ||
-    !normalizedExpected ||
-    normalizedActual !== normalizedExpected
-  ) {
-    throw new Error(
-      `${label} expected ${String(expected)} got ${String(actual)}`,
-    );
-  }
-}
-
-let convexAgentPayload;
 
 const checks = [
   ...(urls.clRouterHealth
@@ -224,30 +180,6 @@ const checks = [
           `emailDeliveryMode expected ${deployment.email.deliveryMode} got ${String(payload.emailDeliveryMode)}`,
         );
       }
-      const extractionWorker = payload.extractionWorker;
-      if (!extractionWorker || typeof extractionWorker !== "object") {
-        throw new Error(
-          "extractionWorker compatibility config missing from Convex health",
-        );
-      }
-      if (deployment.workers?.extractionProtocol) {
-        if (
-          extractionWorker.expectedProtocolVersion !==
-          deployment.workers.extractionProtocol
-        ) {
-          throw new Error(
-            `extractionWorker.expectedProtocolVersion expected ${deployment.workers.extractionProtocol} got ${String(extractionWorker.expectedProtocolVersion)}`,
-          );
-        }
-      }
-      if (EXPECTED_CL_SDK_VERSION) {
-        assertSameVersion(
-          "extractionWorker.expectedClSdkVersion",
-          extractionWorker.expectedClSdkVersion,
-          EXPECTED_CL_SDK_VERSION,
-        );
-      }
-      convexAgentPayload = payload;
       if (payload.operatorAgent?.modelConfigured !== true) {
         throw new Error("operatorAgent.modelConfigured expected true");
       }
@@ -393,59 +325,6 @@ const checks = [
         },
       ]
     : []),
-  {
-    name: "Extraction worker",
-    url: urls.extractionWorkerHealth,
-    validate(payload) {
-      if (payload.ok !== true) {
-        throw new Error(`reported ok=${String(payload.ok)}`);
-      }
-      validateSpotEnv(payload);
-      const expectedProtocol = deployment.workers?.extractionProtocol;
-      if (
-        expectedProtocol &&
-        payload.workerProtocolVersion !== expectedProtocol
-      ) {
-        throw new Error(
-          `unexpected protocol ${String(payload.workerProtocolVersion)}; expected ${expectedProtocol}`,
-        );
-      }
-      const convexExtractionWorker = convexAgentPayload?.extractionWorker;
-      if (
-        !convexExtractionWorker ||
-        typeof convexExtractionWorker !== "object"
-      ) {
-        throw new Error(
-          "Convex extraction worker compatibility config unavailable",
-        );
-      }
-      const convexExpectedProtocol = requireString(
-        convexExtractionWorker.expectedProtocolVersion,
-        "Convex extractionWorker.expectedProtocolVersion",
-      );
-      if (payload.workerProtocolVersion !== convexExpectedProtocol) {
-        throw new Error(
-          `workerProtocolVersion expected ${convexExpectedProtocol} got ${String(payload.workerProtocolVersion)}`,
-        );
-      }
-      const convexExpectedClSdkVersion = requireString(
-        convexExtractionWorker.expectedClSdkVersion,
-        "Convex extractionWorker.expectedClSdkVersion",
-      );
-      assertSameVersion(
-        "worker cl-sdk version",
-        payload.clSdkVersion,
-        convexExpectedClSdkVersion,
-      );
-      if (EXPECTED_CL_SDK_VERSION) {
-        assertSameVersion(
-          "worker cl-sdk package spec",
-          payload.clSdkVersion,
-          EXPECTED_CL_SDK_VERSION,
-        );
-      }
-    },
-  },
   ...(urls.slackWorkerHealth
     ? [
         {

@@ -14,7 +14,8 @@ import {
 } from "@claritylabs/cl-sync";
 
 type CachedQueryRecord<TValue> = SyncRecord & {
-  _id: "result";
+  /** The args key: cl-sync stores records per collection by `_id`. */
+  _id: string;
   value: TValue;
   updatedAt: number;
 };
@@ -32,7 +33,8 @@ function collectionFor<TValue>(name: string) {
     >;
   }
   const collection = defineCollection<CachedQueryRecord<TValue>, string>({
-    name: `spot.query.${name}`,
+    // v2: records were once all `_id: "result"`, so every args key shared one.
+    name: `spot.query.v2.${name}`,
     persist: true,
   });
   collections.set(
@@ -50,6 +52,13 @@ export function cachedQueryCollectionFor<TValue>(name: string) {
 
 export function cachedQueryArgsKey(args: unknown) {
   return stableHash(args);
+}
+
+export function cachedQueryResult<TValue>(
+  argsKey: string,
+  value: TValue,
+): CachedQueryRecord<TValue> {
+  return { _id: argsKey, value, updatedAt: dayjs().valueOf() };
 }
 
 function containsProcessingRecord(value: unknown) {
@@ -101,11 +110,7 @@ export function useCachedQuery<TQuery extends FunctionReference<"query">>(
 
     lastWrittenKeyRef.current = writeKey;
     void store.upsertCollection(collection, argsKey, [
-      {
-        _id: "result",
-        value: serverValue,
-        updatedAt: dayjs().valueOf(),
-      },
+      cachedQueryResult(argsKey, serverValue),
     ]);
   }, [argsKey, cacheName, collection, isSkipped, serverValue, store]);
 
@@ -131,11 +136,7 @@ export function useUpdateCachedQuery<TValue, TArgs>(
       if (current === undefined) return;
 
       await store.upsertCollection(collection, argsKey, [
-        {
-          _id: "result",
-          value: update(current),
-          updatedAt: dayjs().valueOf(),
-        },
+        cachedQueryResult(argsKey, update(current)),
       ]);
     },
     [collection, store],
@@ -163,11 +164,7 @@ export function useUpsertCachedQuery<TValue, TArgs>(
       if (current !== undefined && stableHash(current) === nextHash) return;
 
       await store.upsertCollection(collection, argsKey, [
-        {
-          _id: "result",
-          value: next,
-          updatedAt: dayjs().valueOf(),
-        },
+        cachedQueryResult(argsKey, next),
       ]);
     },
     [collection, store],
@@ -190,11 +187,7 @@ export function useSetCachedQuery<TValue, TArgs>(
       if (current !== undefined && stableHash(current) === nextHash) return;
 
       await store.upsertCollection(collection, argsKey, [
-        {
-          _id: "result",
-          value,
-          updatedAt: dayjs().valueOf(),
-        },
+        cachedQueryResult(argsKey, value),
       ]);
     },
     [collection, store],

@@ -5,6 +5,10 @@ import {
   type CarrierLegalEntityRelationship,
 } from "./carrierIdentity";
 import { CARRIER_IDENTITY_ENRICHMENT_VERSION } from "./carrierIdentityEnrichment";
+import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
+import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 
 export type CarrierSourceSpan = {
   id?: string;
@@ -170,7 +174,6 @@ type CarrierEvidence = {
   nodeIds: string[];
   spanIds: string[];
   text: string;
-  source: "source_node" | "source_span" | "same_column_clause";
   pageLevel: boolean;
   order: number;
 };
@@ -181,74 +184,6 @@ function sourceSpanId(span: CarrierSourceSpan) {
     : typeof span.spanId === "string"
       ? span.spanId
       : undefined;
-}
-
-function sourceSpanPage(span: CarrierSourceSpan) {
-  if (typeof span.pageStart === "number") return span.pageStart;
-  const location = span.location;
-  if (!location || typeof location !== "object") return undefined;
-  return typeof location.page === "number"
-    ? location.page
-    : typeof location.startPage === "number"
-      ? location.startPage
-      : undefined;
-}
-
-type CarrierSourceRect = {
-  page: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-function sourceSpanRect(
-  span: CarrierSourceSpan,
-): CarrierSourceRect | undefined {
-  if (!Array.isArray(span.bbox)) return undefined;
-  const boxes = span.bbox.filter((box): box is CarrierSourceRect =>
-    Boolean(
-      box &&
-      typeof box.page === "number" &&
-      typeof box.x === "number" &&
-      typeof box.y === "number" &&
-      typeof box.width === "number" &&
-      typeof box.height === "number",
-    )
-  );
-  if (boxes.length === 0) return undefined;
-  const page = boxes[0].page;
-  const pageBoxes = boxes.filter((box) => box.page === page);
-  const left = Math.min(...pageBoxes.map((box) => box.x));
-  const top = Math.min(...pageBoxes.map((box) => box.y));
-  const right = Math.max(...pageBoxes.map((box) => box.x + box.width));
-  const bottom = Math.max(...pageBoxes.map((box) => box.y + box.height));
-  return {
-    page,
-    x: left,
-    y: top,
-    width: right - left,
-    height: bottom - top,
-  };
-}
-
-function sameCarrierColumn(
-  anchor: CarrierSourceRect,
-  candidate: CarrierSourceRect,
-) {
-  if (anchor.page !== candidate.page) return false;
-  const overlap =
-    Math.min(anchor.x + anchor.width, candidate.x + candidate.width) -
-    Math.max(anchor.x, candidate.x);
-  const overlapRatio =
-    Math.max(0, overlap) / Math.max(1, Math.min(anchor.width, candidate.width));
-  const anchorCenter = anchor.x + anchor.width / 2;
-  const candidateCenter = candidate.x + candidate.width / 2;
-  return (
-    overlapRatio >= 0.3 ||
-    Math.abs(anchorCenter - candidateCenter) <=
-      Math.max(24, Math.min(anchor.width, candidate.width) * 0.45)
-  );
 }
 
 function carrierClauseText(text: string) {
@@ -279,144 +214,63 @@ function isCarrierIdentityEvidence(text: string) {
     LLOYDS_LED_BY_PATTERN.test(text);
 }
 
-function sameColumnCarrierEvidence(
-  sourceSpans: CarrierSourceSpan[],
-): CarrierEvidence[] {
-  return sourceSpans.flatMap((anchor, anchorIndex): CarrierEvidence[] => {
-    const anchorText = typeof anchor.text === "string" ? anchor.text : "";
-    if (
-      !isCarrierIdentityEvidence(anchorText) &&
-      !/\blloyd['’]?s\s+underwriters?\b/i.test(anchorText)
-    ) {
-      return [];
-    }
-    const page = sourceSpanPage(anchor);
-    const anchorRect = sourceSpanRect(anchor);
-    if (!anchorRect) return [];
-    const candidates = sourceSpans
-      .map((span, index) => ({ span, index, rect: sourceSpanRect(span) }))
-      .filter(({ span, rect }) => {
-        if (page !== undefined && sourceSpanPage(span) !== page) return false;
-        if (!rect || span.sourceUnit === "page") return false;
-        const verticalDistance = Math.max(
-          0,
-          anchorRect.y - (rect.y + rect.height),
-          rect.y - (anchorRect.y + anchorRect.height),
-        );
-        const likelyMultiColumnAggregate =
-          anchorRect.width < 350 && rect.width > 400;
-        return (
-          !likelyMultiColumnAggregate &&
-          sameCarrierColumn(anchorRect, rect) &&
-          verticalDistance <= 120
-        );
-      })
-      .filter((candidate, index, all) => {
-        const id = sourceSpanId(candidate.span);
-        const text =
-          typeof candidate.span.text === "string"
-            ? candidate.span.text.replace(/\s+/g, " ").trim()
-            : "";
-        const key = `${id ?? ""}|${text}|${candidate.rect?.x}|${candidate.rect?.y}`;
-        return all.findIndex((item) => {
-          const itemId = sourceSpanId(item.span);
-          const itemText =
-            typeof item.span.text === "string"
-              ? item.span.text.replace(/\s+/g, " ").trim()
-              : "";
-          return (
-            `${itemId ?? ""}|${itemText}|${item.rect?.x}|${item.rect?.y}` ===
-            key
-          );
-        }) === index;
-      });
-    candidates.sort((left, right) => {
-      if (left.rect && right.rect) {
-        return (
-          left.rect.y - right.rect.y ||
-          left.rect.x - right.rect.x ||
-          left.index - right.index
-        );
-      }
-      return left.index - right.index;
-    });
-    const anchorPosition = candidates.findIndex(
-      ({ index }) => index === anchorIndex,
-    );
-    if (anchorPosition < 0) return [];
-    const evidence: CarrierEvidence[] = [];
-    for (let before = 0; before <= 6; before += 1) {
-      const start = anchorPosition - before;
-      if (start < 0) break;
-      for (let after = 0; after <= 4; after += 1) {
-        const end = anchorPosition + after + 1;
-        if (end > candidates.length) break;
-        const window = candidates.slice(start, end);
-        const text = carrierClauseText(
-          window
-            .map(({ span }) =>
-              typeof span.text === "string" ? span.text : ""
-            )
-            .filter(Boolean)
-            .join(" "),
-        );
-        if (!text || !isCarrierIdentityEvidence(text)) continue;
-        evidence.push({
-          nodeIds: [],
-          spanIds: window.flatMap(({ span }) => {
-            const id = sourceSpanId(span);
-            return id ? [id] : [];
-          }),
-          text,
-          source: "same_column_clause",
-          pageLevel: false,
-          order: anchorIndex,
-        });
-      }
-    }
-    return evidence;
-  });
-}
+const PAGE_LEVEL_NODE_KINDS = ["document", "page_group", "page"];
 
+/**
+ * Operating-name and Lloyd's clauses from source nodes, single spans, and the
+ * spans each extracted carrier party cites (joined in source order, since one
+ * clause is often split across several spans).
+ */
 function carrierIdentityEvidence(
   sourceTree: CarrierSourceNode[],
   sourceSpans: CarrierSourceSpan[],
+  parties: CarrierOperationalParty[],
 ) {
+  const spanOrder = new Map(
+    sourceSpans.map((span, index) => [sourceSpanId(span), index]),
+  );
+  const clause = (
+    rawText: string,
+    item: Omit<CarrierEvidence, "text">,
+  ): CarrierEvidence[] => {
+    const text = carrierClauseText(rawText);
+    return text && isCarrierIdentityEvidence(text) ? [{ ...item, text }] : [];
+  };
   const evidence: CarrierEvidence[] = [
-    ...sourceTree.flatMap((node, order): CarrierEvidence[] => {
-      const text = carrierClauseText(
-        node.textExcerpt ?? node.description ?? node.title,
-      );
-      return text && isCarrierIdentityEvidence(text)
-        ? [{
-            nodeIds: [node.id],
-            spanIds: node.sourceSpanIds,
-            text,
-            source: "source_node",
-            pageLevel:
-              ["document", "page_group", "page"].includes(node.kind) ||
-              node.sourceSpanIds.length > 8,
-            order,
-          }]
-        : [];
-    }),
-    ...sourceSpans.flatMap((span, order): CarrierEvidence[] => {
-      const text = carrierClauseText(
-        typeof span.text === "string" ? span.text : "",
-      );
+    ...sourceTree.flatMap((node, order) =>
+      clause(node.textExcerpt ?? node.description ?? node.title, {
+        nodeIds: [node.id],
+        spanIds: node.sourceSpanIds,
+        pageLevel:
+          PAGE_LEVEL_NODE_KINDS.includes(node.kind) ||
+          node.sourceSpanIds.length > 8,
+        order,
+      })
+    ),
+    ...sourceSpans.flatMap((span, order) => {
       const spanId = sourceSpanId(span);
-      return text && isCarrierIdentityEvidence(text)
-        ? [{
-            nodeIds: [],
-            spanIds: spanId ? [spanId] : [],
-            text,
-            source: "source_span",
-            pageLevel: span.sourceUnit === "page",
-            order,
-          }]
-        : [];
+      return clause(typeof span.text === "string" ? span.text : "", {
+        nodeIds: [],
+        spanIds: spanId ? [spanId] : [],
+        pageLevel: span.sourceUnit === "page",
+        order,
+      });
     }),
-    ...sameColumnCarrierEvidence(sourceSpans),
+    ...parties.flatMap((party) => {
+      const cited = sourceSpans
+        .filter((span) => party.sourceSpanIds.includes(sourceSpanId(span) ?? ""))
+        .sort((left, right) =>
+          (spanOrder.get(sourceSpanId(left)) ?? 0) -
+          (spanOrder.get(sourceSpanId(right)) ?? 0)
+        );
+      if (cited.length < 2) return [];
+      return clause(cited.map((span) => span.text ?? "").join(" "), {
+        nodeIds: party.sourceNodeIds,
+        spanIds: party.sourceSpanIds,
+        pageLevel: cited.some((span) => span.sourceUnit === "page"),
+        order: spanOrder.get(sourceSpanId(cited[0])) ?? 0,
+      });
+    }),
   ];
   const seen = new Set<string>();
   return evidence
@@ -433,7 +287,7 @@ function carrierIdentityEvidence(
         ...item.nodeIds,
         ...sourceTree
           .filter((node) =>
-            !["document", "page_group", "page"].includes(node.kind) &&
+            !PAGE_LEVEL_NODE_KINDS.includes(node.kind) &&
             node.sourceSpanIds.some((spanId) => item.spanIds.includes(spanId))
           )
           .map((node) => node.id),
@@ -455,17 +309,17 @@ function titleCaseCarrierName(value: string) {
     .join(" ");
 }
 
-function evidenceSpecificityScore(item: CarrierEvidence) {
-  return (
-    (item.source === "same_column_clause"
-      ? 50
-      : item.source === "source_span"
-        ? 35
-        : 20) -
-    (item.pageLevel ? 80 : 0) -
-    Math.floor(item.text.length / 120)
-  );
-}
+type CarrierCandidate = {
+  relationship: Exclude<CarrierIdentityDecision["relationship"], "unknown">;
+  displayName: string;
+  sourceName: string;
+  operatingName?: string;
+  legalNames: string[];
+  legalEntityRelationship: CarrierLegalEntityRelationship;
+  evidence: CarrierEvidence;
+  /** Tied to a source-backed carrier party; used only without a decision. */
+  linked: boolean;
+};
 
 function parseLloydsIdentity(item: CarrierEvidence) {
   const text = item.text.replace(/\s+/g, " ").trim();
@@ -510,6 +364,7 @@ function parseLloydsIdentity(item: CarrierEvidence) {
   const contractLabel = contract
     ? /^no/i.test(contract[1]) ? "contract no." : "contract number"
     : undefined;
+  const legalNames = labels.map((label) => `${displayName}, ${label}`);
   return {
     displayName,
     sourceName: [
@@ -519,55 +374,9 @@ function parseLloydsIdentity(item: CarrierEvidence) {
         ? `under ${contractLabel} ${contract[2]}`
         : undefined,
     ].filter(Boolean).join(", "),
-    legalNames: labels.map((label) => `${displayName}, ${label}`),
-    evidence: item,
-    score:
-      200 +
-      evidenceSpecificityScore(item) +
-      labels.length * 12 +
-      (contract ? 8 : 0) -
-      (CARRIER_CONTAMINATION_PATTERN.test(lead) ? 120 : 0) -
-      (CARRIER_FINANCIAL_CONTAMINATION_PATTERN.test(lead) ? 180 : 0),
+    legalNames,
+    legalEntityRelationship: legalNames.length <= 1 ? "single" as const : "and" as const,
   };
-}
-
-function lloydsLedByIdentity(
-  evidence: CarrierEvidence[],
-  carrierParties: CarrierOperationalParty[],
-) {
-  return evidence
-    .flatMap((item) => {
-      const parsed = parseLloydsIdentity(item);
-      if (!parsed) return [];
-      const specificNames = [
-        parsed.displayName,
-        parsed.sourceName,
-        ...parsed.legalNames,
-      ];
-      const belongsToCarrier = carrierParties.some((party) => {
-        if (
-          specificNames.some((name) =>
-            sameCarrierIdentityName(name, party.name),
-          )
-        ) {
-          return true;
-        }
-        if (!sameCarrierIdentityName(party.name, "Lloyd's Underwriters")) {
-          return false;
-        }
-        if (item.pageLevel) return false;
-        return (
-          party.sourceNodeIds.some((id) => item.nodeIds.includes(id)) ||
-          party.sourceSpanIds.some((id) => item.spanIds.includes(id))
-        );
-      });
-      return belongsToCarrier ? [parsed] : [];
-    })
-    .sort((left, right) =>
-      right.score - left.score ||
-      left.evidence.text.length - right.evidence.text.length ||
-      left.evidence.order - right.evidence.order
-    )[0];
 }
 
 function carrierLegalEntityRelationship(
@@ -605,46 +414,91 @@ function operatingNameAfterMarker(text: string) {
   return tail;
 }
 
-function operatingCarrierIdentity(
+function parseOperatingIdentity(item: CarrierEvidence) {
+  const legalNames = legalEntityNamesBeforeOperatingMarker(item.text);
+  const displayName = operatingNameAfterMarker(item.text);
+  if (!displayName || legalNames.length === 0) return undefined;
+  return {
+    displayName,
+    sourceName: displayName,
+    operatingName: displayName,
+    legalNames,
+    legalEntityRelationship: carrierLegalEntityRelationship(
+      legalNames.length,
+      item.text.slice(0, item.text.search(OPERATING_NAME_PATTERN)),
+    ),
+  };
+}
+
+function candidateNames(candidate: Pick<CarrierCandidate, "displayName" | "sourceName" | "legalNames">) {
+  return [candidate.displayName, candidate.sourceName, ...candidate.legalNames];
+}
+
+function sharesProvenance(party: CarrierOperationalParty, evidence: CarrierEvidence) {
+  return !evidence.pageLevel && (
+    party.sourceNodeIds.some((id) => evidence.nodeIds.includes(id)) ||
+    party.sourceSpanIds.some((id) => evidence.spanIds.includes(id))
+  );
+}
+
+/**
+ * Lloyd's and operating-name clauses parsed from source evidence, most
+ * specific evidence first. Jev chooses among these when a decision exists.
+ */
+function structuredCarrierCandidates(
   evidence: CarrierEvidence[],
-  carrierPartyNames: string[],
-) {
-  return evidence
-    .flatMap((item) => {
-      const legalNames = legalEntityNamesBeforeOperatingMarker(item.text);
-      const displayName = operatingNameAfterMarker(item.text);
-      const belongsToCarrier = [displayName, ...legalNames].some((name) =>
-        carrierPartyNames.some((partyName) =>
-          sameCarrierIdentityName(name, partyName)
-        )
-      );
-      if (
-        !displayName ||
-        legalNames.length === 0 ||
-        !belongsToCarrier
-      ) {
-        return [];
-      }
-      return [{
-        displayName,
-        legalNames,
-        relationship: carrierLegalEntityRelationship(
-          legalNames.length,
-          item.text.slice(0, item.text.search(OPERATING_NAME_PATTERN)),
-        ),
+  carrierParties: CarrierOperationalParty[],
+): CarrierCandidate[] {
+  const ordered = [...evidence].sort((left, right) =>
+    Number(left.pageLevel) - Number(right.pageLevel) ||
+    left.text.length - right.text.length ||
+    left.order - right.order
+  );
+  const candidates: CarrierCandidate[] = [];
+  const nameMatchesParty = (names: string[]) =>
+    carrierParties.some((party) =>
+      names.some((name) => sameCarrierIdentityName(name, party.name))
+    );
+  for (const item of ordered) {
+    const lloyds = parseLloydsIdentity(item);
+    if (lloyds) {
+      candidates.push({
+        ...lloyds,
+        relationship: "lloyds_syndicate",
         evidence: item,
-        score:
-          160 +
-          evidenceSpecificityScore(item) +
-          legalNames.length * 10 -
-          (CARRIER_CONTAMINATION_PATTERN.test(item.text) ? 120 : 0),
-      }];
-    })
+        linked:
+          nameMatchesParty(candidateNames(lloyds)) ||
+          carrierParties.some((party) =>
+            sameCarrierIdentityName(party.name, "Lloyd's Underwriters") &&
+            sharesProvenance(party, item)
+          ),
+      });
+    }
+    const operating = parseOperatingIdentity(item);
+    if (operating) {
+      candidates.push({
+        ...operating,
+        relationship: "operating_name",
+        evidence: item,
+        linked: nameMatchesParty(candidateNames(operating)),
+      });
+    }
+  }
+  const seen = new Set<string>();
+  return candidates
     .sort((left, right) =>
-      right.score - left.score ||
-      left.evidence.text.length - right.evidence.text.length ||
-      left.evidence.order - right.evidence.order
-    )[0];
+      Number(right.relationship === "lloyds_syndicate") -
+      Number(left.relationship === "lloyds_syndicate")
+    )
+    .filter((candidate) => {
+      const key = JSON.stringify([
+        normalizedCarrierIdentityText(candidate.sourceName),
+        candidate.legalNames.map(normalizedCarrierIdentityText),
+      ]);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function matchingPartySources(
@@ -663,7 +517,7 @@ function matchingPartySources(
 function carrierLegalEntity(
   name: string,
   parties: CarrierOperationalParty[],
-  evidence?: CarrierEvidence,
+  evidence?: Pick<CarrierEvidence, "nodeIds" | "spanIds">,
 ): CarrierLegalEntity {
   const partySources = matchingPartySources(parties, name);
   return {
@@ -675,6 +529,101 @@ function carrierLegalEntity(
     sourceSpanIds: [...new Set([
       ...partySources.sourceSpanIds,
       ...(evidence?.spanIds ?? []),
+    ])],
+  };
+}
+
+function carrierIdentityFromCandidate(
+  candidate: CarrierCandidate,
+  parties: CarrierOperationalParty[],
+): CarrierIdentity {
+  const legalEntities = candidate.legalNames.map((name) =>
+    carrierLegalEntity(name, parties, candidate.evidence)
+  );
+  return {
+    displayName: candidate.displayName,
+    sourceName: candidate.sourceName,
+    ...(candidate.operatingName ? { operatingName: candidate.operatingName } : {}),
+    legalEntities,
+    legalEntityRelationship: candidate.legalEntityRelationship,
+    sourceNodeIds: [...new Set([
+      ...candidate.evidence.nodeIds,
+      ...legalEntities.flatMap((entity) => entity.sourceNodeIds),
+    ])],
+    sourceSpanIds: [...new Set([
+      ...candidate.evidence.spanIds,
+      ...legalEntities.flatMap((entity) => entity.sourceSpanIds),
+    ])],
+  };
+}
+
+function sourceBackedCarrierParties(
+  profile: CarrierOperationalProfile,
+): CarrierOperationalParty[] {
+  const insurer = profile.insurer;
+  const insurerParty = {
+    role: "insurer",
+    name: typeof insurer?.value === "string" ? insurer.value.trim() : "",
+    sourceNodeIds: stringArray(insurer?.sourceNodeIds),
+    sourceSpanIds: stringArray(insurer?.sourceSpanIds),
+  };
+  return [...operationalParties(profile), insurerParty].filter((party) =>
+    party.name &&
+    ["carrier", "insurer"].includes(party.role.toLowerCase()) &&
+    (party.sourceNodeIds.length > 0 || party.sourceSpanIds.length > 0)
+  );
+}
+
+/** Extracted carrier/insurer parties, one candidate per distinct name. */
+function partyCarrierCandidates(
+  parties: CarrierOperationalParty[],
+): CarrierCandidate[] {
+  return uniqueCarrierNames(parties.map((party) => party.name)).map((name) => {
+    const sources = matchingPartySources(parties, name);
+    return {
+      relationship: "issuing_insurer",
+      displayName: name,
+      sourceName: name,
+      legalNames: [name],
+      legalEntityRelationship: "single",
+      evidence: {
+        nodeIds: [...new Set(sources.sourceNodeIds)],
+        spanIds: [...new Set(sources.sourceSpanIds)],
+        text: name,
+        pageLevel: false,
+        order: 0,
+      },
+      linked: true,
+    };
+  });
+}
+
+/** Deterministic fallback when no clause applies: the extracted carrier party. */
+function partyCarrierIdentity(
+  parties: CarrierOperationalParty[],
+): CarrierIdentity | undefined {
+  const displayName = (
+    parties.find((party) => party.role.toLowerCase() === "carrier") ??
+    parties[0]
+  )?.name;
+  if (!displayName) return undefined;
+  const displaySources = matchingPartySources(parties, displayName);
+  const legalEntities = uniqueCarrierNames(
+    parties.map((party) => party.name).filter(isCompleteLegalEntityName),
+  ).map((name) => carrierLegalEntity(name, parties));
+  return {
+    displayName,
+    sourceName: displayName,
+    legalEntities,
+    legalEntityRelationship:
+      legalEntities.length <= 1 ? "single" : "unspecified",
+    sourceNodeIds: [...new Set([
+      ...displaySources.sourceNodeIds,
+      ...legalEntities.flatMap((entity) => entity.sourceNodeIds),
+    ])],
+    sourceSpanIds: [...new Set([
+      ...displaySources.sourceSpanIds,
+      ...legalEntities.flatMap((entity) => entity.sourceSpanIds),
     ])],
   };
 }
@@ -727,156 +676,145 @@ export function preserveCurrentCarrierBranding(
   };
 }
 
-export function buildCarrierIdentityFromSourceEvidence(params: {
+// Owner: P4 (docs/architecture/convex-section-extraction.md). Jev choice among
+// deterministic carrier candidates; consumed by buildCarrierIdentityFromSourceEvidence.
+export type CarrierIdentityDecision = {
+  version: "carrier-identity-decision-v1";
+  /** Exact candidate name chosen from deterministic source evidence; null when none fits. */
+  insurerLegalName: string | null;
+  relationship: "issuing_insurer" | "operating_name" | "lloyds_syndicate" | "unknown";
+  confidence: number;
+  sourceSpanIds: string[];
+  /** Set when Jev was not confident enough to choose; operators should confirm the carrier. */
+  reviewReason?: string;
+};
+
+type CarrierEvidenceParams = {
   operationalProfile: CarrierOperationalProfile;
   sourceTree: CarrierSourceNode[];
   sourceSpans?: CarrierSourceSpan[];
-}): CarrierIdentity | undefined {
-  const parties = operationalParties(params.operationalProfile);
-  const evidence = carrierIdentityEvidence(
-    params.sourceTree,
-    params.sourceSpans ?? [],
-  );
-  const insurerValue = params.operationalProfile.insurer;
-  const insurerValueIsSourceBacked =
-    stringArray(insurerValue?.sourceNodeIds).length > 0 ||
-    stringArray(insurerValue?.sourceSpanIds).length > 0;
-  const insurerValueName =
-    typeof insurerValue?.value === "string" && insurerValueIsSourceBacked
-      ? insurerValue.value.trim()
-      : undefined;
-  const sourceBackedCarrierParties = [
-    ...parties.filter((party) =>
-      ["carrier", "insurer"].includes(party.role.toLowerCase()) &&
-      (party.sourceNodeIds.length > 0 || party.sourceSpanIds.length > 0)
-    ),
-    ...(insurerValueName
-      ? [{
-          role: "insurer",
-          name: insurerValueName,
-          sourceNodeIds: stringArray(insurerValue?.sourceNodeIds),
-          sourceSpanIds: stringArray(insurerValue?.sourceSpanIds),
-        }]
-      : []),
-  ];
-  const carrierPartyNames = uniqueCarrierNames(
-    sourceBackedCarrierParties.map((party) => party.name),
-  );
-  const lloydsIdentity = lloydsLedByIdentity(
-    evidence,
-    sourceBackedCarrierParties,
-  );
-  const operatingIdentity = operatingCarrierIdentity(
-    evidence,
-    carrierPartyNames,
-  );
-  const carrierParty = sourceBackedCarrierParties.find((party) =>
-    party.role.toLowerCase() === "carrier"
-  );
-  const insurerParties = sourceBackedCarrierParties.filter((party) =>
-    party.role.toLowerCase() === "insurer"
-  );
+};
 
-  if (lloydsIdentity) {
-    const legalEntities = lloydsIdentity.legalNames.map((name) =>
-      carrierLegalEntity(
-        name,
-        sourceBackedCarrierParties,
-        lloydsIdentity.evidence,
-      )
-    );
-    return {
-      displayName: lloydsIdentity.displayName,
-      sourceName: lloydsIdentity.sourceName,
-      legalEntities,
-      legalEntityRelationship:
-        legalEntities.length <= 1 ? "single" : "and",
-      sourceNodeIds: [...new Set([
-        ...lloydsIdentity.evidence.nodeIds,
-        ...legalEntities.flatMap((entity) => entity.sourceNodeIds),
-      ])],
-      sourceSpanIds: [...new Set([
-        ...lloydsIdentity.evidence.spanIds,
-        ...legalEntities.flatMap((entity) => entity.sourceSpanIds),
-      ])],
-    };
-  }
-
-  if (operatingIdentity) {
-    const legalEntities = operatingIdentity.legalNames.map((name) =>
-      carrierLegalEntity(
-        name,
-        sourceBackedCarrierParties,
-        operatingIdentity.evidence,
-      )
-    );
-    return {
-      displayName: operatingIdentity.displayName,
-      sourceName: operatingIdentity.displayName,
-      operatingName: operatingIdentity.displayName,
-      legalEntities,
-      legalEntityRelationship: operatingIdentity.relationship,
-      sourceNodeIds: [...new Set([
-        ...operatingIdentity.evidence.nodeIds,
-        ...legalEntities.flatMap((entity) => entity.sourceNodeIds),
-      ])],
-      sourceSpanIds: [...new Set([
-        ...operatingIdentity.evidence.spanIds,
-        ...legalEntities.flatMap((entity) => entity.sourceSpanIds),
-      ])],
-    };
-  }
-
-  const insurerParty = insurerParties[0];
-  const displayParty = carrierParty ?? insurerParty;
-  const displayName =
-    displayParty?.name ??
-    insurerValueName;
-  if (!displayName) return undefined;
-  const insurerValueMatchesDisplay =
-    insurerValueName !== undefined &&
-    sameCarrierIdentityName(displayName, insurerValueName);
-  const displaySourceNodeIds = [
-    ...(displayParty?.sourceNodeIds ?? []),
-    ...(insurerValueMatchesDisplay
-      ? stringArray(insurerValue?.sourceNodeIds)
-      : []),
-  ];
-  const displaySourceSpanIds = [
-    ...(displayParty?.sourceSpanIds ?? []),
-    ...(insurerValueMatchesDisplay
-      ? stringArray(insurerValue?.sourceSpanIds)
-      : []),
-  ];
-  if (
-    displaySourceNodeIds.length === 0 &&
-    displaySourceSpanIds.length === 0
-  ) {
-    return undefined;
-  }
-  const legalNames = uniqueCarrierNames([
-    ...sourceBackedCarrierParties
-      .map((party) => party.name)
-      .filter(isCompleteLegalEntityName),
-  ]);
-  const legalEntities = legalNames.map((name) =>
-    carrierLegalEntity(name, sourceBackedCarrierParties)
+function carrierCandidates(params: CarrierEvidenceParams) {
+  const parties = sourceBackedCarrierParties(params.operationalProfile);
+  const structured = structuredCarrierCandidates(
+    carrierIdentityEvidence(params.sourceTree, params.sourceSpans ?? [], parties),
+    parties,
   );
   return {
-    displayName,
-    sourceName: displayName,
-    legalEntities,
-    legalEntityRelationship:
-      legalEntities.length <= 1 ? "single" : "unspecified",
-    sourceNodeIds: [...new Set([
-      ...displaySourceNodeIds,
-      ...legalEntities.flatMap((entity) => entity.sourceNodeIds),
-    ])],
-    sourceSpanIds: [...new Set([
-      ...displaySourceSpanIds,
-      ...legalEntities.flatMap((entity) => entity.sourceSpanIds),
-    ])],
+    parties,
+    structured,
+    all: [...structured, ...partyCarrierCandidates(parties)],
   };
+}
+
+const MAX_CARRIER_CANDIDATES = 24;
+
+export async function resolveCarrierIdentityDecision(args: {
+  ctx: ActionCtx;
+  orgId: Id<"organizations">;
+  operationalProfile: CarrierOperationalProfile;
+  sourceTree: CarrierSourceNode[];
+  sourceSpans?: CarrierSourceSpan[];
+  traceId?: string;
+}): Promise<CarrierIdentityDecision | null> {
+  const { structured, all } = carrierCandidates(args);
+  // A lone extracted party needs no judgment: the deterministic path uses it.
+  if (structured.length === 0 && all.length <= 1) return null;
+  const candidates = all.slice(0, MAX_CARRIER_CANDIDATES);
+  const spanText = new Map(
+    (args.sourceSpans ?? []).map((span) => [sourceSpanId(span), span.text ?? ""]),
+  );
+  const evidenceText = (candidate: CarrierCandidate) =>
+    (candidate.relationship === "issuing_insurer"
+      ? candidate.evidence.spanIds.map((id) => spanText.get(id) ?? "").join(" ")
+      : candidate.evidence.text
+    ).replace(/\s+/g, " ").trim().slice(0, 600);
+  try {
+    const result = await clRouterDecide({
+      orgId: String(args.orgId),
+      task: "policy_extraction_carrier_identity",
+      state: {
+        extractedCarrierParties: all
+          .filter((candidate) => candidate.relationship === "issuing_insurer")
+          .map((candidate) => candidate.displayName),
+      },
+      questions: {
+        insurer: {
+          type: "choice",
+          instructions:
+            "Which candidate identifies the insurer that issued this policy: the risk-bearing legal entity or entities, not a broker, agent, MGA, reinsurer, or a policy merely referenced by this one? Candidates are quoted from the policy's own text. An operating-name clause lists legal entities trading under one brand. For Lloyd's placements, choose the led-by clause for this policy rather than one quoted from an underlying or scheduled policy. Choose none when no candidate is the issuing insurer.",
+          criteria: {
+            ...Object.fromEntries(candidates.map((candidate, index) => [
+              `candidate_${index}`,
+              {
+                name: candidate.sourceName,
+                legalEntities: candidate.legalNames,
+                presentation: candidate.relationship,
+                evidence: evidenceText(candidate) || candidate.sourceName,
+              },
+            ])),
+            none: "None of the candidates is the issuing insurer.",
+          },
+        },
+      },
+      trace: args.traceId ? { traceId: args.traceId } : undefined,
+    }, { telemetry: args.ctx });
+    const answer = result.answers.insurer;
+    if (answer?.type !== "choice") return null;
+    const confidence = Math.min(
+      answer.confidence,
+      answer.probabilities[answer.choice] ?? 0,
+    );
+    const chosen = candidates[Number(answer.choice.replace("candidate_", ""))];
+    if (!jevProceeds(confidence) || answer.choice === "none" || !chosen) {
+      return {
+        version: "carrier-identity-decision-v1",
+        insurerLegalName: null,
+        relationship: "unknown",
+        confidence,
+        sourceSpanIds: [],
+        ...(!jevProceeds(confidence)
+          ? {
+              reviewReason: `Carrier identity is ambiguous across ${candidates.length} source candidates; confirm the issuing insurer.`,
+            }
+          : {}),
+      };
+    }
+    return {
+      version: "carrier-identity-decision-v1",
+      insurerLegalName: chosen.legalNames[0] ?? chosen.displayName,
+      relationship: chosen.relationship,
+      confidence,
+      sourceSpanIds: chosen.evidence.spanIds,
+    };
+  } catch {
+    // Router failures keep the deterministic carrier identity.
+    return null;
+  }
+}
+
+export function buildCarrierIdentityFromSourceEvidence(params: CarrierEvidenceParams & {
+  carrierDecision?: CarrierIdentityDecision | null;
+}): CarrierIdentity | undefined {
+  const { parties, structured, all } = carrierCandidates(params);
+  const decidedName = params.carrierDecision?.insurerLegalName;
+  if (decidedName) {
+    const matches = all.filter((candidate) =>
+      candidateNames(candidate).some((name) =>
+        sameCarrierIdentityName(name, decidedName)
+      )
+    );
+    const decided =
+      matches.find((candidate) =>
+        candidate.relationship === params.carrierDecision?.relationship
+      ) ?? matches[0];
+    if (decided) return carrierIdentityFromCandidate(decided, parties);
+  }
+  const linked = structured.find((candidate) => candidate.linked);
+  return linked
+    ? carrierIdentityFromCandidate(linked, parties)
+    : partyCarrierIdentity(parties);
 }
 
 export function sourceSpanLikeFromStoredSource(

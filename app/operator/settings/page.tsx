@@ -1,13 +1,6 @@
 "use client";
 
-import { useModelOverrides } from "./model-overrides";
 import { useSearchParams } from "next/navigation";
-import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
-import {
-  SidebarMenuItem,
-  SidebarTooltipProvider,
-} from "@/components/app-sidebar/nav-item";
-import { Settings, Route, Users } from "lucide-react";
 import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -31,13 +24,7 @@ export default function OperatorSettingsPage() {
   const current = useCachedOperatorCurrent();
   const invitations = useOperatorInvite(!current || Boolean(current.activeImpersonation));
   const sectionParam = useSearchParams().get("section");
-  const section =
-    sectionParam === "models" || sectionParam === "team"
-      ? sectionParam
-      : "general";
-  const overrides = useModelOverrides(
-    !current || Boolean(current.activeImpersonation),
-  );
+  const section = sectionParam === "team" ? sectionParam : "general";
   const settings = useQuery(api.operator.getAgentSettings);
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
@@ -45,55 +32,9 @@ export default function OperatorSettingsPage() {
 
   return (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <SidebarTooltipProvider>
-          <SidebarHeader
-            collapsed={collapsed}
-            initials="OP"
-            headerOrgName="Settings"
-            onToggleCollapse={onToggleCollapse}
-            backHref="/operator/threads"
-          />
-          <div className="space-y-1 p-2">
-            <SidebarMenuItem
-              href="/operator/settings"
-              icon={Settings}
-              label="General"
-              active={section === "general"}
-              collapsed={collapsed}
-            />
-            <SidebarMenuItem
-              href="/operator/settings?section=models"
-              icon={Route}
-              label="Model overrides"
-              active={section === "models"}
-              collapsed={collapsed}
-            />
-            <SidebarMenuItem
-              href="/operator/settings?section=team"
-              icon={Users}
-              label="Team"
-              active={section === "team"}
-              collapsed={collapsed}
-            />
-          </div>
-        </SidebarTooltipProvider>
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      rightPanel={
-        section === "models"
-          ? overrides.drawer
-          : section === "team"
-            ? invitations.drawer
-            : mcp.drawer
-      }
-      actions={section === "models" ? overrides.action : undefined}
-      disablePersistentChat
-      disableCommandPalette
+      rightPanel={section === "team" ? invitations.drawer : mcp.drawer}
     >
-      {section === "models" ? (
-        overrides.panel
-      ) : section === "team" ? (
+      {section === "team" ? (
         invitations.panel
       ) : !settings || !current ? (
         <div className="flex h-64 items-center justify-center">

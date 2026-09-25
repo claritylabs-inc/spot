@@ -187,7 +187,7 @@ export default function OperatorLogsPage() {
   }
   return (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
+      sidebar={({ collapsed, onToggleCollapse }) => (
         <LogSidebar
           collapsed={collapsed}
           onToggleCollapse={onToggleCollapse}
@@ -198,7 +198,6 @@ export default function OperatorLogsPage() {
           onChange={changeFilters}
         />
       )}
-      customSidebarStorageKey="operator-sidebar"
       rightPanel={
         selected ? (
           <CallDetails
@@ -208,8 +207,6 @@ export default function OperatorLogsPage() {
           />
         ) : undefined
       }
-      disablePersistentChat
-      disableCommandPalette
       actions={
         <>
           {!fixedRange ? (

@@ -303,6 +303,7 @@ const policyDetailOverridesValidator = v.object({
     }),
   ),
   // Read compatibility for overrides saved before General Agent nomenclature.
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   mga: v.optional(policyDetailPartyValidator),
 });
 
@@ -455,7 +456,9 @@ const certificateHolderRelationshipKindValidator = v.union(
 );
 
 export default defineSchema({
+  // Deprecated: workspace scan removed; drop after data cleanup.
   ...googleWorkspaceScanTables,
+  // Deprecated: workspace scan removed; drop after data cleanup.
   ...scanReconciliationTables,
   ...authTables,
   ...markdownDocumentTables,
@@ -516,7 +519,7 @@ export default defineSchema({
     website: v.optional(v.string()),
     companyResearch: v.optional(companyResearchValidator),
     smokeMarker: v.optional(v.string()),
-    // Legacy company facts: accepted for the deletion migration only; no active writers.
+    // Deprecated: cleared by the removed removeCompanyDetails migration; no active writers.
     industry: v.optional(v.string()),
     industryVertical: v.optional(v.string()),
     mailingAddress: v.optional(orgMailingAddressValidator),
@@ -615,6 +618,7 @@ export default defineSchema({
     ),
     agentDisplayName: v.optional(v.string()),
   })
+    // Deprecated: workspace scan removed; drop after data cleanup.
     .index("scan_contact", ["primaryContactEmail"])
     .index("name", ["name"])
     .index("handle", ["agentHandle"])
@@ -721,6 +725,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("name", ["normalizedName"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   carrierIdentityBackfillResults: defineTable({
     policyId: v.id("policies"),
     outcome: v.union(
@@ -737,6 +742,7 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("outcome", ["outcome"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyDryRunPages: defineTable({
     runId: v.string(),
     cursorKey: v.string(),
@@ -750,6 +756,7 @@ export default defineSchema({
     .index("run", ["runId"])
     .index("run_cursor", ["runId", "cursorKey"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyWriteRuns: defineTable({
     runId: v.string(),
     orgId: v.optional(v.id("organizations")),
@@ -766,6 +773,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("run", ["runId"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyWritePages: defineTable({
     runId: v.string(),
     cursorKey: v.string(),
@@ -778,6 +786,7 @@ export default defineSchema({
     .index("run", ["runId"])
     .index("run_cursor", ["runId", "cursorKey"]),
 
+  // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
   acordTaxonomyWritePolicyResults: defineTable({
     runId: v.string(),
     cursorKey: v.string(),
@@ -1025,6 +1034,9 @@ export default defineSchema({
     .index("run_time", ["runId", "timestamp"])
     .index("expiration", ["expiresAt"]),
 
+  // Deprecated: the write path (modelSettings.updateGlobalRoutes and the
+  // operator model-overrides UI) is removed. Stored routes are frozen until
+  // modelSettings.clearOperatorModelOverridesInternal clears them.
   brokerModelSettings: defineTable({
     brokerOrgId: v.id("organizations"),
     routes: v.optional(
@@ -1036,7 +1048,9 @@ export default defineSchema({
         email_reply: v.optional(modelRouteValidator),
         extraction: v.optional(modelRouteValidator),
         extraction_preview: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_coverage_recovery: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         classification: v.optional(modelRouteValidator),
         requirement_extraction: v.optional(modelRouteValidator),
         org_memory_extraction: v.optional(modelRouteValidator),
@@ -1045,6 +1059,7 @@ export default defineSchema({
         triage: v.optional(modelRouteValidator),
         email_extraction: v.optional(modelRouteValidator),
         document_extraction: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         security: v.optional(modelRouteValidator),
         mailbox_coordinator: v.optional(modelRouteValidator),
         embeddings: v.optional(modelRouteValidator),
@@ -1056,6 +1071,10 @@ export default defineSchema({
 
   globalModelSettings: defineTable({
     key: v.literal("default"),
+    // Deprecated: no write path remains (modelSettings.updateGlobalRoutes and
+    // the operator model-overrides UI are removed). Still read by
+    // modelSettings.resolveOperatorAgentRoute/resolvePublicModelDefaults;
+    // frozen until modelSettings.clearOperatorModelOverridesInternal runs.
     explicitRouteOverrides: v.optional(v.array(v.string())),
     routes: v.optional(
       v.object({
@@ -1067,7 +1086,9 @@ export default defineSchema({
         email_reply: v.optional(modelRouteValidator),
         extraction: v.optional(modelRouteValidator),
         extraction_preview: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_coverage_recovery: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         classification: v.optional(modelRouteValidator),
         requirement_extraction: v.optional(modelRouteValidator),
         org_memory_extraction: v.optional(modelRouteValidator),
@@ -1076,12 +1097,16 @@ export default defineSchema({
         triage: v.optional(modelRouteValidator),
         email_extraction: v.optional(modelRouteValidator),
         document_extraction: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         security: v.optional(modelRouteValidator),
         mailbox_coordinator: v.optional(modelRouteValidator),
         embeddings: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_quality: v.optional(modelRouteValidator),
         extraction_form_inventory: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         extraction_coverage_cleanup: v.optional(modelRouteValidator),
+        // Deprecated: remove after stripRetiredRoutesInternal has run.
         fallback: v.optional(modelRouteValidator),
       }),
     ),
@@ -1615,6 +1640,7 @@ export default defineSchema({
     .index("started", ["startedAt"])
     .index("expiration", ["expiresAt"]),
 
+  // Deprecated: rating removed; drop after data cleanup.
   extractionReviews: defineTable({
     targetKind: v.union(
       v.literal("policy_extraction"),
@@ -1813,11 +1839,15 @@ export default defineSchema({
     carrier: v.string(), // backward compat — prefer security for new extractions
     security: v.optional(v.string()), // insurer/underwriter company (e.g. "Lloyd's Underwriters")
     underwriter: v.optional(v.string()), // named individual underwriter (e.g. "Libby Rudd")
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandId: v.optional(v.id("carrierBrands")),
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandStatus: v.optional(
       v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
     ),
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandAttempts: v.optional(v.number()),
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     carrierBrandAttemptedAt: v.optional(v.number()),
     carrierIdentityEnrichmentStatus: v.optional(
       v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
@@ -1825,6 +1855,7 @@ export default defineSchema({
     carrierIdentityEnrichmentAttempts: v.optional(v.number()),
     carrierIdentityEnrichmentAttemptedAt: v.optional(v.number()),
     // Read compatibility for policies extracted before generalAgent.
+    // Deprecated (legacy policies): remove after reextractLegacyPolicies has run.
     mga: v.optional(v.string()),
     broker: v.optional(v.string()),
     // Enriched entity fields (cl-sdk 1.2+)
@@ -2284,7 +2315,7 @@ export default defineSchema({
         effectiveDatePage: v.optional(v.number()),
       }),
     ),
-    // Full document structure with provenance
+    // Source-tree projection retained for current agent and certificate context.
     documentMetadata: v.optional(v.any()),
     documentOutline: v.optional(v.any()),
     sourceTreeVersion: v.optional(v.string()),
@@ -2300,8 +2331,7 @@ export default defineSchema({
     sourceTreeUpdatedAt: v.optional(v.number()),
     sourceTreeError: v.optional(v.string()),
     operationalProfile: v.optional(v.any()),
-    // Extracted document structure (sections, endorsements, conditions, etc.)
-    // Uses v.any() because the cl-sdk document schema evolves frequently
+    // Current extraction still stores the SDK document structure.
     document: v.optional(v.any()),
     // Dismissal flag — set when a policy row is dismissed/marked not-insurance.
     // Replaces the old extractionStatus: "not_insurance" value.
@@ -2391,8 +2421,8 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("status_updated", ["pipelineStatus", "updatedAt"]),
 
-  // Narrow queue for external Railway extraction workers. Claim polling reads
-  // this table instead of scanning all running pipeline records.
+  // Deprecated: extraction worker removed; drop after data cleanup. Was the
+  // narrow claim queue for external Railway extraction workers.
   policyExtractionQueue: defineTable({
     policyId: v.id("policies"),
     runId: v.id("policyExtractionRuns"),
@@ -2406,8 +2436,10 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("status_updated", ["status", "updatedAt"]),
 
-  // Lightweight first-read queue. Preview workers populate bounded canonical
-  // fields before the full source-backed extraction pipeline completes.
+  // Deprecated: extraction worker removed; drop after data cleanup. Was the
+  // lightweight first-read queue that preview workers populated with bounded
+  // canonical fields before the full source-backed extraction completed;
+  // preview fields are now written inline by the Convex section pipeline.
   policyExtractionPreviewQueue: defineTable({
     policyId: v.id("policies"),
     runId: v.id("policyExtractionRuns"),
@@ -2423,15 +2455,16 @@ export default defineSchema({
 
   // Storage-backed transient extraction artifacts. These records point at JSON
   // blobs in Convex file storage for pre-embedding chunk/source-span payloads,
-  // external worker completion payloads, and legacy cl-sdk checkpoint cleanup.
+  // section extraction results, and legacy cl-sdk checkpoint cleanup.
   policyExtractionArtifacts: defineTable({
     policyId: v.id("policies"),
     kind: v.union(
       v.literal("cl_sdk_checkpoint"),
       v.literal("embedding_payload"),
-      v.literal("external_completion_payload"),
       v.literal("source_bundle"),
       v.literal("section_result"),
+      v.literal("parsed_source"),
+      v.literal("section_plan"),
     ),
     storageId: v.id("_storage"),
     runId: v.optional(v.id("policyExtractionRuns")),
@@ -2445,8 +2478,11 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("policy_kind", ["policyId", "kind"]),
 
-  // Short-lived model-input assets staged by authenticated extraction workers
-  // or trusted Convex actions. Public URLs are signed and never persisted.
+  // Short-lived model-input assets staged by trusted Convex actions. Public
+  // URLs are signed and never persisted. `ownerKind: "worker"` and the
+  // `jobKind`/`jobId`/`leaseId` fields are deprecated: extraction worker
+  // removed, no new "worker" rows are created; kept for any lingering rows
+  // and dropped after data cleanup.
   routerAssets: defineTable({
     ownerKind: v.union(v.literal("worker"), v.literal("action")),
     jobKind: v.optional(
@@ -2480,7 +2516,8 @@ export default defineSchema({
     expiresAt: v.number(),
   }).index("expiration", ["expiresAt"]),
 
-  // One short-lived, never-queued policy lease used to smoke-test the deployed
+  // Deprecated: extraction worker removed; drop after data cleanup. Was a
+  // short-lived, never-queued policy lease used to smoke-test the deployed
   // extraction worker's authenticated asset and cl-router transports.
   workerRouterTransportSmokeRuns: defineTable({
     singleton: v.literal("active"),
@@ -2915,8 +2952,16 @@ export default defineSchema({
     attempts: v.number(),
     leaseId: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
+    // Deprecated: extraction worker removed; the pipeline runs entirely in
+    // Convex, so no lease is ever attributed to an external worker id.
     workerId: v.optional(v.string()),
+    // Deprecated: extraction worker removed; completion payloads are built
+    // and consumed inline by the Convex pipeline, never staged in storage.
     completionPayloadStorageId: v.optional(v.id("_storage")),
+    // Compact per-document/per-section pipeline progress. Large payloads
+    // (parsed source spans, section outputs) live in
+    // procurementProposalExtractionArtifacts so checkpoint saves stay small.
+    checkpoint: v.optional(v.any()),
     lastError: v.optional(v.string()),
     // Set when an operator stopped the job (cancel or archive). The row is
     // still `failed`, but it is a deliberate stop, not an extraction issue.
@@ -2931,12 +2976,20 @@ export default defineSchema({
   procurementProposalExtractionArtifacts: defineTable({
     proposalId: v.id("procurementProposals"),
     jobId: v.id("procurementProposalExtractionJobs"),
+    // Scopes an artifact to one proposal document when a job spans several
+    // documents (parsed source, section plan, section results, quote terms).
+    proposalDocumentId: v.optional(v.id("procurementProposalDocuments")),
     kind: v.string(),
-    value: v.any(),
+    value: v.optional(v.any()),
+    // Large payloads (parsed source spans, section outputs) are stored as
+    // files instead of inline `value` so checkpoint-adjacent writes stay
+    // small; small artifacts (logs) keep using `value`.
+    storageId: v.optional(v.id("_storage")),
     createdAt: v.number(),
   })
     .index("proposal", ["proposalId", "createdAt"])
-    .index("job", ["jobId", "createdAt"]),
+    .index("job", ["jobId", "createdAt"])
+    .index("job_document_kind", ["jobId", "proposalDocumentId", "kind"]),
 
   proposalSourceSpans: defineTable({
     orgId: v.id("organizations"),
@@ -3065,7 +3118,7 @@ export default defineSchema({
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     clientFileId: v.optional(v.id("clientFiles")),
     sourceEmailMessageId: v.optional(v.id("procurementEmailMessages")),
-    // Retired fields remain optional until simplifyProcurementFiles has run.
+    // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     purpose: v.optional(
       v.union(
         v.literal("requirements"),
@@ -3077,6 +3130,7 @@ export default defineSchema({
       ),
     ),
     label: v.string(),
+    // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     status: v.optional(
       v.union(
         v.literal("requested"),
@@ -3088,6 +3142,7 @@ export default defineSchema({
     brokerRelease: v.optional(
       v.union(v.literal("hidden"), v.literal("listed"), v.literal("attached")),
     ),
+    // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     brokerReleaseProposed: v.optional(
       v.union(v.literal("listed"), v.literal("attached")),
     ),
@@ -3123,6 +3178,7 @@ export default defineSchema({
     ),
     attempts: v.number(),
     leaseExpiresAt: v.optional(v.number()),
+    // Deprecated: cleared by the removed removeCompanyExtractionProfiles migration; no active writers.
     profile: v.optional(companyInformationProfileValidator),
     organizationFacts: v.optional(
       v.array(companyInformationOrganizationFactValidator),
@@ -3293,6 +3349,7 @@ export default defineSchema({
     .index("source", ["requirementSourceDocumentId"])
     .index("file", ["fileId"]),
 
+  // Deprecated: certificate renewal settings removed; drop after data cleanup.
   certificateWorkflowSettings: defineTable({
     clientOrgId: v.id("organizations"),
     renewalReissueEnabled: v.boolean(),
@@ -3301,6 +3358,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("client", ["clientOrgId"]),
 
+  // Deprecated: certificate renewal jobs removed; drop after data cleanup.
   certificateWorkflowJobs: defineTable({
     orgId: v.id("organizations"),
     brokerOrgId: v.optional(v.id("organizations")),
@@ -3508,9 +3566,7 @@ export default defineSchema({
     .index("user_organization", ["userId", "orgId"])
     .index("preference_scope", ["userId", "orgId", "type", "channel"]),
 
-  // ── Vector Search (cl-sdk 0.5.0+) ──
-
-  // Document chunks for semantic search over extracted bound policy content
+  // Deprecated: chunk retrieval removed; drop after data cleanup.
   documentChunks: defineTable({
     orgId: v.id("organizations"),
     policyId: v.id("policies"),
@@ -3561,7 +3617,11 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("span", ["spanId"])
     .index("policy_span", ["policyId", "spanId"])
-    .index("policy_parent", ["policyId", "parentSpanId"]),
+    .index("policy_parent", ["policyId", "parentSpanId"])
+    .searchIndex("search_text", {
+      searchField: "text",
+      filterFields: ["policyId", "sourceUnit"],
+    }),
 
   // Source-tree hierarchy over raw source spans. This is the canonical
   // retrieval/index layer for policy wording and source-backed facts.
@@ -3589,7 +3649,11 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("node", ["nodeId"])
     .index("policy_node", ["policyId", "nodeId"])
-    .index("policy_parent", ["policyId", "parentNodeId"]),
+    .index("policy_parent", ["policyId", "parentNodeId"])
+    .searchIndex("search_description", {
+      searchField: "description",
+      filterFields: ["policyId"],
+    }),
 
   policyDeclarationFacts: defineTable({
     orgId: v.id("organizations"),
@@ -3624,6 +3688,7 @@ export default defineSchema({
     .index("policy_active", ["policyId", "active"])
     .index("record", ["recordHash"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoConversations: defineTable({
     channel: publicDemoChannelValidator,
     senderHash: v.string(),
@@ -3647,6 +3712,7 @@ export default defineSchema({
     .index("cta_activity", ["ctaStatus", "lastMessageAt"])
     .index("email", ["leadEmail"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoChatLogs: defineTable({
     conversationId: v.id("publicDemoConversations"),
     channel: publicDemoChannelValidator,
@@ -3682,6 +3748,7 @@ export default defineSchema({
     .index("channel_created", ["channel", "createdAt"])
     .index("created", ["createdAt"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoSalesTranscripts: defineTable({
     conversationId: v.id("publicDemoConversations"),
     channel: publicDemoChannelValidator,
@@ -3868,6 +3935,7 @@ export default defineSchema({
     ),
     // Agent response metadata
     routerRequestId: v.optional(v.string()),
+    // Deprecated: rating removed; drop after data cleanup.
     feedbackPromptedAt: v.optional(v.number()),
     replyToMessageId: v.optional(v.id("threadMessages")),
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
@@ -3914,6 +3982,16 @@ export default defineSchema({
     agentRunStartedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     pendingEmailId: v.optional(v.id("pendingEmails")),
+    // Jev decision on whether this user message explicitly authorizes sending
+    // the pending/draft email now (convex/lib/emailSendAuthorization.ts).
+    emailSendAuthorization: v.optional(
+      v.object({
+        sendProbability: v.number(),
+        negatedProbability: v.number(),
+        model: v.string(),
+        decidedAt: v.number(),
+      }),
+    ),
   })
     .index("thread", ["threadId"])
     .index("organization_mutation", ["orgId", "clientMutationId"])
@@ -4258,6 +4336,7 @@ export default defineSchema({
     .index("interaction", ["interactionKey"])
     .index("presentation_created", ["presentationId", "createdAt"]),
 
+  // Deprecated: rating removed; drop after data cleanup.
   agentResponseFeedback: defineTable({
     orgId: v.id("organizations"),
     threadId: v.id("threads"),
@@ -4927,6 +5006,7 @@ export default defineSchema({
     lastRequestMs: v.number(),
   }).index("token", ["tokenId"]),
 
+  // Deprecated: public demo removed; drop after data cleanup.
   publicDemoRateCounters: defineTable({
     rateKey: v.string(),
     windowStart: v.number(),

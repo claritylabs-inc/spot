@@ -190,7 +190,7 @@ export const getActionContextInternal = internalQuery({
     channel: v.optional(operatorChannelValidator),
   },
   handler: async (ctx, args) => {
-    await requireOperatorForUser(ctx, args.operatorUserId);
+    const operator = await requireOperatorForUser(ctx, args.operatorUserId);
     if (args.threadId) {
       const thread = await ctx.db.get(args.threadId);
       if (
@@ -202,7 +202,10 @@ export const getActionContextInternal = internalQuery({
       }
     }
     const config = await configRow(ctx);
-    return { config: publicConfig(config) };
+    return {
+      config: publicConfig(config),
+      operatorEmail: operator.user.email ?? null,
+    };
   },
 });
 

@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import migrationsTest from "@convex-dev/migrations/test";
 import dayjs from "dayjs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -260,60 +259,6 @@ test("uploaded file visibility updates existing links while enforcing ownership"
   ).rejects.toThrow("belongs to another client");
 });
 
-test("retiring file metadata never expands a broker-specific grant", async () => {
-  const f = await fixture();
-  migrationsTest.register(f.t);
-  const request = await createRequest(f, "Legacy file visibility");
-  const outreach = await f.operator.mutation(
-    api.procurementRequests.createOutreach,
-    {
-      requestId: request.requestId,
-      brokerOrgId: f.brokerOrgId,
-    },
-  );
-  const clientFileId = await seedProposalFile(f);
-  const itemId = await f.t.run((ctx) =>
-    ctx.db.insert("procurementFileItems", {
-      requestId: request.requestId,
-      clientOrgId: f.clientOrgId,
-      clientFileId,
-      outreachId: outreach.outreachId,
-      purpose: "quote",
-      status: "received",
-      label: "Legacy broker file",
-      brokerRelease: "attached",
-      clientVisible: false,
-      createdAt: dayjs().valueOf(),
-      updatedAt: dayjs().valueOf(),
-    }),
-  );
-  await f.t.mutation(internal.migrations.simplifyProcurementFiles, {
-    cursor: null,
-  });
-  const item = await f.t.run((ctx) => ctx.db.get(itemId));
-  expect(item).toMatchObject({ clientFileId, brokerRelease: "hidden" });
-  expect(item).not.toHaveProperty("outreachId");
-  expect(item).not.toHaveProperty("purpose");
-  expect(item).not.toHaveProperty("status");
-  expect(
-    (
-      await f.operator.query(api.procurementPacket.preview, {
-        requestId: request.requestId,
-      })
-    ).files,
-  ).toEqual([]);
-  await f.operator.mutation(api.procurementRequests.updateFileItem, {
-    fileItemId: itemId,
-    brokerRelease: "attached",
-  });
-  expect(
-    (
-      await f.operator.query(api.procurementPacket.preview, {
-        requestId: request.requestId,
-      })
-    ).files,
-  ).toHaveLength(1);
-});
 
 async function replacePublicPacket(
   f: Awaited<ReturnType<typeof fixture>>,

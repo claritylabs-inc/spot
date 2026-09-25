@@ -8,15 +8,13 @@ export type ThreadAttachment = NonNullable<
 
 export type ToolArtifactData = { type: string; data: unknown };
 
-export type VendorComplianceArtifactData = ToolArtifactData;
-
-export type VendorComplianceArtifactRef = {
-  messageId: Id<"threadMessages">;
-  index: number;
-};
-
-export type MailboxArtifactRef = {
-  messageId: Id<"threadMessages">;
-  index: number;
-  emailIndex?: number;
-};
+/** Which artifact side panel is open, if any. */
+export type ThreadArtifactRef =
+  | { kind: "email"; messageId: Id<"threadMessages"> }
+  | { kind: "vendor_compliance"; messageId: Id<"threadMessages">; index: number }
+  | {
+      kind: "mailbox_task";
+      messageId: Id<"threadMessages">;
+      index: number;
+      emailIndex?: number;
+    };

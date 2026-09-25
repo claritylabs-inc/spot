@@ -74,20 +74,15 @@ function readNumber(value: unknown): number | undefined {
 }
 
 function relatedParentId(span: SourceSpanDoc): string | undefined {
-  const metadata = span.metadata ?? {};
   const parent =
     span.parentSpanId ??
     span.table?.rowSpanId ??
-    span.table?.tableSpanId ??
-    metadata.parentSpanId ??
-    metadata.rowSpanId ??
-    metadata.tableSpanId;
+    span.table?.tableSpanId;
   return typeof parent === "string" && parent.length > 0 ? parent : undefined;
 }
 
 function sourceUnit(span: SourceSpanDoc): string | undefined {
-  const value = span.sourceUnit ?? span.metadata?.sourceUnit ?? span.metadata?.elementType;
-  return typeof value === "string" ? value : undefined;
+  return span.sourceUnit;
 }
 
 export function usePolicySourceSpans(
@@ -154,10 +149,10 @@ export function highlightBoxesForSpans(
     (span.bbox ?? []).map((box) => ({
       ...box,
       coordinateWidth: readNumber(
-        span.metadata?.bboxCoordinateWidth ?? span.metadata?.pageWidth,
+        span.metadata?.bboxCoordinateWidth,
       ),
       coordinateHeight: readNumber(
-        span.metadata?.bboxCoordinateHeight ?? span.metadata?.pageHeight,
+        span.metadata?.bboxCoordinateHeight,
       ),
     })),
   );
@@ -211,8 +206,6 @@ export function SourceEvidenceButton({
     fallbackPage,
   );
   const page = target?.page;
-  const highlightBoxes = target?.highlightBoxes ?? [];
-  const hasExactHighlight = highlightBoxes.length > 0;
 
   if (!activeFileUrl || page == null) return null;
 
@@ -221,30 +214,13 @@ export function SourceEvidenceButton({
       type="button"
       onClick={(event) => {
         event.stopPropagation();
-        if (fileUrl || hasExactHighlight) {
-          pdf.openWithUrl(activeFileUrl, page, highlightBoxes);
-        } else {
-          pdf.navigateToPage(page);
-        }
+        pdf.openWithUrl(activeFileUrl, page, target?.highlightBoxes ?? []);
       }}
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors ${typeStyle("label.tag")} ${
-        hasExactHighlight
-          ? "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300"
-          : "border-border-emphasized bg-background text-muted-foreground hover:border-border-focus hover:bg-foreground/4"
-      } ${className}`}
-      title={
-        hasExactHighlight
-          ? `Highlight exact source on page ${page}`
-          : `Open source page ${page}; exact highlight unavailable`
-      }
-      aria-label={
-        hasExactHighlight
-          ? `Highlight exact source on page ${page}`
-          : `Open source page ${page}; exact highlight unavailable`
-      }
+      className={`inline-flex items-center gap-1 rounded-full border border-border-emphasized bg-background px-2 py-0.5 text-muted-foreground transition-colors hover:border-border-focus hover:bg-foreground/4 ${typeStyle("label.tag")} ${className}`}
+      aria-label={`Open source on page ${page}`}
     >
       <FileSearch className="size-3" />
-      p.{page}
+      p. {page}
     </button>
   );
 }

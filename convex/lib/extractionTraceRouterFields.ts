@@ -179,19 +179,3 @@ export function normalizeExtractionTraceRouterFields(
   };
 }
 
-export function latestCompletedRouterRequest(
-  events: readonly ExtractionTraceOriginEvent[],
-  taskKind: string,
-  beforeTimestamp: number,
-): { requestId: string; timestamp: number } | null {
-  const origin = [...events]
-    .filter((event) => event.timestamp <= beforeTimestamp)
-    .filter((event) => event.kind === "model_call")
-    .filter((event) => event.taskKind === taskKind)
-    .filter((event) => event.status === "complete")
-    .filter((event): event is ExtractionTraceOriginEvent & { routerRequestId: string } =>
-      typeof event.routerRequestId === "string" && event.routerRequestId.length > 0
-    )
-    .sort((left, right) => right.timestamp - left.timestamp)[0];
-  return origin ? { requestId: origin.routerRequestId, timestamp: origin.timestamp } : null;
-}

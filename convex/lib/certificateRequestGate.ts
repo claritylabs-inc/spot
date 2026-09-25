@@ -1,3 +1,7 @@
+import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
+import { clRouterDecide } from "./clRouterClient";
+import { jevProceeds } from "./jevThreshold";
 import {
   formatDocumentStructureForPrompt,
   formatSourceSpanLabel,
@@ -116,30 +120,7 @@ const ENDORSEMENT_PATTERNS: Array<{
   },
 ];
 
-const KIND_LABELS: Record<CertificateEndorsementKind, string> = {
-  additional_insured: "additional insured",
-  named_insured: "named insured",
-  waiver_of_subrogation: "waiver of subrogation",
-  primary_non_contributory: "primary and non-contributory",
-  loss_payee: "loss payee",
-  mortgagee: "mortgagee",
-  special_wording: "special certificate wording",
-  policy_change: "policy change",
-};
 
-const SUPPORT_PATTERNS: Record<CertificateEndorsementKind, RegExp> = {
-  additional_insured:
-    /\b(additional insured|additional insureds|blanket additional insured|automatic additional insured|where required by written contract|as required by contract|scheduled additional insured)\b/i,
-  named_insured: /\b(named insured|insured shown|named insured schedule|additional named insured)\b/i,
-  waiver_of_subrogation:
-    /\b(waiver of subrogation|transfer of rights.*waived|subrogation.*waived|where required by written contract|as required by contract)\b/i,
-  primary_non_contributory:
-    /\b(primary and non[-\s]?contributory|primary non[-\s]?contributory|non[-\s]?contributory|primary insurance)\b/i,
-  loss_payee: /\b(loss payee|loss payable|lender'?s loss payable)\b/i,
-  mortgagee: /\b(mortgagee|mortgage holder|lender'?s loss payable)\b/i,
-  special_wording: /\b(description of operations|certificate holder|additional insured|waiver|primary|non[-\s]?contributory)\b/i,
-  policy_change: /\b(endorsement|policy change|change request|amend(?:ment)?|modified by endorsement)\b/i,
-};
 
 export const EVIDENCE_GATED_ENDORSEMENTS: CertificateEndorsementKind[] = [
   "additional_insured",
@@ -161,14 +142,18 @@ export function isEvidenceGatedOnly(kinds: CertificateEndorsementKind[]) {
     : false;
 }
 
-const NEGATIVE_PATTERN =
-  /\b(not automatically|no automatic|must be endorsed|only by endorsement|requires endorsement|not included|excluded|no coverage|does not apply|not shown|not listed)\b/i;
 
-export function inferCertificateEndorsements(params: {
+export type CertificateEndorsementRequest = {
   certificateHolder?: string;
   requestText?: string;
   requestedEndorsements?: string[];
-}): CertificateEndorsementKind[] {
+  /** Kinds Jev detected (`decideCertificateEndorsements`); always unioned in. */
+  detectedEndorsements?: CertificateEndorsementKind[];
+};
+
+export function inferCertificateEndorsements(
+  params: CertificateEndorsementRequest,
+): CertificateEndorsementKind[] {
   const text = [
     params.certificateHolder,
     params.requestText,
@@ -176,7 +161,9 @@ export function inferCertificateEndorsements(params: {
   ]
     .filter(Boolean)
     .join("\n");
-  const kinds = new Set<CertificateEndorsementKind>();
+  const kinds = new Set<CertificateEndorsementKind>(
+    params.detectedEndorsements ?? [],
+  );
   for (const item of params.requestedEndorsements ?? []) {
     const normalized = normalizeKind(item);
     if (normalized) kinds.add(normalized);
@@ -187,75 +174,85 @@ export function inferCertificateEndorsements(params: {
   return [...kinds];
 }
 
-export function evaluateCertificateRequestGate(params: {
-  certificateHolder?: string;
-  requestText?: string;
-  requestedEndorsements?: string[];
-  policy?: Record<string, unknown> | null;
-  sourceSpans?: SourceSpanLike[];
-  sourceNodes?: SourceNodeLike[];
-}): CertificateGateVerdict {
-  const requiredChanges = inferCertificateEndorsements(params);
-  if (requiredChanges.length === 0) {
-    return { status: "allowed", requiredChanges, evidence: [] };
-  }
+export const CERTIFICATE_ENDORSEMENT_DETECTION_TASK =
+  "certificate_endorsement_detection";
 
-  const evidenceCorpus = buildEvidenceCorpus(params.policy, params.sourceSpans, params.sourceNodes);
-  if (evidenceCorpus.length === 0) {
-    return held({
-      reasonCode: "missing_policy_evidence",
-      reasonMessage:
-        "I need the broker to review this before issuing the certificate because I could not find source-backed policy wording for the requested endorsement language.",
-      requiredChanges,
-      evidence: [],
-    });
-  }
+const ENDORSEMENT_QUESTIONS: Record<CertificateEndorsementKind, string> = {
+  additional_insured:
+    "Does the request ask for the certificate holder or another party to be added, named, listed, or covered as an additional insured?",
+  named_insured:
+    "Does the request ask to change, correct, or add a named insured on the policy?",
+  waiver_of_subrogation:
+    "Does the request ask for a waiver of subrogation, or for the insurer to give up recovery rights against the holder?",
+  primary_non_contributory:
+    "Does the request ask for coverage to be primary and non-contributory, or to apply before the holder's own insurance?",
+  loss_payee:
+    "Does the request ask for a loss payee or loss payable designation?",
+  mortgagee:
+    "Does the request ask for a mortgagee, mortgage holder, or lender clause?",
+  special_wording:
+    "Does the request ask for specific wording, language, or description-of-operations text on the certificate?",
+  policy_change:
+    "Does the request ask for an endorsement, amendment, or other change to the policy itself, beyond issuing a certificate?",
+};
 
-  const evidence: CertificateGateEvidence[] = [];
-  const missing: CertificateEndorsementKind[] = [];
-  const conflicting: CertificateEndorsementKind[] = [];
-
-  for (const kind of requiredChanges) {
-    const support = evidenceCorpus
-      .filter((item) => SUPPORT_PATTERNS[kind].test(item.text))
-      .slice(0, 3);
-    const negative = support.filter((item) => NEGATIVE_PATTERN.test(item.text));
-    if (negative.length > 0) {
-      conflicting.push(kind);
-      evidence.push(...negative.map(toGateEvidence));
-      continue;
+/**
+ * Regex kinds are a fast positive signal; Jev adds the paraphrases the regex
+ * misses. The result is the union, so this is never less strict than the
+ * regex alone, and a router failure falls back to the regex result.
+ */
+export async function decideCertificateEndorsements(
+  ctx: Pick<ActionCtx, "runMutation">,
+  params: CertificateEndorsementRequest & { orgId: Id<"organizations"> },
+): Promise<CertificateEndorsementKind[]> {
+  const inferred = inferCertificateEndorsements(params);
+  const requestText = [
+    params.certificateHolder,
+    params.requestText,
+    ...(params.requestedEndorsements ?? []),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!requestText) return inferred;
+  try {
+    const result = await clRouterDecide(
+      {
+        orgId: String(params.orgId),
+        task: CERTIFICATE_ENDORSEMENT_DETECTION_TASK,
+        state: { requestText },
+        questions: Object.fromEntries(
+          (
+            Object.entries(ENDORSEMENT_QUESTIONS) as Array<
+              [CertificateEndorsementKind, string]
+            >
+          ).map(([kind, instructions]) => [
+            kind,
+            {
+              type: "noul" as const,
+              instructions: `${instructions} Only the request text counts; a plain certificate request with holder details is no.`,
+            },
+          ]),
+        ),
+      },
+      { telemetry: ctx },
+    );
+    const kinds = new Set(inferred);
+    for (const kind of Object.keys(
+      ENDORSEMENT_QUESTIONS,
+    ) as CertificateEndorsementKind[]) {
+      const answer = result.answers[kind];
+      if (answer?.type === "noul" && jevProceeds(answer.noul)) kinds.add(kind);
     }
-    if (support.length === 0) {
-      missing.push(kind);
-      continue;
-    }
-    evidence.push(...support.map(toGateEvidence));
-  }
-
-  if (conflicting.length > 0) {
-    return held({
-      reasonCode: "conflicting_policy_evidence",
-      reasonMessage: `I found policy wording that may require broker action before adding ${formatKinds(conflicting)} to this certificate.`,
-      requiredChanges,
-      evidence: uniqueEvidence(evidence),
+    return [...kinds];
+  } catch (error) {
+    console.warn("[certificateRequestGate] endorsement decision failed", {
+      error: error instanceof Error ? error.message : String(error),
     });
+    return inferred;
   }
-
-  if (missing.length > 0) {
-    return held({
-      reasonCode: "policy_change_required",
-      reasonMessage: `I could not confirm from the policy wording that ${formatKinds(missing)} can be added to this certificate without a policy change.`,
-      requiredChanges,
-      evidence: uniqueEvidence(evidence),
-    });
-  }
-
-  return {
-    status: "allowed",
-    requiredChanges,
-    evidence: uniqueEvidence(evidence),
-  };
 }
+
 
 export function buildCertificateGateEvidencePacket(params: {
   policy?: Record<string, unknown> | null;
@@ -479,40 +476,6 @@ function stringifyEvidence(value: unknown): string | undefined {
   }
 }
 
-function toGateEvidence(item: {
-  label: string;
-  text: string;
-  sourceSpanIds?: string[];
-  pageStart?: number;
-  pageEnd?: number;
-}): CertificateGateEvidence {
-  return {
-    label: item.label,
-    excerpt: item.text.slice(0, 900),
-    sourceSpanIds: item.sourceSpanIds,
-    pageStart: item.pageStart,
-    pageEnd: item.pageEnd,
-  };
-}
 
-function uniqueEvidence(evidence: CertificateGateEvidence[]) {
-  const seen = new Set<string>();
-  const result: CertificateGateEvidence[] = [];
-  for (const item of evidence) {
-    const key = `${item.sourceSpanIds?.join(",") ?? ""}:${item.excerpt.slice(0, 120)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(item);
-  }
-  return result.slice(0, 6);
-}
 
-function held(
-  params: Omit<Extract<CertificateGateVerdict, { status: "held" }>, "status">,
-): Extract<CertificateGateVerdict, { status: "held" }> {
-  return { status: "held", ...params };
-}
 
-function formatKinds(kinds: CertificateEndorsementKind[]) {
-  return kinds.map((kind) => KIND_LABELS[kind]).join(", ");
-}

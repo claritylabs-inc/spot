@@ -7,7 +7,6 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
-  buildSlackClassicFinalBlocks,
   buildSlackFinalBlocks,
   formatSlackAnswerText,
   SLACK_DEFAULT_PROCESSING_REACTION,
@@ -16,7 +15,6 @@ import {
   type SlackEmailDraftCard,
 } from "../lib/slackBlocks";
 import { MAX_POLICY_CARDS_PER_TURN } from "../lib/agentPolicyPresentation";
-import { sendClRouterFeedback } from "../lib/clRouterClient";
 
 // Break the generated API's recursive reference to this action module.
 const internalApi = internal as any;
@@ -92,22 +90,6 @@ async function recordProviderFailure(
 
 function hashPayload(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-const CLASSIC_BLOCK_FALLBACK_CODES = new Set([
-  "invalid_blocks",
-  "msg_blocks_too_long",
-  "msg_blocks_too_many",
-  "unsupported_block_type",
-  "unknown_block_type",
-]);
-
-function fallbackEligible(error: unknown): boolean {
-  return Boolean(
-    error instanceof SlackPresentationError &&
-    error.providerErrorCode &&
-    CLASSIC_BLOCK_FALLBACK_CODES.has(error.providerErrorCode),
-  );
 }
 
 async function bestEffortReaction(args: {
@@ -391,7 +373,7 @@ export const finish = internalAction({
     ]);
     const token = args.actionToken;
     const revision = presentation.revision + 1;
-    const richBlocks = token
+    const finalBlocks: SlackBlock[] = token
       ? buildSlackFinalBlocks({
           message,
           policies,
@@ -410,18 +392,7 @@ export const finish = internalAction({
             },
           },
         ];
-    const classicBlocks = token
-      ? buildSlackClassicFinalBlocks({
-          message,
-          policies,
-          emailDraft,
-          actionToken: token,
-          revision,
-          showHandoff: presentation.threadTs !== undefined,
-        })
-      : richBlocks;
-    let finalBlocks = richBlocks;
-    let payloadHash = hashPayload(finalBlocks);
+    const payloadHash = hashPayload(finalBlocks);
     const target = await presentationTarget(ctx, presentation);
 
     const deliver = async (blocks: SlackBlock[]) => {
@@ -459,20 +430,7 @@ export const finish = internalAction({
     };
 
     try {
-      let providerMessageId: string;
-      try {
-        providerMessageId = await deliver(richBlocks);
-      } catch (error) {
-        if (classicBlocks === richBlocks || !fallbackEligible(error))
-          throw error;
-        console.warn(
-          "[slack] Rich block types were rejected; retrying classic Block Kit",
-          error,
-        );
-        finalBlocks = classicBlocks;
-        payloadHash = hashPayload(finalBlocks);
-        providerMessageId = await deliver(finalBlocks);
-      }
+      const providerMessageId = await deliver(finalBlocks);
       await ctx.runMutation(internalApi.slackPresentation.markFinal, {
         id: presentation._id,
         providerMessageId,
@@ -530,7 +488,6 @@ export const clearReaction = internalAction({
 export const processInteraction = internalAction({
   args: {
     interactionId: v.id("slackInteractionEvents"),
-    feedbackModalOpened: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(
@@ -541,58 +498,7 @@ export const processInteraction = internalAction({
     const { interaction, presentation, actor } = context;
     let confirmation = "Done.";
     try {
-      if (interaction.actionId.startsWith("spot_response_feedback")) {
-        const rating =
-          interaction.value === "negative" ? "negative" : "positive";
-        const feedback = await ctx.runMutation(internalApi.slackPresentation.upsertFeedback, {
-          presentationId: presentation._id,
-          slackActorId: actor._id,
-          rating,
-        });
-        if (feedback.shouldSubmit && feedback.routerRequestId) {
-          try {
-            await sendClRouterFeedback({
-              requestId: feedback.routerRequestId,
-              idempotencyKey: `agent-response:${presentation.threadMessageId}:${actor._id}`,
-              source: "slack",
-              signals: { rating: rating === "positive" ? "up" : "down" },
-              trace: {
-                traceId: String(presentation.threadMessageId),
-                channel: "slack",
-                taskKind: "query_reason",
-              },
-            });
-            await ctx.runMutation(
-              internalApi.agentResponseFeedback.markRouterSignalInternal,
-              { feedbackId: feedback.id, status: "submitted" },
-            );
-          } catch (error) {
-            console.warn("[slack] Could not submit response rating to cl-router", error);
-            await ctx.runMutation(
-              internalApi.agentResponseFeedback.markRouterSignalInternal,
-              {
-                feedbackId: feedback.id,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-              },
-            );
-          }
-        }
-        if (rating === "negative" && args.feedbackModalOpened) {
-          await ctx.runMutation(
-            internalApi.slackPresentation.completeInteraction,
-            {
-              id: interaction._id,
-              status: "completed",
-            },
-          );
-          return;
-        }
-        confirmation =
-          rating === "positive"
-            ? "Thanks — your feedback was recorded."
-            : "Thanks — I recorded that this response needs work.";
-      } else if (interaction.actionId === "spot_request_human") {
+      if (interaction.actionId === "spot_request_human") {
         const result = await ctx.runMutation(
           internalApi.slack.requestHandoffFromAgent,
           {

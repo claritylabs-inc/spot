@@ -18,7 +18,7 @@ The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
   their existing publication credentials remain separate.
 - Vercel: configure `NPM_TOKEN` on the Spot project for Production, Preview,
   and any Development environment that installs dependencies.
-- Railway: extraction, tenant/operator iMessage, and Slack Docker builds install
+- Railway: tenant/operator iMessage and Slack Docker builds install
   only their worker manifests, which do not depend on UI. The mailbox scan
   Dockerfile performs no npm install. These builds need no UI package token.
   Keep each service rooted in its worker directory; a future root dependency
@@ -51,12 +51,12 @@ package versions. Deployment requires every validation job to pass. After
 validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
-2. waits for the exact commit's four established Railway contexts
-   (`spot-extraction-worker`, `imessage-worker`, `slack-worker`, and
+2. waits for the exact commit's three established Railway contexts
+   (`imessage-worker`, `slack-worker`, and
    `spot-mailbox-scan-worker`) plus `operator-imessage-worker` after its
    production health URL variable is configured, to report
    success, including explicit `No deployment needed` watch-path results;
-3. runs the deployed Convex, extraction, iMessage, Slack, and cl-router
+3. runs the deployed Convex, iMessage, Slack, and cl-router
    compatibility audit; and
 4. verifies the commit is still the branch head before emitting
    `release-ready-production`.
@@ -192,56 +192,50 @@ and [Vercel build concurrency](https://vercel.com/docs/builds/managing-builds).
 ## Shared-dev deployment
 
 Shared dev (`acoustic-caiman-755`) is an active integration lane and is not
-updated by the production-only `main` release workflow. Its Railway extraction
-worker is also active: it claims jobs and serves conversions rather than running
-health-only. Roll out an approved Spot commit to this lane separately from a
-clean checkout:
+updated by the production-only `main` release workflow. Extraction runs
+entirely through Convex in this lane, the same as every other environment —
+there is no Railway extraction-worker component. Roll out an approved Spot
+commit to this lane separately from a clean checkout:
 
 1. Create a private env file containing the dev-scoped `CONVEX_DEPLOY_KEY` and
    `CONVEX_DEPLOYMENT=dev:acoustic-caiman-755`. Verify the selected deployment
    before making changes with
    `npx convex function-spec --deployment acoustic-caiman-755`.
-2. Configure the shared-dev Convex and Railway worker with the migrated lane's
+2. Configure the shared-dev Convex deployment with the migrated lane's
    `CL_ROUTER_URL=https://tangible-warbler-253.convex.site`, matching inference
-   `CL_ROUTER_SECRET` and `CL_ROUTER_TENANT_ID=glass`. Set `CONVEX_SITE_URL=https://acoustic-caiman-755.convex.site` on
-   the Railway extraction worker and verify Convex's built-in
-   `CONVEX_SITE_URL` resolves to that same canonical site before deploying
-   either consumer. Do not try to overwrite the Convex system variable with
-   `npx convex env set`. Before changing either caller, audit the legacy
+   `CL_ROUTER_SECRET`, and `CL_ROUTER_TENANT_ID=glass`. Verify Convex's built-in
+   `CONVEX_SITE_URL` resolves to `https://acoustic-caiman-755.convex.site`
+   before deploying. Do not try to overwrite the Convex system variable with
+   `npx convex env set`. Before cutting over, audit the legacy
    `https://cl-router-dev.up.railway.app` routing state, pins, and freeze posture
    against the new router, export while the source is briefly paused, import
-   into `tangible-warbler-253`, and verify the imported controls before changing
-   both callers as one coordinated lane. Do not execute inference or mutate
-   controls on the destination before that import. Keep the legacy service and
-   database intact as rollback evidence. `disciplined-dove-883` is the retained
-   abandoned first import and `intent-egret-409` is the preserved prior
-   synthetic-data target; neither is an active caller destination or the target
-   for this history import. `tangible-warbler-253` is deployed from cl-router
+   into `tangible-warbler-253`, and verify the imported controls before the
+   cutover. Do not execute inference or mutate controls on the destination
+   before that import. Keep the legacy service and database intact as rollback
+   evidence. `disciplined-dove-883` is the retained abandoned first import and
+   `intent-egret-409` is the preserved prior synthetic-data target; neither is
+   an active caller destination or the target for this history import.
+   `tangible-warbler-253` is deployed from cl-router
    `402b7a2d38fa8453770a868bc4163363f33e99b5` by successful workflow
    `34531575428`; all 16 environment values were verified and all canonical
    tables and migration checkpoints were empty. It must remain guarded and
-   frozen until the next fresh transfer. Both active Spot shared-dev callers
-   remain on the legacy router until that coordinated cutover.
-   Keep existing consumer provider keys until the new code has been deployed
-   and exercised; the new runtime does not read them.
+   frozen until the next fresh transfer. The active Spot shared-dev caller
+   remains on the legacy router until that cutover. Keep existing consumer
+   provider keys until the new code has been deployed and exercised; the new
+   runtime does not read them.
 3. From the exact approved Spot commit, deploy the widening Convex schema and
    functions with `npx convex dev --once --env-file <shared-dev-env>`. This step
    must use the approved widening commit; the conditional narrowed schema no
    longer stores provider keys. The new `routerAssets` table/HTTP handler must
-   be present before the worker is updated.
-4. Deploy the same commit explicitly to Railway environment `dev`, service
-   `spot-extraction-worker`. Set
-   `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION` in Convex to the exact
-   `@claritylabs/cl-sdk` spec reported by the worker, then require both health
-   responses to agree before allowing new extraction jobs.
-5. Run the representative caller and worker smokes below. Only after those pass,
-   run the legacy-key cleanup and remove AI, retrieval, retired gateway, and
-   Moonshot credentials from shared-dev Convex and the Railway dev worker.
+   be present before this deploy completes.
+4. Run the representative caller smoke below. Only after it passes, run the
+   legacy-key cleanup and remove AI, retrieval, retired gateway, and Moonshot
+   credentials from shared-dev Convex.
 
 Do not use a Conductor worktree's ordinary `npx convex dev --once` for this
 step: it targets that worktree's native local deployment. Do not retire or
-disable the shared-dev worker while this lane remains the Conductor source and
-integration environment.
+disable this shared-dev Convex integration lane while it remains the Conductor
+source and integration environment.
 
 ### Router migration smoke paths
 
@@ -302,58 +296,13 @@ npx convex run --deployment acoustic-caiman-755 \
   '{"smokeRunId":"<result.cleanup.cleanupRequestId>"}'
 ```
 
-The extraction worker has a separate transport-only smoke. It does not create
-or claim a queue item and never invokes extraction completion, enrichment, or
-notifications. First create its single random, no-user/no-customer active-lease
-fixture with deploy-key authentication:
-
-```bash
-WORKER_SMOKE_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
-npx convex run --deployment acoustic-caiman-755 \
-  workerRouterTransportSmoke:createFixture \
-  "$(jq -nc --arg requestId "$WORKER_SMOKE_ID" '{requestId:$requestId}')"
-```
-
-Then use authenticated Railway SSH against the exact reviewed worker instance
-and run its compiled transport script. Keep the worker and router secrets in
-the service environment; explicitly remove every prohibited consumer routing
-flag and provider/retrieval credential from the child process:
-
-```bash
-railway ssh \
-  -p 21798fb8-c164-4eed-800c-c964978a9639 \
-  -s e8a4f55a-ae25-4d5e-ba0d-e18ea11271ac \
-  -e "$RAILWAY_ENVIRONMENT_ID" \
-  --deployment-instance "$RAILWAY_DEPLOYMENT_INSTANCE_ID" \
-  -- env \
-  -u AI_GATEWAY_API_KEY -u ANTHROPIC_API_KEY -u COHERE_API_KEY \
-  -u DEEPSEEK_API_KEY -u EXA_API_KEY -u FIREWORKS_API_KEY \
-  -u GOOGLE_API_KEY -u GOOGLE_GENERATIVE_AI_API_KEY -u MISTRAL_API_KEY \
-  -u MOONSHOTAI_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY \
-  -u PARALLEL_API_KEY -u VERCEL_AI_GATEWAY_API_KEY -u XAI_API_KEY \
-  -u CL_ROUTER_TASKS \
-  node /app/dist/routerTransportSmoke.js "$WORKER_SMOKE_ID"
-```
-
-The one stdout record must start with
-`[spot:worker-router-transport-smoke]` and contain sanitized JSON with
-`ok: true`, both cleanup acknowledgements true, and a nonempty router request
-ID. On interruption or a false cleanup acknowledgement, invoke the bounded
-marker-owned cleanup and repeat it after the asset-ledger retry if necessary:
-
-```bash
-npx convex run --deployment acoustic-caiman-755 \
-  actions/workerRouterTransportSmoke:cleanup \
-  "$(jq -nc --arg requestId "$WORKER_SMOKE_ID" '{requestId:$requestId}')"
-```
-
-Repeat both smokes with `--prod` only during the explicitly approved production
-acceptance window. Neither smoke proves the full extraction pipeline; that
+Repeat this smoke with `--prod` only during the explicitly approved production
+acceptance window. It does not prove the full extraction pipeline; that
 pipeline remains unverified until a separately approved synthetic product flow
-can run without customer or external-message effects. Never call a global
-worker claim RPC for smoke testing. Native-local Spot references are unreachable
-from the cloud router, so these staged-reference smokes target shared dev and
-production rather than ordinary Conductor-local Convex.
+can run without customer or external-message effects. Native-local Spot
+references are unreachable from the cloud router, so this staged-reference
+smoke targets shared dev and production rather than ordinary Conductor-local
+Convex.
 
 The iMessage number follows the same expand-first rule. Browser surfaces prefer
 `NEXT_PUBLIC_SPOT_IMESSAGE_NUMBER` and its `_DISPLAY` companion, and the worker
@@ -414,17 +363,20 @@ mock path. Photon is not part of the Slack deployment path.
 
 ## cl-router
 
-`cl-router` runs as separate Convex deployments. Spot and the extraction worker
-call it over authenticated TLS. It has no general Spot Convex API or data
+`cl-router` runs as separate Convex deployments. Spot calls it over
+authenticated TLS. It has no general Spot Convex API or data
 client; its only Spot-origin access is bounded `GET` requests for exact
 allowlisted, signed asset URLs and allowlisted permanent storage URLs.
+
+Jev decisions (`clRouterDecide`) proceed at 70% confidence by default. Set
+`JEV_PROCEED_THRESHOLD` (0.5–0.99) on a Convex deployment to change it; the value
+is read on every decision, so no redeploy is needed.
 
 Every deployed lane needs matching values:
 
 | Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Convex            | Verify the built-in `CONVEX_SITE_URL` resolves to the exact lane origin (`https://acoustic-caiman-755.convex.site` in dev; `https://actions.spot.insure` in production); do not set this system variable with `npx convex env set`. Configure `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. Also set `CL_ROUTER_ASSET_SIGNING_SECRET` (at least 32 characters), the dedicated HMAC key for signed router asset URLs; it falls back to `CL_ROUTER_SECRET` only while unset, so rotate it independently of `CL_ROUTER_SECRET` and never rotate the two together. |
-| Extraction worker | Exact lane `CONVEX_SITE_URL` matching Convex, `CL_ROUTER_URL`, `CL_ROUTER_SECRET`, `CL_ROUTER_TENANT_ID=glass` (the stable opaque compatibility key for existing router state)                                                                                                                                                                                                |
 | cl-router         | `SPOT_ENV`, `CL_ROUTER_SECRET`, `CL_ROUTER_ADMIN_SECRET`, `CL_ROUTER_SESSION_HMAC_SECRET`, exact comma-separated `CL_ROUTER_ASSET_HOSTS`, optional emergency `CL_ROUTER_FROZEN`, optional diagnostic `CL_ROUTER_SHADOW`, and provider/retrieval credentials. Do not set `DATABASE_URL`, `PORT`, Railway variables, or the retired Fastify refresh/scoring interval variables on the Convex router deployments. |
 
 Production callers use the canonical origin
@@ -436,7 +388,7 @@ The inference and session-HMAC secrets must be distinct within each
 lane and different between shared dev and production. Spot callers use only
 `CL_ROUTER_URL` and `CL_ROUTER_SECRET`. There is no operator freeze/pin admin
 surface and no `CL_ROUTER_ADMIN_SECRET` on Convex. Never expose provider
-credentials to browsers or configure them on extraction, iMessage, or mailbox
+credentials to browsers or configure them on iMessage or mailbox
 workers. AI provider, Parallel, and Exa credentials live only in the router
 environment. Spot settings snapshots, Convex, workers, and browser payloads
 never contain provider credentials.
@@ -456,7 +408,7 @@ secrets are configured and rotated independently once
 
 Typed classification decisions use `clRouterDecide` and authenticated
 `POST /v1/decide`, with the router-owned Jev pin and native Choice/Noul answers.
-Spot keeps no TypeSafe key. The app and extraction worker consume router-policy
+Spot keeps no TypeSafe key. The app consumes router-policy
 1.0.0; the checked-in API snapshot includes decision request/response fixtures.
 Deploy the router decision endpoint before this Spot version. Classification
 and security generation-route settings no longer control these decisions.
@@ -466,9 +418,7 @@ primitive, difficulty, and tiers); trace storage keeps legacy selection fields
 readable for older events.
 
 Before each operator model step, Spot filters tool definitions by current role,
-impersonation, and known integration configuration. It sends all remaining tools
-for router-owned selection, without `toolChoice`, and revalidates exact access
-and approvals at execution. There is no separate chat policy-evidence
+impersonation, and known integration configuration. Jev selects starter tool families; `expand_tools` can add more during a run. Spot sends the selected family definitions without `toolChoice` and revalidates exact access and approvals at execution. There is no separate chat policy-evidence
 classifier, completed-lookup gate, or recovery generation.
 
 Tool-bearing agent loops use `getAgentLanguageModelForOrg`,
@@ -498,9 +448,10 @@ The direct cl-sdk callback request builder applies the same staging and cleanup
 rule independently. Existing stored email, thread, web, and operator assets use
 their authorized Spot storage URL plus known size. PDFs and audio that require
 temporary storage use short-lived signed Spot references.
-Generated extraction screenshots that cannot safely remain inline are staged
-through the worker-authenticated, current-lease-bound Spot asset ledger and are
-deleted after the model call or by bounded expiry cleanup. The router never
+Section extraction slices each PDF section directly in Convex with `pdf-lib`
+and sends it inline; a slice is staged as a signed router asset only when the
+inline request would exceed the serialized size ceiling, and that staged asset
+is deleted after the model call or by bounded expiry cleanup. The router never
 persists prompt documents, images, or audio.
 
 Router asset host allowlists are exact. Shared dev permits permanent storage on
@@ -509,7 +460,7 @@ Router asset host allowlists are exact. Shared dev permits permanent storage on
 `merry-platypus-82.convex.cloud` and expiry-enforced references on the canonical
 `actions.spot.insure` host. Do not add wildcard or underlying-site fallbacks.
 
-The vendored `/v1/decide` and primitive vocabulary in `contracts/cl-router/policy.ts` is shared with the extraction worker. Spot uses authenticated `GET /v1/capabilities` `models` to constrain operator pins; cl-router selects models for unpinned calls and clamps
+The vendored `/v1/decide` and primitive vocabulary in `contracts/cl-router/policy.ts` is used by Convex. Spot uses authenticated `GET /v1/capabilities` `models` to constrain operator pins; cl-router selects models for unpinned calls and clamps
 `maxTokens` to the selected model. Spot validates function-tool schemas and
 fails closed on unsupported adapter inputs.
 
@@ -527,9 +478,7 @@ steps and never replays completed business tools after visible output.
 
 `/operator/logs` shows 30-day Spot `modelRoutingEvents` call history with
 router-owned request IDs, the router's selection summary, sanitized failed
-provider attempts, cost, and usage. Workflow feedback is submitted only when
-tool results contain concrete workflow outcomes; an HTTP 200 by itself is never
-scored as success.
+provider attempts, cost, and usage. The retired rating and router feedback paths are not used.
 
 The production router health URL is configured through
 `SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL`. The normal deployment audit includes
@@ -541,13 +490,12 @@ AGENT_HEALTH_ATTEMPTS=1 npm run check:agent-health -- --env=production
 
 The router must report the matching environment and a live database.
 Spot no longer calls `/admin/policy`, `/admin/rollups`, `/admin/score`, or
-`/admin/freeze`. Operator model picks and call history live in Spot.
+`/admin/freeze`. Call history lives in Spot. Operator model and web retrieval route settings have no UI; the retired overrides are cleared by the post-deploy checklist.
 
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.
 Conductor setup imports the source development router URL, inference secret,
-admin secret and tenant into native-local Convex and passes only the
-execution subset to the extraction worker. New setup filters provider keys from
+admin secret and tenant into native-local Convex. New setup filters provider keys from
 the copied root env and cloud import. Because Convex environment imports are
 additive, filtering alone does not delete values already stored by an older
 workspace; every setup run now explicitly removes those legacy AI, retrieval,
@@ -565,70 +513,27 @@ wildcard asset origins on a cloud router.
 
 ## Promotion checklist
 
-1. Run root CI, worker builds, Convex typecheck, and the cl-router OpenAPI and
-   full checks.
-2. In the target environment, explicitly save an image-capable route for
-   `operator_agent` and confirm the router capabilities endpoint reports its
-   provider configured. Spot sends this selection to cl-router as a request pin.
-3. Deploy the separate Convex cl-router lane and configure all required AI and
-   retrieval provider credentials there before deploying Spot consumers. State
-   import uses the temporary guarded migration procedure above; cl-router's
-   Convex deployments must not receive Postgres or Railway runtime variables.
-4. Configure the same bearer secret in the caller and router for that lane.
-   Before deploying callers or the extraction worker, set the exact lane
-   `CONVEX_SITE_URL` normally on the Railway worker and verify Convex's built-in
-   system value resolves to the same canonical origin; do not run
-   `npx convex env set CONVEX_SITE_URL`. The shared-dev value is
-   `https://acoustic-caiman-755.convex.site` and production is
-   `https://actions.spot.insure`.
-5. Before merging a commit whose Railway image uses the new asset actions,
-   explicitly deploy that exact commit's widening Convex schema/functions and
-   synchronize `EXTRACTION_WORKER_EXPECTED_CL_SDK_VERSION`. Complete the
-   value-free audit before removing consumer credentials or advancing to the
-   narrowed schema. Then merge and let the normal `main` workflow redeploy the
-   same Convex commit and gate Railway plus Vercel. This prevents Railway
-   autodeploy from starting the new worker against old Convex functions.
-6. Confirm `GET /health` and the Spot deployment health audit.
-7. Validate generation, tool loops, structured output, embeddings,
-   transcription, extraction assets, and retrieval in shared dev. Include a
-   staged asset whose router request remains small only because it uses the
-   lane's signed Spot reference, and confirm the router performs the bounded
-   allowlisted `GET`. Repeat that staged-reference smoke in production before
-   removing consumer credentials. Compare
-   route, error, latency, token, cost, tool completion, and workflow-failure
-   telemetry in `/operator/routing`.
-8. Keep the router environment panic and diagnostic overrides off. Use the
-   `/operator/routing` global freeze toggle when autonomous route changes should
-   pause or resume, then verify the new posture in the same dashboard.
-9. Page through the value-free legacy key audit with
-   `npx convex run modelSettingsMigration:auditLegacyProviderKeys '{"paginationOpts":{"cursor":null,"numItems":100}}'`, passing each returned opaque cursor until
-   `isDone`. Review `configuredKeyProviders`, `configuredRouteProviders`, and
-   each `routeRows` organization against router capabilities. The audit returns
-   provider names, row IDs, and counts only—never credential values, lengths,
-   prefixes, or hints. Review the dry run from
-   `npx convex run migrations:unsetLegacyBrokerModelProviderKeys '{"dryRun":true}'`,
-   then run `npx convex run migrations:runLegacyBrokerModelProviderKeyCleanup`.
-   Repeat the full paginated audit until every page reports
-   `legacyFieldRows: 0`; only a later narrowing release may remove the optional
-   schema field.
-10. Remove AI and retrieval provider keys from Convex and every Spot worker only
-    after the router-backed consumer deploy is verified. Roll back by reverting
-    the consumer release or pinning/freezing router policy—not by restoring
-    consumer provider credentials. Reserve `CL_ROUTER_FROZEN=1` for incidents
-    where the control surface is unavailable.
+1. Run root CI, worker builds, Convex typecheck, and the cl-router checks. Deploy router jobs and its router-owned worker before the Spot consumer.
+2. Configure `CL_ROUTER_URL` and `CL_ROUTER_SECRET` for the approved lane. Confirm the canonical Convex callback origin is reachable by the router; local Convex needs an HTTPS tunnel or local router worker, even for text jobs.
+3. Verify authenticated capabilities and the bounded `actions/operationalRouterSmoke:run` fixture in shared dev. Check the Convex section extraction flow with synthetic documents and confirm `convex-sections-v1` promotion and scanned-page evidence.
+4. Run the [post-deploy operator checklist](../../AGENTS.md#post-deploy-operator-checklist-for-this-extraction-release) after target deployment. `actions/reextractLegacyPolicies:run` defaults to a dry run; page the cleanup mutations until they return `isDone`.
+5. Confirm release readiness and exact-commit health before Vercel production alias assignment.
 
+The operator-agent model route and web retrieval route have no settings UI. Set the operator agent route with `npx convex run modelSettings:setOperatorAgentRouteInternal '{"provider":"openai","model":"..."}'`. `modelSettings:clearOperatorModelOverridesInternal` clears every other stored override but keeps the operator agent route, which `resolveOperatorAgentRoute` still requires. Web retrieval falls back to its default when no override is stored.
 
 ### Durable inference rollout
 
-Deploy the cl-router job ledger and its separate Node worker before these Spot
-consumers. Follow the router repository's `docs/durable-inference.md` for its
+Deploy the cl-router job ledger and its separate Node worker before this Spot
+consumer. Follow the router repository's durable inference documentation for its
 worker secret, provider credentials, callback/asset allowlists, and worker health.
 Spot keeps only its inference bearer; never copy the router worker secret or
-provider credentials here. Then release Spot Convex and the extraction worker
-through their existing lane workflows. Verify a job callback, reconnect after a
-lost submission/status response, explicit cancellation, and a lost-worker unknown
-outcome before production traffic. Existing synchronous router endpoints remain
-compatible during the rollout. Roll back consumers before removing the worker.
+provider credentials here. Then release Spot Convex through its existing lane
+workflow — section extraction's durable router jobs run entirely from Convex,
+with no separate Spot-side worker consumer. Verify a job callback, reconnect
+after a lost submission/status response, explicit cancellation, and a
+lost-worker unknown outcome before production traffic. Existing synchronous
+router endpoints remain compatible during the rollout. Roll back the consumer
+before removing the router's worker.
 
 Blanket `CL_ROUTER_TIMEOUT_MS` and `MODEL_CALL_TIMEOUT_MS` no longer apply. Short
 control waits only reconnect to the existing job. For local Spot with a remote

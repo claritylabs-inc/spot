@@ -1,20 +1,21 @@
 # Agent Thread Components
 
-The thread route is intentionally thin. Reusable message UI and artifact surfaces live here so new artifacts can be added without growing `app/agent/thread/[id]/page.tsx`.
+The thread route is intentionally thin. Tenant message UI and artifact surfaces live here on top of the shared chat system in `components/chat/`, so new artifacts can be added without growing `app/agent/thread/[id]/page.tsx`.
 
 ## Structure
 
-- `types.ts` defines the shared thread message, artifact data and side-panel reference shapes. Artifact modules must import types from here instead of from the route.
-- `thread-content.tsx` owns the reusable thread renderer, message bubbles, message controls and input overlay. Route files should pass thread identity, viewer metadata and shell callbacks into this component instead of defining message UI inline.
-- `thread-attachment-chip.tsx` owns attachment rendering and PDF preview integration for stored thread files and externally resolved mailbox attachments.
-- `artifacts/` contains one module per artifact family. Each module owns its summary card, right-panel detail view and normalization helpers for that artifact's data shape.
+- `components/chat/` owns everything both chat surfaces share: the message list and scroll anchoring, the composer, assistant and user turns, thinking summaries, attachment lists and expandable downloads, approval cards, disclosures, channel icons and the one-at-a-time action hook. The operator panel in `components/operator-agent/` is the other adapter.
+- `types.ts` defines the shared thread message, artifact data and `ThreadArtifactRef` side-panel shapes. Artifact modules must import types from here instead of from the route.
+- `thread-content.tsx` adapts tenant thread data, mutations, the open artifact panel, and queued messages to the shared list and composer. Route files pass thread identity, viewer metadata, and shell callbacks into this component.
+- `thread-message.tsx` renders tenant-specific message details (references, sources, receipts, pending email countdown) and artifacts through the shared chat turns. `thread-messages.ts` groups and stabilizes tenant records.
+- `artifacts/` contains one module per artifact family. Each module owns its summary card, right-panel detail view and normalization helpers for that artifact's data shape. `artifacts/shell.tsx` owns the shared right-panel shell and busy action pill; `artifacts/normalize.ts` owns loose payload readers.
 
 ## Adding An Artifact
 
-1. Add a module under `artifacts/` that exports a compact summary card and a right-panel component.
+1. Add a module under `artifacts/` that exports a compact summary card and a right-panel component built on `ArtifactSidebar`.
 2. Put parsing/normalization beside the artifact module, not in the route page.
-3. Add exports to `artifacts/index.ts`.
-4. In the route integration, only wire message selection/open state and pass the selected artifact into the right panel. Keep data-shaping logic inside the artifact module.
+3. Add exports to `artifacts/index.ts` and a `ThreadArtifactRef` kind in `types.ts`.
+4. In `thread-content.tsx`, only map the open ref to the right panel. Keep data-shaping logic inside the artifact module.
 
 ## UX Contract
 
@@ -25,4 +26,4 @@ Web chat follows a messaging contract rather than an execution-console contract:
 - Reconcile streamed text with the final saved response. Keep source links, files, delivery status, and actionable artifacts because they change what the user can verify or do next.
 - Detailed tool audit data remains in internal telemetry and channel adapters. The optional activity summary shows tool labels only; model reasoning and tool payloads stay private.
 
-Artifact summary cards should be compact, truncate long labels and expose one clear action that opens the right panel. Right panels should use the same 12px header height, close button pattern and bottom action bar only when there are actionable controls.
+Artifact summary cards should be compact, truncate long labels and expose one clear action that opens the right panel. Right panels share the 48px header height, close button pattern and bottom action bar through `ArtifactSidebar`; pass a footer only when there are actionable controls.

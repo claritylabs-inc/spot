@@ -583,6 +583,38 @@ export const saveForMcp = internalMutation({
   },
 });
 
+export const saveSectionForMcp = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    key: wikiSectionKeyValidator,
+    body: v.string(),
+    expectedRevision: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireDirectWikiAdminForUser(ctx, args.orgId, args.userId);
+    await requireSharedWikiWrite(ctx, args.orgId);
+    const current = await readOrgWiki(ctx, args.orgId);
+    if (current.revision !== args.expectedRevision)
+      throw new Error(
+        "Company wiki revision changed; read it again before saving.",
+      );
+    const heading = requireOrgWikiSection(args.key).heading;
+    assertAgentWikiContent(
+      readMarkdownHeading(current.body, heading),
+      args.body,
+    );
+    await writeSection(ctx, {
+      orgId: args.orgId,
+      key: args.key,
+      body: args.body,
+      source: "chat",
+      manual: true,
+    });
+    return readOrgWiki(ctx, args.orgId);
+  },
+});
+
 export async function upsertOrgWikiDocumentByOperator(
   ctx: MutationCtx,
   args: {

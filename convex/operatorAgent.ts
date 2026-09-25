@@ -285,7 +285,8 @@ function isOperatorGoogleWorkspaceTool(
     toolName === "list_company_mailboxes" ||
     toolName === "search_company_email" ||
     toolName === "read_company_email_thread" ||
-    toolName === "get_company_email_attachment"
+    toolName === "get_company_email_attachment" ||
+    toolName === "scan_workspace_mailbox"
   );
 }
 
@@ -1991,22 +1992,22 @@ async function executeToolDomain(
         ? input.status
         : undefined;
     const limit = typeof input.limit === "number" ? input.limit : 15;
-    const queueStatus =
-      requestedStatus === "queued" || requestedStatus === "leased"
-        ? requestedStatus
-        : undefined;
+    // "queued"/"leased" were worker-queue states; the Convex section pipeline
+    // has no equivalent, so those filters now match nothing for policies.
     const pipelineStatuses: Array<"error" | "paused" | "running"> =
       requestedStatus === "error" ||
       requestedStatus === "paused" ||
       requestedStatus === "running"
         ? [requestedStatus]
-        : requestedStatus
-          ? []
-          : ["error", "paused"];
+        : requestedStatus === "stuck"
+          ? ["running"]
+          : requestedStatus
+            ? []
+            : ["error", "paused", "running"];
     const candidateLimit = Math.min(100, limit * 5);
     const inspectPolicies = requestedDomain !== "proposal";
     const inspectProposals = requestedDomain !== "policy";
-    const [pipelineRuns, queueRows, proposalResult] = await Promise.all([
+    const [pipelineRuns, proposalResult] = await Promise.all([
       inspectPolicies
         ? Promise.all(
             pipelineStatuses.map((status) =>
@@ -2019,42 +2020,6 @@ async function executeToolDomain(
                 .take(candidateLimit),
             ),
           )
-        : Promise.resolve([]),
-      inspectPolicies
-        ? requestedStatus === "stuck"
-          ? ctx.db
-              .query("policyExtractionQueue")
-              .withIndex("status_updated", (index) =>
-                index.eq("status", "leased"),
-              )
-              .order("desc")
-              .take(candidateLimit)
-          : queueStatus
-            ? ctx.db
-                .query("policyExtractionQueue")
-                .withIndex("status_updated", (index) =>
-                  index.eq("status", queueStatus),
-                )
-                .order("desc")
-                .take(candidateLimit)
-            : requestedStatus
-              ? Promise.resolve([])
-              : Promise.all([
-                  ctx.db
-                    .query("policyExtractionQueue")
-                    .withIndex("status_updated", (index) =>
-                      index.eq("status", "queued"),
-                    )
-                    .order("desc")
-                    .take(candidateLimit),
-                  ctx.db
-                    .query("policyExtractionQueue")
-                    .withIndex("status_updated", (index) =>
-                      index.eq("status", "leased"),
-                    )
-                    .order("desc")
-                    .take(candidateLimit),
-                ]).then((rows) => rows.flat())
         : Promise.resolve([]),
       inspectProposals &&
       requestedStatus !== "paused" &&
@@ -2073,30 +2038,29 @@ async function executeToolDomain(
         : Promise.resolve({ issues: [], bounded: false }),
     ]);
     const now = dayjs().valueOf();
-    const candidates = [
-      ...pipelineRuns.flat().map((run) => ({
-        policyId: run.policyId,
-        runId: run._id,
-        status: run.pipelineStatus,
-        error: run.pipelineError,
-        updatedAt: run.updatedAt,
-        queue: undefined as
-          | undefined
-          | { status: string; leaseExpiresAt?: number },
-      })),
-      ...queueRows.map((row) => ({
-        policyId: row.policyId,
-        runId: row.runId,
-        status:
-          row.status === "leased" &&
-          (row.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) <= now
-            ? ("stuck" as const)
-            : row.status,
-        error: undefined,
-        updatedAt: row.updatedAt,
-        queue: { status: row.status, leaseExpiresAt: row.leaseExpiresAt },
-      })),
-    ]
+    // Mirrors policies.ts PIPELINE_STALE_REQUEUE_MS: a running checkpoint
+    // whose lease has been expired this long has stalled past the watchdog's
+    // normal reclaim window.
+    const EXTRACTION_RUN_STUCK_THRESHOLD_MS = 5 * 60 * 1000;
+    const candidates = pipelineRuns
+      .flat()
+      .map((run) => {
+        const checkpoint = run.pipelineCheckpoint as
+          | { lease?: { expiresAt?: number } }
+          | undefined;
+        const leaseExpiresAt = checkpoint?.lease?.expiresAt;
+        const stuck =
+          run.pipelineStatus === "running" &&
+          leaseExpiresAt !== undefined &&
+          now - leaseExpiresAt > EXTRACTION_RUN_STUCK_THRESHOLD_MS;
+        return {
+          policyId: run.policyId,
+          runId: run._id,
+          status: stuck ? ("stuck" as const) : run.pipelineStatus,
+          error: run.pipelineError,
+          updatedAt: run.updatedAt,
+        };
+      })
       .filter(
         (candidate) =>
           requestedStatus !== "stuck" || candidate.status === "stuck",
@@ -2122,7 +2086,6 @@ async function executeToolDomain(
         fileName: policy.fileName,
         status: candidate.status,
         error: candidate.error,
-        queue: candidate.queue,
         updatedAt: candidate.updatedAt,
         recovery:
           candidate.status === "error" || candidate.status === "stuck"
@@ -2850,10 +2813,7 @@ async function executeToolDomain(
       throw new Error("Client organization not found");
     }
     const flagId = input.flagId;
-    if (
-      flagId !== "connect_features" &&
-      flagId !== "imessage_app_cards"
-    ) {
+    if (flagId !== "connect_features") {
       throw new Error("Unsupported feature flag");
     }
     const enabled = input.enabled === true;

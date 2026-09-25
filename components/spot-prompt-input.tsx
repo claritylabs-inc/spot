@@ -41,14 +41,9 @@ import {
 } from "@/components/prompt-reference-tag";
 import { typeStyle } from "@/lib/typography";
 
-const lightInputOverlayFadeStyle = {
+const inputOverlayFadeStyle = {
   backgroundImage:
-    "linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.4) 55%, rgba(255, 255, 255, 0.8) 100%)",
-} satisfies React.CSSProperties;
-
-const darkInputOverlayFadeStyle = {
-  backgroundImage:
-    "linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.4) 55%, rgba(0, 0, 0, 0.8) 100%)",
+    "linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--chat-surface, var(--background)) 80%, transparent) 100%)",
 } satisfies React.CSSProperties;
 
 const INPUT_INTENT_RADIUS = 180;
@@ -56,18 +51,7 @@ const INPUT_INTENT_EPSILON = 0.01;
 const PREPARED_ACTION_INTENT_THRESHOLD = 0.34;
 
 function InputOverlayFade() {
-  return (
-    <>
-      <div
-        className="absolute inset-0 dark:hidden"
-        style={lightInputOverlayFadeStyle}
-      />
-      <div
-        className="absolute inset-0 hidden dark:block"
-        style={darkInputOverlayFadeStyle}
-      />
-    </>
-  );
+  return <div className="absolute inset-0" style={inputOverlayFadeStyle} />;
 }
 
 // Inner component — must render inside <PromptInput> to access LocalAttachmentsContext
@@ -564,6 +548,7 @@ function findActiveTrigger(
 
 export interface SpotPromptInputHandle {
   setValueAndFocus: (value: string) => void;
+  focus: () => void;
 }
 
 export interface SpotPromptInputProps {
@@ -582,7 +567,12 @@ export interface SpotPromptInputProps {
   submittedLabel?: string;
   onStop?: () => void;
   orgId?: Id<"organizations">;
-  variant?: "default" | "command";
+  /** `dock` is the agent dock's flat single-row composer. */
+  variant?: "default" | "command" | "dock";
+  /** Leading footer slot, e.g. the agent dock's page-context chip. */
+  contextChip?: React.ReactNode;
+  /** Trailing controls before attach, e.g. the page-context toggle. */
+  toolbarEnd?: React.ReactNode;
 }
 
 export const SpotPromptInput = forwardRef<
@@ -606,10 +596,13 @@ export const SpotPromptInput = forwardRef<
     onStop,
     orgId,
     variant = "default",
+    contextChip,
+    toolbarEnd,
   },
   ref,
 ) {
   const isCommandVariant = variant === "command";
+  const isDockVariant = variant === "dock";
   const wrapperRef = useRef<HTMLDivElement>(null);
   const textAreaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const pendingFocusRef = useRef<{
@@ -1090,8 +1083,19 @@ export const SpotPromptInput = forwardRef<
         setActiveTrigger(null);
         queueTextFocus(textTokenId, v.length);
       },
+      focus: () => {
+        const textTokenId = activeTextTokenId || firstTextTokenId(tokens);
+        textAreaRefs.current.get(textTokenId)?.focus();
+      },
     }),
-    [defaultReferences, queueTextFocus, setActiveTextTokenId, setTokens],
+    [
+      activeTextTokenId,
+      defaultReferences,
+      queueTextFocus,
+      setActiveTextTokenId,
+      setTokens,
+      tokens,
+    ],
   );
 
   const isGenerating = status === "submitted" || status === "streaming";
@@ -1225,6 +1229,133 @@ export const SpotPromptInput = forwardRef<
   const pickerPortalRoot =
     typeof document === "undefined" ? null : document.body;
 
+  const submitControls = (
+    <div className="flex items-center gap-1">
+      {toolbarEnd}
+      {showAttach && <AttachmentActionButtons />}
+      {isGenerating && onStop ? (
+        <PillButton
+          type="button"
+          size="compact"
+          onClick={handleStopClick}
+          roomyOnMobile={roomyOnMobile}
+        >
+          <Square
+            className={
+              roomyOnMobile
+                ? "size-3.5 fill-current sm:size-3"
+                : "size-3 fill-current"
+            }
+          />
+          Stop
+        </PillButton>
+      ) : isDockVariant ? (
+        <PillButton
+          type="submit"
+          size="compact"
+          iconOnly
+          label="Send"
+          disabled={disabled || isGenerating}
+        >
+          {status === "submitted" ? (
+            <Spinner className="size-3.5" />
+          ) : (
+            <ArrowUp className="size-3.5" />
+          )}
+        </PillButton>
+      ) : (
+        <PillButton
+          type="submit"
+          size="compact"
+          disabled={disabled || isGenerating}
+          roomyOnMobile={roomyOnMobile}
+        >
+          {status === "submitted" ? (
+            <>
+              <Spinner
+                className={
+                  roomyOnMobile
+                    ? "size-4 sm:size-3.5"
+                    : "size-3.5"
+                }
+              />
+              {submittedLabel}
+            </>
+          ) : (
+            <>
+              <ArrowUp
+                className={
+                  roomyOnMobile
+                    ? "size-4 sm:size-3.5"
+                    : "size-3.5"
+                }
+              />
+              Send
+            </>
+          )}
+        </PillButton>
+      )}
+    </div>
+  );
+
+  const tokenEditor = (
+  <div
+    className={cn(
+      "flex w-full flex-wrap content-start items-center gap-x-1 gap-y-1",
+      isDockVariant
+        ? "min-h-6 min-w-0 flex-1"
+        : isCommandVariant
+        ? "min-h-28 px-4 pb-2 pt-4"
+        : roomyOnMobile
+          ? "min-h-22 px-4 pb-2 pt-3 sm:min-h-6 sm:px-3 sm:pb-1 sm:pt-2.5"
+          : "min-h-6 px-3 pb-1 pt-2.5",
+    )}
+    onClick={(event) => {
+      if ((event.target as HTMLElement).closest("textarea,button")) {
+        return;
+      }
+      const textTokenId = activeTextTokenId || firstTextTokenId(tokens);
+      textAreaRefs.current.get(textTokenId)?.focus();
+    }}
+  >
+    <input readOnly type="hidden" name="message" value={messageText} />
+    {tokens.map((token) =>
+      token.type === "reference" ? (
+        isSearchDropdownOpen ? null : (
+          <PromptReferenceTag
+            key={token.id}
+            kind={token.reference.kind}
+            label={token.reference.label}
+            onRemove={() => removeReferenceToken(token.id)}
+          />
+        )
+      ) : (
+        <PromptTextSegment
+          key={token.id}
+          token={token}
+          placeholder={
+            isPromptEmpty && token.id === firstTextTokenId(tokens)
+              ? placeholder
+              : undefined
+          }
+          isCommandVariant={isCommandVariant}
+          roomyOnMobile={roomyOnMobile}
+          registerRef={registerTextAreaRef}
+          onFocus={() => {
+            setActiveTextTokenId(token.id);
+            const textArea = textAreaRefs.current.get(token.id);
+            if (textArea) {
+              updateTriggerFromTextarea(textArea, token.id);
+            }
+          }}
+          onChange={(event) => handleTextChange(event, token.id)}
+          onKeyDown={(event) => handleTextKeyDown(event, token.id)}
+        />
+      ),
+    )}
+  </div>
+  );
+
   return (
     <div
       ref={wrapperRef}
@@ -1296,10 +1427,13 @@ export const SpotPromptInput = forwardRef<
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         className={cn(
-          "rounded-xl border bg-card transition-[background-color,border-color,box-shadow] duration-100 overflow-hidden hover:border-border-hover focus-within:border-border-focus **:data-[slot=input-group]:!border-0 **:data-[slot=input-group]:!ring-0 **:data-[slot=input-group]:rounded-none **:data-[slot=input-group]:bg-transparent **:data-[slot=input-group]:!shadow-none",
+          "overflow-hidden **:data-[slot=input-group]:!border-0 **:data-[slot=input-group]:!ring-0 **:data-[slot=input-group]:rounded-none **:data-[slot=input-group]:bg-transparent **:data-[slot=input-group]:!shadow-none",
+          isDockVariant
+            ? "rounded-none border-0 bg-transparent **:data-[slot=input-group]:h-auto **:data-[slot=input-group]:flex-col"
+            : "rounded-xl border bg-card transition-[background-color,border-color,box-shadow] duration-100 hover:border-border-hover focus-within:border-border-focus",
           isCommandVariant
             ? "border-border-emphasized shadow-lg shadow-black/[0.08] dark:shadow-black/30"
-            : "border-border shadow-none focus-within:shadow-none",
+            : !isDockVariant && "border-border shadow-none focus-within:shadow-none",
           isDraggingFiles && "border-primary/40 bg-primary/5",
         )}
       >
@@ -1307,151 +1441,59 @@ export const SpotPromptInput = forwardRef<
           roomyOnMobile={roomyOnMobile || isCommandVariant}
           detailed={isCommandVariant}
         />
-        <div
-          className={cn(
-            "flex w-full flex-wrap content-start items-center gap-x-1 gap-y-1",
-            isCommandVariant
-              ? "min-h-28 px-4 pb-2 pt-4"
-              : roomyOnMobile
-                ? "min-h-22 px-4 pb-2 pt-3 sm:min-h-6 sm:px-3 sm:pb-1 sm:pt-2.5"
-                : "min-h-6 px-3 pb-1 pt-2.5",
-          )}
-          onClick={(event) => {
-            if ((event.target as HTMLElement).closest("textarea,button")) {
-              return;
-            }
-            const textTokenId = activeTextTokenId || firstTextTokenId(tokens);
-            textAreaRefs.current.get(textTokenId)?.focus();
-          }}
-        >
-          <input readOnly type="hidden" name="message" value={messageText} />
-          {tokens.map((token) =>
-            token.type === "reference" ? (
-              isSearchDropdownOpen ? null : (
-                <PromptReferenceTag
-                  key={token.id}
-                  kind={token.reference.kind}
-                  label={token.reference.label}
-                  onRemove={() => removeReferenceToken(token.id)}
-                />
-              )
-            ) : (
-              <PromptTextSegment
-                key={token.id}
-                token={token}
-                placeholder={
-                  isPromptEmpty && token.id === firstTextTokenId(tokens)
-                    ? placeholder
-                    : undefined
-                }
-                isCommandVariant={isCommandVariant}
-                roomyOnMobile={roomyOnMobile}
-                registerRef={registerTextAreaRef}
-                onFocus={() => {
-                  setActiveTextTokenId(token.id);
-                  const textArea = textAreaRefs.current.get(token.id);
-                  if (textArea) {
-                    updateTriggerFromTextarea(textArea, token.id);
-                  }
-                }}
-                onChange={(event) => handleTextChange(event, token.id)}
-                onKeyDown={(event) => handleTextKeyDown(event, token.id)}
-              />
-            ),
-          )}
-        </div>
-
-        <PromptInputFooter
-          className={
-            isCommandVariant
-              ? "overflow-hidden px-3 pb-3 pt-1"
-              : roomyOnMobile
-                ? "overflow-hidden px-3 sm:px-2 pb-2 sm:pb-1.5 pt-0.5 sm:pt-0"
-                : "overflow-hidden px-2 pb-1.5 pt-0"
-          }
-        >
-          <PromptInputTools className="min-w-0 flex-1 overflow-hidden">
-            <PreparedInputActions
-              visible={showPreparedActions}
-              hasPolicyTargets={hasPolicyTargets}
-              hasRequirementTargets={hasRequirementTargets}
-              hasMailboxTargets={hasMailboxTargets}
-              onOpenTargetPicker={openPreparedTargetPicker}
-            />
-            <div
-              className={cn(
-                "flex min-w-0 items-center gap-1.5 overflow-hidden transition-[max-width,opacity,transform,margin] duration-0 ease-linear",
-                showPreparedActions
-                  ? "ml-0 max-w-0 -translate-y-0.5 opacity-0 pointer-events-none"
+        {isDockVariant ? (
+          <div className="flex w-full min-w-0 items-center gap-2 py-2">
+            {contextChip}
+            {tokenEditor}
+            {submitControls}
+          </div>
+        ) : (
+          <>
+            {tokenEditor}
+            <PromptInputFooter
+              className={
+                isCommandVariant
+                  ? "overflow-hidden px-3 pb-3 pt-1"
                   : roomyOnMobile
-                    ? "ml-1.5 max-w-96 translate-y-0 opacity-100 sm:ml-1"
-                    : "ml-1 max-w-96 translate-y-0 opacity-100",
-              )}
+                    ? "overflow-hidden px-3 sm:px-2 pb-2 sm:pb-1.5 pt-0.5 sm:pt-0"
+                    : "overflow-hidden px-2 pb-1.5 pt-0"
+              }
             >
-              {activeTargetScopeLabel ? (
-                <span
-                  className={`min-w-0 truncate text-muted-foreground/45 ${typeStyle("caption.medium")}`}
-                >
-                  {activeTargetScopeLabel}
-                </span>
-              ) : null}
-            </div>
-          </PromptInputTools>
-
-          <PromptInputTools className="shrink-0">
-            <div className="flex items-center gap-1">
-              {showAttach && <AttachmentActionButtons />}
-              {isGenerating && onStop ? (
-                <PillButton
-                  type="button"
-                  size="compact"
-                  onClick={handleStopClick}
-                  roomyOnMobile={roomyOnMobile}
-                >
-                  <Square
-                    className={
-                      roomyOnMobile
-                        ? "size-3.5 fill-current sm:size-3"
-                        : "size-3 fill-current"
-                    }
-                  />
-                  Stop
-                </PillButton>
-              ) : (
-                <PillButton
-                  type="submit"
-                  size="compact"
-                  disabled={disabled || isGenerating}
-                  roomyOnMobile={roomyOnMobile}
-                >
-                  {status === "submitted" ? (
-                    <>
-                      <Spinner
-                        className={
-                          roomyOnMobile
-                            ? "size-4 sm:size-3.5"
-                            : "size-3.5"
-                        }
-                      />
-                      {submittedLabel}
-                    </>
-                  ) : (
-                    <>
-                      <ArrowUp
-                        className={
-                          roomyOnMobile
-                            ? "size-4 sm:size-3.5"
-                            : "size-3.5"
-                        }
-                      />
-                      Send
-                    </>
+              <PromptInputTools className="min-w-0 flex-1 overflow-hidden">
+                {contextChip}
+                <PreparedInputActions
+                  visible={showPreparedActions}
+                  hasPolicyTargets={hasPolicyTargets}
+                  hasRequirementTargets={hasRequirementTargets}
+                  hasMailboxTargets={hasMailboxTargets}
+                  onOpenTargetPicker={openPreparedTargetPicker}
+                />
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 overflow-hidden transition-[max-width,opacity,transform,margin] duration-0 ease-linear",
+                    showPreparedActions
+                      ? "ml-0 max-w-0 -translate-y-0.5 opacity-0 pointer-events-none"
+                      : roomyOnMobile
+                        ? "ml-1.5 max-w-96 translate-y-0 opacity-100 sm:ml-1"
+                        : "ml-1 max-w-96 translate-y-0 opacity-100",
                   )}
-                </PillButton>
-              )}
-            </div>
-          </PromptInputTools>
-        </PromptInputFooter>
+                >
+                  {activeTargetScopeLabel ? (
+                    <span
+                      className={`min-w-0 truncate text-muted-foreground/45 ${typeStyle("caption.medium")}`}
+                    >
+                      {activeTargetScopeLabel}
+                    </span>
+                  ) : null}
+                </div>
+              </PromptInputTools>
+
+              <PromptInputTools className="shrink-0">
+                {submitControls}
+              </PromptInputTools>
+            </PromptInputFooter>
+          </>
+        )}
       </PromptInput>
     </div>
   );
@@ -1460,33 +1502,19 @@ export const SpotPromptInput = forwardRef<
 /**
  * Overlay footer layout for chat pages where the input sits above scrollable content.
  */
+/** Composer pinned under the transcript, on the chat surface. */
 export function ChatInputOverlay({
   children,
-  compact = false,
 }: {
   children: React.ReactNode;
-  compact?: boolean;
 }) {
   return (
     <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-      <InputOverlayFade />
-      <div className="relative h-16" aria-hidden="true" />
-      <div
-        className={cn(
-          "relative pointer-events-auto pt-2",
-          compact ? "px-3" : "px-4 md:px-6 lg:px-8",
-        )}
-        style={{
-          paddingBottom: compact
-            ? "calc(0.75rem + env(safe-area-inset-bottom, 0px))"
-            : "calc(1.25rem + env(safe-area-inset-bottom, 0px))",
-        }}
-      >
-        <div
-          className={cn("mx-auto w-full", compact ? "max-w-none" : "max-w-3xl")}
-        >
-          {children}
-        </div>
+      <div className="relative h-8" aria-hidden="true">
+        <InputOverlayFade />
+      </div>
+      <div className="pointer-events-auto border-t border-border bg-(--chat-surface,var(--background)) px-3 md:px-4">
+        {children}
       </div>
     </div>
   );

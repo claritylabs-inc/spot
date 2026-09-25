@@ -3,14 +3,14 @@
 Spot owns model inputs, results, and referenced binary assets in private Convex
 storage. `convex/routerJobs.ts` owns the invocation journal and capability HTTP
 endpoints. `convex/lib/routerJobClient.ts` owns submission, status polling, and
-reconnection. `convex/actions/routerJobs.ts` provides Node action entry points
-for extraction workers and explicit cancellation.
+reconnection. `convex/actions/routerJobs.ts` provides the Node action entry
+point for explicit cancellation.
 
 The caller supplies a stable invocation key for one model step. The first call
 freezes the request; resuming that key uses its original stored payload, including
 its selected route. Rebuilding a prompt or refreshing an asset signature does not
 replace an already dispatched request. Callers must allocate a new key for a
-new step. Operator and extraction owners retain these identities across their
+new step. Operator and Convex section-extraction owners retain these identities across their
 own continuation boundaries. Other callers can poll within their existing action;
 that does not make their outer application workflow resumable after process loss.
 
@@ -79,21 +79,6 @@ Terminal request, result, and asset blobs are deleted after seven days; capabili
 tokens are revoked. The small invocation/fingerprint/status tombstone remains to
 prevent replay after result retention ends. Active requests have no age expiry.
 
-## Extraction bridge
-
-`POST /router-jobs/worker` requires the extraction worker bearer secret and
-`{jobKind, jobId, leaseId, orgId, invocationKey, payload}`. The existing
-`routerAssets.validateWorkerLease` owner checks the live policy, preview, or
-proposal lease before submission and before returning a completed result. The
-payload organization must match that lease. The effective key contains job kind
-and job ID; it deliberately excludes the lease token so recovering an abandoned
-worker reuses the same inference. Pending work returns HTTP 202. Success returns
-`{result}`. The request body retains the 4 MiB transport ceiling.
-
-Use focused journal/client tests for lost acknowledgement, early callback,
-conflicting identity, cancellation races, unknown outcomes, asset snapshots,
-and cleanup without expiry of active work.
-
 ## Local callback reachability
 
 The default callback origin is canonical `CONVEX_SITE_URL`. A fully local router
@@ -115,8 +100,7 @@ with `status: "progress"`; Spot validates invocation, token, fingerprint, router
 ID, sequence, active message, and operator checkpoint before updating the reply.
 Only text is streamed; tool execution waits for the terminal model result.
 Cancelled/terminal jobs reject late progress. Router progress delivery is best
-effort and never restarts inference. Deploy the router schema/API and worker
-support before enabling the Spot consumer change.
+effort and never restarts inference. The router schema/API and router-owned worker must support progress callbacks before a Spot consumer uses streaming.
 
 Profile settings store personal `users.streamResponses` (default on) and
 `users.showThinking` (default off). Both operator and client web renderers share

@@ -4,7 +4,6 @@ import dayjs from "dayjs";
 
 import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { effectiveExtractionDataStage } from "../backfillDeclarationFacts";
 import {
   validateProcurementRequestCreateByOperator,
   writableProcurementRequestStatus,
@@ -274,7 +273,7 @@ async function preflightConfirmPolicyFact(
   if (
     policy.deletedAt ||
     policy.pipelineStatus !== "complete" ||
-    effectiveExtractionDataStage(policy) !== "final"
+    policy.extractionDataStage !== "final"
   ) {
     throw new Error(
       "Policy facts can be confirmed after full source-backed extraction finishes.",
@@ -1045,10 +1044,7 @@ export async function preflightOperatorToolConfirmation(
         args.input.orgId,
       );
       const flagId = args.input.flagId;
-      if (
-        flagId !== "connect_features" &&
-        flagId !== "imessage_app_cards"
-      ) {
+      if (flagId !== "connect_features") {
         throw new Error("Unsupported feature flag");
       }
       assertFeatureFlagAllowedForOrg(flagId, organization);

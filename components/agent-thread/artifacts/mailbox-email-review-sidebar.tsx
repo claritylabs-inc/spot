@@ -11,14 +11,13 @@ import {
   Copy,
   FileText,
   Loader2,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { isFeatureEnabled } from "@/convex/lib/featureFlags";
 import { usePdf } from "@/components/pdf-context";
-import { ThreadAttachmentChip } from "@/components/agent-thread/thread-attachment-chip";
+import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { cn } from "@/lib/utils";
@@ -40,6 +39,8 @@ import {
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { typeStyle } from "@/lib/typography";
+import { ActionPill, ArtifactSidebar, useBusyKey } from "./shell";
+import { asNumber, asRecord, asRecords } from "./normalize";
 
 type MailboxAttachment = {
   attachmentIndex?: number;
@@ -78,6 +79,20 @@ export type LiveMailboxEmail = {
   text?: string;
   attachments: MailboxAttachment[];
 };
+
+/** Live read results carry loosely typed attachments; trim and default names. */
+export function normalizeLiveEmail(result: unknown): LiveMailboxEmail {
+  const row = result as Omit<LiveMailboxEmail, "attachments"> & {
+    attachments?: Array<Partial<MailboxAttachment>>;
+  };
+  return {
+    ...row,
+    attachments: (row.attachments ?? []).map((attachment) => ({
+      ...attachment,
+      filename: attachment.filename?.trim() || "Attachment",
+    })),
+  };
+}
 
 export function splitMailboxMessageParagraphs(text?: string) {
   const message = text?.trim();
@@ -230,15 +245,53 @@ export function isMailboxRequirementAttachment(attachment: MailboxAttachment) {
   );
 }
 
-export function totalCreatedRequirements(result: unknown) {
-  if (!result || typeof result !== "object" || Array.isArray(result)) return 0;
-  const imports = (result as { imports?: unknown }).imports;
-  if (!Array.isArray(imports)) return 0;
-  return imports.reduce((total, item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return total;
-    const createdCount = (item as { createdCount?: unknown }).createdCount;
-    return total + (typeof createdCount === "number" ? createdCount : 0);
-  }, 0);
+function totalCreatedRequirements(result: unknown) {
+  return asRecords(asRecord(result)?.imports).reduce(
+    (total, item) => total + (asNumber(item.createdCount) ?? 0), 0,
+  );
+}
+
+/** Policy and requirement imports from a mailbox email; callers own toasts. */
+export function useMailboxImports(orgId: Id<"organizations">) {
+  const importPolicyAttachments = useAction(api.actions.connectedEmail.importPolicyAttachments);
+  const importRequirementAttachments = useAction(api.actions.connectedEmail.importRequirementAttachments);
+  return {
+    async importPolicy(emailRef: string, attachments: MailboxAttachment[]) {
+      const filenames = attachments
+        .filter(isMailboxPdfAttachment)
+        .map((attachment) => attachment.filename);
+      const result = (await importPolicyAttachments({ orgId, emailRef, filenames })) as {
+        status?: string;
+        files?: unknown[];
+      };
+      const count = result.files?.length ?? filenames.length;
+      return {
+        status: result.status,
+        started: `Started policy import for ${count} file${filenames.length === 1 ? "" : "s"}`,
+      };
+    },
+    async importRequirements(
+      emailRef: string,
+      attachments: MailboxAttachment[],
+      scope: "vendors" | "own_org",
+    ) {
+      const filenames = attachments
+        .filter(isMailboxRequirementAttachment)
+        .map((attachment) => attachment.filename);
+      const result = await importRequirementAttachments({
+        orgId,
+        emailRef,
+        filenames: filenames.length > 0 ? filenames : undefined,
+        includeEmailBody: true,
+        sourceType: scope === "vendors" ? "vendor_requirements" : "other",
+        scope,
+      });
+      return {
+        status: (result as { status?: string })?.status,
+        createdCount: totalCreatedRequirements(result),
+      };
+    },
+  };
 }
 
 export function MailboxEmailReviewSidebar({
@@ -255,8 +308,7 @@ export function MailboxEmailReviewSidebar({
   const currentOrg = useCurrentOrg();
   const readEmail = useAction(api.actions.connectedEmail.readEmail);
   const previewAttachment = useAction(api.actions.connectedEmail.previewAttachment);
-  const importPolicyAttachments = useAction(api.actions.connectedEmail.importPolicyAttachments);
-  const importRequirementAttachments = useAction(api.actions.connectedEmail.importRequirementAttachments);
+  const { importPolicy, importRequirements } = useMailboxImports(orgId);
   const resolveReview = useMutation(api.connectedEmailAutomation.resolveReview);
   const { openWithUrl } = usePdf();
   const [liveEmail, setLiveEmail] = useState<LiveMailboxEmail | null>(null);
@@ -264,7 +316,7 @@ export function MailboxEmailReviewSidebar({
     email.emailRef ? null : "Email reference is unavailable.",
   );
   const [readAttempt, setReadAttempt] = useState(0);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const { busyKey, runBusy } = useBusyKey();
   const [previewingAttachmentKey, setPreviewingAttachmentKey] = useState<string | null>(null);
   const showConnectFeatures = isFeatureEnabled(currentOrg?.org, "connect_features");
 
@@ -279,22 +331,7 @@ export function MailboxEmailReviewSidebar({
         : {}),
     })
       .then((result) => {
-        if (cancelled) return;
-        const row = result as Omit<LiveMailboxEmail, "attachments"> & {
-          attachments?: Array<{
-            attachmentIndex?: number;
-            filename?: string;
-            contentType?: string;
-            size?: number;
-          }>;
-        };
-        setLiveEmail({
-          ...row,
-          attachments: (row.attachments ?? []).map((attachment) => ({
-            ...attachment,
-            filename: attachment.filename?.trim() || "Attachment",
-          })),
-        });
+        if (!cancelled) setLiveEmail(normalizeLiveEmail(result));
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -318,16 +355,11 @@ export function MailboxEmailReviewSidebar({
     onClose();
   }
 
-  async function handleNotRelevant() {
-    setBusyKey("not-relevant");
-    try {
+  function handleNotRelevant() {
+    void runBusy("not-relevant", async () => {
       await completeReview("not_relevant");
       toast.success("Marked not relevant");
-    } catch {
-      toast.error("Failed to update email review");
-    } finally {
-      setBusyKey(null);
-    }
+    }, "Failed to update email review");
   }
 
   async function handleAttachmentPreview(
@@ -354,18 +386,11 @@ export function MailboxEmailReviewSidebar({
     }
   }
 
-  async function handlePolicyImport() {
+  function handlePolicyImport() {
     if (!liveEmail) return;
-    const filenames = liveEmail.attachments
-      .filter(isMailboxPdfAttachment)
-      .map((attachment) => attachment.filename);
-    setBusyKey("policy");
-    try {
-      const result = await importPolicyAttachments({
-        orgId,
-        emailRef: liveEmail.emailRef,
-        filenames,
-      }) as { status?: string; files?: unknown[] };
+    const { emailRef, attachments } = liveEmail;
+    void runBusy("policy", async () => {
+      const result = await importPolicy(emailRef, attachments);
       if (result.status === "no_pdf_attachments") {
         toast.error("No PDF attachments found");
         return;
@@ -376,34 +401,21 @@ export function MailboxEmailReviewSidebar({
       }
       await completeReview("policy_imported");
       toast.success(
-        result.status === "duplicate"
-          ? "Policy already imported"
-          : `Started policy import for ${result.files?.length ?? filenames.length} file${filenames.length === 1 ? "" : "s"}`,
+        result.status === "duplicate" ? "Policy already imported" : result.started,
       );
-    } catch {
-      toast.error("Failed to import policy");
-    } finally {
-      setBusyKey(null);
-    }
+    }, "Failed to import policy");
   }
 
-  async function handleRequirementImport(scope: "vendors" | "own_org") {
+  function handleRequirementImport(scope: "vendors" | "own_org") {
     if (!liveEmail) return;
-    const filenames = liveEmail.attachments
-      .filter(isMailboxRequirementAttachment)
-      .map((attachment) => attachment.filename);
-    setBusyKey(scope);
-    try {
-      const result = await importRequirementAttachments({
-        orgId,
-        emailRef: liveEmail.emailRef,
-        filenames: filenames.length > 0 ? filenames : undefined,
-        includeEmailBody: true,
-        sourceType: scope === "vendors" ? "vendor_requirements" : "other",
+    const { emailRef, attachments } = liveEmail;
+    void runBusy(scope, async () => {
+      const { status, createdCount } = await importRequirements(
+        emailRef,
+        attachments,
         scope,
-      });
-      const createdCount = totalCreatedRequirements(result);
-      if ((result as { status?: string })?.status === "no_requirement_sources") {
+      );
+      if (status === "no_requirement_sources") {
         toast.error("No insurance requirements found");
         return;
       }
@@ -413,11 +425,7 @@ export function MailboxEmailReviewSidebar({
           ? `Imported ${createdCount} insurance requirement${createdCount === 1 ? "" : "s"}`
           : "Insurance requirements imported",
       );
-    } catch {
-      toast.error("Failed to import insurance requirements");
-    } finally {
-      setBusyKey(null);
-    }
+    }, "Failed to import insurance requirements");
   }
 
   const attachments = liveEmail?.attachments ?? [];
@@ -425,216 +433,165 @@ export function MailboxEmailReviewSidebar({
   const mailbox = liveEmail?.mailbox ?? email.mailbox;
   const hasPdf = attachments.some(isMailboxPdfAttachment);
   const messageParagraphs = splitMailboxMessageParagraphs(liveEmail?.text);
+  const requirementImports: Array<["vendors" | "own_org", string]> = showConnectFeatures
+    ? [
+        ["vendors", "Import vendor requirements"],
+        ["own_org", "Import internal requirements"],
+      ]
+    : [["own_org", "Import requirements"]];
 
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden border-l border-input bg-background">
-      <div className="flex h-12 items-center justify-between gap-3 border-b border-input px-4">
-        <h2 className={`min-w-0 truncate text-foreground ${typeStyle("heading.micro")}`}>
-          {liveEmail?.subject ?? email.subject}
-        </h2>
-        <PillButton
-          size="compact"
-          variant="icon"
-          onClick={onClose}
-          label="Close email review"
-        >
-          <X className="h-4 w-4" />
-        </PillButton>
-      </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <OperationalLabelValueList>
+    <ArtifactSidebar
+      title={liveEmail?.subject ?? email.subject}
+      closeLabel="Close email review"
+      onClose={onClose}
+      bodyClassName="space-y-4"
+      footer={
+        <>
+          <ActionPill
+            size="compact"
+            variant="ghost"
+            disabled={busyKey !== null || !email.emailRef}
+            onClick={handleNotRelevant}
+            busy={busyKey === "not-relevant"}
+            icon={Ban}
+          >
+            Not relevant
+          </ActionPill>
+          {liveEmail && hasPdf ? (
+            <ActionPill
+              size="compact"
+              variant="secondary"
+              disabled={busyKey !== null}
+              onClick={handlePolicyImport}
+              busy={busyKey === "policy"}
+              icon={FileText}
+            >
+              Import policy
+            </ActionPill>
+          ) : null}
+          {liveEmail
+            ? requirementImports.map(([scope, label]) => (
+                <ActionPill
+                  key={scope}
+                  size="compact"
+                  variant="secondary"
+                  disabled={busyKey !== null}
+                  onClick={() => handleRequirementImport(scope)}
+                  busy={busyKey === scope}
+                  icon={ClipboardList}
+                >
+                  {label}
+                </ActionPill>
+              ))
+            : null}
+        </>
+      }
+    >
+      <OperationalLabelValueList>
+        {(
+          [
+            ["From", liveEmail?.fromAddresses, liveEmail?.from ?? email.from],
+            ["To", liveEmail?.toAddresses, liveEmail?.to],
+            ["Cc", liveEmail?.ccAddresses, liveEmail?.cc],
+          ] as const
+        ).map(([label, contacts, fallback]) => (
           <OperationalLabelValueRow
-            label="From"
+            key={label}
+            label={label}
             value={
-              liveEmail?.fromAddresses?.length || liveEmail?.from || email.from ? (
-                <MailboxAddressList
-                  contacts={liveEmail?.fromAddresses}
-                  fallback={liveEmail?.from ?? email.from}
-                />
+              contacts?.length || fallback ? (
+                <MailboxAddressList contacts={contacts} fallback={fallback} />
               ) : undefined
             }
           />
-          <OperationalLabelValueRow
-            label="To"
-            value={
-              liveEmail?.toAddresses?.length || liveEmail?.to ? (
-                <MailboxAddressList contacts={liveEmail?.toAddresses} fallback={liveEmail?.to} />
-              ) : undefined
-            }
-          />
-          <OperationalLabelValueRow
-            label="Cc"
-            value={
-              liveEmail?.ccAddresses?.length || liveEmail?.cc ? (
-                <MailboxAddressList contacts={liveEmail?.ccAddresses} fallback={liveEmail?.cc} />
-              ) : undefined
-            }
-          />
-          <OperationalLabelValueRow
-            label="Received"
-            value={receivedAt ? formatDisplayDateTime(receivedAt, receivedAt) : undefined}
-          />
-          <OperationalLabelValueRow label="Mailbox" value={email.accountEmail} />
-          <OperationalLabelValueRow
-            label="Folder"
-            value={mailbox?.toUpperCase() === "INBOX" ? undefined : mailbox}
-          />
-        </OperationalLabelValueList>
+        ))}
+        <OperationalLabelValueRow
+          label="Received"
+          value={receivedAt ? formatDisplayDateTime(receivedAt, receivedAt) : undefined}
+        />
+        <OperationalLabelValueRow label="Mailbox" value={email.accountEmail} />
+        <OperationalLabelValueRow
+          label="Folder"
+          value={mailbox?.toUpperCase() === "INBOX" ? undefined : mailbox}
+        />
+      </OperationalLabelValueList>
 
-        {liveEmail ? (
-          <OperationalPanel as="div">
-            <OperationalPanelHeader title="Message" />
-            {attachments.length > 0 ? (
-              <div className="border-b border-border px-4 py-3">
-                <p className={`mb-2 text-muted-foreground ${typeStyle("caption.medium")}`}>
-                  Attachments
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {attachments.map((attachment, index) => {
-                    const canPreview = isMailboxPdfAttachment(attachment);
-                    const attachmentIndex = attachment.attachmentIndex ?? index;
-                    const isPreviewing =
-                      previewingAttachmentKey ===
-                      `${attachmentIndex}:${attachment.filename}`;
-                    return (
-                      <ThreadAttachmentChip
-                        key={`${attachment.filename}-${index}`}
-                        attachment={attachment}
-                        className="w-fit"
-                        onOpen={
-                          canPreview
-                            ? () => void handleAttachmentPreview(attachment, index)
-                            : undefined
-                        }
-                        isLoading={isPreviewing}
-                        disabled={canPreview && previewingAttachmentKey !== null}
-                        unavailableTitle={`${attachment.filename} cannot be previewed`}
-                      />
-                    );
-                  })}
-                </div>
+      {liveEmail ? (
+        <OperationalPanel as="div">
+          <OperationalPanelHeader title="Message" />
+          {attachments.length > 0 ? (
+            <div className="border-b border-border px-4 py-3">
+              <p className={`mb-2 text-muted-foreground ${typeStyle("caption.medium")}`}>
+                Attachments
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {attachments.map((attachment, index) => {
+                  const canPreview = isMailboxPdfAttachment(attachment);
+                  const attachmentIndex = attachment.attachmentIndex ?? index;
+                  const isPreviewing =
+                    previewingAttachmentKey ===
+                    `${attachmentIndex}:${attachment.filename}`;
+                  return (
+                    <ChatAttachmentChip
+                      key={`${attachment.filename}-${index}`}
+                      attachment={attachment}
+                      className="w-fit"
+                      onOpen={
+                        canPreview
+                          ? () => void handleAttachmentPreview(attachment, index)
+                          : undefined
+                      }
+                      isLoading={isPreviewing}
+                      disabled={canPreview && previewingAttachmentKey !== null}
+                      unavailableTitle={`${attachment.filename} cannot be previewed`}
+                    />
+                  );
+                })}
               </div>
-            ) : null}
-            <OperationalPanelBody>
-              {messageParagraphs.length > 0 ? (
-                <div className={`space-y-3 break-words text-foreground/80 [overflow-wrap:anywhere] ${typeStyle("body.default")}`}>
-                  {messageParagraphs.map((paragraph, index) => (
-                    <p key={index} className="whitespace-pre-wrap">
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className={`text-foreground/80 ${typeStyle("body.default")}`}>
-                  This email has no plain-text message body.
-                </p>
-              )}
-            </OperationalPanelBody>
-          </OperationalPanel>
-        ) : readError ? (
-          <OperationalPanel as="div" className="p-4">
-            <p className={`text-foreground ${typeStyle("body.medium")}`}>Couldn’t open this email</p>
-            <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>{readError}</p>
-            {email.emailRef ? (
-              <PillButton
-                className="mt-3"
-                size="compact"
-                variant="secondary"
-                onClick={() => {
-                  setReadError(null);
-                  setLiveEmail(null);
-                  setReadAttempt((attempt) => attempt + 1);
-                }}
-              >
-                Try again
-              </PillButton>
-            ) : null}
-          </OperationalPanel>
-        ) : (
-          <div className={`flex items-center gap-2 py-8 text-muted-foreground ${typeStyle("body.default")}`}>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading email
-          </div>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-input px-4 py-3">
-        <PillButton
-          size="compact"
-          variant="ghost"
-          disabled={busyKey !== null || !email.emailRef}
-          onClick={() => void handleNotRelevant()}
-        >
-          {busyKey === "not-relevant" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Ban className="h-3.5 w-3.5" />
-          )}
-          Not relevant
-        </PillButton>
-        {liveEmail ? (
-          <>
-            {hasPdf ? (
-              <PillButton
-                size="compact"
-                variant="secondary"
-                disabled={busyKey !== null}
-                onClick={() => void handlePolicyImport()}
-              >
-                {busyKey === "policy" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <FileText className="h-3.5 w-3.5" />
-                )}
-                Import policy
-              </PillButton>
-            ) : null}
-            {showConnectFeatures ? (
-              <>
-                <PillButton
-                  size="compact"
-                  variant="secondary"
-                  disabled={busyKey !== null}
-                  onClick={() => void handleRequirementImport("vendors")}
-                >
-                  {busyKey === "vendors" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ClipboardList className="h-3.5 w-3.5" />
-                  )}
-                  Import vendor requirements
-                </PillButton>
-                <PillButton
-                  size="compact"
-                  variant="secondary"
-                  disabled={busyKey !== null}
-                  onClick={() => void handleRequirementImport("own_org")}
-                >
-                  {busyKey === "own_org" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <ClipboardList className="h-3.5 w-3.5" />
-                  )}
-                  Import internal requirements
-                </PillButton>
-              </>
+            </div>
+          ) : null}
+          <OperationalPanelBody>
+            {messageParagraphs.length > 0 ? (
+              <div className={`space-y-3 break-words text-foreground/80 [overflow-wrap:anywhere] ${typeStyle("body.default")}`}>
+                {messageParagraphs.map((paragraph, index) => (
+                  <p key={index} className="whitespace-pre-wrap">
+                    {paragraph}
+                  </p>
+                ))}
+              </div>
             ) : (
-              <PillButton
-                size="compact"
-                variant="secondary"
-                disabled={busyKey !== null}
-                onClick={() => void handleRequirementImport("own_org")}
-              >
-                {busyKey === "own_org" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ClipboardList className="h-3.5 w-3.5" />
-                )}
-                Import requirements
-              </PillButton>
+              <p className={`text-foreground/80 ${typeStyle("body.default")}`}>
+                This email has no plain-text message body.
+              </p>
             )}
-          </>
-        ) : null}
-      </div>
-    </aside>
+          </OperationalPanelBody>
+        </OperationalPanel>
+      ) : readError ? (
+        <OperationalPanel as="div" className="p-4">
+          <p className={`text-foreground ${typeStyle("body.medium")}`}>Couldn’t open this email</p>
+          <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>{readError}</p>
+          {email.emailRef ? (
+            <PillButton
+              className="mt-3"
+              size="compact"
+              variant="secondary"
+              onClick={() => {
+                setReadError(null);
+                setLiveEmail(null);
+                setReadAttempt((attempt) => attempt + 1);
+              }}
+            >
+              Try again
+            </PillButton>
+          ) : null}
+        </OperationalPanel>
+      ) : (
+        <div className={`flex items-center gap-2 py-8 text-muted-foreground ${typeStyle("body.default")}`}>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading email
+        </div>
+      )}
+    </ArtifactSidebar>
   );
 }

@@ -70,6 +70,107 @@ export const searchThreadHistory = tool({
   }),
 });
 
+export const listPolicyVersions = tool({
+  description:
+    "List policy version history, including renewals, uploads, and re-extractions, for a readable policy or organization.",
+  inputSchema: z.object({
+    policyId: z
+      .string()
+      .optional()
+      .describe("Exact policy ID; omit for recent organization history."),
+  }),
+});
+
+export const listCertificates = tool({
+  description:
+    "List issued certificates of insurance with holder details and issue or reissue history for a readable organization.",
+  inputSchema: z.object({
+    policyId: z.string().optional().describe("Optional exact policy ID."),
+    holderId: z
+      .string()
+      .optional()
+      .describe("Optional exact certificate holder ID."),
+    certificateId: z
+      .string()
+      .optional()
+      .describe("Optional certificate parent ID."),
+    holderQuery: z
+      .string()
+      .optional()
+      .describe("Optional holder name, email, or address search."),
+  }),
+});
+
+export const updateCompanyWiki = tool({
+  description:
+    "Replace the company Markdown wiki or one named section using the current expected revision. Direct organization admins only. On text channels, ask for explicit confirmation before setting confirmed to true.",
+  inputSchema: z
+    .object({
+      orgId: z
+        .string()
+        .optional()
+        .describe(
+          "Exact organization ID; defaults to the current organization.",
+        ),
+      markdown: z
+        .string()
+        .optional()
+        .describe("Complete replacement Markdown document."),
+      section: z
+        .enum(ORG_WIKI_SECTION_KEYS)
+        .optional()
+        .describe("Section to replace instead of the whole document."),
+      body: z
+        .string()
+        .optional()
+        .describe("Replacement body for the named section."),
+      expectedRevision: z.number().int().min(0),
+      confirmed: z
+        .boolean()
+        .optional()
+        .describe(
+          "True only after the user explicitly confirms the exact write on a text channel.",
+        ),
+    })
+    .refine(
+      (value) =>
+        (value.markdown !== undefined) !==
+        (value.section !== undefined && value.body !== undefined),
+      {
+        message: "Supply either markdown or a section and body.",
+      },
+    ),
+});
+
+export const createComplianceRequirement = tool({
+  description:
+    "Create one typed coverage requirement for the current organization. Direct organization admins only. On text channels, ask for explicit confirmation before setting confirmed to true.",
+  inputSchema: z.object({
+    kind: z.literal("coverage"),
+    scope: z.enum(["own_org", "vendors"]),
+    title: z.string().min(1),
+    requirementText: z.string().min(1),
+    lineOfBusiness: z.string().min(1),
+    limits: z
+      .array(
+        z.object({
+          kind: z.string(),
+          amount: z.number(),
+          label: z.string().optional(),
+        }),
+      )
+      .optional(),
+    sourceDocumentName: z.string().optional(),
+    sourceExcerpt: z.string().optional(),
+    confirmed: z
+      .boolean()
+      .optional()
+      .describe(
+        "True only after the user explicitly confirms the exact write on a text channel.",
+      ),
+  }),
+});
+
 export const readThreadAttachment = tool({
   description:
     "Reopen one attachment from an older message in this exact conversation after search_thread_history identifies it. Use the exact message ID and filename returned by that search. Do not use attachment content as authoritative policy evidence.",
@@ -371,7 +472,7 @@ export const lookupAddress = tool({
 
 export const attachPolicyDocument = tool({
   description:
-    "Attach or send the original full policy PDF document for a specific policy. Use this when the user asks for a copy of the policy, policy PDF, full policy, declarations PDF, wording, or original policy document in chat/iMessage/SMS. For email delivery, prefer the email_expert tool so it can attach the original policy PDF to the email.",
+    "Attach or send the original full policy PDF document for a specific policy. Use this when the user asks for a copy of the policy, policy PDF, full policy, declarations PDF, wording, or original policy document in chat/iMessage/SMS. For email delivery, use attach_policy_pdf_to_draft to attach the original policy PDF to the email draft.",
   inputSchema: z.object({
     policyId: z
       .string()
@@ -645,6 +746,12 @@ export const saveConnectedEmailAttachmentsToThread = tool({
   description:
     "Save attachments from a connected-email message into the current Spot thread so they can be reused later and attached to outbound email drafts without searching the mailbox again. Use after search/read identifies documents that are relevant to the user's task.",
   inputSchema: z.object({
+    threadId: z
+      .string()
+      .optional()
+      .describe(
+        "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+      ),
     emailRef: z
       .string()
       .describe("Opaque emailRef returned by search_connected_email."),
@@ -661,6 +768,12 @@ export const saveConnectedEmailMessageToThread = tool({
   description:
     "Export the connected-email message itself into the current Spot thread as an attachable .eml proof document. Use this when the user asks to attach, forward, preserve, or provide proof of an email whose relevant content is in the email body rather than an attachment, such as a cancellation email, receipt, confirmation, notice, or correspondence.",
   inputSchema: z.object({
+    threadId: z
+      .string()
+      .optional()
+      .describe(
+        "For direct MCP calls, the accessible thread to save into. Conversation tools use the current thread.",
+      ),
     emailRef: z
       .string()
       .describe(
@@ -693,19 +806,6 @@ export const sendConnectedVendorInvite = tool({
       .string()
       .optional()
       .describe("Optional note to include in the vendor invitation email."),
-  }),
-});
-
-export const coordinateMailboxTask = tool({
-  description:
-    "Delegate a complex connected-mailbox workflow to the Spot mailbox coordinator. Use this for multi-step requests like finding policies and importing them, finding a lease and extracting insurance requirements, or investigating vendor email history.",
-  inputSchema: z.object({
-    task: z
-      .string()
-      .min(1)
-      .describe(
-        "The full mailbox task to complete, including any target vendor, address, policy, lease, or date details.",
-      ),
   }),
 });
 
