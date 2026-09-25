@@ -1,5 +1,5 @@
 import type { AppShellSurface } from "@/lib/app-shell-routes";
-import type { AgentDockTab } from "./dock-state";
+import type { AgentDockMode, AgentDockTab } from "./dock-state";
 
 export const AGENT_DOCK_DEFAULT_HEIGHT = 0.6;
 export const AGENT_DOCK_MIN_HEIGHT = 0.3;
@@ -9,7 +9,10 @@ export type StoredAgentDock = {
   tabs: AgentDockTab[];
   activeThreadId: string | null;
   height: number;
+  mode: AgentDockMode;
 };
+
+const AGENT_DOCK_MODES: readonly AgentDockMode[] = ["collapsed", "expanded", "full"];
 
 export function agentDockStorageKey(surface: AppShellSurface, userId: string) {
   return `spot:agent-dock:${surface}:${userId}`;
@@ -25,6 +28,7 @@ export function parseStoredAgentDock(raw: string | null): StoredAgentDock {
     tabs: [],
     activeThreadId: null,
     height: AGENT_DOCK_DEFAULT_HEIGHT,
+    mode: "collapsed",
   };
   if (!raw) return fallback;
   try {
@@ -45,6 +49,9 @@ export function parseStoredAgentDock(raw: string | null): StoredAgentDock {
         typeof parsed.height === "number"
           ? clampAgentDockHeight(parsed.height)
           : AGENT_DOCK_DEFAULT_HEIGHT,
+      mode: AGENT_DOCK_MODES.includes(parsed.mode as AgentDockMode)
+        ? (parsed.mode as AgentDockMode)
+        : "collapsed",
     };
   } catch {
     return fallback;

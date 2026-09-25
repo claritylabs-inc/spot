@@ -17,6 +17,7 @@ import { AgentDockHistory } from "./agent-dock-history";
 import { useAgentDock } from "./agent-dock-provider";
 import { DockErrorBoundary } from "./dock-error-boundary";
 import type { AgentDockMode } from "./dock-state";
+import { AGENT_DOCK_MAX_HEIGHT, AGENT_DOCK_MIN_HEIGHT } from "./dock-storage";
 import type { AgentDockAdapter } from "./types";
 
 export const AGENT_DOCK_BAR_HEIGHT = 44;
@@ -48,17 +49,36 @@ function useViewport() {
   return useSyncExternalStore(subscribeViewport, readViewport, () => SERVER_VIEWPORT);
 }
 
+/**
+ * Drags between the collapsed bar and full screen. Releasing past the midpoint
+ * between a resize limit and the next mode snaps into that mode.
+ */
 function ResizeHandle({
   viewportHeight,
+  minHeight,
+  maxHeight,
   onDrag,
   onCommit,
 }: {
   viewportHeight: number;
+  /** Pixel height of the collapsed bar. */
+  minHeight: number;
+  /** Pixel height of the dock in full screen. */
+  maxHeight: number;
   onDrag: (heightPx: number | null) => void;
   onCommit: (fraction: number) => void;
 }) {
   const dock = useAgentDock();
-  const fraction = (clientY: number) => (viewportHeight - clientY) / viewportHeight;
+  const heightAt = (clientY: number) =>
+    Math.min(maxHeight, Math.max(minHeight, viewportHeight - clientY));
+  const release = (heightPx: number) => {
+    const fraction = heightPx / viewportHeight;
+    const collapseBelow = (AGENT_DOCK_MIN_HEIGHT + minHeight / viewportHeight) / 2;
+    const fullAbove = (AGENT_DOCK_MAX_HEIGHT + maxHeight / viewportHeight) / 2;
+    if (fraction < collapseBelow) dock.setMode("collapsed");
+    else if (fraction > fullAbove) dock.setMode("full");
+    else onCommit(fraction);
+  };
   return (
     <div
       role="separator"
@@ -68,25 +88,30 @@ function ResizeHandle({
       aria-valuemax={90}
       aria-valuenow={Math.round(dock.height * 100)}
       tabIndex={0}
-      className="group/resize absolute inset-x-0 top-0 z-10 flex h-2.5 cursor-row-resize touch-none items-center justify-center outline-none"
+      className="group/resize absolute inset-x-0 top-0 z-10 flex h-2.5 cursor-row-resize touch-none items-center select-none justify-center outline-none"
       onPointerDown={(event) => {
+        // Dragging would otherwise start a text selection across the page.
+        event.preventDefault();
+        event.currentTarget.focus({ preventScroll: true });
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        const next = Math.min(0.9, Math.max(0.3, fraction(event.clientY)));
-        onDrag(Math.round(next * viewportHeight));
+        onDrag(Math.round(heightAt(event.clientY)));
       }}
       onPointerUp={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         event.currentTarget.releasePointerCapture(event.pointerId);
-        onCommit(fraction(event.clientY));
+        release(heightAt(event.clientY));
         onDrag(null);
       }}
       onKeyDown={(event) => {
         if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
         event.preventDefault();
-        dock.setHeight(dock.height + (event.key === "ArrowUp" ? 0.05 : -0.05));
+        const up = event.key === "ArrowUp";
+        if (up && dock.height >= AGENT_DOCK_MAX_HEIGHT) dock.setMode("full");
+        else if (!up && dock.height <= AGENT_DOCK_MIN_HEIGHT) dock.setMode("collapsed");
+        else dock.setHeight(dock.height + (up ? 0.05 : -0.05));
       }}
     >
       <span className="h-1 w-10 rounded-full bg-foreground/15 transition-colors group-hover/resize:bg-foreground/30 group-focus-visible/resize:bg-foreground/40" />
@@ -189,13 +214,14 @@ export function AgentDockLayout({
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const [actions, setActions] = useState<ReactNode>(null);
   const barHeight = enabled ? AGENT_DOCK_BAR_HEIGHT : 0;
+  const fullDockHeight = viewport.height - CARD_GAP - CARD_LIP;
   const expandedDockHeight =
     dragHeight ?? Math.round(viewport.height * dock.height);
   const dockHeight =
     mode === "collapsed"
       ? barHeight
       : mode === "full"
-        ? viewport.height - CARD_GAP - CARD_LIP
+        ? fullDockHeight
         : expandedDockHeight;
   const lifted = mode !== "collapsed";
   const cardScale = lifted
@@ -234,11 +260,7 @@ export function AgentDockLayout({
         <motion.section
           data-agent-dock
           aria-label="Spot agent"
-          className={cn(
-            "absolute inset-x-0 bottom-0 flex flex-col",
-            mode === "expanded" && "pt-2",
-            mode === "full" && "pt-4",
-          )}
+          className="absolute inset-x-0 bottom-0 flex flex-col"
           initial={false}
           animate={{ height: dockHeight }}
           transition={transition}
@@ -247,13 +269,15 @@ export function AgentDockLayout({
           {mode === "expanded" && !mobile ? (
             <ResizeHandle
               viewportHeight={viewport.height}
+              minHeight={barHeight}
+              maxHeight={fullDockHeight}
               onDrag={setDragHeight}
               onCommit={dock.setHeight}
             />
           ) : null}
           {mode !== "collapsed" || settledMode !== "collapsed" ? (
             <motion.div
-              className="flex min-h-0 flex-1 flex-col"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.18 }}

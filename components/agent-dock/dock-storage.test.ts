@@ -22,6 +22,7 @@ test("stored dock state tolerates missing, partial and corrupt values", () => {
     tabs: [],
     activeThreadId: null,
     height: AGENT_DOCK_DEFAULT_HEIGHT,
+    mode: "collapsed",
   };
   expect(parseStoredAgentDock(null)).toEqual(empty);
   expect(parseStoredAgentDock("{not json")).toEqual(empty);
@@ -31,6 +32,7 @@ test("stored dock state tolerates missing, partial and corrupt values", () => {
         tabs: [{ threadId: "a", seenAt: 3 }, { threadId: "" }, "b", { threadId: "c" }],
         activeThreadId: 4,
         height: 2,
+        mode: "sideways",
       }),
     ),
   ).toEqual({
@@ -40,7 +42,11 @@ test("stored dock state tolerates missing, partial and corrupt values", () => {
     ],
     activeThreadId: null,
     height: AGENT_DOCK_MAX_HEIGHT,
+    mode: "collapsed",
   });
+  expect(
+    parseStoredAgentDock(JSON.stringify({ mode: "expanded", height: 0.45 })),
+  ).toMatchObject({ mode: "expanded", height: 0.45 });
 });
 
 test("the remembered height stays within the resizable range", () => {
