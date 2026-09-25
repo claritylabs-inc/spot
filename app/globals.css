@@ -27,6 +27,29 @@
   transition: width var(--motion-medium) var(--motion-ease);
 }
 
+/* Agent surfaces (the dock and chat transcripts) read as one monospace,
+   single-size voice, distinct from the sans application UI. Message text is
+   slightly lighter than regular; markdown headings keep only a medium weight,
+   and bold text is medium rather than semibold. */
+:is([data-agent-dock], [data-agent-surface]),
+:is([data-agent-dock], [data-agent-surface]) * {
+  /* The inline theme emits no --font-mono variable at runtime. */
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+}
+:is([data-agent-dock], [data-agent-surface]) :is([data-prose], [data-prose] table, [data-chat-bubble]) {
+  font-weight: 350;
+}
+:is([data-agent-dock], [data-agent-surface]) :is(strong, b, th) {
+  font-weight: 500;
+}
+:is([data-agent-dock], [data-agent-surface])
+  [data-prose]
+  :is(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 500;
+}
+
 /* AppToaster retains Spot’s mobile edge alignment. */
 @media (max-width: 600px) {
   [data-sonner-toaster][data-x-position="right"] {

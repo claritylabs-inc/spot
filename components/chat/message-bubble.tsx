@@ -48,6 +48,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
 
   return (
     <div
+      data-chat-bubble=""
       className={cn(
         "text-foreground",
         role === "user" && "rounded-lg px-3.5 py-2.5",

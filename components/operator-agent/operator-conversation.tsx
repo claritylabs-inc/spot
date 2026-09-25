@@ -128,7 +128,7 @@ function OperatorMessageFooter({
   }
   const controlClass = "text-muted-foreground/50 hover:text-muted-foreground";
   return (
-    <div className="space-y-2">
+    <div className="-mt-2 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="-ml-2 flex items-center gap-1">
           <ChatCopyButton
@@ -376,7 +376,6 @@ export function OperatorConversation({
           ? `${activeThreadId}:${detail.messages.length}:${detail.confirmations.length}`
           : null
       }
-      clearanceClassName={hasMessages ? "h-24" : "h-20"}
       composer={composer}
     >
       {loading ? (
