@@ -57,7 +57,7 @@ import {
   assistantPdfAttachments,
   buildThreadMessageRenderPlan,
   isMessageFromViewer,
-  latestOwnWebMessageReceipt,
+  hasMultipleSenders,
   messageSenderName,
   threadMessageGroupingFingerprint,
   useStableMessages,
@@ -300,9 +300,9 @@ export function UnifiedThreadContent({
       ),
     [messageRenderPlan, renderedMessages],
   );
-  const latestOwnReceipt = useMemo(
-    () => latestOwnWebMessageReceipt(messages ?? [], viewerId, viewerEmail),
-    [messages, viewerEmail, viewerId],
+  const multipleSenders = useMemo(
+    () => hasMultipleSenders(messages ?? []),
+    [messages],
   );
   const pdf = usePdf();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -735,11 +735,7 @@ export function UnifiedThreadContent({
               relatedEmailMessages={messageRenderPlan.relatedEmailsByMessageId.get(msg._id)}
               viewerId={viewerId}
               viewerEmail={viewerEmail}
-              receiptStatus={
-                latestOwnReceipt?.messageId === msg._id
-                  ? latestOwnReceipt.status
-                  : undefined
-              }
+              showSender={multipleSenders}
               mirroredToImessage={
                 thread.originChannel === "imessage" && msg.channel === "chat"
               }

@@ -235,12 +235,14 @@ function OperatorMessageRow({
   threadId,
   message,
   working,
+  showSender,
   onFollowUp,
   presentationDisabled,
 }: {
   threadId: string;
   message: OperatorAgentMessage;
   working: boolean;
+  showSender: boolean;
   onFollowUp: (message: string) => Promise<void>;
   presentationDisabled: boolean;
 }) {
@@ -284,6 +286,7 @@ function OperatorMessageRow({
   return (
     <ChatUserTurn
       own
+      showSender={showSender}
       name={message.userName?.trim() || "Operator"}
       createdAt={message.createdAt}
       channel={bubbleChannel}
@@ -344,6 +347,12 @@ export function OperatorConversation({
   const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
   const threadId = activeThreadId ?? "";
   const hasMessages = detail.messages.length > 0;
+  const multipleSenders =
+    new Set(
+      detail.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.userName?.trim() || "Operator"),
+    ).size > 1;
   const hasPendingConfirmation = detail.confirmations.some(
     (confirmation) => confirmation.state === "pending",
   );
@@ -432,6 +441,7 @@ export function OperatorConversation({
                 <OperatorMessageRow
                   threadId={threadId}
                   message={message}
+                  showSender={multipleSenders}
                   onFollowUp={onFollowUp}
                   presentationDisabled={presentationDisabled || hasPendingConfirmation}
                   working={message.status === "processing" && !hasPendingConfirmation}
