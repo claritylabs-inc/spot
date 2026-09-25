@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
-import { RouterJobPending } from "./lib/routerJobClient";
+import { RouterJobFailed, RouterJobPending } from "./lib/routerJobClient";
 import { seedRequestIntake } from "./lib/procurementNarrative";
 
 const { generate, decide } = vi.hoisted(() => ({
@@ -1340,6 +1340,69 @@ test("the watchdog recovers a lost action after its platform lifetime without ch
     status: "completed",
     runnerAttempt: 2,
   });
+});
+
+test("retryable router failures retry the step with a fresh invocation before failing the run", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  const retryable = () =>
+    new RouterJobFailed("The router job could not complete. (router_unavailable)", {
+      code: "router_unavailable",
+      retryable: true,
+      executionStarted: true,
+    });
+  generate
+    .mockRejectedValueOnce(retryable())
+    .mockRejectedValueOnce(retryable())
+    .mockResolvedValueOnce({ text: "Recovered result.", steps: [{ toolCalls: [] }] });
+  await finishOperatorSchedules(t);
+  expect(generate.mock.calls.map((call) => call[3].durable.invocationKey)).toEqual([
+    `operator:${queued.runId}:0`,
+    `operator:${queued.runId}:0:r1`,
+    `operator:${queued.runId}:0:r2`,
+  ]);
+  expect(await t.run((ctx) => ctx.db.get(queued.runId))).toHaveProperty(
+    "status",
+    "completed",
+  );
+});
+
+test("router failures fail the run once retries are exhausted or the failure is not retryable", async () => {
+  vi.useFakeTimers();
+  const { t, queued } = await durableOperatorFixture();
+  generate.mockRejectedValue(
+    new RouterJobFailed("The router job could not complete. (router_unavailable)", {
+      code: "router_unavailable",
+      retryable: true,
+      executionStarted: true,
+    }),
+  );
+  await finishOperatorSchedules(t);
+  expect(generate).toHaveBeenCalledTimes(6);
+  expect(generate.mock.calls.at(-1)?.[3].durable.invocationKey).toBe(
+    `operator:${queued.runId}:0:r5`,
+  );
+  const run = await t.run((ctx) => ctx.db.get(queued.runId));
+  expect(run).toMatchObject({
+    status: "failed",
+    lastError: "The router job could not complete. (router_unavailable)",
+  });
+
+  const second = await durableOperatorFixture();
+  generate.mockReset();
+  generate.mockRejectedValue(
+    new RouterJobFailed("Invalid request (router_rejected)", {
+      code: "router_rejected",
+      retryable: false,
+      executionStarted: false,
+    }),
+  );
+  await finishOperatorSchedules(second.t);
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(await second.t.run((ctx) => ctx.db.get(second.queued.runId))).toHaveProperty(
+    "status",
+    "failed",
+  );
 });
 
 test("cancellation before request preparation prevents a late journal from starting inference", async () => {

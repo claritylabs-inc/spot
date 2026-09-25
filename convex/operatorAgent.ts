@@ -3929,6 +3929,8 @@ async function confirmOperatorAction(
         checkpoint: {
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
+          // The resumed step reuses this iteration's router invocation key.
+          routerRetryCount: run.checkpoint?.routerRetryCount,
           summary: buildOperatorRunCheckpointSummary({
             previous: run.checkpoint?.summary,
             audit: {
@@ -4426,6 +4428,8 @@ export const finishConfirmedActionToolInternal = internalMutation({
         checkpoint: {
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
+          // The resumed step reuses this iteration's router invocation key.
+          routerRetryCount: run.checkpoint?.routerRetryCount,
           summary: buildOperatorRunCheckpointSummary({
             previous: run.checkpoint?.summary,
             audit: {
@@ -5874,6 +5878,41 @@ export const waitForRouterInternal = internalMutation({
     await ctx.scheduler.runAfter(2_000, internal.operatorAgentRunner.run, {
       runId: run._id,
     });
+  },
+});
+
+export const retryRouterStepInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.number(),
+    expectedCheckpointIteration: v.number(),
+    routerRetryCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.expectedRunnerAttempt ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
+    )
+      return;
+    await ctx.db.patch(run._id, {
+      status: "queued",
+      checkpoint: {
+        executionCount: 0,
+        ...run.checkpoint,
+        iteration: args.expectedCheckpointIteration,
+        routerRetryCount: args.routerRetryCount,
+      },
+      updatedAt: dayjs().valueOf(),
+    });
+    await ctx.scheduler.runAfter(
+      2_000 * args.routerRetryCount,
+      internal.operatorAgentRunner.run,
+      { runId: run._id },
+    );
   },
 });
 

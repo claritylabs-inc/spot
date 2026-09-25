@@ -15,7 +15,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { RouterJobPending } from "./lib/routerJobClient";
+import { RouterJobFailed, RouterJobPending } from "./lib/routerJobClient";
 import type { ModelRoute } from "./lib/modelCatalog";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
@@ -63,6 +63,8 @@ import {
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
 const OPERATOR_AGENT_MAX_STEPS = 1;
+// Retries of one step after cl-router reports a retryable failure.
+const OPERATOR_ROUTER_MAX_RETRIES = 5;
 const OPERATOR_RECENT_ATTACHMENT_MESSAGES = 3;
 const OPERATOR_RECENT_ATTACHMENT_FILES = 10;
 const OPERATOR_RECENT_ATTACHMENT_BYTES = MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES;
@@ -339,6 +341,7 @@ export const run = internalAction({
       return { status: "not_started" as const };
 
     let expectedCheckpointIteration: number | undefined;
+    let routerRetryCount = 0;
     try {
       const context: {
         run: Doc<"operatorAgentRuns">;
@@ -354,6 +357,7 @@ export const run = internalAction({
       if (run.runnerAttempt !== expectedRunnerAttempt)
         return { status: "superseded" };
       expectedCheckpointIteration = run.checkpoint?.iteration ?? 0;
+      routerRetryCount = run.checkpoint?.routerRetryCount ?? 0;
       const runChannel = operatorChannel(thread.channel);
       const traceChannel = runChannel === "chat" ? "web" : runChannel;
       const selected = selectBoundedAgentHistory(context.messages, {
@@ -394,7 +398,8 @@ export const run = internalAction({
       const messages =
         continuation?.messages ??
         (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
-      const invocationKey = `operator:${String(run._id)}:${expectedCheckpointIteration}`;
+      // A retried step needs a fresh router job; the failed one stays terminal.
+      const invocationKey = `operator:${String(run._id)}:${expectedCheckpointIteration}${routerRetryCount ? `:r${routerRetryCount}` : ""}`;
       const traceId = `${String(run._id)}:operator-agent`;
       const parentRequestId =
         continuation?.parentRequestId ?? String(run.userMessageId);
@@ -676,6 +681,20 @@ export const run = internalAction({
           runId: args.runId,
           expectedCheckpointIteration: expectedCheckpointIteration ?? 0,
           expectedRunnerAttempt,
+        });
+        return { status: "queued" };
+      }
+      if (
+        error instanceof RouterJobFailed &&
+        error.failure?.retryable &&
+        expectedCheckpointIteration !== undefined &&
+        routerRetryCount < OPERATOR_ROUTER_MAX_RETRIES
+      ) {
+        await ctx.runMutation(internal.operatorAgent.retryRouterStepInternal, {
+          runId: args.runId,
+          expectedCheckpointIteration,
+          expectedRunnerAttempt,
+          routerRetryCount: routerRetryCount + 1,
         });
         return { status: "queued" };
       }

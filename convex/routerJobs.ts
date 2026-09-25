@@ -1,6 +1,7 @@
 import { startModelCall, finishModelCall } from "./modelRoutingEvents";
 import { callContextValidator, callResultValidator, modelCallResult } from "./lib/modelCallTelemetry";
 import dayjs from "dayjs";
+import { parseRouterJobError, routerJobFailureValidator } from "./lib/routerJobFailure";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -198,6 +199,7 @@ export const finish = internalMutation({
     status: v.union(v.literal("succeeded"), v.literal("failed")),
     storageId: v.optional(v.id("_storage")),
     error: v.optional(v.string()),
+    failure: v.optional(routerJobFailureValidator),
   },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.id);
@@ -232,6 +234,7 @@ export const finish = internalMutation({
       routerJobId: args.jobId,
       resultStorageId: args.storageId,
       error: args.error?.slice(0, 1000),
+      failure: args.failure,
       terminalAt: now,
       updatedAt: now,
     });
@@ -530,14 +533,7 @@ export const resultHttp = httpAction(async (ctx, request) => {
       status: body.status,
       ...(body.status === "succeeded" ? { callResult: modelCallResult(body.result) } : {}),
       ...(storageId ? { storageId } : {}),
-      ...(body.status === "failed"
-        ? {
-            error:
-              typeof body.error === "string"
-                ? body.error.slice(0, 1000)
-                : "Router job failed",
-          }
-        : {}),
+      ...(body.status === "failed" ? parseRouterJobError(body.error) : {}),
     });
     return new Response(null, { status: accepted ? 204 : 409 });
   } catch (error) {

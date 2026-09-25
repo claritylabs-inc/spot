@@ -8,6 +8,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { assertSpotRouterAssetUrl } from "./clRouterClient";
 import { routerAssetSigningConfiguration } from "./routerAssetSignature";
+import { parseRouterJobError, type RouterJobFailure } from "./routerJobFailure";
 
 const REQUEST_BYTES = 4 * 1024 * 1024;
 const ASSET_BYTES = 12 * 1024 * 1024;
@@ -51,6 +52,16 @@ export class RouterJobPending extends Error {
   ) {
     super("Router job is still running");
     this.name = "RouterJobPending";
+  }
+}
+
+export class RouterJobFailed extends Error {
+  constructor(
+    message: string,
+    readonly failure?: RouterJobFailure,
+  ) {
+    super(message);
+    this.name = "RouterJobFailed";
   }
 }
 
@@ -376,7 +387,7 @@ async function executeRouterRequest(
       return JSON.parse(await blob.text());
     }
     if (row.status === "failed")
-      throw new Error(row.error ?? "Router job failed");
+      throw new RouterJobFailed(row.error ?? "Router job failed", row.failure);
     if (row.status === "cancelled") throw new Error("Router job cancelled");
     try {
       if (!row.routerJobId) {
@@ -419,10 +430,12 @@ async function executeRouterRequest(
             invocationKey,
             fingerprint: row.fingerprint,
             status: "failed",
-            error:
-              status.status === "outcome_unknown"
-                ? "Router execution outcome is unknown; the request was not replayed"
-                : "Router job failed",
+            ...(status.status === "outcome_unknown"
+              ? {
+                  error:
+                    "Router execution outcome is unknown; the request was not replayed",
+                }
+              : parseRouterJobError(status.error)),
           });
         }
       }

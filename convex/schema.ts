@@ -2,6 +2,7 @@ import { chatPresentationValidator } from "./lib/chatPresentationValidators";
 import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
+import { routerJobFailureValidator } from "./lib/routerJobFailure";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
 import {
   activeNotificationTypeValidator,
@@ -4674,6 +4675,7 @@ export default defineSchema({
     assetStorageIds: v.optional(v.array(v.id("_storage"))),
     routerJobId: v.optional(v.string()),
     error: v.optional(v.string()),
+    failure: v.optional(routerJobFailureValidator),
     createdAt: v.number(),
     updatedAt: v.number(),
     terminalAt: v.optional(v.number()),
@@ -4706,6 +4708,7 @@ export default defineSchema({
         summary: v.optional(v.string()),
         lastToolName: v.optional(v.string()),
         pendingConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
+        routerRetryCount: v.optional(v.number()),
       }),
     ),
     cancellationRequestedAt: v.optional(v.number()),
