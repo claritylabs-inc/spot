@@ -181,9 +181,13 @@ function AssistantMessageFooter({
   return (
     <div className="mt-1.5 min-w-0">
       <div className="flex items-start gap-2">
-        <div className="-ml-1.5 flex shrink-0 items-center gap-1">
+        <div className="-ml-2 flex shrink-0 items-center gap-1">
           {retryable ? <RetryButton messageId={msg._id} iconOnly /> : null}
-          <ChatCopyButton content={content} iconClassName="h-3 w-3" />
+          <ChatCopyButton
+            content={content}
+            size="small"
+            className={MESSAGE_ACTION_CLASS}
+          />
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {policyIds.length > 0 && (
@@ -569,6 +573,10 @@ function CancelButton({ messageId }: { messageId: Id<"threadMessages"> }) {
 }
 
 /** Retries a failed or blank agent response; `iconOnly` is the footer form. */
+/** Matches the operator message footer's copy and rerun controls. */
+const MESSAGE_ACTION_CLASS =
+  "text-muted-foreground/50 hover:text-muted-foreground";
+
 function RetryButton({
   messageId,
   iconOnly = false,
@@ -584,11 +592,13 @@ function RetryButton({
       disabled={pending}
       onClick={() => void run(() => retry({ messageId }), "Failed to retry")}
       variant={iconOnly ? "icon" : "ghost"}
-      size="compact"
+      size={iconOnly ? "small" : "compact"}
       label={iconOnly ? "Try again" : undefined}
-      className={iconOnly ? undefined : "mt-2 ml-9.5"}
+      className={iconOnly ? MESSAGE_ACTION_CLASS : "mt-2 ml-9.5"}
     >
-      <RotateCcw className={`h-3 w-3 ${pending ? "animate-spin" : ""}`} />
+      <RotateCcw
+        className={`${iconOnly ? "size-3.5" : "h-3 w-3"} ${pending ? "animate-spin" : ""}`}
+      />
       {iconOnly ? null : pending ? "Retrying..." : "Retry response"}
     </PillButton>
   );
