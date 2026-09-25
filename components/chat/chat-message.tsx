@@ -90,7 +90,7 @@ export function ChatAssistantTurn({
     working && (!streamResponses || !content) ? (
       <AgentThinkingBubble />
     ) : (
-      <>
+      <div className="min-w-0 max-w-[min(max(32rem,75vw),100%)]">
         {body ?? (
           <ChatMessageBubble role="agent" channel={channel} isError={isError}>
             <ChatPresentationView
@@ -118,7 +118,7 @@ export function ChatAssistantTurn({
           </ChatMessageBubble>
         )}
         {belowAnswer}
-      </>
+      </div>
     );
   return (
     <div className="w-full">
@@ -212,7 +212,7 @@ export function ChatUserTurn({
   return (
     <div
       className={cn(
-        "flex w-fit max-w-[min(32rem,100%)] items-start gap-2.5",
+        "flex w-fit max-w-[min(max(32rem,66.667vw),100%)] items-start gap-2.5",
         own && "ml-auto flex-row-reverse",
       )}
     >
