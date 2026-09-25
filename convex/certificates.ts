@@ -39,6 +39,7 @@ import {
   type CertificateHolderResolutionCandidate,
 } from "./lib/certificateHolderResolution";
 import { clRouterDecide } from "./lib/clRouterClient";
+import { jevProceeds } from "./lib/jevThreshold";
 import { makeGenerateObject } from "./lib/sdkCallbacks";
 import { z } from "zod";
 import {
@@ -759,7 +760,7 @@ async function reviewHolderIdentityWithModel(args: {
     const answer = result.answers.holder;
     if (
       answer?.type === "choice" &&
-      (answer.probabilities[answer.choice] ?? 0) >= 0.9
+      jevProceeds(answer.probabilities[answer.choice])
     ) {
       const candidate = candidates[answer.choice];
       if (candidate) {

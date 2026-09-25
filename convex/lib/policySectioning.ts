@@ -13,7 +13,6 @@ import { clRouterDecide } from "./clRouterClient";
 import { jevProceeds } from "./jevThreshold";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 
-export { JEV_PROCEED_THRESHOLD as LOW_CONFIDENCE_THRESHOLD } from "./jevThreshold";
 
 export const POLICY_SECTION_KINDS = [
   "declarations",

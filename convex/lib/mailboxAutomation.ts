@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DecideResponse } from "../../contracts/cl-router/policy";
-import { JEV_PROCEED_THRESHOLD } from "./jevThreshold";
+import { jevProceeds } from "./jevThreshold";
 
 export type ConnectedEmailAutomation = {
   policyImports: boolean;
@@ -51,7 +51,6 @@ export function resolveMailboxAutomationPolicy(account: {
   };
 }
 
-export const MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD = JEV_PROCEED_THRESHOLD;
 
 export const mailboxAutomationClassificationSchema = z.enum([
   "ignore",
@@ -168,10 +167,10 @@ export function applyMailboxAutomationJudgments(
         : [],
       includeEmailBodyAsRequirements:
         requirementCategory &&
-        body.noul >= MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD,
+        jevProceeds(body.noul),
       extractCompanyMemory:
         memoryCategory &&
-        memory.noul >= MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD,
+        jevProceeds(memory.noul),
       requirementSourceType,
       requirementScope,
     },
@@ -247,7 +246,7 @@ export function sanitizeMailboxAutomationDecision(
   };
   if (
     sanitized.classification === "ignore" &&
-    sanitized.confidence < MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD
+    !jevProceeds(sanitized.confidence)
   ) {
     return {
       ...sanitized,
@@ -263,7 +262,7 @@ export function canAutoExecuteMailboxDecision(
 ) {
   return (
     decision.classification !== "review_needed" &&
-    decision.confidence >= MAILBOX_AUTOMATION_CONFIDENCE_THRESHOLD
+    jevProceeds(decision.confidence)
   );
 }
 

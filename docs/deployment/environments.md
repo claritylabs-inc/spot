@@ -368,6 +368,10 @@ authenticated TLS. It has no general Spot Convex API or data
 client; its only Spot-origin access is bounded `GET` requests for exact
 allowlisted, signed asset URLs and allowlisted permanent storage URLs.
 
+Jev decisions (`clRouterDecide`) proceed at 70% confidence by default. Set
+`JEV_PROCEED_THRESHOLD` (0.5–0.99) on a Convex deployment to change it; the value
+is read on every decision, so no redeploy is needed.
+
 Every deployed lane needs matching values:
 
 | Runtime           | Required values                                                                                                                                                                                                                                                                                                                                                                                                |

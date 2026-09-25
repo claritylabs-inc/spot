@@ -17,7 +17,6 @@ import {
   isLobCode,
 } from "./linesOfBusiness";
 
-export { JEV_PROCEED_THRESHOLD as RESEARCH_CONFIDENCE } from "./jevThreshold";
 
 type Evidence = { topic: string; text: string; urls: string[] };
 const COMMON_TOPICS = {
