@@ -14,44 +14,8 @@ import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { useAgentDock } from "./agent-dock-provider";
 import { DockErrorBoundary } from "./dock-error-boundary";
-import { isTabUnread, type AgentDockMode, type AgentDockTab } from "./dock-state";
-import type { AgentDockAdapter, AgentDockTabStatus } from "./types";
-
-function StatusDot({
-  status,
-  unread,
-}: {
-  status: AgentDockTabStatus;
-  unread: boolean;
-}) {
-  if (status === "working") {
-    return (
-      <motion.span
-        aria-label="Working"
-        className="size-1.5 shrink-0 rounded-full bg-sky-500"
-        animate={{ opacity: [1, 0.35, 1], scale: [1, 0.8, 1] }}
-        transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-      />
-    );
-  }
-  if (status === "approval") {
-    return (
-      <span
-        aria-label="Waiting on approval"
-        className="size-1.5 shrink-0 rounded-full bg-amber-500"
-      />
-    );
-  }
-  if (unread) {
-    return (
-      <span
-        aria-label="Unread reply"
-        className="size-1.5 shrink-0 rounded-full bg-foreground"
-      />
-    );
-  }
-  return null;
-}
+import type { AgentDockMode, AgentDockTab } from "./dock-state";
+import type { AgentDockAdapter } from "./types";
 
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
 const TAB_ITEM_CLASS = cn(
@@ -64,13 +28,11 @@ function TabButton({
   label,
   onSelect,
   onClose,
-  leading,
 }: {
   active: boolean;
   label: string;
   onSelect: () => void;
   onClose?: () => void;
-  leading?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -103,7 +65,6 @@ function TabButton({
             : "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
         )}
       >
-        {leading}
         <span
           className={cn(
             "truncate",
@@ -158,12 +119,6 @@ function ThreadTab({
     <TabButton
       active={active}
       label={summary?.title ?? "Chat"}
-      leading={
-        <StatusDot
-          status={summary?.status ?? null}
-          unread={isTabUnread(tab, summary?.lastMessageAt, seenWhileVisible)}
-        />
-      }
       onSelect={() => dock.openThread(tab.threadId)}
       onClose={() => closeTab(tab.threadId)}
     />
