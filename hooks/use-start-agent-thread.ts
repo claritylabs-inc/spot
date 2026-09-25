@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
@@ -22,7 +21,6 @@ import {
 const AGENT_DOMAIN = getPublicAgentDomain();
 
 export function useStartAgentThread(cacheKeyPrefix: string) {
-  const router = useRouter();
   const createThread = useMutation(api.threads.create);
   const sendThreadMessage = useMutation(api.threads.sendMessage);
   const generateUploadUrl = useMutation(api.threads.generateUploadUrl);
@@ -83,8 +81,6 @@ export function useStartAgentThread(cacheKeyPrefix: string) {
             ...referenceIds,
           });
         }
-
-        router.push(`/agent/thread/${threadId}`);
       } catch (error) {
         toast.error("Failed to start chat");
         throw error;
@@ -124,7 +120,6 @@ export function useStartAgentThread(cacheKeyPrefix: string) {
       createThread,
       generateUploadUrl,
       markOptimisticSendFailed,
-      router,
       seedOptimisticThread,
       sendThreadMessage,
       viewer,

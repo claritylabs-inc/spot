@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { ConvexClientProvider } from "@/components/providers";
 import { AuthGuard } from "@/components/auth-guard";
+import { AppShellRoot } from "@/components/app-shell";
 import { webmcpEnabled } from "@/lib/flags";
 import { WebMcpProvider, WebMcpToolsLoader } from "@/lib/webmcp/runtime";
 import { AutoSaveStatusProvider } from "@/components/ui/auto-save-status";
@@ -128,7 +129,9 @@ export default async function RootLayout({
             <AutoSaveStatusProvider>
               <BrandThemeApplier />
               <WebMcpProvider enabled={webMcpEnabled}>
-                <AuthGuard>{children}</AuthGuard>
+                <AuthGuard>
+                  <AppShellRoot>{children}</AppShellRoot>
+                </AuthGuard>
                 {webMcpEnabled && <WebMcpToolsLoader />}
               </WebMcpProvider>
               <AppToaster />

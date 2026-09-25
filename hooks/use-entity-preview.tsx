@@ -23,8 +23,20 @@ const Ctx = createContext<EntityPreviewContextValue>({
   closePreview: () => {},
 });
 
-export function EntityPreviewProvider({ children }: { children: React.ReactNode }) {
+/** `resetKey` changes (e.g. the route) close the preview before children render. */
+export function EntityPreviewProvider({
+  children,
+  resetKey,
+}: {
+  children: React.ReactNode;
+  resetKey?: string;
+}) {
   const [preview, setPreview] = useState<EntityPreview | null>(null);
+  const [appliedResetKey, setAppliedResetKey] = useState(resetKey);
+  if (appliedResetKey !== resetKey) {
+    setAppliedResetKey(resetKey);
+    setPreview(null);
+  }
 
   const openPreview = useCallback((entity: EntityPreview) => {
     setPreview(entity);

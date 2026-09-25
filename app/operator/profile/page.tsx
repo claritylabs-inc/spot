@@ -5,7 +5,6 @@ import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
 
-import { OperatorSidebar } from "@/app/operator/operator-sidebar";
 import { AppShell } from "@/components/app-shell";
 import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -38,16 +37,6 @@ function OperatorProfileShell({
 }) {
   return (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="profile"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
       actions={actions}
       rightPanel={rightPanel}
     >

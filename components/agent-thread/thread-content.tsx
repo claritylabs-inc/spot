@@ -36,6 +36,9 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
 import { PromptReferenceText } from "@/components/prompt-reference-tag";
 import { usePdf } from "@/components/pdf-context";
+import { AppShellPortal } from "@/components/app-shell-slots";
+import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
+import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   optimisticPromptAttachments,
@@ -134,24 +137,24 @@ function UnifiedThreadActions({
     <>
       <PillButton
         size="compact"
-        variant="secondary"
+        variant="icon"
         onClick={handleCopyThread}
         label="Copy thread"
-        expandLabel
+        iconOnly
       >
-        <Copy className="w-3.5 h-3.5" />
+        <Copy className="size-3.5" />
       </PillButton>
       <PillButton
         size="compact"
-        variant={isArchived ? "secondary" : "destructive"}
+        variant="icon"
         onClick={handleArchiveToggle}
         label={isArchived ? "Unarchive" : "Archive"}
         iconOnly
       >
         {isArchived ? (
-          <ArchiveRestore className="w-4 h-4" />
+          <ArchiveRestore className="size-3.5" />
         ) : (
-          <Archive className="w-4 h-4" />
+          <Archive className="size-3.5" />
         )}
       </PillButton>
     </>
@@ -226,7 +229,6 @@ function QueuedThreadMessage({
 export function UnifiedThreadContent({
   threadId,
   onMeta,
-  onRightPanel,
   viewerId,
   viewerEmail,
 }: {
@@ -235,7 +237,6 @@ export function UnifiedThreadContent({
     detail: React.ReactNode;
     actions: React.ReactNode;
   }) => void;
-  onRightPanel?: (panel: React.ReactNode | null) => void;
   viewerId?: string;
   viewerEmail?: string;
 }) {
@@ -402,29 +403,31 @@ export function UnifiedThreadContent({
     });
   }, [thread, threadId, onMeta, messages, updateTitle]);
 
-  useEffect(() => {
-    if (!onRightPanel) return;
-    const close = () => setOpenArtifact(null);
-    onRightPanel(
-      !openArtifact || !openMessage ? null
-      : openArtifact.kind === "email" ? (
-        <EmailThreadSidebar message={openMessage} onClose={close} />
-      ) : !openToolArtifact ? null
-      : openArtifact.kind === "vendor_compliance" ? (
-        <VendorComplianceSidebar artifact={openToolArtifact} onClose={close} />
-      ) : (
-        <MailboxTaskSidebar
-          key={`${openArtifact.index}:${openArtifact.emailIndex ?? "task"}`}
-          artifact={openToolArtifact}
-          orgId={openMessage.orgId}
-          threadId={openMessage.threadId}
-          emailIndex={openArtifact.emailIndex}
-          onClose={close}
-        />
-      ),
+  const closeArtifact = useCallback(() => setOpenArtifact(null), []);
+  const artifactPanel =
+    !openArtifact || !openMessage ? null
+    : openArtifact.kind === "email" ? (
+      <EmailThreadSidebar message={openMessage} onClose={closeArtifact} />
+    ) : !openToolArtifact ? null
+    : openArtifact.kind === "vendor_compliance" ? (
+      <VendorComplianceSidebar artifact={openToolArtifact} onClose={closeArtifact} />
+    ) : (
+      <MailboxTaskSidebar
+        key={`${openArtifact.index}:${openArtifact.emailIndex ?? "task"}`}
+        artifact={openToolArtifact}
+        orgId={openMessage.orgId}
+        threadId={openMessage.threadId}
+        emailIndex={openArtifact.emailIndex}
+        onClose={closeArtifact}
+      />
     );
-    return () => onRightPanel(null);
-  }, [onRightPanel, openArtifact, openMessage, openToolArtifact]);
+  const registerComposer = useOptionalAgentDock()?.registerComposer;
+
+  useEffect(() => {
+    if (!registerComposer) return;
+    registerComposer({ focus: () => chatInputRef.current?.focus() });
+    return () => registerComposer(null);
+  }, [registerComposer]);
 
   // Reset thread-local panels when the selected thread changes.
   useEffect(() => {
@@ -634,17 +637,21 @@ export function UnifiedThreadContent({
   const slackUrl = slackConversationUrl(thread);
 
   return (
+    <>
+    <AppShellPortal slot="artifactPanel" active={artifactPanel !== null}>
+      {artifactPanel}
+    </AppShellPortal>
     <ChatMessageList
       className="h-full"
       anchorKey={threadId}
       clearanceClassName={
         messages && messages.length > 0
-          ? thread.originChannel === "slack" ? "h-24" : "h-40"
-          : undefined
+          ? thread.originChannel === "slack" ? "h-32" : "h-24"
+          : "h-20"
       }
       composer={
         thread.originChannel === "slack" ? (
-          <div className="flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="my-2 flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
                 Continue this conversation in Slack.
@@ -679,7 +686,19 @@ export function UnifiedThreadContent({
             disabled={isInputBusy}
             busy={isInputBusy}
             busyLabel="Sending"
+            variant="dock"
             orgId={thread.orgId}
+            contextChip={
+              thread.initialContext ? (
+                <AgentDockContextChip
+                  label={
+                    thread.initialContext.summary ??
+                    thread.initialContext.pageType.replaceAll("_", " ")
+                  }
+                  retained
+                />
+              ) : undefined
+            }
             banner={queuedMessage ? (
               <QueuedThreadMessage
                 message={queuedMessage}
@@ -745,5 +764,6 @@ export function UnifiedThreadContent({
         </ChatErrorNotice>
       )}
     </ChatMessageList>
+    </>
   );
 }

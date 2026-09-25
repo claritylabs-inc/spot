@@ -11,7 +11,6 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
 import { TokenListField } from "@/components/broker-network/token-list-field";
-import { OperatorSidebar } from "../operator-sidebar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
@@ -112,16 +111,6 @@ export default function OperatorBrokersPage() {
           }}
         />
       }
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="brokers"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
     >
       <div className="@container/brokers space-y-4">
         <OperationalPanel>

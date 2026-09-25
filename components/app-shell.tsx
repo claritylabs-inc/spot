@@ -4,46 +4,60 @@ import {
   Children,
   Fragment,
   Suspense,
+  createContext,
   isValidElement,
+  useContext,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { MotionConfig } from "framer-motion";
 import { usePathname } from "next/navigation";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
-import { PanelRightClose } from "lucide-react";
-import { AppSidebar } from "@/components/app-sidebar";
-import { AppShellPanelLayout } from "@/components/app-shell-panel-layout";
 import {
   AppShellSidebarLayout,
-  APP_SIDEBAR_DEFAULT_WIDTH,
   appSidebarPreferenceStorageKey,
 } from "@claritylabs-inc/ui/components/app-shell/app-shell-sidebar-layout";
-import { useAppSidebarPreference } from "@claritylabs-inc/ui/components/app-shell/app-shell";
-import { AppTopBar, type PresenceUser } from "@/components/app-top-bar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarVariantTransition } from "@/components/app-sidebar/sidebar-variant-transition";
+import { useSidebarPreference } from "@/components/app-sidebar/use-sidebar-preference";
+import { AppShellPanelLayout } from "@/components/app-shell-panel-layout";
+import {
+  AppShellPortal,
+  AppShellSlotsProvider,
+  useAppShellSlot,
+  useOptionalAppShellSlots,
+} from "@/components/app-shell-slots";
+import { AppTopBar } from "@/components/app-top-bar";
 import { OperatorImpersonationBanner } from "@/components/operator-impersonation-banner";
-import { OperatorAgentPanel } from "@/components/operator-agent/operator-agent-panel";
-import { useOptionalOperatorAgent } from "@/components/operator-agent/operator-agent-provider";
-import { LogoIcon } from "@/components/ui/logo-icon";
-import { PillButton } from "@/components/ui/pill-button";
-
+import { AgentDockLayout } from "@/components/agent-dock/agent-dock-layout";
+import { AgentDockProvider } from "@/components/agent-dock/agent-dock-provider";
+import { clientDockAdapter } from "@/components/agent-thread/client-dock-adapter";
+import { operatorDockAdapter } from "@/components/operator-agent/operator-dock-adapter";
+import { OperatorSidebar } from "@/app/operator/operator-sidebar";
+import { OperatorSettingsSidebar } from "@/app/operator/settings/operator-settings-sidebar";
+import { OperatorClientShellSidebar } from "@/app/operator/clients/[clientOrgId]/operator-client-sidebar";
 import { PdfProvider, usePdf } from "@/components/pdf-context";
 import { PageContextProvider } from "@/hooks/use-page-context";
 import {
   EntityPreviewProvider,
   useEntityPreview,
 } from "@/hooks/use-entity-preview";
+import { useCurrentOrg } from "@/hooks/use-current-org";
 import { useSpotSync } from "@/lib/sync/spot-sync";
 import { EntityPreviewPanel } from "@/components/entity-preview-panel";
 import {
-  CommandPalette,
-  openCommandPalette,
-} from "@/components/command-palette";
+  appShellRoute,
+  sidebarVariantDepth,
+  sidebarVariantKey,
+  type AppShellRoute,
+} from "@/lib/app-shell-routes";
 import dynamic from "next/dynamic";
 import { useMediaQuery } from "@/components/app-sidebar/utils";
 
@@ -52,6 +66,14 @@ const PdfPanel = dynamic(
     import("@/components/ui/pdf-panel").then((m) => ({ default: m.PdfPanel })),
   { ssr: false },
 );
+
+const MOBILE_DRAWER_CLASS =
+  "spot-navigation-drawer inset-y-0 left-0 flex h-full w-sidebar-mobile max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r border-border bg-background p-0 ring-0 transition-[opacity,translate] duration-120 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:scale-100 data-starting-style:scale-100 sm:max-w-none lg:hidden";
+
+type SidebarRenderProps = {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+};
 
 function hasVisibleRightPanel(node: React.ReactNode): boolean {
   if (node === null || node === undefined || typeof node === "boolean") {
@@ -80,197 +102,192 @@ function hasVisibleRightPanel(node: React.ReactNode): boolean {
   return true;
 }
 
-function ShellContent({
+/** Fades new route content in without remounting the persistent shell. */
+function RouteContent({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const ref = useRef<HTMLDivElement>(null);
+  const previousPathnameRef = useRef(pathname);
+
+  useLayoutEffect(() => {
+    if (previousPathnameRef.current === pathname) return;
+    previousPathnameRef.current = pathname;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    ref.current?.animate(
+      reduceMotion
+        ? [{ opacity: 0 }, { opacity: 1 }]
+        : [
+            { opacity: 0, transform: "translateY(4px)" },
+            { opacity: 1, transform: "none" },
+          ],
+      { duration: reduceMotion ? 120 : 180, easing: "cubic-bezier(0.2,0,0,1)" },
+    );
+  }, [pathname]);
+
+  return (
+    <div ref={ref} className="w-full min-w-0 px-6 py-6 pb-32 lg:px-8">
+      {children}
+    </div>
+  );
+}
+
+function OperatorShellSidebar({
+  route,
+  collapsed,
+  onToggleCollapse,
+}: SidebarRenderProps & { route: AppShellRoute }) {
+  const { filled: overrideFilled, setTarget: setOverrideTarget } =
+    useAppShellSlot("sidebar");
+  const { sidebar } = route;
+  return (
+    <SidebarVariantTransition
+      variantKey={sidebarVariantKey(sidebar)}
+      depth={sidebarVariantDepth(sidebar)}
+      layoutGroupId={collapsed ? "operator-collapsed" : "operator"}
+    >
+      {overrideFilled ? (
+        <div ref={setOverrideTarget} className="flex h-full min-h-0 flex-col" />
+      ) : sidebar.id === "operator-client" ? (
+        <OperatorClientShellSidebar
+          clientOrgId={sidebar.clientOrgId}
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
+        />
+      ) : sidebar.id === "operator-settings" ? (
+        <OperatorSettingsSidebar
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
+        />
+      ) : (
+        <OperatorSidebar
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
+          active={sidebar.id === "operator" ? sidebar.active : null}
+        />
+      )}
+    </SidebarVariantTransition>
+  );
+}
+
+const SidebarRenderContext = createContext<SidebarRenderProps | null>(null);
+
+function ShellFrame({
+  route,
+  agentEnabled,
   children,
-  actions,
-  breadcrumbDetail,
-  presenceUsers,
-  rightPanel,
-  customSidebar,
-  customSidebarPreferenceStorageKey,
-  storageUserId,
-  disablePersistentChat = false,
-  disableCommandPalette = false,
 }: {
+  route: AppShellRoute;
+  agentEnabled: boolean;
   children: React.ReactNode;
-  actions?: React.ReactNode;
-  breadcrumbDetail?: React.ReactNode;
-  presenceUsers?: PresenceUser[];
-  rightPanel?: React.ReactNode;
-  customSidebar?: (props: {
-    collapsed: boolean;
-    onToggleCollapse: () => void;
-  }) => React.ReactNode;
-  customSidebarPreferenceStorageKey: string | null;
-  storageUserId?: string;
-  disablePersistentChat?: boolean;
-  disableCommandPalette?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
+  const { scope } = useSpotSync();
+  const isOperator = route.surface === "operator";
+  const sidebarPreference = useSidebarPreference(
+    isOperator
+      ? (appSidebarPreferenceStorageKey("operator-sidebar", scope.userId) ??
+          "operator-sidebar")
+      : "sidebar-collapsed",
+  );
+  const { isPdfOpen, fileUrl } = usePdf();
+  const { preview: entityPreview } = useEntityPreview();
+  const { filled: hasActions, setTarget: setActionsTarget } =
+    useAppShellSlot("actions");
+  const { filled: hasBreadcrumbDetail, setTarget: setBreadcrumbTarget } =
+    useAppShellSlot("breadcrumb");
+  const { filled: hasPageRightPanel, setTarget: setRightPanelTarget } =
+    useAppShellSlot("rightPanel");
+  const { filled: hasArtifactPanel, setTarget: setArtifactPanelTarget } =
+    useAppShellSlot("artifactPanel");
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const hasPdfPanel = isPdfOpen && !!fileUrl;
+  const hasEntityPanel = !!entityPreview;
+  const showArtifactInRightPanel = hasArtifactPanel && isDesktop;
+  const hasRightPanel = hasPageRightPanel || showArtifactInRightPanel;
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMobileOpen(false));
     return () => cancelAnimationFrame(frame);
   }, [pathname]);
-  // Register before the shared hook's restoration effect.
-  useEffect(() => {
-    if (customSidebar) return;
-    try {
-      const legacy = localStorage.getItem("sidebar-collapsed");
-      if (legacy === "1" || legacy === "") {
-        localStorage.setItem(
-          "sidebar-collapsed",
-          JSON.stringify({
-            collapsed: legacy === "1",
-            width: APP_SIDEBAR_DEFAULT_WIDTH,
-          }),
-        );
-      }
-    } catch {
-      // Restricted storage leaves the shared hook's in-memory defaults intact.
-    }
-  }, [customSidebar]);
-  const {
-    ready: sidebarReady,
-    preference: customSidebarPreference,
-    toggleCollapse: toggleCustomSidebarCollapse,
-    setCollapsed: updateCustomSidebarCollapsed,
-    setWidth: updateCustomSidebarWidth,
-  } = useAppSidebarPreference(
-    customSidebar ? customSidebarPreferenceStorageKey : "sidebar-collapsed",
-  );
-  const { isPdfOpen, fileUrl } = usePdf();
-  const { preview: entityPreview } = useEntityPreview();
-  const operatorAgent = useOptionalOperatorAgent();
-  const viewportReady = useMediaQuery("(min-width: 0px)");
-  const isLarge = useMediaQuery("(min-width: 1024px)");
-  const isExtraLarge = useMediaQuery("(min-width: 1280px)");
-  const hasRoomForPreviewAndAgent = useMediaQuery("(min-width: 1800px)");
-  const hasPdfPanel = isPdfOpen && !!fileUrl;
-  const hasEntityPanel = !!entityPreview;
-  const hasRightPanel = hasVisibleRightPanel(rightPanel);
-  const constrainedPreviewOpen =
-    isExtraLarge &&
-    !hasRoomForPreviewAndAgent &&
-    (hasPdfPanel || hasEntityPanel);
-  const previewWasOpenRef = useRef(false);
-  const operatorAgentPinned = Boolean(
-    viewportReady &&
-    operatorAgent?.open &&
-    isExtraLarge &&
-    !constrainedPreviewOpen,
-  );
-  const operatorAgentOverlayVisible = Boolean(
-    viewportReady && operatorAgent?.open && !operatorAgentPinned,
+
+  const sidebarRenderProps = useMemo(
+    () => ({
+      collapsed: sidebarPreference.preference.collapsed,
+      onToggleCollapse: sidebarPreference.toggleCollapse,
+    }),
+    [sidebarPreference.preference.collapsed, sidebarPreference.toggleCollapse],
   );
 
-  useEffect(() => {
-    const previewJustOpened =
-      constrainedPreviewOpen && !previewWasOpenRef.current;
-    previewWasOpenRef.current = constrainedPreviewOpen;
-    if (!previewJustOpened) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      if (operatorAgent?.open) operatorAgent.close();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [constrainedPreviewOpen, operatorAgent]);
-
-  useEffect(() => {
-    if (!mobileOpen || (!isLarge && !operatorAgent?.open)) return;
-    const frame = window.requestAnimationFrame(() => setMobileOpen(false));
-    return () => window.cancelAnimationFrame(frame);
-  }, [isLarge, mobileOpen, operatorAgent?.open]);
-
-  if (!sidebarReady) {
-    return <div className="h-dvh w-full bg-background" aria-busy="true" />;
-  }
-
-  const renderedCustomSidebar = customSidebar?.({
-    collapsed: customSidebarPreference.collapsed,
-    onToggleCollapse: toggleCustomSidebarCollapse,
-  });
-  const renderedMobileCustomSidebar = customSidebar?.({
-    collapsed: false,
-    onToggleCollapse: toggleCustomSidebarCollapse,
-  });
-  const operatorAgentToggle = operatorAgent?.enabled ? (
-    <PillButton
-      variant="primary"
-      iconOnly
-      label={
-        operatorAgent.open ? "Minimize operator agent" : "Open operator agent"
-      }
-      aria-pressed={operatorAgent.open}
-      onClick={operatorAgent.toggle}
-    >
-      {operatorAgent.open ? (
-        <PanelRightClose className="size-3.5" />
-      ) : (
-        <LogoIcon size={15} static />
-      )}
-    </PillButton>
-  ) : null;
-  const effectiveRightPanel = operatorAgentPinned ? (
-    <OperatorAgentPanel pagePanel={hasRightPanel ? rightPanel : undefined} />
-  ) : operatorAgentOverlayVisible ? undefined : hasRightPanel ? (
-    rightPanel
-  ) : undefined;
   const panelLayout = (
     <AppShellPanelLayout
       main={
         <>
           <AppTopBar
             actions={
-              operatorAgentToggle || actions ? (
-                <>
-                  {actions}
-                  {operatorAgentToggle}
-                </>
+              hasActions ? (
+                <span ref={setActionsTarget} className="contents" />
               ) : undefined
             }
-            breadcrumbDetail={breadcrumbDetail}
-            presenceUsers={presenceUsers}
-            onMobileMenuToggle={() => {
-              if (!mobileOpen) operatorAgent?.close();
-              setMobileOpen((value) => !value);
-            }}
+            breadcrumbDetail={
+              hasBreadcrumbDetail ? (
+                <span ref={setBreadcrumbTarget} className="contents" />
+              ) : undefined
+            }
+            onMobileMenuToggle={() => setMobileOpen((value) => !value)}
             mobileMenuRef={mobileMenuRef}
             mobileMenuOpen={mobileOpen}
           />
           <div className="relative min-w-0 flex-1 overflow-hidden">
             <main className="absolute inset-0 min-w-0 overflow-y-auto scrollbar-hide">
-              <div className="w-full min-w-0 px-6 py-6 pb-32 lg:px-8">
-                {children}
-              </div>
+              <SidebarRenderContext.Provider value={sidebarRenderProps}>
+                <RouteContent>{children}</RouteContent>
+              </SidebarRenderContext.Provider>
             </main>
-            {disableCommandPalette ? null : <CommandPalette />}
           </div>
         </>
       }
       entityPanel={hasEntityPanel ? <EntityPreviewPanel /> : undefined}
-      rightPanel={effectiveRightPanel}
-      rightPanelLabel={
-        operatorAgentPinned ? "Resize operator agent" : undefined
+      rightPanel={
+        hasRightPanel ? (
+          <div className="relative flex h-full min-h-0 w-full min-w-0">
+            <div
+              ref={setRightPanelTarget}
+              className="flex h-full min-h-0 w-full min-w-0"
+            />
+            {showArtifactInRightPanel ? (
+              <div
+                ref={setArtifactPanelTarget}
+                className="absolute inset-0 z-10 flex bg-background"
+              />
+            ) : null}
+          </div>
+        ) : undefined
       }
-      preserveAuxiliaryPixelWidths={operatorAgentPinned}
       pdfPanel={hasPdfPanel ? <PdfPanel /> : undefined}
-      storageUserId={storageUserId}
+      storageUserId={scope.userId}
     />
   );
 
-  return (
-    <div className="flex h-dvh w-full min-w-0 flex-col overflow-hidden">
+  const app = (
+    <div className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-background">
       <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
-        {customSidebar ? (
+        {isOperator ? (
           <>
             <AppShellSidebarLayout
-              sidebar={renderedCustomSidebar}
-              collapsed={customSidebarPreference.collapsed}
-              defaultWidth={customSidebarPreference.width}
-              onCollapsedChange={updateCustomSidebarCollapsed}
-              onWidthChange={updateCustomSidebarWidth}
+              sidebar={
+                <OperatorShellSidebar
+                  route={route}
+                  collapsed={sidebarPreference.preference.collapsed}
+                  onToggleCollapse={sidebarPreference.toggleCollapse}
+                />
+              }
+              collapsed={sidebarPreference.preference.collapsed}
+              defaultWidth={sidebarPreference.preference.width}
+              onCollapsedChange={sidebarPreference.setCollapsed}
+              onWidthChange={sidebarPreference.setWidth}
             >
               {panelLayout}
             </AppShellSidebarLayout>
@@ -278,7 +295,7 @@ function ShellContent({
               <DialogContent
                 showCloseButton={false}
                 overlayClassName="bg-black/20 duration-120 lg:hidden"
-                className="spot-navigation-drawer inset-y-0 left-0 flex h-full w-sidebar-mobile max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r border-border bg-background p-0 ring-0 transition-[opacity,translate] duration-120 ease-[cubic-bezier(0.2,0,0,1)] data-ending-style:scale-100 data-starting-style:scale-100 sm:max-w-none lg:hidden"
+                className={MOBILE_DRAWER_CLASS}
                 finalFocus={mobileMenuRef}
                 onClick={(event) => {
                   if (
@@ -298,7 +315,28 @@ function ShellContent({
                 }}
               >
                 <DialogTitle className="sr-only">Navigation</DialogTitle>
-                {renderedMobileCustomSidebar}
+                {route.sidebar.id === "operator-client" ? (
+                  <OperatorClientShellSidebar
+                    clientOrgId={route.sidebar.clientOrgId}
+                    collapsed={false}
+                    onToggleCollapse={sidebarPreference.toggleCollapse}
+                  />
+                ) : route.sidebar.id === "operator-settings" ? (
+                  <OperatorSettingsSidebar
+                    collapsed={false}
+                    onToggleCollapse={sidebarPreference.toggleCollapse}
+                  />
+                ) : (
+                  <OperatorSidebar
+                    collapsed={false}
+                    onToggleCollapse={sidebarPreference.toggleCollapse}
+                    active={
+                      route.sidebar.id === "operator"
+                        ? route.sidebar.active
+                        : null
+                    }
+                  />
+                )}
               </DialogContent>
             </Dialog>
           </>
@@ -306,110 +344,148 @@ function ShellContent({
           <>
             <Suspense fallback={null}>
               <AppSidebar
-                collapsed={customSidebarPreference.collapsed}
-                onToggleCollapse={toggleCustomSidebarCollapse}
+                collapsed={sidebarPreference.preference.collapsed}
+                onToggleCollapse={sidebarPreference.toggleCollapse}
+                settingsMode={route.sidebar.id === "client-settings"}
                 mobileOpen={mobileOpen}
                 mobileMenuRef={mobileMenuRef}
                 onMobileClose={() => setMobileOpen(false)}
-                disablePersistentChat={disablePersistentChat}
-                onAskSpot={
-                  disableCommandPalette ? undefined : openCommandPalette
-                }
               />
             </Suspense>
             {panelLayout}
           </>
         )}
       </div>
-      <AnimatePresence>
-        {operatorAgentOverlayVisible ? (
-          <>
-            {isLarge ? (
-              <motion.button
-                type="button"
-                aria-label="Close operator agent"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="fixed inset-x-0 bottom-0 top-12 z-30 bg-black/20"
-                onClick={() => operatorAgent?.close()}
-              />
-            ) : null}
-            <motion.aside
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-              className="fixed bottom-0 right-0 top-12 z-40 flex w-[420px] max-lg:left-0 max-lg:w-full"
-              aria-label="Operator agent"
-            >
-              <OperatorAgentPanel
-                pagePanel={hasRightPanel ? rightPanel : undefined}
-              />
-            </motion.aside>
-          </>
-        ) : null}
-      </AnimatePresence>
       <OperatorImpersonationBanner />
     </div>
   );
+
+  return (
+    <AgentDockLayout
+      app={app}
+      adapter={
+        agentEnabled
+          ? isOperator
+            ? operatorDockAdapter
+            : clientDockAdapter
+          : null
+      }
+      artifactPanelRef={isDesktop ? undefined : setArtifactPanelTarget}
+      detailPanelOpen={hasRightPanel || hasEntityPanel || hasPdfPanel}
+    />
+  );
 }
 
+function ClientAgentGate({
+  route,
+  children,
+}: {
+  route: AppShellRoute;
+  children: React.ReactNode;
+}) {
+  const currentOrg = useCurrentOrg();
+  return (
+    <ShellFrame route={route} agentEnabled={!!currentOrg && !currentOrg.isBroker}>
+      {children}
+    </ShellFrame>
+  );
+}
+
+/**
+ * The persistent app shell: sidebar, top bar, panels and agent dock. It is
+ * mounted once from the root layout and survives navigation between routes.
+ */
+export function AppShellLayout({
+  route,
+  loading = false,
+  children,
+}: {
+  route: AppShellRoute;
+  /** Auth is still resolving: render chrome without agent data. */
+  loading?: boolean;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const { scope } = useSpotSync();
+
+  return (
+    <MotionConfig reducedMotion="user">
+      <PageContextProvider>
+        <PdfProvider resetKey={pathname}>
+          <EntityPreviewProvider resetKey={pathname}>
+            <AppShellSlotsProvider>
+              <AgentDockProvider surface={route.surface} userId={scope.userId}>
+                {loading || route.surface === "operator" ? (
+                  <ShellFrame route={route} agentEnabled={!loading}>
+                    {children}
+                  </ShellFrame>
+                ) : (
+                  <ClientAgentGate route={route}>{children}</ClientAgentGate>
+                )}
+              </AgentDockProvider>
+            </AppShellSlotsProvider>
+          </EntityPreviewProvider>
+        </PdfProvider>
+      </PageContextProvider>
+    </MotionConfig>
+  );
+}
+
+/** Root-layout wrapper: shell routes get the persistent shell, others render bare. */
+export function AppShellRoot({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const route = appShellRoute(pathname);
+  if (!route) return <>{children}</>;
+  return (
+    <AppShellLayout key={route.surface} route={route}>
+      {children}
+    </AppShellLayout>
+  );
+}
+
+function SidebarOverride({
+  render,
+}: {
+  render: (props: SidebarRenderProps) => React.ReactNode;
+}) {
+  const props = useContext(SidebarRenderContext);
+  if (!props) return null;
+  return <AppShellPortal slot="sidebar">{render(props)}</AppShellPortal>;
+}
+
+/**
+ * Page chrome for the persistent shell. Pages render their content as
+ * children and hand actions, breadcrumb detail and a right panel to the shell.
+ */
 export function AppShell({
   children,
   actions,
   breadcrumbDetail,
-  presenceUsers,
   rightPanel,
-  customSidebar,
-  customSidebarStorageKey,
-  disablePersistentChat,
-  disableCommandPalette,
+  sidebar,
 }: {
   children: React.ReactNode;
   actions?: React.ReactNode;
   breadcrumbDetail?: React.ReactNode;
-  presenceUsers?: PresenceUser[];
   rightPanel?: React.ReactNode;
-  customSidebar?: (props: {
-    collapsed: boolean;
-    onToggleCollapse: () => void;
-  }) => React.ReactNode;
-  customSidebarStorageKey?: string;
-  disablePersistentChat?: boolean;
-  disableCommandPalette?: boolean;
+  /** Replaces the route's sidebar while this page is mounted. */
+  sidebar?: (props: SidebarRenderProps) => React.ReactNode;
 }) {
-  const { scope } = useSpotSync();
-  const customSidebarPreferenceStorageKey = customSidebar
-    ? appSidebarPreferenceStorageKey(
-        customSidebarStorageKey ?? "custom-sidebar",
-        scope.userId,
-      )
-    : null;
-
+  if (!useOptionalAppShellSlots()) return <>{children}</>;
   return (
-    <PageContextProvider>
-      <PdfProvider>
-        <EntityPreviewProvider>
-          <ShellContent
-            key={customSidebarPreferenceStorageKey ?? "default-app-shell"}
-            actions={actions}
-            breadcrumbDetail={breadcrumbDetail}
-            presenceUsers={presenceUsers}
-            rightPanel={rightPanel}
-            customSidebar={customSidebar}
-            customSidebarPreferenceStorageKey={
-              customSidebarPreferenceStorageKey
-            }
-            storageUserId={scope.userId}
-            disablePersistentChat={disablePersistentChat}
-            disableCommandPalette={disableCommandPalette}
-          >
-            {children}
-          </ShellContent>
-        </EntityPreviewProvider>
-      </PdfProvider>
-    </PageContextProvider>
+    <>
+      {children}
+      {actions ? <AppShellPortal slot="actions">{actions}</AppShellPortal> : null}
+      {breadcrumbDetail ? (
+        <AppShellPortal slot="breadcrumb">{breadcrumbDetail}</AppShellPortal>
+      ) : null}
+      <AppShellPortal
+        slot="rightPanel"
+        active={hasVisibleRightPanel(rightPanel)}
+      >
+        {rightPanel}
+      </AppShellPortal>
+      {sidebar ? <SidebarOverride render={sidebar} /> : null}
+    </>
   );
 }

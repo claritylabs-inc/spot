@@ -1,38 +1,36 @@
 "use client";
 
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
-
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Plus } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input/prompt-input";
+import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
+import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
+import { pageSuggestions } from "@/components/agent-dock/page-suggestions";
+import type { AgentDockChatProps } from "@/components/agent-dock/types";
 import type { ChatApprovalDecision } from "@/components/chat/approval-card";
-import { ChatComposer } from "@/components/chat/chat-composer";
-import { ChatThreadHeader } from "@/components/chat/thread-header";
+import {
+  ChatComposer,
+  type ChatComposerHandle,
+} from "@/components/chat/chat-composer";
 import { useChatAction } from "@/components/chat/use-chat-action";
-import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePageContext } from "@/hooks/use-page-context";
 import {
   normalizeOperatorAgentThread,
-  normalizeOperatorAgentThreads,
   operatorAgentApi,
   type OperatorAgentConfirmation,
 } from "@/lib/operator-agent-api";
 import { uploadPromptFiles } from "@/lib/thread-prompt";
-import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { cn } from "@/lib/utils";
 import {
   operatorPageContextFromPathname,
   operatorPageContextKey,
   operatorPageContextLabel,
-  operatorPageContextsShareScope,
+  operatorThreadContextHref,
 } from "./operator-page-context";
-import { useOptionalOperatorAgent } from "./operator-agent-provider";
 import { OperatorConversation } from "./operator-conversation";
 
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
@@ -45,21 +43,16 @@ function reportError(fallback: string) {
     toast.error(getUserFacingErrorMessage(error, fallback));
 }
 
-export function OperatorAgentPanel({
-  pagePanel,
-  variant = "rail",
-  threadId,
-  showHeader = true,
-}: {
-  pagePanel?: ReactNode;
-  variant?: "rail" | "page";
-  threadId?: string;
-  showHeader?: boolean;
-}) {
-  const controller = useOptionalOperatorAgent();
+/** Operator conversation in the agent dock. */
+export function OperatorAgentChat({
+  threadId: activeThreadId,
+  onThreadCreated,
+}: AgentDockChatProps) {
+  const dock = useAgentDock();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { context: registeredPageContext } = usePageContext();
+  const composerRef = useRef<ChatComposerHandle>(null);
   const {
     pending: submitting,
     run: runSubmission,
@@ -71,15 +64,6 @@ export function OperatorAgentPanel({
   const [launchingIntentId, setLaunchingIntentId] = useState<string | null>(
     null,
   );
-  const rawThreads = useQuery(operatorAgentApi.listThreads, {
-    limit: 40,
-    archived: false,
-  });
-  const threads = useMemo(
-    () => normalizeOperatorAgentThreads(rawThreads),
-    [rawThreads],
-  );
-  const activeThreadId = threadId ?? controller?.activeThreadId ?? null;
   const rawThread = useQuery(
     operatorAgentApi.getThread,
     activeThreadId ? { threadId: activeThreadId } : "skip",
@@ -96,70 +80,50 @@ export function OperatorAgentPanel({
   const cancelRun = useMutation(operatorAgentApi.cancelRun);
   const confirmAction = useMutation(operatorAgentApi.confirmAction);
   const startIntent = useMutation(operatorAgentApi.startIntent);
-  const fallbackPageContext = useMemo(
-    () => operatorPageContextFromPathname(pathname),
-    [pathname],
-  );
   const currentPageContext = useMemo(() => {
-    const context = registeredPageContext ?? fallbackPageContext;
-    if (variant !== "rail" || !context) return null;
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("agentThread");
-    const query = params.toString();
+    const context =
+      registeredPageContext ?? operatorPageContextFromPathname(pathname);
+    if (!context) return null;
+    const query = searchParams.toString();
     return { ...context, href: `${pathname}${query ? `?${query}` : ""}` };
-  }, [
-    fallbackPageContext,
-    pathname,
-    registeredPageContext,
-    searchParams,
-    variant,
-  ]);
-  const recentContextThreads = useMemo(
-    () =>
-      currentPageContext
-        ? threads.filter(
-            (thread) =>
-              thread.initialContext &&
-              operatorPageContextsShareScope(
-                thread.initialContext,
-                currentPageContext,
-              ),
-          )
-        : threads,
-    [currentPageContext, threads],
-  );
+  }, [pathname, registeredPageContext, searchParams]);
   const currentPageContextKey = currentPageContext
     ? operatorPageContextKey(currentPageContext)
     : null;
   const availablePageContext =
-    currentPageContext &&
-    currentPageContextKey !== controller?.detachedPageContextKey
+    currentPageContext && currentPageContextKey !== dock.detachedContextKey
       ? currentPageContext
       : null;
-  const activeThread =
-    detail.thread ??
-    threads.find((thread) => thread.id === activeThreadId) ??
-    null;
+  const activeThread = detail.thread;
   const retainedThreadContext = activeThread?.initialContext ?? null;
   const displayedPageContext = retainedThreadContext ?? availablePageContext;
   const intents = useQuery(
     operatorAgentApi.listIntents,
     displayedPageContext ? { pageContext: displayedPageContext } : {},
   );
+  const prompts = useMemo(
+    () => pageSuggestions(displayedPageContext, "operator"),
+    [displayedPageContext],
+  );
   const running = detail.activeRun || submitting;
+  const { registerComposer } = dock;
+
+  useEffect(() => {
+    registerComposer({ focus: () => composerRef.current?.focus() });
+    return () => registerComposer(null);
+  }, [registerComposer]);
 
   const startNewThread = useCallback(async () => {
-    if (!controller) throw new Error("Operator agent is unavailable");
     const newThreadId = await createThread(
       availablePageContext ? { initialContext: availablePageContext } : {},
     );
-    controller.setActiveThreadId(newThreadId);
+    onThreadCreated(newThreadId);
     return newThreadId;
-  }, [availablePageContext, controller, createThread]);
+  }, [availablePageContext, createThread, onThreadCreated]);
 
   const launchIntent = useCallback(
     async (intentId: string) => {
-      if (!controller || launchingIntentId) return;
+      if (launchingIntentId) return;
       setLaunchingIntentId(intentId);
       await startIntent({
         intentId,
@@ -170,16 +134,16 @@ export function OperatorAgentPanel({
           ? { emptyThreadId: activeThreadId }
           : {}),
       })
-        .then((result) => controller.setActiveThreadId(result.threadId))
+        .then((result) => onThreadCreated(result.threadId))
         .catch(reportError("Could not start the operator task"))
         .finally(() => setLaunchingIntentId(null));
     },
     [
       activeThreadId,
-      controller,
       detail.messages.length,
       displayedPageContext,
       launchingIntentId,
+      onThreadCreated,
       startIntent,
     ],
   );
@@ -187,7 +151,7 @@ export function OperatorAgentPanel({
   const submit = useCallback(
     (message: PromptInputMessage) => {
       const text = message.text.trim();
-      if ((!text && message.files.length === 0) || !controller) return;
+      if (!text && message.files.length === 0) return;
       return runSubmission(async () => {
         const uploadedIntents: Array<{
           uploadIntentId: Id<"operatorAgentUploadIntents">;
@@ -249,7 +213,6 @@ export function OperatorAgentPanel({
     [
       activeThreadId,
       availablePageContext,
-      controller,
       generateUploadUrl,
       registerUpload,
       discardUploads,
@@ -278,125 +241,77 @@ export function OperatorAgentPanel({
     [activeThreadId, confirmAction],
   );
 
-  if (!controller) return null;
+  const contextLabel = displayedPageContext
+    ? operatorPageContextLabel(displayedPageContext)
+    : currentPageContext
+      ? operatorPageContextLabel(currentPageContext)
+      : null;
 
   return (
-    <div
-      className={cn(
-        "relative flex h-full min-h-0 w-full flex-col bg-background",
-        variant === "rail" && "border-l border-border",
-      )}
-      style={
-        variant === "rail"
-          ? { paddingTop: "env(safe-area-inset-top, 0px)" }
-          : undefined
+    <OperatorConversation
+      activeThreadId={activeThreadId}
+      loading={Boolean(activeThreadId && rawThread === undefined)}
+      detail={detail}
+      intents={intents}
+      prompts={prompts}
+      launchingIntentId={launchingIntentId}
+      confirmationBusyId={confirmationBusyId}
+      presentationDisabled={
+        running ||
+        Boolean(confirmationBusyId) ||
+        Boolean(launchingIntentId) ||
+        Boolean(activeThread?.archivedAt)
       }
-    >
-      {showHeader ? (
-        <ChatThreadHeader
-          title={activeThread?.title ?? "New thread"}
-          threads={rawThreads === undefined ? undefined : recentContextThreads}
-          activeThreadId={activeThreadId}
-          onSelectThread={controller.setActiveThreadId}
-          historyLabel="Recent tasks"
-          emptyLabel="No tasks for this page."
-          actions={
-            <PillButton
-              variant="icon"
-              iconOnly
-              label="New operator task"
-              onClick={() =>
-                void startNewThread().catch(reportError("Could not start a task"))
-              }
-            >
-              <Plus className="size-4" />
-            </PillButton>
+      onFollowUp={async (text) => {
+        if (
+          running ||
+          isSubmitting() ||
+          confirmationBusyId ||
+          launchingIntentId ||
+          activeThread?.archivedAt
+        )
+          throw new Error("Wait for the current task to finish.");
+        await submit({ text, files: [] });
+      }}
+      onSelectIntent={(intentId) => void launchIntent(intentId)}
+      onSelectPrompt={(prompt) => composerRef.current?.setValueAndFocus(prompt)}
+      onDecision={(confirmation, decision) =>
+        void decide(confirmation, decision)
+      }
+      composer={
+        <ChatComposer
+          ref={composerRef}
+          onSubmit={submit}
+          onStop={() => {
+            if (!activeThreadId) return;
+            void cancelRun({ threadId: activeThreadId }).catch(
+              reportError("Could not stop the task"),
+            );
+          }}
+          placeholder="Ask the operator agent…"
+          attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
+          multipleAttachments
+          maxFileSize={OPERATOR_ATTACHMENT_MAX_BYTES}
+          onAttachmentError={(message) => toast.error(message)}
+          busy={running}
+          busyLabel="Working"
+          variant="dock"
+          contextChip={
+            <AgentDockContextChip
+              label={contextLabel}
+              href={activeThread ? operatorThreadContextHref(activeThread) : null}
+              retained={Boolean(retainedThreadContext)}
+              detached={!displayedPageContext}
+              onRemove={() => {
+                if (currentPageContextKey) {
+                  dock.detachContext(currentPageContextKey);
+                }
+              }}
+              onAttach={dock.attachContext}
+            />
           }
         />
-      ) : null}
-
-      {variant === "rail" && (retainedThreadContext || currentPageContext) ? (
-        <div className="flex min-h-10 shrink-0 items-center border-b border-border px-3 py-1.5">
-          {displayedPageContext ? (
-            <div
-              className={cn(
-                "flex min-w-0 items-center gap-1.5 rounded-full border border-input px-2.5 py-1 text-muted-foreground",
-                typeStyle("label.tag"),
-              )}
-            >
-              <span className="truncate">
-                {retainedThreadContext ? "Thread context: " : "Using "}
-                {operatorPageContextLabel(displayedPageContext)}
-              </span>
-              {!retainedThreadContext ? (
-                <TagRemoveButton
-                  label="Remove current page context"
-                  onClick={() => {
-                    if (currentPageContextKey) {
-                      controller.detachPageContext(currentPageContextKey);
-                    }
-                  }}
-                />
-              ) : null}
-            </div>
-          ) : (
-            <PillButton
-              variant="ghost"
-              size="compact"
-              onClick={controller.attachPageContext}
-            >
-              Use current page
-            </PillButton>
-          )}
-        </div>
-      ) : null}
-
-      <OperatorConversation
-        variant={variant}
-        activeThreadId={activeThreadId}
-        loading={Boolean(activeThreadId && rawThread === undefined)}
-        detail={detail}
-        intents={intents}
-        launchingIntentId={launchingIntentId}
-        confirmationBusyId={confirmationBusyId}
-        presentationDisabled={
-          running || Boolean(confirmationBusyId) || Boolean(launchingIntentId) ||
-          Boolean(activeThread?.archivedAt)
-        }
-        onFollowUp={async (text) => {
-          if (
-            running || isSubmitting() || confirmationBusyId ||
-            launchingIntentId || activeThread?.archivedAt || !controller
-          ) throw new Error("Wait for the current task to finish.");
-          await submit({ text, files: [] });
-        }}
-        onSelectIntent={(intentId) => void launchIntent(intentId)}
-        onDecision={(confirmation, decision) =>
-          void decide(confirmation, decision)
-        }
-        composer={
-          <ChatComposer
-            onSubmit={submit}
-            onStop={() => {
-              if (!activeThreadId) return;
-              void cancelRun({ threadId: activeThreadId }).catch(
-                reportError("Could not stop the task"),
-              );
-            }}
-            placeholder="Ask the operator agent…"
-            attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
-            multipleAttachments
-            maxFileSize={OPERATOR_ATTACHMENT_MAX_BYTES}
-            onAttachmentError={(message) => toast.error(message)}
-            busy={running}
-            busyLabel="Working"
-          />
-        }
-      />
-
-      {pagePanel ? (
-        <div className="absolute inset-0 z-10 bg-background">{pagePanel}</div>
-      ) : null}
-    </div>
+      }
+    />
   );
 }

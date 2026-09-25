@@ -25,7 +25,6 @@ import {
 import { Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { OperatorSidebar } from "../operator-sidebar";
 import {
   ClientDetailsEditor,
   type ClientEditorHandle,
@@ -286,16 +285,6 @@ export default function OperatorClientsScreen() {
   return (
     <AppShell
       actions={actions}
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="clients"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
       rightPanel={rightPanel}
     >
       <main className="flex w-full flex-col gap-4">

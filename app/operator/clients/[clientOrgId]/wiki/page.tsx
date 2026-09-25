@@ -20,7 +20,6 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
-import { OperatorClientSidebar } from "../operator-client-sidebar";
 
 export default function OperatorClientWikiPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
@@ -52,18 +51,6 @@ export default function OperatorClientWikiPage() {
           <span className="truncate">Notes</span>
         </span>
       }
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorClientSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          clientOrgId={clientOrgId}
-          activeImpersonation={activeImpersonation}
-          impersonationDisabled={!client}
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
     >
       <OperatorPageContextRegistration
         context={{
