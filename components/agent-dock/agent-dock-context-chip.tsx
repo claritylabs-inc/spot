@@ -2,13 +2,15 @@
 
 import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 import Link from "next/link";
-import { AtSign, Plus } from "lucide-react";
+import { AtSign, Focus } from "lucide-react";
+import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
 /**
- * Composer chip for the page a chat is about. New chats can drop the current
- * page and add it back; a thread's saved origin is shown read-only.
+ * Composer chip for the page a chat is about. The current page can be removed
+ * and toggled back with `AgentDockContextToggle`; a thread's saved origin is
+ * shown read-only.
  */
 export function AgentDockContextChip({
   label,
@@ -16,7 +18,6 @@ export function AgentDockContextChip({
   retained = false,
   detached = false,
   onRemove,
-  onAttach,
 }: {
   label: string | null;
   /** The saved origin page, when it can be reopened. */
@@ -24,24 +25,9 @@ export function AgentDockContextChip({
   retained?: boolean;
   detached?: boolean;
   onRemove?: () => void;
-  onAttach?: () => void;
 }) {
   if (!label) return null;
-  if (detached) {
-    return (
-      <button
-        type="button"
-        onClick={onAttach}
-        className={cn(
-          "mr-1 flex h-6 shrink-0 items-center gap-1 rounded-full border border-dashed border-input px-2 text-muted-foreground transition-colors hover:text-foreground",
-          typeStyle("label.tag"),
-        )}
-      >
-        <Plus className="size-3" />
-        <span className="max-w-40 truncate">{label}</span>
-      </button>
-    );
-  }
+  if (detached) return null;
   return (
     <span
       title={retained ? `Chat started from ${label}` : `Using ${label}`}
@@ -63,5 +49,32 @@ export function AgentDockContextChip({
         <TagRemoveButton label={`Remove ${label}`} onClick={onRemove} />
       ) : null}
     </span>
+  );
+}
+
+/** Turns the current page's context on or off for the next message. */
+export function AgentDockContextToggle({
+  label,
+  attached,
+  onToggle,
+}: {
+  label: string | null;
+  attached: boolean;
+  onToggle: () => void;
+}) {
+  if (!label) return null;
+  return (
+    <PillButton
+      type="button"
+      variant="icon"
+      size="compact"
+      iconOnly
+      label={attached ? `Stop using ${label}` : `Use ${label}`}
+      aria-pressed={attached}
+      className={cn(attached && "bg-foreground/6 text-foreground")}
+      onClick={onToggle}
+    >
+      <Focus className="size-3.5" />
+    </PillButton>
   );
 }

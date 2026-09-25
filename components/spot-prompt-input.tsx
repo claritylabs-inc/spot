@@ -571,6 +571,8 @@ export interface SpotPromptInputProps {
   variant?: "default" | "command" | "dock";
   /** Leading footer slot, e.g. the agent dock's page-context chip. */
   contextChip?: React.ReactNode;
+  /** Trailing controls before attach, e.g. the page-context toggle. */
+  toolbarEnd?: React.ReactNode;
 }
 
 export const SpotPromptInput = forwardRef<
@@ -595,6 +597,7 @@ export const SpotPromptInput = forwardRef<
     orgId,
     variant = "default",
     contextChip,
+    toolbarEnd,
   },
   ref,
 ) {
@@ -1228,6 +1231,7 @@ export const SpotPromptInput = forwardRef<
 
   const submitControls = (
     <div className="flex items-center gap-1">
+      {toolbarEnd}
       {showAttach && <AttachmentActionButtons />}
       {isGenerating && onStop ? (
         <PillButton

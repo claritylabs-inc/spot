@@ -16,7 +16,7 @@ export function ChatErrorNotice({
   return (
     <div
       className={cn(
-        "rounded-lg border border-destructive/20 bg-destructive/5 text-destructive",
+        "w-fit max-w-full rounded-lg border border-destructive/20 bg-destructive/5 text-destructive",
         className,
       )}
     >

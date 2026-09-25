@@ -184,6 +184,10 @@ function AssistantMessageFooter({
   return (
     <div className="mt-1.5 min-w-0">
       <div className="flex items-start gap-2">
+        <div className="-ml-1.5 flex shrink-0 items-center gap-1">
+          {retryable ? <RetryButton messageId={msg._id} iconOnly /> : null}
+          <ChatCopyButton content={content} iconClassName="h-3 w-3" />
+        </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {policyIds.length > 0 && (
             <>
@@ -246,10 +250,6 @@ function AssistantMessageFooter({
               ) : null}
             </>
           ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {retryable ? <RetryButton messageId={msg._id} iconOnly /> : null}
-          <ChatCopyButton content={content} iconClassName="h-3 w-3" />
         </div>
       </div>
       {files.grid}
