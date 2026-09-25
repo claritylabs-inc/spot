@@ -19,6 +19,7 @@ import {
   convexDeploymentNameFromDeployKey,
   ensureImessageEnvFile,
   ensureNode24,
+  ensureNpmToken,
   generateLocalAuthKeys,
   localConvexUrls,
   parseEnvFile,
@@ -34,6 +35,7 @@ import {
 } from "./lib/conductor-workspace.mjs";
 
 ensureNode24();
+ensureNpmToken();
 process.chdir(repoRoot);
 
 const contextDirectory = path.join(repoRoot, ".context");

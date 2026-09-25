@@ -48,6 +48,34 @@ export const consumerAiCredentialNames = [
   "XAI_API_KEY",
 ];
 
+// `.npmrc` reads `NPM_TOKEN` to install @claritylabs-inc/ui from GitHub
+// Packages. Fall back to the gh CLI token when it has read:packages.
+export function ensureNpmToken() {
+  if (!process.env.NPM_TOKEN?.trim()) {
+    const gh = spawnSync("gh", ["auth", "token"], { encoding: "utf8" });
+    if (gh.status === 0 && gh.stdout.trim()) {
+      process.env.NPM_TOKEN = gh.stdout.trim();
+    }
+  }
+
+  const probe = spawnSync("npm", ["view", "@claritylabs-inc/ui", "version"], {
+    cwd: repoRoot,
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (probe.status !== 0) {
+    throw new Error(
+      [
+        "Cannot read @claritylabs-inc/ui from GitHub Packages.",
+        "Set NPM_TOKEN to a GitHub token with read:packages access:",
+        "  - Conductor Cloud: add NPM_TOKEN to your Conductor environment variables.",
+        "  - Local: add NPM_TOKEN to .conductor/settings.local.toml, or run",
+        "    `gh auth refresh -s read:packages`.",
+      ].join("\n"),
+    );
+  }
+}
+
 export function ensureNode24() {
   if (process.versions.node.split(".")[0] === "24") {
     const nodeBin = path.dirname(process.execPath);
