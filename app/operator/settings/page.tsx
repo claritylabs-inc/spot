@@ -1,12 +1,6 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
-import {
-  SidebarMenuItem,
-  SidebarTooltipProvider,
-} from "@/components/app-sidebar/nav-item";
-import { Settings, Users } from "lucide-react";
 import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -38,37 +32,7 @@ export default function OperatorSettingsPage() {
 
   return (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <SidebarTooltipProvider>
-          <SidebarHeader
-            collapsed={collapsed}
-            initials="OP"
-            headerOrgName="Settings"
-            onToggleCollapse={onToggleCollapse}
-            backHref="/operator/threads"
-          />
-          <div className="space-y-1 p-2">
-            <SidebarMenuItem
-              href="/operator/settings"
-              icon={Settings}
-              label="General"
-              active={section === "general"}
-              collapsed={collapsed}
-            />
-            <SidebarMenuItem
-              href="/operator/settings?section=team"
-              icon={Users}
-              label="Team"
-              active={section === "team"}
-              collapsed={collapsed}
-            />
-          </div>
-        </SidebarTooltipProvider>
-      )}
-      customSidebarStorageKey="operator-sidebar"
       rightPanel={section === "team" ? invitations.drawer : mcp.drawer}
-      disablePersistentChat
-      disableCommandPalette
     >
       {section === "team" ? (
         invitations.panel

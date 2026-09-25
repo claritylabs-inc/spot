@@ -22,7 +22,6 @@ import {
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
-import { OperatorSidebar } from "../operator-sidebar";
 import { typeStyle } from "@/lib/typography";
 import {
   OperatorGoogleWorkspaceContent,
@@ -681,16 +680,6 @@ function OperatorChannelsContent({
 
   return (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="channels"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
       rightPanel={rightPanel}
     >
       <main className="w-full">
@@ -865,16 +854,6 @@ export default function OperatorChannelsPage() {
     />
   ) : (
     <AppShell
-      customSidebar={({ collapsed, onToggleCollapse }) => (
-        <OperatorSidebar
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-          active="channels"
-        />
-      )}
-      customSidebarStorageKey="operator-sidebar"
-      disablePersistentChat
-      disableCommandPalette
     >
       <main className="w-full">
         <OperatorChannelTabs>

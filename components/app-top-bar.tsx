@@ -11,9 +11,6 @@ const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/policies": { label: "Policies" },
   "/requests": { label: "Requests" },
   "/files": { label: "Files" },
-  "/agent/threads": { label: "Threads" },
-  "/agent/archive": { label: "Threads", href: "/agent/threads" },
-  "/agent/thread": { label: "Threads", href: "/agent/threads" },
   "/broker": { label: "Profile" },
   "/broker/team": { label: "Team" },
   "/connect": { label: "Connect" },
@@ -23,8 +20,6 @@ const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/certificates": { label: "Certificates" },
   "/settings": { label: "Settings" },
   "/profile": { label: "Profile" },
-  "/operator": { label: "Threads", href: "/operator/threads" },
-  "/operator/threads": { label: "Threads" },
   "/operator/clients": { label: "Clients", href: "/operator/clients" },
   "/operator/brokers": { label: "Insurance providers" },
   "/operator/channels": { label: "Channels" },
@@ -65,7 +60,7 @@ export interface PresenceUser {
   lastSeen: number;
 }
 
-function PresenceAvatars({ users }: { users: PresenceUser[] }) {
+export function PresenceAvatars({ users }: { users: PresenceUser[] }) {
   if (users.length === 0) return null;
 
   function getInitials(name?: string) {
@@ -120,6 +115,7 @@ export function AppTopBar({
   const { label, href } = resolveAppBreadcrumb(pathname);
   return (
     <SharedAppTopBar
+      className="pr-3 lg:pr-3"
       breadcrumb={label}
       breadcrumbHref={href}
       breadcrumbRender={<Link href={href} />}

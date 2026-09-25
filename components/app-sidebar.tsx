@@ -7,19 +7,18 @@ import {
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import type { NavItemConfig } from "@/components/app-sidebar/types";
+import { LayoutGroup } from "framer-motion";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { useOnboardingCache } from "@/hooks/use-onboarding-cache";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { MainSidebarContent } from "@/components/app-sidebar/main-sidebar-content";
 import { SidebarTooltipProvider } from "@/components/app-sidebar/nav-item";
+import { SidebarVariantTransition } from "@/components/app-sidebar/sidebar-variant-transition";
+import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import {
-  AGENT_DOMAIN,
   BROKER_NAV_ITEMS,
   CONNECT_ITEMS,
   INSURANCE_ITEMS,
@@ -27,15 +26,12 @@ import {
   SHORTCUT_SEQUENCE_TIMEOUT_MS,
 } from "@/components/app-sidebar/nav-config";
 import { SettingsSidebarContent } from "@/components/app-sidebar/settings-sidebar-content";
-import { splitThreadConversations } from "@/lib/thread-display";
 import {
   getInitials,
   isEditableTarget,
   useMediaQuery,
 } from "@/components/app-sidebar/utils";
-import { useCachedQuery, useSetCachedQuery } from "@/lib/sync/use-cached-query";
-import { createClientMutationId } from "@/lib/sync/client-mutation-id";
-import { useArchivedThreadCacheActions } from "@/lib/sync/spot-cached-queries";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { isFeatureEnabled } from "@/convex/lib/featureFlags";
 import {
   getSettingsNavigation,
@@ -72,48 +68,27 @@ function sidebarHeaderBranding({
 export function AppSidebar({
   collapsed,
   onToggleCollapse: toggleCollapse,
+  settingsMode,
   mobileOpen,
   mobileMenuRef,
   onMobileClose,
-  onAskSpot,
-  disablePersistentChat = false,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
+  settingsMode: boolean;
   mobileOpen?: boolean;
   mobileMenuRef?: RefObject<HTMLButtonElement | null>;
   onMobileClose?: () => void;
-  onAskSpot?: () => void;
-  disablePersistentChat?: boolean;
 }) {
-  const reduceMotion = useReducedMotion();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const isSettingsMode = pathname.startsWith("/settings");
+  const dock = useOptionalAgentDock();
 
   const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const viewerOrg = useCachedQuery("orgs.viewerOrg", api.orgs.viewerOrg, {});
   const currentOrg = useCurrentOrg();
   const isBroker = currentOrg?.isBroker ?? false;
-  const canReadThreads = !!currentOrg && !isBroker && !disablePersistentChat;
-  const unifiedThreads = useCachedQuery(
-    "threads.list.active",
-    api.threads.list,
-    canReadThreads ? { archived: false } : "skip",
-  );
-  const archivedThreads = useCachedQuery(
-    "threads.list.archived",
-    api.threads.list,
-    canReadThreads ? { archived: true } : "skip",
-  );
-  const setThreadDetail = useSetCachedQuery<
-    NonNullable<typeof unifiedThreads>[number],
-    { id: Id<"threads"> }
-  >("threads.get.current");
-  const createThread = useMutation(api.threads.create);
-  const archiveThread = useMutation(api.threads.archive);
-  const { archiveThreadLocally } = useArchivedThreadCacheActions();
   const { signOut } = useAuthActions();
   const { clearCache: clearOnboardingCache } = useOnboardingCache();
   const showConnectFeatures = isFeatureEnabled(
@@ -126,14 +101,6 @@ export function AppSidebar({
   const connectItems =
     isBroker || !showConnectFeatures ? NO_NAV_ITEMS : CONNECT_ITEMS;
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-
-  useEffect(() => {
-    const rows = [...(unifiedThreads ?? []), ...(archivedThreads ?? [])];
-    if (rows.length === 0) return;
-    void Promise.all(
-      rows.map((thread) => setThreadDetail({ id: thread._id }, thread)),
-    );
-  }, [archivedThreads, setThreadDetail, unifiedThreads]);
 
   const pageShortcutMap = useMemo<Record<string, string>>(
     () => ({
@@ -164,44 +131,10 @@ export function AppSidebar({
     api.notifications.unreadCount,
     currentOrg?.orgId ? { orgId: currentOrg.orgId } : "skip",
   ) as number | undefined;
-  const { agentConversations, pinnedConversations } = useMemo(
-    () => splitThreadConversations(unifiedThreads),
-    [unifiedThreads],
-  );
-  const visibleAgentConversations = useMemo(
-    () => (disablePersistentChat ? [] : agentConversations),
-    [agentConversations, disablePersistentChat],
-  );
-  const visiblePinnedConversations = useMemo(
-    () => (disablePersistentChat ? [] : pinnedConversations),
-    [disablePersistentChat, pinnedConversations],
-  );
-  const shortcutConversations = useMemo(
-    () => [...visiblePinnedConversations, ...visibleAgentConversations],
-    [visibleAgentConversations, visiblePinnedConversations],
-  );
 
   useEffect(() => {
     onMobileClose?.();
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function handleArchiveThread(threadId: string, active: boolean) {
-    await archiveThreadLocally(threadId as Id<"threads">);
-    await archiveThread({ id: threadId as Id<"threads"> });
-    if (!active) return;
-
-    const next = shortcutConversations.find((c) => c.id !== threadId);
-    if (next) {
-      router.push(`/agent/thread/${next.id}`);
-      return;
-    }
-
-    const nextThreadId = await createThread({
-      agentDomain: AGENT_DOMAIN,
-      clientMutationId: createClientMutationId("thread"),
-    });
-    router.push(`/agent/thread/${nextThreadId}`);
-  }
 
   useEffect(() => {
     function clearShortcutSequence() {
@@ -245,13 +178,6 @@ export function AppSidebar({
       if (pageHref) {
         e.preventDefault();
         router.push(pageHref);
-        return;
-      }
-
-      const num = parseInt(key, 10);
-      if (num >= 1 && num <= 9 && num <= shortcutConversations.length) {
-        e.preventDefault();
-        router.push(`/agent/thread/${shortcutConversations[num - 1].id}`);
       }
     }
 
@@ -266,7 +192,7 @@ export function AppSidebar({
       document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [router, shortcutConversations, pageShortcutMap]);
+  }, [router, pageShortcutMap]);
 
   const headerBranding = sidebarHeaderBranding({
     viewerOrg,
@@ -307,21 +233,14 @@ export function AppSidebar({
         headerOrgName={headerOrgName}
         navItems={navItems}
         connectItems={connectItems}
-        disablePersistentChat={disablePersistentChat}
         notificationsPanelOpen={notificationsPanelOpen}
         unreadCount={unreadCount}
         isDesktop={isDesktop}
         orgId={currentOrg?.orgId}
-        agentConversations={visibleAgentConversations}
-        pinnedConversations={visiblePinnedConversations}
-        archivedThreadCount={
-          disablePersistentChat ? 0 : (archivedThreads?.length ?? 0)
-        }
         onToggleCollapse={toggleCollapse}
         onToggleNotifications={() => setNotificationsPanelOpen((v) => !v)}
         onCloseNotifications={() => setNotificationsPanelOpen(false)}
-        onAskSpot={disablePersistentChat ? undefined : onAskSpot}
-        onArchiveThread={handleArchiveThread}
+        onAskSpot={dock && !isBroker ? dock.newChat : undefined}
         onSignOut={() => {
           clearOnboardingCache();
           signOut();
@@ -330,22 +249,15 @@ export function AppSidebar({
     );
   }
 
-  function renderBaseActiveContent(contentCollapsed: boolean) {
-    let content: React.ReactNode;
-
-    if (isSettingsMode) {
-      content = renderSettingsSidebarContent(contentCollapsed);
-    } else {
-      content = renderSidebarContent(contentCollapsed);
-    }
-
-    return <SidebarTooltipProvider>{content}</SidebarTooltipProvider>;
+  function renderContent(contentCollapsed: boolean) {
+    return (
+      <SidebarTooltipProvider>
+        {settingsMode
+          ? renderSettingsSidebarContent(contentCollapsed)
+          : renderSidebarContent(contentCollapsed)}
+      </SidebarTooltipProvider>
+    );
   }
-
-  const activeContent = renderBaseActiveContent(collapsed);
-  const mobileActiveContent = renderBaseActiveContent(false);
-  const activeMode = isSettingsMode ? "settings" : "main";
-  const activeModeMovesRight = activeMode !== "main";
 
   return (
     <>
@@ -354,41 +266,13 @@ export function AppSidebar({
           collapsed ? "w-14" : "w-[220px]"
         } border-border bg-background`}
       >
-        <div className="relative h-full min-h-0 w-full overflow-hidden">
-          <AnimatePresence initial={false} mode="sync">
-            <motion.div
-              key={activeMode}
-              initial={
-                reduceMotion
-                  ? false
-                  : {
-                      opacity: 0,
-                      x: activeModeMovesRight ? 12 : -12,
-                    }
-              }
-              animate={{ opacity: 1, x: 0 }}
-              exit={
-                reduceMotion
-                  ? { opacity: 0 }
-                  : {
-                      opacity: 0,
-                      x: activeModeMovesRight ? 6 : -6,
-                    }
-              }
-              transition={
-                reduceMotion
-                  ? { duration: 0 }
-                  : {
-                      opacity: { duration: 0.1, ease: [0.2, 0, 0, 1] },
-                      x: { duration: 0.16, ease: [0.2, 0, 0, 1] },
-                    }
-              }
-              className="absolute inset-0 overflow-hidden bg-background will-change-transform"
-            >
-              {activeContent}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+        <SidebarVariantTransition
+          variantKey={settingsMode ? "settings" : "main"}
+          depth={settingsMode ? 1 : 0}
+          layoutGroupId={collapsed ? "client-collapsed" : "client"}
+        >
+          {renderContent(collapsed)}
+        </SidebarVariantTransition>
       </aside>
 
       {notificationsPanelOpen && isDesktop && currentOrg?.orgId && (
@@ -430,7 +314,7 @@ export function AppSidebar({
           }}
         >
           <DialogTitle className="sr-only">Navigation</DialogTitle>
-          {mobileActiveContent}
+          <LayoutGroup id="client-mobile">{renderContent(false)}</LayoutGroup>
         </DialogContent>
       </Dialog>
     </>

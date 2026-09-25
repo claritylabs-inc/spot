@@ -195,12 +195,16 @@ export function PolicyCitation({
             className="pointer-events-none absolute inset-0 opacity-50"
             style={brand.patternStyle}
           />
-          <BrandIcon
-            src={brand.branding?.iconUrl}
-            name={brand.issuerName}
-            size="xs"
-            className="relative z-10 size-3 rounded-sm bg-background"
-          />
+          {brand.branding?.iconUrl ? (
+            <BrandIcon
+              src={brand.branding.iconUrl}
+              name={brand.issuerName}
+              size="xs"
+              className="relative z-10 size-3 rounded-sm bg-background"
+            />
+          ) : (
+            <FileText className="relative z-10 h-2.5 w-2.5 shrink-0" />
+          )}
         </>
       ) : (
         <FileText className="h-2.5 w-2.5 shrink-0" />
@@ -257,9 +261,9 @@ export function PolicySourcePill({
       style={brand?.surfaceStyle}
       title={label}
     >
-      {brand ? (
+      {brand?.branding?.iconUrl ? (
         <BrandIcon
-          src={brand.branding?.iconUrl}
+          src={brand.branding.iconUrl}
           name={brand.issuerName}
           size="xs"
           className="relative z-10 size-3 rounded-sm bg-background"

@@ -1,5 +1,4 @@
 import type React from "react";
-import type { ThreadConversationItem } from "@/lib/thread-display";
 
 import type { NavShortcut } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
 export type { NavShortcut } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
@@ -10,5 +9,3 @@ export type NavItemConfig = {
   icon: React.ComponentType<{ className?: string }>;
   shortcut?: NavShortcut;
 };
-
-export type ConversationItem = ThreadConversationItem;

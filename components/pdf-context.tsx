@@ -42,13 +42,30 @@ interface PdfContextValue {
 
 const PdfContext = createContext<PdfContextValue | null>(null);
 
-export function PdfProvider({ children }: { children: React.ReactNode }) {
+/** `resetKey` changes (e.g. the route) close the viewer before children render. */
+export function PdfProvider({
+  children,
+  resetKey,
+}: {
+  children: React.ReactNode;
+  resetKey?: string;
+}) {
   const [fileUrl, setFileUrlState] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [isPdfOpen, setIsPdfOpen] = useState(false);
   const [highlightedPage, setHighlightedPage] = useState<number | null>(null);
   const [highlightBoxes, setHighlightBoxes] = useState<PdfHighlightBox[]>([]);
+  const [appliedResetKey, setAppliedResetKey] = useState(resetKey);
+  if (appliedResetKey !== resetKey) {
+    setAppliedResetKey(resetKey);
+    setFileUrlState(null);
+    setIsPdfOpen(false);
+    setCurrentPage(1);
+    setNumPages(0);
+    setHighlightedPage(null);
+    setHighlightBoxes([]);
+  }
 
   const setFileUrl = useCallback((url: string) => {
     setFileUrlState(url);

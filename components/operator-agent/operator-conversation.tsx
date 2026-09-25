@@ -24,8 +24,8 @@ import {
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatDisclosure } from "@/components/chat/disclosure";
 import { useChatAction } from "@/components/chat/use-chat-action";
+import { AgentDockSuggestions } from "@/components/agent-dock/agent-dock-suggestions";
 import { ProseMarkdown } from "@/components/prose-markdown";
-import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   operatorAgentApi,
@@ -34,7 +34,6 @@ import {
   type OperatorAgentMessage,
   type OperatorAgentThreadDetail,
 } from "@/lib/operator-agent-api";
-import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { OperatorEmailMessage } from "./operator-email-message";
@@ -196,54 +195,39 @@ function OperatorMessageFooter({
 
 function EmptyThread({
   intents,
+  prompts,
   launchingIntentId,
   onSelect,
+  onSelectPrompt,
 }: {
   intents: OperatorAgentIntent[] | undefined;
+  prompts: Array<{ label: string; prompt: string }>;
   launchingIntentId: string | null;
   onSelect: (intentId: string) => void;
+  onSelectPrompt: (prompt: string) => void;
 }) {
-  return (
-    <div className="flex min-h-full flex-col justify-center py-10">
-      <LogoIcon className="mb-4 text-muted-foreground" size={24} />
-      <h2 className={cn("text-foreground", typeStyle("body.medium"))}>
-        What do you need?
-      </h2>
-      <p
-        className={cn(
-          "mt-1 text-muted-foreground",
-          typeStyle("caption.default"),
-        )}
-      >
-        Pick a task or describe what you need. Sensitive actions still require
-        your approval.
-      </p>
-      <div className="mt-6 divide-y divide-border border-y border-border">
-        {intents === undefined ? (
-          <div className="flex h-20 items-center justify-center">
-            <Spinner className="text-muted-foreground" />
-          </div>
-        ) : (
-          intents.map((intent) => (
-            <button
-              key={intent.id}
-              type="button"
-              disabled={launchingIntentId !== null}
-              onClick={() => onSelect(intent.id)}
-              className={cn(
-                "flex w-full items-center gap-2 py-3 text-left text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50",
-                typeStyle("caption.medium"),
-              )}
-            >
-              {launchingIntentId === intent.id ? (
-                <Spinner className="size-3.5" />
-              ) : null}
-              {intent.label}
-            </button>
-          ))
-        )}
+  if (intents === undefined) {
+    return (
+      <div className="mt-auto flex justify-center pb-4">
+        <Spinner className="text-muted-foreground" />
       </div>
-    </div>
+    );
+  }
+  return (
+    <AgentDockSuggestions
+      items={[
+        ...intents,
+        ...prompts
+          .filter((prompt) => !intents.some((intent) => intent.label === prompt.label))
+          .map((prompt) => ({ id: `prompt:${prompt.label}`, label: prompt.label })),
+      ].slice(0, 5)}
+      pendingId={launchingIntentId}
+      onSelect={(id) => {
+        const prompt = prompts.find((item) => `prompt:${item.label}` === id);
+        if (prompt) onSelectPrompt(prompt.prompt);
+        else onSelect(id);
+      }}
+    />
   );
 }
 
@@ -326,27 +310,29 @@ function OperatorMessageRow({
 }
 
 export function OperatorConversation({
-  variant,
   activeThreadId,
   loading,
   detail,
   intents,
+  prompts,
   launchingIntentId,
   confirmationBusyId,
   onSelectIntent,
+  onSelectPrompt,
   onDecision,
   composer,
   onFollowUp,
   presentationDisabled,
 }: {
-  variant: "rail" | "page";
   activeThreadId: string | null;
   loading: boolean;
   detail: OperatorAgentThreadDetail;
   intents: OperatorAgentIntent[] | undefined;
+  prompts: Array<{ label: string; prompt: string }>;
   launchingIntentId: string | null;
   confirmationBusyId: string | null;
   onSelectIntent: (intentId: string) => void;
+  onSelectPrompt: (prompt: string) => void;
   onDecision: (
     confirmation: OperatorAgentConfirmation,
     decision: ChatApprovalDecision,
@@ -381,8 +367,7 @@ export function OperatorConversation({
           ? `${activeThreadId}:${detail.messages.length}:${detail.confirmations.length}`
           : null
       }
-      clearanceClassName={hasMessages ? "h-40" : undefined}
-      compactComposer={variant === "rail"}
+      clearanceClassName={hasMessages ? "h-24" : "h-20"}
       composer={composer}
     >
       {loading ? (
@@ -392,8 +377,10 @@ export function OperatorConversation({
       ) : !hasMessages ? (
         <EmptyThread
           intents={intents}
+          prompts={prompts}
           launchingIntentId={launchingIntentId}
           onSelect={onSelectIntent}
+          onSelectPrompt={onSelectPrompt}
         />
       ) : (
         entries.map((entry) => {

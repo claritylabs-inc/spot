@@ -19,7 +19,20 @@ import {
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import type { OperatorImpersonationTarget } from "@/lib/operator-navigation";
+import {
+  useCachedOperatorClients,
+  useCachedOperatorCurrent,
+} from "@/lib/sync/operator-cached-queries";
 import { OperatorClientImpersonationAction } from "./operator-client-impersonation-action";
+
+let beforeImpersonationStart: (() => Promise<boolean>) | null = null;
+
+/** The settings page saves pending edits before the sidebar starts impersonating. */
+export function registerOperatorClientBeforeImpersonationStart(
+  handler: (() => Promise<boolean>) | null,
+) {
+  beforeImpersonationStart = handler;
+}
 
 type OperatorClientNavigationSection =
   | "policies"
@@ -197,5 +210,31 @@ export function OperatorClientSidebar({
         </div>
       </div>
     </SidebarTooltipProvider>
+  );
+}
+
+/** Client workspace menu for the persistent shell, keyed by the routed client. */
+export function OperatorClientShellSidebar({
+  clientOrgId,
+  collapsed,
+  onToggleCollapse,
+}: {
+  clientOrgId: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
+  const current = useCachedOperatorCurrent();
+  const clients = useCachedOperatorClients();
+  return (
+    <OperatorClientSidebar
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
+      clientOrgId={clientOrgId}
+      activeImpersonation={current?.activeImpersonation}
+      impersonationDisabled={
+        !clients?.some((client) => client._id === clientOrgId)
+      }
+      beforeImpersonationStart={async () => beforeImpersonationStart?.()}
+    />
   );
 }

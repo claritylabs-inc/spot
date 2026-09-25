@@ -7,6 +7,7 @@ import {
   useCachedAgentTargets,
   useCachedConnectedVendors,
 } from "@/lib/sync/spot-cached-queries";
+import { AgentDockSuggestions } from "@/components/agent-dock/agent-dock-suggestions";
 import { typeStyle } from "@/lib/typography";
 
 type ExamplePrompt = {
@@ -87,9 +88,12 @@ const GET_STARTED_ACTIONS = [
 export function NewChatEmptyState({
   onSelectPrompt,
   orgId,
+  leadingPrompts = [],
 }: {
   onSelectPrompt: (prompt: string) => void;
   orgId?: Id<"organizations">;
+  /** Prompts for the page the chat starts from, shown first. */
+  leadingPrompts?: Array<{ label: string; prompt: string }>;
 }) {
   const targets = useCachedAgentTargets(orgId);
   const vendorRows = useCachedConnectedVendors(orgId) as
@@ -114,10 +118,16 @@ export function NewChatEmptyState({
       activeVendors: counts.activeVendors > 0,
     };
 
-    return EXAMPLE_PROMPTS.filter((item) =>
+    const dataPrompts = EXAMPLE_PROMPTS.filter((item) =>
       item.requires.every((requirement) => has[requirement]),
-    ).slice(0, 7);
-  }, [targets, vendorRows]);
+    );
+    return [...leadingPrompts, ...dataPrompts]
+      .filter(
+        (item, index, all) =>
+          all.findIndex((other) => other.label === item.label) === index,
+      )
+      .slice(0, 4);
+  }, [leadingPrompts, targets, vendorRows]);
 
   if (isLoadingContext) {
     return null;
@@ -125,37 +135,30 @@ export function NewChatEmptyState({
 
   if (prompts.length === 0) {
     return (
-      <div className="mx-auto w-full max-w-3xl pt-10 pb-8">
-        <p className={`mb-4 text-muted-foreground/60 ${typeStyle("body.default")}`}>Get started</p>
-        <div className="border-t border-border-emphasized">
-          {GET_STARTED_ACTIONS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`block w-full border-b border-border-emphasized py-2.5 text-left text-foreground/70 transition-colors hover:text-foreground ${typeStyle("control.button")}`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
+      <div className="mt-auto pb-2">
+        <p className={`mb-1 text-muted-foreground/60 ${typeStyle("caption.medium")}`}>
+          Get started
+        </p>
+        {GET_STARTED_ACTIONS.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`block py-1.5 text-muted-foreground transition-colors hover:text-foreground ${typeStyle("body.default")}`}
+          >
+            {item.label}
+          </Link>
+        ))}
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl pt-10 pb-8">
-      <div className="border-t border-border-emphasized">
-        {prompts.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            onClick={() => onSelectPrompt(item.prompt)}
-            className={`w-full border-b border-border-emphasized py-2.5 text-left text-foreground/70 transition-colors hover:text-foreground ${typeStyle("control.button")}`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </div>
+    <AgentDockSuggestions
+      items={prompts.map((item) => ({ id: item.label, label: item.label }))}
+      onSelect={(label) => {
+        const item = prompts.find((prompt) => prompt.label === label);
+        if (item) onSelectPrompt(item.prompt);
+      }}
+    />
   );
 }

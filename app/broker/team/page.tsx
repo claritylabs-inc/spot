@@ -12,8 +12,6 @@ export default function BrokerTeamPage() {
   return (
     <SettingsActionsContext.Provider value={{ setActions, setRightPanel }}>
       <AppShell
-        disablePersistentChat
-        disableCommandPalette
         actions={actions}
         rightPanel={rightPanel}
       >

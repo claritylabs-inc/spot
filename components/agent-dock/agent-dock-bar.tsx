@@ -1,0 +1,268 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
+import { motion } from "framer-motion";
+import {
+  Clock,
+  Maximize2,
+  Minimize2,
+  Plus,
+  X,
+} from "lucide-react";
+import { PillButton } from "@/components/ui/pill-button";
+import { typeStyle } from "@/lib/typography";
+import { cn } from "@/lib/utils";
+import { useAgentDock } from "./agent-dock-provider";
+import { DockErrorBoundary } from "./dock-error-boundary";
+import { isTabUnread, type AgentDockMode, type AgentDockTab } from "./dock-state";
+import type { AgentDockAdapter, AgentDockTabStatus } from "./types";
+
+function StatusDot({
+  status,
+  unread,
+}: {
+  status: AgentDockTabStatus;
+  unread: boolean;
+}) {
+  if (status === "working") {
+    return (
+      <motion.span
+        aria-label="Working"
+        className="size-1.5 shrink-0 rounded-full bg-sky-500"
+        animate={{ opacity: [1, 0.35, 1], scale: [1, 0.8, 1] }}
+        transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+      />
+    );
+  }
+  if (status === "approval") {
+    return (
+      <span
+        aria-label="Waiting on approval"
+        className="size-1.5 shrink-0 rounded-full bg-amber-500"
+      />
+    );
+  }
+  if (unread) {
+    return (
+      <span
+        aria-label="Unread reply"
+        className="size-1.5 shrink-0 rounded-full bg-foreground"
+      />
+    );
+  }
+  return null;
+}
+
+function TabButton({
+  active,
+  label,
+  onSelect,
+  onClose,
+  leading,
+}: {
+  active: boolean;
+  label: string;
+  onSelect: () => void;
+  onClose?: () => void;
+  leading?: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
+
+  return (
+    <div
+      ref={ref}
+      role="presentation"
+      className="group/tab relative flex h-8 max-w-52 shrink-0 items-center"
+    >
+      {active ? (
+        <motion.span
+          layoutId="agent-dock-active-tab"
+          aria-hidden="true"
+          className="absolute inset-0 rounded-md bg-foreground/6 dark:bg-foreground/10"
+          transition={{ type: "spring", stiffness: 520, damping: 42 }}
+        />
+      ) : null}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        onClick={onSelect}
+        className={cn(
+          "relative flex h-full min-w-0 items-center gap-1.5 rounded-md pl-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+          onClose ? "pr-5" : "pr-2.5",
+          active
+            ? "text-foreground"
+            : "text-muted-foreground hover:text-foreground",
+          typeStyle("control.button"),
+        )}
+      >
+        {leading}
+        <span className="truncate">{label}</span>
+      </button>
+      {onClose ? (
+        <button
+          type="button"
+          aria-label={`Close ${label}`}
+          onClick={onClose}
+          className="absolute right-0.5 flex size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
+        >
+          <X className="size-3" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ThreadTab({
+  adapter,
+  tab,
+  active,
+  open,
+}: {
+  adapter: AgentDockAdapter;
+  tab: AgentDockTab;
+  active: boolean;
+  open: boolean;
+}) {
+  const dock = useAgentDock();
+  const summary = adapter.useTabSummary(tab.threadId);
+  const { closeTab, markSeen } = dock;
+  const seenWhileVisible = active && open && dock.view === "chat";
+
+  useEffect(() => {
+    if (summary === null) closeTab(tab.threadId);
+  }, [closeTab, summary, tab.threadId]);
+
+  useEffect(() => {
+    if (seenWhileVisible && summary && summary.lastMessageAt > tab.seenAt) {
+      markSeen(tab.threadId, summary.lastMessageAt);
+    }
+  }, [markSeen, seenWhileVisible, summary, tab.seenAt, tab.threadId]);
+
+  return (
+    <TabButton
+      active={active}
+      label={summary?.title ?? "Chat"}
+      leading={
+        <StatusDot
+          status={summary?.status ?? null}
+          unread={isTabUnread(tab, summary?.lastMessageAt, seenWhileVisible)}
+        />
+      }
+      onSelect={() => dock.openThread(tab.threadId)}
+      onClose={() => closeTab(tab.threadId)}
+    />
+  );
+}
+
+/** Tabs, new chat, history and size controls; the whole dock when collapsed. */
+export function AgentDockBar({
+  adapter,
+  mode,
+  mobile,
+  actions,
+}: {
+  adapter: AgentDockAdapter;
+  mode: AgentDockMode;
+  mobile: boolean;
+  actions: ReactNode;
+}) {
+  const dock = useAgentDock();
+  const open = mode !== "collapsed";
+  const draftActive =
+    open && dock.view === "chat" && dock.activeThreadId === null;
+
+  return (
+    <div
+      className={cn(
+        "flex h-11 shrink-0 items-center gap-2 px-2 md:px-3",
+        open && "border-t border-border",
+      )}
+    >
+      <PillButton
+        type="button"
+        variant="secondary"
+        size="compact"
+        className="shrink-0"
+        aria-label={adapter.newChatLabel}
+        onClick={dock.newChat}
+      >
+        <Plus className="size-3.5" />
+        {mobile && dock.tabs.length > 0 ? null : adapter.newChatLabel}
+      </PillButton>
+      <div
+        role="tablist"
+        aria-label="Open chats"
+        className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide"
+      >
+        {draftActive ? (
+          <TabButton active label="New chat" onSelect={dock.newChat} />
+        ) : null}
+        {dock.tabs.map((tab) => (
+          <DockErrorBoundary key={tab.threadId} fallback={null}>
+            <ThreadTab
+              adapter={adapter}
+              tab={tab}
+              active={
+                open &&
+                dock.view === "chat" &&
+                dock.activeThreadId === tab.threadId
+              }
+              open={open}
+            />
+          </DockErrorBoundary>
+        ))}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {open && dock.view === "chat" ? actions : null}
+        <PillButton
+          type="button"
+          variant="icon"
+          size="compact"
+          iconOnly
+          label="History"
+          aria-pressed={open && dock.view === "history"}
+          className={cn(
+            open && dock.view === "history" && "bg-foreground/6 text-foreground",
+          )}
+          onClick={() =>
+            open && dock.view === "history" ? dock.showChat() : dock.showHistory()
+          }
+        >
+          <Clock className="size-3.5" />
+        </PillButton>
+        {mobile ? null : (
+          <PillButton
+            type="button"
+            variant="icon"
+            size="compact"
+            iconOnly
+            label={mode === "full" ? "Restore" : "Full screen"}
+            onClick={dock.toggleFull}
+          >
+            {mode === "full" ? (
+              <Minimize2 className="size-3.5" />
+            ) : (
+              <Maximize2 className="size-3.5" />
+            )}
+          </PillButton>
+        )}
+        {open ? (
+          <PillButton
+            type="button"
+            variant="icon"
+            size="compact"
+            iconOnly
+            label="Minimize"
+            onClick={() => dock.setMode("collapsed")}
+          >
+            <X className="size-3.5" />
+          </PillButton>
+        ) : null}
+      </div>
+    </div>
+  );
+}

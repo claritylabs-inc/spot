@@ -13,14 +13,12 @@ import { cn } from "@/lib/utils";
 export function ChatMessageList({
   anchorKey,
   composer,
-  compactComposer = false,
   clearanceClassName,
   className,
   children,
 }: {
   anchorKey: string | null;
   composer: ReactNode;
-  compactComposer?: boolean;
   /** Bottom spacer height so the last message clears the composer. */
   clearanceClassName?: string;
   className?: string;
@@ -43,17 +41,14 @@ export function ChatMessageList({
     <div className={cn("relative", className)}>
       <div
         ref={scrollRef}
-        className="absolute inset-0 overflow-y-auto scrollbar-hide p-4 pr-5"
+        className="absolute inset-0 overflow-y-auto scrollbar-hide px-4 py-4 md:px-6"
       >
-        <div
-          ref={contentRef}
-          className="mx-auto min-h-full w-full max-w-3xl space-y-4"
-        >
+        <div ref={contentRef} className="flex min-h-full w-full flex-col gap-4">
           {children}
           {clearanceClassName ? <div className={clearanceClassName} /> : null}
         </div>
       </div>
-      <ChatInputOverlay compact={compactComposer}>{composer}</ChatInputOverlay>
+      <ChatInputOverlay>{composer}</ChatInputOverlay>
     </div>
   );
 }
