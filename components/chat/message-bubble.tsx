@@ -6,6 +6,25 @@ import { typeStyle } from "@/lib/typography";
 
 export type ChatChannel = "chat" | "email" | "imessage" | "slack";
 
+export function ChatErrorNotice({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-destructive/20 bg-destructive/5 text-destructive",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export const ChatMessageBubble = memo(function ChatMessageBubble({
   role,
   channel,
@@ -19,49 +38,30 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   isError?: boolean;
   children: ReactNode;
 }) {
-  if (role === "agent") {
-    if (!isError) {
-      return (
-        <div
-          className={cn(
-            "text-foreground",
-            channel === "imessage"
-              ? typeStyle("body.large")
-              : typeStyle("body.default"),
-          )}
-        >
-          {children}
-        </div>
-      );
-    }
-
+  if (role === "agent" && isError) {
     return (
-      <div
-        className={cn(
-          "rounded-lg border border-destructive/20 bg-destructive/5 text-destructive",
-          channel === "imessage" ? "px-3 py-2" : "px-3.5 py-2.5",
-        )}
-      >
+      <ChatErrorNotice className={channel === "imessage" ? "px-3 py-2" : "px-3.5 py-2.5"}>
         {children}
-      </div>
+      </ChatErrorNotice>
     );
   }
 
   return (
     <div
       className={cn(
-        "rounded-lg px-3.5 py-2.5 text-foreground",
+        "text-foreground",
+        role === "user" && "rounded-lg px-3.5 py-2.5",
         channel === "imessage"
           ? typeStyle("body.large")
           : typeStyle("body.default"),
-        channel === "email"
+        role === "user" && (channel === "email"
           ? [
               "border border-border",
               isOwnMessage ? "bg-foreground/[0.04]" : "bg-foreground/[0.02]",
             ]
           : isOwnMessage
             ? "bg-foreground/[0.06]"
-            : "bg-foreground/[0.03]",
+            : "bg-foreground/[0.03]"),
       )}
     >
       {children}

@@ -1,7 +1,7 @@
 "use client";
 
-import { LockKeyhole, Mail, MessageCircle, MessageSquare } from "lucide-react";
-import { SiSlack } from "react-icons/si";
+import { LockKeyhole, MessageSquare } from "lucide-react";
+import { ChatChannelIcon, chatChannelLabel } from "@/components/chat/channel-icon";
 import {
   ActionSurface,
   ActionSurfaceLink,
@@ -19,20 +19,10 @@ function isPrivateSlackThread(thread: ThreadDisplayLike) {
   );
 }
 
-function ChannelIcon({ thread }: { thread: ThreadDisplayLike }) {
-  if (thread.originChannel === "imessage")
-    return <MessageCircle className="h-4 w-4" />;
-  if (thread.originChannel === "slack") return <SiSlack className="h-4 w-4" />;
-  if (thread.originChannel === "email") return <Mail className="h-4 w-4" />;
-  return <MessageSquare className="h-4 w-4" />;
-}
-
 function channelLabel(thread: ThreadDisplayLike) {
-  if (thread.originChannel === "imessage") return "iMessage";
-  if (thread.originChannel === "slack")
-    return isPrivateSlackThread(thread) ? "Private Slack" : "Slack";
-  if (thread.originChannel === "email") return "Email";
-  return "Chat";
+  return isPrivateSlackThread(thread)
+    ? "Private Slack"
+    : chatChannelLabel(thread.originChannel, "Chat");
 }
 
 /** One navigation row in the active or archived thread lists. */
@@ -44,7 +34,11 @@ export function ThreadListRow({ thread }: { thread: ThreadDisplayLike }) {
         className="flex min-w-0 flex-1 items-center gap-3 border-0 bg-transparent px-4 py-3 hover:bg-transparent"
       >
         <div className="shrink-0 text-muted-foreground/30">
-          <ChannelIcon thread={thread} />
+          <ChatChannelIcon
+            channel={thread.originChannel}
+            fallback={MessageSquare}
+            className="h-4 w-4"
+          />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

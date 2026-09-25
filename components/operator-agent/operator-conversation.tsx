@@ -1,9 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { ChevronRight, RotateCcw } from "lucide-react";
-import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,28 +15,28 @@ import {
   ChatApprovalCard,
   type ChatApprovalDecision,
 } from "@/components/chat/approval-card";
-import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
+import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import {
   ChatAssistantTurn,
   ChatCopyButton,
   ChatUserTurn,
 } from "@/components/chat/chat-message";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { ChatDisclosure } from "@/components/chat/disclosure";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   operatorAgentApi,
-  type OperatorAgentAttachment,
   type OperatorAgentConfirmation,
   type OperatorAgentIntent,
   type OperatorAgentMessage,
   type OperatorAgentThreadDetail,
 } from "@/lib/operator-agent-api";
 import { typeStyle } from "@/lib/typography";
-import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { OperatorEmailMessage } from "./operator-email-message";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import {
@@ -46,72 +45,33 @@ import {
   OperatorToolActivityGroup,
 } from "./operator-tool-activity";
 
-function OperatorMessageAttachments({
-  threadId,
-  attachments,
-}: {
-  threadId: string;
-  attachments: OperatorAgentAttachment[];
-}) {
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {attachments.map((attachment) => (
-        <OperatorAttachmentChip
-          key={attachment.fileId}
-          threadId={threadId}
-          attachment={attachment}
-        />
-      ))}
-    </div>
-  );
-}
+const SETTLED_CONFIRMATION_STATUS: Record<
+  Exclude<OperatorAgentConfirmation["state"], "approved" | "pending">,
+  { label: string } & StatusPresentation
+> = {
+  cancelled: { label: "Cancelled", tone: "neutral", indicator: "cancelled" },
+  expired: { label: "Expired", tone: "warning" },
+  superseded: { label: "Superseded", tone: "neutral", indicator: "inactive" },
+  unavailable: { label: "No longer available", tone: "neutral", indicator: "inactive" },
+};
 
-function OperatorAttachmentChip({
-  threadId,
-  attachment,
-}: {
-  threadId: string;
-  attachment: OperatorAgentAttachment;
-}) {
-  const url = useQuery(operatorAgentApi.getAttachmentUrl, {
-    threadId,
-    fileId: attachment.fileId,
-  });
-  return (
-    <ChatAttachmentChip
-      attachment={attachment}
-      url={url}
-      isLoading={url === undefined}
-      size="compact"
-    />
-  );
-}
-
-export function operatorConfirmationStatus(
+function operatorConfirmationStatus(
   confirmation: OperatorAgentConfirmation,
 ): { label: string } & StatusPresentation {
-  switch (confirmation.state) {
-    case "approved":
-      return {
-        label:
-          confirmation.approvalMode === "automatic" ? "Auto-approved" : "Approved",
-        tone: "success",
-      };
-    case "cancelled":
-      return { label: "Cancelled", tone: "neutral", indicator: "cancelled" };
-    case "expired":
-      return { label: "Expired", tone: "warning" };
-    case "superseded":
-      return { label: "Superseded", tone: "neutral", indicator: "inactive" };
-    case "unavailable":
-      return { label: "No longer available", tone: "neutral", indicator: "inactive" };
-    case "pending":
-      return {
-        label: confirmation.actionable ? "Approval required" : "Awaiting approval",
-        tone: "warning",
-        indicator: "waiting",
-      };
+  if (confirmation.state === "approved") {
+    return {
+      label: confirmation.approvalMode === "automatic" ? "Auto-approved" : "Approved",
+      tone: "success",
+    };
   }
+  if (confirmation.state === "pending") {
+    return {
+      label: confirmation.actionable ? "Approval required" : "Awaiting approval",
+      tone: "warning",
+      indicator: "waiting",
+    };
+  }
+  return SETTLED_CONFIRMATION_STATUS[confirmation.state];
 }
 
 function isAutoApproved(confirmation: OperatorAgentConfirmation) {
@@ -122,7 +82,7 @@ function isAutoApproved(confirmation: OperatorAgentConfirmation) {
 }
 
 /** Consecutive auto-approved confirmations collapse into one disclosure. */
-export function groupOperatorConfirmations(
+function groupOperatorConfirmations(
   confirmations: OperatorAgentConfirmation[],
 ) {
   const groups: OperatorAgentConfirmation[][] = [];
@@ -141,34 +101,7 @@ export function groupOperatorConfirmations(
   return groups;
 }
 
-function ConfirmationArtifacts({
-  confirmations,
-  renderConfirmation,
-}: {
-  confirmations: OperatorAgentConfirmation[];
-  renderConfirmation: (confirmation: OperatorAgentConfirmation) => ReactNode;
-}) {
-  return groupOperatorConfirmations(confirmations).map((group) =>
-    isAutoApproved(group[0]) ? (
-      <details key={group[0].id} className="group/approvals min-w-0">
-        <summary
-          className={cn(
-            "flex w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden",
-            typeStyle("caption.default"),
-          )}
-        >
-          <ChevronRight className="size-4 shrink-0 group-open/approvals:rotate-90" />
-          <span>
-            {group.length} {group.length === 1 ? "task" : "tasks"} auto-approved
-          </span>
-        </summary>
-        <div className="space-y-2">{group.map(renderConfirmation)}</div>
-      </details>
-    ) : (
-      <Fragment key={group[0].id}>{renderConfirmation(group[0])}</Fragment>
-    ),
-  );
-}
+type RenderConfirmation = (confirmation: OperatorAgentConfirmation) => ReactNode;
 
 function OperatorMessageFooter({
   message,
@@ -179,7 +112,7 @@ function OperatorMessageFooter({
   message: OperatorAgentMessage;
   confirmations: OperatorAgentConfirmation[];
   activeRun: boolean;
-  renderConfirmation: (confirmation: OperatorAgentConfirmation) => ReactNode;
+  renderConfirmation: RenderConfirmation;
 }) {
   const rerunTurn = useMutation(operatorAgentApi.rerunTurn);
   const rerunAction = useChatAction();
@@ -189,13 +122,10 @@ function OperatorMessageFooter({
   function rerun(includeErrorContext: boolean) {
     const target = message.rerun;
     if (!target || activeRun) return;
-    void rerunAction.run(async () => {
-      try {
-        await rerunTurn({ runId: target.runId, includeErrorContext });
-      } catch (error) {
-        toast.error(getUserFacingErrorMessage(error, "Could not rerun the turn"));
-      }
-    });
+    void rerunAction.run(
+      () => rerunTurn({ runId: target.runId, includeErrorContext }),
+      (error) => getUserFacingErrorMessage(error, "Could not rerun the turn"),
+    );
   }
   const controlClass = "text-muted-foreground/50 hover:text-muted-foreground";
   return (
@@ -339,8 +269,8 @@ function OperatorMessageRow({
         ? "Task stopped."
         : "");
   const attachments = message.attachments?.length ? (
-    <OperatorMessageAttachments
-      threadId={threadId}
+    <ChatAttachmentList className="mt-2" size="compact"
+      operatorThreadId={threadId}
       attachments={message.attachments}
     />
   ) : null;
@@ -351,7 +281,6 @@ function OperatorMessageRow({
     return (
       <ChatAssistantTurn
         working={working}
-        hasText={Boolean(content)}
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         audience="operator"
@@ -367,6 +296,7 @@ function OperatorMessageRow({
     );
   }
 
+  const emailBody = message.channel === "email" && Boolean(content);
   return (
     <ChatUserTurn
       own
@@ -374,27 +304,23 @@ function OperatorMessageRow({
       createdAt={message.createdAt}
       channel={bubbleChannel}
       isError={message.status === "error"}
-      customBody={message.channel === "email" && Boolean(content)}
+      customBody={emailBody}
       channelIcon={
         <OperatorThreadChannelIcon
           channel={message.channel}
           className="size-3 shrink-0 text-muted-foreground/45"
         />
       }
-      body={message.channel === "email" && content ? (
+      body={emailBody ? (
         <OperatorEmailMessage message={message} attachments={attachments} />
+      ) : !content ? null : message.channel === "slack" ? (
+        <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
+          {content}
+        </ProseMarkdown>
       ) : (
-        content ? (
-          message.channel === "slack" ? (
-            <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
-              {content}
-            </ProseMarkdown>
-          ) : (
-            <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
-          )
-        ) : null
+        <p className="whitespace-pre-wrap wrap-anywhere">{content}</p>
       )}
-      attachments={message.channel === "email" && content ? null : attachments}
+      attachments={emailBody ? null : attachments}
     />
   );
 }
@@ -437,6 +363,7 @@ export function OperatorConversation({
   );
   const confirmationCard = (confirmation: OperatorAgentConfirmation) => (
     <ChatApprovalCard
+      key={confirmation.id}
       status={operatorConfirmationStatus(confirmation)}
       title={confirmation.title}
       actionable={confirmation.state === "pending" && confirmation.actionable}
@@ -471,18 +398,28 @@ export function OperatorConversation({
       ) : (
         entries.map((entry) => {
           if (entry.kind === "tool_calls") {
-            return (
-              <OperatorToolActivityGroup
-                key={entry.activities[0].request.id}
-                activities={entry.activities}
-              />
-            );
+            return <OperatorToolActivityGroup key={entry.activities[0].request.id} activities={entry.activities} />;
           }
           const { request: message, response, confirmations } = entry.activity;
           const settledAnswer =
             message.role === "assistant" &&
             message.status !== "processing" &&
             !message.isDirectToolRequest;
+          const renderConfirmation = (confirmation: OperatorAgentConfirmation) => (
+            <div key={confirmation.id} className="w-full">
+              {confirmationCard(confirmation)}
+              {message.isDirectToolRequest && !isAutoApproved(confirmation) ? (
+                <div className="mt-2">
+                  <OperatorToolActivity
+                    request={message}
+                    response={response}
+                    awaitingApproval={confirmation.state === "pending"}
+                    detailsOnly
+                  />
+                </div>
+              ) : null}
+            </div>
+          );
           return (
             <Fragment key={message.id}>
               {message.isDirectToolRequest ? (
@@ -496,9 +433,9 @@ export function OperatorConversation({
                   ) : null}
                   {[message, ...(response ? [response] : [])].map((item) =>
                     item.attachments?.length ? (
-                      <OperatorMessageAttachments
+                      <ChatAttachmentList className="mt-2" size="compact"
                         key={item.id}
-                        threadId={threadId}
+                        operatorThreadId={threadId}
                         attachments={item.attachments}
                       />
                     ) : null,
@@ -509,12 +446,8 @@ export function OperatorConversation({
                   threadId={threadId}
                   message={message}
                   onFollowUp={onFollowUp}
-                  presentationDisabled={
-                    presentationDisabled || hasPendingConfirmation
-                  }
-                  working={
-                    message.status === "processing" && !hasPendingConfirmation
-                  }
+                  presentationDisabled={presentationDisabled || hasPendingConfirmation}
+                  working={message.status === "processing" && !hasPendingConfirmation}
                 />
               )}
               {settledAnswer ? (
@@ -522,40 +455,31 @@ export function OperatorConversation({
                   message={message}
                   confirmations={confirmations}
                   activeRun={detail.activeRun}
-                  renderConfirmation={(confirmation) => (
-                    <Fragment key={confirmation.id}>
-                      {confirmationCard(confirmation)}
-                    </Fragment>
-                  )}
+                  renderConfirmation={confirmationCard}
                 />
               ) : null}
-              <ConfirmationArtifacts
-                confirmations={
-                  settledAnswer
-                    ? confirmations.filter(
-                        (confirmation) => !isAutoApproved(confirmation),
-                      )
-                    : confirmations
-                }
-                renderConfirmation={(confirmation) => (
-                  <div key={confirmation.id} className="w-full">
-                    {confirmationCard(confirmation)}
-                    {message.isDirectToolRequest &&
-                    !isAutoApproved(confirmation) ? (
-                      <div className="mt-2">
-                        <OperatorToolActivity
-                          request={message}
-                          response={response}
-                          awaitingApproval={confirmation.state === "pending"}
-                          detailsOnly
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              />
-              {message.isDirectToolRequest &&
-              confirmations.some(isAutoApproved) ? (
+              {groupOperatorConfirmations(
+                settledAnswer
+                  ? confirmations.filter((confirmation) => !isAutoApproved(confirmation))
+                  : confirmations,
+              ).map((group) =>
+                isAutoApproved(group[0]) ? (
+                  <ChatDisclosure
+                    key={group[0].id}
+                    summaryClassName="text-muted-foreground hover:text-foreground"
+                    summary={
+                      <span>
+                        {group.length} {group.length === 1 ? "task" : "tasks"} auto-approved
+                      </span>
+                    }
+                  >
+                    <div className="space-y-2">{group.map(renderConfirmation)}</div>
+                  </ChatDisclosure>
+                ) : (
+                  <Fragment key={group[0].id}>{renderConfirmation(group[0])}</Fragment>
+                ),
+              )}
+              {message.isDirectToolRequest && confirmations.some(isAutoApproved) ? (
                 <OperatorToolActivity
                   request={message}
                   response={response}

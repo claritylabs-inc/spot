@@ -3,31 +3,17 @@
 import { AlertTriangle, Copy, FileLock2, Mail } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
+import { asRecord, asRecords, asString, asStringArray } from "./normalize";
 
 type CertificateHoldArtifact = {
   type?: string;
   data?: unknown;
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
 function evidenceRows(value: unknown) {
-  return Array.isArray(value)
-    ? value
-        .map(asRecord)
-        .filter((item) => typeof item.excerpt === "string")
-        .slice(0, 3)
-    : [];
+  return asRecords(value)
+    .filter((item) => typeof item.excerpt === "string")
+    .slice(0, 3);
 }
 
 function labelForChange(value: string) {
@@ -45,18 +31,11 @@ function labelForChange(value: string) {
 }
 
 function emailDraft(value: unknown) {
-  const record = asRecord(value);
-  const subject = typeof record.subject === "string" ? record.subject : undefined;
-  const body = typeof record.body === "string" ? record.body : undefined;
+  const record = asRecord(value) ?? {};
+  const subject = asString(record.subject);
+  const body = asString(record.body);
   if (!subject || !body) return undefined;
-  return {
-    subject,
-    body,
-    recipientEmail:
-      typeof record.recipientEmail === "string" ? record.recipientEmail : undefined,
-    recipientName:
-      typeof record.recipientName === "string" ? record.recipientName : undefined,
-  };
+  return { subject, body, recipientEmail: asString(record.recipientEmail) };
 }
 
 function mailtoHref(draft: {
@@ -80,13 +59,12 @@ export function CertificateHoldArtifacts({
   return (
     <div className="mt-4 space-y-2">
       {holds.map((artifact, index) => {
-        const data = asRecord(artifact.data);
+        const data = asRecord(artifact.data) ?? {};
         const requiredChanges = asStringArray(data.requiredChanges);
         const evidence = evidenceRows(data.evidence);
         const message =
-          typeof data.message === "string"
-            ? data.message
-            : "This certificate is on hold because it needs broker review before a COI can be issued.";
+          asString(data.message) ??
+          "This certificate is on hold because it needs broker review before a COI can be issued.";
         const draft = emailDraft(data.emailDraft);
 
         return (

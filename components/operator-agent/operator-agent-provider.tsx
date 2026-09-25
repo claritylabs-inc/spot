@@ -28,18 +28,16 @@ const OperatorAgentContext = createContext<OperatorAgentContextValue | null>(
   null,
 );
 
-function storageKey(userId: string, name: "open") {
-  return `spot:operator-agent:${userId}:${name}`;
+function storageKey(userId: string) {
+  return `spot:operator-agent:${userId}:open`;
 }
 
-function readStoredState(userId: string) {
+function readStoredOpen(userId: string) {
   try {
-    const storedOpen = localStorage.getItem(storageKey(userId, "open"));
-    return {
-      open: storedOpen === null ? true : storedOpen === "true",
-    };
+    const storedOpen = localStorage.getItem(storageKey(userId));
+    return storedOpen === null ? true : storedOpen === "true";
   } catch {
-    return { open: true };
+    return true;
   }
 }
 
@@ -94,8 +92,7 @@ function OperatorAgentPageProvider({
         setOpen(true);
         return;
       }
-      const stored = readStoredState(userId);
-      setOpen(requestedThreadId ? true : stored.open);
+      setOpen(requestedThreadId ? true : readStoredOpen(userId));
     });
     return () => window.cancelAnimationFrame(frame);
   }, [userId, requestedThreadId]);
@@ -105,7 +102,7 @@ function OperatorAgentPageProvider({
       setOpen(next);
       if (!userId) return;
       try {
-        localStorage.setItem(storageKey(userId, "open"), String(next));
+        localStorage.setItem(storageKey(userId), String(next));
       } catch {}
     },
     [userId],
