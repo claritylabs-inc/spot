@@ -185,8 +185,8 @@ function DockBody({
  * The agent lives on the base layer and the app sits above it as a card.
  * Collapsed, the card covers everything but the agent bar; expanded, the card
  * lifts and shrinks to reveal the chat underneath; full screen, it slides
- * away. While the card moves, its content keeps a fixed layout height so only
- * the card box itself is laid out per frame; the content settles afterwards.
+ * away. Its content follows the animated card height so the sidebar and page
+ * stay in sync throughout mode changes and dragging.
  */
 export function AgentDockLayout({
   app,
@@ -238,10 +238,6 @@ export function AgentDockLayout({
       : lifted
         ? CARD_GAP
         : 0;
-  const geometryKey = `${mode}:${cardHeight}`;
-  const [settledGeometryKey, setSettledGeometryKey] = useState(geometryKey);
-  const moving =
-    !reduceMotion && (geometryKey !== settledGeometryKey || dragHeight !== null);
   const setMode = dock.setMode;
   const wasDetailOpenRef = useRef(detailPanelOpen);
 
@@ -314,11 +310,10 @@ export function AgentDockLayout({
             : `0px 0px ${enabled ? CARD_RADIUS : 0}px ${enabled ? CARD_RADIUS : 0}px`,
         }}
         transition={transition}
-        onAnimationComplete={() => setSettledGeometryKey(geometryKey)}
         inert={mode === "full"}
         aria-hidden={mode === "full" || undefined}
       >
-        <div style={{ height: moving ? restingCardHeight : "100%" }}>{app}</div>
+        <div className="h-full">{app}</div>
       </motion.div>
       {mode === "full" ? (
         <motion.button
