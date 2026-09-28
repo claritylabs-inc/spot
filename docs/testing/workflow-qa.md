@@ -722,3 +722,14 @@ completed activity reopens, a resumed turn resets expansion on completion, keybo
 activation works, and reduced motion collapses immediately. ESLint passed for both
 changed chat components. This isolated browser fixture does not establish full
  authenticated client/operator streaming workflow coverage or visual styling parity.
+
+## Agent dock sidebar transition — September 28, 2026
+
+`node .context/qa/dock-transition/check.mjs` compares the baseline and updated
+`AgentDockLayout` in headless local Chrome at 1440×900 with a synthetic app
+and stubbed dock controls/provider. Frame samples cover full → collapsed,
+collapsed → expanded, expanded → full, full → expanded, and expanded → collapsed.
+The app/card height mismatch fell from about 405px to 0px across all transitions.
+Artifacts: `.context/qa/dock-transition/results.json` and the repeatable script.
+This verifies the real dock animation geometry, not authenticated app workflows
+or the complete sidebar. Focused ESLint passed.
