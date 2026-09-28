@@ -90,26 +90,26 @@ async function sendVendorRequestEmail(args: {
   const safeNote = args.note ? escapeHtml(args.note) : undefined;
   const bodyHtml = `
 <tr><td style="padding:28px 40px 0 40px;">
-  <p class="spot-email-text-secondary" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#374151;line-height:1.6;">
+  <p class="cl-email-text-secondary" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;color:#374151;line-height:1.6;">
     <strong>${safeClientName}</strong> invited you to connect as a vendor in Spot.
   </p>
 </td></tr>
 <tr><td style="padding:12px 40px 0 40px;">
-  <p class="spot-email-text-secondary" style="margin:0;font-family:-apple-system,sans-serif;font-size:14px;color:#4b5563;line-height:1.6;">
+  <p class="cl-email-text-secondary" style="margin:0;font-family:-apple-system,sans-serif;font-size:14px;color:#4b5563;line-height:1.6;">
     Use this invite to share insurance records, upload policies or certificates, and help ${safeClientName} verify that your coverage meets their vendor requirements.
   </p>
 </td></tr>
-${safeNote ? `<tr><td style="padding:12px 40px 0 40px;"><p class="spot-email-text-secondary" style="margin:0;font-family:-apple-system,sans-serif;font-size:13px;color:#4b5563;line-height:1.6;font-style:italic;"><strong class="spot-email-text-secondary" style="font-style:normal;color:#374151;">Message from ${safeClientName}:</strong><br>${safeNote}</p></td></tr>` : ""}
+${safeNote ? `<tr><td style="padding:12px 40px 0 40px;"><p class="cl-email-text-secondary" style="margin:0;font-family:-apple-system,sans-serif;font-size:13px;color:#4b5563;line-height:1.6;font-style:italic;"><strong class="cl-email-text-secondary" style="font-style:normal;color:#374151;">Message from ${safeClientName}:</strong><br>${safeNote}</p></td></tr>` : ""}
 <tr><td align="center" style="padding:24px 40px 0 40px;">
-  <a href="${args.requestUrl}" class="spot-email-button" style="display:inline-block;padding:8px 22px;background-color:#000000;color:#ffffff;font-family:-apple-system,sans-serif;font-size:14px;font-weight:500;text-decoration:none;border-radius:999px;line-height:1.4;">Review vendor invite</a>
+  <a href="${args.requestUrl}" class="cl-email-button" style="display:inline-block;padding:8px 22px;background-color:#000000;color:#ffffff;font-family:-apple-system,sans-serif;font-size:14px;font-weight:500;text-decoration:none;border-radius:999px;line-height:1.4;">Review vendor invite</a>
 </td></tr>
 <tr><td style="padding:20px 40px 0 40px;">
-  <p class="spot-email-text-muted" style="margin:0;font-family:-apple-system,sans-serif;font-size:12px;color:#6b7280;line-height:1.6;">
-    Or copy this link:<br><a href="${args.requestUrl}" class="spot-email-link" style="color:#6b7280;word-break:break-all;">${args.requestUrl}</a>
+  <p class="cl-email-text-muted" style="margin:0;font-family:-apple-system,sans-serif;font-size:12px;color:#6b7280;line-height:1.6;">
+    Or copy this link:<br><a href="${args.requestUrl}" class="cl-email-link" style="color:#6b7280;word-break:break-all;">${args.requestUrl}</a>
   </p>
 </td></tr>
 <tr><td style="padding:16px 40px 32px 40px;">
-  <p class="spot-email-text-muted" style="margin:0;font-family:-apple-system,sans-serif;font-size:11px;color:#9ca3af;">This vendor invite expires in 14 days.</p>
+  <p class="cl-email-text-muted" style="margin:0;font-family:-apple-system,sans-serif;font-size:11px;color:#9ca3af;">This vendor invite expires in 14 days.</p>
 </td></tr>`;
 
   const send = await sendResendEmail(
