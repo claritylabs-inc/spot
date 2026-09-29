@@ -733,3 +733,48 @@ The app/card height mismatch fell from about 405px to 0px across all transitions
 Artifacts: `.context/qa/dock-transition/results.json` and the repeatable script.
 This verifies the real dock animation geometry, not authenticated app workflows
 or the complete sidebar. Focused ESLint passed.
+
+## Shared browser tasks and PDF adapter — September 29, 2026
+
+`node scripts/qa/background-tasks/run.mjs` runs the real policy upload hook and
+client request detail/upload component in Chrome, with a persistent provider and
+synthetic network/auth boundary. First run `npm ci` and `npm run build`; the fixture
+uses the app's compiled CSS. It starts a loopback Vite server on port 4179 and
+shuts down the browser/server afterward. No credentials, actual policy extraction,
+external file storage or production writes are used.
+
+Workflow: submit two policy PDFs twice in the same tick; hold storage responses,
+navigate away and back, verify measured progress and a disabled upload, then
+accept the extraction handoff. Completion must keep the current route and offer
+an Open policy action. Cancel a hash-duplicate confirmation, fail a storage write,
+and verify the upload unlocks. Start a request attachment, navigate away/back,
+verify duplicate submission stays disabled, finish while away, and use Open request.
+The browser log includes the intentionally injected storage failure.
+
+Artifacts: `.context/qa/background-tasks/results.json`, `trace.zip`,
+`policy-navigation.png`, `policy-handoff.png`, and `request-result.png`.
+This is browser integration coverage with actual Spot UI, not authenticated
+Convex E2E or evidence of backend extraction completion. The shared clarity-ui
+suite separately verifies native reload warnings, result/error/partial counts,
+retention cleanup and late completion after provider teardown. No unit tests
+were added. Chrome is headless because this VM has no desktop display.
+
+The PDF adapter preserves Spot's context and panel props. Shared PDF behavior was
+browser-validated by the manager; Spot's typecheck and production build validate
+the re-export against the released dependency. No separate authenticated Spot PDF
+workflow is claimed by the upload fixture.
+
+Recorded validation with registry `@claritylabs-inc/ui@0.10.0`: clean `npm ci`,
+production `npm run build` (including TypeScript), focused ESLint, and the browser
+script passed. The script also verifies separate-file policy registration/handoff
+and captures `request-mobile-dark.png`. Desktop/light and mobile/dark artifacts
+were visually reviewed. The package/lockfile contain registry URLs only.
+
+Correction coverage: the same mounted uploader observes synthetic queued/preview
+policy rows after upload handoff. Neither a ready nor failed notification may
+appear while extracting. Later ready and failed snapshots must produce their
+separate outcome notifications without navigation; clicking Open then navigates.
+Artifacts: `extraction-queued.png` and `extraction-terminal.png`. The pending-ID
+observer remains route-scoped and is lost on unmount; only browser upload/handoff
+state survives navigation. Duplicate confirmation cancellation reports the final
+message “Upload cancelled before any files were uploaded.”

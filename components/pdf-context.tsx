@@ -8,15 +8,8 @@ import {
   useMemo,
 } from "react";
 
-export type PdfHighlightBox = {
-  page: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  coordinateWidth?: number;
-  coordinateHeight?: number;
-};
+import type { PdfHighlightBox } from "@claritylabs-inc/ui/components/pdf-viewer";
+export type { PdfHighlightBox } from "@claritylabs-inc/ui/components/pdf-viewer";
 
 interface PdfContextValue {
   currentPage: number;

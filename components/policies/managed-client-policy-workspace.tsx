@@ -186,7 +186,10 @@ export function ManagedClientPolicyWorkspace({
       [clientOrgId, createOperatorUpload],
     ),
     rows: policies as ClientPolicyRow[] | undefined,
-    onOpenPolicy: selectPolicy,
+    onOpenPolicy: useCallback(
+      (policyId: Id<"policies">) => router.push(`${basePath}/${policyId}`),
+      [basePath, router],
+    ),
   });
 
   async function handleRestore(policyId: Id<"policies">) {

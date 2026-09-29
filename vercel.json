@@ -8,7 +8,8 @@
       "preview/workspace-chat-ui": false,
       "preview/operator-mcp-servers": false,
       "preview/workspace-jev": false,
-      "preview/operator-model-console": true
+      "preview/operator-model-console": true,
+      "conductor/spot-shared-background-tasks": false
     }
   }
 }
