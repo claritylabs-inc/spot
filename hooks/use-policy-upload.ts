@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAction, useMutation } from "convex/react";
 import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { PolicyUploadMode } from "@/components/policy-upload-mode-toggle";
 import { preparePolicyUploadCandidates } from "@/lib/policy-upload-duplicates";
+import {
+  showPolicyExtractionQueuedToast,
+  showPolicyExtractionReadyToast,
+} from "@/components/shared/extraction-banner";
+import {
+  extractionState,
+  type ExtractionStatePolicy,
+} from "@/lib/extraction-state";
 
 type RegisterUploadArgs = {
   fileId: Id<"_storage">;
@@ -15,21 +23,31 @@ type RegisterUploadArgs = {
   uploadFileSha256s: string[];
 };
 
+type UploadedPolicyRow = ExtractionStatePolicy & {
+  _id: Id<"policies">;
+  documentType?: string | null;
+  fileName?: string | null;
+};
+
 /**
  * Upload flow shared by the client Policies page and the operator client
  * workspace: duplicate check, storage upload, placeholder registration, and
  * extraction, in combined (one merged policy) or separate (one per file) mode.
  */
-export function usePolicyUpload({
+export function usePolicyUpload<Row extends UploadedPolicyRow>({
   orgId,
   registerUpload,
+  rows,
   onOpenPolicy,
 }: {
   orgId: Id<"organizations"> | undefined;
   /** Creates the placeholder policy row with the caller's provenance. */
   registerUpload: (args: RegisterUploadArgs) => Promise<Id<"policies">>;
+  /** Route-scoped observation of policies queued by this mounted uploader. */
+  rows: Row[] | undefined;
   onOpenPolicy: (policyId: Id<"policies">) => void;
 }) {
+  const pendingRef = useRef<Record<string, { fileName?: string | null }>>({});
   const { run, tasks } = useBackgroundTasks();
   const taskId = `policy-upload:${orgId}`;
   const uploading = tasks.get(taskId)?.status === "running";
@@ -39,6 +57,34 @@ export function usePolicyUpload({
   );
   const extractFromUpload = useAction(
     api.actions.extractFromUpload.extractFromUpload,
+  );
+
+  const announceReady = useCallback(() => {
+    if (!rows) return;
+    const pending = pendingRef.current;
+    const rowsById = new Map(rows.map((policy) => [policy._id, policy]));
+    for (const policyId of Object.keys(pending)) {
+      const policy = rowsById.get(policyId as Id<"policies">);
+      if (!policy || extractionState(policy).kind === "extracting") continue;
+      showPolicyExtractionReadyToast(
+        { ...policy, fileName: policy.fileName ?? pending[policyId].fileName },
+        () => onOpenPolicy(policyId as Id<"policies">),
+      );
+      delete pending[policyId];
+    }
+  }, [onOpenPolicy, rows]);
+
+  useEffect(() => {
+    announceReady();
+  }, [announceReady]);
+
+  const queue = useCallback(
+    (policyId: Id<"policies">, fileName: string) => {
+      showPolicyExtractionQueuedToast({ policyId, fileName });
+      pendingRef.current[policyId] = { fileName };
+      announceReady();
+    },
+    [announceReady],
   );
 
   const upload = useCallback(
@@ -65,7 +111,12 @@ export function usePolicyUpload({
             files,
             (fileSha256) => checkDuplicateUploadByHash({ orgId, fileSha256 }),
           );
-          if (!candidates) return null;
+          if (!candidates) {
+            report({
+              message: "Upload cancelled before any files were uploaded",
+            });
+            return null;
+          }
           const policyIds: Id<"policies">[] = [];
 
           const storageIds: Id<"_storage">[] = [];
@@ -112,6 +163,7 @@ export function usePolicyUpload({
                 uploadFileSha256s: [fileSha256],
               });
               policyIds.push(policyId);
+              queue(policyId, file.name);
               await extract({
                 fileId: storageIds[i],
                 fileName: file.name,
@@ -130,6 +182,12 @@ export function usePolicyUpload({
               ),
             });
             policyIds.push(policyId);
+            queue(
+              policyId,
+              rest.length > 0
+                ? `${primary.file.name.replace(/\.pdf$/i, "")} + ${rest.length} more.pdf`
+                : primary.file.name,
+            );
             report({
               message:
                 rest.length > 0
@@ -164,6 +222,7 @@ export function usePolicyUpload({
       run,
       taskId,
       registerUpload,
+      queue,
     ],
   );
 

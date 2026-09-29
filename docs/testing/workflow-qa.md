@@ -769,3 +769,12 @@ production `npm run build` (including TypeScript), focused ESLint, and the brows
 script passed. The script also verifies separate-file policy registration/handoff
 and captures `request-mobile-dark.png`. Desktop/light and mobile/dark artifacts
 were visually reviewed. The package/lockfile contain registry URLs only.
+
+Correction coverage: the same mounted uploader observes synthetic queued/preview
+policy rows after upload handoff. Neither a ready nor failed notification may
+appear while extracting. Later ready and failed snapshots must produce their
+separate outcome notifications without navigation; clicking Open then navigates.
+Artifacts: `extraction-queued.png` and `extraction-terminal.png`. The pending-ID
+observer remains route-scoped and is lost on unmount; only browser upload/handoff
+state survives navigation. Duplicate confirmation cancellation reports the final
+message “Upload cancelled before any files were uploaded.”

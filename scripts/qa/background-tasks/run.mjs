@@ -172,7 +172,8 @@ try {
     ),
     false,
   );
-  await page.getByRole("button", { name: "Open policy", exact: true }).click();
+  await page.getByRole("button", { name: "Open policy", exact: true }).focus();
+  await page.keyboard.press("Enter");
   await until(() => page.url().endsWith("/policies/policy-1"), "policy action");
   await page.screenshot({ path: path.join(out, "policy-handoff.png") });
 
@@ -191,6 +192,11 @@ try {
     "duplicate cancelled",
   );
   assert.equal(uploads.length, 0);
+  assert(
+    (await page.getByTestId("progress").innerText()).includes(
+      "Upload cancelled before any files were uploaded",
+    ),
+  );
   duplicate = false;
   failStorage = true;
   await page
@@ -227,6 +233,82 @@ try {
     3,
   );
 
+  const queuedRows = [
+    {
+      _id: "policy-2",
+      fileName: "one.pdf",
+      pipelineStatus: "running",
+      extractionDataStage: "preview",
+    },
+    {
+      _id: "policy-3",
+      fileName: "two.pdf",
+      pipelineStatus: "running",
+      extractionDataStage: "preview",
+    },
+  ];
+  await page.evaluate(
+    (rows) =>
+      window.dispatchEvent(
+        new CustomEvent("policy-snapshot", { detail: rows }),
+      ),
+    queuedRows,
+  );
+  await until(
+    async () =>
+      (await page.getByTestId("observed-policies").innerText()).includes(
+        "preview",
+      ),
+    "queued policy rows observed",
+  );
+  assert.equal(
+    await page.getByText("Policy ready", { exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByText("Couldn't read policy", { exact: true }).count(),
+    0,
+  );
+  assert(page.url().endsWith("/"));
+  await page.screenshot({ path: path.join(out, "extraction-queued.png") });
+  const terminalRows = [
+    {
+      ...queuedRows[0],
+      pipelineStatus: "complete",
+      extractionDataStage: "final",
+    },
+    {
+      ...queuedRows[1],
+      pipelineStatus: "error",
+      pipelineError: "Synthetic extraction failure",
+    },
+  ];
+  await page.evaluate(
+    (rows) =>
+      window.dispatchEvent(
+        new CustomEvent("policy-snapshot", { detail: rows }),
+      ),
+    terminalRows,
+  );
+  await page.getByLabel("Policy ready. one.pdf", { exact: true }).waitFor();
+  await page
+    .getByLabel("Couldn't read policy. two.pdf", { exact: true })
+    .waitFor();
+  assert(page.url().endsWith("/"));
+  await page.locator('[data-sonner-toast][data-front="true"]').hover();
+  await page.waitForTimeout(350); // Let the toast stack expansion settle for the artifact.
+  await page.screenshot({ path: path.join(out, "extraction-terminal.png") });
+  // Completion actions navigate only when explicitly clicked.
+  await page
+    .getByLabel("Policy ready. one.pdf", { exact: true })
+    .getByRole("button", { name: "Open", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await until(
+    () => page.url().endsWith("/policies/policy-2"),
+    "extraction result action",
+  );
+
   await page.getByRole("link", { name: "Request", exact: true }).click();
   await page.getByRole("button", { name: "Add file", exact: true }).click();
   await page.locator('input[type="file"]').setInputFiles([pdfs[0]]);
@@ -255,7 +337,8 @@ try {
       .length,
     1,
   );
-  await page.getByRole("button", { name: "Open request", exact: true }).click();
+  await page.getByRole("button", { name: "Open request", exact: true }).focus();
+  await page.keyboard.press("Enter");
   await until(
     () => page.url().endsWith("/requests/request-1"),
     "request action",
@@ -270,7 +353,7 @@ try {
     JSON.stringify({ passed: true, calls, errors }, null, 2),
   );
   console.log(
-    "Passed policy navigation/duplicate/handoff/error and request attachment navigation/action workflows.",
+    "Passed policy navigation/duplicate/handoff/error, extraction queued-to-ready/failed, cancellation and request attachment workflows.",
   );
 } finally {
   await context.tracing.stop({ path: path.join(out, "trace.zip") });

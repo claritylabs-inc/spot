@@ -10,9 +10,14 @@ Route return reads the shared running state and disables duplicate submission.
 uploads, policy registration and extraction handoff for client and operator
 policy uploads. Its browser task ends after the backend accepts the handoff,
 with an Open policy action that works after the initiating page unmounts.
-The previous page-local pending-row tracker could discard readiness tracking as
-soon as a placeholder row appeared. Upload completion now explicitly means
-“queued for extraction”; it does not claim the policy is ready.
+Extraction outcome notifications remain separate from that handoff. The uploader
+tracks queued IDs in a route-scoped ref and observes the current policy rows.
+Placeholder/preview rows remain pending until `extractionState` is terminal:
+ready, needs review, failed or not a policy. Only then does it show the existing
+ready/failed toast and remove that pending ID. Unmounting the uploader loses this
+observation; returning to a route does not reconstruct its pending IDs. Browser
+upload/handoff work and its progress still survive that navigation. The policy
+detail page retains its own durable extraction status presentation.
 
 `components/procurement/client-requests-workspace.tsx` uses the same lifecycle for
 client request file uploads and attachment registration. Its completion action

@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useState } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BackgroundTaskProvider,
@@ -12,6 +12,14 @@ import type { Id } from "@/convex/_generated/dataModel";
 import Link, { usePathname, useRouter } from "./navigation";
 import type { ReactNode } from "react";
 
+type ObservedPolicy = {
+  _id: Id<"policies">;
+  fileName?: string;
+  pipelineStatus?: string;
+  pipelineError?: string;
+  extractionDataStage?: string;
+};
+
 const orgId = "org-1" as Id<"organizations">;
 const registerUpload = async (args: unknown) => {
   const response = await fetch("/register", {
@@ -22,11 +30,19 @@ const registerUpload = async (args: unknown) => {
 };
 function PolicyUpload() {
   const router = useRouter();
+  const [rows, setRows] = useState<ObservedPolicy[]>([]);
+  useEffect(() => {
+    const update = (event: Event) =>
+      setRows((event as CustomEvent<ObservedPolicy[]>).detail);
+    window.addEventListener("policy-snapshot", update);
+    return () => window.removeEventListener("policy-snapshot", update);
+  }, []);
   const [files, setFiles] = useState<File[]>([]);
   const [mode, setMode] = useState<"combined" | "separate">("combined");
   const { upload, uploading } = usePolicyUpload({
     orgId,
     registerUpload,
+    rows,
     onOpenPolicy: useCallback(
       (id: Id<"policies">) => router.push(`/policies/${id}`),
       [router],
@@ -64,6 +80,7 @@ function PolicyUpload() {
       >
         Submit twice
       </button>
+      <p data-testid="observed-policies">{JSON.stringify(rows)}</p>
       <p data-testid="upload-state">{uploading ? "Uploading" : "Idle"}</p>
       <p data-testid="progress">
         {JSON.stringify(tasks.get(`policy-upload:${orgId}`)?.progress)}

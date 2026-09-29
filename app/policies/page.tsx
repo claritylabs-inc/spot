@@ -74,6 +74,7 @@ export default function PoliciesPage() {
       },
       [createClientUpload, orgId],
     ),
+    rows: showArchived ? undefined : (policies as PolicyRow[] | undefined),
     onOpenPolicy: useCallback(
       (policyId: Id<"policies">) => router.push(`/policies/${policyId}`),
       [router],
