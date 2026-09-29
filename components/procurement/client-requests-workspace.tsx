@@ -11,6 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
 import { usePdf } from "@/components/pdf-context";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
@@ -261,7 +262,10 @@ export function ClientRequestDetail({
     api.clientProcurementRequests.generateUploadUrl,
   );
   const attachFile = useMutation(api.clientProcurementRequests.attachFile);
-  const [busy, setBusy] = useState(false);
+  const router = useRouter();
+  const { run, tasks } = useBackgroundTasks();
+  const taskId = `request-file-upload:${requestId}`;
+  const busy = tasks.get(taskId)?.status === "running";
   const [uploadOpen, setUploadOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
@@ -272,39 +276,48 @@ export function ClientRequestDetail({
 
   const upload = useCallback(
     async (file: File) => {
-      setBusy(true);
-      const toastId = toast.loading("Adding file…");
-      try {
-        const uploadUrl = await generateUploadUrl({ requestId });
-        const response = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        });
-        if (!response.ok) throw new Error("Upload failed");
-        const { storageId } = (await response.json()) as {
-          storageId: Id<"_storage">;
-        };
-        await attachFile({
-          requestId,
-          storageId,
-          fileName: file.name,
-          contentType: file.type || "application/octet-stream",
-          size: file.size,
-        });
-        toast.success("File added", { id: toastId });
+      const outcome = await run({
+        id: taskId,
+        title: "Adding file",
+        successTitle: "File added",
+        errorTitle: "Could not add the file",
+        onSuccess: () => [
+          {
+            label: "Open request",
+            onClick: () => router.push(`/requests/${requestId}`),
+          },
+        ],
+        execute: async (report) => {
+          report({ message: "Uploading file", completed: 0, total: 1 });
+          const uploadUrl = await generateUploadUrl({ requestId });
+          const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": file.type || "application/octet-stream",
+            },
+            body: file,
+          });
+          if (!response.ok) throw new Error("Upload failed");
+          const { storageId } = (await response.json()) as {
+            storageId: Id<"_storage">;
+          };
+          report({ message: "Attaching file" });
+          await attachFile({
+            requestId,
+            storageId,
+            fileName: file.name,
+            contentType: file.type || "application/octet-stream",
+            size: file.size,
+          });
+          report({ message: "File attached", completed: 1, total: 1 });
+        },
+      });
+      if (outcome.status === "success") {
         setPendingFile(null);
         setUploadOpen(false);
-      } catch (error) {
-        toast.error(
-          getUserFacingErrorMessage(error, "Could not add the file"),
-          { id: toastId },
-        );
-      } finally {
-        setBusy(false);
       }
     },
-    [attachFile, generateUploadUrl, requestId],
+    [attachFile, generateUploadUrl, requestId, router, run, taskId],
   );
 
   useEffect(() => {

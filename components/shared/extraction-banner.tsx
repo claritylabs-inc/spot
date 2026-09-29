@@ -13,90 +13,11 @@ import {
   EXTRACTION_FAILED_MESSAGE,
   NOT_A_POLICY_MESSAGE,
   extractingLabel,
-  extractionState,
   type ExtractionState,
-  type ExtractionStatePolicy,
 } from "@/lib/extraction-state";
-
-type ToastPolicy = ExtractionStatePolicy & {
-  _id: string;
-  fileName?: string | null;
-  carrier?: string | null;
-  policyNumber?: string | null;
-};
 
 export function policyExtractionToastId(policyId: string) {
   return `policy-extraction:${policyId}`;
-}
-
-function cleanDisplayText(value?: string | null) {
-  const trimmed = value?.trim();
-  if (!trimmed || /^extracting/i.test(trimmed)) return undefined;
-  return trimmed;
-}
-
-export function showPolicyExtractionQueuedToast({
-  policyId,
-  fileName,
-}: {
-  policyId: string;
-  fileName?: string | null;
-}) {
-  showOperationalStatusToast({
-    id: policyExtractionToastId(policyId),
-    title: extractingLabel(),
-    description: cleanDisplayText(fileName)
-      ? `${fileName} uploaded.`
-      : undefined,
-    tone: "loading",
-    duration: 60_000,
-  });
-}
-
-export function showPolicyExtractionReadyToast(
-  policy: ToastPolicy,
-  openPolicy?: () => void,
-) {
-  const id = policyExtractionToastId(policy._id);
-  const actions = openPolicy
-    ? [
-        {
-          label: "Open",
-          onClick: () => {
-            openPolicy();
-            toast.dismiss(id);
-          },
-          variant: "secondary" as const,
-        },
-      ]
-    : undefined;
-  const { kind } = extractionState(policy);
-
-  if (kind === "failed" || kind === "not_a_policy") {
-    showOperationalStatusToast({
-      id,
-      title: kind === "failed" ? "Couldn't read policy" : "Not a policy",
-      description: cleanDisplayText(policy.fileName),
-      tone: "error",
-      duration: 12_000,
-      actions,
-    });
-    return;
-  }
-
-  if (kind === "ready" || kind === "needs_review") {
-    showOperationalStatusToast({
-      id,
-      title: "Policy ready",
-      description:
-        cleanDisplayText(policy.carrier) ??
-        cleanDisplayText(policy.policyNumber) ??
-        cleanDisplayText(policy.fileName),
-      tone: "success",
-      duration: 6_000,
-      actions,
-    });
-  }
 }
 
 export function PolicyExtractionBanner({
