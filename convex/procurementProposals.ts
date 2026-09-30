@@ -1,4 +1,5 @@
 import { readPacketProjection } from "./lib/packetDocuments";
+import { publishMcpEvent } from "./mcpEvents";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
@@ -1398,6 +1399,10 @@ export const saveGeneratedReviewInternal = internalMutation({
         packetRevision: args.packetRevision,
         conclusion: args.conclusion,
       },
+    });
+    await publishMcpEvent(ctx, {
+      name: "proposal.review_ready", key: reviewId, orgId: request.clientOrgId,
+      data: { org_id: request.clientOrgId, request_id: request._id, proposal_id: proposal._id, review_id: reviewId },
     });
     return { reviewId, auditEventId };
   },

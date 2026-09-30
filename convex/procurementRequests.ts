@@ -1,4 +1,5 @@
 import { requestPacketText } from "./lib/procurementNarrative";
+import { publishMcpEvent } from "./mcpEvents";
 import {
   completionOutcomeValidator,
   normalizeCompletionOutcome,
@@ -776,7 +777,7 @@ export async function updateProcurementRequestByOperator(
   );
   if (changedFields.length === 0) throw new Error("No request fields changed");
   await ctx.db.patch(request._id, patch);
-  await writeOperatorAudit(ctx, {
+  const auditEventId = await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
     targetOrgId: request.clientOrgId,
@@ -787,6 +788,14 @@ export async function updateProcurementRequestByOperator(
       fields: changedFields,
       source: args.source,
     },
+  });
+  const publicChanged = (patch.title !== undefined && patch.title !== request.title)
+    || (patch.status !== undefined && patch.status !== request.status)
+    || (args.targetEffectiveDate !== undefined && patch.targetEffectiveDate !== request.targetEffectiveDate)
+    || (patch.clientVisible === true && request.clientVisible === false);
+  if ((patch.clientVisible ?? request.clientVisible) !== false && publicChanged) await publishMcpEvent(ctx, {
+    name: "procurement.request_updated", key: auditEventId, orgId: request.clientOrgId,
+    data: { org_id: request.clientOrgId, request_id: request._id, status: patch.status ?? request.status },
   });
   return { requestId: request._id, fields: changedFields };
 }

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import { publishMcpEvent } from "../mcpEvents";
 import {
   COALESCE_WINDOW_MS,
   NOTIFICATION_SEVERITY,
@@ -192,6 +193,24 @@ export const notifyInternal = internalMutation({
       slackStatus: "not_scheduled",
       createdAt: nowMs,
     });
+
+    const vendorOrgId = args.sourceRef && "vendorOrgId" in args.sourceRef ? args.sourceRef.vendorOrgId : args.relatedOrgId;
+    if (["own_compliance_gap", "own_compliance_resolved", "vendor_compliance_gap", "vendor_compliance_met"].includes(type)) {
+      await publishMcpEvent(ctx, {
+        name: "compliance.status_changed", key: notificationId, orgId: args.orgId, targetUserId: args.userId,
+        data: { org_id: args.orgId, status: type.endsWith("gap") ? "gap" : "compliant", notification_type: type, ...(vendorOrgId ? { vendor_org_id: vendorOrgId } : {}) },
+      });
+    } else if ((type === "vendor_policy_expiring" || type === "vendor_policy_expired") && vendorOrgId) {
+      await publishMcpEvent(ctx, {
+        name: "vendor.policy_expiring", key: notificationId, orgId: args.orgId, targetUserId: args.userId,
+        data: { org_id: args.orgId, vendor_org_id: vendorOrgId, status: type === "vendor_policy_expired" ? "expired" : "expiring", notification_type: type },
+      });
+    } else if (type === "incomplete_extraction" && args.sourceRef && "policyId" in args.sourceRef) {
+      await publishMcpEvent(ctx, {
+        name: "policy.review_required", key: notificationId, orgId: args.orgId, targetUserId: args.userId,
+        data: { org_id: args.orgId, policy_id: args.sourceRef.policyId },
+      });
+    }
 
     // 3. External scheduling — per-user or org-wide
     const memberships = args.userId

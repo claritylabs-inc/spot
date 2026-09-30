@@ -1,5 +1,27 @@
 # Platform workflow QA
 
+## MCP Events — September 30, 2026
+
+Local isolation coverage passes for tenant/operator boundaries, removed
+membership and revoked OAuth access, deterministic renewal, private settings
+DTOs, callback cache isolation/expiry, secret encryption/AAD tampering, public-IP
+validation/DNS pinning, redirect rejection, signed challenges, body/time limits,
+dual-key signatures, event deduplication, stale leases, and terminal `410`.
+These failure modes were selected before their corresponding implementations;
+they require isolation checks because browser E2E cannot reliably reproduce
+SSRF, signature, authorization, or concurrent lease races.
+Tests: `convex/mcpEvents.test.ts`, `convex/actions/mcpEvents.test.ts`,
+`convex/lib/mcpEventProtocol.test.ts`, and
+`convex/lib/mcpEventWebhook.test.ts`. Artifacts:
+`.context/mcp-events/focused-tests-final.log` (45 passing checks), with red-first
+cache/error logs beside it. No deployment or Vercel preview was used.
+
+The full authenticated ChatGPT subscribe/refresh/unsubscribe lifecycle and
+mounted tenant/operator settings browser workflow remain **not run**. Execute
+`docs/architecture/mcp-events.md`'s smoke workflow only after approved endpoint
+composition and environment configuration; local tests do not establish
+ChatGPT compatibility or deployed delivery.
+
 Operator invitations: `node scripts/operator-invitations-e2e.mjs` runs against native-local Convex and the app on localhost:8080. It creates synthetic operator identities, captures email locally, verifies Settings Team invitation and OTP entry, rejects anonymous/customer/alias-conflicting invitations, and exercises the MCP shared approval/execution/replay path. Artifacts: `.context/qa/operator-invitations/results.json`, `settings.png`, and `accepted.png`. No live email or production data is used.
 
 Current packet-link contract: active links now serve live saved shared content
