@@ -59,11 +59,11 @@ function subscriptionState(subscription: Subscription): {
   label: string;
   tone: "danger" | "warning" | "success";
 } {
+  if (subscription.expiresAt <= dayjs().valueOf()) {
+    return { label: "Expired", tone: "warning" };
+  }
   if (!subscription.active) {
     return { label: "Revoked", tone: "danger" };
-  }
-  if (subscription.expiresAt <= Date.now()) {
-    return { label: "Expired", tone: "warning" };
   }
   return { label: "Active", tone: "success" };
 }
