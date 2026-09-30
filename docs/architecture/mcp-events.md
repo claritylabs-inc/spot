@@ -76,12 +76,15 @@ flow.
    TTL expiry stops future delivery. These transitions should be safe under
    retries and concurrent delivery attempts.
 
-Signing secrets are sensitive integration credentials. They should be
-encrypted with Spot’s existing integration-encryption mechanism and never
-returned by `mcpEvents.listSubscriptions`; deployment must have the required
-encryption key configured. The UI returns only the callback origin. The
-backend should not be considered ready until callback verification, storage,
-outbox, authorization, and retry behavior have been reviewed together.
+Signing secrets are sensitive MCP Events credentials. Node delivery actions
+must use the dedicated `MCP_EVENTS_ENCRYPTION_KEY`, supplied as canonical base64
+that decodes to exactly 32 bytes. Encrypt secrets with AES-256-GCM and bind
+`subscriptionId` as the additional authenticated data (AAD); do not use an
+unrelated integration-encryption key. The secret is never returned by
+`mcpEvents.listSubscriptions`, and the approved deployment must have this key
+configured. The UI returns only the callback origin. The backend should not be
+considered ready until callback verification, storage, outbox, authorization,
+and retry behavior have been reviewed together.
 
 Existing daily compliance monitors retain their current cadence. MCP Events is
 an additional user-requested delivery path, not a replacement for those
