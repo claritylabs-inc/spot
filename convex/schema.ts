@@ -4990,6 +4990,54 @@ export default defineSchema({
 
   // ── OAuth (MCP remote clients) ──
 
+  mcpEventSubscriptions: defineTable({
+    id: v.string(),
+    principalKind: v.union(v.literal("organization"), v.literal("operator")),
+    userId: v.id("users"),
+    orgId: v.optional(v.id("organizations")),
+    clientId: v.string(),
+    resource: v.string(),
+    name: v.string(),
+    filters: v.record(v.string(), v.string()),
+    callbackUrl: v.string(),
+    encryptedSecret: v.string(),
+    secretFingerprint: v.optional(v.string()),
+    callbackVerifiedAt: v.optional(v.number()),
+    previousEncryptedSecret: v.optional(v.string()),
+    previousSecretUntil: v.optional(v.number()),
+    generation: v.number(),
+    active: v.boolean(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("identity", ["id"])
+    .index("user", ["userId"])
+    .index("callback", ["userId", "principalKind", "orgId", "clientId", "resource", "callbackUrl", "secretFingerprint", "active"])
+    .index("audience", ["principalKind", "orgId", "name", "active"])
+    .index("expiry", ["active", "expiresAt"]),
+
+  mcpEventDeliveries: defineTable({
+    subscriptionId: v.id("mcpEventSubscriptions"),
+    eventId: v.string(),
+    name: v.string(),
+    orgId: v.id("organizations"),
+    targetUserId: v.optional(v.id("users")),
+    data: v.record(v.string(), v.string()),
+    timestamp: v.string(),
+    status: v.union(v.literal("pending"), v.literal("sending"), v.literal("accepted"), v.literal("failed"), v.literal("cancelled")),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    lease: v.optional(v.string()),
+    leaseUntil: v.optional(v.number()),
+    statusCode: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("event_subscription", ["eventId", "subscriptionId"])
+    .index("due", ["status", "nextAttemptAt"])
+    .index("lease", ["status", "leaseUntil"])
+    .index("expiry", ["expiresAt"]),
+
   oauthClients: defineTable({
     clientId: v.string(),
     clientName: v.string(),
@@ -5036,7 +5084,8 @@ export default defineSchema({
   })
     .index("token", ["tokenHash"])
     .index("refresh_token", ["refreshTokenHash"])
-    .index("user", ["userId"]),
+    .index("user", ["userId"])
+    .index("user_client", ["userId", "clientId"]),
 
   // ── Rate Limit Counters ──
 

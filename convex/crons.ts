@@ -67,4 +67,6 @@ crons.cron(
   {},
 );
 
+crons.interval("recover MCP event deliveries", { minutes: 1 }, internal.mcpEvents.recoverInternal, {});
+
 export default crons;

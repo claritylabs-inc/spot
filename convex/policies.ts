@@ -1,4 +1,5 @@
 import { syncPolicyUploadFingerprints } from "./lib/policyImportDedup";
+import { publishMcpEvent } from "./mcpEvents";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import {
@@ -2708,6 +2709,10 @@ export const promoteCompletedExtractionInternal = internalMutation({
       promotionGateDecision: recordedDecision,
       promotedAt: decidedAt,
       updatedAt: decidedAt,
+    });
+    if (policy.orgId) await publishMcpEvent(ctx, {
+      name: "policy.ready", key: args.runId, orgId: policy.orgId,
+      data: { org_id: policy.orgId, policy_id: policy._id },
     });
     return { promoted: true as const, decision: recordedDecision };
   },
