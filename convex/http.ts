@@ -21,6 +21,23 @@ import {
 import { getAuthSiteUrl, getClientPortalUrl } from "./lib/domains";
 import { spotIconResponse } from "./lib/brandIcon";
 import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
+import {
+  SPOT_APP_MIME_TYPE,
+  SPOT_APP_RESOURCE_URI,
+  SPOT_MCP_DISCOVERY_VERSION,
+  buildSpotAppTools,
+  filterSpotAppCatalog,
+  getSpotWorkspaceReadCall,
+  isSpotAppTool,
+  parseSpotAppInput,
+  type SpotCatalogTool,
+} from "./lib/chatgptMcp";
+import {
+  MCP_EVENT_CAPABILITIES,
+  handleMcpEventRequest,
+} from "./lib/mcpEventHttp";
+import { SPOT_WORKSPACE_HTML } from "./lib/chatgptWorkspaceHtml";
+import { projectSpotWorkspaceData } from "./lib/chatgptWorkspaceProjection";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
 import {
@@ -1984,6 +2001,72 @@ async function handleToolCall(
   return handler() as Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
 
+async function handleSpotAppToolCall(
+  ctx: McpToolContext,
+  identity: McpIdentity,
+  name: string,
+  rawArgs: unknown,
+) {
+  const input = parseSpotAppInput(name, rawArgs);
+  const canWrite = mcpCanWrite(identity);
+  const workspace = (await ctx.runQuery(
+    (internal as any).chatgptWorkspace.getContext,
+    {
+      userId: identity.userId as Id<"users">,
+      principalKind: identity.principalKind,
+      ...(identity.principalKind === "operator"
+        ? {
+            operatorRole: identity.operatorRole,
+            ...(input.organizationId
+              ? { organizationId: input.organizationId as Id<"organizations"> }
+              : {}),
+            ...(input.organizationCursor ? { cursor: input.organizationCursor } : {}),
+          }
+        : { orgId: identity.orgId as Id<"organizations"> }),
+      canWrite,
+      websiteUrl: getClientPortalUrl(),
+    },
+  )) as {
+    principal: { kind: "client" | "broker" | "operator" };
+    activeOrganizationId: string | null;
+  };
+  const kind = workspace.principal.kind;
+  const catalog: SpotCatalogTool[] =
+    identity.principalKind === "operator"
+      ? operatorMcpTools(identity)
+      : buildTenantMcpToolCatalog();
+  const tools = [
+    ...buildSpotAppTools(),
+    ...filterSpotAppCatalog(catalog, kind, canWrite),
+  ];
+  const readCall = getSpotWorkspaceReadCall(
+    kind,
+    input.view,
+    input.recordId,
+    workspace.activeOrganizationId ?? undefined,
+  );
+  const data = readCall
+    ? projectSpotWorkspaceData(
+        input.view,
+        await handleToolCall(ctx, identity, readCall.name, readCall.arguments),
+        kind,
+      )
+    : null;
+  return {
+    content: [{ type: "text" as const, text: "Spot workspace is ready." }],
+    structuredContent: { view: input.view },
+    _meta: {
+      "spot/workspace": {
+        context: workspace,
+        tools,
+        view: input.view,
+        ...(input.recordId ? { recordId: input.recordId } : {}),
+        data,
+      },
+    },
+  };
+}
+
 http.route({
   path: "/mcp",
   method: "POST",
@@ -2023,7 +2106,7 @@ http.route({
             protocolVersion: negotiateMcpProtocolVersion(
               params?.protocolVersion,
             ),
-            capabilities: { tools: {} },
+            capabilities: { tools: {}, resources: {} },
             serverInfo: {
               name: "Spot",
               version: "2.0.0",
@@ -2043,10 +2126,44 @@ http.route({
         }
         case "tools/list": {
           return jsonRpcResponse(id, {
-            tools:
-              identity.principalKind === "operator"
+            tools: [
+              ...buildSpotAppTools(),
+              ...(identity.principalKind === "operator"
                 ? operatorMcpTools(identity)
-                : buildTenantMcpToolCatalog(),
+                : buildTenantMcpToolCatalog()),
+            ],
+          });
+        }
+        case "server/discover": {
+          return jsonRpcResponse(id, {
+            protocolVersion: SPOT_MCP_DISCOVERY_VERSION,
+            capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
+            serverInfo: { name: "Spot", version: "2.0.0" },
+          });
+        }
+        case "resources/list": {
+          return jsonRpcResponse(id, {
+            resources: [
+              {
+                uri: SPOT_APP_RESOURCE_URI,
+                name: "Spot workspace",
+                mimeType: SPOT_APP_MIME_TYPE,
+              },
+            ],
+          });
+        }
+        case "resources/read": {
+          if (params?.uri !== SPOT_APP_RESOURCE_URI) {
+            return jsonRpcError(id, -32602, "Unknown resource");
+          }
+          return jsonRpcResponse(id, {
+            contents: [
+              {
+                uri: SPOT_APP_RESOURCE_URI,
+                mimeType: SPOT_APP_MIME_TYPE,
+                text: SPOT_WORKSPACE_HTML,
+              },
+            ],
           });
         }
         case "tools/call": {
@@ -2056,6 +2173,12 @@ http.route({
             return jsonRpcError(id, -32602, "Missing tool name");
           }
           try {
+            if (isSpotAppTool(toolName)) {
+              return jsonRpcResponse(
+                id,
+                await handleSpotAppToolCall(ctx, identity, toolName, toolArgs),
+              );
+            }
             if (identity.principalKind === "organization") {
               const access = tenantMcpToolAccess(toolName);
               if (!access) throw new Error(`Unknown tool: ${toolName}`);
@@ -2091,8 +2214,40 @@ http.route({
             });
           }
         }
-        default:
+        default: {
+          let eventResult: unknown | null;
+          try {
+            eventResult = await handleMcpEventRequest(
+              ctx,
+              identity,
+              method,
+              params,
+            );
+          } catch (eventErr: unknown) {
+            const err = eventErr as {
+              code?: unknown;
+              message?: unknown;
+              data?: unknown;
+            };
+            return new Response(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: typeof err.code === "number" ? err.code : -32000,
+                  message:
+                    typeof err.message === "string"
+                      ? err.message
+                      : "MCP Events request failed",
+                  ...(err.data !== undefined ? { data: err.data } : {}),
+                },
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            );
+          }
+          if (eventResult !== null) return jsonRpcResponse(id, eventResult);
           return jsonRpcError(id, -32601, `Method not found: ${method}`);
+        }
       }
     } catch (e) {
       if (e instanceof Response) return e;
