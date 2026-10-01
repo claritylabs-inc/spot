@@ -1677,6 +1677,18 @@ async function unauthenticatedSpotDiscoveryRequest(
   }
 }
 
+const MCP_PUBLIC_CACHE = {
+  resultType: "complete",
+  ttlMs: 60_000,
+  cacheScope: "public",
+} as const;
+
+const MCP_PRIVATE_CACHE = {
+  resultType: "complete",
+  ttlMs: 0,
+  cacheScope: "private",
+} as const;
+
 function jsonRpcResponse(
   id: string | number | null,
   result: unknown,
@@ -1706,14 +1718,18 @@ function anonymousSpotDiscoveryResponse(request: {
       });
     case "server/discover":
       return jsonRpcResponse(id, {
-        resultType: "complete",
+        ...MCP_PUBLIC_CACHE,
         supportedVersions: [SPOT_MCP_DISCOVERY_VERSION],
         capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
       });
     case "tools/list":
-      return jsonRpcResponse(id, { tools: buildSpotAppTools() });
+      return jsonRpcResponse(id, {
+        ...MCP_PUBLIC_CACHE,
+        tools: buildSpotAppTools(),
+      });
     case "resources/list":
       return jsonRpcResponse(id, {
+        ...MCP_PUBLIC_CACHE,
         resources: [
           {
             uri: SPOT_APP_RESOURCE_URI,
@@ -1732,6 +1748,7 @@ function spotWorkspaceResourceResponse(
   uri: string = SPOT_APP_RESOURCE_URI,
 ): Response {
   return jsonRpcResponse(id, {
+    ...MCP_PUBLIC_CACHE,
     contents: [
       {
         uri,
@@ -2344,6 +2361,7 @@ http.route({
               ? operatorMcpTools(identity)
               : buildTenantMcpToolCatalog();
           return jsonRpcResponse(id, {
+            ...MCP_PRIVATE_CACHE,
             tools: buildRoleScopedSpotToolCatalog(
               catalog,
               principalKind,
@@ -2353,13 +2371,14 @@ http.route({
         }
         case "server/discover": {
           return jsonRpcResponse(id, {
-            resultType: "complete",
+            ...MCP_PUBLIC_CACHE,
             supportedVersions: [SPOT_MCP_DISCOVERY_VERSION],
             capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
           });
         }
         case "resources/list": {
           return jsonRpcResponse(id, {
+            ...MCP_PUBLIC_CACHE,
             resources: [
               {
                 uri: SPOT_APP_RESOURCE_URI,
