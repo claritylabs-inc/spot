@@ -151,7 +151,7 @@ function useSpotHost() {
   });
 
   useEffect(() => {
-    if (state.app) setHostContext(state.app.getHostContext() || {});
+    if (state.app) setHostContext(state.app.getHostContext() || {}); // eslint-disable-line react-hooks/set-state-in-effect -- Hydrate host context after the SDK creates its app instance.
   }, [state.app]);
 
   useEffect(() => {
@@ -191,7 +191,7 @@ function useWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (host.initialResult) acceptWorkspaceResult(host.initialResult, host.input?.view);
+    if (host.initialResult) acceptWorkspaceResult(host.initialResult, host.input?.view); // eslint-disable-line react-hooks/set-state-in-effect -- Apply the result delivered by the host SDK.
   }, [host.initialResult, host.input?.view, acceptWorkspaceResult]);
 
   useEffect(() => {
@@ -200,7 +200,7 @@ function useWorkspace() {
     try {
       const parsed = new URL(deepLink, "https://spot.invalid");
       const nextView = parsed.searchParams.get("view") || parsed.pathname.split("/").filter(Boolean)[0];
-      if (VIEW_ORDER.includes(nextView)) setView(nextView);
+      if (VIEW_ORDER.includes(nextView)) setView(nextView); // eslint-disable-line react-hooks/set-state-in-effect -- Apply a host-provided deep link.
       if (parsed.searchParams.get("recordId")) setRecordId(parsed.searchParams.get("recordId"));
     } catch {
       // An unsupported deep-link shape falls back to the current workspace.
@@ -278,7 +278,7 @@ function useWorkspace() {
 
   useEffect(() => {
     if (!host.input?.file) return;
-    setInputFile(host.input.file);
+    setInputFile(host.input.file); // eslint-disable-line react-hooks/set-state-in-effect -- Load the file supplied by the host entrypoint.
     setView("files");
   }, [host.input]);
 
@@ -286,7 +286,7 @@ function useWorkspace() {
     const entrypoint = host.hostContext?.toolInfo?.tool?.name;
     if (!ENTRYPOINT_TOOLS.has(entrypoint)) return;
     const args = host.input || {};
-    if (args.view && VIEW_ORDER.includes(args.view)) setView(args.view);
+    if (args.view && VIEW_ORDER.includes(args.view)) setView(args.view); // eslint-disable-line react-hooks/set-state-in-effect -- Apply host-provided entrypoint arguments.
     if (typeof args.recordId === "string") setRecordId(args.recordId);
     if (typeof args.organizationId === "string") setActiveOrganizationId(args.organizationId);
   }, [host.hostContext, host.input]);
@@ -651,7 +651,7 @@ function CompanyView({ data, workspace, canWrite, tools }) {
   const initial = document?.content || document?.markdown || document?.body || "";
   const [draft, setDraft] = useState(initial);
   const [tab, setTab] = useState(document?.filename === "private.md" ? "private.md" : "public.md");
-  useEffect(() => setDraft(initial), [initial]);
+  useEffect(() => setDraft(initial), [initial]); // eslint-disable-line react-hooks/set-state-in-effect -- Reset the editor when the host switches the selected document.
   const saveTool = tools.find((tool) => !tool.annotations?.readOnlyHint && /markdown|document|wiki|company/i.test(`${tool.name} ${tool.title || ""}`));
   const save = () => {
     if (!saveTool) return;
@@ -745,4 +745,3 @@ const STYLES = `
 `;
 
 createRoot(document.getElementById("root")).render(<App />);
-

@@ -143,6 +143,7 @@ jobs:
             exit 1
           fi
           npx convex deploy --yes
+          node scripts/ensure-mcp-events-encryption-key.mjs
           npx convex env set OPERATOR_SLACK_ENABLED true
           npx convex env set OPERATOR_IMESSAGE_ENABLED true
           npx convex env set OPERATOR_IMESSAGE_TERMINAL_ENABLED false
