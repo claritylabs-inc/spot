@@ -26,6 +26,7 @@ import {
   SPOT_APP_RESOURCE_URI,
   SPOT_MCP_DISCOVERY_VERSION,
   buildRoleScopedSpotToolCatalog,
+  buildSpotAppTools,
   getSpotWorkspaceReadCall,
   isSpotAppResourceUri,
   isSpotAppTool,
@@ -1601,9 +1602,17 @@ type McpHttpRequestBody = {
   } | null;
 };
 
-async function unauthenticatedSpotResourceRead(
+const ANONYMOUS_MCP_DISCOVERY_METHODS = new Set([
+  "initialize",
+  "server/discover",
+  "tools/list",
+  "resources/list",
+  "resources/read",
+]);
+
+async function unauthenticatedSpotDiscoveryRequest(
   request: Request,
-): Promise<{ id: string | number; uri: string } | null> {
+): Promise<{ id: string | number; method: string; params?: any } | null> {
   const maximumBodyBytes = 4096;
   const contentLength = request.headers.get("Content-Length");
   if (
@@ -1638,16 +1647,16 @@ async function unauthenticatedSpotResourceRead(
     }
     const body = JSON.parse(new TextDecoder().decode(bytes)) as McpHttpRequestBody;
     const id = body?.id;
-    const uri = body?.params?.uri;
     if (
       body?.jsonrpc !== "2.0" ||
       (typeof id !== "string" && typeof id !== "number") ||
-      body.method !== "resources/read" ||
-      !isSpotAppResourceUri(uri)
+      typeof body.method !== "string" ||
+      !ANONYMOUS_MCP_DISCOVERY_METHODS.has(body.method) ||
+      (body.method === "resources/read" && !isSpotAppResourceUri(body.params?.uri))
     ) {
       return null;
     }
-    return { id, uri };
+    return { id, method: body.method, params: body.params };
   } catch {
     return null;
   }
@@ -1660,6 +1669,42 @@ function jsonRpcResponse(
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function anonymousSpotDiscoveryResponse(request: {
+  id: string | number;
+  method: string;
+  params?: any;
+}): Response {
+  const { id, method, params } = request;
+  switch (method) {
+    case "initialize":
+      return jsonRpcResponse(id, {
+        protocolVersion: negotiateMcpProtocolVersion(params?.protocolVersion),
+        capabilities: { tools: {}, resources: {} },
+        serverInfo: { name: "Spot", version: "2.0.0" },
+      });
+    case "server/discover":
+      return jsonRpcResponse(id, {
+        resultType: "complete",
+        supportedVersions: [SPOT_MCP_DISCOVERY_VERSION],
+        capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
+      });
+    case "tools/list":
+      return jsonRpcResponse(id, { tools: buildSpotAppTools() });
+    case "resources/list":
+      return jsonRpcResponse(id, {
+        resources: [
+          {
+            uri: SPOT_APP_RESOURCE_URI,
+            name: "Spot workspace",
+            mimeType: SPOT_APP_MIME_TYPE,
+          },
+        ],
+      });
+    default:
+      return spotWorkspaceResourceResponse(id, params.uri);
+  }
 }
 
 function spotWorkspaceResourceResponse(
@@ -2191,10 +2236,10 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      // ChatGPT may send a stale or invalid bearer token while fetching the
-      // MCP App template. That exact resource is static UI code with no
-      // workspace data, so allow only its read after a 401 while keeping every
-      // tool call and all other MCP methods behind OAuth.
+      // Registration scanners and ChatGPT may probe before OAuth, or with a
+      // stale bearer token. Allow only static discovery (handshake, launcher
+      // catalog, and the UI template) with no workspace data; every tool call
+      // and all other MCP methods stay behind OAuth.
       let identity: Awaited<ReturnType<typeof requireMcpAuth>>;
       try {
         identity = await requireMcpAuth(ctx, request, {
@@ -2202,13 +2247,8 @@ http.route({
         });
       } catch (authError) {
         if (authError instanceof Response && authError.status === 401) {
-          const resourceRead = await unauthenticatedSpotResourceRead(request);
-          if (resourceRead) {
-            return spotWorkspaceResourceResponse(
-              resourceRead.id,
-              resourceRead.uri,
-            );
-          }
+          const discovery = await unauthenticatedSpotDiscoveryRequest(request);
+          if (discovery) return anonymousSpotDiscoveryResponse(discovery);
         }
         throw authError;
       }
