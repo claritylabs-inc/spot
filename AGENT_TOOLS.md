@@ -42,8 +42,33 @@ These lifecycle controls are internal, not new agent or MCP tools.
 - Discrete email tools and their shared executors live in `convex/lib/emailTools.ts`; no nested email model loop remains. The discrete mailbox family and shared account search/evidence helper live in `convex/lib/mailboxTools.ts`; every operation runs in the parent agent.
 - Tenant OAuth MCP tools and their read/write, open-world, destructive, and idempotency metadata are defined together in the shared projection and compatibility metadata in `convex/lib/tenantMcpToolCatalog.ts`.
 - MCP OAuth revocation accepts form-encoded access or refresh tokens (and legacy Bearer access tokens), invalidates the stored token pair, and rejects a supplied mismatched client ID before any change.
+- MCP Events definitions and allowlisted filters/payloads live in `convex/lib/mcpEventCatalog.ts`. `convex/lib/mcpEventHttp.ts` exports the structural authenticated-principal adapter and `{ events: {} }` capability for endpoint composition; `convex/mcpEvents.ts` owns subscription authorization and the durable outbox, and `convex/actions/mcpEvents.ts` owns encrypted secrets, callback verification, and signed delivery. These are subscription protocol methods, not business-write tools.
 
 When any source above adds, removes, renames, or materially changes a tool, update this inventory in the same change. Availability, capability, effect, required role, confirmation policy, execution boundary, and MCP access changes count as material.
+
+## MCP Events
+
+`events/list` discovers authorized webhook events. `events/subscribe` creates or
+refreshes a deterministic, principal/client/resource-scoped subscription after
+callback verification. `events/unsubscribe` idempotently revokes that matching
+subscription. All three require a current read-scoped OAuth connection; they do
+not grant write access, execute business tools, or satisfy exact approvals.
+CLA-179 owns MCP 2.0 `server/discover` negotiation and endpoint composition.
+
+The catalog exposes `compliance.status_changed`, `vendor.policy_expiring`,
+`policy.ready`, `policy.review_required`, `procurement.request_updated`, and
+operator-only `proposal.review_ready`. Domain mutations enqueue only matching,
+allowlisted identifiers and transition labels. Client-hidden procurement
+changes and private proposal content never reach tenant event payloads.
+Compliance events reflect existing monitor cadence, not live carrier updates.
+
+Delivery rechecks membership/operator activity, OAuth connection, target access,
+expiry, and subscription generation. Callback validation is HTTPS/public-IP
+only, with pinned DNS, no redirects, signed constant-time challenge verification,
+a bounded verification cache, and safe `-32015` callback errors. A dedicated
+32-byte base64 `MCP_EVENTS_ENCRYPTION_KEY` protects signing secrets. Settings
+list only the owning actor's origin/scope/expiry and allow revocation. See
+`docs/architecture/mcp-events.md` for limits and the unrun ChatGPT smoke workflow.
 
 ## Operator agent registry
 
