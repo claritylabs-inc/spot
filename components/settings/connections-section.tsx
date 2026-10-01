@@ -32,6 +32,7 @@ import {
 } from "@/lib/sync/use-cached-query";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
+import { McpEventSubscriptions } from "@/components/settings/mcp-event-subscriptions";
 
 type ConnectedAppRow = {
   tokenId: Id<"oauthTokens">;
@@ -273,6 +274,7 @@ export function ConnectionsSection() {
       </OperationalPanel>
 
       <ConnectedApps />
+      <McpEventSubscriptions />
     </div>
   );
 }

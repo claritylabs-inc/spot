@@ -32,6 +32,10 @@ import {
   parseSpotAppInput,
   type SpotCatalogTool,
 } from "./lib/chatgptMcp";
+import {
+  MCP_EVENT_CAPABILITIES,
+  handleMcpEventRequest,
+} from "./lib/mcpEventHttp";
 import { SPOT_WORKSPACE_HTML } from "./lib/chatgptWorkspaceHtml";
 import { projectSpotWorkspaceData } from "./lib/chatgptWorkspaceProjection";
 import { getEmailDeliveryMode } from "./lib/resend";
@@ -2133,7 +2137,7 @@ http.route({
         case "server/discover": {
           return jsonRpcResponse(id, {
             protocolVersion: SPOT_MCP_DISCOVERY_VERSION,
-            capabilities: { tools: {}, resources: {} },
+            capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
             serverInfo: { name: "Spot", version: "2.0.0" },
           });
         }
@@ -2210,8 +2214,40 @@ http.route({
             });
           }
         }
-        default:
+        default: {
+          let eventResult: unknown | null;
+          try {
+            eventResult = await handleMcpEventRequest(
+              ctx,
+              identity,
+              method,
+              params,
+            );
+          } catch (eventErr: unknown) {
+            const err = eventErr as {
+              code?: unknown;
+              message?: unknown;
+              data?: unknown;
+            };
+            return new Response(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: typeof err.code === "number" ? err.code : -32000,
+                  message:
+                    typeof err.message === "string"
+                      ? err.message
+                      : "MCP Events request failed",
+                  ...(err.data !== undefined ? { data: err.data } : {}),
+                },
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            );
+          }
+          if (eventResult !== null) return jsonRpcResponse(id, eventResult);
           return jsonRpcError(id, -32601, `Method not found: ${method}`);
+        }
       }
     } catch (e) {
       if (e instanceof Response) return e;

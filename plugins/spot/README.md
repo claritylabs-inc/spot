@@ -14,7 +14,7 @@ The authenticated host consumes Spot’s existing MCP tools. The plugin does not
 | Broker | Profile and team settings only | Broker data access is separate and read-only where applicable; no policy, file, procurement, proposal, or company-record expansion |
 | Operator | The operator-authorized policy, certificate, compliance, file, wiki, procurement, and mailbox tools, plus operator-only proposals, market activity, exact approvals, and durable run status | Active operator role, impersonation, exact target authorization, and approval are rechecked at execution |
 
-MCP Events are owned by a separate peer change. The package documents optional composition with event methods and six role-scoped events, but does not claim that Events are integrated until the manager verifies the peer implementation.
+MCP Events (`events/list`, `events/subscribe`, `events/unsubscribe`, six role-scoped events) are served by the same `/mcp` endpoint and advertised in `server/discover`. They have not been exercised end to end from a live ChatGPT host.
 
 ## Website handoffs
 

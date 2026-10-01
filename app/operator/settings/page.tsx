@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
+import { McpEventSubscriptions } from "@/components/settings/mcp-event-subscriptions";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import {
   OperationalPanel,
@@ -78,6 +79,7 @@ export default function OperatorSettingsPage() {
             </OperationalPanelBody>
           </OperationalPanel>
           {mcp.panel}
+          <McpEventSubscriptions />
         </div>
       )}
     </AppShell>

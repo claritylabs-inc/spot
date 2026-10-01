@@ -36,7 +36,7 @@ Billing, security/privacy administration, organization administration, and integ
 
 ## MCP Events boundary
 
-MCP Events `events/*` methods and six role-scoped events are owned by a separate peer change. This package may be composed with that peer after manager verification, but it must not advertise Events as integrated until the peer’s tool/event registration and authorization behavior have been exercised end to end.
+`/mcp` routes unrecognized methods to the MCP Events adapter (`handleMcpEventRequest`) after the Spot app methods, and merges `MCP_EVENT_CAPABILITIES` into `server/discover`. Adapter errors keep their JSON-RPC `code` and `data` (for example `-32015` callback verification failures). Authorization is unchanged: the adapter receives the already authenticated identity. Events have not been exercised end to end from a live ChatGPT host.
 
 ## Safety and outcome semantics
 
