@@ -176,6 +176,7 @@ export function buildSpotAppTools(principal: SpotPrincipalKind = "client") {
     inputSchema: z.toJSONSchema(
       "schema" in tool ? tool.schema : taskSchema,
     ),
+    securitySchemes: [{ type: "oauth2" as const, scopes: ["read"] }],
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
