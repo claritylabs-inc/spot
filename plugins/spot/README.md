@@ -1,6 +1,6 @@
 # Spot ChatGPT plugin (private rollout)
 
-This directory is the isolated internal packaging layer for Spot’s ChatGPT MCP plugin. It contains the portable Agent Plugins manifest, a streamable HTTP connection, one insurance workflow skill, and the Spot icon. It is intentionally not a public listing, deployment, registration, or installation artifact.
+This directory is the isolated internal packaging layer for Spot’s ChatGPT MCP plugin. It contains the portable Agent Plugins manifest, a streamable HTTP connection, one insurance workflow skill, and the Spot logo and composer icon. Both bundled images are referenced directly by the manifest so ChatGPT can render the listing and composer branding.
 
 The portable package connects to the production OAuth MCP endpoint documented by Spot at `https://actions.spot.insure/mcp`. The endpoint is also the source of the current discovery document at `https://actions.spot.insure/.well-known/mcp.json`. The package does not contain provider credentials, OAuth secrets, website cookies, or a `plugin_asdk_app` registration ID.
 
@@ -62,7 +62,13 @@ The server-side manager owns the registered UI tools and the embedded resource. 
 - `open_spot_record` — thread/record entrypoint;
 - `open_spot_file` — file entrypoint for `.pdf`, `.md`, and `.txt`;
 - `read_spot_workspace` — read/render operation that separates UI presentation from business-tool execution;
-- resource URI `ui://spot/workspace/v1.html`.
+- `find_insurance_quotes` — opens the authorized quote request workspace;
+- `create_insurance_certificate` — opens the certificate workspace without generating or sending a certificate;
+- `compare_insurance_coverage` — opens bound policy evidence;
+- `check_insurance_compliance` — opens compliance requirements and status;
+- resource URI `ui://spot/workspace/v2.html` (the server keeps the v1 URI readable for cached registrations).
+
+The four task tools are read-only UI launchers for client and operator roles; brokers retain their profile/team/settings workspace. Business writes continue through their separately authorized tools and existing confirmation rules. Task descriptions intentionally name user goals so requests such as “find me insurance quotes” and “create an insurance certificate” discover the matching Spot view.
 
 The UI build path is `plugins/spot/ui/dist/workspace.html`; the UI worker owns that directory. At compile time the manager embeds it in `convex/lib/chatgptResourceBundle.ts`. Tool results should keep `structuredContent` minimal and put the private UI payload in `_meta` under the Spot workspace namespace, with current-reference authorization enforced by the server. Composition must not execute business tools.
 
@@ -75,4 +81,3 @@ The remaining live gates are a user-linked development endpoint, a real OAuth re
 - [Authentication](https://developers.openai.com/plugins/build/auth.md)
 - [OpenAI MCP Extensions specification](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md)
 - [MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
-

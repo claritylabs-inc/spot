@@ -27,6 +27,7 @@ import {
   SPOT_MCP_DISCOVERY_VERSION,
   buildRoleScopedSpotToolCatalog,
   getSpotWorkspaceReadCall,
+  isSpotAppResourceUri,
   isSpotAppTool,
   parseSpotAppInput,
   type SpotCatalogTool,
@@ -1600,6 +1601,58 @@ type McpHttpRequestBody = {
   } | null;
 };
 
+async function unauthenticatedSpotResourceRead(
+  request: Request,
+): Promise<{ id: string | number; uri: string } | null> {
+  const maximumBodyBytes = 4096;
+  const contentLength = request.headers.get("Content-Length");
+  if (
+    contentLength !== null &&
+    (!/^\d+$/.test(contentLength) || Number(contentLength) > maximumBodyBytes)
+  ) {
+    return null;
+  }
+
+  try {
+    const reader = request.clone().body?.getReader();
+    if (!reader) return null;
+
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBodyBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const body = JSON.parse(new TextDecoder().decode(bytes)) as McpHttpRequestBody;
+    const id = body?.id;
+    const uri = body?.params?.uri;
+    if (
+      body?.jsonrpc !== "2.0" ||
+      (typeof id !== "string" && typeof id !== "number") ||
+      body.method !== "resources/read" ||
+      !isSpotAppResourceUri(uri)
+    ) {
+      return null;
+    }
+    return { id, uri };
+  } catch {
+    return null;
+  }
+}
+
 function jsonRpcResponse(
   id: string | number | null,
   result: unknown,
@@ -1611,11 +1664,12 @@ function jsonRpcResponse(
 
 function spotWorkspaceResourceResponse(
   id: string | number | null,
+  uri: string = SPOT_APP_RESOURCE_URI,
 ): Response {
   return jsonRpcResponse(id, {
     contents: [
       {
-        uri: SPOT_APP_RESOURCE_URI,
+        uri,
         mimeType: SPOT_APP_MIME_TYPE,
         text: SPOT_WORKSPACE_HTML,
         _meta: {
@@ -2137,34 +2191,28 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      // ChatGPT fetches the MCP App template separately from its OAuth-backed
-      // tool call. This exact resource is static UI code with no workspace
-      // data, so allow that read without a token while keeping every tool call
-      // and all other MCP methods behind OAuth.
-      let body: McpHttpRequestBody = {};
-      let bodyParsed = false;
-      if (!request.headers.has("Authorization")) {
-        try {
-          body = await request.json();
-          bodyParsed = true;
-        } catch {
-          // Preserve the normal 401 for unauthenticated malformed requests.
+      // ChatGPT may send a stale or invalid bearer token while fetching the
+      // MCP App template. That exact resource is static UI code with no
+      // workspace data, so allow only its read after a 401 while keeping every
+      // tool call and all other MCP methods behind OAuth.
+      let identity: Awaited<ReturnType<typeof requireMcpAuth>>;
+      try {
+        identity = await requireMcpAuth(ctx, request, {
+          allowOperator: true,
+        });
+      } catch (authError) {
+        if (authError instanceof Response && authError.status === 401) {
+          const resourceRead = await unauthenticatedSpotResourceRead(request);
+          if (resourceRead) {
+            return spotWorkspaceResourceResponse(
+              resourceRead.id,
+              resourceRead.uri,
+            );
+          }
         }
+        throw authError;
       }
-      if (
-        bodyParsed &&
-        body?.jsonrpc === "2.0" &&
-        (typeof body?.id === "string" || typeof body?.id === "number") &&
-        body?.method === "resources/read" &&
-        body?.params?.uri === SPOT_APP_RESOURCE_URI
-      ) {
-        return spotWorkspaceResourceResponse(body.id);
-      }
-
-      const identity = await requireMcpAuth(ctx, request, {
-        allowOperator: true,
-      });
-      if (!bodyParsed) body = await request.json();
+      const body = (await request.json()) as McpHttpRequestBody;
 
       // Handle JSON-RPC 2.0
       const { jsonrpc, id, method, params } = body;
@@ -2262,10 +2310,10 @@ http.route({
           });
         }
         case "resources/read": {
-          if (params?.uri !== SPOT_APP_RESOURCE_URI) {
+          if (!isSpotAppResourceUri(params?.uri)) {
             return jsonRpcError(id, -32602, "Unknown resource");
           }
-          return spotWorkspaceResourceResponse(id);
+          return spotWorkspaceResourceResponse(id, params.uri);
         }
         case "tools/call": {
           const toolName = params?.name;
