@@ -56,6 +56,17 @@ export function filterSpotAppCatalog<Tool extends SpotCatalogTool>(catalog: Tool
   return catalog.filter((tool) => canWrite || tool.annotations?.readOnlyHint === true);
 }
 
+export function buildRoleScopedSpotToolCatalog<Tool extends SpotCatalogTool>(
+  catalog: Tool[],
+  principal: SpotPrincipalKind,
+  canWrite: boolean,
+) {
+  return [
+    ...buildSpotAppTools(),
+    ...filterSpotAppCatalog(catalog, principal, canWrite),
+  ];
+}
+
 export function getSpotWorkspaceReadCall(principal: SpotPrincipalKind, view: string, recordId?: string, organizationId?: string): { name: string; arguments: Record<string, unknown> } | null {
   if (principal === "broker") return null;
   if (principal === "operator") {
