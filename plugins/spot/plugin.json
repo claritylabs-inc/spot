@@ -1,0 +1,45 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "spot",
+  "version": "0.1.0",
+  "description": "Private Spot insurance operations workspace for policy evidence, compliance, certificates, files, wiki, and procurement workflows.",
+  "author": {
+    "name": "Clarity Labs"
+  },
+  "homepage": "https://spot.insure",
+  "repository": "https://github.com/claritylabs-inc/spot",
+  "license": "Proprietary",
+  "keywords": [
+    "insurance",
+    "policies",
+    "compliance",
+    "certificates",
+    "procurement"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Spot",
+        "shortDescription": "Insurance operations grounded in your Spot workspace",
+        "longDescription": "Review bound policy evidence, compare contract requirements, prepare certificate artifacts, manage company files and wiki content, and work through procurement requests with the access and approval boundaries enforced by Spot.",
+        "developerName": "Clarity Labs",
+        "category": "Business",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://spot.insure",
+        "defaultPrompt": [
+          "Open my Spot insurance workspace.",
+          "Compare this requirement with bound policy evidence.",
+          "Prepare a COI artifact, then ask before sending it."
+        ],
+        "brandColor": "#A0D2FA",
+        "composerIcon": "./assets/icon.svg",
+        "logo": "./assets/icon.svg"
+      }
+    }
+  }
+}
+
