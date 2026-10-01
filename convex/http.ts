@@ -25,12 +25,12 @@ import {
   SPOT_APP_MIME_TYPE,
   SPOT_APP_RESOURCE_URI,
   SPOT_MCP_DISCOVERY_VERSION,
-  buildSpotAppTools,
-  filterSpotAppCatalog,
+  buildRoleScopedSpotToolCatalog,
   getSpotWorkspaceReadCall,
   isSpotAppTool,
   parseSpotAppInput,
   type SpotCatalogTool,
+  type SpotPrincipalKind,
 } from "./lib/chatgptMcp";
 import {
   MCP_EVENT_CAPABILITIES,
@@ -2064,10 +2064,7 @@ async function handleSpotAppToolCall(
     identity.principalKind === "operator"
       ? operatorMcpTools(identity)
       : buildTenantMcpToolCatalog();
-  const tools = [
-    ...buildSpotAppTools(),
-    ...filterSpotAppCatalog(catalog, kind, canWrite),
-  ];
+  const tools = buildRoleScopedSpotToolCatalog(catalog, kind, canWrite);
   const readCall = getSpotWorkspaceReadCall(
     kind,
     input.view,
@@ -2154,13 +2151,33 @@ http.route({
           });
         }
         case "tools/list": {
+          const canWrite = mcpCanWrite(identity);
+          let principalKind: SpotPrincipalKind;
+          if (identity.principalKind === "operator") {
+            principalKind = "operator";
+          } else {
+            const workspace = await ctx.runQuery(
+              internalApi.chatgptWorkspace.getContext,
+              {
+                userId: identity.userId as Id<"users">,
+                principalKind: "organization",
+                orgId: identity.orgId as Id<"organizations">,
+                canWrite,
+                websiteUrl: getClientPortalUrl(),
+              },
+            );
+            principalKind = workspace.principal.kind;
+          }
+          const catalog: SpotCatalogTool[] =
+            identity.principalKind === "operator"
+              ? operatorMcpTools(identity)
+              : buildTenantMcpToolCatalog();
           return jsonRpcResponse(id, {
-            tools: [
-              ...buildSpotAppTools(),
-              ...(identity.principalKind === "operator"
-                ? operatorMcpTools(identity)
-                : buildTenantMcpToolCatalog()),
-            ],
+            tools: buildRoleScopedSpotToolCatalog(
+              catalog,
+              principalKind,
+              canWrite,
+            ),
           });
         }
         case "server/discover": {
