@@ -14,24 +14,26 @@
   },
   "interface": {
     "displayName": "Spot",
-    "shortDescription": "Insurance operations grounded in your Spot workspace",
+    "shortDescription": "Spot insurance operations",
     "longDescription": "Review bound policy evidence, compare contract requirements, prepare certificate artifacts, manage company files and wiki content, and work through procurement requests with the access and approval boundaries enforced by Spot.",
     "developerName": "Clarity Labs",
-    "category": "Business",
+    "category": "Business & Operations",
     "capabilities": [
       "Interactive",
       "Read",
       "Write"
     ],
     "websiteURL": "https://spot.insure",
+    "supportURL": "https://spot.insure/contact",
+    "privacyPolicyURL": "https://toolsforenlightenment.org/privacy-policy",
+    "termsOfServiceURL": "https://toolsforenlightenment.org/terms-of-service",
     "defaultPrompt": [
       "Open my Spot insurance workspace.",
       "Compare this requirement with bound policy evidence.",
       "Prepare a COI artifact, then ask before sending it."
     ],
-    "brandColor": "#A0D2FA",
+    "brandColor": "#3A7EB7",
     "composerIcon": "./assets/icon.svg",
     "logo": "./assets/icon.svg"
   }
 }
-
