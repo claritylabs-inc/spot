@@ -2208,6 +2208,18 @@ http.route({
                 uri: SPOT_APP_RESOURCE_URI,
                 mimeType: SPOT_APP_MIME_TYPE,
                 text: SPOT_WORKSPACE_HTML,
+                _meta: {
+                  ui: {
+                    domain: "https://actions.spot.insure",
+                    csp: {
+                      connectDomains: [],
+                      resourceDomains: [],
+                    },
+                  },
+                  "openai/ui": {
+                    availableDisplayModes: ["inline", "fullscreen"],
+                  },
+                },
               },
             ],
           });
