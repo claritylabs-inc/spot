@@ -1587,12 +1587,51 @@ function operatorMcpTools(identity: OperatorMcpIdentity) {
 
 export { tenantMcpToolAccess, tenantMcpToolNames } from "./lib/tenantMcpToolCatalog";
 
+type McpHttpRequestBody = {
+  jsonrpc?: unknown;
+  id?: string | number | null;
+  method?: unknown;
+  params?: {
+    protocolVersion?: string;
+    name?: string;
+    arguments?: Record<string, unknown>;
+    uri?: string;
+    [key: string]: unknown;
+  } | null;
+};
+
 function jsonRpcResponse(
   id: string | number | null,
   result: unknown,
 ): Response {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+function spotWorkspaceResourceResponse(
+  id: string | number | null,
+): Response {
+  return jsonRpcResponse(id, {
+    contents: [
+      {
+        uri: SPOT_APP_RESOURCE_URI,
+        mimeType: SPOT_APP_MIME_TYPE,
+        text: SPOT_WORKSPACE_HTML,
+        _meta: {
+          ui: {
+            domain: "https://actions.spot.insure",
+            csp: {
+              connectDomains: [],
+              resourceDomains: [],
+            },
+          },
+          "openai/ui": {
+            availableDisplayModes: ["inline", "fullscreen"],
+          },
+        },
+      },
+    ],
   });
 }
 
@@ -2098,14 +2137,38 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
+      // ChatGPT fetches the MCP App template separately from its OAuth-backed
+      // tool call. This exact resource is static UI code with no workspace
+      // data, so allow that read without a token while keeping every tool call
+      // and all other MCP methods behind OAuth.
+      let body: McpHttpRequestBody = {};
+      let bodyParsed = false;
+      if (!request.headers.has("Authorization")) {
+        try {
+          body = await request.json();
+          bodyParsed = true;
+        } catch {
+          // Preserve the normal 401 for unauthenticated malformed requests.
+        }
+      }
+      if (
+        bodyParsed &&
+        body?.jsonrpc === "2.0" &&
+        (typeof body?.id === "string" || typeof body?.id === "number") &&
+        body?.method === "resources/read" &&
+        body?.params?.uri === SPOT_APP_RESOURCE_URI
+      ) {
+        return spotWorkspaceResourceResponse(body.id);
+      }
+
       const identity = await requireMcpAuth(ctx, request, {
         allowOperator: true,
       });
-      const body = await request.json();
+      if (!bodyParsed) body = await request.json();
 
       // Handle JSON-RPC 2.0
       const { jsonrpc, id, method, params } = body;
-      if (jsonrpc !== "2.0") {
+      if (jsonrpc !== "2.0" || typeof method !== "string") {
         return jsonRpcError(
           id ?? null,
           -32600,
@@ -2202,27 +2265,7 @@ http.route({
           if (params?.uri !== SPOT_APP_RESOURCE_URI) {
             return jsonRpcError(id, -32602, "Unknown resource");
           }
-          return jsonRpcResponse(id, {
-            contents: [
-              {
-                uri: SPOT_APP_RESOURCE_URI,
-                mimeType: SPOT_APP_MIME_TYPE,
-                text: SPOT_WORKSPACE_HTML,
-                _meta: {
-                  ui: {
-                    domain: "https://actions.spot.insure",
-                    csp: {
-                      connectDomains: [],
-                      resourceDomains: [],
-                    },
-                  },
-                  "openai/ui": {
-                    availableDisplayModes: ["inline", "fullscreen"],
-                  },
-                },
-              },
-            ],
-          });
+          return spotWorkspaceResourceResponse(id);
         }
         case "tools/call": {
           const toolName = params?.name;
