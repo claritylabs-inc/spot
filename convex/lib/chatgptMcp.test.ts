@@ -54,3 +54,14 @@ test("operator catalog keeps its role-specific tools", () => {
     "update_procurement_packet",
   ]);
 });
+
+test("Spot app launchers declare read-only OAuth access", () => {
+  const tools = buildRoleScopedSpotToolCatalog(tenantTools, "client", true);
+
+  for (const name of [...appTools, ...taskLauncherTools]) {
+    expect(tools.find((tool) => tool.name === name)).toMatchObject({
+      securitySchemes: [{ type: "oauth2", scopes: ["read"] }],
+      annotations: { readOnlyHint: true },
+    });
+  }
+});
