@@ -2136,9 +2136,9 @@ http.route({
         }
         case "server/discover": {
           return jsonRpcResponse(id, {
-            protocolVersion: SPOT_MCP_DISCOVERY_VERSION,
+            resultType: "complete",
+            supportedVersions: [SPOT_MCP_DISCOVERY_VERSION],
             capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
-            serverInfo: { name: "Spot", version: "2.0.0" },
           });
         }
         case "resources/list": {
