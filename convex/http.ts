@@ -92,6 +92,35 @@ http.route({
 });
 const internalApi = internal as any;
 const JSON_HEADERS = { "Content-Type": "application/json" };
+const OPENAI_APPS_CHALLENGE_HOST = "actions.spot.insure";
+
+const openAiAppsChallenge = httpAction(async (_ctx, request) => {
+  const challengeToken = process.env.SPOT_OPENAI_APPS_CHALLENGE_TOKEN;
+  if (
+    new URL(request.url).hostname !== OPENAI_APPS_CHALLENGE_HOST ||
+    !challengeToken
+  ) {
+    return new Response(null, {
+      status: 404,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  return new Response(challengeToken, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+});
+
+http.route({
+  path: "/.well-known/openai-apps-challenge",
+  method: "GET",
+  handler: openAiAppsChallenge,
+});
 
 const routerAssetDownload = httpAction(async (ctx, request) => {
   const url = new URL(request.url);
