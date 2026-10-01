@@ -975,24 +975,30 @@ const CORS_HEADERS = {
 };
 
 // GET /.well-known/oauth-protected-resource (RFC 9728 — tells MCP clients where to find the auth server)
-http.route({
-  path: "/.well-known/oauth-protected-resource",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    const url = new URL(request.url);
-    const issuer = url.origin;
+// The /mcp suffix is the path-specific form clients derive from the resource URL.
+for (const path of [
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-protected-resource/mcp",
+]) {
+  http.route({
+    path,
+    method: "GET",
+    handler: httpAction(async (ctx, request) => {
+      const url = new URL(request.url);
+      const issuer = url.origin;
 
-    return new Response(
-      JSON.stringify({
-        resource: `${issuer}/mcp`,
-        authorization_servers: [issuer],
-        scopes_supported: ["read", "write"],
-        resource_documentation: `${getAuthSiteUrl()}/operator`,
-      }),
-      { headers: { "Content-Type": "application/json" } },
-    );
-  }),
-});
+      return new Response(
+        JSON.stringify({
+          resource: `${issuer}/mcp`,
+          authorization_servers: [issuer],
+          scopes_supported: ["read", "write"],
+          resource_documentation: `${getAuthSiteUrl()}/operator`,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }),
+  });
+}
 
 // GET /.well-known/oauth-authorization-server
 http.route({
@@ -1604,6 +1610,7 @@ type McpHttpRequestBody = {
 
 const ANONYMOUS_MCP_DISCOVERY_METHODS = new Set([
   "initialize",
+  "ping",
   "server/discover",
   "tools/list",
   "resources/list",
@@ -1612,7 +1619,7 @@ const ANONYMOUS_MCP_DISCOVERY_METHODS = new Set([
 
 async function unauthenticatedSpotDiscoveryRequest(
   request: Request,
-): Promise<{ id: string | number; method: string; params?: any } | null> {
+): Promise<{ id: string | number | null; method: string; params?: any } | null> {
   const maximumBodyBytes = 4096;
   const contentLength = request.headers.get("Content-Length");
   if (
@@ -1648,6 +1655,14 @@ async function unauthenticatedSpotDiscoveryRequest(
     const body = JSON.parse(new TextDecoder().decode(bytes)) as McpHttpRequestBody;
     const id = body?.id;
     if (
+      body?.jsonrpc === "2.0" &&
+      (id === undefined || id === null) &&
+      (body.method === "notifications/initialized" ||
+        body.method === "notifications/cancelled")
+    ) {
+      return { id: null, method: body.method };
+    }
+    if (
       body?.jsonrpc !== "2.0" ||
       (typeof id !== "string" && typeof id !== "number") ||
       typeof body.method !== "string" ||
@@ -1672,12 +1687,17 @@ function jsonRpcResponse(
 }
 
 function anonymousSpotDiscoveryResponse(request: {
-  id: string | number;
+  id: string | number | null;
   method: string;
   params?: any;
 }): Response {
   const { id, method, params } = request;
   switch (method) {
+    case "notifications/initialized":
+    case "notifications/cancelled":
+      return new Response(null, { status: 202 });
+    case "ping":
+      return jsonRpcResponse(id, {});
     case "initialize":
       return jsonRpcResponse(id, {
         protocolVersion: negotiateMcpProtocolVersion(params?.protocolVersion),
