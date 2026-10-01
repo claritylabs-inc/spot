@@ -100,7 +100,20 @@ for (const [label, schema, value] of [
 const endpoint = mcpEndpoint(mcp.mcpServers.spot.url, "mcp.json spot URL");
 assert(mcp.mcpServers.spot.type === "streamable-http", "mcp.json must use streamable-http");
 assert(plugin.name === "spot", "plugin.json name must be spot");
-assert(plugin.extensions?.["com.openai"]?.interface?.composerIcon === "./assets/icon.svg", "plugin.json must use the bundled Spot icon");
+const openAiInterface = plugin.extensions?.["com.openai"]?.interface;
+assert(plugin.version === "1.0.2", "plugin.json version must match the private ChatGPT rollout");
+assert(plugin.author?.name === "Tools for Enlightenment", "plugin.json author must use the Spot developer name");
+assert(openAiInterface?.developerName === "Tools for Enlightenment", "plugin.json developerName must use the Spot developer name");
+assert(openAiInterface?.composerIcon === "./assets/icon.jpg", "plugin.json must use the bundled Spot composer icon");
+assert(openAiInterface?.logo === "./assets/logo.png", "plugin.json must use the bundled Spot logo");
+await readFile(resolve(pluginRoot, "assets/icon.jpg"));
+const logoBytes = await readFile(resolve(pluginRoot, "assets/logo.png"));
+assert(
+  logoBytes.toString("hex", 0, 8) === "89504e470d0a1a0a" &&
+    logoBytes.readUInt32BE(16) === logoBytes.readUInt32BE(20) &&
+    logoBytes.readUInt32BE(16) >= 48,
+  "Spot logo must be a readable square PNG of at least 48×48 pixels",
+);
 assert(compatibility.name === "spot", "compatibility manifest name must be spot");
 assert(compatibility.mcpServers?.spot?.url === endpoint, "compatibility MCP URL must match mcp.json");
 assert(compatibility.mcpServers?.spot?.type === "streamable-http", "compatibility manifest must use streamable-http");
@@ -109,4 +122,3 @@ assert(compatibility.skills === "./skills/", "compatibility manifest must discov
 console.log(`Plugin validation passed: ${pluginRoot}`);
 console.log(`MCP endpoint: ${endpoint}`);
 console.log("No runtime schema downloads or registration IDs were used.");
-

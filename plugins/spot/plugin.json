@@ -1,10 +1,10 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "spot",
-  "version": "0.1.0",
-  "description": "Private Spot insurance operations workspace for policy evidence, compliance, certificates, files, wiki, and procurement workflows.",
+  "version": "1.0.2",
+  "description": "Spot connects ChatGPT to authorized insurance workflows for quotes, certificates, policy evidence, compliance, files, and procurement.",
   "author": {
-    "name": "Clarity Labs"
+    "name": "Tools for Enlightenment"
   },
   "homepage": "https://spot.insure",
   "repository": "https://github.com/claritylabs-inc/spot",
@@ -21,8 +21,8 @@
       "interface": {
         "displayName": "Spot",
         "shortDescription": "Spot insurance operations",
-        "longDescription": "Review bound policy evidence, compare contract requirements, prepare certificate artifacts, manage company files and wiki content, and work through procurement requests with the access and approval boundaries enforced by Spot.",
-        "developerName": "Clarity Labs",
+        "longDescription": "Find and manage insurance quote requests, compare bound policy evidence with contract requirements, prepare certificates of insurance, and review compliance. Spot enforces the connected account’s role, authorization, and approval boundaries.",
+        "developerName": "Tools for Enlightenment",
         "category": "Business & Operations",
         "capabilities": [
           "Interactive",
@@ -34,13 +34,13 @@
         "privacyPolicyURL": "https://toolsforenlightenment.org/privacy-policy",
         "termsOfServiceURL": "https://toolsforenlightenment.org/terms-of-service",
         "defaultPrompt": [
-          "Open my Spot insurance workspace.",
-          "Compare this requirement with bound policy evidence.",
-          "Prepare a COI artifact, then ask before sending it."
+          "Find me insurance quotes.",
+          "Create an insurance certificate for this policy.",
+          "Compare this requirement with my bound coverage."
         ],
         "brandColor": "#3A7EB7",
-        "composerIcon": "./assets/icon.svg",
-        "logo": "./assets/icon.svg"
+        "composerIcon": "./assets/icon.jpg",
+        "logo": "./assets/logo.png"
       }
     }
   }
