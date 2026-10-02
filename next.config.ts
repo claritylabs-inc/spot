@@ -76,6 +76,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // The whole app is a logged-in product; keep it out of search results.
+        source: "/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+      {
         source: "/sw.js",
         headers: [
           {
