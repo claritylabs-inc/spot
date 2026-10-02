@@ -22,24 +22,15 @@ import { getAuthSiteUrl, getClientPortalUrl } from "./lib/domains";
 import { spotIconResponse } from "./lib/brandIcon";
 import { negotiateMcpProtocolVersion } from "./lib/mcpProtocol";
 import {
-  SPOT_APP_MIME_TYPE,
-  SPOT_APP_RESOURCE_URI,
   SPOT_MCP_DISCOVERY_VERSION,
-  buildRoleScopedSpotToolCatalog,
-  buildSpotAppTools,
-  getSpotWorkspaceReadCall,
-  isSpotAppResourceUri,
-  isSpotAppTool,
-  parseSpotAppInput,
+  filterMcpCatalogForPrincipal,
   type SpotCatalogTool,
   type SpotPrincipalKind,
-} from "./lib/chatgptMcp";
+} from "./lib/mcpCatalogScope";
 import {
   MCP_EVENT_CAPABILITIES,
   handleMcpEventRequest,
 } from "./lib/mcpEventHttp";
-import { SPOT_WORKSPACE_HTML } from "./lib/chatgptWorkspaceHtml";
-import { projectSpotWorkspaceData } from "./lib/chatgptWorkspaceProjection";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "./lib/agentAttachmentLimits";
 import {
@@ -1614,7 +1605,6 @@ const ANONYMOUS_MCP_DISCOVERY_METHODS = new Set([
   "server/discover",
   "tools/list",
   "resources/list",
-  "resources/read",
 ]);
 
 async function unauthenticatedSpotDiscoveryRequest(
@@ -1666,8 +1656,7 @@ async function unauthenticatedSpotDiscoveryRequest(
       body?.jsonrpc !== "2.0" ||
       (typeof id !== "string" && typeof id !== "number") ||
       typeof body.method !== "string" ||
-      !ANONYMOUS_MCP_DISCOVERY_METHODS.has(body.method) ||
-      (body.method === "resources/read" && !isSpotAppResourceUri(body.params?.uri))
+      !ANONYMOUS_MCP_DISCOVERY_METHODS.has(body.method)
     ) {
       return null;
     }
@@ -1723,52 +1712,10 @@ function anonymousSpotDiscoveryResponse(request: {
         capabilities: { tools: {}, resources: {}, ...MCP_EVENT_CAPABILITIES },
       });
     case "tools/list":
-      return jsonRpcResponse(id, {
-        ...MCP_PUBLIC_CACHE,
-        tools: buildSpotAppTools(),
-      });
-    case "resources/list":
-      return jsonRpcResponse(id, {
-        ...MCP_PUBLIC_CACHE,
-        resources: [
-          {
-            uri: SPOT_APP_RESOURCE_URI,
-            name: "Spot workspace",
-            mimeType: SPOT_APP_MIME_TYPE,
-          },
-        ],
-      });
+      return jsonRpcResponse(id, { ...MCP_PUBLIC_CACHE, tools: [] });
     default:
-      return spotWorkspaceResourceResponse(id, params.uri);
+      return jsonRpcResponse(id, { ...MCP_PUBLIC_CACHE, resources: [] });
   }
-}
-
-function spotWorkspaceResourceResponse(
-  id: string | number | null,
-  uri: string = SPOT_APP_RESOURCE_URI,
-): Response {
-  return jsonRpcResponse(id, {
-    ...MCP_PUBLIC_CACHE,
-    contents: [
-      {
-        uri,
-        mimeType: SPOT_APP_MIME_TYPE,
-        text: SPOT_WORKSPACE_HTML,
-        _meta: {
-          ui: {
-            domain: "https://actions.spot.insure",
-            csp: {
-              connectDomains: [],
-              resourceDomains: [],
-            },
-          },
-          "openai/ui": {
-            availableDisplayModes: ["inline", "fullscreen"],
-          },
-        },
-      },
-    ],
-  });
 }
 
 function jsonRpcError(
@@ -2205,69 +2152,6 @@ async function handleToolCall(
   return handler() as Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
 
-async function handleSpotAppToolCall(
-  ctx: McpToolContext,
-  identity: McpIdentity,
-  name: string,
-  rawArgs: unknown,
-) {
-  const input = parseSpotAppInput(name, rawArgs);
-  const canWrite = mcpCanWrite(identity);
-  const workspace = (await ctx.runQuery(
-    (internal as any).chatgptWorkspace.getContext,
-    {
-      userId: identity.userId as Id<"users">,
-      principalKind: identity.principalKind,
-      ...(identity.principalKind === "operator"
-        ? {
-            operatorRole: identity.operatorRole,
-            ...(input.organizationId
-              ? { organizationId: input.organizationId as Id<"organizations"> }
-              : {}),
-            ...(input.organizationCursor ? { cursor: input.organizationCursor } : {}),
-          }
-        : { orgId: identity.orgId as Id<"organizations"> }),
-      canWrite,
-      websiteUrl: getClientPortalUrl(),
-    },
-  )) as {
-    principal: { kind: "client" | "broker" | "operator" };
-    activeOrganizationId: string | null;
-  };
-  const kind = workspace.principal.kind;
-  const catalog: SpotCatalogTool[] =
-    identity.principalKind === "operator"
-      ? operatorMcpTools(identity)
-      : buildTenantMcpToolCatalog();
-  const tools = buildRoleScopedSpotToolCatalog(catalog, kind, canWrite);
-  const readCall = getSpotWorkspaceReadCall(
-    kind,
-    input.view,
-    input.recordId,
-    workspace.activeOrganizationId ?? undefined,
-  );
-  const data = readCall
-    ? projectSpotWorkspaceData(
-        input.view,
-        await handleToolCall(ctx, identity, readCall.name, readCall.arguments),
-        kind,
-      )
-    : null;
-  return {
-    content: [{ type: "text" as const, text: "Spot workspace is ready." }],
-    structuredContent: { view: input.view },
-    _meta: {
-      "spot/workspace": {
-        context: workspace,
-        tools,
-        view: input.view,
-        ...(input.recordId ? { recordId: input.recordId } : {}),
-        data,
-      },
-    },
-  };
-}
-
 http.route({
   path: "/mcp",
   method: "POST",
@@ -2340,33 +2224,23 @@ http.route({
         }
         case "tools/list": {
           const canWrite = mcpCanWrite(identity);
-          let principalKind: SpotPrincipalKind;
-          if (identity.principalKind === "operator") {
-            principalKind = "operator";
-          } else {
-            const workspace = await ctx.runQuery(
-              internalApi.chatgptWorkspace.getContext,
-              {
-                userId: identity.userId as Id<"users">,
-                principalKind: "organization",
-                orgId: identity.orgId as Id<"organizations">,
-                canWrite,
-                websiteUrl: getClientPortalUrl(),
-              },
-            );
-            principalKind = workspace.principal.kind;
-          }
+          const principalKind: SpotPrincipalKind =
+            identity.principalKind === "operator"
+              ? "operator"
+              : ((await ctx.runQuery(
+                  (internal as any).mcpPrincipal.getPrincipalKind,
+                  {
+                    userId: identity.userId as Id<"users">,
+                    orgId: identity.orgId as Id<"organizations">,
+                  },
+                )) as "client" | "broker");
           const catalog: SpotCatalogTool[] =
             identity.principalKind === "operator"
               ? operatorMcpTools(identity)
               : buildTenantMcpToolCatalog();
           return jsonRpcResponse(id, {
             ...MCP_PRIVATE_CACHE,
-            tools: buildRoleScopedSpotToolCatalog(
-              catalog,
-              principalKind,
-              canWrite,
-            ),
+            tools: filterMcpCatalogForPrincipal(catalog, principalKind, canWrite),
           });
         }
         case "server/discover": {
@@ -2377,22 +2251,10 @@ http.route({
           });
         }
         case "resources/list": {
-          return jsonRpcResponse(id, {
-            ...MCP_PUBLIC_CACHE,
-            resources: [
-              {
-                uri: SPOT_APP_RESOURCE_URI,
-                name: "Spot workspace",
-                mimeType: SPOT_APP_MIME_TYPE,
-              },
-            ],
-          });
+          return jsonRpcResponse(id, { ...MCP_PUBLIC_CACHE, resources: [] });
         }
         case "resources/read": {
-          if (!isSpotAppResourceUri(params?.uri)) {
-            return jsonRpcError(id, -32602, "Unknown resource");
-          }
-          return spotWorkspaceResourceResponse(id, params.uri);
+          return jsonRpcError(id, -32602, "Unknown resource");
         }
         case "tools/call": {
           const toolName = params?.name;
@@ -2401,12 +2263,6 @@ http.route({
             return jsonRpcError(id, -32602, "Missing tool name");
           }
           try {
-            if (isSpotAppTool(toolName)) {
-              return jsonRpcResponse(
-                id,
-                await handleSpotAppToolCall(ctx, identity, toolName, toolArgs),
-              );
-            }
             if (identity.principalKind === "organization") {
               const access = tenantMcpToolAccess(toolName);
               if (!access) throw new Error(`Unknown tool: ${toolName}`);
