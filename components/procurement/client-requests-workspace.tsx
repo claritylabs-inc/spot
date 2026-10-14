@@ -1,14 +1,9 @@
 "use client";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
@@ -17,16 +12,13 @@ import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { useMutation, useQuery } from "convex/react";
 import { FileText, Loader2, Plus, Upload } from "lucide-react";
-import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
-import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
   OperationalLabelValueList,
@@ -36,8 +28,10 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusTag, type StatusTagTone } from "@claritylabs-inc/ui/components/status-tag";
-import { Textarea } from "@claritylabs-inc/ui/components/textarea";
+import {
+  StatusTag,
+  type StatusTagTone,
+} from "@claritylabs-inc/ui/components/status-tag";
 
 type ClientRequestStatus =
   | "submitted"
@@ -96,123 +90,76 @@ export function ClientRequestsList({
 }) {
   const router = useRouter();
   const rows = useQuery(api.clientProcurementRequests.list, {});
-  const create = useMutation(api.clientProcurementRequests.create);
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [narrative, setNarrative] = useState("");
-  const [targetEffectiveDate, setTargetEffectiveDate] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const { requestId } = await create({
-        title: title.trim(),
-        narrative: narrative.trim(),
-        targetEffectiveDate: targetEffectiveDate || undefined,
-      });
-      setTitle("");
-      setNarrative("");
-      setTargetEffectiveDate("");
-      setOpen(false);
-      toast.success("Request submitted");
-      router.push(`/requests/${requestId}`);
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not submit the request"),
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
+  const drafts = useQuery(api.requestIntake.drafts, {});
+  const start = useMutation(api.requestIntake.start);
+  const viewerOrg = useQuery(api.orgs.viewerOrg, {});
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
   useEffect(() => {
-    onRightPanel(
-      <SettingsDrawer
-        open={open}
-        onOpenChange={setOpen}
-        title="New insurance request"
-        footer={
-          <PillButton
-            type="submit"
-            form="client-request-form"
-            disabled={saving || !title.trim() || !narrative.trim()}
-          >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-            Submit request
-          </PillButton>
-        }
-      >
-        <form id="client-request-form" className="space-y-5" onSubmit={submit}>
-          <div>
-            <label
-              htmlFor="client-request-title"
-              className={`mb-1.5 block text-muted-foreground ${typeStyle("label.field")}`}
-            >
-              Request name
-            </label>
-            <Input
-              id="client-request-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Property and liability coverage"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="client-request-narrative"
-              className={`mb-1.5 block text-muted-foreground ${typeStyle("label.field")}`}
-            >
-              What do you need?
-            </label>
-            <Textarea
-              id="client-request-narrative"
-              value={narrative}
-              onChange={(event) => setNarrative(event.target.value)}
-              rows={8}
-              placeholder="Describe the coverage, contract, location, timing, and anything else we should know."
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="client-request-effective-date"
-              className={`mb-1.5 block text-muted-foreground ${typeStyle("label.field")}`}
-            >
-              Target effective date
-            </label>
-            <Input
-              id="client-request-effective-date"
-              type="date"
-              value={targetEffectiveDate}
-              onChange={(event) => setTargetEffectiveDate(event.target.value)}
-            />
-          </div>
-        </form>
-      </SettingsDrawer>,
-    );
+    onRightPanel(null);
     return () => onRightPanel(null);
-    // The drawer must be rebuilt as its local form state changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [narrative, onRightPanel, open, saving, targetEffectiveDate, title]);
-
+  }, [onRightPanel]);
   useEffect(() => {
     onActions(
-      <PillButton type="button" onClick={() => setOpen(true)}>
+      <PillButton
+        disabled={starting || !viewerOrg?.org}
+        onClick={async () => {
+          setStarting(true);
+          setStartError("");
+          try {
+            const id = await start({ orgId: viewerOrg!.org._id });
+            router.push(`/intake?request=${id}`);
+          } catch (error) {
+            setStartError(
+              error instanceof Error
+                ? error.message
+                : "Could not start request",
+            );
+            setStarting(false);
+          }
+        }}
+      >
         <Plus className="size-3.5" />
-        New request
+        {starting ? "Starting…" : "New request"}
       </PillButton>,
     );
     return () => onActions(null);
-  }, [onActions]);
+  }, [onActions, start, starting, viewerOrg, router]);
 
   return (
     <>
+      {startError && (
+        <p
+          role="alert"
+          className={`text-destructive ${typeStyle("body.large")}`}
+        >
+          {startError}
+        </p>
+      )}
+      {!!drafts?.length && (
+        <OperationalPanel as="section">
+          {drafts.map((draft) => (
+            <OperationalItem key={draft.id} className="p-0">
+              <Link
+                href={`/intake?request=${draft.id}`}
+                className="flex w-full items-center justify-between gap-4 px-4 py-3"
+              >
+                <span>{draft.title}</span>
+                <span
+                  className={`text-muted-foreground ${typeStyle("body.large")}`}
+                >
+                  Draft · Resume application
+                </span>
+              </Link>
+            </OperationalItem>
+          ))}
+        </OperationalPanel>
+      )}
       {rows === undefined ? (
         <OperationalPanel className="flex h-40 items-center justify-center">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </OperationalPanel>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && !drafts?.length ? (
         <EmptyStateCard
           title="No insurance requests"
           description="Submit a request when you need new coverage or help replacing a policy."

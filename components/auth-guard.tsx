@@ -59,7 +59,7 @@ const PUBLIC_PATHS = [
   "/share/packet",
   "/connect/request",
 ];
-const AUTH_AGNOSTIC_PATHS: string[] = [];
+const AUTH_AGNOSTIC_PATHS: string[] = ["/intake"];
 const ONBOARDING_PATH = "/onboarding";
 const ADMIN_PATHS = ["/settings"];
 const OPERATOR_PATH = "/operator";

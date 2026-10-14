@@ -42,9 +42,9 @@ This is the Spot web app (${appUrl}). The marketing site and product overview li
 ## Client signup (self-serve)
 
 - Start at ${appUrl}/signup/client. Add \`?email=name@company.com\` to prefill the email.
-- Signup needs no invite. It creates a new client workspace owned by the signing-up person.
+- Signup needs no invite. Company/workspace creation happens when the verified customer submits their request.
 - Email verification is mandatory: Spot emails a 6-digit code that expires after 15 minutes. An agent must get the code from the account owner, or read it from a mailbox it is authorized to access. Never guess codes.
-- After verification, onboarding has three steps: your profile, your company, finish. The client workspace then opens at ${appUrl}/policies.
+- New customers enter name, email, and phone, then complete a saved insurance application: why and when, coverage wanted, company, insurance/history, review. New accounts verify email at finalization; existing emails verify before account access. Default client intake is an ordinary browser flow; legacy declarative profile/setup tools are available only on the corresponding legacy invitation/setup paths.
 - Existing accounts sign in at ${appUrl}/login.
 
 ${enabled ? `## WebMCP tools

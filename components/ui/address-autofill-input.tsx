@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { AddressAutofillRetrieveResponse } from "@mapbox/search-js-core";
 import type { Theme as MapboxSearchTheme } from "@mapbox/search-js-web";
 
+import { MapboxAddressPreview } from "./mapbox-address-preview";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { mapboxTypographyAdapter } from "@/lib/typography";
 
@@ -17,7 +18,10 @@ const AddressAutofill = dynamic(
 );
 
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-const MAPBOX_ADDRESS_AUTOFILL_OPTIONS = { language: "en", proximity: "ip" } as const;
+const MAPBOX_ADDRESS_AUTOFILL_OPTIONS = {
+  language: "en",
+  proximity: "ip",
+} as const;
 const MAPBOX_ADDRESS_AUTOFILL_POPOVER_OPTIONS = {
   placement: "bottom-start",
   flip: true,
@@ -46,11 +50,28 @@ const MAPBOX_ADDRESS_AUTOFILL_THEME = {
       overflow: hidden;
     }
 
+    .MapboxSearch .Results {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--popover);
+      box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+      padding: 4px;
+    }
+    .MapboxSearch .Suggestion {
+      padding: 8px 12px;
+      gap: 12px;
+      border-radius: var(--radius-md);
+    }
+    .MapboxSearch .Suggestion[aria-selected="true"] { background: var(--accent); }
+    .MapboxSearch .SuggestionIcon { width: 18px; height: 18px; }
+    .MapboxSearch .SuggestionName { font-size: var(--text-base); font-weight: 400; }
+    .MapboxSearch .SuggestionDesc { font-size: var(--text-sm); color: var(--muted-foreground); }
+    .MapboxSearch .ResultsAttribution { padding: 6px 12px; font-size: var(--text-xs); }
     ${mapboxTypographyAdapter.cssText}
   `,
 } satisfies MapboxSearchTheme;
 
-const US_STATE_ABBREVIATIONS: Record<string, string> = {
+export const US_STATE_ABBREVIATIONS: Record<string, string> = {
   alabama: "AL",
   alaska: "AK",
   arizona: "AZ",
@@ -112,6 +133,8 @@ export type AutofillAddress = {
   zip?: string;
   country?: string;
   formatted?: string;
+  longitude?: number;
+  latitude?: number;
 };
 
 function normalizeUsState(value?: string) {
@@ -125,26 +148,37 @@ function formattedAddress(address: AutofillAddress) {
   const locality = [
     address.city,
     [address.state, address.zip].filter(Boolean).join(" "),
-  ].filter(Boolean).join(", ");
-  return [
-    address.street1,
-    address.street2,
-    locality,
-    address.country,
-  ].filter(Boolean).join(", ");
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return [address.street1, address.street2, locality, address.country]
+    .filter(Boolean)
+    .join(", ");
 }
 
-function addressFromRetrieve(response: AddressAutofillRetrieveResponse): AutofillAddress | null {
+function addressFromRetrieve(
+  response: AddressAutofillRetrieveResponse,
+): AutofillAddress | null {
   const address = response.features[0]?.properties;
   if (!address) return null;
   const result: AutofillAddress = {
-    street1: address.address_line1 ?? address.address ?? address.feature_name ?? "",
+    street1:
+      address.address_line1 ?? address.address ?? address.feature_name ?? "",
     street2: address.address_line2 ?? "",
     city: address.address_level2 ?? address.address_level3 ?? "",
     state: normalizeUsState(address.address_level1),
     zip: address.postcode ?? "",
     country: address.country ?? address.country_code?.toUpperCase() ?? "",
   };
+  const coordinates = response.features[0]?.geometry?.coordinates;
+  if (
+    coordinates &&
+    Number.isFinite(coordinates[0]) &&
+    Number.isFinite(coordinates[1])
+  ) {
+    result.longitude = coordinates[0];
+    result.latitude = coordinates[1];
+  }
   result.formatted = formattedAddress(result);
   return result;
 }
@@ -161,8 +195,10 @@ export function AddressAutofillInput({
   onFocus,
   onBlur,
   onRetrieve,
+  showMap = false,
 }: {
   id: string;
+  showMap?: boolean;
   value: AutofillAddress;
   onChange: (address: AutofillAddress) => void;
   display?: "formatted" | "street1";
@@ -174,16 +210,20 @@ export function AddressAutofillInput({
   onBlur?: FocusEventHandler<HTMLInputElement>;
   onRetrieve?: (address: AutofillAddress) => void;
 }) {
-  const displayedValue = display === "street1"
-    ? value.street1 ?? ""
-    : value.formatted || formattedAddress(value);
+  const displayedValue =
+    display === "street1"
+      ? (value.street1 ?? "")
+      : value.formatted || formattedAddress(value);
 
-  const handleRetrieve = useCallback((response: AddressAutofillRetrieveResponse) => {
-    const address = addressFromRetrieve(response);
-    if (!address) return;
-    onChange(address);
-    onRetrieve?.(address);
-  }, [onChange, onRetrieve]);
+  const handleRetrieve = useCallback(
+    (response: AddressAutofillRetrieveResponse) => {
+      const address = addressFromRetrieve(response);
+      if (!address) return;
+      onChange(address);
+      onRetrieve?.(address);
+    },
+    [onChange, onRetrieve],
+  );
 
   const input = (
     <Input
@@ -191,11 +231,19 @@ export function AddressAutofillInput({
       value={displayedValue}
       onChange={(event) => {
         const nextValue = event.target.value;
-        onChange(display === "street1"
-          ? { ...value, street1: nextValue, formatted: undefined }
-          : nextValue
-            ? { street1: nextValue, formatted: nextValue }
-            : {});
+        onChange(
+          display === "street1"
+            ? {
+                ...value,
+                street1: nextValue,
+                formatted: undefined,
+                longitude: undefined,
+                latitude: undefined,
+              }
+            : nextValue
+              ? { street1: nextValue, formatted: nextValue }
+              : {},
+        );
       }}
       placeholder={placeholder}
       autoComplete={autoComplete}
@@ -208,14 +256,26 @@ export function AddressAutofillInput({
 
   if (!MAPBOX_ACCESS_TOKEN) return input;
   return (
-    <AddressAutofill
-      accessToken={MAPBOX_ACCESS_TOKEN}
-      options={MAPBOX_ADDRESS_AUTOFILL_OPTIONS}
-      theme={MAPBOX_ADDRESS_AUTOFILL_THEME}
-      popoverOptions={MAPBOX_ADDRESS_AUTOFILL_POPOVER_OPTIONS}
-      onRetrieve={handleRetrieve}
-    >
-      {input}
-    </AddressAutofill>
+    <>
+      <AddressAutofill
+        accessToken={MAPBOX_ACCESS_TOKEN}
+        options={MAPBOX_ADDRESS_AUTOFILL_OPTIONS}
+        theme={MAPBOX_ADDRESS_AUTOFILL_THEME}
+        popoverOptions={MAPBOX_ADDRESS_AUTOFILL_POPOVER_OPTIONS}
+        onRetrieve={handleRetrieve}
+      >
+        {input}
+      </AddressAutofill>
+      {showMap &&
+        value.longitude !== undefined &&
+        value.latitude !== undefined && (
+          <MapboxAddressPreview
+            longitude={value.longitude}
+            latitude={value.latitude}
+            address={displayedValue}
+            accessToken={MAPBOX_ACCESS_TOKEN}
+          />
+        )}
+    </>
   );
 }

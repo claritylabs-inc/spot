@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { AuthEntryPage } from "@/components/auth-entry-page";
+import { IntakeSignup } from "@/components/insurance-intake/signup";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/signup/client" },
 };
 
 export default function SignupPage() {
-  return <AuthEntryPage mode="signup" role="client" />;
+  return <IntakeSignup />;
 }

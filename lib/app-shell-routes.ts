@@ -28,6 +28,7 @@ export type AgentDockDeepLink =
 const SHELLLESS_PREFIXES = [
   "/login",
   "/signup",
+  "/intake",
   "/onboarding",
   "/operator/login",
   "/oauth",
