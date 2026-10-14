@@ -800,3 +800,5 @@ Artifacts: `extraction-queued.png` and `extraction-terminal.png`. The pending-ID
 observer remains route-scoped and is lost on unmount; only browser upload/handoff
 state survives navigation. Duplicate confirmation cancellation reports the final
 message “Upload cancelled before any files were uploaded.”
+
+Insurance intake workflow coverage and outstanding validation: [insurance-intake.md](insurance-intake.md).

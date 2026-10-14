@@ -402,3 +402,7 @@ organization counts, and the broker directory exclude deleted accounts.
 Organization-targeted access and confirmation preflight reject deleted targets;
 tenant OAuth validation and refresh reject tokens for deleted organizations.
 Retained history and issued snapshots are not erased by deletion.
+
+### Insurance intake browser flow
+
+The default client `/signup` and `/signup/client` now open a saved insurance-request application. The new intake is an ordinary browser workflow; classic declarative OTP/profile tools remain on login, broker signup, and legacy invitation/setup paths. Do not assume the default client signup registers `request_signup_code` or the legacy three-step setup forms. `/intake` does not register tenant business tools before verification. Intake APIs enforce owner/session checks; shared procurement tools continue to require a company-linked request. Operator browser readiness review is explicit and cannot be bypassed by request lifecycle changes.
