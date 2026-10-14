@@ -7,11 +7,11 @@ export const COVERAGE_OPTIONS = [
     id: "general_liability",
     label: "General liability",
     limits: [
-      { key: "each_occurrence", label: "Per occurrence limit" },
+      { key: "each_occurrence", label: "Each occurrence limit" },
       { key: "aggregate", label: "General aggregate limit" },
       {
         key: "products_aggregate",
-        label: "Products / completed operations aggregate",
+        label: "Products-completed operations aggregate limit",
       },
     ],
   },
@@ -29,19 +29,19 @@ export const COVERAGE_OPTIONS = [
     label: "Workers’ compensation",
     limits: [
       { key: "statutory", label: "Workers’ compensation statutory coverage" },
-      { key: "each_accident", label: "Employers’ liability — per accident" },
+      { key: "each_accident", label: "Employers’ liability — each accident" },
       {
         key: "disease_policy",
         label: "Employers’ liability — disease policy limit",
       },
-      { key: "disease_employee", label: "Employers’ liability — per employee" },
+      { key: "disease_employee", label: "Employers’ liability — disease, each employee" },
     ],
   },
   {
     id: "commercial_auto",
     label: "Commercial auto",
     limits: [
-      { key: "combined_single", label: "Combined single limit per accident" },
+      { key: "combined_single", label: "Combined single limit (each accident)" },
       {
         key: "physical_damage",
         label: "Physical damage coverage / vehicle values",
@@ -68,7 +68,7 @@ export const COVERAGE_OPTIONS = [
     id: "umbrella",
     label: "Umbrella / excess",
     limits: [
-      { key: "each_occurrence", label: "Per occurrence limit" },
+      { key: "each_occurrence", label: "Each occurrence limit" },
       { key: "aggregate", label: "Policy aggregate limit" },
     ],
   },

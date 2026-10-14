@@ -29,6 +29,7 @@ import {
   Field,
   FieldLabel,
   FieldGroup,
+  FieldDescription,
   FieldTitle,
 } from "@claritylabs-inc/ui/components/field";
 import { RadioGroup } from "@base-ui/react/radio-group";
@@ -309,6 +310,9 @@ export function IntakeCoverageLimits({
               >
                 {limit.label}
               </FieldLabel>
+              {limit.key === "products_aggregate" && <FieldDescription>
+                The total limit for covered injury or property-damage claims caused by products you sell or work you have completed during the policy period.
+              </FieldDescription>}
               <InputGroup
                 className={`min-h-12 h-auto ${typeStyle("body.root")} ${unknown ? "bg-primary/10 border-primary" : ""}`}
               >
