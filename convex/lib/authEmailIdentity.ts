@@ -83,7 +83,6 @@ export async function createOrUpdateEmailUser(
     const users = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", email))
-      .filter((q) => q.neq(q.field("emailVerificationTime"), undefined))
       .take(2);
     if (users.length > 1)
       throw new Error("This email belongs to multiple accounts.");
@@ -101,6 +100,13 @@ export async function createOrUpdateEmailUser(
     if (!existing) throw new Error("User not found");
     // A legacy operator may use an explicitly provisioned external mailbox.
     if (existing.accountKind === "operator") delete userData.email;
+    if (existing.intakeRestricted && emailVerified === true) {
+      // Revoke all pre-verification sessions before granting account access.
+      // The successful OTP sign-in issues a fresh session afterwards.
+      const sessions = await ctx.db.query("authSessions").withIndex("userId", q => q.eq("userId", userId!)).take(100);
+      for (const session of sessions) await ctx.db.delete(session._id);
+      userData.intakeRestricted = false;
+    }
     await ctx.db.patch(userId, userData);
     return userId;
   }

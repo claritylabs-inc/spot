@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import { internal } from "./_generated/api";
 import { query, mutation, internalQuery, internalMutation, type QueryCtx, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -44,7 +44,7 @@ async function assertTargets(ctx: DatabaseCtx, principal: { principalKind: "orga
   if (filters.request_id) {
     const requestId = ctx.db.normalizeId("procurementRequests", filters.request_id);
     const request = requestId ? await ctx.db.get(requestId) : null;
-    if (!request || (selectedOrg && request.clientOrgId !== selectedOrg) || (principal.principalKind === "organization" && request.clientVisible === false)) throw new Error("Event access denied");
+    if (!request?.clientOrgId || (selectedOrg && request.clientOrgId !== selectedOrg) || (principal.principalKind === "organization" && request.clientVisible === false)) throw new Error("Event access denied");
     const org = await ctx.db.get(request.clientOrgId);
     if (!org || org.deletedAt !== undefined) throw new Error("Event access denied");
   }

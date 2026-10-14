@@ -1,3 +1,4 @@
+import { requestIntakeFields } from "./lib/insuranceIntakeSchema";
 import { chatPresentationValidator } from "./lib/chatPresentationValidators";
 import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
@@ -480,6 +481,7 @@ export default defineSchema({
     serviceAccountKind: v.optional(v.literal("slack")),
     streamResponses: v.optional(v.boolean()),
     showThinking: v.optional(v.boolean()),
+    intakeRestricted: v.optional(v.boolean()),
     // Personal profile fields
     title: v.optional(v.string()),
     // Onboarding & admin
@@ -2695,7 +2697,8 @@ export default defineSchema({
     .index("storage", ["fileId"]),
 
   procurementRequests: defineTable({
-    clientOrgId: v.id("organizations"),
+    ...requestIntakeFields,
+    clientOrgId: v.optional(v.id("organizations")),
     title: v.string(),
     normalizedTitle: v.optional(v.string()),
     targetEffectiveDate: v.optional(v.string()),
@@ -2726,7 +2729,32 @@ export default defineSchema({
     .index("organization", ["clientOrgId", "updatedAt"])
     .index("organization_visibility", ["clientOrgId", "clientVisible", "updatedAt"])
     .index("status", ["clientOrgId", "status", "updatedAt"])
-    .index("inbox", ["inboxToken"]),
+    .index("inbox", ["inboxToken"])
+    .index("owner_updated", ["ownerUserId", "updatedAt"]),
+
+  requestHandoffs: defineTable({
+    tokenHash: v.string(), name: v.string(), email: v.string(), phone: v.string(),
+    requestId: v.optional(v.id("procurementRequests")), expiresAt: v.number(), claimedAt: v.optional(v.number()),
+  }).index("token_hash", ["tokenHash"]),
+
+  requestIntakeUploadIntents: defineTable({
+    requestId: v.id("procurementRequests"), ownerUserId: v.id("users"),
+    createdAt: v.number(), expiresAt: v.number(), fileId: v.optional(v.id("_storage")),
+  }).index("request", ["requestId"]),
+
+  requestIntakeFiles: defineTable({
+    prefillStartedAt: v.optional(v.number()),
+    prefillCoveragesJson: v.optional(v.string()),
+    requestId: v.id("procurementRequests"),
+    ownerUserId: v.id("users"),
+    fileId: v.id("_storage"),
+    name: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    category: v.union(v.literal("requirements"), v.literal("policy"), v.literal("loss_runs"), v.literal("supporting")),
+    clientFileId: v.optional(v.id("clientFiles")),
+    createdAt: v.number(),
+  }).index("request", ["requestId"]).index("storage", ["fileId"]),
 
   procurementBrokerOutreaches: defineTable({
     requestId: v.id("procurementRequests"),

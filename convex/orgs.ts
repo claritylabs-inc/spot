@@ -11,7 +11,7 @@ import {
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import { internal as _internal } from "./_generated/api";
 import {
   getCurrentOrgAccess as getOrgAccess,

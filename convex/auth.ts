@@ -1,3 +1,4 @@
+import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
@@ -68,6 +69,12 @@ const ResendOTP = Email({
 });
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [ResendOTP],
+  providers: [ResendOTP, ConvexCredentials({
+    id: "intake",
+    authorize: async (credentials, ctx) => {
+      if (typeof credentials.token !== "string") return null;
+      return ctx.runMutation(internal.requestIntake.claimNewSession, { token: credentials.token });
+    },
+  })],
   callbacks: { createOrUpdateUser: createOrUpdateEmailUser },
 });

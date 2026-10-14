@@ -1,3 +1,4 @@
+import { requireCompanyRequest, type CompanyRequest } from "./lib/companyRequest";
 import { readPacketProjection } from "./lib/packetDocuments";
 import { publishMcpEvent } from "./mcpEvents";
 import dayjs from "dayjs";
@@ -139,7 +140,7 @@ async function assertBrokerOutreach(
     ctx.db.get(requestId),
     ctx.db.get(outreachId),
   ]);
-  if (!request) throw new Error("Procurement request not found");
+  requireCompanyRequest(request);
   if (!outreach || outreach.requestId !== request._id)
     throw new Error("Outreach does not belong to this request");
   const resolvedBrokerOrgId = brokerOrgId ?? outreach.brokerOrgId;
@@ -356,7 +357,7 @@ async function resolveDocumentSource(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
-    request: Doc<"procurementRequests">;
+    request: CompanyRequest;
     source: ProposalDocumentSource;
   },
 ): Promise<ResolvedDocument> {
@@ -456,7 +457,7 @@ async function ensureQuoteFileItem(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
-    request: Doc<"procurementRequests">;
+    request: CompanyRequest;
     document: ResolvedDocument;
   },
 ) {
@@ -919,7 +920,7 @@ export const generateUploadUrl = mutation({
     const operator = await requireOperator(ctx);
     await requireDirectOperator(ctx, operator.userId);
     const request = await ctx.db.get(args.requestId);
-    if (!request) throw new Error("Procurement request not found");
+    requireCompanyRequest(request);
     const now = dayjs().valueOf();
     const expiresAt = now + PROPOSAL_UPLOAD_TTL_MS;
     const uploadIntentId = await ctx.db.insert("clientFileUploadIntents", {
@@ -954,7 +955,7 @@ export const registerUpload = mutation({
       ctx.db.get(args.uploadIntentId),
       ctx.db.system.get("_storage", args.fileId),
     ]);
-    if (!request) throw new Error("Procurement request not found");
+    requireCompanyRequest(request);
     if (
       !intent ||
       intent.operatorUserId !== operator.userId ||
@@ -983,7 +984,7 @@ export const file = mutation({
     const operator = await requireOperator(ctx);
     await requireDirectOperator(ctx, operator.userId);
     const request = await ctx.db.get(args.requestId);
-    if (!request) throw new Error("Procurement request not found");
+    requireCompanyRequest(request);
     const uploadIntents: Id<"clientFileUploadIntents">[] = [];
     for (const source of args.sources) {
       if (source.kind !== "upload") continue;
@@ -1370,6 +1371,7 @@ export const saveGeneratedReviewInternal = internalMutation({
     const request = await ctx.db.get(proposal.requestId);
     if (!request || (request.packetRevision ?? 0) !== args.packetRevision)
       throw new Error("Stale procurement packet");
+    requireCompanyRequest(request);
     const now = dayjs().valueOf();
     const reviewId = await ctx.db.insert("procurementProposalReviews", {
       proposalId: proposal._id,

@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getAuthSessionId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./sessionIdentity";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { throwUserFacingError, userFacingErrorCodes } from "./userFacingErrors";
@@ -231,6 +232,9 @@ export async function assertCustomerUser(
 ) {
   const user = await ctx.db.get(userId);
   if (!user) throw new Error("User not found");
+  if (user.intakeRestricted) throw new Error("Confirm your email before accessing company settings");
+  const sessionId = await getAuthSessionId(ctx);
+  if (sessionId && ctx.db.normalizeId("authSessions", sessionId) && !(await ctx.db.get(sessionId))) throw new Error("Session expired");
   if (user.accountKind === "operator" || isBootstrapOperatorEmail(user.email)) {
     throwUserFacingError(userFacingErrorCodes.orgAccessRequired, message);
   }

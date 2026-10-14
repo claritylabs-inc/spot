@@ -1,7 +1,7 @@
 "use node";
 
 import dayjs from "dayjs";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import { DIRECT_MODEL_PROVIDERS } from "../contracts/cl-router/policy";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";

@@ -1,7 +1,7 @@
 import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import dayjs from "dayjs";
 import { internal as internalApi } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

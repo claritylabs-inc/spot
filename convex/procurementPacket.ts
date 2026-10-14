@@ -1,3 +1,4 @@
+import { requireCompanyRequest } from "./lib/companyRequest";
 import { saveMarkdownDocument } from "./markdownDocuments";
 import {
   parseMarkdownDocument,
@@ -65,6 +66,7 @@ async function requestForOperator(
 ) {
   const request = await ctx.db.get(requestId);
   if (!request) throw new Error("Procurement request not found");
+  requireCompanyRequest(request);
   const client = await ctx.db.get(request.clientOrgId);
   if (!client || client.deletedAt !== undefined)
     throw new Error("Client not found");

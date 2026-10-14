@@ -1,4 +1,4 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import dayjs from "dayjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";

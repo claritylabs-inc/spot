@@ -3,7 +3,8 @@ import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
-import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
+import { createAccount } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import {
   action,
   internalAction,

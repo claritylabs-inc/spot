@@ -1,3 +1,4 @@
+import { requireCompanyRequest } from "./lib/companyRequest";
 import { requestPacketText } from "./lib/procurementNarrative";
 import { publishMcpEvent } from "./mcpEvents";
 import {
@@ -162,6 +163,7 @@ async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
 async function requireRequest(ctx: Ctx, requestId: Id<"procurementRequests">) {
   const request = await ctx.db.get(requestId);
   if (!request) throw new Error("Procurement request not found");
+  requireCompanyRequest(request);
   await requireClient(ctx, request.clientOrgId);
   return request;
 }
@@ -248,6 +250,7 @@ function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
+  requireCompanyRequest(request);
   const [replacingPolicy, resultingPolicy, outreaches, emails] =
     await Promise.all([
       requirePolicyForRequest(
@@ -730,6 +733,7 @@ export async function updateProcurementRequestByOperator(
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await requireRequest(ctx, args.requestId);
+  if ((args.status === "marketing" || args.status === "binding") && request.intakeSchemaVersion !== undefined && request.readiness !== "ready_for_market") throw new Error("Confirm intake readiness before approaching insurers or binding");
   const patch: Partial<Doc<"procurementRequests">> = {
     updatedByUserId: args.operatorUserId,
     updatedAt: dayjs().valueOf(),
@@ -1603,7 +1607,7 @@ export const resolveInboxInternal = internalQuery({
       .query("procurementRequests")
       .withIndex("inbox", (index) => index.eq("inboxToken", args.inboxToken))
       .unique();
-    if (!request) return null;
+    if (!request?.clientOrgId) return null;
     const client = await ctx.db.get(request.clientOrgId);
     return client?.type === "client" && client.deletedAt === undefined
       ? { request, client }

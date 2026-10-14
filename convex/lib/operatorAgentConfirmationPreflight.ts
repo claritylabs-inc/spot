@@ -1,3 +1,4 @@
+import { requireCompanyRequest } from "./companyRequest";
 import { parseMarkdownDocument } from "./markdownDocument";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
@@ -362,6 +363,7 @@ async function preflightProcurementRequestUpdate(
     ctx,
     input.procurementRequestId,
   );
+  requireCompanyRequest(request);
   await Promise.all([
     requirePolicyForClient(ctx, input.replacingPolicyId, request.clientOrgId),
     requirePolicyForClient(ctx, input.resultingPolicyId, request.clientOrgId),

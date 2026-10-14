@@ -1,3 +1,4 @@
+import { requireCompanyRequest } from "./lib/companyRequest";
 import {
   presentationReadBudget,
   schedulePresentation,
@@ -1947,7 +1948,7 @@ async function executeToolDomain(
       input.procurementRequestId,
     );
     const request = await ctx.db.get(requestId);
-    if (!request) throw new Error("Procurement request not found");
+    requireCompanyRequest(request);
     const limit = typeof input.limit === "number" ? input.limit : 50;
     const threads = await listProcurementEmailThreads(ctx, {
       clientOrgId: request.clientOrgId,

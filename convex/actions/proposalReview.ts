@@ -1,7 +1,7 @@
 "use node";
 
 import { createHash } from "node:crypto";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { action, internalAction, type ActionCtx } from "../_generated/server";

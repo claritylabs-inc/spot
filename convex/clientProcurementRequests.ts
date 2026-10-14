@@ -1,3 +1,4 @@
+import { requireCompanyRequest } from "./lib/companyRequest";
 import { readPacketProjection } from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { v } from "convex/values";
@@ -76,6 +77,7 @@ async function requireVisibleRequest(
     !request.clientVisible
   )
     throw new Error("Request not found");
+  requireCompanyRequest(request);
   return { access, request };
 }
 
@@ -119,6 +121,7 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
     targetEffectiveDate: request.targetEffectiveDate,
+    intakeDraft: request.intakeSchemaVersion !== undefined && !request.intakeSubmittedAt,
     resultingPolicy:
       resultingPolicy && !resultingPolicy.deletedAt
         ? {

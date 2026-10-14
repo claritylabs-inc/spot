@@ -1,3 +1,4 @@
+import { requireCompanyRequest } from "./companyRequest";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
@@ -41,6 +42,7 @@ export async function readPacketDocuments(
   ctx: QueryCtx | MutationCtx,
   request: Doc<"procurementRequests">,
 ) {
+  requireCompanyRequest(request);
   const documents = await Promise.all(
     PACKET_FILES.map((filename) =>
       getMarkdownDocument(ctx, {
@@ -136,6 +138,7 @@ export async function appendPrivatePacketNote(
   const currentRequest = await ctx.db.get(request._id);
   if (!currentRequest || currentRequest.clientOrgId !== request.clientOrgId)
     throw new Error("Procurement request not found");
+  requireCompanyRequest(currentRequest);
   const document = await readPacketDocument(ctx, currentRequest, "private.md");
   const parsed = parseMarkdownDocument(document.markdown);
   return await saveMarkdownDocument(ctx, {
