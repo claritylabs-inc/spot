@@ -4,7 +4,7 @@ import {
   DateField,
   parseDateText,
 } from "@claritylabs-inc/ui/components/date-field";
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   FiShield,
   FiHome,
@@ -67,7 +67,7 @@ import {
   type IntakeDetails,
 } from "@/lib/insurance-intake-details";
 import { typeStyle } from "@/lib/typography";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, CircleHelp } from "lucide-react";
 
 type Props = {
   details: IntakeDetails;
@@ -281,6 +281,35 @@ export function IntakeCoverageLimits({
   disabled = false,
 }: Props) {
   const previousLimits = useRef<Record<string, string>>({});
+  const [openHelp, setOpenHelp] = useState<Record<string, boolean>>({});
+  const help: Record<string, string> = {
+    each_occurrence: "The maximum coverage for one covered incident.",
+    aggregate:
+      "The total limit for covered claims subject to this aggregate during the policy period.",
+    building: "The amount of coverage needed for the insured building.",
+    contents:
+      "The amount of coverage needed for business personal property, such as equipment, furniture, and inventory.",
+    business_income:
+      "Coverage for lost business income during a covered interruption.",
+    statutory:
+      "Workers’ compensation benefits required by the applicable jurisdiction.",
+    each_accident:
+      "The employers’ liability limit for bodily injury arising from one accident.",
+    disease_policy:
+      "The total employers’ liability limit for bodily injury by disease during the policy period.",
+    disease_employee:
+      "The employers’ liability limit for bodily injury by disease for one employee.",
+    combined_single:
+      "One combined bodily-injury and property-damage liability limit for each covered auto accident.",
+    physical_damage:
+      "The insured value of vehicles requiring physical damage coverage.",
+    each_claim: "The maximum coverage for one covered claim.",
+    each_incident:
+      "The maximum coverage for one covered cyber incident or claim, depending on the policy wording.",
+    coverage_description: "Describe the type of insurance you need.",
+    policy_limit:
+      "The maximum coverage requested for a covered claim, loss, or policy period, as applicable.",
+  };
   const line = details.coverages[details.coverageIndex] ?? details.coverages[0];
   const option = coverageOption(line?.coverage ?? "unknown");
   function setLimit(key: string, value: string) {
@@ -304,15 +333,32 @@ export function IntakeCoverageLimits({
           );
           return (
             <Field key={limit.key}>
-              <FieldLabel
-                htmlFor={`limit-${line.coverage}-${limit.key}`}
-                className={typeStyle("body.root")}
-              >
-                {limit.label}
-              </FieldLabel>
-              {limit.key === "products_aggregate" && <FieldDescription>
-                The total limit for covered injury or property-damage claims caused by products you sell or work you have completed during the policy period.
-              </FieldDescription>}
+              <div className="flex items-center gap-2">
+                <FieldLabel
+                  htmlFor={`limit-${line.coverage}-${limit.key}`}
+                  className={typeStyle("body.root")}
+                >
+                  {limit.label}
+                </FieldLabel>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0"
+                  aria-label={`Help with ${limit.label.toLowerCase()}`}
+                  aria-expanded={!!openHelp[`${line.coverage}:${limit.key}`]}
+                  aria-controls={`limit-help-${line.coverage}-${limit.key}`}
+                  onClick={() =>
+                    setOpenHelp((current) => ({
+                      ...current,
+                      [`${line.coverage}:${limit.key}`]:
+                        !current[`${line.coverage}:${limit.key}`],
+                    }))
+                  }
+                >
+                  <CircleHelp className="size-4" />
+                </Button>
+              </div>
               <InputGroup
                 className={`min-h-12 h-auto ${typeStyle("body.root")} ${unknown ? "bg-primary/10 border-primary" : ""}`}
               >
@@ -381,6 +427,16 @@ export function IntakeCoverageLimits({
                   </label>
                 </InputGroupAddon>
               </InputGroup>
+              {openHelp[`${line.coverage}:${limit.key}`] && (
+                <FieldDescription
+                  id={`limit-help-${line.coverage}-${limit.key}`}
+                >
+                  {line.coverage === "general_liability" &&
+                  limit.key === "aggregate"
+                    ? "The total limit for covered claims subject to the general aggregate during the policy period. Products and completed-operations claims have a separate aggregate."
+                    : help[limit.key]}
+                </FieldDescription>
+              )}
             </Field>
           );
         })

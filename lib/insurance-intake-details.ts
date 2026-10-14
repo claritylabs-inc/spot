@@ -9,10 +9,6 @@ export const COVERAGE_OPTIONS = [
     limits: [
       { key: "each_occurrence", label: "Each occurrence limit" },
       { key: "aggregate", label: "General aggregate limit" },
-      {
-        key: "products_aggregate",
-        label: "Products-completed operations aggregate limit",
-      },
     ],
   },
   {
@@ -34,14 +30,20 @@ export const COVERAGE_OPTIONS = [
         key: "disease_policy",
         label: "Employers’ liability — disease policy limit",
       },
-      { key: "disease_employee", label: "Employers’ liability — disease, each employee" },
+      {
+        key: "disease_employee",
+        label: "Employers’ liability — disease, each employee",
+      },
     ],
   },
   {
     id: "commercial_auto",
     label: "Commercial auto",
     limits: [
-      { key: "combined_single", label: "Combined single limit (each accident)" },
+      {
+        key: "combined_single",
+        label: "Combined single limit (each accident)",
+      },
       {
         key: "physical_damage",
         label: "Physical damage coverage / vehicle values",
