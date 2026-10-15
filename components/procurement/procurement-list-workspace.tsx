@@ -1,6 +1,5 @@
 "use client";
 
-import { RequestEditor } from "./procurement-request-workspace";
 import { PacketLinkDrawer } from "./packet-workspace";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
@@ -94,6 +93,7 @@ function ProcurementRequestPreview({
   policies: PolicyOption[];
   readOnly: boolean;
 }) {
+  const router = useRouter();
   const details = useQuery(api.procurementRequests.get, {
     requestId: request._id,
   });
@@ -126,18 +126,9 @@ function ProcurementRequestPreview({
     }
   }
 
-  const [view, setView] = useState<"summary" | "edit" | "links">("summary");
+  const [view, setView] = useState<"summary" | "links">("summary");
   const back = () => setView("summary");
 
-  if (view === "edit" && details && !readOnly) {
-    return (
-      <RequestEditor
-        request={details.request}
-        policies={policies}
-        onClose={back}
-      />
-    );
-  }
   if (view === "links" && !readOnly) {
     return (
       <PacketLinkDrawer
@@ -166,9 +157,12 @@ function ProcurementRequestPreview({
               <PillButton
                 variant="secondary"
                 disabled={!details}
-                onClick={() => setView("edit")}
+                onClick={() => {
+                  onClose();
+                  router.push(`${basePath}/${request._id}`);
+                }}
               >
-                Edit request
+                Open request
               </PillButton>
               <PillButton
                 variant="secondary"

@@ -20,17 +20,13 @@ import { OperatorPageContextRegistration } from "@/components/operator-agent/ope
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
-import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
-import { Input } from "@claritylabs-inc/ui/components/input";
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@claritylabs-inc/ui/components/tabs";
+
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -42,20 +38,12 @@ import {
   useCachedOperatorCurrent,
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
-import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
-import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   parseOperatorClientSection,
   type OperatorClientPageTab,
 } from "./operator-client-tabs";
-import {
-  OPERATOR_CLIENT_STATUSES,
-  operatorClientStatuses,
-  type OperatorClientRow,
-} from "../client-model";
-import { ClientLogoField } from "../client-logo-field";
-import { registerOperatorClientBeforeImpersonationStart } from "./operator-client-sidebar";
+import { type OperatorClientRow } from "../client-model";
 import OperatorClientWikiPage from "./wiki/page";
 import { typeStyle } from "@/lib/typography";
 
@@ -78,67 +66,23 @@ function slackChannelSlug(client: OperatorClientRow) {
     .slice(0, 60);
 }
 
-function Field({
-  label,
-  children,
-  error,
-  className,
-}: {
-  label: string;
-  children: React.ReactNode;
-  error?: string | null;
-  className?: string;
-}) {
-  return (
-    <label className={`block ${className ?? ""}`}>
-      <span
-        className={`mb-1.5 block text-muted-foreground ${typeStyle("caption.medium")}`}
-      >
-        {label}
-      </span>
-      {children}
-      {error ? (
-        <span
-          className={`mt-1.5 block text-destructive ${typeStyle("caption.default")}`}
-        >
-          {error}
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
 function ClientWorkspace({
   client,
   supportDetails,
   setShellActions,
   setRightPanel,
-  registerBeforeImpersonationStart,
 }: {
   client: OperatorClientRow;
   supportDetails: ClientSupportDetails;
   setShellActions: (actions: React.ReactNode) => void;
   setRightPanel: (panel: React.ReactNode) => void;
-  registerBeforeImpersonationStart: (
-    handler: (() => Promise<boolean>) | null,
-  ) => void;
 }) {
   const clientOrgId = client._id;
-  const current = useCachedOperatorCurrent();
   const searchParams = useSearchParams();
   const { patchClientSettings, patchClientStatus } =
     useOperatorClientCacheActions();
   const activeTab = parseTab(searchParams.get("tab"));
-  const settingsDraft = useLiveRecordDraft(clientOrgId, {
-    name: supportDetails.name,
-    website: supportDetails.website ?? "",
-    status: client.operatorStatus,
-  });
-  const { name: organizationName, website } = settingsDraft.value;
-  const setOrganizationName = settingsDraft.field("name");
-  const setWebsite = settingsDraft.field("website");
-  const [textFieldFocused, setTextFieldFocused] = useState(false);
-  const [settingsTab, setSettingsTab] = useState("account");
+  const [settingsTab, setSettingsTab] = useState("channels");
   const [teamInviteOpen, setTeamInviteOpen] = useState(false);
   const handleOperatorActivationSent = useCallback(
     () =>
@@ -150,57 +94,7 @@ function ClientWorkspace({
   );
   const [savingFeatureFlagId, setSavingFeatureFlagId] =
     useState<FeatureFlagId | null>(null);
-  const updateClientSettings = useMutation(api.operator.updateClientSettings);
   const setClientFeatureFlag = useMutation(api.operator.setClientFeatureFlag);
-  const setClientStatus = useMutation(api.operator.setSoloClientStatus);
-
-  const validationError = !organizationName.trim()
-    ? "Organization name is required"
-    : null;
-
-  const clientSettingsArgs = {
-    clientOrgId,
-    ...(settingsDraft.patch.name !== undefined
-      ? { name: organizationName.trim() }
-      : {}),
-    ...(settingsDraft.patch.website !== undefined
-      ? { website: website.trim() }
-      : {}),
-  };
-  const clientSettingsAutoSave = useLocalFirstAutoSave({
-    mutationName: "operator.updateClientSettings",
-    args: {
-      patch: clientSettingsArgs,
-      status: settingsDraft.patch.status,
-      revision: settingsDraft.revision,
-    },
-    valueKey: String(settingsDraft.revision),
-    resetKey: clientOrgId,
-    enabled: !current?.activeImpersonation,
-    canSave: !validationError,
-    autoSave: !textFieldFocused,
-    delayMs: 700,
-    flush: async ({ patch: args, status, revision }) => {
-      if (args.name !== undefined || args.website !== undefined) {
-        await updateClientSettings(args);
-      }
-      if (status !== undefined) {
-        await setClientStatus({ clientOrgId, status });
-        await patchClientStatus(clientOrgId, status);
-      }
-      settingsDraft.acknowledge(revision);
-      const { clientOrgId: updatedClientOrgId, ...patch } = args;
-      await patchClientSettings(updatedClientOrgId, patch);
-    },
-    errorMessage: (error) =>
-      getUserFacingErrorMessage(error, "Client settings could not be saved."),
-  });
-  function finishTextEdit() {
-    setTextFieldFocused(false);
-    void clientSettingsAutoSave.saveNow();
-  }
-
-  const saveClientSettingsNow = clientSettingsAutoSave.saveNow;
 
   async function updateFeatureFlag(flagId: FeatureFlagId, enabled: boolean) {
     const previousFlags = client.featureFlags;
@@ -222,9 +116,7 @@ function ClientWorkspace({
 
   useEffect(() => {
     if (activeTab === "settings") {
-      setShellActions(
-        <AutoSaveStatus status={clientSettingsAutoSave.status} />,
-      );
+      setShellActions(null);
     } else if (activeTab === "team") {
       setShellActions(
         <PillButton size="compact" onClick={() => setTeamInviteOpen(true)}>
@@ -239,12 +131,7 @@ function ClientWorkspace({
     return () => {
       setShellActions(null);
     };
-  }, [activeTab, clientSettingsAutoSave.status, setShellActions]);
-
-  useEffect(() => {
-    registerBeforeImpersonationStart(saveClientSettingsNow);
-    return () => registerBeforeImpersonationStart(null);
-  }, [registerBeforeImpersonationStart, saveClientSettingsNow]);
+  }, [activeTab, setShellActions]);
 
   return (
     <>
@@ -260,77 +147,9 @@ function ClientWorkspace({
               aria-label="Client settings"
               className="max-w-full flex-wrap"
             >
-              <TabsTrigger value="account">Account</TabsTrigger>
               <TabsTrigger value="channels">Agent channels</TabsTrigger>
               <TabsTrigger value="features">Beta features</TabsTrigger>
             </TabsList>
-            <TabsContent value="account" keepMounted className="space-y-5">
-              <OperationalPanel className="max-w-2xl">
-                <OperationalPanelBody className="space-y-4">
-                  <div className="space-y-4">
-                    <Field label="Organization name" error={validationError}>
-                      <Input
-                        disabled={Boolean(current?.activeImpersonation)}
-                        value={organizationName}
-                        aria-invalid={Boolean(validationError)}
-                        onChange={(event) =>
-                          setOrganizationName(event.target.value)
-                        }
-                        onFocus={() => setTextFieldFocused(true)}
-                        onBlur={finishTextEdit}
-                        placeholder="Client organization"
-                      />
-                    </Field>
-                    <Field label="Website">
-                      <Input
-                        disabled={Boolean(current?.activeImpersonation)}
-                        value={website}
-                        onChange={(event) => setWebsite(event.target.value)}
-                        onFocus={() => setTextFieldFocused(true)}
-                        onBlur={finishTextEdit}
-                        placeholder="https://example.com"
-                      />
-                    </Field>
-                    <Field label="Status">
-                      <Select
-                        value={settingsDraft.value.status}
-                        items={operatorClientStatuses}
-                        disabled={Boolean(current?.activeImpersonation)}
-                        onValueChange={(value) => {
-                          if (
-                            value === "onboarding" ||
-                            value === "live" ||
-                            value === "lost" ||
-                            value === "churned"
-                          ) {
-                            settingsDraft.field("status")(value);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(OPERATOR_CLIENT_STATUSES).map(
-                            ([value, { label, ...presentation }]) => (
-                              <SelectItem key={value} value={value}>
-                                <StatusLabel {...presentation}>
-                                  {label}
-                                </StatusLabel>
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <ClientLogoField
-                      client={client}
-                      disabled={Boolean(current?.activeImpersonation)}
-                    />
-                  </div>
-                </OperationalPanelBody>
-              </OperationalPanel>
-            </TabsContent>
             <TabsContent value="channels">
               <AgentChannelsSection
                 clientOrgId={client._id}
@@ -454,9 +273,6 @@ function OperatorClientSettingsPage() {
           supportDetails={supportDetails}
           setShellActions={setWorkspaceActions}
           setRightPanel={setRightPanel}
-          registerBeforeImpersonationStart={
-            registerOperatorClientBeforeImpersonationStart
-          }
         />
       )}
     </AppShell>

@@ -83,8 +83,9 @@ test.each([
     const toggle = container.querySelector<HTMLButtonElement>(
       `[role="switch"][aria-label="${label}"]`,
     )!;
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-    if (enabled) await act(async () => toggle.click());
+    const defaultEnabled = label === "Broker visibility";
+    expect(toggle.getAttribute("aria-checked")).toBe(String(defaultEnabled));
+    if (enabled !== defaultEnabled) await act(async () => toggle.click());
   }
   await act(async () => {
     const input = container.querySelector<HTMLInputElement>(

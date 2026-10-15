@@ -42,19 +42,14 @@ export default function OperatorProcurementRequestPage() {
   const title = request?.request.title ?? "Procurement request";
   const requestedView = searchParams.get("view");
   const normalizedView =
-    requestedView === "requirements"
-      ? "notes"
-      : requestedView === "market"
-        ? "proposals"
-        : requestedView;
+    requestedView === "market" ? "proposals" : requestedView;
   const view =
-    normalizedView === "notes" ||
-    normalizedView === "shared" ||
+    normalizedView === "edit" ||
     normalizedView === "proposals" ||
     normalizedView === "files" ||
     normalizedView === "email"
       ? normalizedView
-      : "notes";
+      : "application";
 
   return (
     <AppShell

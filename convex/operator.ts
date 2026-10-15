@@ -3,7 +3,8 @@ import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
-import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
+import { createAccount } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import {
   action,
   internalAction,
@@ -263,9 +264,6 @@ export const getClientSupportDetails = query({
   },
 });
 
-
-
-
 async function extractionRunCostUsd(ctx: QueryCtx, traceId: string) {
   const events = await ctx.db
     .query("modelRoutingEvents")
@@ -310,7 +308,9 @@ export const listExtractionRuns = query({
               ? session.completedAt - session.startedAt
               : undefined),
           costUsd: await extractionRunCostUsd(ctx, session.traceId),
-          sections: latestRun ? await readRunSections(ctx, latestRun._id) : null,
+          sections: latestRun
+            ? await readRunSections(ctx, latestRun._id)
+            : null,
           sectionTotal: latestRun
             ? (await readRunProgress(ctx, latestRun._id))?.total
             : undefined,
@@ -548,6 +548,57 @@ export const setClientFeatureFlag = mutation({
   },
 });
 
+export async function updateClientSettingsForOperator(
+  ctx: MutationCtx,
+  operatorUserId: Id<"users">,
+  args: {
+    clientOrgId: Id<"organizations">;
+    name?: string;
+    website?: string;
+    iconStorageId?: Id<"_storage"> | null;
+  },
+) {
+  await requireOperatorForUser(ctx, operatorUserId);
+  await assertNoOperatorImpersonation(ctx, operatorUserId);
+  const client = await ctx.db.get(args.clientOrgId);
+  if (!client || client.deletedAt !== undefined || client.type !== "client")
+    throw new Error("Client not found");
+  const identity = args.name !== undefined ? clientIdentity(args.name) : null;
+  const name = identity?.name ?? client.name;
+  if (!name) throw new Error("Organization name is required");
+
+  if (args.iconStorageId) {
+    const file = await ctx.db.system.get(args.iconStorageId);
+    if (!file?.contentType?.startsWith("image/") || file.size > 5 * 1024 * 1024)
+      throw new Error("Choose an image smaller than 5 MB");
+  }
+
+  const patch = {
+    ...identity,
+    ...(args.iconStorageId !== undefined
+      ? { iconStorageId: args.iconStorageId ?? undefined }
+      : {}),
+    ...(args.website !== undefined
+      ? { website: args.website.trim() || undefined }
+      : {}),
+  };
+
+  await ctx.db.patch(args.clientOrgId, patch);
+  if (args.name !== undefined || args.website !== undefined)
+    await scheduleCompanyResearch(ctx, args.clientOrgId);
+  await writeOperatorAudit(ctx, {
+    operatorUserId: operatorUserId,
+    type: "setup_write",
+    targetOrgId: args.clientOrgId,
+    summary: `Updated client settings for ${name}`,
+    metadata: {
+      previousName: client.name,
+      nextName: name,
+      website: patch.website,
+    },
+  });
+}
+
 export const updateClientSettings = mutation({
   args: {
     clientOrgId: v.id("organizations"),
@@ -557,47 +608,7 @@ export const updateClientSettings = mutation({
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    await assertNoOperatorImpersonation(ctx, operator.userId);
-    const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.deletedAt !== undefined || client.type !== "client")
-      throw new Error("Client not found");
-    const identity = args.name !== undefined ? clientIdentity(args.name) : null;
-    const name = identity?.name ?? client.name;
-    if (!name) throw new Error("Organization name is required");
-
-    if (args.iconStorageId) {
-      const file = await ctx.db.system.get(args.iconStorageId);
-      if (
-        !file?.contentType?.startsWith("image/") ||
-        file.size > 5 * 1024 * 1024
-      )
-        throw new Error("Choose an image smaller than 5 MB");
-    }
-
-    const patch = {
-      ...identity,
-      ...(args.iconStorageId !== undefined
-        ? { iconStorageId: args.iconStorageId ?? undefined }
-        : {}),
-      ...(args.website !== undefined
-        ? { website: args.website.trim() || undefined }
-        : {}),
-    };
-
-    await ctx.db.patch(args.clientOrgId, patch);
-    if (args.name !== undefined || args.website !== undefined)
-      await scheduleCompanyResearch(ctx, args.clientOrgId);
-    await writeOperatorAudit(ctx, {
-      operatorUserId: operator.userId,
-      type: "setup_write",
-      targetOrgId: args.clientOrgId,
-      summary: `Updated client settings for ${name}`,
-      metadata: {
-        previousName: client.name,
-        nextName: name,
-        website: patch.website,
-      },
-    });
+    await updateClientSettingsForOperator(ctx, operator.userId, args);
   },
 });
 

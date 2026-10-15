@@ -613,6 +613,7 @@ async function authorizeReference(
       const request = requestId ? await ctx.db.get(requestId) : null;
       if (
         !request ||
+        request.deletedAt ||
         request.clientOrgId !== file.orgId ||
         (!operator && !request.clientVisible)
       )

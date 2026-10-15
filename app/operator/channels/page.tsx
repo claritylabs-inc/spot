@@ -3,16 +3,20 @@
 import { useState, type ReactNode } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { parsePhoneNumberFromString } from "libphonenumber-js/min";
-import { Check, Copy, Loader2, MessageCircle, Pencil } from "lucide-react";
+import { Check, Copy, Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
-import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@claritylabs-inc/ui/components/tabs";
 import { useTabParam } from "@/hooks/use-tab-param";
 import { openOAuthTab } from "@/lib/oauth-tab";
 import {
@@ -110,7 +114,14 @@ function OperatorChannelTabs({
   const [activeTab, selectTab] = useTabParam(CHANNEL_TABS);
 
   return (
-    <Tabs value={activeTab} onValueChange={(value) => { selectTab(value); onTabChange?.(); }} className="gap-4">
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => {
+        selectTab(value);
+        onTabChange?.();
+      }}
+      className="gap-4"
+    >
       <div className="-mx-1 overflow-x-auto px-1 scrollbar-hide">
         <TabsList variant="pill" aria-label="Channel">
           <TabsTrigger value="slack">Slack</TabsTrigger>
@@ -370,11 +381,11 @@ function IdentityStatus({
 function OperatorIdentityRow({
   identity,
   workspaceTeamId,
-  onEdit,
+  editor,
 }: {
   identity: OperatorSlackIdentity;
   workspaceTeamId?: string;
-  onEdit?: () => void;
+  editor?: ReactNode;
 }) {
   const displayName = identity.name?.trim() || identity.email;
   const accountDetail = identity.name?.trim()
@@ -382,11 +393,6 @@ function OperatorIdentityRow({
     : identity.role === "owner"
       ? "Owner"
       : "Operator";
-  const linkedToWorkspace =
-    !!workspaceTeamId &&
-    identity.slackTeamId === workspaceTeamId &&
-    !!identity.slackUserId;
-
   return (
     <div className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1.25fr)_minmax(9rem,0.8fr)_auto] sm:items-center">
       <div className="min-w-0">
@@ -416,17 +422,19 @@ function OperatorIdentityRow({
         <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
           Slack member ID
         </p>
-        <p
-          className={`mt-0.5 truncate text-foreground ${typeStyle("body.default")}`}
-        >
-          {identity.slackUserId ? (
-            <code className={`${typeStyle("technical.codeCompact")}`}>
-              {identity.slackUserId}
-            </code>
-          ) : (
-            "Not set"
-          )}
-        </p>
+        {editor ?? (
+          <p
+            className={`mt-0.5 truncate text-foreground ${typeStyle("body.default")}`}
+          >
+            {identity.slackUserId ? (
+              <code className={`${typeStyle("technical.codeCompact")}`}>
+                {identity.slackUserId}
+              </code>
+            ) : (
+              "Not set"
+            )}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -436,12 +444,6 @@ function OperatorIdentityRow({
             userId={identity.slackUserId}
             workspaceTeamId={workspaceTeamId}
           />
-        ) : null}
-        {onEdit ? (
-          <PillButton variant="secondary" size="compact" onClick={onEdit}>
-            <Pencil className="size-3.5" />
-            {linkedToWorkspace ? "Change" : "Set identity"}
-          </PillButton>
         ) : null}
       </div>
     </div>
@@ -468,7 +470,6 @@ function OperatorChannelsContent({
   );
   const [savedIdentity, setSavedIdentity] = useState(profile);
   const [slackUserId, setSlackUserId] = useState(profile.slackUserId ?? "");
-  const [identityDrawerOpen, setIdentityDrawerOpen] = useState(false);
   const [googleSettingsDrawerOpen, setGoogleSettingsDrawerOpen] =
     useState(false);
   const [busy, setBusy] = useState<"host" | "identity" | null>(null);
@@ -478,10 +479,6 @@ function OperatorChannelsContent({
   const workspaceName = mockMode
     ? "Clarity local fixture"
     : hostInstallation?.teamName;
-  const currentIdentityLinked =
-    !!workspaceTeamId &&
-    savedIdentity.slackTeamId === workspaceTeamId &&
-    !!savedIdentity.slackUserId;
   const currentIdentityWorkspaceMismatch =
     !!savedIdentity.slackTeamId &&
     !!workspaceTeamId &&
@@ -542,7 +539,6 @@ function OperatorChannelsContent({
         slackUserId: savedUserId,
       }));
       setSlackUserId(savedUserId);
-      setIdentityDrawerOpen(false);
       toast.success(
         `Slack identity updated for ${workspaceName ?? workspaceTeamId}`,
       );
@@ -558,141 +554,24 @@ function OperatorChannelsContent({
     }
   }
 
-  function startEditingIdentity() {
-    setSlackUserId(savedIdentity.slackUserId ?? "");
-    setGoogleSettingsDrawerOpen(false);
-    setIdentityDrawerOpen(true);
-  }
-
-  function cancelEditingIdentity() {
-    setSlackUserId(savedIdentity.slackUserId ?? "");
-    setIdentityDrawerOpen(false);
-  }
-
-  const identityDrawer = (
-    <SettingsDrawer
-      open={identityDrawerOpen}
-      onOpenChange={(open) => {
-        if (!open && busy !== "identity") cancelEditingIdentity();
-      }}
-      title={
-        currentIdentityLinked
-          ? "Change your Slack identity"
-          : "Set your Slack identity"
-      }
-      footer={
-        <>
-          <PillButton
-            type="button"
-            variant="secondary"
-            onClick={cancelEditingIdentity}
-            disabled={busy !== null}
-          >
-            Cancel
-          </PillButton>
-          <PillButton
-            type="submit"
-            form="operator-slack-identity-form"
-            variant="primary"
-            disabled={busy !== null || !slackUserId.trim()}
-          >
-            {busy === "identity" ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : null}
-            Save identity
-          </PillButton>
-        </>
-      }
-    >
-      <form
-        id="operator-slack-identity-form"
-        className="space-y-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void saveIdentity();
-        }}
-      >
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          This changes the Slack identity for the signed-in Spot account{" "}
-          <span className={`text-foreground ${typeStyle("body.medium")}`}>
-            {operatorEmail}
-          </span>
-          {workspaceName ? (
-            <>
-              {" "}
-              in{" "}
-              <span className={`text-foreground ${typeStyle("body.medium")}`}>
-                {workspaceName}
-              </span>
-              .
-            </>
-          ) : (
-            "."
-          )}
-        </p>
-
-        <div>
-          <label
-            htmlFor="operator-slack-member-id"
-            className={`text-foreground ${typeStyle("label.field")}`}
-          >
-            Slack member ID
-          </label>
-          <Input
-            id="operator-slack-member-id"
-            className="mt-2"
-            value={slackUserId}
-            onChange={(event) => setSlackUserId(event.target.value)}
-            placeholder="U…"
-            autoComplete="off"
-            autoFocus
-          />
-          <p
-            className={`mt-2 text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Slack member IDs usually begin with U.
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-border bg-foreground/[0.025] p-3">
-          <h3 className={`text-foreground ${typeStyle("heading.micro")}`}>
-            How to find your member ID
-          </h3>
-          <ol
-            className={`mt-2 list-decimal space-y-1 pl-4 text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            <li>Open Slack and select your profile picture.</li>
-            <li>Open your profile, then select More (•••).</li>
-            <li>Select Copy member ID and paste it above.</li>
-          </ol>
-        </div>
-      </form>
-    </SettingsDrawer>
-  );
   const rightPanel = googleSettingsDrawerOpen ? (
     <OperatorGoogleWorkspaceSettingsDrawer
       open
       onOpenChange={setGoogleSettingsDrawerOpen}
     />
-  ) : (
-    identityDrawer
-  );
+  ) : null;
 
   return (
-    <AppShell
-      rightPanel={rightPanel}
-    >
+    <AppShell rightPanel={rightPanel}>
       <main className="w-full">
         <OperatorChannelTabs
           onTabChange={() => {
             setGoogleSettingsDrawerOpen(false);
-            setIdentityDrawerOpen(false);
           }}
           imessageContent={<OperatorImessageContent />}
           googleWorkspaceContent={
             <OperatorGoogleWorkspaceContent
               onConfigure={() => {
-                setIdentityDrawerOpen(false);
                 setGoogleSettingsDrawerOpen(true);
               }}
             />
@@ -740,7 +619,9 @@ function OperatorChannelsContent({
                       ) : hostInstallation ? (
                         <StatusTag tone="success">Connected</StatusTag>
                       ) : (
-                        <StatusTag indicator="inactive">Not connected</StatusTag>
+                        <StatusTag indicator="inactive">
+                          Not connected
+                        </StatusTag>
                       )}
                       {!mockMode ? (
                         <PillButton
@@ -789,7 +670,33 @@ function OperatorChannelsContent({
                       <OperatorIdentityRow
                         identity={currentIdentity}
                         workspaceTeamId={workspaceTeamId}
-                        onEdit={startEditingIdentity}
+                        editor={
+                          <div data-operator-inline-fields>
+                            <Input
+                              aria-label="Slack member ID"
+                              value={slackUserId}
+                              placeholder="Not set"
+                              autoComplete="off"
+                              disabled={busy !== null || !workspaceTeamId}
+                              onChange={(event) =>
+                                setSlackUserId(event.target.value)
+                              }
+                              onBlur={() => {
+                                if (
+                                  slackUserId.trim() &&
+                                  (slackUserId.trim() !==
+                                    (savedIdentity.slackUserId ?? "") ||
+                                    currentIdentityWorkspaceMismatch)
+                                )
+                                  void saveIdentity();
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter")
+                                  event.currentTarget.blur();
+                              }}
+                            />
+                          </div>
+                        }
                       />
 
                       {currentIdentityWorkspaceMismatch ? (
@@ -853,8 +760,7 @@ export default function OperatorChannelsPage() {
       profile={current.profile}
     />
   ) : (
-    <AppShell
-    >
+    <AppShell>
       <main className="w-full">
         <OperatorChannelTabs>
           <ChannelCard className="flex h-40 items-center justify-center text-muted-foreground">

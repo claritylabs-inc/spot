@@ -1,3 +1,25 @@
+import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
+import { detailsFromAnswers } from "../lib/insurance-intake-details";
+import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
+import { intakeDetailsValidator } from "./lib/intakeDetailsSchema";
+import {
+  detailsAnswers,
+  validCoverageLimit,
+  validateIntakeDetails,
+} from "../lib/insurance-intake-details";
+import { hashIntakeToken, submissionContent } from "./requestIntake";
+import { saveMarkdownDocument } from "./markdownDocuments";
+import { readPacketDocument } from "./lib/packetDocuments";
+import {
+  parseMarkdownDocument,
+  stringifyMarkdownDocument,
+} from "./lib/markdownDocument";
+import {
+  companyApplicationProfile,
+  applicationMarkdownBlock,
+  submittedIntakeApplication,
+} from "../lib/intake-application";
+import { requireCompanyRequest } from "./lib/companyRequest";
 import { requestPacketText } from "./lib/procurementNarrative";
 import { publishMcpEvent } from "./mcpEvents";
 import {
@@ -162,6 +184,7 @@ async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
 async function requireRequest(ctx: Ctx, requestId: Id<"procurementRequests">) {
   const request = await ctx.db.get(requestId);
   if (!request) throw new Error("Procurement request not found");
+  requireCompanyRequest(request);
   await requireClient(ctx, request.clientOrgId);
   return request;
 }
@@ -248,6 +271,7 @@ function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
 }
 
 async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
+  requireCompanyRequest(request);
   const [replacingPolicy, resultingPolicy, outreaches, emails] =
     await Promise.all([
       requirePolicyForRequest(
@@ -272,6 +296,7 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
     ]);
   return {
     ...request,
+    application: submittedIntakeApplication(request),
     completionOutcome: request.completionOutcome,
     forwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
@@ -407,9 +432,18 @@ export async function getProcurementRequestDetails(
       .order("desc")
       .take(250),
   ]);
+  const intakeFiles = await ctx.db
+    .query("requestIntakeFiles")
+    .withIndex("request", (q) => q.eq("requestId", requestId))
+    .take(30);
+  const intakeCategories = new Map(
+    intakeFiles
+      .filter((file) => file.clientFileId)
+      .map((file) => [String(file.clientFileId), file.category]),
+  );
   const files = await Promise.all(
     fileItems
-      .filter((item) => item.clientFileId)
+      .filter((item) => item.clientFileId && !item.removedAt)
       .map(async (item) => {
         const file = item.clientFileId
           ? await ctx.db.get(item.clientFileId)
@@ -419,6 +453,10 @@ export async function getProcurementRequestDetails(
           requestId: item.requestId,
           clientOrgId: item.clientOrgId,
           clientFileId: item.clientFileId,
+          intakeCategory:
+            item.documentCategory ??
+            intakeCategories.get(String(item.clientFileId)) ??
+            "supporting",
           sourceEmailMessageId: item.sourceEmailMessageId,
           label: item.label,
           brokerRelease: item.outreachId ? "hidden" : item.brokerRelease,
@@ -510,11 +548,12 @@ export async function listProcurementRequestSummaries(
         )
         .order("desc")
         .take(MAX_REQUESTS);
+  const activeRows = rows.filter((row) => !row.deletedAt);
   const search = args.query?.trim().toLowerCase();
   const matches = search
     ? (
         await Promise.all(
-          rows.map(async (row) => ({
+          activeRows.map(async (row) => ({
             row,
             text: `${row.title} ${await requestPacketText(ctx, row)}`.toLowerCase(),
           })),
@@ -522,7 +561,7 @@ export async function listProcurementRequestSummaries(
       )
         .filter(({ text }) => text.includes(search))
         .map(({ row }) => row)
-    : rows;
+    : activeRows;
   return Promise.all(
     matches.slice(0, limit).map((row) => requestRow(ctx, row)),
   );
@@ -556,6 +595,7 @@ export const get = query({
   args: { requestId: v.id("procurementRequests") },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
+    if ((await ctx.db.get(args.requestId))?.deletedAt) return null;
     return await getProcurementRequestDetails(ctx, args.requestId);
   },
 });
@@ -789,16 +829,282 @@ export async function updateProcurementRequestByOperator(
       source: args.source,
     },
   });
-  const publicChanged = (patch.title !== undefined && patch.title !== request.title)
-    || (patch.status !== undefined && patch.status !== request.status)
-    || (args.targetEffectiveDate !== undefined && patch.targetEffectiveDate !== request.targetEffectiveDate)
-    || (patch.clientVisible === true && request.clientVisible === false);
-  if ((patch.clientVisible ?? request.clientVisible) !== false && publicChanged) await publishMcpEvent(ctx, {
-    name: "procurement.request_updated", key: auditEventId, orgId: request.clientOrgId,
-    data: { org_id: request.clientOrgId, request_id: request._id, status: patch.status ?? request.status },
-  });
+  const publicChanged =
+    (patch.title !== undefined && patch.title !== request.title) ||
+    (patch.status !== undefined && patch.status !== request.status) ||
+    (args.targetEffectiveDate !== undefined &&
+      patch.targetEffectiveDate !== request.targetEffectiveDate) ||
+    (patch.clientVisible === true && request.clientVisible === false);
+  if ((patch.clientVisible ?? request.clientVisible) !== false && publicChanged)
+    await publishMcpEvent(ctx, {
+      name: "procurement.request_updated",
+      key: auditEventId,
+      orgId: request.clientOrgId,
+      data: {
+        org_id: request.clientOrgId,
+        request_id: request._id,
+        status: patch.status ?? request.status,
+      },
+    });
   return { requestId: request._id, fields: changedFields };
 }
+
+/** Direct operator corrections have their own audit; never impersonate applicant consent. */
+export const updateApplication = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    expectedRevision: v.number(),
+    expectedUpdatedAt: v.number(),
+    answers: intakeAnswersValidator,
+    details: intakeDetailsValidator,
+    title: v.string(),
+    targetEffectiveDate: v.union(v.string(), v.null()),
+    status: requestStatusValidator,
+    replacingPolicyId: v.union(v.id("policies"), v.null()),
+    resultingPolicyId: v.union(v.id("policies"), v.null()),
+    clientVisible: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    return await updateApplicationByOperator(ctx, operator.userId, args);
+  },
+});
+
+export async function updateApplicationByOperator(
+  ctx: MutationCtx,
+  operatorUserId: Id<"users">,
+  args: {
+    requestId: Id<"procurementRequests">;
+    expectedRevision: number;
+    expectedUpdatedAt: number;
+    answers: import("../lib/insurance-intake").IntakeAnswers;
+    details: import("../lib/insurance-intake-details").IntakeDetails;
+    title: string;
+    targetEffectiveDate: string | null;
+    status: Doc<"procurementRequests">["status"];
+    replacingPolicyId: Id<"policies"> | null;
+    resultingPolicyId: Id<"policies"> | null;
+    clientVisible: boolean;
+  },
+) {
+  await requireDirectOperatorWrite(ctx, operatorUserId);
+  const request = await requireRequest(ctx, args.requestId);
+  if (
+    (request.intakeRevision ?? 0) !== args.expectedRevision ||
+    request.updatedAt !== args.expectedUpdatedAt
+  )
+    throw new Error(
+      "This application changed while you were editing. Reload it before saving.",
+    );
+  validateIntakeDetails(args.details);
+  for (const line of args.details.coverages)
+    for (const [key, value] of Object.entries(line.limits))
+      if (value && !validCoverageLimit(key, value))
+        throw new Error("Enter a valid coverage limit or select I'm not sure");
+  for (const value of Object.values(args.answers))
+    if (value && value.length > 8000)
+      throw new Error("Keep each answer within 8,000 characters");
+  const effectiveDate = optionalDate(args.targetEffectiveDate);
+  const details = {
+    ...args.details,
+    dateParts: effectiveDate
+      ? {
+          year: dayjs(effectiveDate).format("YYYY"),
+          month: dayjs(effectiveDate).format("MM"),
+          day: dayjs(effectiveDate).format("DD"),
+        }
+      : { year: "", month: "", day: "" },
+  };
+  const answers = {
+    ...args.answers,
+    ...detailsAnswers(details),
+    effectiveDate: effectiveDate ?? "",
+  };
+  if (answers.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email))
+    throw new Error("Enter a valid contact email");
+  const accepted = submittedIntakeApplication(request);
+  const uploads = await ctx.db
+    .query("requestIntakeFiles")
+    .withIndex("request", (q) => q.eq("requestId", request._id))
+    .take(30);
+  const files = uploads.map((file) => ({
+    id: String(file._id),
+    name: file.name,
+  }));
+  const now = dayjs().valueOf();
+  const revision = (request.intakeRevision ?? 0) + 1;
+  const application = { answers, details, files, submittedAt: now, revision };
+  await updateProcurementRequestByOperator(ctx, {
+    operatorUserId: operatorUserId,
+    requestId: request._id,
+    title: args.title,
+    targetEffectiveDate: args.targetEffectiveDate,
+    status: args.status,
+    replacingPolicyId: args.replacingPolicyId,
+    resultingPolicyId: args.resultingPolicyId,
+    clientVisible: args.clientVisible,
+    source: "operator",
+  });
+  const current = (await ctx.db.get(request._id))!;
+  await ctx.db.patch(request._id, {
+    intakeAnswers: answers,
+    intakeDetails: details,
+    intakeRevision: revision,
+    intakeSubmittedApplication: application,
+    intakeSubmittedContentHash: await hashIntakeToken(
+      submissionContent(
+        answers,
+        details,
+        files.map((file) => file.id),
+      ),
+    ),
+    packetRevision: (current.packetRevision ?? 0) + 1,
+    updatedAt: now,
+    updatedByUserId: operatorUserId,
+  });
+  if (!accepted) {
+    const document = await readPacketDocument(ctx, request, "public.md");
+    const parsed = parseMarkdownDocument(document.markdown);
+    await saveMarkdownDocument(ctx, {
+      orgId: request.clientOrgId,
+      requestId: request._id,
+      kind: "packet",
+      filename: "public.md",
+      expectedRevision: document.revision,
+      markdown: stringifyMarkdownDocument(
+        { ...parsed.frontmatter, visibility: "shared" },
+        [parsed.body, applicationMarkdownBlock(application)]
+          .filter(Boolean)
+          .join("\n\n"),
+      ),
+    });
+  }
+  const org = await ctx.db.get(request.clientOrgId);
+  if (org?.intakeBusinessProfile?.sourceRequestId === request._id)
+    await ctx.db.patch(org._id, {
+      intakeBusinessProfile: {
+        ...companyApplicationProfile(application),
+        sourceRequestId: request._id,
+      },
+    });
+  await writeOperatorAudit(ctx, {
+    operatorUserId: operatorUserId,
+    type: "setup_write",
+    targetOrgId: request.clientOrgId,
+    summary: `Corrected application details for ${args.title}`,
+    metadata: {
+      domain: "procurement",
+      requestId: request._id,
+      action: "update_application",
+      revision,
+    },
+  });
+  return { revision, updatedAt: now };
+}
+
+export async function prepareApplicationToolUpdate(
+  ctx: MutationCtx,
+  input: unknown,
+) {
+  const patch = procurementApplicationInputSchema.parse(input);
+  const requestId = ctx.db.normalizeId(
+    "procurementRequests",
+    patch.procurementRequestId,
+  );
+  if (!requestId) throw new Error("Invalid procurement request");
+  const request = await requireRequest(ctx, requestId);
+  if (
+    (request.intakeRevision ?? 0) !== patch.expectedRevision ||
+    request.updatedAt !== patch.expectedUpdatedAt
+  )
+    throw new Error(
+      "This application changed. Read get_procurement_request again before updating.",
+    );
+  const application = submittedIntakeApplication(request);
+  const answers = {
+    ...(application?.answers ?? request.intakeAnswers ?? {}),
+    ...patch.answers,
+  };
+  const details = {
+    ...(application?.details ??
+      request.intakeDetails ??
+      detailsFromAnswers(answers)),
+    ...patch.details,
+  };
+  validateIntakeDetails(details);
+  for (const line of details.coverages)
+    for (const [key, value] of Object.entries(line.limits))
+      if (value && !validCoverageLimit(key, value))
+        throw new Error("Enter a valid coverage limit");
+  if (answers.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email))
+    throw new Error("Enter a valid contact email");
+  return {
+    requestId,
+    expectedRevision: patch.expectedRevision,
+    expectedUpdatedAt: patch.expectedUpdatedAt,
+    answers,
+    details,
+    title: request.title,
+    targetEffectiveDate:
+      patch.answers?.effectiveDate !== undefined
+        ? patch.answers.effectiveDate || null
+        : (request.targetEffectiveDate ?? null),
+    status: request.status,
+    replacingPolicyId: request.replacingPolicyId ?? null,
+    resultingPolicyId: request.resultingPolicyId ?? null,
+    clientVisible: request.clientVisible !== false,
+  };
+}
+
+/** Recoverable deletion: retain audit/evidence, deny normal request and packet access. */
+export const remove = mutation({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, { requestId }) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await ctx.db.get(requestId);
+    if (!request) throw new Error("Procurement request not found");
+    if (request.deletedAt) return;
+    requireCompanyRequest(request);
+    await requireClient(ctx, request.clientOrgId);
+    const now = dayjs().valueOf();
+    await ctx.db.patch(requestId, {
+      deletedAt: now,
+      deletedByUserId: operator.userId,
+      updatedAt: now,
+    });
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: request.clientOrgId,
+      summary: `Deleted procurement request ${request.title}`,
+      metadata: { domain: "procurement", requestId, action: "delete" },
+    });
+  },
+});
+export const restore = mutation({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, { requestId }) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await ctx.db.get(requestId);
+    if (!request?.clientOrgId) throw new Error("Procurement request not found");
+    await requireClient(ctx, request.clientOrgId);
+    if (!request.deletedAt) return;
+    await ctx.db.patch(requestId, {
+      deletedAt: undefined,
+      deletedByUserId: undefined,
+      updatedAt: dayjs().valueOf(),
+    });
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: request.clientOrgId,
+      summary: `Restored procurement request ${request.title}`,
+      metadata: { domain: "procurement", requestId, action: "restore" },
+    });
+  },
+});
 
 export const update = mutation({
   args: {
@@ -1035,6 +1341,7 @@ export async function createProcurementFileItemByOperator(
     requestId: Id<"procurementRequests">;
     clientFileId: Id<"clientFiles">;
     label: string;
+    documentCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
     brokerRelease?: "hidden" | "listed" | "attached";
     clientVisible?: boolean;
     source: "operator" | "agent" | "workspace_scan";
@@ -1060,7 +1367,8 @@ export async function createProcurementFileItemByOperator(
     clientOrgId: request.clientOrgId,
     clientFileId: args.clientFileId,
     label: requiredText(args.label, "File label", 300),
-    brokerRelease: args.brokerRelease ?? "hidden",
+    documentCategory: args.documentCategory,
+    brokerRelease: args.brokerRelease ?? "attached",
     clientVisible: args.clientVisible ?? false,
     createdByUserId: args.operatorUserId,
     updatedByUserId: args.operatorUserId,
@@ -1068,7 +1376,7 @@ export async function createProcurementFileItemByOperator(
     updatedAt: now,
   });
   await scheduleClientFileCompanyInformation(ctx, args.clientFileId);
-  if (args.brokerRelease && args.brokerRelease !== "hidden")
+  if ((args.brokerRelease ?? "attached") !== "hidden")
     await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
       updatedByUserId: args.operatorUserId,
@@ -1094,6 +1402,14 @@ export const createFileItem = mutation({
     requestId: v.id("procurementRequests"),
     clientFileId: v.id("clientFiles"),
     label: v.string(),
+    documentCategory: v.optional(
+      v.union(
+        v.literal("requirements"),
+        v.literal("policy"),
+        v.literal("loss_runs"),
+        v.literal("supporting"),
+      ),
+    ),
     brokerRelease: v.optional(releaseValidator),
     clientVisible: v.optional(v.boolean()),
   },
@@ -1121,7 +1437,8 @@ export async function updateProcurementFileItemByOperator(
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const item = await ctx.db.get(args.fileItemId);
-  if (!item) throw new Error("Procurement file item not found");
+  if (!item || item.removedAt)
+    throw new Error("Procurement file item not found");
   const request = await requireRequest(ctx, item.requestId);
   const patch: Partial<Doc<"procurementFileItems">> = {
     updatedByUserId: args.operatorUserId,
@@ -1200,6 +1517,57 @@ export async function updateProcurementFileItemByOperator(
   });
   return { fileItemId: item._id, fields };
 }
+
+/** Detach a request document; keep company evidence and issued snapshots intact. */
+export const removeFileItem = mutation({
+  args: { fileItemId: v.id("procurementFileItems") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const item = await ctx.db.get(args.fileItemId);
+    if (!item) throw new Error("Procurement file item not found");
+    const request = await requireRequest(ctx, item.requestId);
+    if (item.removedAt) return { updatedAt: request.updatedAt };
+    const now = dayjs().valueOf();
+    await ctx.db.patch(item._id, {
+      removedAt: now,
+      brokerRelease: "hidden",
+      clientVisible: false,
+      updatedAt: now,
+      updatedByUserId: operator.userId,
+    });
+    if (item.clientFileId) {
+      const intakeFiles = await ctx.db
+        .query("requestIntakeFiles")
+        .withIndex("request", (q) => q.eq("requestId", request._id))
+        .take(31);
+      if (intakeFiles.length > 30)
+        throw new Error("Too many request uploads to detach safely");
+      for (const file of intakeFiles)
+        if (file.clientFileId === item.clientFileId)
+          await ctx.db.delete(file._id);
+    }
+    await ctx.db.patch(request._id, {
+      packetRevision: (request.packetRevision ?? 0) + 1,
+      updatedAt: now,
+      updatedByUserId: operator.userId,
+      ...(request.intakeSubmittedAt ? { intakeAmendedAt: now } : {}),
+    });
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: request.clientOrgId,
+      summary: `Removed ${item.label} from ${request.title}`,
+      metadata: {
+        domain: "procurement",
+        requestId: request._id,
+        fileItemId: item._id,
+        source: "operator",
+      },
+    });
+    return { updatedAt: now };
+  },
+});
 
 export const updateFileItem = mutation({
   args: {
@@ -1603,7 +1971,7 @@ export const resolveInboxInternal = internalQuery({
       .query("procurementRequests")
       .withIndex("inbox", (index) => index.eq("inboxToken", args.inboxToken))
       .unique();
-    if (!request) return null;
+    if (!request?.clientOrgId || request.deletedAt) return null;
     const client = await ctx.db.get(request.clientOrgId);
     return client?.type === "client" && client.deletedAt === undefined
       ? { request, client }

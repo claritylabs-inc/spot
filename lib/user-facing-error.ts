@@ -96,5 +96,12 @@ export function getUserFacingErrorMessage(error: unknown, fallback: string) {
 
   const message = normalizedErrorMessage(error);
   if (!message) return fallback;
+  if (
+    message.length > 600 ||
+    /ArgumentValidationError|(?:Type|Reference|Syntax)Error:|Object contains extra field|Validator:|fetch failed|ECONNREFUSED|\bServer Error\b/i.test(
+      message,
+    )
+  )
+    return fallback;
   return legacyPermissionMessage(message) ?? message;
 }

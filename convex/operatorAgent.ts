@@ -1,4 +1,14 @@
 import {
+  prepareApplicationToolUpdate,
+  updateApplicationByOperator,
+} from "./procurementRequests";
+import { readIntakeBusinessProfile } from "./lib/intakeApplication";
+import {
+  prepareBusinessProfileToolUpdate,
+  updateBusinessProfileByOperator,
+} from "./orgWiki";
+import { requireCompanyRequest } from "./lib/companyRequest";
+import {
   presentationReadBudget,
   schedulePresentation,
   visiblePresentation,
@@ -9,7 +19,10 @@ import { scheduleCompanyResearch } from "./companyResearch";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
-import { assertExternalBrokerIdentity, isSpotOwnedBrokerIdentity } from "./lib/brokerProfileValidation";
+import {
+  assertExternalBrokerIdentity,
+  isSpotOwnedBrokerIdentity,
+} from "./lib/brokerProfileValidation";
 import { v, type Infer } from "convex/values";
 import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
@@ -1634,6 +1647,9 @@ async function executeToolDomain(
       slug: organization.slug,
       website: organization.website,
       companyResearch: organization.companyResearch ?? null,
+      ...(organization.type === "client"
+        ? { businessProfile: await readIntakeBusinessProfile(ctx, orgId) }
+        : {}),
       ...(organization.type === "broker"
         ? { companyWiki: await readOrgWiki(ctx, orgId) }
         : {}),
@@ -1947,7 +1963,7 @@ async function executeToolDomain(
       input.procurementRequestId,
     );
     const request = await ctx.db.get(requestId);
-    if (!request) throw new Error("Procurement request not found");
+    requireCompanyRequest(request);
     const limit = typeof input.limit === "number" ? input.limit : 50;
     const threads = await listProcurementEmailThreads(ctx, {
       clientOrgId: request.clientOrgId,
@@ -2362,6 +2378,11 @@ async function executeToolDomain(
     });
   }
 
+  if (toolName === "update_procurement_application") {
+    const update = await prepareApplicationToolUpdate(ctx, input);
+    return await updateApplicationByOperator(ctx, args.operatorUserId, update);
+  }
+
   if (toolName === "update_procurement_request") {
     return await updateProcurementRequestByOperator(ctx, {
       operatorUserId: args.operatorUserId,
@@ -2647,6 +2668,12 @@ async function executeToolDomain(
         typeof input.clientVisible === "boolean"
           ? input.clientVisible
           : undefined,
+      documentCategory: input.documentCategory as
+        | "requirements"
+        | "policy"
+        | "loss_runs"
+        | "supporting"
+        | undefined,
       source: "agent",
     });
   }
@@ -2729,6 +2756,15 @@ async function executeToolDomain(
     });
   }
 
+  if (toolName === "update_client_business_profile") {
+    const update = await prepareBusinessProfileToolUpdate(ctx, input);
+    return await updateBusinessProfileByOperator(
+      ctx,
+      args.operatorUserId,
+      update,
+    );
+  }
+
   if (toolName === "update_organization_profile") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
@@ -2763,7 +2799,11 @@ async function executeToolDomain(
   if (toolName === "research_client" || toolName === "research_broker") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const org = await ctx.db.get(orgId);
-    if (!org || org.deletedAt !== undefined || org.type !== (toolName === "research_broker" ? "broker" : "client"))
+    if (
+      !org ||
+      org.deletedAt !== undefined ||
+      org.type !== (toolName === "research_broker" ? "broker" : "client")
+    )
       throw new Error("Research organization not found");
     if (org.type === "broker") assertExternalBrokerIdentity(org);
     const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });

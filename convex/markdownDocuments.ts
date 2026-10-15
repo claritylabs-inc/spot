@@ -1,3 +1,4 @@
+import { NoWriteInputError } from "./lib/noWriteInputError";
 import dayjs from "dayjs";
 import type { Infer } from "convex/values";
 import type { markdownDocumentKind } from "./lib/markdownDocumentSchema";
@@ -155,8 +156,9 @@ export async function saveMarkdownDocument(
   )
     throw new Error("Supplier company documents must remain private");
   if (args.expectedRevision !== (existing?.revision ?? 0))
-    throw new Error(
-      "This document changed. Reload it before saving your edits.",
+    throw new NoWriteInputError(
+      "document_revision_changed",
+      `This document changed (expected revision ${args.expectedRevision}, current ${existing?.revision ?? 0}). No write started. Read the latest document, merge your intended changes while preserving current content, then retry with the latest revision.`,
     );
   if (existing?.markdown === markdown && existing.filename === args.filename)
     return existing;

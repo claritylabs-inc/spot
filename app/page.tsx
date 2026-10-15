@@ -1,5 +1,6 @@
 "use client";
 
+import { RootLoading } from "@/components/root-loading";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentOrg } from "@/hooks/use-current-org";
@@ -11,12 +12,14 @@ export default function RootPage() {
     ? null
     : currentOrg.isBroker
       ? "/broker"
-      : "/policies";
+      : currentOrg.org.clientAccessStatus === "active"
+        ? "/requests"
+        : "/signup";
 
   useEffect(() => {
     if (!targetHref) return;
     router.replace(targetHref);
   }, [router, targetHref]);
 
-  return null;
+  return <RootLoading />;
 }

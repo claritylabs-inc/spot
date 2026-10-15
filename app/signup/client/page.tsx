@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AuthEntryPage } from "@/components/auth-entry-page";
+import { IntakeSignup } from "@/components/insurance-intake/signup";
 
 export const metadata: Metadata = {
   title: "Create a client account",
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function ClientSignupPage() {
-  return <AuthEntryPage mode="signup" role="client" />;
+  return <IntakeSignup />;
 }

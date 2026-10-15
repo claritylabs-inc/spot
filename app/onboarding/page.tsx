@@ -36,7 +36,7 @@ export default function OnboardingRoutePage() {
       return;
     }
 
-    router.replace(setupHref);
+    router.replace(source === "vendor-invite" ? setupHref : "/signup");
   }, [viewer, viewerOrg, router, searchParams]);
 
   return (

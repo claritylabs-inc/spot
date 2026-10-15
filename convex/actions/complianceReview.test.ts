@@ -1,4 +1,4 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import dayjs from "dayjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "../_generated/dataModel";
@@ -6,7 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "../lib/clRouterClient";
 import { recheckOwnRequirement } from "./complianceReview";
 
-vi.mock("@convex-dev/auth/server", () => ({ getAuthUserId: vi.fn() }));
+vi.mock("../lib/sessionIdentity", () => ({ getSessionUserId: vi.fn() }));
 vi.mock("../lib/clRouterClient", () => ({ clRouterDecide: vi.fn() }));
 
 const decide = vi.mocked(clRouterDecide);

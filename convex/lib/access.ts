@@ -4,7 +4,8 @@
 // Every public Convex function that takes an orgId calls getOrgAccess()
 // then one or more assertCan* helpers before touching any data.
 
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getAuthSessionId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./sessionIdentity";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Id, Doc } from "../_generated/dataModel";
 import {
@@ -49,6 +50,11 @@ function policyHasOrg(policy: Doc<"policies"> | null): policy is PolicyWithOrg {
 export async function requireAuth(ctx: Ctx): Promise<{ userId: Id<"users"> }> {
   const userId = await getAuthUserId(ctx);
   if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
+  const user = await ctx.db.get(userId);
+  if (user?.intakeRestricted) throwUserFacingError(userFacingErrorCodes.authRequired, "Confirm your email before accessing the workspace");
+  // A restricted session revoked at verification must never inherit new access.
+  const sessionId = await getAuthSessionId(ctx);
+  if (sessionId && ctx.db.normalizeId("authSessions", sessionId) && !(await ctx.db.get(sessionId))) throwUserFacingError(userFacingErrorCodes.authRequired);
   return { userId };
 }
 

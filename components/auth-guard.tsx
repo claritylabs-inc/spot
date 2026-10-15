@@ -1,5 +1,6 @@
 "use client";
 
+import { RootLoading } from "@/components/root-loading";
 import { useConvexAuth, useMutation } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -59,7 +60,7 @@ const PUBLIC_PATHS = [
   "/share/packet",
   "/connect/request",
 ];
-const AUTH_AGNOSTIC_PATHS: string[] = [];
+const AUTH_AGNOSTIC_PATHS: string[] = ["/intake"];
 const ONBOARDING_PATH = "/onboarding";
 const ADMIN_PATHS = ["/settings"];
 const OPERATOR_PATH = "/operator";
@@ -457,6 +458,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   // account, onboarding, invitation, or impersonation redirects.
   if (isAuthAgnostic) return <>{children}</>;
 
+  const rootRedirectLoading = pathname === "/" ? <RootLoading /> : null;
+
   // Loading state - cached boot state can choose the correct skeleton, but
   // protected children wait for the current Convex viewer/org checks.
   if (
@@ -467,7 +470,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       operatorContext === undefined) ||
     (isAuthenticated && pendingInvitation && !inviteAcceptError)
   ) {
-    if (isPublic) return null;
+    if (pathname === "/") return <RootLoading />;
+    if (isPublic) return rootRedirectLoading;
 
     if (shouldShowOperatorLoading) {
       return <OperatorLoading pathname={pathname} />;
@@ -486,7 +490,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated && !isPublic) {
-    return null;
+    return rootRedirectLoading;
   }
 
   if (
@@ -511,7 +515,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     !operatorContext?.activeImpersonation &&
     !impersonationStopReturnHref
   ) {
-    return null;
+    return rootRedirectLoading;
   }
 
   if (
@@ -521,7 +525,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     !isBrokerPortalPath &&
     !isPublic
   ) {
-    return null;
+    return rootRedirectLoading;
   }
 
   if (
@@ -530,7 +534,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     !isOperatorLogin &&
     viewer?.accountKind !== "operator"
   ) {
-    return null;
+    return rootRedirectLoading;
   }
 
   // Waiting for redirect to onboarding
@@ -542,12 +546,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     !isOnboarding &&
     !isPublic
   ) {
-    return null;
+    return rootRedirectLoading;
   }
 
   // Waiting for redirect away from onboarding
   if (isAuthenticated && viewer && viewer.onboardingComplete && isOnboarding) {
-    return null;
+    return rootRedirectLoading;
   }
 
   // Waiting for redirect away from admin paths
@@ -556,7 +560,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     viewerOrg !== undefined &&
     (!viewerOrg || viewerOrg.membership.role !== "admin")
   ) {
-    return null;
+    return rootRedirectLoading;
   }
 
   return <>{children}</>;

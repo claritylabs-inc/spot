@@ -1,3 +1,8 @@
+import {
+  applicationMarkdownBlock,
+  submittedIntakeApplication,
+} from "../lib/intake-application";
+import { requireCompanyRequest } from "./lib/companyRequest";
 import { readPacketProjection } from "./lib/packetDocuments";
 import dayjs from "dayjs";
 import { v } from "convex/values";
@@ -72,10 +77,12 @@ async function requireVisibleRequest(
   const request = await ctx.db.get(requestId);
   if (
     !request ||
+    request.deletedAt ||
     request.clientOrgId !== access.orgId ||
     !request.clientVisible
   )
     throw new Error("Request not found");
+  requireCompanyRequest(request);
   return { access, request };
 }
 
@@ -108,17 +115,30 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
         };
       }),
   );
+  const markdown = assemblePacketMarkdown(packetSections, {
+    audience: "client",
+  });
+  const accepted = submittedIntakeApplication(request);
+  const block = accepted ? applicationMarkdownBlock(accepted) : null;
+  const application =
+    accepted && block && markdown.includes(block)
+      ? { ...accepted, files: [] }
+      : null;
   return {
     _id: request._id,
+    application,
     title: request.title,
     completionOutcome: request.completionOutcome,
     packet: {
-      markdown: assemblePacketMarkdown(packetSections, { audience: "client" }),
+      markdown:
+        application && block ? markdown.replace(block, "").trim() : markdown,
     },
     status: clientStatus(request.status),
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
     targetEffectiveDate: request.targetEffectiveDate,
+    intakeDraft:
+      request.intakeSchemaVersion !== undefined && !request.intakeSubmittedAt,
     resultingPolicy:
       resultingPolicy && !resultingPolicy.deletedAt
         ? {
@@ -134,7 +154,8 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const access = await requireClientMembership(ctx);
+    const access = await getCurrentOrgAccess(ctx);
+    if (!access || access.orgType !== "client") return [];
     const rows = await ctx.db
       .query("procurementRequests")
       .withIndex("organization", (q) => q.eq("clientOrgId", access.orgId))
@@ -142,7 +163,7 @@ export const list = query({
       .collect();
     return await Promise.all(
       rows
-        .filter((row) => row.clientVisible)
+        .filter((row) => !row.deletedAt && row.clientVisible)
         .map((row) => requestDto(ctx, row)),
     );
   },
@@ -163,7 +184,11 @@ export const listForAgentInternal = internalQuery({
         continue;
       if (args.requestId) {
         const request = await ctx.db.get(args.requestId);
-        if (request?.clientOrgId === orgId && request.clientVisible)
+        if (
+          request?.clientOrgId === orgId &&
+          !request.deletedAt &&
+          request.clientVisible
+        )
           visible.push(request);
       } else {
         const requests = await ctx.db
@@ -171,6 +196,7 @@ export const listForAgentInternal = internalQuery({
           .withIndex("organization_visibility", (q) =>
             q.eq("clientOrgId", orgId).eq("clientVisible", true),
           )
+          .filter((q) => q.eq(q.field("deletedAt"), undefined))
           .order("desc")
           .take(limit - visible.length);
         visible.push(...requests);
@@ -314,6 +340,7 @@ export const attachFile = mutation({
       clientFileId,
       label: fileName,
       clientVisible: true,
+      brokerRelease: "attached",
       createdByUserId: access.userId,
       updatedByUserId: access.userId,
       createdAt,

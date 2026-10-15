@@ -1,7 +1,14 @@
 "use client";
+import { RemoveButton } from "@/components/ui/remove-button";
 
 import type { FormEvent, KeyboardEvent, ReactNode, Ref } from "react";
-import { useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import type { FunctionReference } from "convex/server";
@@ -52,7 +59,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@claritylabs-inc/ui/components/tabs";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -72,7 +83,10 @@ import {
 import { lobLabel } from "@/convex/lib/linesOfBusiness";
 import { useActiveOrgContext } from "@/lib/hooks/use-active-org-context";
 import { useCachedConnectedVendors } from "@/lib/sync/spot-cached-queries";
-import { useCachedQuery, useUpdateCachedQuery } from "@/lib/sync/use-cached-query";
+import {
+  useCachedQuery,
+  useUpdateCachedQuery,
+} from "@/lib/sync/use-cached-query";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
@@ -84,14 +98,27 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 
 type RequirementScope = "vendors" | "own_org";
-type ComplianceStatus = "met" | "not_met" | "expiring_soon" | "expired" | "unverified";
+type ComplianceStatus =
+  | "met"
+  | "not_met"
+  | "expiring_soon"
+  | "expired"
+  | "unverified";
 type SourceFilter = "all" | "internal" | `source:${string}`;
 type LineFilter = "all" | `line:${string}`;
-type LimitFilter = "all" | "deductible" | "forms" | "provisions" | `limit:${string}`;
+type LimitFilter =
+  | "all"
+  | "deductible"
+  | "forms"
+  | "provisions"
+  | `limit:${string}`;
 type StatusFilter = "all" | ComplianceStatus | "defined";
 type ComplianceView = "overview" | "requirements" | "sources" | "certificates";
 type RequirementKind = "coverage" | "insurer" | "condition";
-type RequirementSourceDocumentType = Exclude<RequirementSourceType, "manual" | "bulk_import">;
+type RequirementSourceDocumentType = Exclude<
+  RequirementSourceType,
+  "manual" | "bulk_import"
+>;
 
 const emptySourceDetails = {
   holderName: "",
@@ -169,7 +196,19 @@ type ComplianceApi = {
 
 const complianceApi = api as unknown as ComplianceApi;
 
-const COMMON_LOBS = ["CGL", "AUTOB", "WORK", "UMBRC", "EXLIA", "EO", "PROP", "BOP", "CRIM", "EPLI", "CYBER"] as const;
+const COMMON_LOBS = [
+  "CGL",
+  "AUTOB",
+  "WORK",
+  "UMBRC",
+  "EXLIA",
+  "EO",
+  "PROP",
+  "BOP",
+  "CRIM",
+  "EPLI",
+  "CYBER",
+] as const;
 
 const LIMIT_KIND_OPTIONS: RequirementLimitKind[] = [...REQUIREMENT_LIMIT_KINDS];
 
@@ -311,14 +350,20 @@ function formatMoneyCompact(value: number) {
 
 function parseMoneyInput(value: string) {
   const normalized = value.replace(/[$,\s]/g, "");
-  const multiplier = /m$/i.test(normalized) ? 1_000_000 : /k$/i.test(normalized) ? 1_000 : 1;
+  const multiplier = /m$/i.test(normalized)
+    ? 1_000_000
+    : /k$/i.test(normalized)
+      ? 1_000
+      : 1;
   const amount = Number(normalized.replace(/[mk]$/i, "")) * multiplier;
   return Number.isFinite(amount) && amount >= 0 ? amount : undefined;
 }
 
 function limitKindLabel(kind: string) {
   return (
-    REQUIREMENT_LIMIT_KIND_LABELS[kind as keyof typeof REQUIREMENT_LIMIT_KIND_LABELS] ?? kind
+    REQUIREMENT_LIMIT_KIND_LABELS[
+      kind as keyof typeof REQUIREMENT_LIMIT_KIND_LABELS
+    ] ?? kind
   );
 }
 
@@ -330,8 +375,9 @@ function asRequirementLimitKind(kind: string): RequirementLimitKind {
 
 function provisionLabel(provision: string) {
   return (
-    REQUIREMENT_PROVISION_LABELS[provision as keyof typeof REQUIREMENT_PROVISION_LABELS] ??
-    provision
+    REQUIREMENT_PROVISION_LABELS[
+      provision as keyof typeof REQUIREMENT_PROVISION_LABELS
+    ] ?? provision
   );
 }
 
@@ -378,7 +424,9 @@ function limitFilterValue(kind: string): LimitFilter {
 }
 
 function requirementLimitFilters(requirement: Requirement): LimitFilter[] {
-  const filters = (requirement.limits ?? []).map((limit) => limitFilterValue(limit.kind));
+  const filters = (requirement.limits ?? []).map((limit) =>
+    limitFilterValue(limit.kind),
+  );
   if (requirement.maxDeductible) filters.push("deductible");
   if ((requirement.requiredForms ?? []).length > 0) filters.push("forms");
   if ((requirement.provisions ?? []).length > 0) filters.push("provisions");
@@ -405,14 +453,20 @@ function ComplianceFilterLabel({ value }: { value: StatusFilter }) {
 
 function pageLabel(requirement: Requirement) {
   if (!requirement.sourcePageStart) return undefined;
-  if (requirement.sourcePageEnd && requirement.sourcePageEnd !== requirement.sourcePageStart) {
+  if (
+    requirement.sourcePageEnd &&
+    requirement.sourcePageEnd !== requirement.sourcePageStart
+  ) {
     return `pp. ${requirement.sourcePageStart}-${requirement.sourcePageEnd}`;
   }
   return `p. ${requirement.sourcePageStart}`;
 }
 
 function requirementSourceLine(requirement: Requirement) {
-  return [requirementSourcePrimary(requirement), requirementSourceSecondary(requirement)]
+  return [
+    requirementSourcePrimary(requirement),
+    requirementSourceSecondary(requirement),
+  ]
     .filter(Boolean)
     .join(" · ");
 }
@@ -433,7 +487,9 @@ function requirementSourceSecondary(requirement: Requirement) {
     return "";
   }
   return [
-    requirement.sourceDocumentName ? REQUIREMENT_SOURCE_TYPE_LABELS[sourceType(requirement)] : undefined,
+    requirement.sourceDocumentName
+      ? REQUIREMENT_SOURCE_TYPE_LABELS[sourceType(requirement)]
+      : undefined,
     requirement.clientRequirementSource?.clientOrg
       ? `Required by ${requirement.clientRequirementSource.clientOrg.name}`
       : undefined,
@@ -445,7 +501,8 @@ function requirementSourceSecondary(requirement: Requirement) {
 
 function requirementTableSourceSecondary(requirement: Requirement) {
   return [
-    requirement.sourceDocumentName && requirement.clientRequirementSource?.clientOrg
+    requirement.sourceDocumentName &&
+    requirement.clientRequirementSource?.clientOrg
       ? `Required by ${requirement.clientRequirementSource.clientOrg.name}`
       : undefined,
     pageLabel(requirement),
@@ -487,11 +544,7 @@ function statusMeta(status?: ComplianceStatus) {
 
 function ComplianceStatusTag({ status }: { status?: ComplianceStatus }) {
   const meta = statusMeta(status);
-  return (
-    <StatusTag tone={meta.tone}>
-      {meta.label}
-    </StatusTag>
-  );
+  return <StatusTag tone={meta.tone}>{meta.label}</StatusTag>;
 }
 
 function needsAttention(status?: ComplianceStatus) {
@@ -517,7 +570,9 @@ function PolicyTagList({
   emptyLabel?: string;
 }) {
   if (policyIds.length === 0) {
-    return emptyLabel ? <span className="text-muted-foreground">{emptyLabel}</span> : null;
+    return emptyLabel ? (
+      <span className="text-muted-foreground">{emptyLabel}</span>
+    ) : null;
   }
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -525,7 +580,10 @@ function PolicyTagList({
         <PolicyCitation key={policyId} id={policyId} />
       ))}
       {policyIds.length > 3 ? (
-        <Badge variant="outline" className={`h-5 rounded-full px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}>
+        <Badge
+          variant="outline"
+          className={`h-5 rounded-full px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
+        >
           +{policyIds.length - 3}
         </Badge>
       ) : null}
@@ -536,10 +594,12 @@ function PolicyTagList({
 function EmptyState() {
   return (
     <OperationalPanel as="div" className="p-5">
-      <p className={`text-foreground ${typeStyle("body.medium")}`}>No coverage requirements yet</p>
+      <p className={`text-foreground ${typeStyle("body.medium")}`}>
+        No coverage requirements yet
+      </p>
       <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-        Add coverage rules manually or extract them from a lease, client contract, or vendor
-        requirement packet.
+        Add coverage rules manually or extract them from a lease, client
+        contract, or vendor requirement packet.
       </p>
     </OperationalPanel>
   );
@@ -568,7 +628,9 @@ function OverviewTab({
   requirements: Requirement[];
   onOpenRequirements: (lineOfBusiness: string) => void;
 }) {
-  const checked = requirements.filter((requirement) => requirement.complianceCheck);
+  const checked = requirements.filter(
+    (requirement) => requirement.complianceCheck,
+  );
   const lobGroups = new Map<string, Requirement[]>();
   for (const requirement of checked) {
     const key = requirement.lineOfBusiness ?? "UN";
@@ -587,11 +649,12 @@ function OverviewTab({
           const groupMet = rows.filter(
             (requirement) => requirement.complianceCheck?.status === "met",
           ).length;
-          const groupAttention = rows.filter(
-            (requirement) => needsAttention(requirement.complianceCheck?.status),
+          const groupAttention = rows.filter((requirement) =>
+            needsAttention(requirement.complianceCheck?.status),
           ).length;
           const groupExpiring = rows.filter(
-            (requirement) => requirement.complianceCheck?.status === "expiring_soon",
+            (requirement) =>
+              requirement.complianceCheck?.status === "expiring_soon",
           ).length;
           return (
             <ActionSurface
@@ -599,11 +662,15 @@ function OverviewTab({
               role="button"
               tabIndex={0}
               onClick={() => onOpenRequirements(lob)}
-              onKeyDown={(event) => openOnKeyboard(event, () => onOpenRequirements(lob))}
+              onKeyDown={(event) =>
+                openOnKeyboard(event, () => onOpenRequirements(lob))
+              }
               className="cursor-pointer px-4 py-3"
             >
               <div className="flex min-w-0 items-start justify-between gap-3">
-                <p className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}>
+                <p
+                  className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
+                >
                   {lineDisplayLabel(lob)}
                 </p>
                 {groupAttention > 0 ? (
@@ -620,13 +687,17 @@ function OverviewTab({
                   </StatusTag>
                 )}
               </div>
-              <p className={`mt-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+              <p
+                className={`mt-2 text-muted-foreground ${typeStyle("caption.default")}`}
+              >
                 {groupMet} of {rows.length} requirements met
               </p>
               <div className="mt-3">
                 <ComplianceMeter met={groupMet} total={rows.length} />
               </div>
-              <div className={`mt-1.5 flex items-center justify-between text-muted-foreground ${typeStyle("caption.default")}`}>
+              <div
+                className={`mt-1.5 flex items-center justify-between text-muted-foreground ${typeStyle("caption.default")}`}
+              >
                 <span>{groupMet} met</span>
                 <span>{rows.length} total</span>
               </div>
@@ -646,7 +717,9 @@ function RequirementsTable({
   onSelect: (requirementId: Id<"insuranceRequirements">) => void;
 }) {
   const sorted = [...requirements].sort((a, b) => {
-    const lobCompare = (a.lineOfBusiness ?? "ZZ").localeCompare(b.lineOfBusiness ?? "ZZ");
+    const lobCompare = (a.lineOfBusiness ?? "ZZ").localeCompare(
+      b.lineOfBusiness ?? "ZZ",
+    );
     return lobCompare !== 0 ? lobCompare : a.title.localeCompare(b.title);
   });
   return (
@@ -664,35 +737,58 @@ function RequirementsTable({
         <TableBody>
           {sorted.map((requirement) => {
             const limits = requirement.limits ?? [];
-            const sourceSecondary = requirementTableSourceSecondary(requirement);
+            const sourceSecondary =
+              requirementTableSourceSecondary(requirement);
             return (
               <TableRow
                 key={requirement._id}
                 className="cursor-pointer"
                 onClick={() => onSelect(requirement._id)}
                 tabIndex={0}
-                onKeyDown={(event) => openOnKeyboard(event, () => onSelect(requirement._id))}
+                onKeyDown={(event) =>
+                  openOnKeyboard(event, () => onSelect(requirement._id))
+                }
               >
-                <TableCell className={`text-foreground ${typeStyle("body.medium")}`}>
+                <TableCell
+                  className={`text-foreground ${typeStyle("body.medium")}`}
+                >
                   {lineDisplayLabel(requirement.lineOfBusiness)}
                 </TableCell>
                 <TableCell>
-                  <p className="text-foreground">{requirementSourcePrimary(requirement)}</p>
+                  <p className="text-foreground">
+                    {requirementSourcePrimary(requirement)}
+                  </p>
                   {sourceSecondary ? (
-                    <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>{sourceSecondary}</p>
+                    <p
+                      className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                    >
+                      {sourceSecondary}
+                    </p>
                   ) : null}
                 </TableCell>
-                <TableCell className={`text-foreground ${typeStyle("data.numeric")}`}>
+                <TableCell
+                  className={`text-foreground ${typeStyle("data.numeric")}`}
+                >
                   {limits.length > 0
                     ? limits.map((limit, index) => (
-                        <p key={index} className={`${typeStyle("body.default")}`}>{formatMoneyCompact(limit.amount)}</p>
+                        <p
+                          key={index}
+                          className={`${typeStyle("body.default")}`}
+                        >
+                          {formatMoneyCompact(limit.amount)}
+                        </p>
                       ))
                     : "—"}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {limits.length > 0
                     ? limits.map((limit, index) => (
-                        <p key={index} className={`${typeStyle("body.default")}`}>{limitKindLabel(limit.kind)}</p>
+                        <p
+                          key={index}
+                          className={`${typeStyle("body.default")}`}
+                        >
+                          {limitKindLabel(limit.kind)}
+                        </p>
                       ))
                     : (requirement.provisions ?? []).length > 0
                       ? "Provisions"
@@ -700,7 +796,9 @@ function RequirementsTable({
                 </TableCell>
                 <TableCell>
                   {requirement.complianceCheck ? (
-                    <ComplianceStatusTag status={requirement.complianceCheck.status} />
+                    <ComplianceStatusTag
+                      status={requirement.complianceCheck.status}
+                    />
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -728,9 +826,14 @@ function RequirementsFilterSelect({
   children: ReactNode;
 }) {
   return (
-    <label className={`flex min-w-0 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+    <label
+      className={`flex min-w-0 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+    >
       {label}
-      <Select value={value} onValueChange={(next) => next && onValueChange(next)}>
+      <Select
+        value={value}
+        onValueChange={(next) => next && onValueChange(next)}
+      >
         <SelectTrigger className="w-full">
           <SelectValue>{valueLabel}</SelectValue>
         </SelectTrigger>
@@ -742,7 +845,9 @@ function RequirementsFilterSelect({
 
 function DrawerDetail({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className={`grid grid-cols-[10rem_1fr] gap-3 ${typeStyle("body.default")}`}>
+    <div
+      className={`grid grid-cols-[10rem_1fr] gap-3 ${typeStyle("body.default")}`}
+    >
       <span className="text-muted-foreground">{label}</span>
       <div className="min-w-0 break-words text-foreground">{value}</div>
     </div>
@@ -759,7 +864,8 @@ function latestCheckNote(check: Requirement["complianceCheck"]) {
   if (!note) return undefined;
   if (policy) {
     const matchedSummary = `Matched ${policy.carrier ?? "policy"} ${policy.policyNumber ?? ""}`;
-    if (normalizeCheckNote(note) === normalizeCheckNote(matchedSummary)) return undefined;
+    if (normalizeCheckNote(note) === normalizeCheckNote(matchedSummary))
+      return undefined;
   }
   return note;
 }
@@ -781,7 +887,10 @@ function RequirementDrawer({
   writeRestriction: string | null;
   onDeepCheck: (requirement: Requirement) => void;
   onGenerate: (requirement: Requirement) => void;
-  onSave: (requirement: Requirement, values: RequirementEditValues) => Promise<void>;
+  onSave: (
+    requirement: Requirement,
+    values: RequirementEditValues,
+  ) => Promise<void>;
   onArchive: (requirementId: Id<"insuranceRequirements">) => void;
   onClose: () => void;
 }) {
@@ -797,15 +906,19 @@ function RequirementDrawer({
     check &&
     check.status !== "met";
   const canDeepCheck = canManage && deepCheckAvailableForRequirement;
-  const detectedLimit = policy?.coverageLimit ?? formatMoney(policy?.detectedLimitAmount);
+  const detectedLimit =
+    policy?.coverageLimit ?? formatMoney(policy?.detectedLimitAmount);
   return (
     <SettingsDrawer
       open
       onOpenChange={async (open) => {
-        if (!open && (!editRef.current || await editRef.current.save())) onClose();
+        if (!open && (!editRef.current || (await editRef.current.save())))
+          onClose();
       }}
       title={requirement.title}
-      actions={check ? <ComplianceStatusTag status={check.status} /> : undefined}
+      actions={
+        check ? <ComplianceStatusTag status={check.status} /> : undefined
+      }
       footer={
         <>
           {canManage && requirement.canArchive !== false ? (
@@ -839,7 +952,11 @@ function RequirementDrawer({
             )
           ) : null}
           {canDeepCheck ? (
-            <PillButton type="button" disabled={checking} onClick={() => onDeepCheck(requirement)}>
+            <PillButton
+              type="button"
+              disabled={checking}
+              onClick={() => onDeepCheck(requirement)}
+            >
               {checking
                 ? "Checking…"
                 : check?.checkedBy === "agent"
@@ -847,7 +964,9 @@ function RequirementDrawer({
                   : "Run deeper check"}
             </PillButton>
           ) : deepCheckAvailableForRequirement && writeRestriction ? (
-            <p className={`max-w-72 text-right text-muted-foreground ${typeStyle("caption.default")}`}>
+            <p
+              className={`max-w-72 text-right text-muted-foreground ${typeStyle("caption.default")}`}
+            >
               {writeRestriction}
             </p>
           ) : null}
@@ -862,15 +981,21 @@ function RequirementDrawer({
     >
       <div className="space-y-5">
         {confirmArchive ? (
-          <OperationalPanel as="div" className="border-destructive/20 bg-destructive/5 p-4">
+          <OperationalPanel
+            as="div"
+            className="border-destructive/20 bg-destructive/5 p-4"
+          >
             <div className="flex items-start gap-3">
               <TriangleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
               <div>
                 <p className={`text-foreground ${typeStyle("body.medium")}`}>
                   Archive this requirement?
                 </p>
-                <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-                  It will disappear from active compliance and certificate planning.
+                <p
+                  className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
+                >
+                  It will disappear from active compliance and certificate
+                  planning.
                 </p>
               </div>
             </div>
@@ -885,10 +1010,15 @@ function RequirementDrawer({
           />
         ) : (
           <>
-            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{requirement.requirementText}</p>
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              {requirement.requirementText}
+            </p>
             <section className="space-y-2 border-t border-border pt-5">
               {requirement.lineOfBusiness ? (
-                <DrawerDetail label="Line" value={lineDisplayLabel(requirement.lineOfBusiness)} />
+                <DrawerDetail
+                  label="Line"
+                  value={lineDisplayLabel(requirement.lineOfBusiness)}
+                />
               ) : null}
               {(requirement.limits ?? []).map((limit, index) => (
                 <DrawerDetail
@@ -906,35 +1036,54 @@ function RequirementDrawer({
               {requirement.coverageForm ? (
                 <DrawerDetail
                   label="Coverage form"
-                  value={requirement.coverageForm === "claims_made" ? "Claims-made" : "Occurrence"}
+                  value={
+                    requirement.coverageForm === "claims_made"
+                      ? "Claims-made"
+                      : "Occurrence"
+                  }
                 />
               ) : null}
               {(requirement.provisions ?? []).length > 0 ? (
                 <DrawerDetail
                   label="Provisions"
-                  value={(requirement.provisions ?? []).map(provisionLabel).join(", ")}
+                  value={(requirement.provisions ?? [])
+                    .map(provisionLabel)
+                    .join(", ")}
                 />
               ) : null}
               {(requirement.requiredForms ?? []).length > 0 ? (
-                <DrawerDetail label="Required forms" value={(requirement.requiredForms ?? []).join(", ")} />
+                <DrawerDetail
+                  label="Required forms"
+                  value={(requirement.requiredForms ?? []).join(", ")}
+                />
               ) : null}
-              <DrawerDetail label="Source" value={requirementSourceLine(requirement)} />
+              <DrawerDetail
+                label="Source"
+                value={requirementSourceLine(requirement)}
+              />
             </section>
           </>
         )}
         {check ? (
           <section className="space-y-2 border-t border-border pt-5">
-            <p className={`text-muted-foreground/60 ${typeStyle("body.medium")}`}>
+            <p
+              className={`text-muted-foreground/60 ${typeStyle("body.medium")}`}
+            >
               Latest check
             </p>
             {policy || policyIds.length > 0 ? (
               <>
                 {policyIds.length > 0 ? (
-                  <DrawerDetail label="Matched policy" value={<PolicyTagList policyIds={policyIds} />} />
+                  <DrawerDetail
+                    label="Matched policy"
+                    value={<PolicyTagList policyIds={policyIds} />}
+                  />
                 ) : policy ? (
                   <DrawerDetail
                     label="Matched policy"
-                    value={[policy.carrier, policy.policyNumber].filter(Boolean).join(" · ")}
+                    value={[policy.carrier, policy.policyNumber]
+                      .filter(Boolean)
+                      .join(" · ")}
                   />
                 ) : null}
                 {policy?.coverageName ? (
@@ -954,10 +1103,18 @@ function RequirementDrawer({
                 ) : null}
               </>
             ) : (
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>No current policy match.</p>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
+                No current policy match.
+              </p>
             )}
             {checkNote ? (
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{checkNote}</p>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
+                {checkNote}
+              </p>
             ) : null}
           </section>
         ) : null}
@@ -1021,9 +1178,12 @@ function limitDraftsForRequirement(requirement: Requirement): LimitDraft[] {
   }));
 }
 
-function provisionsForRequirement(requirement: Requirement): RequirementProvision[] {
-  return (requirement.provisions ?? []).filter((provision): provision is RequirementProvision =>
-    (PROVISION_OPTIONS as readonly string[]).includes(provision),
+function provisionsForRequirement(
+  requirement: Requirement,
+): RequirementProvision[] {
+  return (requirement.provisions ?? []).filter(
+    (provision): provision is RequirementProvision =>
+      (PROVISION_OPTIONS as readonly string[]).includes(provision),
   );
 }
 
@@ -1067,14 +1227,18 @@ export function RequirementEditForm({
 }) {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [title, setTitle] = useState(requirement.title);
-  const [lineOfBusiness, setLineOfBusiness] = useState(requirement.lineOfBusiness ?? "CGL");
+  const [lineOfBusiness, setLineOfBusiness] = useState(
+    requirement.lineOfBusiness ?? "CGL",
+  );
   const [limitDrafts, setLimitDrafts] = useState<LimitDraft[]>(() =>
     limitDraftsForRequirement(requirement),
   );
   const [provisions, setProvisions] = useState<RequirementProvision[]>(() =>
     provisionsForRequirement(requirement),
   );
-  const [requirementText, setRequirementText] = useState(requirement.requirementText);
+  const [requirementText, setRequirementText] = useState(
+    requirement.requirementText,
+  );
   const [textFieldFocused, setTextFieldFocused] = useState(false);
   const editValues = requirementEditValuesFromDrafts({
     title,
@@ -1100,20 +1264,22 @@ export function RequirementEditForm({
     },
     valueKey: editValueKey,
     resetKey: requirement._id,
-    canSave:
-      !!validEditValues?.title &&
-      !!validEditValues.requirementText,
+    canSave: !!validEditValues?.title && !!validEditValues.requirementText,
     autoSave: !textFieldFocused,
     delayMs: 0,
     flush: onSave,
     errorMessage: "The requirement could not be saved.",
   });
 
-  useImperativeHandle(ref, () => ({ save: autoSave.saveNow }), [autoSave.saveNow]);
+  useImperativeHandle(ref, () => ({ save: autoSave.saveNow }), [
+    autoSave.saveNow,
+  ]);
 
   return (
     <div className="space-y-3">
-      <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+      <label
+        className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+      >
         Title
         <Input
           value={title}
@@ -1125,9 +1291,13 @@ export function RequirementEditForm({
           }}
           required
         />
-        {!title.trim() ? <span className="text-destructive">Title is required.</span> : null}
+        {!title.trim() ? (
+          <span className="text-destructive">Title is required.</span>
+        ) : null}
       </label>
-      <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+      <label
+        className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+      >
         Line
         <Select
           value={lineOfBusiness}
@@ -1141,7 +1311,9 @@ export function RequirementEditForm({
           </SelectTrigger>
           <SelectContent>
             {COMMON_LOBS.map((code) => (
-              <SelectItem key={code} value={code}>{lobLabel(code)}</SelectItem>
+              <SelectItem key={code} value={code}>
+                {lobLabel(code)}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1169,7 +1341,9 @@ export function RequirementEditForm({
         }
       >
         {editValues === "invalid_amount" ? (
-          <p className={`text-destructive ${typeStyle("caption.default")}`}>Enter a valid limit amount.</p>
+          <p className={`text-destructive ${typeStyle("caption.default")}`}>
+            Enter a valid limit amount.
+          </p>
         ) : null}
         {limitDrafts.length === 0 ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
@@ -1198,7 +1372,9 @@ export function RequirementEditForm({
                     className="w-full min-w-0"
                     aria-label="Limit type"
                   >
-                    <SelectValue>{REQUIREMENT_LIMIT_KIND_LABELS[draft.kind]}</SelectValue>
+                    <SelectValue>
+                      {REQUIREMENT_LIMIT_KIND_LABELS[draft.kind]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {LIMIT_KIND_OPTIONS.map((option) => (
@@ -1227,17 +1403,16 @@ export function RequirementEditForm({
                   placeholder="$1,000,000"
                   aria-label="Limit amount"
                 />
-                <PillButton
+                <RemoveButton
                   type="button"
-                  variant="icon"
                   onClick={() => {
-                    const next = limitDrafts.filter((item) => item.id !== draft.id);
+                    const next = limitDrafts.filter(
+                      (item) => item.id !== draft.id,
+                    );
                     setLimitDrafts(next);
                   }}
                   label="Remove limit"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </PillButton>
+                />
               </div>
             ))}
           </div>
@@ -1261,7 +1436,9 @@ export function RequirementEditForm({
           </PillButton>
         ))}
       </div>
-      <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+      <label
+        className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+      >
         Requirement
         <Textarea
           className="min-h-28 resize-y"
@@ -1276,7 +1453,9 @@ export function RequirementEditForm({
           required
         />
         {!requirementText.trim() ? (
-          <span className="text-destructive">Requirement text is required.</span>
+          <span className="text-destructive">
+            Requirement text is required.
+          </span>
         ) : null}
       </label>
       <AutoSaveStatus status={autoSave.status} />
@@ -1284,7 +1463,9 @@ export function RequirementEditForm({
         <div className="flex items-center justify-end gap-3">
           {confirmArchive ? (
             <>
-              <span className={`mr-auto text-muted-foreground ${typeStyle("caption.default")}`}>
+              <span
+                className={`mr-auto text-muted-foreground ${typeStyle("caption.default")}`}
+              >
                 Remove this requirement from active compliance?
               </span>
               <PillButton
@@ -1326,12 +1507,17 @@ function requirementDrawerSummary(requirement: Requirement) {
   const limitSummary =
     limits.length > 0
       ? limits
-          .map((limit) => `${limitKindLabel(limit.kind)} ${formatMoneyCompact(limit.amount)}`)
+          .map(
+            (limit) =>
+              `${limitKindLabel(limit.kind)} ${formatMoneyCompact(limit.amount)}`,
+          )
           .join(", ")
       : (requirement.provisions ?? []).length > 0
         ? (requirement.provisions ?? []).map(provisionLabel).join(", ")
         : "No limit";
-  return [lineDisplayLabel(requirement.lineOfBusiness), limitSummary].join(" · ");
+  return [lineDisplayLabel(requirement.lineOfBusiness), limitSummary].join(
+    " · ",
+  );
 }
 
 function SourceDrawer({
@@ -1355,35 +1541,53 @@ function SourceDrawer({
   archiving: boolean;
   canManage: boolean;
   writeRestriction: string | null;
-  onUpdateSource: (source: RequirementSource, patch: SourceUpdatePatch) => Promise<void>;
+  onUpdateSource: (
+    source: RequirementSource,
+    patch: SourceUpdatePatch,
+  ) => Promise<void>;
   onSaveRequirement: (
     requirement: Requirement,
     values: RequirementEditValues,
   ) => Promise<void>;
-  onArchiveRequirement: (requirementId: Id<"insuranceRequirements">) => Promise<void>;
-  onArchiveSource: (sourceId: Id<"requirementSourceDocuments">) => Promise<boolean>;
+  onArchiveRequirement: (
+    requirementId: Id<"insuranceRequirements">,
+  ) => Promise<void>;
+  onArchiveSource: (
+    sourceId: Id<"requirementSourceDocuments">,
+  ) => Promise<boolean>;
   onGenerate: (source: RequirementSource) => void;
   onViewCertificate: (url: string) => void;
   onClose: () => void;
 }) {
   const [titleDraft, setTitleDraft] = useState(source.title);
-  const [sourceTypeDraft, setSourceTypeDraft] = useState<RequirementSourceDocumentType>(
-    source.sourceType,
-  );
+  const [sourceTypeDraft, setSourceTypeDraft] =
+    useState<RequirementSourceDocumentType>(source.sourceType);
   const [titleFocused, setTitleFocused] = useState(false);
-  const [holderName, setHolderName] = useState(source.holder?.displayName ?? "");
-  const [holderContactName, setHolderContactName] = useState(source.holder?.contactName ?? "");
+  const [holderName, setHolderName] = useState(
+    source.holder?.displayName ?? "",
+  );
+  const [holderContactName, setHolderContactName] = useState(
+    source.holder?.contactName ?? "",
+  );
   const [holderEmail, setHolderEmail] = useState(source.holder?.email ?? "");
   const [holderPhone, setHolderPhone] = useState(source.holder?.phone ?? "");
-  const [addressLine1, setAddressLine1] = useState(source.holder?.address?.line1 ?? "");
-  const [addressLine2, setAddressLine2] = useState(source.holder?.address?.line2 ?? "");
+  const [addressLine1, setAddressLine1] = useState(
+    source.holder?.address?.line1 ?? "",
+  );
+  const [addressLine2, setAddressLine2] = useState(
+    source.holder?.address?.line2 ?? "",
+  );
   const [city, setCity] = useState(source.holder?.address?.city ?? "");
   const [state, setState] = useState(source.holder?.address?.state ?? "");
-  const [postalCode, setPostalCode] = useState(source.holder?.address?.postalCode ?? "");
+  const [postalCode, setPostalCode] = useState(
+    source.holder?.address?.postalCode ?? "",
+  );
   const [country, setCountry] = useState(source.holder?.address?.country ?? "");
   const [dealName, setDealName] = useState(source.dealName ?? "");
   const [dealType, setDealType] = useState(source.dealType ?? "");
-  const [internalNotes, setInternalNotes] = useState(source.internalNotes ?? "");
+  const [internalNotes, setInternalNotes] = useState(
+    source.internalNotes ?? "",
+  );
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [expandedRequirementId, setExpandedRequirementId] =
     useState<Id<"insuranceRequirements"> | null>(null);
@@ -1403,27 +1607,39 @@ function SourceDrawer({
     errorMessage: "The requirement source could not be saved.",
   });
 
-  const hasHolderDetails = !!source.holder || [
-    holderName, holderContactName, holderEmail, holderPhone,
-    addressLine1, addressLine2, city, state, postalCode, country,
-  ].some((value) => value.trim());
+  const hasHolderDetails =
+    !!source.holder ||
+    [
+      holderName,
+      holderContactName,
+      holderEmail,
+      holderPhone,
+      addressLine1,
+      addressLine2,
+      city,
+      state,
+      postalCode,
+      country,
+    ].some((value) => value.trim());
   const contextAutoSave = useLocalFirstAutoSave({
     mutationName: `compliance.updateRequirementSource.context.${source._id}`,
     args: {
-      holder: holderName.trim() ? {
-        displayName: holderName.trim(),
-        contactName: holderContactName.trim() || undefined,
-        email: holderEmail.trim() || undefined,
-        phone: holderPhone.trim() || undefined,
-        address: {
-          line1: addressLine1.trim() || undefined,
-          line2: addressLine2.trim() || undefined,
-          city: city.trim() || undefined,
-          state: state.trim() || undefined,
-          postalCode: postalCode.trim() || undefined,
-          country: country.trim() || undefined,
-        },
-      } : undefined,
+      holder: holderName.trim()
+        ? {
+            displayName: holderName.trim(),
+            contactName: holderContactName.trim() || undefined,
+            email: holderEmail.trim() || undefined,
+            phone: holderPhone.trim() || undefined,
+            address: {
+              line1: addressLine1.trim() || undefined,
+              line2: addressLine2.trim() || undefined,
+              city: city.trim() || undefined,
+              state: state.trim() || undefined,
+              postalCode: postalCode.trim() || undefined,
+              country: country.trim() || undefined,
+            },
+          }
+        : undefined,
       dealName,
       dealType,
       internalNotes,
@@ -1444,7 +1660,13 @@ function SourceDrawer({
     <SettingsDrawer
       open
       onOpenChange={async (open) => {
-        if (!open && (!canManage || await sourceAutoSave.saveNow() && await contextAutoSave.saveNow())) onClose();
+        if (
+          !open &&
+          (!canManage ||
+            ((await sourceAutoSave.saveNow()) &&
+              (await contextAutoSave.saveNow())))
+        )
+          onClose();
       }}
       title="Requirement source"
       footer={
@@ -1491,25 +1713,30 @@ function SourceDrawer({
             </PillButton>
           </>
         ) : writeRestriction ? (
-          <p className={`max-w-72 text-right text-muted-foreground ${typeStyle("caption.default")}`}>
+          <p
+            className={`max-w-72 text-right text-muted-foreground ${typeStyle("caption.default")}`}
+          >
             {writeRestriction}
           </p>
         ) : null
       }
     >
-      {canManage ? (
-        <AutoSaveStatus status={sourceAutoSave.status} />
-      ) : null}
+      {canManage ? <AutoSaveStatus status={sourceAutoSave.status} /> : null}
       <div className="space-y-5">
         {confirmArchive ? (
-          <OperationalPanel as="div" className="border-destructive/20 bg-destructive/5 p-4">
+          <OperationalPanel
+            as="div"
+            className="border-destructive/20 bg-destructive/5 p-4"
+          >
             <div className="flex items-start gap-3">
               <TriangleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
               <div>
                 <p className={`text-foreground ${typeStyle("body.medium")}`}>
                   Archive this source and its requirements?
                 </p>
-                <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
+                <p
+                  className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
+                >
                   {source.requirementCount === 0
                     ? "The source will disappear from active compliance."
                     : `${source.requirementCount} active requirement${source.requirementCount === 1 ? "" : "s"} will also be archived.`}
@@ -1519,7 +1746,9 @@ function SourceDrawer({
           </OperationalPanel>
         ) : null}
         <section className="space-y-3">
-          <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+          <label
+            className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+          >
             Name
             <Input
               value={titleDraft}
@@ -1535,17 +1764,22 @@ function SourceDrawer({
               <span className="text-destructive">Source name is required.</span>
             ) : null}
           </label>
-          <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+          <label
+            className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+          >
             Source type
             <Select
               value={sourceTypeDraft}
               disabled={!canManage}
               onValueChange={(value) => {
-                if (value) setSourceTypeDraft(value as RequirementSourceDocumentType);
+                if (value)
+                  setSourceTypeDraft(value as RequirementSourceDocumentType);
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue>{REQUIREMENT_SOURCE_TYPE_LABELS[sourceTypeDraft]}</SelectValue>
+                <SelectValue>
+                  {REQUIREMENT_SOURCE_TYPE_LABELS[sourceTypeDraft]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {REQUIREMENT_SOURCE_DOCUMENT_TYPES.map((type) => (
@@ -1562,27 +1796,63 @@ function SourceDrawer({
           description="The holder requesting proof and the source requirements stay together."
         >
           <div className="space-y-3">
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
               Holder name
-              <Input value={holderName} onChange={(event) => setHolderName(event.target.value)} disabled={!canManage} placeholder="Landlord, lender, investor, or client" />
+              <Input
+                value={holderName}
+                onChange={(event) => setHolderName(event.target.value)}
+                disabled={!canManage}
+                placeholder="Landlord, lender, investor, or client"
+              />
             </label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
               Contact
-              <Input value={holderContactName} onChange={(event) => setHolderContactName(event.target.value)} disabled={!canManage} />
+              <Input
+                value={holderContactName}
+                onChange={(event) => setHolderContactName(event.target.value)}
+                disabled={!canManage}
+              />
             </label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
               Email
-              <Input type="email" value={holderEmail} onChange={(event) => setHolderEmail(event.target.value)} disabled={!canManage} />
+              <Input
+                type="email"
+                value={holderEmail}
+                onChange={(event) => setHolderEmail(event.target.value)}
+                disabled={!canManage}
+              />
             </label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
               Phone
-              <PhoneInput value={holderPhone || undefined} onChange={(value) => setHolderPhone(value ?? "")} defaultCountry="US" disabled={!canManage} />
+              <PhoneInput
+                value={holderPhone || undefined}
+                onChange={(value) => setHolderPhone(value ?? "")}
+                defaultCountry="US"
+                disabled={!canManage}
+              />
             </label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
               Address
               <AddressAutofillInput
                 id={`requirement-source-holder-address-${source._id}`}
-                value={{ street1: addressLine1, street2: addressLine2, city, state, zip: postalCode, country }}
+                value={{
+                  street1: addressLine1,
+                  street2: addressLine2,
+                  city,
+                  state,
+                  zip: postalCode,
+                  country,
+                }}
                 onChange={(address) => {
                   setAddressLine1(address.street1 ?? "");
                   setAddressLine2(address.street2 ?? "");
@@ -1596,24 +1866,78 @@ function SourceDrawer({
               />
             </label>
             <div className="grid grid-cols-[minmax(0,1fr)_72px_96px] gap-2">
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>City<Input value={city} onChange={(event) => setCity(event.target.value)} disabled={!canManage} /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>State<Input value={state} onChange={(event) => setState(event.target.value)} disabled={!canManage} /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>ZIP<Input value={postalCode} onChange={(event) => setPostalCode(event.target.value)} disabled={!canManage} /></label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                City
+                <Input
+                  value={city}
+                  onChange={(event) => setCity(event.target.value)}
+                  disabled={!canManage}
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                State
+                <Input
+                  value={state}
+                  onChange={(event) => setState(event.target.value)}
+                  disabled={!canManage}
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                ZIP
+                <Input
+                  value={postalCode}
+                  onChange={(event) => setPostalCode(event.target.value)}
+                  disabled={!canManage}
+                />
+              </label>
             </div>
           </div>
         </FormSection>
-        <FormSection title="Deal context" description="Keep the request, relationship, and internal context in one place.">
+        <FormSection
+          title="Deal context"
+          description="Keep the request, relationship, and internal context in one place."
+        >
           <div className="space-y-3">
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={dealName} onChange={(event) => setDealName(event.target.value)} disabled={!canManage} placeholder="Office lease, Series B financing, client engagement" /></label>
-            <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={dealType} onChange={(event) => setDealType(event.target.value)} disabled={!canManage} placeholder="Lease, investment, contract" /></label>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
+              Deal name
+              <Input
+                value={dealName}
+                onChange={(event) => setDealName(event.target.value)}
+                disabled={!canManage}
+                placeholder="Office lease, Series B financing, client engagement"
+              />
+            </label>
+            <label
+              className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+            >
+              Deal type
+              <Input
+                value={dealType}
+                onChange={(event) => setDealType(event.target.value)}
+                disabled={!canManage}
+                placeholder="Lease, investment, contract"
+              />
+            </label>
             <div className="space-y-2">
-              <p className={`text-muted-foreground ${typeStyle("label.field")}`}>Notes</p>
+              <p
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Notes
+              </p>
               <MarkdownEditor
                 value={internalNotes}
                 onChange={setInternalNotes}
                 label="Requirement source notes"
-                        readOnly={!canManage}
-                      />
+                readOnly={!canManage}
+              />
             </div>
             {hasHolderDetails && !holderName.trim() ? (
               <p className={`text-destructive ${typeStyle("caption.default")}`}>
@@ -1624,7 +1948,9 @@ function SourceDrawer({
           </div>
         </FormSection>
         <section className="space-y-2 border-t border-border pt-5">
-          {source.fileName ? <DrawerDetail label="File" value={source.fileName} /> : null}
+          {source.fileName ? (
+            <DrawerDetail label="File" value={source.fileName} />
+          ) : null}
           <DrawerDetail
             label="Added"
             value={formatDisplayDate(source.createdAt)}
@@ -1639,7 +1965,9 @@ function SourceDrawer({
             <OperationalSkeletonList rows={2} />
           ) : certificates.length === 0 ? (
             <OperationalPanel as="div" className="p-4">
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
                 No certificates have been generated for this source yet.
               </p>
             </OperationalPanel>
@@ -1652,11 +1980,22 @@ function SourceDrawer({
                   className="flex items-center gap-3 p-3"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className={`truncate text-foreground ${typeStyle("label.field")}`}>
-                      {certificate.fileName ?? `Certificate v${certificate.versionNumber}`}
+                    <p
+                      className={`truncate text-foreground ${typeStyle("label.field")}`}
+                    >
+                      {certificate.fileName ??
+                        `Certificate v${certificate.versionNumber}`}
                     </p>
-                    <p className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}>
-                      {[certificate.policy?.carrier, certificate.policy?.policyNumber, formatDisplayDate(certificate.createdAt)].filter(Boolean).join(" · ")}
+                    <p
+                      className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                    >
+                      {[
+                        certificate.policy?.carrier,
+                        certificate.policy?.policyNumber,
+                        formatDisplayDate(certificate.createdAt),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                   </div>
                   {certificate.url ? (
@@ -1686,7 +2025,9 @@ function SourceDrawer({
             <OperationalSkeletonList rows={3} />
           ) : requirements.length === 0 ? (
             <OperationalPanel as="div" className="p-4">
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              <p
+                className={`text-muted-foreground ${typeStyle("body.default")}`}
+              >
                 No active requirements are attached to this source.
               </p>
             </OperationalPanel>
@@ -1704,7 +2045,9 @@ function SourceDrawer({
                       className="flex w-full items-start gap-3 px-3 py-3 text-left"
                       aria-expanded={expanded}
                       onClick={() =>
-                        setExpandedRequirementId(expanded ? null : requirement._id)
+                        setExpandedRequirementId(
+                          expanded ? null : requirement._id,
+                        )
                       }
                     >
                       {expanded ? (
@@ -1713,10 +2056,14 @@ function SourceDrawer({
                         <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                       )}
                       <span className="min-w-0 flex-1">
-                        <span className={`block truncate text-foreground ${typeStyle("body.medium")}`}>
+                        <span
+                          className={`block truncate text-foreground ${typeStyle("body.medium")}`}
+                        >
                           {requirement.title}
                         </span>
-                        <span className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}>
+                        <span
+                          className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
                           {requirementDrawerSummary(requirement)}
                         </span>
                       </span>
@@ -1725,8 +2072,12 @@ function SourceDrawer({
                       <div className="border-t border-border px-3 pb-3 pt-3">
                         <RequirementEditForm
                           requirement={requirement}
-                          onSave={(values) => onSaveRequirement(requirement, values)}
-                          onArchive={() => void onArchiveRequirement(requirement._id)}
+                          onSave={(values) =>
+                            onSaveRequirement(requirement, values)
+                          }
+                          onArchive={() =>
+                            void onArchiveRequirement(requirement._id)
+                          }
                         />
                       </div>
                     ) : expanded ? (
@@ -1735,7 +2086,9 @@ function SourceDrawer({
                           label="Line"
                           value={lineDisplayLabel(requirement.lineOfBusiness)}
                         />
-                        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+                        <p
+                          className={`text-muted-foreground ${typeStyle("body.default")}`}
+                        >
                           {requirement.requirementText}
                         </p>
                       </div>
@@ -1761,9 +2114,14 @@ function RequirementSourcesTable({
   if (sources.length === 0) {
     return (
       <OperationalPanel as="div" className="p-5">
-        <p className={`text-foreground ${typeStyle("body.medium")}`}>No requirement sources yet</p>
-        <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-          Imported leases, client contracts, and vendor requirement packets will appear here.
+        <p className={`text-foreground ${typeStyle("body.medium")}`}>
+          No requirement sources yet
+        </p>
+        <p
+          className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
+        >
+          Imported leases, client contracts, and vendor requirement packets will
+          appear here.
         </p>
       </OperationalPanel>
     );
@@ -1787,12 +2145,20 @@ function RequirementSourcesTable({
               className="cursor-pointer"
               onClick={() => onSelect(source._id)}
               tabIndex={0}
-              onKeyDown={(event) => openOnKeyboard(event, () => onSelect(source._id))}
+              onKeyDown={(event) =>
+                openOnKeyboard(event, () => onSelect(source._id))
+              }
             >
               <TableCell className="max-w-72 px-4">
-                <p className={`truncate text-foreground ${typeStyle("body.medium")}`}>{source.title}</p>
+                <p
+                  className={`truncate text-foreground ${typeStyle("body.medium")}`}
+                >
+                  {source.title}
+                </p>
                 {source.fileName ? (
-                  <p className={`mt-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
+                  <p
+                    className={`mt-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
                     {source.fileName}
                   </p>
                 ) : null}
@@ -1800,7 +2166,9 @@ function RequirementSourcesTable({
               <TableCell className="text-muted-foreground">
                 {REQUIREMENT_SOURCE_TYPE_LABELS[source.sourceType]}
               </TableCell>
-              <TableCell className={`text-foreground ${typeStyle("data.numeric")}`}>
+              <TableCell
+                className={`text-foreground ${typeStyle("data.numeric")}`}
+              >
                 {source.requirementCount}
               </TableCell>
               <TableCell className="px-4 text-muted-foreground">
@@ -1863,20 +2231,45 @@ function ComplianceWorkspace({
 
   const vendorRows = showConnectFeatures ? vendorRowsResult : [];
   const clientRows = showConnectFeatures ? clientRowsResult : [];
-  const updateRequirements = useUpdateCachedQuery<Requirement[], { orgId: Id<"organizations"> }>("compliance.listRequirements");
-  const updateRequirementSources = useUpdateCachedQuery<RequirementSource[], { orgId: Id<"organizations"> }>("compliance.listRequirementSources");
-  const upsertRequirement = useMutation(complianceApi.compliance.upsertRequirement);
-  const archiveRequirement = useMutation(complianceApi.compliance.archiveRequirement);
-  const updateRequirementSource = useMutation(complianceApi.compliance.updateRequirementSource);
-  const archiveRequirementSources = useMutation(complianceApi.compliance.archiveRequirementSources);
-  const generateRequirementImportUploadUrl = useMutation(complianceApi.compliance.generateRequirementImportUploadUrl);
-  const importRequirements = useAction(complianceApi.actions.complianceRequirements.importRequirements);
-  const recheckOwnRequirement = useAction(complianceApi.actions.complianceReview.recheckOwnRequirement);
+  const updateRequirements = useUpdateCachedQuery<
+    Requirement[],
+    { orgId: Id<"organizations"> }
+  >("compliance.listRequirements");
+  const updateRequirementSources = useUpdateCachedQuery<
+    RequirementSource[],
+    { orgId: Id<"organizations"> }
+  >("compliance.listRequirementSources");
+  const upsertRequirement = useMutation(
+    complianceApi.compliance.upsertRequirement,
+  );
+  const archiveRequirement = useMutation(
+    complianceApi.compliance.archiveRequirement,
+  );
+  const updateRequirementSource = useMutation(
+    complianceApi.compliance.updateRequirementSource,
+  );
+  const archiveRequirementSources = useMutation(
+    complianceApi.compliance.archiveRequirementSources,
+  );
+  const generateRequirementImportUploadUrl = useMutation(
+    complianceApi.compliance.generateRequirementImportUploadUrl,
+  );
+  const importRequirements = useAction(
+    complianceApi.actions.complianceRequirements.importRequirements,
+  );
+  const recheckOwnRequirement = useAction(
+    complianceApi.actions.complianceReview.recheckOwnRequirement,
+  );
 
   const requestedRequirementId = searchParams.get("requirement");
   const requestedSourceId = searchParams.get("source");
-  const requestedTab = searchParams.get("tab") ??
-    (requestedSourceId ? "sources" : requestedRequirementId ? "requirements" : null);
+  const requestedTab =
+    searchParams.get("tab") ??
+    (requestedSourceId
+      ? "sources"
+      : requestedRequirementId
+        ? "requirements"
+        : null);
   const handledDeepLink = useRef<string | null>(null);
   const hasCertificatesTab = Boolean(renderCertificatesTab);
   const view: ComplianceView =
@@ -1893,41 +2286,54 @@ function ComplianceWorkspace({
             : surface === "operator"
               ? "requirements"
               : "overview";
-  const [creationDrawer, setCreationDrawer] = useState<"import" | "manual" | null>(null);
-  const [requirementScope, setRequirementScope] = useState<RequirementScope>("own_org");
+  const [creationDrawer, setCreationDrawer] = useState<
+    "import" | "manual" | null
+  >(null);
+  const [requirementScope, setRequirementScope] =
+    useState<RequirementScope>("own_org");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [lineFilter, setLineFilter] = useState<LineFilter>("all");
   const [limitFilter, setLimitFilter] = useState<LimitFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [selectedRequirementId, setSelectedRequirementId] = useState<Id<"insuranceRequirements"> | null>(null);
-  const [selectedSourceId, setSelectedSourceId] = useState<Id<"requirementSourceDocuments"> | null>(null);
+  const [selectedRequirementId, setSelectedRequirementId] =
+    useState<Id<"insuranceRequirements"> | null>(null);
+  const [selectedSourceId, setSelectedSourceId] =
+    useState<Id<"requirementSourceDocuments"> | null>(null);
   const [sourceText, setSourceText] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceName, setSourceName] = useState("");
-  const [sourceTypeValue, setSourceTypeValue] = useState<RequirementSourceDocumentType>("vendor_requirements");
+  const [sourceTypeValue, setSourceTypeValue] =
+    useState<RequirementSourceDocumentType>("vendor_requirements");
   const [sourceDetails, setSourceDetails] = useState(emptySourceDetails);
-  const setSourceDetail = (key: keyof typeof emptySourceDetails, value: string) =>
-    setSourceDetails((current) => ({ ...current, [key]: value }));
+  const setSourceDetail = (
+    key: keyof typeof emptySourceDetails,
+    value: string,
+  ) => setSourceDetails((current) => ({ ...current, [key]: value }));
   const [title, setTitle] = useState("");
   const [manualRequirementSourceId, setManualRequirementSourceId] = useState<
     Id<"requirementSourceDocuments"> | typeof INTERNAL_REQUIREMENT_SOURCE
   >(INTERNAL_REQUIREMENT_SOURCE);
   const [lineOfBusiness, setLineOfBusiness] = useState("CGL");
-  const [limitKind, setLimitKind] = useState<RequirementLimitKind>("per_occurrence");
+  const [limitKind, setLimitKind] =
+    useState<RequirementLimitKind>("per_occurrence");
   const [limitAmount, setLimitAmount] = useState("");
   const [requirementText, setRequirementText] = useState("");
   const [provisions, setProvisions] = useState<RequirementProvision[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [archivingSources, setArchivingSources] = useState(false);
-  const [checkingRequirementId, setCheckingRequirementId] = useState<Id<"insuranceRequirements"> | null>(null);
-  const [certificateSourceId, setCertificateSourceId] = useState<Id<"requirementSourceDocuments"> | null>(null);
-  const [certificateRequirementId, setCertificateRequirementId] = useState<Id<"insuranceRequirements"> | null>(null);
-  const [certificateTabActions, setCertificateTabActions] = useState<ReactNode>(null);
-  const [certificateTabRightPanel, setCertificateTabRightPanel] = useState<ReactNode>(null);
+  const [checkingRequirementId, setCheckingRequirementId] =
+    useState<Id<"insuranceRequirements"> | null>(null);
+  const [certificateSourceId, setCertificateSourceId] =
+    useState<Id<"requirementSourceDocuments"> | null>(null);
+  const [certificateRequirementId, setCertificateRequirementId] =
+    useState<Id<"insuranceRequirements"> | null>(null);
+  const [certificateTabActions, setCertificateTabActions] =
+    useState<ReactNode>(null);
+  const [certificateTabRightPanel, setCertificateTabRightPanel] =
+    useState<ReactNode>(null);
   const canManageCompliance =
-    currentOrg?.role === "admin" &&
-    !currentOrg.isReadOnlyImpersonation;
+    currentOrg?.role === "admin" && !currentOrg.isReadOnlyImpersonation;
   const complianceWriteRestriction = !currentOrg
     ? null
     : currentOrg.isReadOnlyImpersonation
@@ -1936,8 +2342,12 @@ function ComplianceWorkspace({
         ? "Only an organization admin can make compliance changes."
         : null;
 
-  const hasActiveClients = (clientRows ?? []).some((row) => row.status === "active");
-  const hasActiveVendors = (vendorRows ?? []).some((row) => row.status === "active");
+  const hasActiveClients = (clientRows ?? []).some(
+    (row) => row.status === "active",
+  );
+  const hasActiveVendors = (vendorRows ?? []).some(
+    (row) => row.status === "active",
+  );
   const isPureVendorAccount =
     showConnectFeatures &&
     clientRows !== undefined &&
@@ -1951,7 +2361,9 @@ function ComplianceWorkspace({
         ? requestedTab
         : requirementScope;
   const navigationValue =
-    view === "requirements" && showConnectFeatures ? activeRequirementScope : view;
+    view === "requirements" && showConnectFeatures
+      ? activeRequirementScope
+      : view;
   const requirementNavigationOptions = showConnectFeatures
     ? [
         { value: "own_org", label: "My requirements" },
@@ -1961,7 +2373,9 @@ function ComplianceWorkspace({
       ]
     : [{ value: "requirements", label: "Requirements" }];
   const navigationOptions: Array<{ value: string; label: string }> = [
-    ...(surface === "operator" ? [] : [{ value: "overview", label: "Overview" }]),
+    ...(surface === "operator"
+      ? []
+      : [{ value: "overview", label: "Overview" }]),
     ...requirementNavigationOptions,
     ...((requirementSources?.length ?? 0) > 0
       ? [{ value: "sources", label: "Sources" }]
@@ -1983,16 +2397,24 @@ function ComplianceWorkspace({
 
   const scopedRequirements = useMemo(
     () =>
-      (requirements ?? []).filter((requirement) => requirement.scope === activeRequirementScope),
+      (requirements ?? []).filter(
+        (requirement) => requirement.scope === activeRequirementScope,
+      ),
     [activeRequirementScope, requirements],
   );
   const sourceFilters = useMemo(() => {
-    const present = Array.from(new Set(scopedRequirements.map(requirementSourceFilter)));
+    const present = Array.from(
+      new Set(scopedRequirements.map(requirementSourceFilter)),
+    );
     return ["all", ...present] as SourceFilter[];
   }, [scopedRequirements]);
   const lineFilters = useMemo(() => {
     const present = Array.from(
-      new Set(scopedRequirements.map((requirement) => lineFilterValue(requirement.lineOfBusiness))),
+      new Set(
+        scopedRequirements.map((requirement) =>
+          lineFilterValue(requirement.lineOfBusiness),
+        ),
+      ),
     ).sort((a, b) => lineFilterLabel(a).localeCompare(lineFilterLabel(b)));
     return ["all", ...present] as LineFilter[];
   }, [scopedRequirements]);
@@ -2003,14 +2425,32 @@ function ComplianceWorkspace({
     return ["all", ...present] as LimitFilter[];
   }, [scopedRequirements]);
   const statusFilters = useMemo(() => {
-    const order: StatusFilter[] = ["met", "not_met", "expired", "expiring_soon", "unverified", "defined"];
+    const order: StatusFilter[] = [
+      "met",
+      "not_met",
+      "expired",
+      "expiring_soon",
+      "unverified",
+      "defined",
+    ];
     const present = new Set(scopedRequirements.map(statusFilterValue));
-    return ["all", ...order.filter((status) => present.has(status))] as StatusFilter[];
+    return [
+      "all",
+      ...order.filter((status) => present.has(status)),
+    ] as StatusFilter[];
   }, [scopedRequirements]);
-  const effectiveSourceFilter = sourceFilters.includes(sourceFilter) ? sourceFilter : "all";
-  const effectiveLineFilter = lineFilters.includes(lineFilter) ? lineFilter : "all";
-  const effectiveLimitFilter = limitFilters.includes(limitFilter) ? limitFilter : "all";
-  const effectiveStatusFilter = statusFilters.includes(statusFilter) ? statusFilter : "all";
+  const effectiveSourceFilter = sourceFilters.includes(sourceFilter)
+    ? sourceFilter
+    : "all";
+  const effectiveLineFilter = lineFilters.includes(lineFilter)
+    ? lineFilter
+    : "all";
+  const effectiveLimitFilter = limitFilters.includes(limitFilter)
+    ? limitFilter
+    : "all";
+  const effectiveStatusFilter = statusFilters.includes(statusFilter)
+    ? statusFilter
+    : "all";
   const visibleRequirements =
     surface === "operator"
       ? scopedRequirements
@@ -2029,11 +2469,17 @@ function ComplianceWorkspace({
               statusFilterValue(requirement) === effectiveStatusFilter),
         );
   const selectedRequirement =
-    (requirements ?? []).find((requirement) => requirement._id === selectedRequirementId) ?? null;
+    (requirements ?? []).find(
+      (requirement) => requirement._id === selectedRequirementId,
+    ) ?? null;
   const selectedSource =
-    (requirementSources ?? []).find((source) => source._id === selectedSourceId) ?? null;
+    (requirementSources ?? []).find(
+      (source) => source._id === selectedSourceId,
+    ) ?? null;
   const selectedSourceRequirements = selectedSource
-    ? requirements?.filter((requirement) => requirement.sourceDocumentId === selectedSource._id)
+    ? requirements?.filter(
+        (requirement) => requirement.sourceDocumentId === selectedSource._id,
+      )
     : undefined;
   const selectedSourceCertificates = useCachedQuery(
     "certificates.listByRequirementSource",
@@ -2051,18 +2497,36 @@ function ComplianceWorkspace({
       handledDeepLink.current = null;
       return;
     }
-    if (!orgId || requirements === undefined || requirementSources === undefined) return;
-    const key = JSON.stringify([orgId, pathname, requestedRequirementId, requestedSourceId]);
+    if (
+      !orgId ||
+      requirements === undefined ||
+      requirementSources === undefined
+    )
+      return;
+    const key = JSON.stringify([
+      orgId,
+      pathname,
+      requestedRequirementId,
+      requestedSourceId,
+    ]);
     if (handledDeepLink.current === key) return;
     // Wait for the existing drawer's save-before-close path before changing records.
-    if (selectedRequirement || selectedSource || creationDrawer || certificateSourceId) return;
+    if (
+      selectedRequirement ||
+      selectedSource ||
+      creationDrawer ||
+      certificateSourceId
+    )
+      return;
     handledDeepLink.current = key;
     if (requestedRequirementId && requestedSourceId) {
       toast.error("Open one requirement or source at a time.");
       return;
     }
     if (requestedRequirementId) {
-      const requirement = requirements.find(row => row._id === requestedRequirementId);
+      const requirement = requirements.find(
+        (row) => row._id === requestedRequirementId,
+      );
       if (!requirement) {
         toast.error("This requirement is unavailable.");
         return;
@@ -2073,7 +2537,9 @@ function ComplianceWorkspace({
       setSelectedRequirementId(requirement._id);
       setSelectedSourceId(null);
     } else {
-      const source = requirementSources.find(row => row._id === requestedSourceId);
+      const source = requirementSources.find(
+        (row) => row._id === requestedSourceId,
+      );
       if (!source) {
         toast.error("This source is unavailable.");
         return;
@@ -2082,8 +2548,15 @@ function ComplianceWorkspace({
       setSelectedRequirementId(null);
     }
   }, [
-    orgId, pathname, requestedRequirementId, requestedSourceId, requirements,
-    requirementSources, selectedRequirement, selectedSource, creationDrawer,
+    orgId,
+    pathname,
+    requestedRequirementId,
+    requestedSourceId,
+    requirements,
+    requirementSources,
+    selectedRequirement,
+    selectedSource,
+    creationDrawer,
     certificateSourceId,
   ]);
 
@@ -2145,7 +2618,9 @@ function ComplianceWorkspace({
       setManualRequirementSourceId(INTERNAL_REQUIREMENT_SOURCE);
       setCreationDrawer(null);
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Unable to save requirement"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Unable to save requirement"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -2154,7 +2629,9 @@ function ComplianceWorkspace({
   async function removeRequirement(requirementId: Id<"insuranceRequirements">) {
     if (!orgId) return;
     const archivedRequirement =
-      (requirements ?? []).find((requirement) => requirement._id === requirementId) ?? null;
+      (requirements ?? []).find(
+        (requirement) => requirement._id === requirementId,
+      ) ?? null;
     try {
       await archiveRequirement({ orgId, requirementId });
       await updateRequirements({ orgId }, (current) =>
@@ -2175,7 +2652,9 @@ function ComplianceWorkspace({
       setSelectedRequirementId(null);
       toast.success("Requirement archived");
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Unable to archive requirement"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Unable to archive requirement"),
+      );
     }
   }
 
@@ -2195,8 +2674,13 @@ function ComplianceWorkspace({
                 complianceCheck: {
                   ...item.complianceCheck,
                   ...result,
-                  status: result?.status ?? item.complianceCheck?.status ?? "unverified",
-                  notes: result?.notes ? `Deep check: ${result.notes}` : result?.matchedSummary,
+                  status:
+                    result?.status ??
+                    item.complianceCheck?.status ??
+                    "unverified",
+                  notes: result?.notes
+                    ? `Deep check: ${result.notes}`
+                    : result?.matchedSummary,
                   checkedBy: "agent",
                 },
               }
@@ -2205,7 +2689,9 @@ function ComplianceWorkspace({
       );
       toast.success("Compliance checked");
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Unable to check compliance"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Unable to check compliance"),
+      );
     } finally {
       setCheckingRequirementId(null);
     }
@@ -2217,7 +2703,10 @@ function ComplianceWorkspace({
       toast.error("Paste text or upload a document first");
       return;
     }
-    if (activeRequirementScope === "own_org" && !sourceDetails.holderName.trim()) {
+    if (
+      activeRequirementScope === "own_org" &&
+      !sourceDetails.holderName.trim()
+    ) {
       toast.error("Add the certificate holder requesting these requirements");
       return;
     }
@@ -2229,7 +2718,9 @@ function ComplianceWorkspace({
         const uploadUrl = await generateRequirementImportUploadUrl({ orgId });
         const response = await fetch(uploadUrl, {
           method: "POST",
-          headers: { "Content-Type": sourceFile.type || "application/octet-stream" },
+          headers: {
+            "Content-Type": sourceFile.type || "application/octet-stream",
+          },
           body: sourceFile,
         });
         if (!response.ok) throw new Error("Document upload failed");
@@ -2245,20 +2736,22 @@ function ComplianceWorkspace({
         sourceType: sourceTypeValue,
         sourceName: sourceName.trim() || undefined,
         scope: activeRequirementScope,
-        holder: sourceDetails.holderName.trim() ? {
-          displayName: sourceDetails.holderName.trim(),
-          contactName: sourceDetails.holderContactName.trim() || undefined,
-          email: sourceDetails.holderEmail.trim() || undefined,
-          phone: sourceDetails.holderPhone.trim() || undefined,
-          address: {
-            line1: sourceDetails.addressLine1.trim() || undefined,
-            line2: sourceDetails.addressLine2.trim() || undefined,
-            city: sourceDetails.city.trim() || undefined,
-            state: sourceDetails.state.trim() || undefined,
-            postalCode: sourceDetails.postalCode.trim() || undefined,
-            country: sourceDetails.country.trim() || undefined,
-          },
-        } : undefined,
+        holder: sourceDetails.holderName.trim()
+          ? {
+              displayName: sourceDetails.holderName.trim(),
+              contactName: sourceDetails.holderContactName.trim() || undefined,
+              email: sourceDetails.holderEmail.trim() || undefined,
+              phone: sourceDetails.holderPhone.trim() || undefined,
+              address: {
+                line1: sourceDetails.addressLine1.trim() || undefined,
+                line2: sourceDetails.addressLine2.trim() || undefined,
+                city: sourceDetails.city.trim() || undefined,
+                state: sourceDetails.state.trim() || undefined,
+                postalCode: sourceDetails.postalCode.trim() || undefined,
+                country: sourceDetails.country.trim() || undefined,
+              },
+            }
+          : undefined,
         dealName: sourceDetails.dealName.trim() || undefined,
         dealType: sourceDetails.dealType.trim() || undefined,
         internalNotes: sourceDetails.internalNotes.trim() || undefined,
@@ -2275,7 +2768,10 @@ function ComplianceWorkspace({
       setSourceDetails(emptySourceDetails);
       setCreationDrawer(null);
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Unable to generate requirements"), { id: importToast });
+      toast.error(
+        getUserFacingErrorMessage(error, "Unable to generate requirements"),
+        { id: importToast },
+      );
     } finally {
       setImporting(false);
     }
@@ -2293,7 +2789,10 @@ function ComplianceWorkspace({
     setCreationDrawer("manual");
   }
 
-  async function updateSource(source: RequirementSource, patch: SourceUpdatePatch) {
+  async function updateSource(
+    source: RequirementSource,
+    patch: SourceUpdatePatch,
+  ) {
     if (!orgId) throw new Error("Organization required");
     const now = dayjs().valueOf();
     await updateRequirementSources({ orgId }, (current) =>
@@ -2356,7 +2855,9 @@ function ComplianceWorkspace({
       updatedAt: now,
     };
     await updateRequirements({ orgId }, (current) =>
-      current.map((item) => (item._id === requirement._id ? nextRequirement : item)),
+      current.map((item) =>
+        item._id === requirement._id ? nextRequirement : item,
+      ),
     );
     try {
       await upsertRequirement({
@@ -2381,7 +2882,9 @@ function ComplianceWorkspace({
       });
     } catch (error) {
       await updateRequirements({ orgId }, (current) =>
-        current.map((item) => (item._id === requirement._id ? requirement : item)),
+        current.map((item) =>
+          item._id === requirement._id ? requirement : item,
+        ),
       );
       throw error;
     }
@@ -2400,9 +2903,15 @@ function ComplianceWorkspace({
         current.filter((source) => !archivedIds.has(source._id)),
       );
       await updateRequirements({ orgId }, (current) =>
-        current.filter((requirement) => !requirement.sourceDocumentId || !archivedIds.has(requirement.sourceDocumentId)),
+        current.filter(
+          (requirement) =>
+            !requirement.sourceDocumentId ||
+            !archivedIds.has(requirement.sourceDocumentId),
+        ),
       );
-      setSelectedSourceId((current) => (current && archivedIds.has(current) ? null : current));
+      setSelectedSourceId((current) =>
+        current && archivedIds.has(current) ? null : current,
+      );
       toast.success(
         result.archivedRequirementCount > 0
           ? `Archived ${result.archivedRequirementCount} requirement${result.archivedRequirementCount === 1 ? "" : "s"}`
@@ -2410,7 +2919,9 @@ function ComplianceWorkspace({
       );
       return true;
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Unable to archive sources"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Unable to archive sources"),
+      );
       return false;
     } finally {
       setArchivingSources(false);
@@ -2424,14 +2935,20 @@ function ComplianceWorkspace({
       title="Import requirements"
       footer={
         <>
-          <PillButton type="button" disabled={importing || (!sourceText.trim() && !sourceFile)} onClick={() => void generateRequirements()}>
+          <PillButton
+            type="button"
+            disabled={importing || (!sourceText.trim() && !sourceFile)}
+            onClick={() => void generateRequirements()}
+          >
             {importing ? "Importing..." : "Import requirements"}
           </PillButton>
         </>
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+        <label
+          className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Source name
           <Input
             value={sourceName}
@@ -2440,11 +2957,20 @@ function ComplianceWorkspace({
             disabled={importing}
           />
         </label>
-        <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+        <label
+          className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Source type
-          <Select value={sourceTypeValue} onValueChange={(value) => setSourceTypeValue(value as RequirementSourceDocumentType)}>
+          <Select
+            value={sourceTypeValue}
+            onValueChange={(value) =>
+              setSourceTypeValue(value as RequirementSourceDocumentType)
+            }
+          >
             <SelectTrigger className="w-full">
-              <SelectValue>{REQUIREMENT_SOURCE_TYPE_LABELS[sourceTypeValue]}</SelectValue>
+              <SelectValue>
+                {REQUIREMENT_SOURCE_TYPE_LABELS[sourceTypeValue]}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {REQUIREMENT_SOURCE_DOCUMENT_TYPES.map((type) => (
@@ -2461,49 +2987,169 @@ function ComplianceWorkspace({
             description="The person or organization requesting this proof of insurance."
           >
             <div className="space-y-3">
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Holder name<Input value={sourceDetails.holderName} onChange={(event) => setSourceDetail("holderName", event.target.value)} placeholder="Landlord, lender, investor, or client" required /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Contact<Input value={sourceDetails.holderContactName} onChange={(event) => setSourceDetail("holderContactName", event.target.value)} /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Email<Input type="email" value={sourceDetails.holderEmail} onChange={(event) => setSourceDetail("holderEmail", event.target.value)} /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Phone<PhoneInput value={sourceDetails.holderPhone || undefined} onChange={(value) => setSourceDetail("holderPhone", value ?? "")} defaultCountry="US" /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Holder name
+                <Input
+                  value={sourceDetails.holderName}
+                  onChange={(event) =>
+                    setSourceDetail("holderName", event.target.value)
+                  }
+                  placeholder="Landlord, lender, investor, or client"
+                  required
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Contact
+                <Input
+                  value={sourceDetails.holderContactName}
+                  onChange={(event) =>
+                    setSourceDetail("holderContactName", event.target.value)
+                  }
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Email
+                <Input
+                  type="email"
+                  value={sourceDetails.holderEmail}
+                  onChange={(event) =>
+                    setSourceDetail("holderEmail", event.target.value)
+                  }
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Phone
+                <PhoneInput
+                  value={sourceDetails.holderPhone || undefined}
+                  onChange={(value) =>
+                    setSourceDetail("holderPhone", value ?? "")
+                  }
+                  defaultCountry="US"
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
                 Address
                 <AddressAutofillInput
                   id="new-requirement-source-holder-address"
-                  value={{ street1: sourceDetails.addressLine1, street2: sourceDetails.addressLine2, city: sourceDetails.city, state: sourceDetails.state, zip: sourceDetails.postalCode, country: sourceDetails.country }}
-                  onChange={(address) => setSourceDetails((current) => ({
-                    ...current,
-                    addressLine1: address.street1 ?? "",
-                    addressLine2: address.street2 ?? "",
-                    city: address.city ?? "",
-                    state: address.state ?? "",
-                    postalCode: address.zip ?? "",
-                    country: address.country ?? "",
-                  }))}
+                  value={{
+                    street1: sourceDetails.addressLine1,
+                    street2: sourceDetails.addressLine2,
+                    city: sourceDetails.city,
+                    state: sourceDetails.state,
+                    zip: sourceDetails.postalCode,
+                    country: sourceDetails.country,
+                  }}
+                  onChange={(address) =>
+                    setSourceDetails((current) => ({
+                      ...current,
+                      addressLine1: address.street1 ?? "",
+                      addressLine2: address.street2 ?? "",
+                      city: address.city ?? "",
+                      state: address.state ?? "",
+                      postalCode: address.zip ?? "",
+                      country: address.country ?? "",
+                    }))
+                  }
                   display="street1"
                 />
               </label>
               <div className="grid grid-cols-[minmax(0,1fr)_72px_96px] gap-2">
-                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>City<Input value={sourceDetails.city} onChange={(event) => setSourceDetail("city", event.target.value)} /></label>
-                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>State<Input value={sourceDetails.state} onChange={(event) => setSourceDetail("state", event.target.value)} /></label>
-                <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>ZIP<Input value={sourceDetails.postalCode} onChange={(event) => setSourceDetail("postalCode", event.target.value)} /></label>
+                <label
+                  className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+                >
+                  City
+                  <Input
+                    value={sourceDetails.city}
+                    onChange={(event) =>
+                      setSourceDetail("city", event.target.value)
+                    }
+                  />
+                </label>
+                <label
+                  className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+                >
+                  State
+                  <Input
+                    value={sourceDetails.state}
+                    onChange={(event) =>
+                      setSourceDetail("state", event.target.value)
+                    }
+                  />
+                </label>
+                <label
+                  className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+                >
+                  ZIP
+                  <Input
+                    value={sourceDetails.postalCode}
+                    onChange={(event) =>
+                      setSourceDetail("postalCode", event.target.value)
+                    }
+                  />
+                </label>
               </div>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal name<Input value={sourceDetails.dealName} onChange={(event) => setSourceDetail("dealName", event.target.value)} placeholder="Office lease, financing, or client engagement" /></label>
-              <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>Deal type<Input value={sourceDetails.dealType} onChange={(event) => setSourceDetail("dealType", event.target.value)} placeholder="Lease, investment, contract" /></label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Deal name
+                <Input
+                  value={sourceDetails.dealName}
+                  onChange={(event) =>
+                    setSourceDetail("dealName", event.target.value)
+                  }
+                  placeholder="Office lease, financing, or client engagement"
+                />
+              </label>
+              <label
+                className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                Deal type
+                <Input
+                  value={sourceDetails.dealType}
+                  onChange={(event) =>
+                    setSourceDetail("dealType", event.target.value)
+                  }
+                  placeholder="Lease, investment, contract"
+                />
+              </label>
               <div className="space-y-2">
-                <p className={`text-muted-foreground ${typeStyle("label.field")}`}>Notes</p>
+                <p
+                  className={`text-muted-foreground ${typeStyle("label.field")}`}
+                >
+                  Notes
+                </p>
                 <MarkdownEditor
                   value={sourceDetails.internalNotes}
                   onChange={(value) => setSourceDetail("internalNotes", value)}
                   label="New requirement source notes"
                   readOnly={importing}
-                          />
+                />
               </div>
             </div>
           </FormSection>
         ) : null}
-        <label className={`flex min-h-0 flex-1 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+        <label
+          className={`flex min-h-0 flex-1 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Requirement text
-          <Textarea className="min-h-0 flex-1 resize-none field-sizing-fixed" rows={12} value={sourceText} onChange={(event) => setSourceText(event.target.value)} placeholder="Paste insurance requirements or contract language." disabled={importing} />
+          <Textarea
+            className="min-h-0 flex-1 resize-none field-sizing-fixed"
+            rows={12}
+            value={sourceText}
+            onChange={(event) => setSourceText(event.target.value)}
+            placeholder="Paste insurance requirements or contract language."
+            disabled={importing}
+          />
         </label>
         <FileDropZone
           accept=".txt,.md,.markdown,.pdf,.docx,.csv,.json,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/json"
@@ -2517,9 +3163,22 @@ function ComplianceWorkspace({
           }}
         />
         {sourceFile ? (
-          <OperationalPanel as="div" className="flex items-center justify-between gap-3 px-3 py-2">
-            <p className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}>{sourceFile.name}</p>
-            <PillButton type="button" size="compact" variant="secondary" disabled={importing} onClick={() => setSourceFile(null)}>
+          <OperationalPanel
+            as="div"
+            className="flex items-center justify-between gap-3 px-3 py-2"
+          >
+            <p
+              className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
+            >
+              {sourceFile.name}
+            </p>
+            <PillButton
+              type="button"
+              size="compact"
+              variant="secondary"
+              disabled={importing}
+              onClick={() => setSourceFile(null)}
+            >
               Remove
             </PillButton>
           </OperationalPanel>
@@ -2535,21 +3194,33 @@ function ComplianceWorkspace({
       title="Add requirement"
       footer={
         <>
-          <PillButton type="submit" form="manual-compliance-requirement" disabled={submitting}>
+          <PillButton
+            type="submit"
+            form="manual-compliance-requirement"
+            disabled={submitting}
+          >
             {submitting ? "Saving..." : "Save requirement"}
           </PillButton>
         </>
       }
     >
-      <form id="manual-compliance-requirement" onSubmit={submitRequirement} className="flex min-h-0 flex-1 flex-col gap-4">
-        <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+      <form
+        id="manual-compliance-requirement"
+        onSubmit={submitRequirement}
+        className="flex min-h-0 flex-1 flex-col gap-4"
+      >
+        <label
+          className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Source (optional)
           <Select
             value={String(manualRequirementSourceId)}
             onValueChange={(value) => {
               if (value) {
                 setManualRequirementSourceId(
-                  value as Id<"requirementSourceDocuments"> | typeof INTERNAL_REQUIREMENT_SOURCE,
+                  value as
+                    | Id<"requirementSourceDocuments">
+                    | typeof INTERNAL_REQUIREMENT_SOURCE,
                 );
               }
             }}
@@ -2558,9 +3229,9 @@ function ComplianceWorkspace({
               <SelectValue>
                 {manualRequirementSourceId === INTERNAL_REQUIREMENT_SOURCE
                   ? "No source — internal requirement"
-                  : requirementSources?.find(
+                  : (requirementSources?.find(
                       (source) => source._id === manualRequirementSourceId,
-                    )?.title ?? "Select a source"}
+                    )?.title ?? "Select a source")}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -2575,52 +3246,104 @@ function ComplianceWorkspace({
             </SelectContent>
           </Select>
         </label>
-        <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+        <label
+          className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Title
-          <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="General liability minimum" required />
+          <Input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="General liability minimum"
+            required
+          />
         </label>
-        <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+        <label
+          className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Line
-          <Select value={lineOfBusiness} onValueChange={(value) => value && setLineOfBusiness(value)}>
+          <Select
+            value={lineOfBusiness}
+            onValueChange={(value) => value && setLineOfBusiness(value)}
+          >
             <SelectTrigger className="w-full">
               <SelectValue>{lobLabel(lineOfBusiness)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {COMMON_LOBS.map((code) => (
-                <SelectItem key={code} value={code}>{lobLabel(code)}</SelectItem>
+                <SelectItem key={code} value={code}>
+                  {lobLabel(code)}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </label>
         <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-2">
-          <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+          <label
+            className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+          >
             Limit
-            <Select value={limitKind} onValueChange={(value) => setLimitKind(value as RequirementLimitKind)}>
+            <Select
+              value={limitKind}
+              onValueChange={(value) =>
+                setLimitKind(value as RequirementLimitKind)
+              }
+            >
               <SelectTrigger className="w-full">
-                <SelectValue>{REQUIREMENT_LIMIT_KIND_LABELS[limitKind]}</SelectValue>
+                <SelectValue>
+                  {REQUIREMENT_LIMIT_KIND_LABELS[limitKind]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {LIMIT_KIND_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>{REQUIREMENT_LIMIT_KIND_LABELS[option]}</SelectItem>
+                  <SelectItem key={option} value={option}>
+                    {REQUIREMENT_LIMIT_KIND_LABELS[option]}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </label>
-          <label className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+          <label
+            className={`flex flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+          >
             Amount
-            <Input value={limitAmount} onChange={(event) => setLimitAmount(event.target.value)} placeholder="$1,000,000" />
+            <Input
+              value={limitAmount}
+              onChange={(event) => setLimitAmount(event.target.value)}
+              placeholder="$1,000,000"
+            />
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
           {PROVISION_OPTIONS.map((option) => (
-            <PillButton key={option} type="button" size="compact" variant={provisions.includes(option) ? "primary" : "secondary"} onClick={() => setProvisions((current) => current.includes(option) ? current.filter((item) => item !== option) : [...current, option])}>
+            <PillButton
+              key={option}
+              type="button"
+              size="compact"
+              variant={provisions.includes(option) ? "primary" : "secondary"}
+              onClick={() =>
+                setProvisions((current) =>
+                  current.includes(option)
+                    ? current.filter((item) => item !== option)
+                    : [...current, option],
+                )
+              }
+            >
               {REQUIREMENT_PROVISION_LABELS[option]}
             </PillButton>
           ))}
         </div>
-        <label className={`flex min-h-0 flex-1 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
+        <label
+          className={`flex min-h-0 flex-1 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
+        >
           Requirement
-          <Textarea className="min-h-0 flex-1 resize-none field-sizing-fixed" rows={8} value={requirementText} onChange={(event) => setRequirementText(event.target.value)} placeholder="Describe the coverage requirement in plain language." required />
+          <Textarea
+            className="min-h-0 flex-1 resize-none field-sizing-fixed"
+            rows={8}
+            value={requirementText}
+            onChange={(event) => setRequirementText(event.target.value)}
+            placeholder="Describe the coverage requirement in plain language."
+            required
+          />
         </label>
       </form>
     </SettingsDrawer>
@@ -2637,7 +3360,9 @@ function ComplianceWorkspace({
       onDeepCheck={(row) => void runDeeperCheck(row)}
       onGenerate={(requirement) => {
         if (!requirement.sourceDocumentId) {
-          toast.error("Connect this requirement to a source before generating certificates");
+          toast.error(
+            "Connect this requirement to a source before generating certificates",
+          );
           return;
         }
         setCertificateRequirementId(requirement._id);
@@ -2677,167 +3402,193 @@ function ComplianceWorkspace({
 
   const complianceActions = canManageCompliance ? (
     <>
-      <PillButton size="compact" variant="secondary" onClick={openAddRequirement}>
+      <PillButton
+        size="compact"
+        variant="secondary"
+        onClick={openAddRequirement}
+      >
         <Plus className="h-3.5 w-3.5" />
         Add requirement
       </PillButton>
-      <PillButton size="compact" variant="primary" onClick={openImportRequirements}>
+      <PillButton
+        size="compact"
+        variant="primary"
+        onClick={openImportRequirements}
+      >
         <FileUp className="h-3.5 w-3.5" />
         Import requirements
       </PillButton>
     </>
   ) : null;
-  const certificatePanel = orgId && certificateSourceId ? (
-    <CertificateGeneratePanel
-      open
-      onOpenChange={(value) => {
-        if (!value) {
-          setCertificateSourceId(null);
-          setCertificateRequirementId(null);
-        }
-      }}
-      orgId={orgId}
-      initialRequirementSourceId={certificateSourceId}
-      initialRequirementId={certificateRequirementId ?? undefined}
-    />
-  ) : null;
-  const requirementCreationPanel = creationDrawer === "manual"
-    ? addRequirementPanel
-    : importRequirementsPanel;
+  const certificatePanel =
+    orgId && certificateSourceId ? (
+      <CertificateGeneratePanel
+        open
+        onOpenChange={(value) => {
+          if (!value) {
+            setCertificateSourceId(null);
+            setCertificateRequirementId(null);
+          }
+        }}
+        orgId={orgId}
+        initialRequirementSourceId={certificateSourceId}
+        initialRequirementId={certificateRequirementId ?? undefined}
+      />
+    ) : null;
+  const requirementCreationPanel =
+    creationDrawer === "manual" ? addRequirementPanel : importRequirementsPanel;
   const complianceRightPanel =
     certificatePanel ?? detailPanel ?? sourcePanel ?? requirementCreationPanel;
-  const actions = view === "certificates" ? certificateTabActions : complianceActions;
+  const actions =
+    view === "certificates" ? certificateTabActions : complianceActions;
   const rightPanel =
     view === "certificates" ? certificateTabRightPanel : complianceRightPanel;
-  const toolbar = navigationOptions.length > 1 ? (
-    <Tabs value={navigationValue} onValueChange={changeNavigation}>
-      <TabsList
-        variant="pill"
-        aria-label="Compliance view"
-        className="min-w-max"
-      >
-        {navigationOptions.map((option) => (
-          <TabsTrigger key={option.value} value={option.value}>
-            {option.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
-  ) : null;
+  const toolbar =
+    navigationOptions.length > 1 ? (
+      <Tabs value={navigationValue} onValueChange={changeNavigation}>
+        <TabsList
+          variant="pill"
+          aria-label="Compliance view"
+          className="min-w-max"
+        >
+          {navigationOptions.map((option) => (
+            <TabsTrigger key={option.value} value={option.value}>
+              {option.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+    ) : null;
   const content = (
     <div className="flex w-full flex-col gap-4">
-        {complianceWriteRestriction ? (
-          <OperationalPanel as="div" className="flex items-start gap-3 px-4 py-3">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            <div>
-              <p className={`text-foreground ${typeStyle("body.medium")}`}>
-                {view === "certificates"
-                  ? "Certificate management is read-only"
-                  : "Compliance is read-only"}
-              </p>
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-                {complianceWriteRestriction}
-              </p>
+      {complianceWriteRestriction ? (
+        <OperationalPanel as="div" className="flex items-start gap-3 px-4 py-3">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div>
+            <p className={`text-foreground ${typeStyle("body.medium")}`}>
+              {view === "certificates"
+                ? "Certificate management is read-only"
+                : "Compliance is read-only"}
+            </p>
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              {complianceWriteRestriction}
+            </p>
+          </div>
+        </OperationalPanel>
+      ) : null}
+      {!renderShell ? toolbar : null}
+      {view === "certificates" && renderCertificatesTab ? (
+        renderCertificatesTab({
+          onActions: setCertificateTabActions,
+          onRightPanel: setCertificateTabRightPanel,
+        })
+      ) : view === "sources" ? (
+        requirementSources === undefined ? (
+          <RequirementsLoadingSkeleton />
+        ) : (
+          <RequirementSourcesTable
+            sources={requirementSources}
+            onSelect={(sourceId) => {
+              setSelectedSourceId(sourceId);
+              setSelectedRequirementId(null);
+              setCreationDrawer(null);
+            }}
+          />
+        )
+      ) : requirements === undefined ||
+        (showConnectFeatures &&
+          (clientRows === undefined || vendorRows === undefined)) ? (
+        <RequirementsLoadingSkeleton />
+      ) : view === "overview" ? (
+        <OverviewTab
+          requirements={requirements}
+          onOpenRequirements={(line) => {
+            setSourceFilter("all");
+            setLineFilter(lineFilterValue(line));
+            setLimitFilter("all");
+            setStatusFilter("all");
+            changeNavigation(
+              showConnectFeatures ? activeRequirementScope : "requirements",
+            );
+          }}
+        />
+      ) : (
+        <>
+          {surface !== "operator" ? (
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <RequirementsFilterSelect
+                label="Source"
+                value={effectiveSourceFilter}
+                valueLabel={sourceLabel(
+                  effectiveSourceFilter,
+                  scopedRequirements,
+                )}
+                onValueChange={(value) =>
+                  setSourceFilter(value as SourceFilter)
+                }
+              >
+                {sourceFilters.map((filter) => (
+                  <SelectItem key={filter} value={filter}>
+                    {sourceLabel(filter, scopedRequirements)}
+                  </SelectItem>
+                ))}
+              </RequirementsFilterSelect>
+              <RequirementsFilterSelect
+                label="Line"
+                value={effectiveLineFilter}
+                valueLabel={lineFilterLabel(effectiveLineFilter)}
+                onValueChange={(value) => setLineFilter(value as LineFilter)}
+              >
+                {lineFilters.map((filter) => (
+                  <SelectItem key={filter} value={filter}>
+                    {lineFilterLabel(filter)}
+                  </SelectItem>
+                ))}
+              </RequirementsFilterSelect>
+              <RequirementsFilterSelect
+                label="Limit type"
+                value={effectiveLimitFilter}
+                valueLabel={limitFilterLabel(effectiveLimitFilter)}
+                onValueChange={(value) => setLimitFilter(value as LimitFilter)}
+              >
+                {limitFilters.map((filter) => (
+                  <SelectItem key={filter} value={filter}>
+                    {limitFilterLabel(filter)}
+                  </SelectItem>
+                ))}
+              </RequirementsFilterSelect>
+              <RequirementsFilterSelect
+                label="Status"
+                value={effectiveStatusFilter}
+                valueLabel={
+                  <ComplianceFilterLabel value={effectiveStatusFilter} />
+                }
+                onValueChange={(value) =>
+                  setStatusFilter(value as StatusFilter)
+                }
+              >
+                {statusFilters.map((filter) => (
+                  <SelectItem key={filter} value={filter}>
+                    <ComplianceFilterLabel value={filter} />
+                  </SelectItem>
+                ))}
+              </RequirementsFilterSelect>
             </div>
-          </OperationalPanel>
-        ) : null}
-        {!renderShell ? toolbar : null}
-        {view === "certificates" && renderCertificatesTab ? (
-          renderCertificatesTab({
-            onActions: setCertificateTabActions,
-            onRightPanel: setCertificateTabRightPanel,
-          })
-        ) : view === "sources" ? (
-          requirementSources === undefined ? (
-            <RequirementsLoadingSkeleton />
+          ) : null}
+          {visibleRequirements.length === 0 ? (
+            <EmptyState />
           ) : (
-            <RequirementSourcesTable
-              sources={requirementSources}
-              onSelect={(sourceId) => {
-                setSelectedSourceId(sourceId);
-                setSelectedRequirementId(null);
+            <RequirementsTable
+              requirements={visibleRequirements}
+              onSelect={(requirementId) => {
+                setSelectedRequirementId(requirementId);
+                setSelectedSourceId(null);
                 setCreationDrawer(null);
               }}
             />
-          )
-        ) : requirements === undefined ||
-        (showConnectFeatures && (clientRows === undefined || vendorRows === undefined)) ? (
-          <RequirementsLoadingSkeleton />
-        ) : view === "overview" ? (
-          <OverviewTab
-            requirements={requirements}
-            onOpenRequirements={(line) => {
-              setSourceFilter("all");
-              setLineFilter(lineFilterValue(line));
-              setLimitFilter("all");
-              setStatusFilter("all");
-              changeNavigation(
-                showConnectFeatures ? activeRequirementScope : "requirements",
-              );
-            }}
-          />
-        ) : (
-          <>
-            {surface !== "operator" ? (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                <RequirementsFilterSelect
-                  label="Source"
-                  value={effectiveSourceFilter}
-                  valueLabel={sourceLabel(effectiveSourceFilter, scopedRequirements)}
-                  onValueChange={(value) => setSourceFilter(value as SourceFilter)}
-                >
-                  {sourceFilters.map((filter) => (
-                    <SelectItem key={filter} value={filter}>
-                      {sourceLabel(filter, scopedRequirements)}
-                    </SelectItem>
-                  ))}
-                </RequirementsFilterSelect>
-                <RequirementsFilterSelect
-                  label="Line"
-                  value={effectiveLineFilter}
-                  valueLabel={lineFilterLabel(effectiveLineFilter)}
-                  onValueChange={(value) => setLineFilter(value as LineFilter)}
-                >
-                  {lineFilters.map((filter) => (
-                    <SelectItem key={filter} value={filter}>{lineFilterLabel(filter)}</SelectItem>
-                  ))}
-                </RequirementsFilterSelect>
-                <RequirementsFilterSelect
-                  label="Limit type"
-                  value={effectiveLimitFilter}
-                  valueLabel={limitFilterLabel(effectiveLimitFilter)}
-                  onValueChange={(value) => setLimitFilter(value as LimitFilter)}
-                >
-                  {limitFilters.map((filter) => (
-                    <SelectItem key={filter} value={filter}>{limitFilterLabel(filter)}</SelectItem>
-                  ))}
-                </RequirementsFilterSelect>
-                <RequirementsFilterSelect
-                  label="Status"
-                  value={effectiveStatusFilter}
-                  valueLabel={<ComplianceFilterLabel value={effectiveStatusFilter} />}
-                  onValueChange={(value) => setStatusFilter(value as StatusFilter)}
-                >
-                  {statusFilters.map((filter) => (
-                    <SelectItem key={filter} value={filter}><ComplianceFilterLabel value={filter} /></SelectItem>
-                  ))}
-                </RequirementsFilterSelect>
-              </div>
-            ) : null}
-            {visibleRequirements.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <RequirementsTable
-                requirements={visibleRequirements}
-                onSelect={(requirementId) => {
-                  setSelectedRequirementId(requirementId);
-                  setSelectedSourceId(null);
-                  setCreationDrawer(null);
-                }}
-              />
-            )}
-          </>
-        )}
+          )}
+        </>
+      )}
     </div>
   );
 
@@ -2856,8 +3607,6 @@ export function CompliancePage(props: CompliancePageProps = {}) {
   return <ComplianceWorkspace {...props} surface="customer" />;
 }
 
-export function OperatorComplianceWorkspace(
-  props: CompliancePageProps = {},
-) {
+export function OperatorComplianceWorkspace(props: CompliancePageProps = {}) {
   return <ComplianceWorkspace {...props} surface="operator" />;
 }

@@ -83,6 +83,7 @@ export async function sendOperatorSlackResponse(
   args: {
     delivery: OperatorSlackDelivery;
     clientMessageId: string;
+    mentionHere?: boolean;
     response: {
       content?: string;
       attachments?: Array<{
@@ -126,7 +127,7 @@ export async function sendOperatorSlackResponse(
       teamId: args.delivery.teamId,
       channelId: args.delivery.channelId,
       threadTs: args.delivery.threadTs,
-      mrkdwnText: formatSlackAnswerText(content),
+      mrkdwnText: `${args.mentionHere ? "<!here> " : ""}${formatSlackAnswerText(content)}`,
       blocks: args.confirmation
         ? buildOperatorSlackConfirmationBlocks({
             confirmationId: args.confirmation._id,
@@ -140,6 +141,7 @@ export async function sendOperatorSlackResponse(
   });
   const result = (await response.json().catch(() => ({}))) as {
     error?: string;
+    messageId?: string;
     sending?: boolean;
     attachmentFailures?: Array<{ filename: string; error: string }>;
   };
@@ -156,6 +158,7 @@ export async function sendOperatorSlackResponse(
         .join("; "),
     );
   }
+  return result.messageId;
 }
 
 function operatorSlackDelivery(

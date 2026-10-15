@@ -28,6 +28,7 @@ export type AgentDockDeepLink =
 const SHELLLESS_PREFIXES = [
   "/login",
   "/signup",
+  "/intake",
   "/onboarding",
   "/operator/login",
   "/oauth",
@@ -64,6 +65,7 @@ export function operatorActiveSection(
 
 /** Surface and sidebar for a route, or null when the route has no app shell. */
 export function appShellRoute(pathname: string): AppShellRoute | null {
+  if (pathname === "/") return null;
   if (SHELLLESS_PREFIXES.some((prefix) => matchesPrefix(pathname, prefix))) {
     return null;
   }

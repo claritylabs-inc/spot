@@ -11,7 +11,7 @@ import {
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import { internal as _internal } from "./_generated/api";
 import {
   getCurrentOrgAccess as getOrgAccess,
@@ -1313,5 +1313,21 @@ export const getById = query({
       return null;
     }
     return ctx.db.get(args.orgId);
+  },
+});
+
+// Operator-controlled rollout of the client workspace. Unset clients remain in intake.
+export const setClientAccessStatus = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    status: v.union(v.literal("intake"), v.literal("active")),
+  },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const org = await ctx.db.get(args.orgId);
+    if (!org || org.deletedAt || (org.type && org.type !== "client")) {
+      throw new Error("Client organization not found");
+    }
+    await ctx.db.patch(args.orgId, { clientAccessStatus: args.status });
   },
 });

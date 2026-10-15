@@ -16,7 +16,13 @@ const legacyAssetRewrites = [
   { source: "/glass-icon.svg", destination: "/spot-icon.svg" },
 ];
 
+const analyticsRewrites = [
+  { source: "/ingest/static/:path*", destination: "https://us-assets.i.posthog.com/static/:path*" },
+  { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
+];
+
 const nextConfig: NextConfig = {
+  skipTrailingSlashRedirect: true,
   experimental:
     process.env.CONDUCTOR_IS_LOCAL === "0" &&
     process.env.NODE_ENV === "development"
@@ -35,10 +41,11 @@ const nextConfig: NextConfig = {
     }));
   },
   async rewrites() {
-    if (!convexSiteUrl) return legacyAssetRewrites;
+    if (!convexSiteUrl) return [...legacyAssetRewrites, ...analyticsRewrites];
 
     return [
       ...legacyAssetRewrites,
+      ...analyticsRewrites,
       {
         source: "/.well-known/mcp.json",
         destination: `${convexSiteUrl}/.well-known/mcp.json`,

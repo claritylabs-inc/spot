@@ -304,6 +304,16 @@ async function routerControl(
     if (!response.ok) {
       if (response.status >= 500 || response.status === 429)
         throw new RouterJobPending("control");
+      // Retain the router's typed rejection so configuration failures can be
+      // diagnosed without logging capability URLs or request bodies.
+      const envelope: unknown = await response.json().catch(() => null);
+      if (envelope && typeof envelope === "object" && "error" in envelope) {
+        const parsed = parseRouterJobError(
+          (envelope as { error: unknown }).error,
+        );
+        if (parsed.failure)
+          throw new RouterJobFailed(parsed.error, parsed.failure);
+      }
       throw new Error(`Router job control rejected (${response.status})`);
     }
     const value: unknown = await response.json();

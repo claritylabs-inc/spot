@@ -103,7 +103,7 @@ const RequirementSchema = z.object({
   sourcePageEnd: z.number().int().positive().nullable(),
 });
 
-const RequirementImportSchema = z.object({
+export const RequirementImportSchema = z.object({
   certificateHolders: z.array(CertificateHolderSchema).max(20),
   requirements: z.array(RequirementSchema).max(32),
 });
@@ -267,7 +267,7 @@ export async function extractDocxText(buffer: ArrayBuffer) {
   return result.value;
 }
 
-async function extractFileText({
+export async function extractFileText({
   buffer,
   fileName,
   contentType,
@@ -301,7 +301,7 @@ async function extractFileText({
   );
 }
 
-function buildPrompt({
+export function buildPrompt({
   sourceText,
   existingRequirements,
   scope,

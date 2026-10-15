@@ -1,4 +1,16 @@
 "use client";
+import { RemoveButton } from "@/components/ui/remove-button";
+import { AppShellPortal } from "@/components/app-shell-slots";
+import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
+import { IntakeApplicationFields } from "@/components/insurance-intake/application-fields";
+import {
+  detailsFromAnswers,
+  type IntakeDetails,
+} from "@/lib/insurance-intake-details";
+import type { IntakeAnswers } from "@/lib/insurance-intake";
+import { IntakeReviewCompact } from "@/components/insurance-intake/company-review";
+import { IntakeApplicationReview } from "@/components/insurance-intake/application-review";
+import type { IntakeApplication } from "@/lib/intake-application";
 
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
@@ -6,6 +18,7 @@ import { RequestCompletionOutcome } from "./request-completion-outcome";
 
 import {
   useCallback,
+  useImperativeHandle,
   useEffect,
   useMemo,
   useRef,
@@ -17,12 +30,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Copy,
-  File,
-  FileImage,
   FileText,
   Loader2,
   Mail,
-  Pencil,
+  StickyNote,
+  Trash2,
   Plus,
   Link,
   Upload,
@@ -42,7 +54,6 @@ import {
   OUTREACH_STATUS_OPTIONS,
   OutreachStatusTag,
   ProcurementEmailDrawer,
-  RequestStatusTag,
   REQUEST_STATUS_OPTIONS,
   OutreachStatusLabel,
   RequestStatusLabel,
@@ -50,6 +61,14 @@ import {
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+} from "@claritylabs-inc/ui/components/alert-dialog";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -69,7 +88,10 @@ import {
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { StatusLabel, StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import {
+  StatusLabel,
+  StatusTag,
+} from "@claritylabs-inc/ui/components/status-tag";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   Select,
@@ -86,7 +108,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
@@ -96,7 +122,10 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NONE = "__none__";
 
-function openRowOnKeyboard(event: KeyboardEvent<HTMLTableRowElement>, open: () => void) {
+function openRowOnKeyboard(
+  event: KeyboardEvent<HTMLTableRowElement>,
+  open: () => void,
+) {
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     open();
@@ -120,6 +149,11 @@ type ClientFileOption = {
 };
 
 type RequestSummary = {
+  intakeRevision?: number;
+  intakeAnswers?: IntakeAnswers;
+  intakeDetails?: IntakeDetails;
+  application?: IntakeApplication | null;
+  intakeSubmittedAt?: number;
   completionOutcome?: React.ComponentProps<
     typeof RequestCompletionOutcome
   >["outcome"];
@@ -155,6 +189,7 @@ type ProcurementFileItem = {
   _id: Id<"procurementFileItems">;
   clientFileId?: Id<"clientFiles">;
   sourceEmailMessageId?: Id<"procurementEmailMessages">;
+  intakeCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
   label: string;
   brokerRelease?: "hidden" | "listed" | "attached";
   clientVisible?: boolean;
@@ -410,7 +445,9 @@ function ProposalExtractionStatus({
         ? retryExtraction({ proposalId: proposal._id })
         : cancelExtraction({ proposalId: proposal._id }));
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not update the quote"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not update the quote"),
+      );
     } finally {
       setWorking(false);
     }
@@ -614,15 +651,98 @@ function ProposalReviewDetails({
   );
 }
 
+function RequestEditorFrame({
+  inline,
+  embedded,
+  status,
+  saving,
+  ...props
+}: React.ComponentProps<typeof SettingsDrawer> & {
+  inline?: boolean;
+  embedded?: boolean;
+  status: React.ComponentProps<typeof AutoSaveStatus>["status"];
+  saving: boolean;
+}) {
+  if (embedded)
+    return (
+      <div data-operator-form data-operator-inline-fields className="space-y-4">
+        <AutoSaveStatus status={status} />
+        {props.children}
+        {props.footer}
+      </div>
+    );
+  if (!inline) return <SettingsDrawer {...props} />;
+  return (
+    <div data-operator-form className="space-y-5">
+      <AppShellPortal slot="actions">
+        <div className="flex items-center gap-2">
+          <AutoSaveStatus status={status} />
+          {props.footer}
+          <PillButton
+            variant="secondary"
+            disabled={saving}
+            onClick={() => props.onOpenChange(false)}
+          >
+            Back
+          </PillButton>
+        </div>
+      </AppShellPortal>
+      <fieldset disabled={saving} className="space-y-5">
+        {props.children}
+      </fieldset>
+    </div>
+  );
+}
+
 export function RequestEditor({
+  inline = false,
+  embedded = false,
+  activeSection,
+  extraRows,
+  onCoverageActions,
+  saveRef,
+  readOnly = false,
   request,
   policies,
   onClose,
 }: {
+  inline?: boolean;
+  embedded?: boolean;
+  activeSection?: string;
+  extraRows?: { label: string; value?: ReactNode }[];
+  onCoverageActions?: (node: ReactNode) => void;
+  saveRef?: React.Ref<
+    PacketEditorHandle & {
+      openDelete: () => void;
+      acceptUpdatedAt: (updatedAt: number) => void;
+    }
+  >;
+  readOnly?: boolean;
   request: RequestSummary;
   policies: PolicyOption[];
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const saveApplication = useMutation(
+    api.procurementRequests.updateApplication,
+  );
+  const [saving, setSaving] = useState(false);
+  const version = useRef({
+    revision: request.intakeRevision ?? 0,
+    updatedAt: request.updatedAt,
+  });
+  const [answers, setAnswers] = useState<IntakeAnswers>(
+    request.intakeAnswers ?? request.application?.answers ?? {},
+  );
+  const [intakeDetails, setIntakeDetails] = useState<IntakeDetails>(
+    request.intakeDetails ??
+      request.application?.details ??
+      detailsFromAnswers(request.intakeAnswers ?? {}),
+  );
+  const removeRequest = useMutation(api.procurementRequests.remove);
+  const restoreRequest = useMutation(api.procurementRequests.restore);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const updateRequest = useMutation(api.procurementRequests.update);
   const [title, setTitle] = useState(request.title);
   const [targetEffectiveDate, setTargetEffectiveDate] = useState(
@@ -656,95 +776,212 @@ export function RequestEditor({
     replacingPolicyId,
     resultingPolicyId,
     clientVisible,
+    answers: inline ? answers : undefined,
+    details: inline ? intakeDetails : undefined,
   };
   const saved = useRef(values);
   const autoSave = useLocalFirstAutoSave({
     mutationName: "procurementRequests.update",
+    enabled: !deleting && !readOnly,
     args: values,
     canSave: !!title.trim(),
     flush: async (next) => {
-      await updateRequest({
-        requestId: request._id,
-        title: next.title !== saved.current.title ? next.title : undefined,
-        targetEffectiveDate:
-          next.targetEffectiveDate !== saved.current.targetEffectiveDate
-            ? next.targetEffectiveDate || null
-            : undefined,
-        status: next.status !== saved.current.status ? next.status : undefined,
-        replacingPolicyId:
-          next.replacingPolicyId !== saved.current.replacingPolicyId
-            ? next.replacingPolicyId === NONE
+      if (inline) {
+        const result = await saveApplication({
+          requestId: request._id,
+          expectedRevision: version.current.revision,
+          expectedUpdatedAt: version.current.updatedAt,
+          title: next.title,
+          targetEffectiveDate: next.targetEffectiveDate || null,
+          status: next.status,
+          replacingPolicyId:
+            next.replacingPolicyId === NONE
               ? null
-              : (next.replacingPolicyId as Id<"policies">)
-            : undefined,
-        resultingPolicyId:
-          next.resultingPolicyId !== saved.current.resultingPolicyId
-            ? next.resultingPolicyId === NONE
+              : (next.replacingPolicyId as Id<"policies">),
+          resultingPolicyId:
+            next.resultingPolicyId === NONE
               ? null
-              : (next.resultingPolicyId as Id<"policies">)
-            : undefined,
-        clientVisible:
-          next.clientVisible !== saved.current.clientVisible
-            ? next.clientVisible
-            : undefined,
-      });
+              : (next.resultingPolicyId as Id<"policies">),
+          clientVisible: next.clientVisible,
+          answers: next.answers!,
+          details: next.details!,
+        });
+        version.current = {
+          revision: result.revision,
+          updatedAt: result.updatedAt,
+        };
+      } else
+        await updateRequest({
+          requestId: request._id,
+          title: next.title !== saved.current.title ? next.title : undefined,
+          targetEffectiveDate:
+            next.targetEffectiveDate !== saved.current.targetEffectiveDate
+              ? next.targetEffectiveDate || null
+              : undefined,
+          status:
+            next.status !== saved.current.status ? next.status : undefined,
+          replacingPolicyId:
+            next.replacingPolicyId !== saved.current.replacingPolicyId
+              ? next.replacingPolicyId === NONE
+                ? null
+                : (next.replacingPolicyId as Id<"policies">)
+              : undefined,
+          resultingPolicyId:
+            next.resultingPolicyId !== saved.current.resultingPolicyId
+              ? next.resultingPolicyId === NONE
+                ? null
+                : (next.resultingPolicyId as Id<"policies">)
+              : undefined,
+          clientVisible:
+            next.clientVisible !== saved.current.clientVisible
+              ? next.clientVisible
+              : undefined,
+        });
       saved.current = next;
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the request"),
   });
 
+  useImperativeHandle(
+    saveRef,
+    () => ({
+      save: autoSave.saveNow,
+      openDelete: () => setConfirmDelete(true),
+      acceptUpdatedAt: (updatedAt: number) => {
+        version.current.updatedAt = updatedAt;
+      },
+    }),
+    [autoSave.saveNow],
+  );
   return (
-    <SettingsDrawer
+    <RequestEditorFrame
+      inline={inline}
+      embedded={embedded}
+      saving={saving}
+      status={autoSave.status}
       open
       onOpenChange={(open) => {
-        if (!open)
-          void autoSave.saveNow().then((saved) => {
-            if (saved) onClose();
-          });
+        if (!open) {
+          setSaving(true);
+          void autoSave
+            .saveNow()
+            .then((saved) => {
+              if (saved) onClose();
+            })
+            .finally(() => setSaving(false));
+        }
       }}
       title="Edit request"
-    >
-      <AutoSaveStatus status={autoSave.status} />
-      <div className="space-y-5">
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
+      footer={
+        !embedded ? (
+          <PillButton
+            variant="destructive"
+            disabled={deleting}
+            onClick={() => setConfirmDelete(true)}
           >
-            Title
-          </span>
-          <Input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
+            Delete request
+          </PillButton>
+        ) : undefined
+      }
+    >
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!deleting) setConfirmDelete(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete request?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes “{request.title}” from procurement and disables
+              access to its application and shared packets. Existing policies
+              and company files are kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <PillButton
+              variant="secondary"
+              disabled={deleting}
+              onClick={() => setConfirmDelete(false)}
             >
-              Target effective date
-            </span>
+              Cancel
+            </PillButton>
+            <PillButton
+              variant="destructive"
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true);
+                try {
+                  if (!inline && !(await autoSave.saveNow())) {
+                    setDeleting(false);
+                    return;
+                  }
+                  await removeRequest({ requestId: request._id });
+                  onClose();
+                  router.replace(
+                    `/operator/clients/${request.clientOrgId}/procurement`,
+                  );
+                  toast.success("Request deleted", {
+                    action: {
+                      label: "Undo",
+                      onClick: () => {
+                        void restoreRequest({ requestId: request._id })
+                          .then(() => toast.success("Request restored"))
+                          .catch((error) =>
+                            toast.error(
+                              getUserFacingErrorMessage(
+                                error,
+                                "Could not restore request",
+                              ),
+                            ),
+                          );
+                      },
+                    },
+                  });
+                } catch (error) {
+                  toast.error(
+                    getUserFacingErrorMessage(
+                      error,
+                      "Could not delete request",
+                    ),
+                  );
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete request"}
+            </PillButton>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AutoSaveStatus status={autoSave.status} />
+      {(!embedded || activeSection === "Request details") && (
+        <InlineFieldCard>
+          <InlineFieldRow label="Title">
             <Input
+              aria-label="Title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Target effective date">
+            <Input
+              aria-label="Target effective date"
               type="date"
               value={targetEffectiveDate}
               onChange={(event) => setTargetEffectiveDate(event.target.value)}
             />
-          </label>
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Status
-            </span>
+          </InlineFieldRow>
+          <InlineFieldRow label="Status">
             <Select
               value={status}
               onValueChange={(value) =>
                 setStatus(value as ProcurementRequestStatus)
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger aria-label="Status" className="w-full">
                 <SelectValue>
                   <RequestStatusLabel status={status} />
                 </SelectValue>
@@ -757,51 +994,54 @@ export function RequestEditor({
                 ))}
               </SelectContent>
             </Select>
-          </label>
-        </div>
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Policy being replaced
-          </span>
-          <SearchableSelect
-            value={replacingPolicyId}
-            options={policyOptions}
-            onChange={setReplacingPolicyId}
-          />
-        </label>
-        <label className="block space-y-1.5">
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Resulting policy
-          </span>
-          <SearchableSelect
-            value={resultingPolicyId}
-            options={policyOptions}
-            onChange={setResultingPolicyId}
-          />
-        </label>
-        <div className="space-y-1.5">
-          <p className={`text-muted-foreground ${typeStyle("label.field")}`}>
-            Sharing
-          </p>
-          <OperationalPanel aria-label="Request sharing">
-            <OperationalItem className="flex items-center justify-between gap-4">
-              <span className={typeStyle("body.default")}>
-                Client visibility
-              </span>
+          </InlineFieldRow>
+          <InlineFieldRow label="Policy being replaced">
+            <SearchableSelect
+              ariaLabel="Policy being replaced"
+              value={replacingPolicyId}
+              options={policyOptions}
+              onChange={setReplacingPolicyId}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Resulting policy">
+            <SearchableSelect
+              ariaLabel="Resulting policy"
+              value={resultingPolicyId}
+              options={policyOptions}
+              onChange={setResultingPolicyId}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Client visibility">
+            <div className="flex h-9 items-center px-3">
               <SettingsSwitch
                 label="Client visibility"
                 checked={clientVisible}
                 onCheckedChange={() => setClientVisible(!clientVisible)}
               />
-            </OperationalItem>
-          </OperationalPanel>
-        </div>
-      </div>
-    </SettingsDrawer>
+            </div>
+          </InlineFieldRow>
+        </InlineFieldCard>
+      )}
+      {inline ? (
+        <fieldset
+          disabled={readOnly}
+          onBlur={() => {
+            if (!readOnly) void autoSave.saveNow();
+          }}
+        >
+          <IntakeApplicationFields
+            activeSection={activeSection}
+            onToolbarActions={onCoverageActions}
+            companyGroup={embedded}
+            extraRows={extraRows}
+            answers={answers}
+            details={intakeDetails}
+            onAnswersChange={setAnswers}
+            onDetailsChange={setIntakeDetails}
+          />
+        </fieldset>
+      ) : null}
+    </RequestEditorFrame>
   );
 }
 
@@ -852,7 +1092,8 @@ export function OutreachEditor({
     );
   const historical =
     proposal?.status === "archived" || proposal?.status === "withdrawn";
-  const readOnly = parentReadOnly || (!!proposalId && (!proposal || historical));
+  const readOnly =
+    parentReadOnly || (!!proposalId && (!proposal || historical));
   const [brokerOrgId, setBrokerOrgId] = useState(outreach?.brokerOrgId ?? "");
   const [contactName, setContactName] = useState(outreach?.contactName ?? "");
   const [contactEmail, setContactEmail] = useState(
@@ -1507,7 +1748,7 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "notes" | "shared" | "proposals" | "files" | "email";
+  view: "application" | "edit" | "proposals" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -1524,7 +1765,9 @@ export function ProcurementRequestWorkspace({
     },
     [setRightPanel],
   );
-  const [documentToolbarTarget, setDocumentToolbarTarget] = useState<HTMLDivElement | null>(null);
+  const [coverageActions, setCoverageActions] = useState<ReactNode>(null);
+  const [applicationSection, setApplicationSection] =
+    useState("Contact details");
   const result = useQuery(api.procurementRequests.get, { requestId });
   const policies = useQuery(api.procurementRequests.listPolicyOptions, {
     clientOrgId,
@@ -1542,16 +1785,43 @@ export function ProcurementRequestWorkspace({
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
+  const removeFileItem = useMutation(api.procurementRequests.removeFileItem);
+  const [removingFileId, setRemovingFileId] = useState<string | null>(null);
+  const requestEditorRef = useRef<
+    PacketEditorHandle & {
+      openDelete: () => void;
+      acceptUpdatedAt: (updatedAt: number) => void;
+    }
+  >(null);
+  const handleRemoveFile = useCallback(
+    async (fileItemId: Id<"procurementFileItems">) => {
+      if (requestEditorRef.current && !(await requestEditorRef.current.save()))
+        return;
+      setRemovingFileId(fileItemId);
+      try {
+        const result = await removeFileItem({
+          fileItemId: fileItemId,
+        });
+        requestEditorRef.current?.acceptUpdatedAt(result.updatedAt);
+        toast.success("Document removed from request");
+      } catch (error) {
+        toast.error(
+          getUserFacingErrorMessage(error, "Could not remove document"),
+        );
+      } finally {
+        setRemovingFileId(null);
+      }
+    },
+    [removeFileItem],
+  );
   const changeView = async (nextView: string) => {
     const change = ++latestTabChange.current;
+    if (requestEditorRef.current && !(await requestEditorRef.current.save()))
+      return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
     if (change !== latestTabChange.current) return;
-    router.push(
-      nextView === "notes"
-        ? `${basePath}/${requestId}`
-        : `${basePath}/${requestId}?view=${nextView}`,
-    );
+    router.push(`${basePath}/${requestId}?view=${nextView}`);
   };
   const { openWithUrl, closePdf } = usePdf();
 
@@ -1570,25 +1840,34 @@ export function ProcurementRequestWorkspace({
   );
   const closeRightPanel = useCallback(() => onRightPanel(null), [onRightPanel]);
 
-  const openRequestEditor = useCallback(() => {
-    if (!details) return;
+  const openNotes = useCallback(async () => {
+    if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
     closePdf();
+    const close = async () => {
+      if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+        return;
+      closeRightPanel();
+    };
     onRightPanel(
-      <RequestEditor
-        key={requestId}
-        request={details.request}
-        policies={policyOptions}
-        onClose={closeRightPanel}
-      />,
+      <SettingsDrawer
+        open
+        title="Internal notes"
+        onOpenChange={(open) => {
+          if (!open) void close();
+        }}
+      >
+        <PacketWorkspace
+          key={requestId}
+          ref={packetEditorRef}
+          readOnly={readOnly}
+          requestId={requestId}
+          filename="private.md"
+          inlineNotes="sidebar"
+        />
+      </SettingsDrawer>,
     );
-  }, [
-    closePdf,
-    closeRightPanel,
-    details,
-    onRightPanel,
-    policyOptions,
-    requestId,
-  ]);
+  }, [closePdf, closeRightPanel, onRightPanel, readOnly, requestId]);
 
   const openPacketLink = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
@@ -1683,36 +1962,51 @@ export function ProcurementRequestWorkspace({
     rightPanelOpen,
   ]);
 
-  const openUpload = useCallback(() => {
-    closePdf();
-    onRightPanel(
-      <ClientFileUploadPanel
-        clientOrgId={clientOrgId}
-        showBrokerVisibility
-        onClose={closeRightPanel}
-        onUploaded={async (uploaded, visibility) => {
-          await Promise.all(
-            uploaded.map((file) =>
-              createFileItem({
-                requestId,
-                clientFileId: file.clientFileId,
-                label: file.originalName,
-                clientVisible: visibility.clientVisible,
-                brokerRelease: visibility.brokerVisible ? "attached" : "hidden",
-              }),
-            ),
-          );
-        }}
-      />,
-    );
-  }, [
-    clientOrgId,
-    closePdf,
-    closeRightPanel,
-    createFileItem,
-    onRightPanel,
-    requestId,
-  ]);
+  const openUpload = useCallback(
+    (
+      documentCategory:
+        | "requirements"
+        | "policy"
+        | "loss_runs"
+        | "supporting" = applicationSection === "Insurance history"
+        ? "policy"
+        : "supporting",
+    ) => {
+      closePdf();
+      onRightPanel(
+        <ClientFileUploadPanel
+          clientOrgId={clientOrgId}
+          showBrokerVisibility
+          onClose={closeRightPanel}
+          onUploaded={async (uploaded, visibility) => {
+            await Promise.all(
+              uploaded.map((file) =>
+                createFileItem({
+                  requestId,
+                  clientFileId: file.clientFileId,
+                  label: file.originalName,
+                  documentCategory,
+                  clientVisible: visibility.clientVisible,
+                  brokerRelease: visibility.brokerVisible
+                    ? "attached"
+                    : "hidden",
+                }),
+              ),
+            );
+          }}
+        />,
+      );
+    },
+    [
+      clientOrgId,
+      closePdf,
+      closeRightPanel,
+      createFileItem,
+      onRightPanel,
+      requestId,
+      applicationSection,
+    ],
+  );
 
   const openFileEditor = useCallback(
     (fileItem: ProcurementFileItem) => {
@@ -1766,13 +2060,17 @@ export function ProcurementRequestWorkspace({
 
   useEffect(() => {
     if (readOnly) {
-      onActions?.(view === "notes" || view === "shared" ? <div ref={setDocumentToolbarTarget} /> : null);
+      onActions?.(null);
       return () => onActions?.(null);
     }
 
     const actions =
-      view === "shared" ? (
-        <PillButton type="button" onClick={() => void openPacketLink()}>
+      view === "application" ? (
+        <PillButton
+          type="button"
+          size="default"
+          onClick={() => void openPacketLink()}
+        >
           <Link className="size-3.5" />
           Share link
         </PillButton>
@@ -1790,27 +2088,36 @@ export function ProcurementRequestWorkspace({
 
     onActions?.(
       <>
-        {view === "notes" || view === "shared" ? <div ref={setDocumentToolbarTarget} /> : null}
-        {view !== "shared" ? (
+        {coverageActions}
+        <PillButton
+          type="button"
+          variant="secondary"
+          expandLabel
+          label="Notes"
+          onClick={() => void openNotes()}
+        >
+          <StickyNote className="size-3.5" />
+        </PillButton>
+        {view === "application" && (
           <PillButton
-            type="button"
-            variant="secondary"
-            expandLabel
-            label="Edit request"
-            onClick={openRequestEditor}
+            variant="destructive"
+            size="default"
+            onClick={() => requestEditorRef.current?.openDelete()}
           >
-            <Pencil className="size-3.5" />
+            <Trash2 className="size-3.5" />
+            Delete request
           </PillButton>
-        ) : null}
+        )}
         {actions}
       </>,
     );
     return () => onActions?.(null);
   }, [
     onActions,
+    coverageActions,
     openOutreachEditor,
     openPacketLink,
-    openRequestEditor,
+    openNotes,
     openUpload,
     readOnly,
     view,
@@ -1851,354 +2158,386 @@ export function ProcurementRequestWorkspace({
       proposal.status !== "archived" && proposal.status !== "withdrawn",
   );
 
-  return (
-    <div className="space-y-5">
-      <div className="overflow-x-auto">
-        <Tabs
-          value={view}
-          onValueChange={(nextView) => void changeView(nextView)}
-        >
-          <TabsList variant="pill" aria-label="Procurement request view">
-            <TabsTrigger value="notes">Notes</TabsTrigger>
-            <TabsTrigger value="shared">Shared</TabsTrigger>
-            <TabsTrigger value="proposals">Brokers</TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
-            <TabsTrigger value="email">Imported email</TabsTrigger>
-          </TabsList>
-        </Tabs>
+  const fileRow = (
+    category: "requirements" | "policy" | "loss_runs" | "supporting",
+    label: string,
+  ) => ({
+    label,
+    value: (
+      <div data-inline-multiline className="space-y-1 px-3">
+        {category === "requirements" &&
+          details.request.application?.answers.requirements?.trim() && (
+            <p>{details.request.application.answers.requirements}</p>
+          )}
+        {details.files
+          .filter((file) => (file.intakeCategory ?? "supporting") === category)
+          .map((file) => (
+            <div key={file._id} className="flex min-h-9 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => openFileEditor(file)}
+                className="min-w-0 flex-1 text-left whitespace-normal break-words underline underline-offset-2 hover:text-foreground"
+              >
+                {file.label}
+              </button>
+              {!readOnly && (
+                <RemoveButton
+                  label={`Remove ${file.label}`}
+                  busy={removingFileId === file._id}
+                  disabled={removingFileId !== null}
+                  onClick={() => void handleRemoveFile(file._id)}
+                />
+              )}
+            </div>
+          ))}
+        {!readOnly && (
+          <div className="flex justify-end py-1">
+            <PillButton
+              size="default"
+              variant="secondary"
+              onClick={() => openUpload(category)}
+            >
+              <Plus className="size-3.5" />
+              Add document
+            </PillButton>
+          </div>
+        )}
       </div>
+    ),
+  });
+  const documentRows =
+    applicationSection === "Request details"
+      ? [
+          fileRow("requirements", "Insurance requirements"),
+          ...(details.files.some(
+            (file) => (file.intakeCategory ?? "supporting") === "supporting",
+          )
+            ? [fileRow("supporting", "Other documents")]
+            : []),
+        ]
+      : applicationSection === "Insurance history"
+        ? [
+            ...(details.request.application?.answers.currentInsurance !==
+              "No" ||
+            details.files.some((file) => file.intakeCategory === "policy")
+              ? [fileRow("policy", "Current policies")]
+              : []),
+            ...(details.files.some(
+              (file) => file.intakeCategory === "loss_runs",
+            )
+              ? [fileRow("loss_runs", "Loss runs / claims history")]
+              : []),
+          ]
+        : [];
 
-      {view === "notes" ? (
-        <OperationalLabelValueList>
-          <OperationalLabelValueRow
-            label="Current stage"
-            value={<RequestStatusTag status={details.request.status} />}
-          />
-          <RequestCompletionOutcome
-            outcome={details.request.completionOutcome}
-          />
-          <OperationalLabelValueRow
-            label="Target effective date"
-            value={formatDisplayDate(
-              details.request.targetEffectiveDate,
-              "Not set",
-            )}
-          />
-        </OperationalLabelValueList>
-      ) : null}
-
-      {view === "notes" || view === "shared" ? (
-        <PacketWorkspace
-          key={requestId}
-          ref={packetEditorRef}
-          readOnly={readOnly}
-          requestId={requestId}
-          filename={view === "shared" ? "public.md" : "private.md"}
-          toolbarTarget={documentToolbarTarget}
-        />
-      ) : null}
-
-      {view === "proposals" ? (
-        details.outreaches.length === 0 ? (
-          <EmptyStateCard
-            title="No brokers contacted yet"
-            description="Add a broker to track outreach and proposals."
-          />
-        ) : (
-          <OperationalPanel as="section">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Broker</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Premium</TableHead>
-                  <TableHead>Review</TableHead>
-                  <TableHead>Documents</TableHead>
-                  <TableHead>Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {details.outreaches.map((outreach) => {
-                  const proposal = activeProposals.find(
-                    (row) => row.outreachId === outreach._id,
-                  );
-                  const contact = [outreach.contactName, outreach.contactEmail]
-                    .filter(Boolean)
-                    .join(" · ");
-                  const offer = (proposal?.extractedOffer ?? {}) as {
-                    premium?: string;
-                    premiumAmount?: number;
-                  };
-                  const review = proposal?.reviews[0];
-                  const conclusion = review?.stale
-                    ? undefined
-                    : (review?.staffConclusion ?? review?.modelConclusion);
-                  return (
-                    <TableRow
-                      key={outreach._id}
-                      tabIndex={0}
-                      onClick={() => openOutreachEditor(outreach)}
-                      onKeyDown={(event) => openRowOnKeyboard(event, () => openOutreachEditor(outreach))}
-                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    >
-                      <TableCell className="min-w-52 max-w-96 whitespace-normal">
-                        <p
-                          className={`text-foreground ${typeStyle("body.medium")}`}
-                        >
-                          {outreach.brokerName}
-                        </p>
-                        {contact ? (
-                          <p
-                            className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {contact}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        {proposal && proposalExtractionState(proposal) ? (
-                          <ProposalExtractionStatus
-                            proposal={proposal}
-                            readOnly={readOnly}
-                          />
-                        ) : proposal ? (
-                          <StatusTag
-                            indicator={
-                              proposal.status === "draft"
-                                ? "draft"
-                                : proposal.status === "selected"
-                                  ? "complete"
-                                  : proposal.status === "withdrawn"
-                                    ? "cancelled"
-                                    : proposal.status === "archived"
-                                      ? "inactive"
-                                      : "progress"
-                            }
-                            progress={
-                              proposal.status === "reviewed" ? 0.75 : 0.4
-                            }
-                            tone={
-                              proposal.status === "selected"
-                                ? "success"
-                                : proposal.status === "reviewed"
-                                  ? "info"
-                                  : "neutral"
-                            }
-                          >
-                            {proposal.status.charAt(0).toUpperCase() +
-                              proposal.status.slice(1).replaceAll("_", " ")}
-                          </StatusTag>
-                        ) : (
-                          <OutreachStatusTag status={outreach.status} />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {offer.premium ?? offer.premiumAmount ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        {review?.stale ? (
-                          <StatusTag tone="warning">Stale</StatusTag>
-                        ) : conclusion ? (
-                          <StatusTag
-                            tone={
-                              conclusion === "meets_requirements"
-                                ? "success"
-                                : "warning"
-                            }
-                          >
-                            {REVIEW_CONCLUSION_LABELS[conclusion]}
-                          </StatusTag>
-                        ) : proposal ? (
-                          <StatusTag indicator="pending">
-                            Not reviewed
-                          </StatusTag>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-muted-foreground">
-                          {proposal?.documents.length ?? "—"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDisplayDate(
-                          Math.max(
-                            outreach.updatedAt,
-                            proposal?.updatedAt ?? 0,
-                          ),
-                          "—",
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </OperationalPanel>
-        )
-      ) : null}
-
-      {view === "files" ? (
-        details.files.length === 0 ? (
-          <EmptyStateCard
-            title="No procurement files yet"
-            description="Upload files to include in this procurement request."
-          />
-        ) : (
-          <OperationalPanel as="section">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>File</TableHead>
-                  <TableHead>Visibility</TableHead>
-                  <TableHead>Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {details.files.map((item) => {
-                  const file = item.clientFile;
-                  const pdf = Boolean(
-                    file &&
-                    (file.contentType === "application/pdf" ||
-                      /\.pdf$/i.test(file.name)),
-                  );
-                  const image = Boolean(
-                    file &&
-                    (file.contentType.startsWith("image/") ||
-                      /\.(avif|gif|jpe?g|png|webp)$/i.test(file.name)),
-                  );
-                  return (
-                    <TableRow
-                      key={item._id}
-                      tabIndex={0}
-                      onClick={() => openFileEditor(item)}
-                      onKeyDown={(event) => openRowOnKeyboard(event, () => openFileEditor(item))}
-                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    >
-                      <TableCell className="min-w-64 whitespace-normal">
-                        <div className="flex items-center gap-3">
-                          <span className="text-muted-foreground">
-                            {image ? (
-                              <FileImage className="size-4" />
-                            ) : pdf ? (
-                              <FileText className="size-4" />
-                            ) : (
-                              <File className="size-4" />
-                            )}
-                          </span>
-                          <div className="min-w-0">
-                            <span
-                              className={`text-foreground ${typeStyle("body.medium")}`}
-                            >
-                              {item.label}
-                            </span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {[
-                          item.clientVisible ? "Client" : null,
-                          item.brokerRelease && item.brokerRelease !== "hidden"
-                            ? "Broker"
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || "Private"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDisplayDate(item.updatedAt, "—")}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </OperationalPanel>
-        )
-      ) : null}
-
-      {view === "email" ? (
-        <div className="space-y-4">
-          <OperationalLabelValueList>
-            <OperationalLabelValueRow
-              label="Forward email to"
-              verticalAlign="center"
-              value={
-                <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <span
-                    className={`min-w-0 break-all ${typeStyle("technical.codeCompact")}`}
-                  >
-                    {details.request.forwardingAddress}
-                  </span>
-                  <PillButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => void copyAddress()}
-                  >
-                    <Copy className="size-3.5" />
-                    Copy address
-                  </PillButton>
-                </div>
+  return (
+    <IntakeReviewCompact.Provider value={true}>
+      <div className="space-y-5">
+        <div className="overflow-x-auto">
+          <Tabs
+            value={
+              view === "proposals" || view === "email"
+                ? view
+                : applicationSection
+            }
+            onValueChange={async (next) => {
+              if (
+                requestEditorRef.current &&
+                !(await requestEditorRef.current.save())
+              )
+                return;
+              if (
+                packetEditorRef.current &&
+                !(await packetEditorRef.current.save())
+              )
+                return;
+              if (next === "proposals" || next === "email")
+                void changeView(next);
+              else {
+                setApplicationSection(String(next));
+                if (view !== "application") void changeView("application");
               }
-            />
-          </OperationalLabelValueList>
-          {details.emailThreads.length === 0 ? (
+            }}
+          >
+            <TabsList variant="pill" aria-label="Procurement request details">
+              {[
+                "Contact details",
+                "Request details",
+                "Coverage Requested",
+                "Insurance history",
+              ].map((title) => (
+                <TabsTrigger key={title} value={title}>
+                  {title}
+                </TabsTrigger>
+              ))}
+              <TabsTrigger value="proposals">Brokers</TabsTrigger>
+              {details.emailThreads.length > 0 || view === "email" ? (
+                <TabsTrigger value="email">Imported email</TabsTrigger>
+              ) : null}
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {view === "application" || view === "files" || view === "edit" ? (
+          <>
+            {!readOnly ? (
+              <RequestEditor
+                key={requestId}
+                inline
+                embedded
+                request={details.request}
+                policies={policyOptions}
+                onClose={() => {}}
+                activeSection={applicationSection}
+                extraRows={documentRows}
+                onCoverageActions={setCoverageActions}
+                saveRef={requestEditorRef}
+              />
+            ) : details.request.application ? (
+              <IntakeApplicationReview
+                activeSection={applicationSection}
+                extraRows={documentRows}
+                application={details.request.application}
+              />
+            ) : null}
+          </>
+        ) : null}
+
+        {view === "proposals" ? (
+          details.outreaches.length === 0 ? (
             <EmptyStateCard
-              title="No email imported for this request"
-              description="Forward a thread to this request’s address."
-              icon={<Mail className="size-6" />}
+              title="No brokers contacted yet"
+              description="Add a broker to track outreach and proposals."
             />
           ) : (
             <OperationalPanel as="section">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Participant</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Last activity</TableHead>
+                    <TableHead>Broker</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Premium</TableHead>
+                    <TableHead>Review</TableHead>
+                    <TableHead>Documents</TableHead>
+                    <TableHead>Updated</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {details.emailThreads.map((email) => (
-                    <TableRow
-                      key={email._id}
-                      tabIndex={0}
-                      className="cursor-pointer"
-                      onClick={() => openEmail(email._id)}
-                      onKeyDown={(event) => openRowOnKeyboard(event, () => void openEmail(email._id))}
-                    >
-                      <TableCell className="min-w-64 whitespace-normal">
-                        <p
-                          className={`text-foreground ${typeStyle("body.medium")}`}
-                        >
-                          {email.subject}
-                        </p>
-                        <p
-                          className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          {email.messageCount}{" "}
-                          {email.messageCount === 1 ? "message" : "messages"}
-                        </p>
-                      </TableCell>
-                      <TableCell className="max-w-64 truncate text-muted-foreground">
-                        {email.participantEmails[0] ?? "Unknown"}
-                      </TableCell>
-                      <TableCell>
-                        <EmailCategoryBadge category={email.category} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDisplayDateTime(email.latestMessageAt, "—")}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {details.outreaches.map((outreach) => {
+                    const proposal = activeProposals.find(
+                      (row) => row.outreachId === outreach._id,
+                    );
+                    const contact = [
+                      outreach.contactName,
+                      outreach.contactEmail,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    const offer = (proposal?.extractedOffer ?? {}) as {
+                      premium?: string;
+                      premiumAmount?: number;
+                    };
+                    const review = proposal?.reviews[0];
+                    const conclusion = review?.stale
+                      ? undefined
+                      : (review?.staffConclusion ?? review?.modelConclusion);
+                    return (
+                      <TableRow
+                        key={outreach._id}
+                        tabIndex={0}
+                        onClick={() => openOutreachEditor(outreach)}
+                        onKeyDown={(event) =>
+                          openRowOnKeyboard(event, () =>
+                            openOutreachEditor(outreach),
+                          )
+                        }
+                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        <TableCell className="min-w-52 max-w-96 whitespace-normal">
+                          <p
+                            className={`text-foreground ${typeStyle("body.medium")}`}
+                          >
+                            {outreach.brokerName}
+                          </p>
+                          {contact ? (
+                            <p
+                              className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
+                            >
+                              {contact}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          {proposal && proposalExtractionState(proposal) ? (
+                            <ProposalExtractionStatus
+                              proposal={proposal}
+                              readOnly={readOnly}
+                            />
+                          ) : proposal ? (
+                            <StatusTag
+                              indicator={
+                                proposal.status === "draft"
+                                  ? "draft"
+                                  : proposal.status === "selected"
+                                    ? "complete"
+                                    : proposal.status === "withdrawn"
+                                      ? "cancelled"
+                                      : proposal.status === "archived"
+                                        ? "inactive"
+                                        : "progress"
+                              }
+                              progress={
+                                proposal.status === "reviewed" ? 0.75 : 0.4
+                              }
+                              tone={
+                                proposal.status === "selected"
+                                  ? "success"
+                                  : proposal.status === "reviewed"
+                                    ? "info"
+                                    : "neutral"
+                              }
+                            >
+                              {proposal.status.charAt(0).toUpperCase() +
+                                proposal.status.slice(1).replaceAll("_", " ")}
+                            </StatusTag>
+                          ) : (
+                            <OutreachStatusTag status={outreach.status} />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {offer.premium ?? offer.premiumAmount ?? "—"}
+                        </TableCell>
+                        <TableCell>
+                          {review?.stale ? (
+                            <StatusTag tone="warning">Stale</StatusTag>
+                          ) : conclusion ? (
+                            <StatusTag
+                              tone={
+                                conclusion === "meets_requirements"
+                                  ? "success"
+                                  : "warning"
+                              }
+                            >
+                              {REVIEW_CONCLUSION_LABELS[conclusion]}
+                            </StatusTag>
+                          ) : proposal ? (
+                            <StatusTag indicator="pending">
+                              Not reviewed
+                            </StatusTag>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted-foreground">
+                            {proposal?.documents.length ?? "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDisplayDate(
+                            Math.max(
+                              outreach.updatedAt,
+                              proposal?.updatedAt ?? 0,
+                            ),
+                            "—",
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </OperationalPanel>
-          )}
-        </div>
-      ) : null}
-    </div>
+          )
+        ) : null}
+
+        {view === "email" ? (
+          <div className="space-y-4">
+            <OperationalLabelValueList>
+              <OperationalLabelValueRow
+                label="Forward email to"
+                verticalAlign="center"
+                value={
+                  <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <span
+                      className={`min-w-0 break-all ${typeStyle("technical.codeCompact")}`}
+                    >
+                      {details.request.forwardingAddress}
+                    </span>
+                    <PillButton
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void copyAddress()}
+                    >
+                      <Copy className="size-3.5" />
+                      Copy address
+                    </PillButton>
+                  </div>
+                }
+              />
+            </OperationalLabelValueList>
+            {details.emailThreads.length === 0 ? (
+              <EmptyStateCard
+                title="No email imported for this request"
+                description="Forward a thread to this request’s address."
+                icon={<Mail className="size-6" />}
+              />
+            ) : (
+              <OperationalPanel as="section">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Participant</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Last activity</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {details.emailThreads.map((email) => (
+                      <TableRow
+                        key={email._id}
+                        tabIndex={0}
+                        className="cursor-pointer"
+                        onClick={() => openEmail(email._id)}
+                        onKeyDown={(event) =>
+                          openRowOnKeyboard(
+                            event,
+                            () => void openEmail(email._id),
+                          )
+                        }
+                      >
+                        <TableCell className="min-w-64 whitespace-normal">
+                          <p
+                            className={`text-foreground ${typeStyle("body.medium")}`}
+                          >
+                            {email.subject}
+                          </p>
+                          <p
+                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+                          >
+                            {email.messageCount}{" "}
+                            {email.messageCount === 1 ? "message" : "messages"}
+                          </p>
+                        </TableCell>
+                        <TableCell className="max-w-64 truncate text-muted-foreground">
+                          {email.participantEmails[0] ?? "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          <EmailCategoryBadge category={email.category} />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDisplayDateTime(email.latestMessageAt, "—")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </OperationalPanel>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </IntakeReviewCompact.Provider>
   );
 }

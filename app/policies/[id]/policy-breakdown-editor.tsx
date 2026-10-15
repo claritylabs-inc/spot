@@ -1,9 +1,10 @@
 "use client";
+import { RemoveButton } from "@/components/ui/remove-button";
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import dayjs from "dayjs";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Label } from "@claritylabs-inc/ui/components/label";
@@ -151,7 +152,8 @@ function withoutFlushedFields(
 ) {
   const next = { ...current };
   for (const [key, value] of Object.entries(flushed)) {
-    if (JSON.stringify(current[key]) === JSON.stringify(value)) delete next[key];
+    if (JSON.stringify(current[key]) === JSON.stringify(value))
+      delete next[key];
   }
   return next;
 }
@@ -188,7 +190,9 @@ export function PolicyBreakdownEditor({
   readOnly,
   open,
   onOpenChange,
+  inline = false,
 }: {
+  inline?: boolean;
   policy: Record<string, unknown> & { _id: Id<"policies"> };
   readOnly: boolean;
   open: boolean;
@@ -374,18 +378,18 @@ export function PolicyBreakdownEditor({
     { key: "premium", label: "Premium", kind: "money" },
   ] as const;
 
-  return (
-    <SettingsDrawer
-      open={open}
-      onOpenChange={handleOpenChange}
-      title="Edit extracted fields"
-    >
+  const content = (
+    <>
       <AutoSaveStatus status={policyFieldAutoSave.status} />
       <div className="space-y-5">
         <div className="grid grid-cols-1 gap-3">
           {fields.map(({ key, label, kind }) => (
             <div key={key} className="space-y-1.5">
-              <Label className={`text-muted-foreground ${typeStyle("label.field")}`}>{label}</Label>
+              <Label
+                className={`text-muted-foreground ${typeStyle("label.field")}`}
+              >
+                {label}
+              </Label>
               <Input
                 type={kind === "date" ? "date" : "text"}
                 inputMode={kind === "money" ? "decimal" : undefined}
@@ -458,18 +462,14 @@ export function PolicyBreakdownEditor({
                     updatePremiumBreakdown(next);
                   }}
                 />
-                <PillButton
-                  size="compact"
-                  variant="icon"
+                <RemoveButton
                   label="Remove"
                   onClick={() =>
                     updatePremiumBreakdown(
                       draft.premiumBreakdown.filter((_, i) => i !== index),
                     )
                   }
-                >
-                  <Trash2 className="size-3.5" />
-                </PillButton>
+                />
               </div>
             ))}
           </div>
@@ -535,18 +535,14 @@ export function PolicyBreakdownEditor({
                     updateTaxesAndFees(next);
                   }}
                 />
-                <PillButton
-                  size="compact"
-                  variant="icon"
+                <RemoveButton
                   label="Remove"
                   onClick={() =>
                     updateTaxesAndFees(
                       draft.taxesAndFees.filter((_, i) => i !== index),
                     )
                   }
-                >
-                  <Trash2 className="size-3.5" />
-                </PillButton>
+                />
               </div>
             ))}
           </div>
@@ -627,23 +623,34 @@ export function PolicyBreakdownEditor({
                     sourceSpans={sourceSpans}
                   />
                 </div>
-                <PillButton
-                  size="compact"
-                  variant="icon"
+                <RemoveButton
                   label="Remove"
                   onClick={() =>
                     updateCoverages(
                       draft.coverages.filter((_, i) => i !== index),
                     )
                   }
-                >
-                  <Trash2 className="size-3.5" />
-                </PillButton>
+                />
               </div>
             ))}
           </div>
         </FormSection>
       </div>
+    </>
+  );
+  if (inline)
+    return (
+      <div data-operator-form data-operator-inline-fields className="space-y-4">
+        {content}
+      </div>
+    );
+  return (
+    <SettingsDrawer
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Policy fields"
+    >
+      {content}
     </SettingsDrawer>
   );
 }

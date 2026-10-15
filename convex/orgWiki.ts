@@ -1,3 +1,15 @@
+import { companyProfileInputSchema } from "./lib/companyProfileInput";
+import dayjs from "dayjs";
+import { updateClientSettingsForOperator } from "./operator";
+import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
+import { intakeDetailsValidator } from "./lib/intakeDetailsSchema";
+import {
+  validateIntakeDetails,
+  detailsAnswers,
+  detailsFromAnswers,
+} from "../lib/insurance-intake-details";
+import { companyApplicationProfile } from "../lib/intake-application";
+import { readIntakeBusinessProfile } from "./lib/intakeApplication";
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -23,7 +35,6 @@ import {
 } from "./lib/orgWiki";
 import {
   isCompanyWikiFact,
-  assertAgentWikiContent,
   normalizeWikiContent,
   type OrgWikiSource,
 } from "./lib/orgWikiPolicy";
@@ -229,8 +240,25 @@ export async function readOrgWiki(
   orgId: Id<"organizations">,
 ) {
   const state = await loadWiki(ctx, orgId);
+  const businessProfile = await readIntakeBusinessProfile(ctx, orgId);
+  const sourceRequest = businessProfile?.sourceRequestId
+    ? await ctx.db.get(businessProfile.sourceRequestId)
+    : null;
+  const legacyBusinessProfile = sourceRequest?.intakeSnapshot
+    ? companyApplicationProfile({
+        answers: sourceRequest.intakeSnapshot,
+        details:
+          sourceRequest.intakeDetailsSnapshot ??
+          detailsFromAnswers(sourceRequest.intakeSnapshot),
+        files: [],
+        submittedAt: sourceRequest.intakeSubmittedAt ?? 0,
+        revision: 0,
+      })
+    : null;
   return {
+    legacyBusinessProfile,
     orgId,
+    businessProfile,
     filename: state.document?.filename ?? "company-wiki.md",
     revision: state.document?.revision ?? 0,
     markdown:
@@ -432,6 +460,18 @@ export const getForMcp = internalQuery({
 
 // ── Tenant ──
 
+/** Submitted company facts are separate from wiki prose visibility. */
+export const businessProfile = query({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    await requireClientWikiOrganization(ctx, args.orgId);
+    const access = await getOrgAccess(ctx, args.orgId);
+    if (access.accessType !== "member")
+      throwUserFacingError(userFacingErrorCodes.orgAccessRequired);
+    return await readIntakeBusinessProfile(ctx, args.orgId);
+  },
+});
+
 export const get = query({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
@@ -446,6 +486,150 @@ export const get = query({
     return await readSharedWiki(ctx, args.orgId);
   },
 });
+
+/** Edit saved company facts without rewriting any application snapshot or wiki prose. */
+export const updateBusinessProfileForOperator = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    expectedVersion: v.number(),
+    expectedName: v.string(),
+    expectedWebsite: v.string(),
+    expectedStatus: v.string(),
+    name: v.string(),
+    website: v.string(),
+    status: v.union(
+      v.literal("onboarding"),
+      v.literal("live"),
+      v.literal("lost"),
+      v.literal("churned"),
+    ),
+    answers: intakeAnswersValidator,
+    details: intakeDetailsValidator,
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    return await updateBusinessProfileByOperator(ctx, operator.userId, args);
+  },
+});
+
+export async function updateBusinessProfileByOperator(
+  ctx: MutationCtx,
+  operatorUserId: Id<"users">,
+  args: {
+    orgId: Id<"organizations">;
+    expectedVersion: number;
+    expectedName: string;
+    expectedWebsite: string;
+    expectedStatus: string;
+    name: string;
+    website: string;
+    status: "onboarding" | "live" | "lost" | "churned";
+    answers: import("../lib/insurance-intake").IntakeAnswers;
+    details: import("../lib/insurance-intake-details").IntakeDetails;
+  },
+) {
+  await requireOperatorForUser(ctx, operatorUserId);
+  await requireDirectOperatorWikiWrite(ctx, operatorUserId);
+  const org = await requireClientWikiOrganization(ctx, args.orgId);
+  if (org.deletedAt) throw new Error("Client not found");
+  const existing = await readIntakeBusinessProfile(ctx, args.orgId);
+  if (
+    (existing?.submittedAt ?? 0) !== args.expectedVersion ||
+    org.name !== args.expectedName ||
+    (org.website ?? "") !== args.expectedWebsite ||
+    (org.operatorStatus ?? "live") !== args.expectedStatus
+  )
+    throw new Error(
+      "This profile changed while you were editing. Reload it before saving.",
+    );
+  validateIntakeDetails(args.details);
+  for (const value of Object.values(args.answers))
+    if (value && value.length > 8000)
+      throw new Error("Keep each answer within 8,000 characters");
+  const now = Math.max(dayjs().valueOf(), args.expectedVersion + 1);
+  const profile = companyApplicationProfile({
+    answers: { ...args.answers, ...detailsAnswers(args.details) },
+    details: args.details,
+    files: [],
+    revision: 0,
+    submittedAt: now,
+  });
+  if (args.name !== org.name || args.website !== (org.website ?? ""))
+    await updateClientSettingsForOperator(ctx, operatorUserId, {
+      clientOrgId: args.orgId,
+      name: args.name,
+      website: args.website,
+    });
+  await ctx.db.patch(args.orgId, {
+    operatorStatus: args.status,
+    intakeBusinessProfile: {
+      ...profile,
+      ...(existing?.sourceRequestId
+        ? { sourceRequestId: existing.sourceRequestId }
+        : {}),
+    },
+  });
+  await writeOperatorAudit(ctx, {
+    operatorUserId: operatorUserId,
+    type: "setup_write",
+    targetOrgId: args.orgId,
+    summary: `Updated profile for ${args.name}`,
+    metadata: {
+      operation: "update_business_profile",
+      previousVersion: args.expectedVersion,
+      version: now,
+    },
+  });
+  const savedOrg = (await ctx.db.get(args.orgId))!;
+  return {
+    version: now,
+    account: {
+      name: savedOrg.name,
+      website: savedOrg.website ?? "",
+      status: savedOrg.operatorStatus ?? "live",
+    },
+  };
+}
+
+export async function prepareBusinessProfileToolUpdate(
+  ctx: MutationCtx,
+  input: unknown,
+) {
+  const patch = companyProfileInputSchema.parse(input);
+  const orgId = ctx.db.normalizeId("organizations", patch.orgId);
+  if (!orgId) throw new Error("Invalid organization");
+  const org = await requireClientWikiOrganization(ctx, orgId);
+  if (org.deletedAt) throw new Error("Client not found");
+  const existing = await readIntakeBusinessProfile(ctx, orgId);
+  if ((existing?.submittedAt ?? 0) !== patch.expectedVersion)
+    throw new Error(
+      "This profile changed. Read lookup_client_wiki again before updating.",
+    );
+  const details = {
+    ...(existing?.details ?? detailsFromAnswers({})),
+    ...patch.details,
+  };
+  validateIntakeDetails(details);
+  const answers = {
+    legalName: org.name,
+    website: org.website ?? "",
+    ...existing?.answers,
+    ...patch.answers,
+    ...detailsAnswers(details),
+  };
+  return {
+    orgId,
+    expectedVersion: patch.expectedVersion,
+    expectedName: org.name,
+    expectedWebsite: org.website ?? "",
+    expectedStatus: org.operatorStatus ?? "live",
+    name: patch.answers?.legalName ?? org.name,
+    website: patch.answers?.website ?? org.website ?? "",
+    status: org.operatorStatus ?? "live",
+    answers,
+    details,
+  };
+}
 
 // ── Operator ──
 
@@ -512,24 +696,6 @@ async function saveWikiFile(
   let markdown = manualWikiDocument(args.markdown);
   if (args.agent) {
     const parsed = parseMarkdownDocument(args.markdown);
-    assertAgentWikiContent(state.body, parsed.body);
-    const metadataText = (metadata: Record<string, unknown>) => {
-      const strings: string[] = [];
-      const visit = (value: unknown) => {
-        if (typeof value === "string" && !/^https?:\/\//i.test(value))
-          strings.push(value);
-        else if (Array.isArray(value)) value.forEach(visit);
-        else if (value && typeof value === "object")
-          for (const [key, item] of Object.entries(value))
-            if (key !== "_spot") visit(item);
-      };
-      visit(metadata);
-      return strings.join("\n");
-    };
-    assertAgentWikiContent(
-      metadataText(state.frontmatter),
-      metadataText(parsed.frontmatter),
-    );
     for (const [heading, proposal] of Object.entries(
       state.metadata.proposals ?? {},
     )) {
@@ -600,10 +766,6 @@ export const saveSectionForMcp = internalMutation({
         "Company wiki revision changed; read it again before saving.",
       );
     const heading = requireOrgWikiSection(args.key).heading;
-    assertAgentWikiContent(
-      readMarkdownHeading(current.body, heading),
-      args.body,
-    );
     await writeSection(ctx, {
       orgId: args.orgId,
       key: args.key,

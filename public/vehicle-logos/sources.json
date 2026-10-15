@@ -1,0 +1,212 @@
+{
+  "ford": {
+    "file": "ford.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Ford_logo_flat.svg",
+    "license": "Public domain",
+    "artist": "Ford Motor Company"
+  },
+  "toyota": {
+    "file": "toyota.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Toyota_carlogo.svg",
+    "license": "Public domain",
+    "artist": "Toyota Motor Corporation",
+    "modification": "ViewBox cropped to the standalone emblem; original SVG geometry retained."
+  },
+  "honda": {
+    "file": "honda.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Honda_auto_logo.svg",
+    "license": "Public domain",
+    "artist": "Honda Motor Co., Ltd."
+  },
+  "chevrolet": {
+    "file": "chevrolet.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Chevrolet%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "Retained the outer bowtie contour as a solid silhouette for legibility at 20px; fitted viewBox."
+  },
+  "nissan": {
+    "file": "nissan.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Nissan_2020_logo.svg",
+    "license": "Public domain",
+    "artist": "Nissan Motor Corporation"
+  },
+  "hyundai": {
+    "file": "hyundai.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Hyundai_Motor_Company_logo.svg",
+    "license": "Public domain",
+    "artist": "<a href=\"https://en.wikipedia.org/wiki/Hyundai_Motor_Company\" class=\"extiw\" title=\"w:Hyundai Motor Company\">Hyundai Motor Company</a>",
+    "modification": "ViewBox cropped to the standalone emblem; original SVG geometry retained."
+  },
+  "kia": {
+    "file": "kia.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Kia%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "jeep": {
+    "file": "jeep.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Jeep%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "subaru": {
+    "file": "subaru.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Subaru_logo.svg",
+    "license": "Public domain",
+    "artist": "Subaru",
+    "modification": "ViewBox cropped to the standalone emblem; original SVG geometry retained."
+  },
+  "tesla": {
+    "file": "tesla.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Tesla_T_symbol.svg",
+    "license": "Public domain",
+    "artist": "Tesla (logo), <b><a href=\"//commons.wikimedia.org/wiki/User:Fry1989\" title=\"User:Fry1989\"><span style=\"color:#003384;\">Fry1989</span></a></b> <sup><b><a href=\"//commons.wikimedia.org/wiki/User_talk:Fry1989\" title=\"User talk:Fry1989\"><span style=\"color:#cc111a;\">eh?</span></a></b></sup> (vectorization)"
+  },
+  "volkswagen": {
+    "file": "volkswagen.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Volkswagen_logo_2019.svg",
+    "license": "Public domain",
+    "artist": "<a href=\"https://en.wikipedia.org/wiki/Volkswagen\" class=\"extiw\" title=\"w:Volkswagen\">Volkswagen</a>"
+  },
+  "bmw": {
+    "file": "bmw.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:BMW.svg",
+    "license": "Public domain",
+    "artist": "BMW"
+  },
+  "mazda": {
+    "file": "mazda.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Mazda%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "audi": {
+    "file": "audi.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Audi-Logo_2016.svg",
+    "license": "Public domain",
+    "artist": "Strichpunkt / KMS Team"
+  },
+  "mercedesbenz": {
+    "file": "mercedesbenz.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Mercedes-Benz_free_logo.svg",
+    "license": "Public domain",
+    "artist": "Unknown author<span style=\"display: none;\">Unknown author</span>"
+  },
+  "lexus": {
+    "file": "lexus.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Lexus_Logo.svg",
+    "license": "CC0",
+    "artist": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:Glebushko0703&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:Glebushko0703 (page does not exist)\">Glebushko0703</a>"
+  },
+  "mclaren": {
+    "file": "mclaren.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:McLaren_Speedmark.svg",
+    "license": "Public domain",
+    "artist": "<a href=\"//commons.wikimedia.org/wiki/User:Ved_havet\" title=\"User:Ved havet\">Ved havet</a>"
+  },
+  "gmc": {
+    "file": "gmc.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/GMC%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "dodge": {
+    "file": "dodge.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Dodge%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "Retained only the two standalone slash paths; fitted viewBox."
+  },
+  "lincoln": {
+    "file": "lincoln.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Lincoln%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "volvo": {
+    "file": "volvo.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Volvo%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "landrover": {
+    "file": "landrover.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Land_Rover_2023.svg",
+    "license": "Public domain",
+    "artist": "Jaguar Land Rover Automotive PLC"
+  },
+  "acura": {
+    "file": "acura.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Acura%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "infiniti": {
+    "file": "infiniti.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Infiniti_logo.svg",
+    "license": "Public domain",
+    "artist": "Infiniti",
+    "modification": "ViewBox cropped to the standalone emblem; original SVG geometry retained."
+  },
+  "mitsubishi": {
+    "file": "mitsubishi.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Mitsubishi_logo.svg",
+    "license": "Public domain",
+    "artist": "Mitsubishi"
+  },
+  "suzuki": {
+    "file": "suzuki.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Suzuki_logo_2025_(vertical).svg",
+    "license": "Public domain",
+    "artist": "Suzuki Motor Corporation",
+    "modification": "Retained only standalone emblem path; removed separate wordmark and fitted viewBox."
+  },
+  "peugeot": {
+    "file": "peugeot.svg",
+    "source": "https://github.com/simple-icons/simple-icons/blob/13.21.0/icons/peugeot.svg",
+    "license": "CC0-1.0",
+    "artist": "Simple Icons contributors; Peugeot trademark"
+  },
+  "renault": {
+    "file": "renault.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:Renault_2021_Text.svg",
+    "license": "Public domain",
+    "artist": "Renault / Reproduction : <a href=\"//commons.wikimedia.org/wiki/User:Wizly-08\" title=\"User:Wizly-08\">Kilyann Le Hen</a>",
+    "modification": "Retained only standalone emblem path; removed separate wordmark and fitted viewBox."
+  },
+  "fiat": {
+    "file": "fiat.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Fiat%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "mini": {
+    "file": "mini.svg",
+    "source": "https://commons.wikimedia.org/wiki/File:MINI_logo.svg",
+    "license": "Public domain",
+    "artist": "<p><a href=\"//commons.wikimedia.org/wiki/BMW\" title=\"BMW\">BMW</a><br>\n</p>\nSVG by <a href=\"//commons.wikimedia.org/wiki/User:CMetalCore\" title=\"User:CMetalCore\">CMetalCore</a><div style=\"display:table;width:;vertical-align:middle;direction:ltr;float:left;line-height:22px;height:24px;font-size:.96em;margin:0px;padding:2px 4px 2px 6px;color:var(--color-base,#000);background:var(--background-color-neutral-subtle,#F8F9FA);border:1px solid #BAB;border-collapse:separate;border-spacing:0px;background:#FEE;border:1px solid #600;\"><span typeof=\"mw:File\"><a href=\"//commons.wikimedia.org/wiki/File:Inkscape-ws.svg\" class=\"mw-file-description\"><img src=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Inkscape-ws.svg/40px-Inkscape-ws.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail\" decoding=\"async\" loading=\"lazy\" width=\"22\" height=\"22\" class=\"mw-file-element\" srcset=\"https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Inkscape-ws.svg/60px-Inkscape-ws.svg.png?utm_source=commons.wikimedia.org&amp;utm_campaign=parser&amp;utm_content=thumbnail 2x\" data-file-width=\"390\" data-file-height=\"390\"></a></span> This <i>W3C-unspecified</i> <a href=\"https://en.wikipedia.org/wiki/Vector_images\" class=\"extiw\" title=\"w:Vector images\">vector image</a> was created with <a href=\"https://en.wikipedia.org/wiki/Inkscape\" class=\"extiw\" title=\"w:Inkscape\">Inkscape</a> .</div>"
+  },
+  "ram": {
+    "file": "ram.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/RAM%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  },
+  "buick": {
+    "file": "buick.svg",
+    "source": "https://github.com/cardog-ai/icons/blob/05c4001e83a09a189721a0851546291f71f7e31c/core/optimized/Buick%20Icon.svg",
+    "license": "MIT",
+    "artist": "Cardog; manufacturer trademarks belong to their owners",
+    "modification": "ViewBox fitted to emblem bounds; original vector geometry retained."
+  }
+}

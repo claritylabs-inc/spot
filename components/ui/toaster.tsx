@@ -24,13 +24,13 @@ export function AppToaster() {
       offset={{
         right: 24,
         bottom:
-          "calc(var(--spot-app-bottom-inset, 0px) + var(--spot-settings-drawer-footer-inset, 0px) + 1rem)",
+          "calc(var(--spot-app-bottom-inset, 0px) + var(--spot-settings-drawer-footer-inset, 0px) + var(--spot-intake-footer-inset, 0px) + 1rem)",
       }}
       mobileOffset={{
         top: 16,
         right: 16,
         bottom:
-          "calc(var(--spot-app-bottom-inset, 0px) + var(--spot-settings-drawer-footer-inset, 0px) + env(safe-area-inset-bottom) + 1rem)",
+          "calc(var(--spot-app-bottom-inset, 0px) + var(--spot-settings-drawer-footer-inset, 0px) + max(var(--spot-intake-footer-inset, 0px), env(safe-area-inset-bottom)) + 1rem)",
         left: 16,
       }}
       style={

@@ -1,4 +1,5 @@
 "use client";
+import { RootLoading } from "@/components/root-loading";
 
 import {
   Children,
@@ -14,7 +15,9 @@ import {
   useState,
 } from "react";
 import { MotionConfig } from "framer-motion";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import {
   Dialog,
   DialogContent,
@@ -272,7 +275,10 @@ function ShellFrame({
   );
 
   const app = (
-    <div className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-background">
+    <div
+      data-app-surface={route.surface}
+      className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-background"
+    >
       <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
         {isOperator ? (
           <>
@@ -385,7 +391,10 @@ function ClientAgentGate({
 }) {
   const currentOrg = useCurrentOrg();
   return (
-    <ShellFrame route={route} agentEnabled={!!currentOrg && !currentOrg.isBroker}>
+    <ShellFrame
+      route={route}
+      agentEnabled={!!currentOrg && !currentOrg.isBroker}
+    >
       {children}
     </ShellFrame>
   );
@@ -434,7 +443,22 @@ export function AppShellLayout({
 /** Root-layout wrapper: shell routes get the persistent shell, others render bare. */
 export function AppShellRoot({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const route = appShellRoute(pathname);
+  const viewer = useQuery(api.users.viewer, {});
+  const currentOrg = useCurrentOrg();
+  const clientSurface = route?.surface === "client" || pathname === "/";
+  const intakeOnly =
+    !!viewer?.intakeRestricted ||
+    (!!currentOrg &&
+      !currentOrg.isBroker &&
+      !currentOrg.isPartner &&
+      currentOrg.org.clientAccessStatus !== "active");
+  useEffect(() => {
+    if (clientSurface && intakeOnly) router.replace("/signup");
+  }, [clientSurface, intakeOnly, router]);
+  if (clientSurface && (!viewer || !currentOrg || intakeOnly))
+    return pathname === "/" ? <RootLoading /> : null;
   if (!route) return <>{children}</>;
   return (
     <AppShellLayout key={route.surface} route={route}>
@@ -475,7 +499,9 @@ export function AppShell({
   return (
     <>
       {children}
-      {actions ? <AppShellPortal slot="actions">{actions}</AppShellPortal> : null}
+      {actions ? (
+        <AppShellPortal slot="actions">{actions}</AppShellPortal>
+      ) : null}
       {breadcrumbDetail ? (
         <AppShellPortal slot="breadcrumb">{breadcrumbDetail}</AppShellPortal>
       ) : null}

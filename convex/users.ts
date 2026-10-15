@@ -11,7 +11,7 @@ import {
 } from "./_generated/server";
 import { internal as _internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import {
   EMAIL_CHANGE_PROVIDER,
   EMAIL_CHANGE_TTL_MS,
@@ -155,7 +155,7 @@ async function deleteVerificationCodesForAccount(
 export const viewer = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getAuthUserId(ctx, true);
     if (!userId) return null;
     return await ctx.db.get(userId);
   },
@@ -512,6 +512,7 @@ export const completeOnboarding = mutation({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
+    await assertCustomerUser(ctx, userId);
     await ctx.db.patch(userId, { onboardingComplete: true });
 
     // Also mark org as onboarded if user has one

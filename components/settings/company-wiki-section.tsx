@@ -1,12 +1,21 @@
 "use client";
+import { MarkdownReview } from "@/components/ui/markdown-review";
+import type { IntakeApplication } from "@/lib/intake-application";
+import { companyNotesMarkdown } from "@/lib/intake-application";
+import { IntakeCompanyReview } from "@/components/insurance-intake/company-review";
+import { splitEditorMarkdown, replaceEditorBody } from "@/lib/markdown-editor";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Download, Loader2, Upload } from "lucide-react";
+import { Download, Loader2, FileInput } from "lucide-react";
 import { toast } from "sonner";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
+import {
+  OperationalPanel,
+  OperationalPanelHeader,
+  OperationalPanelBody,
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -28,8 +37,16 @@ function WikiEditor({
   canManage,
   onSave,
   toolbarTarget,
+  businessProfile,
+  legacyBusinessProfile,
+  showViewSwitcher = true,
+  inlineEditing = false,
 }: {
+  showViewSwitcher?: boolean;
+  inlineEditing?: boolean;
   toolbarTarget?: HTMLElement | null;
+  businessProfile?: Pick<IntakeApplication, "answers" | "details"> | null;
+  legacyBusinessProfile?: Pick<IntakeApplication, "answers" | "details"> | null;
   sourceMarkdown: string;
   sourceRevision: number;
   filename: string;
@@ -111,8 +128,36 @@ function WikiEditor({
         />
       ) : null}
       <MarkdownEditor
-        label="Notes Markdown"
-        value={markdown}
+        showProperties={false}
+        showViewSwitcher={showViewSwitcher}
+        preview={
+          inlineEditing ? undefined : (
+            <MarkdownReview>
+              {companyNotesMarkdown(
+                companyNotesMarkdown(
+                  splitEditorMarkdown(markdown).body,
+                  legacyBusinessProfile,
+                ),
+                businessProfile,
+              )}
+            </MarkdownReview>
+          )
+        }
+        label="Company notes"
+        value={
+          inlineEditing
+            ? replaceEditorBody(
+                markdown,
+                companyNotesMarkdown(
+                  companyNotesMarkdown(
+                    splitEditorMarkdown(markdown).body,
+                    legacyBusinessProfile,
+                  ),
+                  businessProfile,
+                ),
+              )
+            : markdown
+        }
         onChange={edit}
         readOnly={!canManage}
         toolbarTarget={toolbarTarget}
@@ -127,7 +172,7 @@ function WikiEditor({
                 variant="secondary"
                 onClick={() => fileInput.current?.click()}
               >
-                <Upload className="size-3.5" />
+                <FileInput className="size-3.5" />
               </PillButton>
             ) : null}
             <PillButton
@@ -172,15 +217,21 @@ function WikiEditor({
 export function CompanyWikiSection({
   clientOrgId,
   operator = false,
+  notesOnly = false,
+  sidebar = false,
   readOnly = false,
   toolbarTarget,
 }: {
   toolbarTarget?: HTMLElement | null;
   clientOrgId?: Id<"organizations">;
   operator?: boolean;
+  notesOnly?: boolean;
+  sidebar?: boolean;
   readOnly?: boolean;
 } = {}) {
   const { setActions } = useSettingsActions();
+  const [notesToolbarTarget, setNotesToolbarTarget] =
+    useState<HTMLDivElement | null>(null);
   const [settingsToolbarTarget, setSettingsToolbarTarget] =
     useState<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -192,6 +243,10 @@ export function CompanyWikiSection({
   const orgId = clientOrgId ?? currentOrg?.orgId;
   const tenantWiki = useQuery(
     api.orgWiki.get,
+    orgId && !operator ? { orgId } : "skip",
+  );
+  const tenantBusinessProfile = useQuery(
+    api.orgWiki.businessProfile,
     orgId && !operator ? { orgId } : "skip",
   );
   const operatorWiki = useQuery(
@@ -228,12 +283,30 @@ export function CompanyWikiSection({
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </OperationalPanel>
     );
-  if (wiki === null) return <EmptyStateCard title="No notes shared yet" />;
-  return (
-    <div className="space-y-4">
+  if (wiki === null)
+    return tenantBusinessProfile ? (
+      <IntakeCompanyReview
+        answers={tenantBusinessProfile.answers}
+        details={tenantBusinessProfile.details}
+      />
+    ) : (
+      <EmptyStateCard title="No notes shared yet" />
+    );
+  const notesContent = (
+    <>
       <WikiEditor
         key={String(orgId)}
-        toolbarTarget={toolbarTarget ?? settingsToolbarTarget}
+        showViewSwitcher={!operator}
+        inlineEditing={operator}
+        toolbarTarget={
+          operator
+            ? sidebar
+              ? toolbarTarget
+              : notesToolbarTarget
+            : (toolbarTarget ?? settingsToolbarTarget)
+        }
+        businessProfile={wiki.businessProfile}
+        legacyBusinessProfile={wiki.legacyBusinessProfile}
         sourceMarkdown={wiki.markdown}
         sourceRevision={wiki.revision}
         filename={wiki.filename}
@@ -282,6 +355,31 @@ export function CompanyWikiSection({
           ) : null}
         </OperationalPanel>
       ))}
+    </>
+  );
+  if (sidebar) return notesContent;
+  return (
+    <div className="space-y-4">
+      {!notesOnly && wiki.businessProfile ? (
+        <IntakeCompanyReview
+          answers={wiki.businessProfile.answers}
+          details={wiki.businessProfile.details}
+        />
+      ) : null}
+      <OperationalPanel aria-label="Company notes">
+        <OperationalPanelHeader
+          title="Notes"
+          action={
+            operator ? (
+              <div
+                ref={setNotesToolbarTarget}
+                className="flex items-center gap-2"
+              />
+            ) : undefined
+          }
+        />
+        <OperationalPanelBody>{notesContent}</OperationalPanelBody>
+      </OperationalPanel>
     </div>
   );
 }

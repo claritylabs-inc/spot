@@ -111,3 +111,5 @@ of these display preferences. Non-web channel delivery stays terminal-only.
 These preferences control presentation only; turning streaming off does not stop
 router progress callbacks. A transport rollback must deploy a Spot consumer that
 omits `stream: true` and drain in-flight jobs before removing router support.
+
+Local operator troubleshooting: a successful web request does not imply the scheduled agent completed. Inspect `operatorAgentRuns.lastError` and the stored router failure. `routerJobClient` preserves typed control-plane rejections, including callback-host rejection, instead of only the HTTP status. Local Spot may use the production router with a separately issued inference client token and an exact HTTPS callback host approved on both router Convex and its Railway worker. Provider credentials remain router-owned.

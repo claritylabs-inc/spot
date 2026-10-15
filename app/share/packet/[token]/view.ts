@@ -2,6 +2,7 @@ import { fetchQuery } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 export type PacketView = {
   state: "ready";
+  title: string;
   recipientLabel: string;
   contactEmail?: string | null;
   expiresAt?: number;
@@ -9,6 +10,7 @@ export type PacketView = {
   files: Array<{
     _id: string;
     name: string;
+    documentCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
     brokerRelease: "listed" | "attached";
     downloadUrl: string | null;
   }>;

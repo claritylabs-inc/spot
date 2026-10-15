@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
+import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import type { OperatorClientRow } from "./client-model";
@@ -14,11 +14,14 @@ import type { OperatorClientRow } from "./client-model";
 export function ClientLogoField({
   client,
   disabled = false,
+  hideLabel = false,
 }: {
   client: OperatorClientRow;
   disabled?: boolean;
+  hideLabel?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const generateUploadUrl = useMutation(
     api.operator.generateClientLogoUploadUrl,
   );
@@ -56,37 +59,36 @@ export function ClientLogoField({
 
   return (
     <div className="space-y-1.5">
-      <span
-        className={`block text-muted-foreground ${typeStyle("label.field")}`}
-      >
-        Logo
-      </span>
-      <div className="space-y-2.5">
-        <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-muted/20 p-3">
-          <OrgBrandIcon
-            name={client.name}
-            iconUrl={client.iconUrl}
-            size="xl"
-            className="rounded-lg"
-          />
-          <div className="min-w-0">
-            <p className={typeStyle("body.medium")}>{client.name}</p>
-            <p
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              {client.iconUrl ? "Current logo" : "No logo uploaded yet"}
-            </p>
-          </div>
-        </div>
-        <FileDropZone
-          padding="px-4 py-3"
-          accept="image/*"
+      {!hideLabel && (
+        <span
+          className={`block text-muted-foreground ${typeStyle("label.field")}`}
+        >
+          Logo
+        </span>
+      )}
+      <div className="flex min-h-9 w-full items-center justify-between gap-3 px-3">
+        <OrgBrandIcon name={client.name} iconUrl={client.iconUrl} size="md" />
+        <PillButton
+          variant="secondary"
+          size="compact"
           disabled={disabled || busy}
-          idleLabel="Upload a logo"
-          activeLabel="Drop logo to upload"
-          hint="PNG, JPG, or SVG · Max 5 MB"
-          className="min-h-24"
-          onFile={(file) => void upload(file)}
+          onClick={() => fileInput.current?.click()}
+          title="PNG, JPG, or SVG · Up to 5 MB"
+        >
+          {busy ? "Uploading…" : client.iconUrl ? "Change logo" : "Upload logo"}
+        </PillButton>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml"
+          aria-label="Upload client logo"
+          className="sr-only"
+          disabled={disabled || busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void upload(file);
+          }}
         />
       </div>
     </div>

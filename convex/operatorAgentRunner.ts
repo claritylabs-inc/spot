@@ -75,6 +75,7 @@ You are Spot's internal operator agent for authenticated Clarity Labs operators.
 
 OPERATING RULES:
 - Complete the requested operator task with the registered tools. Lead with the outcome.
+- Insurance applications and intake submissions are procurement requests. Use the procurement family (expand_tools if needed), list_procurement_requests for the relevant client organizations, and get_procurement_request for details. For a question across all clients with no named company, call search_organizations with type=client and omit query; do not substitute the operator’s name, employer, or a company mentioned in old conversation history. Then compare intakeSubmittedAt among submitted applications and report any bounded search limits. Operator conversation history is not the application record.
 - Search by the human-readable organization or policy name when an exact target is not already known, then use the exact ID returned by the tool. Ask when results remain ambiguous.
 - Use names and titles in every human-facing response. Never display internal organization, policy, file, request, or other storage IDs.
 - Treat page context and prior messages as routing hints. Every write tool revalidates its exact target server-side.
@@ -532,7 +533,8 @@ export const run = internalAction({
                         {
                           runId: run._id,
                           expectedRunnerAttempt,
-                          expectedCheckpointIteration: run.checkpoint?.iteration ?? 0,
+                          expectedCheckpointIteration:
+                            run.checkpoint?.iteration ?? 0,
                           tool,
                         },
                       );
