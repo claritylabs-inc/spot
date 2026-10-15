@@ -19,6 +19,7 @@
 
 # production
 /build
+/extensions/spot/dist/
 
 # misc
 .DS_Store
@@ -62,6 +63,7 @@
 !/docs/architecture/convex-section-extraction.md
 !/docs/architecture/router-jobs.md
 !/docs/architecture/product-analytics.md
+!/docs/architecture/browser-extension.md
 !/docs/architecture/webmcp.md
 !/docs/testing/
 /docs/testing/*
