@@ -44,6 +44,10 @@ globalThis.spotCapturePage = function spotCapturePage(limits) {
     el.getAttribute("aria-hidden") === "true" ||
     el.isContentEditable ||
     el.getAttribute("contenteditable") !== null;
+  const hidden = (el) => {
+    const style = styleOf(el);
+    return style.display === "none" || style.contentVisibility === "hidden" || style.opacity === "0";
+  };
 
   let total = 0;
   let stopped = false;
@@ -57,25 +61,26 @@ globalThis.spotCapturePage = function spotCapturePage(limits) {
   };
 
   function collect(root, range) {
+    if (excluded(root) || hidden(root)) return;
     const walker = document.createTreeWalker(
       root,
       NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
       {
         acceptNode(node) {
+          if (range && !range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
           if (++visited > MAX_NODES) {
             stopped = true;
             return NodeFilter.FILTER_REJECT;
           }
           if (node.nodeType === Node.TEXT_NODE) {
             const parent = node.parentElement;
-            if (!parent || styleOf(parent).visibility !== "visible") {
+            if (!parent || excluded(parent) || styleOf(parent).visibility !== "visible" || parent.matches("details:not([open])")) {
               return NodeFilter.FILTER_SKIP;
             }
             return NodeFilter.FILTER_ACCEPT;
           }
           if (excluded(node)) return NodeFilter.FILTER_REJECT;
-          const style = styleOf(node);
-          if (style.display === "none" || style.contentVisibility === "hidden") {
+          if (hidden(node) || (node.localName !== "summary" && node.parentElement?.matches("details:not([open])"))) {
             return NodeFilter.FILTER_REJECT;
           }
           return NodeFilter.FILTER_ACCEPT;
@@ -119,6 +124,9 @@ globalThis.spotCapturePage = function spotCapturePage(limits) {
       if (!anchor || anchor.closest("input,textarea,select,[contenteditable],[aria-hidden='true'],[hidden]")) {
         continue;
       }
+      let ancestor = anchor;
+      while (ancestor && !hidden(ancestor)) ancestor = ancestor.parentElement;
+      if (ancestor) continue;
       if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) {
         let text = range.commonAncestorContainer.nodeValue || "";
         text = text.slice(range.startOffset, range.endOffset);
@@ -129,6 +137,7 @@ globalThis.spotCapturePage = function spotCapturePage(limits) {
       push("\n");
     }
     usedSelection = tidy(parts.join("")).length > 0;
+    if (!usedSelection) return { ok: false, reason: "selection-unreadable" };
   }
   if (!usedSelection) {
     parts.length = 0;

@@ -13,6 +13,8 @@
   // The app announces itself once a composer can stage a page. Until then
   // nothing is captured, so no page text can wait for a different account.
   let ready = false;
+  let sessionId = null;
+  let pendingReceipt = null;
   let loadedAt = 0;
 
   function say(message) {
@@ -21,6 +23,7 @@
 
   function setReady(value) {
     ready = value;
+    if (!value) sessionId = null;
     captureButton.disabled = !value;
   }
 
@@ -35,7 +38,7 @@
     loadedAt = Date.now();
     setTimeout(() => {
       if (!ready && loadedAt) {
-        say("Sign in to Spot to use this page. If you just signed in elsewhere, press Reload.");
+        say("If Spot doesn't load, press Reload. Sign in below if prompted.");
       }
     }, 1500);
   });
@@ -44,7 +47,16 @@
     if (event.source !== frame.contentWindow || event.origin !== config.appOrigin) return;
     const data = event.data;
     if (!data || typeof data !== "object") return;
-    if (data.type === "spot:ready" && data.version === config.protocolVersion) {
+    if (data.version !== config.protocolVersion) return;
+    if (data.type === "spot:received" && data.sessionId === sessionId && data.captureId === pendingReceipt?.id) {
+      pendingReceipt.resolve(true);
+    }
+    if (data.type === "spot:unavailable" && data.sessionId === sessionId) {
+      setReady(false);
+      say("Sign in to Spot, then press Reload.");
+    }
+    if (data.type === "spot:ready" && typeof data.sessionId === "string" && data.sessionId.length <= 80) {
+      sessionId = data.sessionId;
       setReady(true);
       say("");
       void refreshHint();
@@ -57,7 +69,7 @@
   }
 
   const CLICK_ICON =
-    "Click the Spot icon in the toolbar while this tab is open, then press Use this page.";
+    "Click the Spot icon on this tab, then press Use this page. Browser pages and some PDF viewers can't be read.";
 
   async function refreshHint() {
     if (!ready || statusLine.dataset.sticky) return;
@@ -67,6 +79,9 @@
   }
 
   function describeFailure(reason) {
+    if (reason === "selection-unreadable") {
+      return "That selection can't be read. Select ordinary page text, or clear the selection to use the page.";
+    }
     if (reason === "unsupported") {
       return "Spot can't read browser pages, the Chrome Web Store or local files. Open a regular website and try again.";
     }
@@ -92,6 +107,7 @@
 
   async function usePage() {
     if (!ready) return;
+    const captureSession = sessionId;
     captureButton.disabled = true;
     statusLine.dataset.sticky = "1";
     try {
@@ -112,15 +128,25 @@
       const result = injected && injected[0] && injected[0].result;
       if (!result || !result.ok) return say(describeFailure(result && result.reason));
       if (!isValid(result.context)) return say(describeFailure("unreadable"));
-      if (!ready) return say("Spot reloaded. Try again once it finishes loading.");
+      if (!ready || sessionId !== captureSession) return say("Your Spot workspace changed. Try again.");
+      const captureId = crypto.randomUUID();
+      let receiptTimeout;
+      const receipt = new Promise((resolve) => {
+        pendingReceipt = { id: captureId, resolve };
+        receiptTimeout = setTimeout(() => resolve(false), 5000);
+      });
       frame.contentWindow.postMessage(
-        { type: "spot:page-context", version: config.protocolVersion, context: result.context },
+        { type: "spot:page-context", version: config.protocolVersion, sessionId: captureSession, captureId, context: result.context },
         config.appOrigin,
       );
+      const received = await receipt;
+      clearTimeout(receiptTimeout);
+      pendingReceipt = null;
+      if (!received || sessionId !== captureSession) return say("Spot didn't receive that page. Press Reload and try again.");
       const { title, text, selection } = result.context;
       const shortTitle = title.length > 60 ? `${title.slice(0, 57)}…` : title;
       say(
-        `Added “${shortTitle}” to your next message · ${text.length.toLocaleString()} characters` +
+        `Shared “${shortTitle}” · ${text.length.toLocaleString()} characters. Review the attachment in your chat.` +
           (selection ? " · selected text" : "") +
           (result.truncated ? " · shortened to fit" : ""),
       );
@@ -132,9 +158,6 @@
 
   captureButton.addEventListener("click", () => void usePage());
   document.getElementById("reload").addEventListener("click", loadApp);
-  document.getElementById("open").addEventListener("click", () => {
-    void chrome.tabs.create({ url: config.appOrigin + "/" });
-  });
   chrome.tabs.onActivated.addListener(() => void refreshHint());
   chrome.tabs.onUpdated.addListener((_id, change) => {
     if (change.status === "complete") void refreshHint();
