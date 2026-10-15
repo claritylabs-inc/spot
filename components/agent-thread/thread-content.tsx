@@ -40,6 +40,7 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
 import { PromptReferenceText } from "@/components/prompt-reference-tag";
 import { usePdf } from "@/components/pdf-context";
+import { useStagePageCapture } from "@/components/browser-extension/page-capture";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
 import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
@@ -317,6 +318,7 @@ export function UnifiedThreadContent({
   const clearPageContext = useMutation(api.threads.clearPageContext);
   const generateUploadUrl = useMutation(api.threads.generateUploadUrl);
   const chatInputRef = useRef<ChatComposerHandle>(null);
+  useStagePageCapture(chatInputRef);
   const lastAutoOpenedEmailId = useRef<string | null>(null);
   const autoOpenPdfThreadId = useRef<string | null>(null);
   const seenAssistantPdfKeys = useRef<Set<string>>(new Set());

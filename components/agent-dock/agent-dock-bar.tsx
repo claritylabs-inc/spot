@@ -131,11 +131,14 @@ export function AgentDockBar({
   mode,
   mobile,
   actions,
+  sizeControls = true,
 }: {
   adapter: AgentDockAdapter;
   mode: AgentDockMode;
   mobile: boolean;
   actions: ReactNode;
+  /** Full screen and minimize; hidden where the dock owns the whole frame. */
+  sizeControls?: boolean;
 }) {
   const dock = useAgentDock();
   const open = mode !== "collapsed";
@@ -203,7 +206,7 @@ export function AgentDockBar({
         >
           <Clock className="size-3.5" />
         </PillButton>
-        {mobile ? null : (
+        {mobile || !sizeControls ? null : (
           <PillButton
             type="button"
             variant="icon"
@@ -219,7 +222,7 @@ export function AgentDockBar({
             )}
           </PillButton>
         )}
-        {open ? (
+        {open && sizeControls ? (
           <PillButton
             type="button"
             variant="icon"

@@ -64,6 +64,8 @@ const AUTH_AGNOSTIC_PATHS: string[] = ["/intake"];
 const ONBOARDING_PATH = "/onboarding";
 const ADMIN_PATHS = ["/settings"];
 const OPERATOR_PATH = "/operator";
+// The browser sidebar gates itself and must not be redirected out of its frame.
+const EXTENSION_PATH = "/extension";
 
 /**
  * Loading state shown when we know the user needs onboarding.
@@ -193,9 +195,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     getServerBootStateSnapshot,
   );
 
-  const isAuthAgnostic = AUTH_AGNOSTIC_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
+  const isAuthAgnostic =
+    pathname === EXTENSION_PATH ||
+    AUTH_AGNOSTIC_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    );
   const isPublic =
     isAuthAgnostic ||
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
