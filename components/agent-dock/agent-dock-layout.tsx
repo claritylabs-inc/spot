@@ -119,7 +119,7 @@ function ResizeHandle({
   );
 }
 
-function DockBody({
+export function DockBody({
   adapter,
   mode,
   onActions,

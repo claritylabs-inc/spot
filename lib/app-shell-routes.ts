@@ -33,6 +33,7 @@ const SHELLLESS_PREFIXES = [
   "/operator/login",
   "/oauth",
   "/share",
+  "/extension",
   "/connect/request",
   "/api",
 ];

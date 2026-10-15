@@ -40,6 +40,10 @@ import {
   promptReferenceMarker,
 } from "@/components/prompt-reference-tag";
 import { typeStyle } from "@/lib/typography";
+import {
+  PAGE_CAPTURE_FILENAME,
+  usePageCapture,
+} from "@/components/browser-extension/page-capture";
 
 const inputOverlayFadeStyle = {
   backgroundImage:
@@ -77,6 +81,22 @@ function AttachmentActionButtons() {
   );
 }
 
+// Inner component — exposes the attachment list to the composer's imperative handle.
+function AttachmentsRegistrar({
+  addRef,
+}: {
+  addRef: React.RefObject<((files: File[]) => void) | null>;
+}) {
+  const { add } = usePromptInputAttachments();
+  useEffect(() => {
+    addRef.current = add;
+    return () => {
+      addRef.current = null;
+    };
+  }, [add, addRef]);
+  return null;
+}
+
 function attachmentKindLabel(file: { filename?: string; mediaType?: string }) {
   const mediaType = file.mediaType?.toLowerCase() ?? "";
   const filename = file.filename?.toLowerCase() ?? "";
@@ -110,6 +130,7 @@ function AttachmentTags({
   detailed?: boolean;
 }) {
   const attachments = usePromptInputAttachments();
+  const pageCapture = usePageCapture();
 
   if (attachments.files.length === 0) {
     return null;
@@ -132,12 +153,28 @@ function AttachmentTags({
         >
           <Paperclip className="size-3 shrink-0 text-muted-foreground" />
           <span className="min-w-0">
-            <span
-              className="block max-w-45 truncate sm:max-w-60"
-              title={file.filename}
-            >
-              {file.filename}
-            </span>
+            {pageCapture && file.filename === PAGE_CAPTURE_FILENAME ? (
+              <button
+                type="button"
+                className="block max-w-45 truncate text-left hover:underline sm:max-w-60"
+                title="Preview page context"
+                aria-label="Preview page context"
+                onClick={() =>
+                  void fetch(file.url)
+                    .then((response) => response.text())
+                    .then(pageCapture.openPreview)
+                }
+              >
+                {file.filename}
+              </button>
+            ) : (
+              <span
+                className="block max-w-45 truncate sm:max-w-60"
+                title={file.filename}
+              >
+                {file.filename}
+              </span>
+            )}
             {detailed ? (
               <span
                 className={`block text-muted-foreground/45 ${typeStyle("caption.default")}`}
@@ -549,6 +586,8 @@ function findActiveTrigger(
 export interface SpotPromptInputHandle {
   setValueAndFocus: (value: string) => void;
   focus: () => void;
+  /** Stages files like the attach button; false when the input is not mounted. */
+  addFiles: (files: File[]) => boolean;
 }
 
 export interface SpotPromptInputProps {
@@ -604,6 +643,7 @@ export const SpotPromptInput = forwardRef<
   const isCommandVariant = variant === "command";
   const isDockVariant = variant === "dock";
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const addFilesRef = useRef<((files: File[]) => void) | null>(null);
   const textAreaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const pendingFocusRef = useRef<{
     textTokenId: string;
@@ -1087,6 +1127,11 @@ export const SpotPromptInput = forwardRef<
         const textTokenId = activeTextTokenId || firstTextTokenId(tokens);
         textAreaRefs.current.get(textTokenId)?.focus();
       },
+      addFiles: (files: File[]) => {
+        if (!addFilesRef.current) return false;
+        addFilesRef.current(files);
+        return true;
+      },
     }),
     [
       activeTextTokenId,
@@ -1437,6 +1482,7 @@ export const SpotPromptInput = forwardRef<
           isDraggingFiles && "border-primary/40 bg-primary/5",
         )}
       >
+        <AttachmentsRegistrar addRef={addFilesRef} />
         <AttachmentTags
           roomyOnMobile={roomyOnMobile || isCommandVariant}
           detailed={isCommandVariant}
