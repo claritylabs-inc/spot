@@ -21,6 +21,8 @@ import { PdfProvider, usePdf } from "@/components/pdf-context";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import { EntityPreviewProvider, useEntityPreview } from "@/hooks/use-entity-preview";
+import { PageContextProvider } from "@/hooks/use-page-context";
+import { useSpotSync } from "@/lib/sync/spot-sync";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { PageCaptureProvider, usePageCapture } from "./page-capture";
@@ -136,7 +138,7 @@ function CapturePreviewPanel() {
         </div>
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words p-4",
+            "ph-no-capture min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words p-4",
             typeStyle("body.default"),
           )}
         >
@@ -213,17 +215,19 @@ function ExtensionWorkspace({
   orgName: string;
 }) {
   return (
-    <PdfProvider>
-      <EntityPreviewProvider>
-        <AppShellSlotsProvider>
-          <AgentDockProvider surface="client" userId={userId}>
-            <PageCaptureProvider>
-              <ExtensionLayout orgName={orgName} />
-            </PageCaptureProvider>
-          </AgentDockProvider>
-        </AppShellSlotsProvider>
-      </EntityPreviewProvider>
-    </PdfProvider>
+    <PageContextProvider>
+      <PdfProvider>
+        <EntityPreviewProvider>
+          <AppShellSlotsProvider>
+            <AgentDockProvider surface="client" userId={userId}>
+              <PageCaptureProvider>
+                <ExtensionLayout orgName={orgName} />
+              </PageCaptureProvider>
+            </AgentDockProvider>
+          </AppShellSlotsProvider>
+        </EntityPreviewProvider>
+      </PdfProvider>
+    </PageContextProvider>
   );
 }
 
@@ -272,6 +276,7 @@ function ineligibleReason(
 
 export function ExtensionApp() {
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const { scope } = useSpotSync();
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
   const viewerOrg = useQuery(api.orgs.viewerOrg, isAuthenticated ? {} : "skip");
 
@@ -313,8 +318,13 @@ export function ExtensionApp() {
     );
   }
 
+  if (scope.userId !== String(viewer._id) || scope.orgId !== String(viewerOrg.org._id)) {
+    return null;
+  }
+
   return (
     <ExtensionWorkspace
+      key={`${viewer._id}:${viewerOrg.org._id}`}
       userId={String(viewer._id)}
       orgName={viewerOrg.org.name}
     />

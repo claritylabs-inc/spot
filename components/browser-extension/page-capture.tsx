@@ -56,23 +56,37 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(0);
 
   useEffect(() => {
+    const sessionId = crypto.randomUUID();
     function handleMessage(event: MessageEvent) {
       if (
         event.source !== window.parent ||
-        event.origin !== BROWSER_EXTENSION_ORIGIN
+        event.origin !== BROWSER_EXTENSION_ORIGIN ||
+        event.data?.sessionId !== sessionId
       ) {
         return;
       }
       const context = parseBrowserPageContext(event.data);
-      if (!context) return;
+      if (!context || typeof event.data.captureId !== "string" || event.data.captureId.length > 80) return;
       nextId.current += 1;
       setPending({ id: nextId.current, file: pageCaptureFile(context) });
+      window.parent.postMessage(
+        { type: "spot:received", version: BROWSER_EXTENSION_READY.version, sessionId, captureId: event.data.captureId },
+        BROWSER_EXTENSION_ORIGIN,
+      );
     }
     window.addEventListener("message", handleMessage);
     if (window.parent !== window) {
-      window.parent.postMessage(BROWSER_EXTENSION_READY, BROWSER_EXTENSION_ORIGIN);
+      window.parent.postMessage({ ...BROWSER_EXTENSION_READY, sessionId }, BROWSER_EXTENSION_ORIGIN);
     }
-    return () => window.removeEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          { ...BROWSER_EXTENSION_READY, type: "spot:unavailable", sessionId },
+          BROWSER_EXTENSION_ORIGIN,
+        );
+      }
+    };
   }, []);
 
   const consume = useCallback(
