@@ -16,6 +16,7 @@ Reuse the module whose contract already owns the behavior. Read [AGENTS.md](../.
 ## UI and documents
 
 - `components/ui/markdown-editor.tsx` owns inline Markdown editing; `convex/markdownDocuments.ts` and `convex/lib/markdownDocument.ts` own safe persistence, ownership, size limits, and revision checks. Company wiki and procurement `private.md`/`public.md` are ordinary Markdown with optional YAML front matter. Typed workflow and authorization fields stay typed. Front matter never grants access. Issued snapshots remain immutable; active packet links show current saved shared content.
+- `components/ui/inline-fields.tsx` owns editable label/value row cards, including optional card headers and nested coverage item cards. `components/ui/remove-button.tsx` owns quiet gray X removal actions for on-page collection items; keep accessible labels and existing removal/confirmation owners.
 - `components/ui/pill-button.tsx` owns pill actions and client navigation. Use `variant="destructive"` on destructive actions. Operator pages use app-shell breadcrumbs, `TabsList variant="pill"`, and compact label/value rows.
 - `components/chat/` owns shared chat rendering and composition. `lib/chat-presentation.ts`, `lib/chat-presentation-catalog.ts`, `convex/lib/chatPresentationCandidates.ts`, `convex/lib/chatPresentationComposer.ts`, and `convex/chatPresentations.ts` own generated presentations; composition cannot execute business tools. Avoid another chat component system.
 - `lib/extraction-state.ts` owns extraction status presentation. The operator policy Sections tab lives at `app/policies/[id]/policy-sections-tab.tsx`. Keep a single re-extraction action in each applicable UI.
@@ -25,6 +26,8 @@ Reuse the module whose contract already owns the behavior. Read [AGENTS.md](../.
 
 - Policy and proposal extraction run in Convex. `convex/lib/pdfText.ts` and `convex/lib/pdfSourceSpans.ts` own pdf.js positioned text; `convex/lib/policySectioning.ts` plans sections; `convex/lib/sectionExtraction/` owns durable per-section jobs; `convex/lib/citationResolver.ts` resolves citations. Scanned pages use model-transcription evidence spans. Declarations provide an early preview; final promotion requires `convex-sections-v1` through `convex/lib/extractionPromotion.ts`.
 - The cl-sdk extraction engine is unused. Do not add chunking, `documentChunks` retrieval, an extraction worker, LiteParse, Poppler, OCR, or a preview queue. Agent search uses Convex full-text search plus Jev ranking in `convex/lib/policySearch.ts` and `convex/lib/policyLookup.ts`. See [section extraction](../../../docs/architecture/convex-section-extraction.md).
+
+- Browser analytics is owned by `lib/analytics.ts` and `components/analytics.tsx`, initialized by `instrumentation-client.ts`. Reuse its typed structural events and preserve masking; never export answers, document contents, or access tokens. See `docs/architecture/product-analytics.md`.
 
 ## Models and tools
 

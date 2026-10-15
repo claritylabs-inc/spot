@@ -16,7 +16,8 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
-import { ProseMarkdown } from "@/components/prose-markdown";
+import { IntakeApplicationReview } from "@/components/insurance-intake/application-review";
+import { MarkdownReview } from "@/components/ui/markdown-review";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import {
@@ -89,10 +90,23 @@ export function ClientRequestsList({
   onRightPanel: (panel: ReactNode) => void;
 }) {
   const router = useRouter();
-  const rows = useQuery(api.clientProcurementRequests.list, {});
+  const viewer = useQuery(api.users.viewer, {});
+  const viewerOrg = useQuery(
+    api.orgs.viewerOrg,
+    viewer && !viewer.intakeRestricted ? {} : "skip",
+  );
+  const canViewRequests = !!viewerOrg?.org && viewerOrg.org.type === "client";
+  const rows = useQuery(
+    api.clientProcurementRequests.list,
+    canViewRequests ? {} : "skip",
+  );
   const drafts = useQuery(api.requestIntake.drafts, {});
   const start = useMutation(api.requestIntake.start);
-  const viewerOrg = useQuery(api.orgs.viewerOrg, {});
+  useEffect(() => {
+    if (viewer?.intakeRestricted || (viewer && viewerOrg === null)) {
+      router.replace("/signup");
+    }
+  }, [viewer, viewerOrg, router]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
   useEffect(() => {
@@ -412,14 +426,14 @@ export function ClientRequestDetail({
         ) : null}
       </OperationalLabelValueList>
 
-      <OperationalPanel>
-        <OperationalPanelHeader title="Request details" />
-        <OperationalPanelBody>
-          <ProseMarkdown gfm>
-            {request.packet.markdown || "No packet content shared yet."}
-          </ProseMarkdown>
-        </OperationalPanelBody>
-      </OperationalPanel>
+      {request.application ? (
+        <IntakeApplicationReview application={request.application} />
+      ) : null}
+      {request.packet.markdown ? (
+        <MarkdownReview>{request.packet.markdown}</MarkdownReview>
+      ) : !request.application ? (
+        <p>No packet content shared yet.</p>
+      ) : null}
 
       <OperationalPanel>
         <OperationalPanelHeader

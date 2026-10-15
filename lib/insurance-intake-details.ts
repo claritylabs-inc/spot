@@ -13,7 +13,7 @@ export const COVERAGE_OPTIONS = [
   },
   {
     id: "property",
-    label: "Property",
+    label: "Commercial Property",
     limits: [
       { key: "building", label: "Building limit" },
       { key: "contents", label: "Business personal property limit" },
@@ -42,17 +42,17 @@ export const COVERAGE_OPTIONS = [
     limits: [
       {
         key: "combined_single",
-        label: "Combined single limit (each accident)",
+        label: "Combined single limit",
       },
       {
         key: "physical_damage",
-        label: "Physical damage coverage / vehicle values",
+        label: "Physical damage coverage",
       },
     ],
   },
   {
     id: "professional_liability",
-    label: "Professional liability / E&O",
+    label: "Professional liability",
     limits: [
       { key: "each_claim", label: "Per claim limit" },
       { key: "aggregate", label: "Policy aggregate limit" },
@@ -62,13 +62,13 @@ export const COVERAGE_OPTIONS = [
     id: "cyber",
     label: "Cyber",
     limits: [
-      { key: "each_incident", label: "Per incident / claim limit" },
+      { key: "each_incident", label: "Per incident limit" },
       { key: "aggregate", label: "Policy aggregate limit" },
     ],
   },
   {
     id: "umbrella",
-    label: "Umbrella / excess",
+    label: "Umbrella",
     limits: [
       { key: "each_occurrence", label: "Each occurrence limit" },
       { key: "aggregate", label: "Policy aggregate limit" },
@@ -79,7 +79,7 @@ export const COVERAGE_OPTIONS = [
     label: "Other",
     limits: [
       { key: "coverage_description", label: "Coverage type" },
-      { key: "policy_limit", label: "Per claim / loss / policy limit" },
+      { key: "policy_limit", label: "Policy limit" },
       { key: "aggregate", label: "Aggregate limit, if applicable" },
     ],
   },
@@ -104,7 +104,27 @@ export type IntakeAddress = {
   country?: string;
   formatted?: string;
 };
-export type IntakeLocation = { address: IntakeAddress; details: string };
+export type IntakeLocation = {
+  name?: string;
+  address: IntakeAddress;
+  details: string;
+  activitiesPrefilled?: boolean;
+  ownership?: "owned" | "leased";
+  staff?: string;
+};
+function locationText(location: IntakeLocation) {
+  return [
+    location.name?.trim(),
+    addressText(location.address),
+    location.details,
+    location.ownership
+      ? `Occupancy: ${location.ownership === "owned" ? "Owned" : "Leased"}`
+      : "",
+    location.staff?.trim() ? `Staff: ${location.staff}` : "",
+  ]
+    .filter(Boolean)
+    .join(" — ");
+}
 export type RelatedEntity = {
   legalName: string;
   relationship: string;
@@ -113,6 +133,7 @@ export type RelatedEntity = {
 export type IntakeDetails = {
   coverages: CoverageRequest[];
   prefillSourceIds?: string[];
+  companyResearchSource?: string;
   mailingAddress: IntakeAddress;
   registrationCountry?: string;
   registrationState?: string;
@@ -120,22 +141,43 @@ export type IntakeDetails = {
   mailingSameAsRegistered?: "yes" | "no";
   mailingAddressStep?: boolean;
   locations: IntakeLocation[];
+  operatingLocationPrefilled?: boolean;
   relatedEntities: RelatedEntity[];
   relatedEntitiesNote: string;
   hasRelatedEntities?: "yes" | "no";
+  hasClaims?: "yes" | "no";
+  hasCancellations?: "yes" | "no";
+  hasPlannedChanges?: "yes" | "no";
   limitsNote?: string;
   scopeNote?: string;
   additionalNote?: string;
   dateInput?: string;
   dateParts: { year: string; month: string; day: string };
+  revenueStep?: "annual" | "projected";
+  revenue?: {
+    annualPeriod: string;
+    annualAmount: string;
+    projectedPeriod: string;
+    projectedAmount: string;
+  };
   coverageIndex: number;
 };
 export function coverageOption(id: CoverageId) {
   return COVERAGE_OPTIONS.find((option) => option.id === id)!;
 }
+export function coverageRequestLabel(line: CoverageRequest) {
+  return line.coverage === "other" &&
+    line.limits.coverage_description?.trim() &&
+    line.limits.coverage_description !== UNKNOWN_ANSWER
+    ? line.limits.coverage_description.trim()
+    : coverageOption(line.coverage).label;
+}
 export function newCoverage(coverage: CoverageId): CoverageRequest {
   return {
     coverage,
+    ...(coverage === "commercial_auto"
+      ? { vehicles: [{ year: "", make: "", model: "", vin: "" }] }
+      : {}),
     limits: Object.fromEntries(
       coverageOption(coverage).limits.map((limit) => [limit.key, ""]),
     ),
@@ -208,15 +250,25 @@ function limitText(key: string, value?: string) {
 export function detailsAnswers(details: IntakeDetails): IntakeAnswers {
   const date = `${details.dateParts.year}-${details.dateParts.month}-${details.dateParts.day}`;
   return {
+    ...(details.revenue
+      ? {
+          trailingRevenue: details.revenue.annualAmount
+            ? `$${details.revenue.annualAmount} (${details.revenue.annualPeriod})`
+            : "",
+          projectedRevenue: details.revenue.projectedAmount
+            ? `$${details.revenue.projectedAmount} (${details.revenue.projectedPeriod})`
+            : "",
+        }
+      : {}),
     coverage: details.coverages
-      .map((line) => coverageOption(line.coverage).label)
+      .map((line) => coverageRequestLabel(line))
       .join(", "),
     limits: [
       details.limitsNote,
       details.coverages
         .map(
           (line) =>
-            `${coverageOption(line.coverage).label}\n${
+            `${coverageRequestLabel(line)}\n${
               coverageOption(line.coverage)
                 .limits.map(
                   (limit) =>
@@ -237,7 +289,7 @@ export function detailsAnswers(details: IntakeDetails): IntakeAnswers {
               .filter((line) => line.additionalCoverages?.trim())
               .map(
                 (line) =>
-                  `${coverageOption(line.coverage).label}: ${line.additionalCoverages}`,
+                  `${coverageRequestLabel(line)}: ${line.additionalCoverages}`,
               )
               .join("\n\n"),
           ]
@@ -257,13 +309,9 @@ export function detailsAnswers(details: IntakeDetails): IntakeAnswers {
             details.coverages
               .map((line) =>
                 [
-                  coverageOption(line.coverage).label,
+                  coverageRequestLabel(line),
                   line.scopeDescription,
-                  ...(line.properties ?? []).map((row) =>
-                    [addressText(row.address), row.details]
-                      .filter(Boolean)
-                      .join(" — "),
-                  ),
+                  ...(line.properties ?? []).map((row) => locationText(row)),
                   ...(line.vehicles ?? []).map((row) =>
                     [row.year, row.make, row.model, row.vin]
                       .filter(Boolean)
@@ -292,11 +340,7 @@ export function detailsAnswers(details: IntakeDetails): IntakeAnswers {
       : {}),
     mailingAddress: addressText(details.mailingAddress),
     locations: details.locations
-      .map((location) =>
-        [addressText(location.address), location.details]
-          .filter(Boolean)
-          .join("\n"),
-      )
+      .map((location) => locationText(location))
       .filter(Boolean)
       .join("\n\n"),
     relatedEntities:
@@ -423,17 +467,19 @@ export function validCoverageScope(
       !!line.properties?.length &&
       line.properties.every((row) => !!addressText(row.address).trim())
     );
-  if (line.coverage === "commercial_auto")
-    return (
-      !!line.vehicles?.length &&
-      line.vehicles.every(
-        (row) =>
-          /^\d{4}$/.test(row.year) &&
-          !!row.make.trim() &&
-          !!row.model.trim() &&
-          (!row.vin || /^[A-HJ-NPR-Z0-9]{17}$/i.test(row.vin)),
-      )
-    );
+  // Vehicle details are optional, including VIN and partially known vehicles.
+  if (line.coverage === "commercial_auto") return true;
   if (needsCoverageScope(line.coverage)) return !!line.scopeDescription?.trim();
   return true;
+}
+
+export function shouldRequestLossRuns(
+  answers: IntakeAnswers,
+  details?: Pick<IntakeDetails, "hasClaims">,
+) {
+  return (
+    answers.currentInsurance !== "No" &&
+    details?.hasClaims !== "no" &&
+    !/^(none|no|0)$/i.test(answers.claims?.trim() ?? "")
+  );
 }

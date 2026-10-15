@@ -27,6 +27,9 @@ export function MarkdownEditor({
   toolbarActions,
   toolbarTarget,
   className,
+  showProperties = true,
+  showViewSwitcher = true,
+  preview,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -36,9 +39,12 @@ export function MarkdownEditor({
   toolbarActions?: ReactNode;
   toolbarTarget?: HTMLElement | null;
   className?: string;
+  showProperties?: boolean;
+  showViewSwitcher?: boolean;
+  preview?: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [view, setView] = useState("document");
+  const [view, setView] = useState(preview ? "preview" : "document");
   const [editYaml, setEditYaml] = useState(false);
   const document = useMemo(() => splitEditorMarkdown(value), [value]);
   const sourceView =
@@ -47,44 +53,58 @@ export function MarkdownEditor({
   const toolbar = (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {toolbarActions}
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <DropdownMenuTrigger
-          render={
-            <PillButton
-              size="compact"
-              variant="secondary"
-              expandLabel
-              label={sourceView ? "Markdown" : "Document"}
-              aria-label="Document view"
-            />
-          }
-        >
-          {sourceView ? (
-            <Code2 className="size-3.5" />
-          ) : (
-            <FileText className="size-3.5" />
-          )}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuRadioGroup
-            value={sourceView ? "markdown" : "document"}
-            onValueChange={(nextView) => {
-              setView(nextView);
-              setMenuOpen(false);
-            }}
+      {showViewSwitcher && (
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger
+            render={
+              <PillButton
+                size="compact"
+                variant="secondary"
+                expandLabel
+                label={
+                  sourceView
+                    ? "Markdown"
+                    : view === "preview"
+                      ? "Preview"
+                      : "Document"
+                }
+                aria-label="Document view"
+              />
+            }
           >
-            <DropdownMenuRadioItem
-              value="document"
-              disabled={Boolean(document.error)}
+            {sourceView ? (
+              <Code2 className="size-3.5" />
+            ) : (
+              <FileText className="size-3.5" />
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup
+              value={sourceView ? "markdown" : view}
+              onValueChange={(nextView) => {
+                setView(nextView);
+                setMenuOpen(false);
+              }}
             >
-              Document
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="markdown">
-              Markdown
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              {preview ? (
+                <DropdownMenuRadioItem value="preview">
+                  Preview
+                </DropdownMenuRadioItem>
+              ) : null}
+              <DropdownMenuRadioItem
+                className={preview ? "hidden" : undefined}
+                value="document"
+                disabled={Boolean(document.error)}
+              >
+                Document
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="markdown">
+                Markdown
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 
@@ -92,6 +112,7 @@ export function MarkdownEditor({
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card",
+        preview && "rounded-none border-0 bg-transparent",
         className,
       )}
     >
@@ -118,8 +139,11 @@ export function MarkdownEditor({
           readOnly={readOnly}
         />
       </div>
-      <div hidden={sourceView}>
-        {document.prefix ? (
+      {view === "preview" && !sourceView ? <div>{preview}</div> : null}
+      <div hidden={sourceView || view === "preview"}>
+        {showProperties &&
+        document.prefix &&
+        Object.keys(document.frontmatter).length > 0 ? (
           <details className="group border-b border-border">
             <summary
               className={`flex cursor-pointer list-none items-center gap-2 px-6 py-4 text-muted-foreground [&::-webkit-details-marker]:hidden ${typeStyle("body.default")}`}

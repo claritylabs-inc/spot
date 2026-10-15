@@ -159,7 +159,7 @@ test("packet contact email belongs to the authorized request and disappears when
     token: secondLink.token,
   });
   expect(firstPacket?.contactEmail).toBe(
-    firstDetails.request.forwardingAddress,
+    firstDetails!.request.forwardingAddress,
   );
   expect(firstPacket?.contactEmail).not.toBe(secondPacket?.contactEmail);
   expect(
@@ -1980,7 +1980,7 @@ describe("procurement domain boundaries", () => {
       { clientFileId: imported.clientFileIds[0], name: "broker-quote.pdf" },
     ]);
     expect(otherOutreachPreview.nextActions).toEqual([]);
-    expect(details.auditEvents).toEqual(
+    expect(details!.auditEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           summary: "Filed proposal from Broker for Forwarded broker quote",

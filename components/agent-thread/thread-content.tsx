@@ -1,4 +1,5 @@
 "use client";
+import { RemoveButton } from "@/components/ui/remove-button";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
@@ -10,7 +11,6 @@ import {
   Copy,
   ExternalLink,
   LockKeyhole,
-  X,
 } from "lucide-react";
 import { SiSlack } from "react-icons/si";
 import { api } from "@/convex/_generated/api";
@@ -29,7 +29,10 @@ import {
 import { PillButton } from "@/components/ui/pill-button";
 import { EditableBreadcrumbTitle } from "@/components/editable-breadcrumb-title";
 import { chatChannelLabel } from "@/components/chat/channel-icon";
-import { ChatComposer, type ChatComposerHandle } from "@/components/chat/chat-composer";
+import {
+  ChatComposer,
+  type ChatComposerHandle,
+} from "@/components/chat/chat-composer";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatErrorNotice } from "@/components/chat/chat-message";
 import { useChatAction } from "@/components/chat/use-chat-action";
@@ -112,7 +115,9 @@ function UnifiedThreadActions({
       const time = formatDisplayDateTime(msg._creationTime);
       const sender = msg.role === "agent" ? "Spot" : messageSenderName(msg);
       lines.push("");
-      lines.push(`${sender} [${chatChannelLabel(msg.channel, "Chat")}] — ${time}`);
+      lines.push(
+        `${sender} [${chatChannelLabel(msg.channel, "Chat")}] — ${time}`,
+      );
       if (msg.operatorInitiated?.operatorEmail) {
         lines.push(`Operator: ${msg.operatorInitiated.operatorEmail}`);
       }
@@ -196,7 +201,9 @@ function QueuedThreadMessage({
   return (
     <div className="mb-2 flex items-center gap-2 rounded-lg border border-input bg-card px-2.5 py-2">
       <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/35" />
-      <p className={`min-w-0 flex-1 truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+      <p
+        className={`min-w-0 flex-1 truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}
+      >
         Queued:{" "}
         <PromptReferenceText
           content={preview}
@@ -212,16 +219,12 @@ function QueuedThreadMessage({
       >
         {sending ? "Sending" : "Send now"}
       </PillButton>
-      <PillButton
+      <RemoveButton
         type="button"
         onClick={onCancel}
         disabled={sending}
-        variant="icon"
-        size="compact"
         label="Remove queued message"
-      >
-        <X className="h-3.5 w-3.5" />
-      </PillButton>
+      />
     </div>
   );
 }
@@ -318,9 +321,8 @@ export function UnifiedThreadContent({
   const autoOpenPdfThreadId = useRef<string | null>(null);
   const seenAssistantPdfKeys = useRef<Set<string>>(new Set());
   const openedAssistantPdfKey = useRef<string | null>(null);
-  const [autoOpenPdfAttachment, setAutoOpenPdfAttachment] = useState<
-    AssistantPdfAttachment | null
-  >(null);
+  const [autoOpenPdfAttachment, setAutoOpenPdfAttachment] =
+    useState<AssistantPdfAttachment | null>(null);
   const autoOpenPdfUrl = useCachedQuery(
     "threads.getAttachmentUrl.auto-open",
     api.threads.getAttachmentUrl,
@@ -341,7 +343,9 @@ export function UnifiedThreadContent({
     null,
   );
   const openMessage = openArtifact
-    ? renderedMessages?.find((message) => message._id === openArtifact.messageId)
+    ? renderedMessages?.find(
+        (message) => message._id === openArtifact.messageId,
+      )
     : undefined;
   const openToolArtifact =
     openArtifact && openArtifact.kind !== "email"
@@ -407,12 +411,13 @@ export function UnifiedThreadContent({
 
   const closeArtifact = useCallback(() => setOpenArtifact(null), []);
   const artifactPanel =
-    !openArtifact || !openMessage ? null
-    : openArtifact.kind === "email" ? (
+    !openArtifact || !openMessage ? null : openArtifact.kind === "email" ? (
       <EmailThreadSidebar message={openMessage} onClose={closeArtifact} />
-    ) : !openToolArtifact ? null
-    : openArtifact.kind === "vendor_compliance" ? (
-      <VendorComplianceSidebar artifact={openToolArtifact} onClose={closeArtifact} />
+    ) : !openToolArtifact ? null : openArtifact.kind === "vendor_compliance" ? (
+      <VendorComplianceSidebar
+        artifact={openToolArtifact}
+        onClose={closeArtifact}
+      />
     ) : (
       <MailboxTaskSidebar
         key={`${openArtifact.index}:${openArtifact.emailIndex ?? "task"}`}
@@ -601,8 +606,13 @@ export function UnifiedThreadContent({
   const sendPresentationFollowUp = useCallback(
     async (content: string, selectedReferences?: PresentationReference[]) => {
       if (
-        !thread || thread.archivedAt || thread.originChannel === "slack" ||
-        isAgentActive || isInputBusy || sendInFlight() || queuedMessage
+        !thread ||
+        thread.archivedAt ||
+        thread.originChannel === "slack" ||
+        isAgentActive ||
+        isInputBusy ||
+        sendInFlight() ||
+        queuedMessage
       ) {
         throw new Error("Wait for the current task to finish.");
       }
@@ -610,11 +620,19 @@ export function UnifiedThreadContent({
         sendMessage({
           threadId,
           content,
-          ...promptReferenceIds(selectedReferences?.flatMap(reference =>
-            reference.kind === "policy" || reference.kind === "requirement"
-              ? [{ kind: reference.kind, id: reference.recordId, label: reference.label }]
-              : [],
-          )),
+          ...promptReferenceIds(
+            selectedReferences?.flatMap((reference) =>
+              reference.kind === "policy" || reference.kind === "requirement"
+                ? [
+                    {
+                      kind: reference.kind,
+                      id: reference.recordId,
+                      label: reference.label,
+                    },
+                  ]
+                : [],
+            ),
+          ),
           clientMutationId: createClientMutationId("message"),
         }),
       );
@@ -642,127 +660,140 @@ export function UnifiedThreadContent({
 
   return (
     <>
-    <AppShellPortal slot="artifactPanel" active={artifactPanel !== null}>
-      {artifactPanel}
-    </AppShellPortal>
-    <ChatMessageList
-      className="h-full"
-      anchorKey={threadId}
-      composer={
-        thread.originChannel === "slack" ? (
-          <div className="my-2 flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="min-w-0">
-              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-                Continue this conversation in Slack.
-              </p>
-              {thread.visibility !== "user_private" ? (
-                <p className={`mt-0.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                  New Slack replies stay synced to this client record.
+      <AppShellPortal slot="artifactPanel" active={artifactPanel !== null}>
+        {artifactPanel}
+      </AppShellPortal>
+      <ChatMessageList
+        className="h-full"
+        anchorKey={threadId}
+        composer={
+          thread.originChannel === "slack" ? (
+            <div className="my-2 flex flex-col items-stretch gap-3 rounded-xl border border-input bg-background px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0">
+                <p
+                  className={`text-muted-foreground ${typeStyle("body.default")}`}
+                >
+                  Continue this conversation in Slack.
                 </p>
+                {thread.visibility !== "user_private" ? (
+                  <p
+                    className={`mt-0.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}
+                  >
+                    New Slack replies stay synced to this client record.
+                  </p>
+                ) : null}
+              </div>
+              {slackUrl ? (
+                <PillButton
+                  href={slackUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  size="compact"
+                  variant="secondary"
+                  className="self-start sm:self-auto"
+                >
+                  <SiSlack className="h-3.5 w-3.5" />
+                  Open in Slack
+                  <ExternalLink className="h-3 w-3" />
+                </PillButton>
               ) : null}
             </div>
-            {slackUrl ? (
-              <PillButton
-                href={slackUrl}
-                target="_blank"
-                rel="noreferrer"
-                size="compact"
-                variant="secondary"
-                className="self-start sm:self-auto"
-              >
-                <SiSlack className="h-3.5 w-3.5" />
-                Open in Slack
-                <ExternalLink className="h-3 w-3" />
-              </PillButton>
-            ) : null}
-          </div>
-        ) : (
-          <ChatComposer
-            ref={chatInputRef}
-            onSubmit={handleSend}
-            placeholder="Reply to this thread..."
-            showAttach
-            disabled={isInputBusy}
-            busy={isInputBusy}
-            busyLabel="Sending"
-            variant="dock"
-            orgId={thread.orgId}
-            contextChip={
-              threadContext ? (
-                <AgentDockContextChip
-                  label={
-                    threadContext.summary ??
-                    threadContext.pageType.replaceAll("_", " ")
-                  }
-                  onRemove={() =>
-                    void clearPageContext({ id: threadId }).catch(() =>
-                      toast.error("Could not remove the page context"),
-                    )
-                  }
-                />
-              ) : undefined
-            }
-            banner={queuedMessage ? (
-              <QueuedThreadMessage
-                message={queuedMessage}
-                sending={sendingQueuedNow}
-                onSendNow={sendQueuedNow}
-                onCancel={() => setQueuedMessage(null)}
-              />
-            ) : undefined}
-          />
-        )
-      }
-    >
-      {messages && messages.length === 0 && (
-        <NewChatEmptyState
-          orgId={thread.orgId}
-          onSelectPrompt={(prompt) =>
-            chatInputRef.current?.setValueAndFocus(prompt)
-          }
-        />
-      )}
-      {visibleMessages.map((msg) => {
-        const isFirstUser = msg._id === messageRenderPlan.firstUserMessageId;
-        const firstUserIsOwn =
-          isFirstUser && isMessageFromViewer(msg, viewerId, viewerEmail);
-        return (
-          <div key={msg._id}>
-            <UnifiedMessageBubble
-              msg={msg}
-              onPresentationFollowUp={sendPresentationFollowUp}
-              presentationDisabled={
-                isAgentActive || isInputBusy || Boolean(queuedMessage) ||
-                thread.originChannel === "slack" || Boolean(thread.archivedAt)
+          ) : (
+            <ChatComposer
+              ref={chatInputRef}
+              onSubmit={handleSend}
+              placeholder="Reply to this thread..."
+              showAttach
+              disabled={isInputBusy}
+              busy={isInputBusy}
+              busyLabel="Sending"
+              variant="dock"
+              orgId={thread.orgId}
+              contextChip={
+                threadContext ? (
+                  <AgentDockContextChip
+                    label={
+                      threadContext.summary ??
+                      threadContext.pageType.replaceAll("_", " ")
+                    }
+                    onRemove={() =>
+                      void clearPageContext({ id: threadId }).catch(() =>
+                        toast.error("Could not remove the page context"),
+                      )
+                    }
+                  />
+                ) : undefined
               }
-              relatedEmailMessages={messageRenderPlan.relatedEmailsByMessageId.get(msg._id)}
-              viewerId={viewerId}
-              viewerEmail={viewerEmail}
-              showSender={multipleSenders}
-              mirroredToImessage={
-                thread.originChannel === "imessage" && msg.channel === "chat"
+              banner={
+                queuedMessage ? (
+                  <QueuedThreadMessage
+                    message={queuedMessage}
+                    sending={sendingQueuedNow}
+                    onSendNow={sendQueuedNow}
+                    onCancel={() => setQueuedMessage(null)}
+                  />
+                ) : undefined
               }
-              threadContext={isFirstUser ? thread.initialContext : undefined}
-              collapseEmailMessages={collapseEmailMessages}
-              openArtifact={openArtifact}
-              onOpenArtifact={setOpenArtifact}
             />
-            {isFirstUser && thread.initialContext && (
-              <div
-                className={`mt-2 flex ${firstUserIsOwn ? "justify-end mr-9.5" : "ml-9.5"}`}
-              >
-                <ThreadContextLink context={thread.initialContext} />
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {chatError && (
-        <ChatErrorNotice className={`mx-4 mb-4 px-4 py-3 ${typeStyle("body.default")}`}>
-          {chatError}
-        </ChatErrorNotice>
-      )}
-    </ChatMessageList>
+          )
+        }
+      >
+        {messages && messages.length === 0 && (
+          <NewChatEmptyState
+            orgId={thread.orgId}
+            onSelectPrompt={(prompt) =>
+              chatInputRef.current?.setValueAndFocus(prompt)
+            }
+          />
+        )}
+        {visibleMessages.map((msg) => {
+          const isFirstUser = msg._id === messageRenderPlan.firstUserMessageId;
+          const firstUserIsOwn =
+            isFirstUser && isMessageFromViewer(msg, viewerId, viewerEmail);
+          return (
+            <div key={msg._id}>
+              <UnifiedMessageBubble
+                msg={msg}
+                onPresentationFollowUp={sendPresentationFollowUp}
+                presentationDisabled={
+                  isAgentActive ||
+                  isInputBusy ||
+                  Boolean(queuedMessage) ||
+                  thread.originChannel === "slack" ||
+                  Boolean(thread.archivedAt)
+                }
+                relatedEmailMessages={messageRenderPlan.relatedEmailsByMessageId.get(
+                  msg._id,
+                )}
+                viewerId={viewerId}
+                viewerEmail={viewerEmail}
+                showSender={multipleSenders}
+                mirroredToImessage={
+                  thread.originChannel === "imessage" && msg.channel === "chat"
+                }
+                threadContext={isFirstUser ? thread.initialContext : undefined}
+                collapseEmailMessages={collapseEmailMessages}
+                openArtifact={openArtifact}
+                onOpenArtifact={setOpenArtifact}
+              />
+              {isFirstUser && thread.initialContext && (
+                <div
+                  className={`mt-2 flex ${firstUserIsOwn ? "justify-end mr-9.5" : "ml-9.5"}`}
+                >
+                  <ThreadContextLink context={thread.initialContext} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {chatError && (
+          <ChatErrorNotice
+            className={`mx-4 mb-4 px-4 py-3 ${typeStyle("body.default")}`}
+          >
+            {chatError}
+          </ChatErrorNotice>
+        )}
+      </ChatMessageList>
     </>
   );
 }

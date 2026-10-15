@@ -1,7 +1,5 @@
 "use client";
 
-import { IntakeReadiness } from "@/components/insurance-intake/readiness";
-
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -44,19 +42,14 @@ export default function OperatorProcurementRequestPage() {
   const title = request?.request.title ?? "Procurement request";
   const requestedView = searchParams.get("view");
   const normalizedView =
-    requestedView === "requirements"
-      ? "notes"
-      : requestedView === "market"
-        ? "proposals"
-        : requestedView;
+    requestedView === "market" ? "proposals" : requestedView;
   const view =
-    normalizedView === "notes" ||
-    normalizedView === "shared" ||
+    normalizedView === "edit" ||
     normalizedView === "proposals" ||
     normalizedView === "files" ||
     normalizedView === "email"
       ? normalizedView
-      : "notes";
+      : "application";
 
   return (
     <AppShell
@@ -124,7 +117,6 @@ export default function OperatorProcurementRequestPage() {
               </div>
             </OperationalPanel>
           ) : null}
-          {request?.request.intakeSubmittedAt && <IntakeReadiness requestId={requestId as Id<"procurementRequests">} readiness={request.request.readiness} missing={request.request.readinessMissing} readOnly={Boolean(activeImpersonation)} />}
           <ProcurementRequestWorkspace
             clientOrgId={clientOrgId as Id<"organizations">}
             requestId={requestId as Id<"procurementRequests">}

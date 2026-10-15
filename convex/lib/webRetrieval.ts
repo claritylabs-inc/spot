@@ -164,17 +164,22 @@ export async function runWebRetrieval(
 
 export async function runProfileWebRetrieval(
   ctx: ActionCtx,
-  orgId: Id<"organizations">,
+  orgId: Id<"organizations"> | undefined,
   rawInput: WebRetrievalInput,
 ): Promise<WebRetrievalResult> {
-  const configured = await resolveWebRetrievalForOrg(ctx, orgId);
+  const configured = orgId
+    ? await resolveWebRetrievalForOrg(ctx, orgId)
+    : normalizeRoute(
+        (await ctx.runQuery(internal.modelSettings.resolvePublicDefaults, {}))
+          .webRetrieval,
+      );
   return runWebRetrievalWithConfig(
     ctx,
     {
       primary: configured.primary === "exa" ? "exa" : "parallel",
     },
     rawInput,
-    String(orgId),
+    orgId ? String(orgId) : undefined,
   );
 }
 

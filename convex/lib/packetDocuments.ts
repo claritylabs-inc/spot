@@ -1,3 +1,7 @@
+import {
+  submittedIntakeApplication,
+  projectApplicationMarkdown,
+} from "../../lib/intake-application";
 import { requireCompanyRequest } from "./companyRequest";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -105,7 +109,16 @@ export async function readPacketProjection(
     (document) => audience === "operator" || document.filename === "public.md",
   );
   const sections = documents.flatMap((document, order) => {
-    const body = parseMarkdownDocument(document.markdown).body;
+    const savedBody = parseMarkdownDocument(document.markdown).body;
+    const application = submittedIntakeApplication(request);
+    const body =
+      document.filename === "public.md" && application
+        ? projectApplicationMarkdown(
+            savedBody,
+            application,
+            request.intakeSnapshot,
+          )
+        : savedBody;
     return body.trim()
       ? [
           {

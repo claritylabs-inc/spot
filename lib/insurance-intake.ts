@@ -1,3 +1,12 @@
+import dayjs from "dayjs";
+import { vehicleMakeLabel } from "./vehicle-display";
+import {
+  addressText,
+  coverageOption,
+  coverageRequestLabel,
+  type IntakeDetails,
+} from "./insurance-intake-details";
+
 export const INTAKE_VERSION = 2;
 export const INTAKE_REASONS = [
   "Purchasing or leasing equipment/vehicles",
@@ -31,7 +40,7 @@ export const INTAKE_STEPS = [
   "Are there related companies we should know about?",
   "What does your business do?",
   "How many people work at your business?",
-  "What is your business’s revenue?",
+  "What is your business’s annual revenue?",
   "Where does your business operate?",
   "Do you have insurance today?",
   "Can you upload your current policies?",
@@ -40,7 +49,7 @@ export const INTAKE_STEPS = [
   "Can you upload your loss runs?",
   "Has coverage been cancelled or declined for renewal?",
   "Is your business planning any changes?",
-  "Are these company details current?",
+  "Are these company details accurate?",
   "Is your request ready to submit?",
 ] as const;
 export const INTAKE_FIELDS = {
@@ -68,16 +77,16 @@ export const INTAKE_FIELDS = {
   industryVertical: "Business category",
   registeredAddress: "Registered business address",
   mailingAddress: "Mailing address",
-  relatedEntities: "Related legal entities and relationships",
+  relatedEntities: "Related legal entities",
   description: "What does your business do?",
   yearStarted: "Year started",
   fullTime: "Full-time employees",
   partTime: "Part-time employees",
-  contractors: "Contract workers",
-  trailingRevenue: "Trailing revenue and reporting period",
+  contractors: "Contractors",
+  trailingRevenue: "Annual revenue and reporting period",
   projectedRevenue: "Projected revenue and reporting period",
   locations: "Locations, activities, owned / leased status, and staff",
-  companyConfirmed: "Company details confirmed current",
+  companyConfirmed: "Company details confirmed accurate",
   currentInsurance: "Do you currently have insurance?",
   currentInsuranceDetails:
     "Carriers, coverage, limits, premiums, and expiration dates",
@@ -102,8 +111,6 @@ export function missingIntakeAnswers(a: IntakeAnswers) {
   ] as const)
     if (!a[key]?.trim()) missing.push(INTAKE_FIELDS[key]);
   if (!a.effectiveDate?.trim()) missing.push("Desired effective date");
-  if (a.companyConfirmed !== "yes")
-    missing.push("Confirm company details are current");
   return missing;
 }
 export const COMPANY_INTAKE_FIELDS: IntakeField[] = [
@@ -128,7 +135,7 @@ export const COMPANY_INTAKE_FIELDS: IntakeField[] = [
   "projectedRevenue",
   "locations",
 ];
-export function intakeMarkdown(
+export function legacyIntakeMarkdown(
   a: IntakeAnswers,
   fields: IntakeField[] = Object.keys(INTAKE_FIELDS) as IntakeField[],
 ) {
@@ -139,43 +146,198 @@ export function intakeMarkdown(
     .join("\n\n");
 }
 
-export function intakeFollowUps(a: IntakeAnswers, categories: string[]) {
-  const items: string[] = [];
-  if (!a.effectiveDate) items.push("Confirm effective date");
-  if (
-    a.coverage?.startsWith("Not sure") ||
-    a.coverage === "I'm not sure" ||
-    a.limits?.includes("I'm not sure") ||
-    !a.limits
-  )
-    items.push("Advise on coverage lines, limits, and deductibles");
-  if (hasIntakeRequirements(a)) {
-    if (!categories.includes("requirements") && !a.requirements?.trim())
-      items.push("Obtain third-party insurance requirements");
-    items.push("Review contract limits and endorsement requirements");
-  }
-  if (a.currentInsurance === "Yes" && !categories.includes("policy"))
-    items.push("Obtain current policies");
-  if (!a.claims || a.claims.toLowerCase().includes("not sure"))
-    items.push("Confirm claims and loss history");
-  if (!a.mailingAddress) items.push("Confirm mailing address");
-  if (!a.trailingRevenue || !a.projectedRevenue)
-    items.push("Confirm revenue and reporting periods");
-  return items;
-}
-
 export function completedIntakeSteps(a: IntakeAnswers) {
   const steps: number[] = [];
   if (a.name && a.email && a.phone && a.trigger && a.effectiveDate)
     steps.push(0);
   if (a.coverage && a.coverageScope) steps.push(1);
-  if (
-    a.legalName &&
-    a.description &&
-    a.locations &&
-    a.companyConfirmed === "yes"
-  )
-    steps.push(2);
+  if (a.legalName && a.description && a.locations) steps.push(2);
   if (a.currentInsurance) steps.push(3);
   return steps;
+}
+
+export function intakeMarkdown(
+  answers: IntakeAnswers,
+  fields: IntakeField[] = Object.keys(INTAKE_FIELDS) as IntakeField[],
+  details?: IntakeDetails,
+) {
+  const allowed = new Set(fields);
+  const cell = (value: string) =>
+    value.trim().replace(/\|/g, "\\|").replace(/\r?\n/g, "&#10;");
+  const value = (key: IntakeField) => {
+    const raw = answers[key]?.trim() ?? "";
+    return key === "effectiveDate" && /^\d{4}-\d{2}-\d{2}$/.test(raw)
+      ? dayjs(raw).format("MMMM D, YYYY")
+      : raw;
+  };
+  const table = (rows: [string, string][]) =>
+    rows.length
+      ? `| Detail | Information |\n| --- | --- |\n${rows.map(([label, text]) => `| ${cell(label)} | ${cell(text)} |`).join("\n")}`
+      : "";
+  const groups: { title: string; fields: IntakeField[] }[] = [
+    { title: "Contact details", fields: ["name", "email", "phone"] },
+    {
+      title: "Request details",
+      fields: [
+        "trigger",
+        "effectiveDate",
+        "timingUnknown",
+        "requirements",
+        "requestDetails",
+      ],
+    },
+    {
+      title: "Coverage Requested",
+      fields: ["coverage", "limits", "coverageScope"],
+    },
+    {
+      title: "Business details",
+      fields: [
+        "legalName",
+        "website",
+        "dba",
+        "entityType",
+        "formation",
+        "fein",
+        "businessNumber",
+        "industry",
+        "industryVertical",
+        "registeredAddress",
+        "mailingAddress",
+        "relatedEntities",
+        "description",
+        "yearStarted",
+        "fullTime",
+        "partTime",
+        "contractors",
+        "trailingRevenue",
+        "projectedRevenue",
+        "locations",
+      ],
+    },
+    {
+      title: "Insurance history",
+      fields: ["currentInsurance", "claims", "cancellations"],
+    },
+  ];
+  return groups
+    .flatMap((group) => {
+      const keys = group.fields.filter((key) => allowed.has(key) && value(key));
+      if (!keys.length) return [];
+      if (group.title === "Coverage Requested" && details?.coverages.length) {
+        return [
+          `## Coverage Requested\n\n${details.coverages
+            .map((line) => {
+              const option = coverageOption(line.coverage);
+              const rows: [string, string][] = option.limits
+                .filter(
+                  (limit) =>
+                    limit.key !== "coverage_description" &&
+                    line.limits[limit.key],
+                )
+                .map((limit) => [
+                  limit.label,
+                  /^\$?[\d,]+(?:\.\d+)?$/.test(line.limits[limit.key]) &&
+                  limit.key !== "statutory"
+                    ? `$${line.limits[limit.key].replace(/^\$/, "")}`
+                    : line.limits[limit.key],
+                ]);
+              if (line.additionalCoverages?.trim())
+                rows.push([
+                  "Additional requirements",
+                  line.additionalCoverages!,
+                ]);
+              if (line.scopeDescription)
+                rows.push(["Scope", line.scopeDescription]);
+              line.vehicles?.forEach((vehicle, index) =>
+                rows.push([
+                  `Vehicle ${index + 1}`,
+                  [vehicle.year, vehicleMakeLabel(vehicle.make), vehicle.model]
+                    .filter(Boolean)
+                    .join(" ") + (vehicle.vin ? `\nVIN # ${vehicle.vin}` : ""),
+                ]),
+              );
+              line.properties?.forEach((property, index) =>
+                rows.push([
+                  property.name || `Property ${index + 1}`,
+                  [
+                    property.address.formatted ||
+                      [
+                        property.address.street1,
+                        property.address.city,
+                        property.address.state,
+                        property.address.zip,
+                        property.address.country,
+                      ]
+                        .filter(Boolean)
+                        .join(", "),
+                    property.details,
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n"),
+                ]),
+              );
+              return table([
+                ["Coverage Requested", coverageRequestLabel(line)],
+                ...rows,
+              ]);
+            })
+            .join("\n\n")}
+
+${table(
+  (
+    [
+      ["Limits notes", details.limitsNote],
+      ["Scope notes", details.scopeNote],
+      ["Additional coverage notes", details.additionalNote],
+    ] as [string, string | undefined][]
+  ).filter((row): row is [string, string] => Boolean(row[1]?.trim())),
+)}`,
+        ];
+      }
+      const prose = new Set<IntakeField>([
+        "description",
+        "requirements",
+        "requestDetails",
+        "claims",
+        "cancellations",
+      ]);
+      const rows: [string, string][] = keys
+        .filter(
+          (key) =>
+            !prose.has(key) &&
+            !(key === "locations" && details?.locations.length),
+        )
+        .map((key) => [INTAKE_FIELDS[key], value(key)]);
+      const paragraphs = keys
+        .filter((key) => prose.has(key))
+        .map((key) => table([[INTAKE_FIELDS[key], value(key)]]));
+      const locations =
+        group.title === "Business details" && allowed.has("locations")
+          ? (details?.locations.map((location, index) =>
+              table(
+                (
+                  [
+                    ["Location", location.name || `Location ${index + 1}`],
+                    ["Address", addressText(location.address)],
+                    ["Business activities", location.details],
+                    [
+                      "Occupancy",
+                      location.ownership
+                        ? location.ownership === "owned"
+                          ? "Owned"
+                          : "Leased"
+                        : "",
+                    ],
+                    ["Staff", location.staff || ""],
+                  ] as [string, string][]
+                ).filter(([, text]) => text.trim()),
+              ),
+            ) ?? [])
+          : [];
+      return [
+        `## ${group.title}\n\n${[table(rows), ...paragraphs, ...locations].filter(Boolean).join("\n\n")}`,
+      ];
+    })
+    .join("\n\n");
 }

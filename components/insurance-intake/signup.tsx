@@ -1,12 +1,13 @@
 "use client";
-import dayjs from "dayjs";
-import { ActionSurfaceButton } from "@claritylabs-inc/ui/components/action-surface";
+import { toast } from "sonner";
 import {
   Card,
   CardHeader,
-  CardTitle,
   CardContent,
+  CardTitle,
 } from "@claritylabs-inc/ui/components/card";
+import dayjs from "dayjs";
+import { ActionSurfaceButton } from "@claritylabs-inc/ui/components/action-surface";
 import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
@@ -39,6 +40,7 @@ function SignupForm() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signIn } = useAuthActions();
+  const [handoffTransition, setHandoffTransition] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<string | null>(null);
   const [token, setToken] = useState(params.get("intake") ?? "");
   const handoff = useQuery(
@@ -69,6 +71,21 @@ function SignupForm() {
   const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (error)
+      toast.error(
+        getUserFacingErrorMessage(
+          new Error(error),
+          "Could not continue. Please try again.",
+        ),
+        { id: "intake-signup-error" },
+      );
+    else toast.dismiss("intake-signup-error");
+    return () => {
+      toast.dismiss("intake-signup-error");
+    };
+  }, [error]);
+
   const [recoverable, setRecoverable] = useState<string[]>([]);
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -105,12 +122,16 @@ function SignupForm() {
       return;
     advancing.current = true;
     void claim({ token })
-      .then((id) => router.replace(`/intake?request=${id}`))
+      .then((id) => {
+        setHandoffTransition(true);
+        router.replace(`/intake?request=${id}`);
+      })
       .catch((e) => {
         setError(
           getUserFacingErrorMessage(e, "Could not complete this action"),
         );
         advancing.current = false;
+        setHandoffTransition(false);
       });
   }, [isAuthenticated, token, handoff, claim, router]);
   const autoHandoff = useRef(false);
@@ -125,6 +146,8 @@ function SignupForm() {
     )
       return;
     autoHandoff.current = true;
+    if (!handoff.existingAccount && !handoff.claimed)
+      setHandoffTransition(true);
     queueMicrotask(() => setBusy(true));
     void (
       handoff.existingAccount || handoff.claimed
@@ -133,9 +156,10 @@ function SignupForm() {
           )
         : signIn("intake", { token })
     )
-      .catch((e) =>
-        setError(getUserFacingErrorMessage(e, "Could not continue")),
-      )
+      .catch((e) => {
+        setHandoffTransition(false);
+        setError(getUserFacingErrorMessage(e, "Could not continue"));
+      })
       .finally(() => setBusy(false));
   }, [isLoading, isAuthenticated, token, handoff, busy, signIn]);
   async function continueSignup() {
@@ -174,10 +198,26 @@ function SignupForm() {
       if (existing || handoff?.claimed) {
         await signIn("resend-otp", { email });
         setCodeSent(true);
-      } else await signIn("intake", { token: activeToken });
+      } else {
+        setHandoffTransition(true);
+        router.prefetch("/intake");
+        await signIn("intake", { token: activeToken });
+      }
     } catch (e) {
+      setHandoffTransition(false);
       setError(getUserFacingErrorMessage(e, "Could not continue"));
     } finally {
+      setBusy(false);
+    }
+  }
+  async function newRequest() {
+    setBusy(true);
+    setError("");
+    try {
+      const id = await start({ orgId: org?.org?._id });
+      router.push(`/intake?request=${id}`);
+    } catch (e) {
+      setError(getUserFacingErrorMessage(e, "Could not create request"));
       setBusy(false);
     }
   }
@@ -194,11 +234,19 @@ function SignupForm() {
   }
   return (
     <IntakeFrame
-      status={busy ? "Continuing…" : undefined}
+      showSteps={!(isAuthenticated && !token && !handoffTransition)}
+      status={busy || handoffTransition ? "Continuing…" : undefined}
       footer={
-        isAuthenticated && !token ? (
+        isAuthenticated && !token && !handoffTransition ? (
           <>
-            <span />
+            <PillButton
+              size="large"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void newRequest()}
+            >
+              New request
+            </PillButton>
             <PillButton
               size="large"
               disabled={
@@ -228,13 +276,21 @@ function SignupForm() {
           </>
         ) : (
           <>
-            <span />
+            <p className={`text-muted-foreground ${typeStyle("body.root")}`}>
+              <span className="hidden sm:inline">
+                Already have an account?{" "}
+              </span>
+              <a href="/login" className="underline">
+                Log in
+              </a>
+            </p>
             <PillButton
               size="large"
               type="submit"
               form="intake-contact"
               disabled={
                 busy ||
+                handoffTransition ||
                 (!!token && handoff === undefined) ||
                 (codeSent && code.length !== 6)
               }
@@ -252,20 +308,12 @@ function SignupForm() {
       <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
         {codeSent
           ? "Can you confirm your work email?"
-          : isAuthenticated && !token
+          : isAuthenticated && !token && !handoffTransition
             ? "Which request would you like to view?"
             : "What are your contact details?"}
       </h1>
       <div className="h-10" />
-      {error && (
-        <p
-          role="alert"
-          className={`mb-5 text-destructive ${typeStyle("body.root")}`}
-        >
-          {error}
-        </p>
-      )}
-      {token && handoff === null && (
+      {token && handoff === null && !handoffTransition && (
         <div className="mb-5 space-y-3">
           <p>
             This link expired. Start a new application or log in to resume a
@@ -285,9 +333,12 @@ function SignupForm() {
           </PillButton>
         </div>
       )}
-      {isLoading ? (
+      {(isLoading && !handoffTransition) ||
+      (isAuthenticated &&
+        !token &&
+        (drafts === undefined || submitted === undefined)) ? (
         <p>Loading…</p>
-      ) : isAuthenticated && !token ? (
+      ) : isAuthenticated && !token && !handoffTransition ? (
         <div className="space-y-4">
           {[
             ...(submitted ?? []).map((request) => ({
@@ -309,7 +360,7 @@ function SignupForm() {
                 coverage: "",
                 insuredName: "",
                 effectiveDate: "",
-                submitted: false,
+                submitted: null,
               })),
           ].map((request) => (
             <ActionSurfaceButton
@@ -318,9 +369,11 @@ function SignupForm() {
               aria-pressed={selectedRequest === request.id}
               aria-label={`${request.submitted ? "View" : "Resume"} ${request.coverage || "insurance request"} for ${request.insuredName || "business not provided"}${request.effectiveDate ? ` starting ${dayjs(request.effectiveDate).format("MMMM D, YYYY")}` : ""}`}
               onClick={() => setSelectedRequest(request.id)}
-              className={`block w-full overflow-hidden p-0 ${selectedRequest === request.id ? "border-primary/60 bg-primary/5 ring-1 ring-primary/40" : ""}`}
+              className="block w-full overflow-hidden rounded-xl border-0 bg-transparent p-0"
             >
-              <Card className="bg-transparent ring-0">
+              <Card
+                className={`border ring-0 ${selectedRequest === request.id ? "border-primary bg-primary/5" : "border-border"}`}
+              >
                 <CardHeader>
                   <span className="flex items-start justify-between gap-4">
                     <CardTitle
@@ -328,8 +381,12 @@ function SignupForm() {
                     >
                       {request.coverage || "Coverage not selected"}
                     </CardTitle>
-                    <StatusTag tone="neutral">
-                      {request.submitted ? "Submitted" : "Draft"}
+                    <StatusTag tone={request.submitted ? "success" : "neutral"}>
+                      {request.submitted === null
+                        ? "Saved request"
+                        : request.submitted
+                          ? "Submitted"
+                          : "Draft"}
                     </StatusTag>
                   </span>
                 </CardHeader>
@@ -354,20 +411,6 @@ function SignupForm() {
               </Card>
             </ActionSurfaceButton>
           ))}
-          {!viewer?.intakeRestricted && (
-            <ActionSurfaceButton
-              type="button"
-              aria-pressed={selectedRequest === "new"}
-              onClick={() => setSelectedRequest("new")}
-              className={`block w-full p-5 ${selectedRequest === "new" ? "border-primary/60 bg-primary/5 ring-1 ring-primary/40" : ""}`}
-            >
-              <span
-                className={`flex items-center justify-between gap-4 ${typeStyle("body.root")}`}
-              >
-                New insurance request
-              </span>
-            </ActionSurfaceButton>
-          )}
         </div>
       ) : (
         <form
@@ -459,12 +502,6 @@ function SignupForm() {
               </Field>
             </>
           )}
-          <p className={`text-muted-foreground ${typeStyle("body.root")}`}>
-            Already have an account?{" "}
-            <a href="/login" className="underline">
-              Log in
-            </a>
-          </p>
         </form>
       )}
     </IntakeFrame>

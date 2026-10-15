@@ -13,6 +13,7 @@ export function IntakeFrame({
   status,
   onSection,
   disabled = false,
+  showSteps = true,
 }: {
   children: ReactNode;
   footer?: ReactNode;
@@ -20,6 +21,7 @@ export function IntakeFrame({
   status?: string;
   onSection?: (step: number) => void;
   disabled?: boolean;
+  showSteps?: boolean;
 }) {
   const footerRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -40,7 +42,10 @@ export function IntakeFrame({
     };
   }, []);
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      data-intake-form
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="grid grid-cols-3 items-center border-b bg-background px-6 py-5 md:sticky md:top-0 md:z-20 sm:px-10">
         <a
           href="https://spot.insure"
@@ -52,28 +57,32 @@ export function IntakeFrame({
             <BrandWordmark />
           </span>
         </a>
-        <nav
-          aria-label="Application sections"
-          className="flex items-center justify-center gap-1.5 sm:gap-2"
-        >
-          {[
-            "Your request",
-            "Coverage",
-            "Company",
-            "Insurance history",
-            "Review",
-          ].map((label, index) => (
-            <Button
-              variant="ghost"
-              key={label}
-              aria-label={label}
-              aria-current={section === index ? "step" : undefined}
-              disabled={disabled || !onSection}
-              onClick={() => onSection?.([1, 6, 10, 20, 28][index])}
-              className={`h-1.5 w-4 rounded-full p-0 disabled:opacity-100 sm:w-14 ${section >= index ? "bg-foreground" : "bg-foreground/15"}`}
-            />
-          ))}
-        </nav>
+        {showSteps ? (
+          <nav
+            aria-label="Application sections"
+            className="flex items-center justify-center gap-1.5 sm:gap-2"
+          >
+            {[
+              "Your request",
+              "Coverage",
+              "Company",
+              "Insurance history",
+              "Review",
+            ].map((label, index) => (
+              <Button
+                variant="ghost"
+                key={label}
+                aria-label={label}
+                aria-current={section === index ? "step" : undefined}
+                disabled={disabled || !onSection}
+                onClick={() => onSection?.([1, 6, 10, 20, 28][index])}
+                className={`h-1.5 w-4 rounded-full p-0 disabled:opacity-100 sm:w-14 ${section >= index ? "bg-foreground" : "bg-foreground/15"}`}
+              />
+            ))}
+          </nav>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <span
           role="status"
           aria-live="polite"

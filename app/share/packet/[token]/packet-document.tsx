@@ -1,4 +1,9 @@
 "use client";
+import {
+  markdownReviewRows,
+  MarkdownReviewTable,
+} from "@/components/ui/markdown-review";
+import { hideApplicationControlMarkers } from "@/lib/intake-markdown-presentation";
 
 import {
   useEffect,
@@ -8,14 +13,7 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import type { Components } from "react-markdown";
-import {
-  ArrowUpRight,
-  Check,
-  ChevronUp,
-  Download,
-  FileText,
-  ListTree,
-} from "lucide-react";
+import { ArrowUpRight, Check, ChevronUp, ListTree } from "lucide-react";
 import { toast } from "sonner";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { PillButton } from "@/components/ui/pill-button";
@@ -25,7 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
-import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
+import {
+  OperationalLabelValueList,
+  OperationalLabelValueRow,
+  OperationalPanel,
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import { TextLink } from "@/components/ui/text-link";
 import { formatDisplayDateTimeUtc } from "@/lib/date-format";
@@ -54,9 +56,72 @@ function PacketSection({
   );
 }
 
-const markdownComponents: Components = {
-  section: ({ children }) => <PacketSection>{children}</PacketSection>,
-};
+type PacketFile = NonNullable<PacketView>["files"][number];
+function PacketFileRows({ files }: { files: PacketFile[] }) {
+  const groups = [
+    { category: "requirements", label: "Insurance requirements" },
+    { category: "policy", label: "Current policies" },
+    { category: "loss_runs", label: "Loss runs / claims history" },
+    { category: "supporting", label: "Other documents" },
+  ];
+  return (
+    <>
+      {groups.map((group) => {
+        const documents = files.filter(
+          (file) => (file.documentCategory ?? "supporting") === group.category,
+        );
+        if (!documents.length) return null;
+        return (
+          <OperationalLabelValueRow
+            key={group.category}
+            label={
+              <span className={typeStyle("body.root")}>{group.label}</span>
+            }
+            value={
+              <div className={`space-y-2 ${typeStyle("body.root")}`}>
+                {documents.map((file) =>
+                  file.downloadUrl ? (
+                    <a
+                      key={file._id}
+                      href={file.downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block break-words underline underline-offset-2"
+                    >
+                      {file.name}
+                    </a>
+                  ) : (
+                    <span key={file._id} className="block break-words">
+                      {file.name}
+                      <span
+                        className={`ml-2 text-muted-foreground ${typeStyle("caption.default")}`}
+                      >
+                        Listed
+                      </span>
+                    </span>
+                  ),
+                )}
+              </div>
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+function filesForPart(files: PacketFile[], part: unknown) {
+  const categories =
+    part === "coverage"
+      ? ["requirements", "policy"]
+      : part === "request"
+        ? ["requirements", "supporting"]
+        : part === "history"
+          ? ["policy", "loss_runs"]
+          : [];
+  return files.filter((file) =>
+    categories.includes(file.documentCategory ?? "supporting"),
+  );
+}
 
 type Navigate = (id: string) => void;
 
@@ -191,9 +256,52 @@ function HeadingMenu({
 }
 
 export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
+  const presentedMarkdown = hideApplicationControlMarkers(
+    view.markdown,
+  ).replace(/^#{1,2} Request\s*\n+(?=#{2,6} Contact details\b)/gm, "");
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      ...markdownReviewRows,
+      table: ({ node, ...props }) => {
+        const files = filesForPart(
+          view.files,
+          node?.properties?.dataRequestFilePart,
+        );
+        return (
+          <MarkdownReviewTable
+            {...props}
+            node={node}
+            extraRows={
+              files.length ? <PacketFileRows files={files} /> : undefined
+            }
+          />
+        );
+      },
+      section: ({ children, node }) => {
+        const files = node?.properties?.dataFilesInTable
+          ? []
+          : filesForPart(view.files, node?.properties?.dataRequestPart);
+        return (
+          <section
+            data-packet-section
+            tabIndex={-1}
+            className="scroll-mt-8 outline-none"
+          >
+            {children}
+            {files.length > 0 && (
+              <OperationalLabelValueList className="my-3">
+                <PacketFileRows files={files} />
+              </OperationalLabelValueList>
+            )}
+          </section>
+        );
+      },
+    }),
+    [view.files],
+  );
   const packetMarkdown = useMemo(
-    () => preparePacketMarkdown(view.markdown),
-    [view.markdown],
+    () => preparePacketMarkdown(presentedMarkdown),
+    [presentedMarkdown],
   );
   const plugins = useMemo(
     () => [packetMarkdown.rehypePacketSections],
@@ -325,17 +433,12 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
         }}
         className={`fixed top-0 left-6 z-20 -translate-y-full rounded-md bg-background p-3 focus:translate-y-2 print:hidden ${typeStyle("control.button")}`}
       >
-        Skip to packet details
+        Skip to request details
       </a>
       <div className="mx-auto grid max-w-7xl items-start gap-6 px-6 pt-6 pb-28 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10 lg:px-8 lg:py-8 print:block print:max-w-none print:p-0">
         <aside className="lg:sticky lg:top-8">
           <div className="flex items-center gap-6 lg:block lg:px-3">
             <SpotWordmark />
-            <h1
-              className={`text-muted-foreground lg:mt-3 ${typeStyle("body.default")}`}
-            >
-              Insurance packet
-            </h1>
           </div>
           {view.expiresAt !== undefined && (
             <p
@@ -368,7 +471,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                   primary
                   navigate={navigate}
                 >
-                  Packet details
+                  Request Details
                 </OutlineLink>
                 <div className="min-h-0 overflow-y-auto">
                   <HeadingOutline
@@ -386,7 +489,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                     primary
                     navigate={navigate}
                   >
-                    <span>Files</span>
+                    <span>All files</span>
                     <span className="text-muted-foreground">
                       {view.files.length}
                     </span>
@@ -424,10 +527,10 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                   {current === "contact-spot"
                     ? "Contact Spot"
                     : current === "packet-files"
-                      ? "Files"
+                      ? "All files"
                       : (packetMarkdown.headings.find(
                           (heading) => heading.id === current,
-                        )?.label ?? "Packet details")}
+                        )?.label ?? "Request Details")}
                 </span>
                 <ChevronUp aria-hidden="true" className="size-4 shrink-0" />
               </DropdownMenuTrigger>
@@ -448,7 +551,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                 )}
                 <SectionMenuItem
                   id="packet-details"
-                  label="Packet details"
+                  label="Request Details"
                   active={current}
                   primary
                   navigate={navigateFromMenu}
@@ -463,7 +566,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                 {hasFiles && (
                   <SectionMenuItem
                     id="packet-files"
-                    label={`Files (${view.files.length})`}
+                    label={`All files (${view.files.length})`}
                     active={current}
                     primary
                     navigate={navigateFromMenu}
@@ -474,6 +577,9 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
           </nav>
         </aside>
         <main ref={contentRef} className="min-w-0 space-y-6 print:mt-6">
+          <h1 className={`text-balance ${typeStyle("heading.page")}`}>
+            {view.title}
+          </h1>
           {contactEmail && (
             <PacketSection id="contact-spot">
               <h2 className={typeStyle("heading.section")}>Contact Spot</h2>
@@ -519,7 +625,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
               </div>
             </PacketSection>
           )}
-          <article id="packet-details" aria-label="Packet details">
+          <article id="packet-details" aria-label="Request Details">
             {view.markdown.trim() ? (
               <ProseMarkdown
                 gfm
@@ -528,60 +634,26 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                 components={markdownComponents}
                 className="space-y-5 [&>section>:first-child]:mt-0 [&>section>:last-child]:mb-0 print:space-y-8"
               >
-                {view.markdown}
+                {presentedMarkdown}
               </ProseMarkdown>
             ) : (
               <PacketSection>
                 <p
                   className={`text-muted-foreground ${typeStyle("body.default")}`}
                 >
-                  No packet details have been shared yet.
+                  No request details have been shared yet.
                 </p>
               </PacketSection>
             )}
           </article>
           {hasFiles && (
             <PacketSection id="packet-files">
-              <h2 className={typeStyle("heading.section")}>Files</h2>
-              <ul className="mt-4 space-y-4">
-                {view.files.map((file) => (
-                  <li
-                    key={file._id}
-                    className="flex flex-wrap items-center gap-3 sm:flex-nowrap"
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-3">
-                      <FileText
-                        aria-hidden="true"
-                        className="size-4 shrink-0 text-muted-foreground"
-                      />
-                      <span
-                        className={`wrap-anywhere ${typeStyle("body.medium")}`}
-                      >
-                        {file.name}
-                      </span>
-                    </span>
-                    <span className="shrink-0 print:hidden">
-                      {file.downloadUrl ? (
-                        <PillButton
-                          href={file.downloadUrl}
-                          download
-                          size="compact"
-                          variant="secondary"
-                        >
-                          <Download aria-hidden="true" className="size-3.5" />
-                          Download
-                        </PillButton>
-                      ) : (
-                        <span
-                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          Listed
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <h2 className={typeStyle("heading.section")}>All files</h2>
+              <div className="mt-4">
+                <OperationalLabelValueList>
+                  <PacketFileRows files={view.files} />
+                </OperationalLabelValueList>
+              </div>
             </PacketSection>
           )}
           <footer className="space-y-4 py-4">

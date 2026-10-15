@@ -1,4 +1,7 @@
-import { requestIntakeFields } from "./lib/insuranceIntakeSchema";
+import {
+  intakeBusinessProfileValidator,
+  requestIntakeFields,
+} from "./lib/insuranceIntakeSchema";
 import { chatPresentationValidator } from "./lib/chatPresentationValidators";
 import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
@@ -74,12 +77,8 @@ const extractionTraceRoutingValidator = v.object({
       v.null(),
     ),
   ),
-  requiredTier: v.optional(
-    v.union(v.literal(1), v.literal(2), v.literal(3)),
-  ),
-  selectedTier: v.optional(
-    v.union(v.literal(1), v.literal(2), v.literal(3)),
-  ),
+  requiredTier: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3))),
+  selectedTier: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3))),
   route: v.optional(modelRouteValidator),
   source: v.optional(v.string()),
   // Legacy router-owned selection fields remain readable for stored traces.
@@ -516,6 +515,10 @@ export default defineSchema({
 
   // Organizations — owns company data, agent, broker info
   organizations: defineTable({
+    intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
+    clientAccessStatus: v.optional(
+      v.union(v.literal("intake"), v.literal("active")),
+    ),
     name: v.string(),
     deletedAt: v.optional(v.number()),
     deletedByUserId: v.optional(v.id("users")),
@@ -2697,6 +2700,8 @@ export default defineSchema({
     .index("storage", ["fileId"]),
 
   procurementRequests: defineTable({
+    deletedAt: v.optional(v.number()),
+    deletedByUserId: v.optional(v.id("users")),
     ...requestIntakeFields,
     clientOrgId: v.optional(v.id("organizations")),
     title: v.string(),
@@ -2727,19 +2732,47 @@ export default defineSchema({
     .index("title", ["clientOrgId", "title"])
     .index("normalized_title", ["clientOrgId", "normalizedTitle"])
     .index("organization", ["clientOrgId", "updatedAt"])
-    .index("organization_visibility", ["clientOrgId", "clientVisible", "updatedAt"])
+    .index("organization_visibility", [
+      "clientOrgId",
+      "clientVisible",
+      "updatedAt",
+    ])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"])
     .index("owner_updated", ["ownerUserId", "updatedAt"]),
 
   requestHandoffs: defineTable({
-    tokenHash: v.string(), name: v.string(), email: v.string(), phone: v.string(),
-    requestId: v.optional(v.id("procurementRequests")), expiresAt: v.number(), claimedAt: v.optional(v.number()),
+    tokenHash: v.string(),
+    name: v.string(),
+    email: v.string(),
+    phone: v.string(),
+    requestId: v.optional(v.id("procurementRequests")),
+    expiresAt: v.number(),
+    claimedAt: v.optional(v.number()),
   }).index("token_hash", ["tokenHash"]),
 
+  intakeSlackEvents: defineTable({
+    requestId: v.id("procurementRequests"),
+    eventKey: v.string(),
+    teamId: v.string(),
+    channelId: v.string(),
+    content: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+    ),
+    attempts: v.number(),
+    error: v.optional(v.string()),
+  })
+    .index("request_event", ["requestId", "eventKey"])
+    .index("request_status", ["requestId", "status"]),
   requestIntakeUploadIntents: defineTable({
-    requestId: v.id("procurementRequests"), ownerUserId: v.id("users"),
-    createdAt: v.number(), expiresAt: v.number(), fileId: v.optional(v.id("_storage")),
+    requestId: v.id("procurementRequests"),
+    ownerUserId: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    fileId: v.optional(v.id("_storage")),
   }).index("request", ["requestId"]),
 
   requestIntakeFiles: defineTable({
@@ -2751,10 +2784,17 @@ export default defineSchema({
     name: v.string(),
     contentType: v.string(),
     size: v.number(),
-    category: v.union(v.literal("requirements"), v.literal("policy"), v.literal("loss_runs"), v.literal("supporting")),
+    category: v.union(
+      v.literal("requirements"),
+      v.literal("policy"),
+      v.literal("loss_runs"),
+      v.literal("supporting"),
+    ),
     clientFileId: v.optional(v.id("clientFiles")),
     createdAt: v.number(),
-  }).index("request", ["requestId"]).index("storage", ["fileId"]),
+  })
+    .index("request", ["requestId"])
+    .index("storage", ["fileId"]),
 
   procurementBrokerOutreaches: defineTable({
     requestId: v.id("procurementRequests"),
@@ -3142,6 +3182,15 @@ export default defineSchema({
     .index("request", ["addressedRequestId", "receivedAt"]),
 
   procurementFileItems: defineTable({
+    removedAt: v.optional(v.number()),
+    documentCategory: v.optional(
+      v.union(
+        v.literal("requirements"),
+        v.literal("policy"),
+        v.literal("loss_runs"),
+        v.literal("supporting"),
+      ),
+    ),
     requestId: v.id("procurementRequests"),
     clientOrgId: v.id("organizations"),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
@@ -5041,7 +5090,16 @@ export default defineSchema({
   })
     .index("identity", ["id"])
     .index("user", ["userId"])
-    .index("callback", ["userId", "principalKind", "orgId", "clientId", "resource", "callbackUrl", "secretFingerprint", "active"])
+    .index("callback", [
+      "userId",
+      "principalKind",
+      "orgId",
+      "clientId",
+      "resource",
+      "callbackUrl",
+      "secretFingerprint",
+      "active",
+    ])
     .index("audience", ["principalKind", "orgId", "name", "active"])
     .index("expiry", ["active", "expiresAt"]),
 
@@ -5053,7 +5111,13 @@ export default defineSchema({
     targetUserId: v.optional(v.id("users")),
     data: v.record(v.string(), v.string()),
     timestamp: v.string(),
-    status: v.union(v.literal("pending"), v.literal("sending"), v.literal("accepted"), v.literal("failed"), v.literal("cancelled")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sending"),
+      v.literal("accepted"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
     attempts: v.number(),
     nextAttemptAt: v.number(),
     lease: v.optional(v.string()),

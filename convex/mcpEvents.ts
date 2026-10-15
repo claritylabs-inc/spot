@@ -44,7 +44,7 @@ async function assertTargets(ctx: DatabaseCtx, principal: { principalKind: "orga
   if (filters.request_id) {
     const requestId = ctx.db.normalizeId("procurementRequests", filters.request_id);
     const request = requestId ? await ctx.db.get(requestId) : null;
-    if (!request?.clientOrgId || (selectedOrg && request.clientOrgId !== selectedOrg) || (principal.principalKind === "organization" && request.clientVisible === false)) throw new Error("Event access denied");
+    if (!request?.clientOrgId || request.deletedAt || (selectedOrg && request.clientOrgId !== selectedOrg) || (principal.principalKind === "organization" && request.clientVisible === false)) throw new Error("Event access denied");
     const org = await ctx.db.get(request.clientOrgId);
     if (!org || org.deletedAt !== undefined) throw new Error("Event access denied");
   }
@@ -223,7 +223,7 @@ async function authorizeDelivery(ctx: DatabaseCtx, delivery: Doc<"mcpEventDelive
       const review = reviewId ? await ctx.db.get(reviewId) : null;
       const proposal = review ? await ctx.db.get(review.proposalId) : null;
       const request = review ? await ctx.db.get(review.requestId) : null;
-      if (!review || !proposal || !request || proposal.status === "archived" || proposal.extractionFingerprint !== review.extractionFingerprint || (request.packetRevision ?? 0) !== review.packetRevision || proposal._id !== delivery.data.proposal_id || request._id !== delivery.data.request_id) return null;
+      if (!review || !proposal || !request || request.deletedAt || proposal.status === "archived" || proposal.extractionFingerprint !== review.extractionFingerprint || (request.packetRevision ?? 0) !== review.packetRevision || proposal._id !== delivery.data.proposal_id || request._id !== delivery.data.request_id) return null;
     }
     return subscription;
   } catch { return null; }

@@ -141,6 +141,45 @@ export const extract = internalAction({
         }
         if (coverage === "workers_compensation" && /statutory/i.test(excerpt))
           row.limits.statutory = "Statutory";
+        const terms = [
+          requirement.requirementText.trim(),
+          ...(requirement.limits ?? [])
+            .filter(
+              (limit) =>
+                !coverageOption(coverage).limits.some(
+                  (field) => field.key === limitKeys[limit.kind],
+                ),
+            )
+            .map(
+              (limit) =>
+                `${limit.label || limit.kind.replaceAll("_", " ")}: $${limit.amount.toLocaleString("en-US")}`,
+            ),
+          requirement.maxDeductible
+            ? `Maximum deductible: $${requirement.maxDeductible.amount.toLocaleString("en-US")}`
+            : "",
+          requirement.coverageForm
+            ? `Coverage form: ${requirement.coverageForm.replaceAll("_", " ")}`
+            : "",
+          requirement.requiredForms?.length
+            ? `Required forms: ${requirement.requiredForms.join(", ")}`
+            : "",
+          requirement.provisions?.length
+            ? `Required provisions: ${requirement.provisions.map((value) => value.replaceAll("_", " ")).join(", ")}`
+            : "",
+          requirement.retroactiveDateOnOrBefore
+            ? `Retroactive date on or before: ${requirement.retroactiveDateOnOrBefore}`
+            : "",
+        ].filter(Boolean);
+        row.additionalCoverages = [
+          ...new Set([
+            ...(row.additionalCoverages
+              ? row.additionalCoverages.split("\n")
+              : []),
+            ...terms,
+          ]),
+        ]
+          .join("\n")
+          .slice(0, 8000);
         coverages.set(coverage, row);
       }
       await ctx.runMutation(internal.requestIntake.finishRequirementPrefill, {

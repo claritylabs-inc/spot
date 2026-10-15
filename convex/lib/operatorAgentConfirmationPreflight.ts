@@ -1,3 +1,6 @@
+import { prepareApplicationToolUpdate } from "../procurementRequests";
+import { prepareBusinessProfileToolUpdate } from "../orgWiki";
+import { getMarkdownDocument } from "../markdownDocuments";
 import { requireCompanyRequest } from "./companyRequest";
 import { parseMarkdownDocument } from "./markdownDocument";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
@@ -31,6 +34,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_client_file",
   "create_procurement_request",
   "update_procurement_request",
+  "update_procurement_application",
   "create_procurement_broker_outreach",
   "update_procurement_broker_outreach",
   "file_procurement_proposal",
@@ -52,6 +56,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "create_client_organization",
   "invite_operator",
   "update_organization_profile",
+  "update_client_business_profile",
   "research_client",
   "research_broker",
   "set_organization_status",
@@ -843,6 +848,16 @@ export async function preflightOperatorToolConfirmation(
         throw new Error("Client or supplier organization not found");
       }
       parseMarkdownDocument(String(args.input.markdown));
+      const document = await getMarkdownDocument(ctx, {
+        orgId: organization._id as Id<"organizations">,
+        kind: "company_wiki",
+      });
+      const revision = document?.revision ?? 0;
+      if (args.input.expectedRevision !== revision) {
+        throw new Error(
+          `Company document revision changed (expected ${args.input.expectedRevision}, current ${revision}). No write started. Call lookup_client_wiki, merge the intended changes into the latest Markdown, and retry with its revision.`,
+        );
+      }
       return;
     }
     case "update_procurement_packet": {
@@ -911,6 +926,9 @@ export async function preflightOperatorToolConfirmation(
       });
       return;
     }
+    case "update_procurement_application":
+      await prepareApplicationToolUpdate(ctx, args.input);
+      return;
     case "update_procurement_request":
       await preflightProcurementRequestUpdate(ctx, args.input);
       return;
@@ -995,6 +1013,9 @@ export async function preflightOperatorToolConfirmation(
       await validateOperatorInvitation(ctx, String(args.input.email ?? ""));
       return;
     }
+    case "update_client_business_profile":
+      await prepareBusinessProfileToolUpdate(ctx, args.input);
+      return;
     case "update_organization_profile": {
       const org = await requireDocument(
         ctx,

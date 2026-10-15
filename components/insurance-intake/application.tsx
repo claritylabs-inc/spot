@@ -1,10 +1,18 @@
 "use client";
+import dayjs from "dayjs";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import {
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
-} from "@claritylabs-inc/ui/components/operational-panel";
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@claritylabs-inc/ui/components/card";
 import {
   IntakeRadioChoices,
+  IntakeCountInput,
+  IntakeRevenueFields,
   IntakeRegistration,
   IntakeAdditionalCoverages,
   IntakeCoverageScope,
@@ -17,12 +25,15 @@ import {
   IntakeRelatedEntities,
 } from "./details-fields";
 import {
+  addressText,
   detailsAnswers,
   detailsFromAnswers,
   coverageOption,
+  coverageRequestLabel,
   validCoverageLimit,
   validCoverageScope,
   needsCoverageScope,
+  shouldRequestLossRuns,
   type IntakeDetails,
   type CoverageRequest,
 } from "@/lib/insurance-intake-details";
@@ -53,6 +64,7 @@ import {
   type IntakeAnswers,
   type IntakeField,
 } from "@/lib/insurance-intake";
+import { IntakeSavedBusinessSummary } from "./company-review";
 import { IntakeFrame } from "./frame";
 import { IntakeTracking } from "./tracking";
 import {
@@ -73,9 +85,10 @@ import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
+import { Button } from "@claritylabs-inc/ui/components/button";
 import { completeOtpSignIn } from "@/lib/otp-auth";
 import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
-import { ChevronLeft, Loader2 } from "lucide-react";
+import { ChevronLeft, Circle, Loader2, X } from "lucide-react";
 
 type Recovery = {
   answers: IntakeAnswers;
@@ -86,6 +99,38 @@ type Recovery = {
   details?: IntakeDetails;
   skippedStep?: number;
 };
+function IntakeApplicationLoading() {
+  return (
+    <IntakeFrame
+      disabled
+      footer={
+        <div className="flex justify-between">
+          <Skeleton className="h-12 w-20 rounded-full" />
+          <Skeleton className="h-12 w-28 rounded-full" />
+        </div>
+      }
+    >
+      <div
+        role="status"
+        aria-label="Loading your application"
+        aria-busy="true"
+        className="space-y-10"
+      >
+        <span className="sr-only">Loading your application</span>
+        <Skeleton className="h-10 w-4/5" />
+        <div className="space-y-6" aria-hidden="true">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="space-y-3">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-12 w-full rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </IntakeFrame>
+  );
+}
+
 export function InsuranceIntake() {
   const params = useSearchParams();
   const requestId = params.get("request") as Id<"procurementRequests"> | null;
@@ -115,6 +160,20 @@ export function InsuranceIntake() {
     api.requestIntake.confirmVerifiedOwnership,
   );
   const [confirmationError, setConfirmationError] = useState("");
+  useEffect(() => {
+    if (confirmationError)
+      toast.error(
+        getUserFacingErrorMessage(
+          new Error(confirmationError),
+          "Could not confirm your application. Please try again.",
+        ),
+        { id: "intake-confirmation-error" },
+      );
+    else toast.dismiss("intake-confirmation-error");
+    return () => {
+      toast.dismiss("intake-confirmation-error");
+    };
+  }, [confirmationError]);
   const verification = params.get("verify");
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
   const [recovered, setRecovered] = useState(false);
@@ -162,19 +221,18 @@ export function InsuranceIntake() {
   if (verification)
     return (
       <IntakeFrame>
-        <p>{confirmationError || "Confirming your saved application…"}</p>
+        <p>
+          {confirmationError
+            ? "Please reopen your saved application."
+            : "Confirming your saved application…"}
+        </p>
         {confirmationError && (
           <PillButton href="/signup">Find my drafts</PillButton>
         )}
       </IntakeFrame>
     );
-  if (!requestId)
-    return (
-      <IntakeFrame>
-        <PillButton href="/signup">Start an insurance request</PillButton>
-      </IntakeFrame>
-    );
-  if (isLoading) return <IntakeFrame>Loading your application…</IntakeFrame>;
+  if (!requestId) return null;
+  if (isLoading) return <IntakeApplicationLoading />;
   if (!isAuthenticated || viewer === null)
     return (
       <IntakeFrame>
@@ -189,7 +247,7 @@ export function InsuranceIntake() {
   if (confirmationError)
     return (
       <IntakeFrame>
-        <p role="alert">{confirmationError}</p>
+        <p>Please reopen your saved application.</p>
         <PillButton href="/signup">Find my drafts</PillButton>
       </IntakeFrame>
     );
@@ -224,19 +282,32 @@ function Application({
     api.requestIntake.prepareVerification,
   );
   const submit = useMutation(api.requestIntake.submit);
+  const removeUploadedFile = useMutation(api.requestIntake.removeFile);
+  const useNewCompany = useMutation(api.requestIntake.useNewCompany);
+  const useSavedCompany = useMutation(api.requestIntake.useSavedCompany);
   const { signIn } = useAuthActions();
   const { run } = useBackgroundTasks();
   const org = useQuery(api.orgs.viewerOrg, data?.verified ? {} : "skip");
   const [answers, setAnswers] = useState<IntakeAnswers>({});
   const [details, setDetails] = useState<IntakeDetails>(detailsFromAnswers({}));
   const [step, setStep] = useState(0);
+  const [editingReview, setEditingReview] = useState(
+    reviewStep !== undefined && reviewStep !== 28,
+  );
+  const reviewScroll = useRef(0);
+  const editingSection = useRef(reviewSection);
   const [status, setStatus] = useState("Loading…");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+
   const [code, setCode] = useState("");
+  const [submissionConfirmed, setSubmissionConfirmed] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const initialCodeAttempted = useRef(false);
   const verificationToken = useRef("");
+  const intentionalRedirect = useRef(false);
   const state = useRef<Recovery>({
     answers: {},
     step: 0,
@@ -245,12 +316,15 @@ function Application({
   });
   const initialized = useRef(false);
   const [editCompany, setEditCompany] = useState(false);
+  const [showRequirementsPaste, setShowRequirementsPaste] = useState<
+    boolean | null
+  >(null);
   const [ready, setReady] = useState(false);
   const [hasConflict, setHasConflict] = useState(false);
   const running = useRef<Promise<boolean> | null>(null);
   const conflict = useRef(false);
   const key = `spot:request-intake:${requestId}`;
-  const needsProof = !!data && !data.verified && !data.submitted;
+  const needsProof = !!data && !data.verified;
   useEffect(() => {
     if (!needsProof) return;
     let token: string;
@@ -279,6 +353,34 @@ function Application({
         ),
       );
   }, [needsProof, requestId, prepareVerification]);
+  useEffect(() => {
+    const email = data?.answers.email;
+    if (!needsProof || !email || initialCodeAttempted.current) return;
+    initialCodeAttempted.current = true;
+    const sentKey = `spot:intake-code-sent:${email.toLowerCase()}`;
+    try {
+      if (localStorage.getItem(sentKey)) {
+        setCodeSent(true);
+        return;
+      }
+    } catch {
+      /* Use this mount’s one-shot guard. */
+    }
+    setSendingCode(true);
+    void signIn("resend-otp", { email })
+      .then(() => {
+        setCodeSent(true);
+        try {
+          localStorage.setItem(sentKey, dayjs().toISOString());
+        } catch {
+          /* Sending succeeded. */
+        }
+      })
+      .catch(() => {
+        // Email confirmation never blocks intake; the inline form offers resend.
+      })
+      .finally(() => setSendingCode(false));
+  }, [needsProof, data?.answers.email, signIn]);
   const cache = useCallback(() => {
     try {
       localStorage.setItem(
@@ -327,6 +429,7 @@ function Application({
         revision: data.revision,
         dirty: false,
       };
+    if (state.current.step === 27) state.current.step = 20;
     state.current.details = state.current.details ?? data.details;
     if (data.submitted && !recovery?.dirty)
       state.current.details = {
@@ -351,6 +454,23 @@ function Application({
         !hasIntakeRequirements(state.current.answers))
     )
       state.current.step = hasIntakeRequirements(state.current.answers) ? 4 : 5;
+    if (
+      [7, 8].includes(state.current.step) &&
+      state.current.details?.coverages[0]?.coverage === "unknown"
+    )
+      state.current.step = 9;
+    if (state.current.step === 26) state.current.step = 28;
+    if (state.current.step === 22) state.current.step = 23;
+    if (
+      [21, 22, 23, 24].includes(state.current.step) &&
+      state.current.answers.currentInsurance === "No"
+    )
+      state.current.step = 25;
+    if (
+      state.current.step === 24 &&
+      !shouldRequestLossRuns(state.current.answers, state.current.details)
+    )
+      state.current.step = 25;
     queueMicrotask(() => {
       setDetails(state.current.details!);
       setReady(true);
@@ -437,6 +557,7 @@ function Application({
       void flush();
     };
     const unload = (e: BeforeUnloadEvent) => {
+      if (intentionalRedirect.current) return;
       if (state.current.dirty || uploading) {
         cache();
         e.preventDefault();
@@ -454,6 +575,7 @@ function Application({
     };
   }, [flush, cache, uploading]);
   function change(field: IntakeField, value: string) {
+    setSubmissionConfirmed(false);
     if (field === "timingUnknown" && value === "yes") {
       const next = {
         ...details,
@@ -491,6 +613,7 @@ function Application({
     );
   }
   function changeDetails(next: IntakeDetails) {
+    setSubmissionConfirmed(false);
     const stored = state.current.details;
     if (
       next.scopeNote === undefined &&
@@ -577,6 +700,11 @@ function Application({
         if (existing) {
           for (const [key, value] of Object.entries(suggestion.limits))
             if (!existing.limits[key]?.trim()) existing.limits[key] = value;
+          if (
+            !existing.additionalCoverages?.trim() &&
+            suggestion.additionalCoverages?.trim()
+          )
+            existing.additionalCoverages = suggestion.additionalCoverages;
         } else if (empty) coverages.push(suggestion);
       }
       sources.add(file.id);
@@ -595,18 +723,222 @@ function Application({
     cache();
   }, [data, ready, cache]);
 
-  async function navigate(next: number, confirmSave = false, skipped = false) {
+  useEffect(() => {
+    const research = data?.companyResearch;
+    if (!ready || !research?.suggestions || conflict.current) return;
+    const current = state.current;
+    if (
+      !current.details ||
+      current.details.companyResearchSource === research.fingerprint ||
+      (current.answers.legalName?.trim() ?? "") !== research.name ||
+      (current.answers.website?.trim() ?? "") !== research.website
+    )
+      return;
+    const answers = { ...current.answers };
+    for (const key of [
+      "description",
+      "yearStarted",
+      "industry",
+      "industryVertical",
+    ] as const) {
+      if (
+        key === "industryVertical" &&
+        answers.industry !== research.suggestions.industry
+      )
+        continue;
+      if (!answers[key]?.trim() && research.suggestions[key])
+        answers[key] = research.suggestions[key];
+    }
+    const next = {
+      ...current.details,
+      companyResearchSource: research.fingerprint,
+    };
+    state.current = { ...current, answers, details: next, dirty: true };
+    setAnswers(answers);
+    setDetails(next);
+    cache();
+  }, [data, ready, cache]);
+
+  useEffect(() => {
+    if (!ready || step !== 9 || conflict.current) return;
+    const current = state.current.details;
+    if (
+      !current ||
+      !current.coverages.some(
+        (line) => line.coverage === "property" && !line.properties?.length,
+      )
+    )
+      return;
+    const next = {
+      ...current,
+      coverages: current.coverages.map((line) =>
+        line.coverage === "property" && !line.properties?.length
+          ? { ...line, properties: [{ address: {}, details: "" }] }
+          : line,
+      ),
+    };
+    state.current = {
+      ...state.current,
+      details: next,
+      answers: { ...state.current.answers, ...detailsAnswers(next) },
+      dirty: true,
+    };
+    setDetails(next);
+    setAnswers(state.current.answers);
+    cache();
+  }, [ready, step, cache]);
+
+  useEffect(() => {
+    if (!ready || step !== 19 || conflict.current) return;
+    const current = state.current.details;
+    if (
+      !current ||
+      current.operatingLocationPrefilled ||
+      !addressText(current.mailingAddress).trim()
+    )
+      return;
+    const locations = current.locations.map((location) => ({ ...location }));
+    if (!locations.length)
+      locations.push({ address: { ...current.mailingAddress }, details: "" });
+    else if (!addressText(locations[0].address).trim())
+      locations[0].address = { ...current.mailingAddress };
+    const next = { ...current, locations, operatingLocationPrefilled: true };
+    state.current = {
+      ...state.current,
+      details: next,
+      answers: { ...state.current.answers, ...detailsAnswers(next) },
+      dirty: true,
+    };
+    setDetails(next);
+    setAnswers(state.current.answers);
+    cache();
+  }, [ready, step, cache]);
+
+  useEffect(() => {
+    if (!ready || step !== 19 || conflict.current) return;
+    const current = state.current.details;
+    const description = state.current.answers.description?.trim();
+    if (
+      !current ||
+      !description ||
+      !current.locations.some((location) => !location.activitiesPrefilled)
+    )
+      return;
+    const next = {
+      ...current,
+      locations: current.locations.map((location) =>
+        location.activitiesPrefilled
+          ? location
+          : {
+              ...location,
+              details: location.details.trim() ? location.details : description,
+              activitiesPrefilled: true,
+            },
+      ),
+    };
+    state.current = {
+      ...state.current,
+      details: next,
+      answers: { ...state.current.answers, ...detailsAnswers(next) },
+      dirty: true,
+    };
+    setDetails(next);
+    setAnswers(state.current.answers);
+    cache();
+  }, [ready, step, answers.description, cache]);
+
+  useEffect(() => {
+    const id = `intake-error:${requestId}`;
+    if (!error) {
+      toast.dismiss(id);
+      return;
+    }
+    toast.error(
+      getUserFacingErrorMessage(
+        new Error(error),
+        "Could not save your answers. Please try again.",
+      ),
+      {
+        id,
+        duration: hasConflict ? Infinity : 6000,
+        closeButton: !hasConflict,
+        ...(hasConflict
+          ? {
+              action: {
+                label: "Load saved version",
+                onClick: () => {
+                  localStorage.removeItem(key);
+                  window.location.reload();
+                },
+              },
+              cancel: {
+                label: "Save my reviewed answers",
+                onClick: () => {
+                  if (!data) return;
+                  state.current.revision = data.revision;
+                  conflict.current = false;
+                  setHasConflict(false);
+                  setError("");
+                  void flush();
+                },
+              },
+            }
+          : {}),
+      },
+    );
+    return () => {
+      toast.dismiss(id);
+    };
+  }, [error, hasConflict, requestId, key, data?.revision, flush]);
+
+  async function navigate(
+    next: number,
+    confirmSave = false,
+    skipped = false,
+    fromReview = false,
+  ) {
     if (busy || uploading) return;
+    // Keep old saved step numbers compatible without showing the retired confirmation page.
+    if (next === 27) next = step >= 20 ? 19 : 20;
     const previousStep = step;
     const previousDetails = state.current.details ?? details;
     setBusy(true);
     try {
       if (!(await flush())) return;
-      if (next === 3)
+      const requiresDocument = hasIntakeRequirements(state.current.answers);
+      if (!fromReview) {
+        if (step === 1 && next === 2) next = requiresDocument ? 4 : 2;
+        else if (step === 4 && next === 5) next = 2;
+        else if (step === 4 && next === 3) next = 1;
+        else if (step === 2 && next === 1) next = requiresDocument ? 4 : 1;
+        else if (step === 2 && next === 3) next = 5;
+        else if (step === 5 && next === 4) next = 2;
+      }
+      if (next === 3) next = requiresDocument ? 4 : 2;
+      if (next === 4 && !requiresDocument) next = 2;
+      if (
+        [21, 22, 23, 24].includes(next) &&
+        state.current.answers.currentInsurance === "No"
+      )
+        next = step > next ? 20 : 25;
+      if (next === 22)
         next =
-          step > 3 ? 2 : hasIntakeRequirements(state.current.answers) ? 4 : 5;
-      if (next === 4 && !hasIntakeRequirements(state.current.answers))
-        next = step > 4 ? 2 : 5;
+          editingReview && editingSection.current === 21
+            ? 24
+            : step > 22
+              ? 21
+              : 23;
+      if (
+        next === 24 &&
+        !shouldRequestLossRuns(state.current.answers, previousDetails)
+      )
+        next = step > 24 ? 23 : 25;
+      if (next === 26) next = step > 26 ? 25 : 28;
+      if (
+        [7, 8].includes(next) &&
+        previousDetails.coverages[0]?.coverage === "unknown"
+      )
+        next = step > 8 ? 6 : 9;
       let coverageIndex = previousDetails.coverageIndex;
       if (
         step === 7 &&
@@ -647,11 +979,39 @@ function Application({
         next = 14;
         mailingAddressStep = false;
       }
+      let revenueStep = previousDetails.revenueStep;
+      if (step === 18 && next === 19 && revenueStep !== "projected") {
+        next = 18;
+        revenueStep = "projected";
+      } else if (step === 18 && next < 18 && revenueStep === "projected") {
+        next = 18;
+        revenueStep = "annual";
+      } else if (step === 19 && next === 18) revenueStep = "projected";
+      else if (next === 18 && step < 18) revenueStep = "annual";
       const nextDetails = {
         ...previousDetails,
+        ...(revenueStep ? { revenueStep } : {}),
         coverageIndex,
         ...(mailingAddressStep !== undefined ? { mailingAddressStep } : {}),
       };
+      if (editingReview && !fromReview) {
+        const start = editingSection.current;
+        const withinSection =
+          start === 0
+            ? next === 0
+            : start === 1
+              ? next >= 1 && next <= 5
+              : start === 6
+                ? next >= 6 && next <= 9
+                : start === 10
+                  ? (next >= 10 && next <= 19) || next === 27
+                  : start === 20
+                    ? next >= 20 && next <= 25
+                    : start === 21
+                      ? next === 21 || next === 24
+                      : next === start;
+        if (!withinSection) next = 28;
+      }
       state.current = {
         ...state.current,
         step: next,
@@ -672,7 +1032,7 @@ function Application({
       }
       setStep(next);
       setDetails(nextDetails);
-      if (data?.submitted)
+      if (data?.submitted && !editingReview && !fromReview)
         window.history.replaceState(
           null,
           "",
@@ -682,10 +1042,87 @@ function Application({
         toast.success("Your answers were saved", {
           id: "intake-answers-saved",
         });
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (editingReview && next === 28) {
+        setEditingReview(false);
+        window.history.replaceState(null, "", `/intake?request=${requestId}`);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() =>
+            window.scrollTo({ top: reviewScroll.current, behavior: "instant" }),
+          ),
+        );
+      } else window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setBusy(false);
     }
+  }
+  async function startNewCompany() {
+    if (busy || uploading) return;
+    setBusy(true);
+    try {
+      if (!(await flush())) return;
+      const result = await useNewCompany({
+        requestId,
+        expectedRevision: state.current.revision,
+      });
+      state.current = {
+        ...state.current,
+        answers: result.answers,
+        details: result.details,
+        revision: result.revision,
+        step: 10,
+        dirty: false,
+      };
+      setAnswers(result.answers);
+      setDetails(result.details);
+      setEditCompany(true);
+      cache();
+    } catch (error) {
+      setError(
+        getUserFacingErrorMessage(error, "Could not start company details"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function restoreSavedCompany() {
+    if (busy || uploading) return;
+    setBusy(true);
+    try {
+      if (!(await flush())) return;
+      const result = await useSavedCompany({
+        requestId,
+        expectedRevision: state.current.revision,
+      });
+      state.current = { ...state.current, ...result, step: 10, dirty: false };
+      setAnswers(result.answers);
+      setDetails(result.details);
+      setEditCompany(false);
+      cache();
+    } catch (error) {
+      setError(
+        getUserFacingErrorMessage(error, "Could not restore saved company"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function editFromReview(next: number) {
+    setSubmissionConfirmed(false);
+    reviewScroll.current = window.scrollY;
+    editingSection.current = next;
+    setEditingReview(true);
+    await navigate(next, false, false, true);
+  }
+  async function returnToReview(confirmSave = false) {
+    await navigate(28, confirmSave);
+    if (state.current.step !== 28) return;
+    setEditingReview(false);
+    window.history.replaceState(null, "", `/intake?request=${requestId}`);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        window.scrollTo({ top: reviewScroll.current, behavior: "instant" }),
+      ),
+    );
   }
   async function returnToApplication(confirmSave = false) {
     if (busy || uploading) return;
@@ -697,6 +1134,19 @@ function Application({
         });
       router.push(`/intake?request=${requestId}`);
     } else setBusy(false);
+  }
+  async function removeFile(intakeFileId: Id<"requestIntakeFiles">) {
+    if (busy || uploading) return;
+    setUploading(true);
+    setSubmissionConfirmed(false);
+    setError("");
+    try {
+      await removeUploadedFile({ requestId, intakeFileId });
+    } catch (error) {
+      setError(getUserFacingErrorMessage(error, "Could not remove file"));
+    } finally {
+      setUploading(false);
+    }
   }
   async function upload(
     file: File,
@@ -745,50 +1195,82 @@ function Application({
       setUploading(false);
     }
   }
-  async function finalize() {
+  async function resendEmailCode() {
+    if (sendingCode) return;
+    setSendingCode(true);
+    setError("");
+    try {
+      await signIn("resend-otp", { email: answers.email! });
+      setCodeSent(true);
+      setCode("");
+      try {
+        localStorage.setItem(
+          `spot:intake-code-sent:${answers.email!.toLowerCase()}`,
+          dayjs().toISOString(),
+        );
+      } catch {
+        /* Sending succeeded. */
+      }
+      toast.success("Confirmation code sent");
+    } catch (e) {
+      setError(
+        getUserFacingErrorMessage(e, "Could not resend your confirmation code"),
+      );
+    } finally {
+      setSendingCode(false);
+    }
+  }
+  async function confirmEmail() {
+    if (uploading) return;
     setBusy(true);
     setError("");
     try {
       if (!(await flush())) return;
-      if (!data?.verified) {
-        if (!codeSent) {
-          verificationToken.current =
-            crypto.randomUUID().replaceAll("-", "") +
-            crypto.randomUUID().replaceAll("-", "");
-          await prepareVerification({
-            requestId,
-            token: verificationToken.current,
-          });
-          try {
-            localStorage.setItem(
-              `spot:intake-proof:${requestId}`,
-              verificationToken.current,
-            );
-          } catch {
-            /* The redirect carries this proof too. */
-          }
-          await signIn("resend-otp", { email: answers.email! });
-          setCodeSent(true);
-        } else {
-          await completeOtpSignIn(answers.email!, code);
-          window.location.assign(
-            `/intake?request=${requestId}&verify=${verificationToken.current}`,
-          );
-        }
-        return;
-      }
-      const result = await submit({
+      await prepareVerification({
+        requestId,
+        token: verificationToken.current,
+      });
+      await completeOtpSignIn(answers.email!, code);
+      intentionalRedirect.current = true;
+      window.location.assign(
+        `/intake?request=${requestId}&verify=${verificationToken.current}`,
+      );
+    } catch (e) {
+      intentionalRedirect.current = false;
+      setError(getUserFacingErrorMessage(e, "Could not confirm your email"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function finalize() {
+    if (!data) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (!(await flush())) return;
+      await submit({
         requestId,
         orgId: data.orgId ?? org?.org?._id,
+        resubmit: data.submitted,
+        confirmedAccurateAndAuthorized: submissionConfirmed,
+        expectedRevision: state.current.revision,
       });
       try {
         localStorage.removeItem(key);
-        localStorage.removeItem(`spot:intake-proof:${requestId}`);
+        if (data?.verified)
+          localStorage.removeItem(`spot:intake-proof:${requestId}`);
       } catch {
         /* Submission is already saved. */
       }
-      window.location.assign(`/intake?request=${result.requestId}`);
+      // Convex has already updated the mounted review. Keep it mounted rather
+      // than reloading the document and showing the initial loading screen again.
+      state.current = { ...state.current, step: 28, dirty: false };
+      setStep(28);
+      setEditingReview(false);
+      setSubmissionConfirmed(false);
+      window.scrollTo({ top: 0, behavior: "instant" });
     } catch (e) {
+      intentionalRedirect.current = false;
       setError(getUserFacingErrorMessage(e, "Could not finalize"));
     } finally {
       setBusy(false);
@@ -811,15 +1293,44 @@ function Application({
     yearStarted: "YYYY",
     fullTime: "Number of full-time employees",
     partTime: "Number of part-time employees",
-    contractors: "Number of contract workers",
+    contractors: "Number of contractors",
     trailingRevenue: "Enter revenue and reporting period",
     projectedRevenue: "Enter projected revenue and reporting period",
     currentInsuranceDetails:
       "List carriers, coverages, limits, and expiration dates",
-    claims: "Describe claims, or enter No",
-    cancellations: "Describe cancellations or declines, or enter No",
-    changes: "Describe planned changes, or enter No",
+    claims: "Describe your claims",
+    cancellations: "Describe the cancellations or renewal declines",
   };
+
+  function yesNoDetails(
+    id: "claims" | "cancellations",
+    choiceKey: "hasClaims" | "hasCancellations",
+    label: string,
+    hint?: string,
+  ) {
+    const answer = answers[id]?.trim() || "";
+    const choice =
+      details[choiceKey] ||
+      (answer ? (/^(none|no|0)$/i.test(answer) ? "no" : "yes") : "");
+    return (
+      <>
+        <IntakeRadioChoices
+          label={label}
+          choices={["Yes", "No"]}
+          value={choice === "yes" ? "Yes" : choice === "no" ? "No" : ""}
+          onChange={(value) => {
+            changeDetails({
+              ...details,
+              [choiceKey]: value === "Yes" ? "yes" : "no",
+            });
+            if (value === "No") change(id, "No");
+            else if (/^(none|no|0)$/i.test(answer)) change(id, "");
+          }}
+        />
+        {choice === "yes" && field(id, { multiline: true, hint })}
+      </>
+    );
+  }
 
   function field(
     id: IntakeField,
@@ -879,6 +1390,15 @@ function Application({
                 change(id, raw.replace(/\D/g, ""));
               else change(id, raw);
             }}
+            onBlur={() => void flush()}
+          />
+        ) : ["fullTime", "partTime", "contractors"].includes(id) ? (
+          <IntakeCountInput
+            id={`intake-${id}`}
+            label={INTAKE_FIELDS[id]}
+            value={answers[id] ?? ""}
+            placeholder={placeholder}
+            onChange={(value) => change(id, value)}
             onBlur={() => void flush()}
           />
         ) : id === "phone" ? (
@@ -1030,135 +1550,397 @@ function Application({
       </Field>
     );
   }
-  function confirm(id: IntakeField, label: string) {
-    return (
-      <IntakeCheckboxCard
-        id={`intake-${id}`}
-        label={label}
-        checked={answers[id] === "yes"}
-        disabled={false}
-        onCheckedChange={(checked) => change(id, checked ? "yes" : "")}
-      />
-    );
-  }
-
   function files(
-    category: "requirements" | "policy" | "loss_runs",
+    category: "requirements" | "policy" | "loss_runs" | "supporting",
     label: string,
   ) {
     return (
       <Field>
-        <FileDropZone
-          idleLabel={<span className={typeStyle("body.root")}>{label}</span>}
-          busyLabel="Uploading…"
-          disabled={uploading}
-          accept=".pdf,.png,.jpg,.jpeg,.docx"
-          padding="px-6 py-12"
-          hint={
-            <span className={typeStyle("body.root")}>
-              PDF, PNG, JPEG, or DOCX · Up to 20 MB
-            </span>
-          }
-          onFile={(file) => void upload(file, category)}
-        />
-        <ul className="mt-3 space-y-2">
-          {data?.files
-            .filter((f) => f.category === category)
-            .map((f) => (
-              <li key={f.id} className={typeStyle("body.root")}>
-                <a
-                  href={f.url ?? undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
+        <div
+          className={category === "requirements" ? "relative h-52" : undefined}
+        >
+          {category === "requirements" &&
+          (showRequirementsPaste ?? !!answers.requirements?.trim()) ? (
+            <>
+              <FieldLabel htmlFor="intake-requirements" className="sr-only">
+                Insurance requirements
+              </FieldLabel>
+              <Textarea
+                id="intake-requirements"
+                autoFocus={showRequirementsPaste === true}
+                placeholder="Paste your insurance requirements here"
+                value={answers.requirements || ""}
+                onChange={(event) => change("requirements", event.target.value)}
+                onBlur={() => void flush()}
+                className={`h-full min-h-0 resize-none pb-14 ${typeStyle("body.root")}`}
+              />
+              <Button
+                type="button"
+                variant="link"
+                className={`absolute bottom-4 left-1/2 h-auto -translate-x-1/2 whitespace-nowrap px-0 py-1 underline ${typeStyle("body.large")}`}
+                onClick={() => setShowRequirementsPaste(false)}
+              >
+                or upload a document instead
+              </Button>
+            </>
+          ) : (
+            <>
+              <FileDropZone
+                idleLabel={
+                  <span className={typeStyle("body.root")}>{label}</span>
+                }
+                busyLabel="Uploading…"
+                disabled={uploading}
+                accept=".pdf,.png,.jpg,.jpeg,.docx"
+                padding={
+                  category === "requirements" ? "px-6 pt-6 pb-14" : "px-6 py-12"
+                }
+                className={`border-input ${category === "requirements" ? "h-full" : ""}`}
+                hint={
+                  <span className={typeStyle("body.root")}>
+                    PDF, PNG, JPEG, or DOCX · Up to 20 MB
+                  </span>
+                }
+                onFile={(file) => void upload(file, category)}
+              />
+              {category === "requirements" && (
+                <Button
+                  type="button"
+                  variant="link"
+                  className={`absolute bottom-5 left-1/2 h-auto -translate-x-1/2 whitespace-nowrap px-0 py-1 underline ${typeStyle("body.large")}`}
+                  aria-controls="intake-requirements"
+                  onClick={() => setShowRequirementsPaste(true)}
                 >
-                  {f.name}
-                </a>
-                <span className="ml-2 text-muted-foreground">Uploaded</span>
-              </li>
-            ))}
-        </ul>
+                  or click to paste your requirements
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        {data?.files.some((file) => file.category === category) && (
+          <ul className="mt-3 space-y-2">
+            {data?.files
+              .filter((f) => f.category === category)
+              .map((f) => (
+                <li
+                  key={f.id}
+                  className={`flex items-center gap-3 ${typeStyle("body.root")}`}
+                >
+                  <a
+                    href={f.url ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 break-words underline"
+                  >
+                    {f.name}
+                  </a>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${f.name}`}
+                    title={`Remove ${f.name}`}
+                    className="ml-auto flex size-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    disabled={busy || uploading}
+                    onClick={() => void removeFile(f.id)}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
       </Field>
     );
   }
-  if (!data || !ready)
-    return <IntakeFrame>Loading your application…</IntakeFrame>;
-  if (data.submitted && reviewStep === undefined)
-    return <IntakeTracking data={data} />;
+  if (!data || !ready) return <IntakeApplicationLoading />;
+  const showSavedCompany =
+    !!data.orgId &&
+    !!answers.description &&
+    !!answers.locations &&
+    !editCompany &&
+    !data.submitted;
+  const completionSteps: Record<string, number> = {
+    [INTAKE_FIELDS.name]: 0,
+    [INTAKE_FIELDS.email]: 0,
+    [INTAKE_FIELDS.phone]: 0,
+    [INTAKE_FIELDS.trigger]: 1,
+    [INTAKE_FIELDS.coverage]: 6,
+    [INTAKE_FIELDS.legalName]: 10,
+    [INTAKE_FIELDS.description]: 16,
+    [INTAKE_FIELDS.locations]: 19,
+    [INTAKE_FIELDS.currentInsurance]: 20,
+    "Desired effective date": 2,
+    "Claims details": 23,
+    "Cancellation or renewal-decline details": 25,
+  };
   const missing = missingIntakeAnswers(answers);
+  if (details.hasClaims === "yes" && !answers.claims?.trim())
+    missing.push("Claims details");
+  if (details.hasCancellations === "yes" && !answers.cancellations?.trim())
+    missing.push("Cancellation or renewal-decline details");
+  if (
+    (data.submitted && reviewStep === undefined && !editingReview) ||
+    step === 28
+  )
+    return (
+      <IntakeTracking
+        data={{ ...data, answers, details }}
+        onEdit={(next) => void editFromReview(next)}
+        confirmation={
+          !data.submitted || data.hasUnsubmittedChanges ? (
+            <div className="pt-4">
+              <IntakeCheckboxCard
+                id="submission-confirmation"
+                label="I confirm that the information in this application is accurate and authorize Spot to shop for insurance on my behalf."
+                checked={submissionConfirmed}
+                disabled={busy || uploading}
+                onCheckedChange={(checked) => setSubmissionConfirmed(checked)}
+              />
+            </div>
+          ) : undefined
+        }
+        banner={
+          data.submitted && !data.verified ? (
+            <Card
+              className="mb-6 border border-border ring-0"
+              aria-label="Confirm your email"
+            >
+              <CardHeader>
+                <CardTitle className={typeStyle("heading.item")}>
+                  Confirm your email
+                </CardTitle>
+                <CardDescription className={typeStyle("body.large")}>
+                  Enter the code sent to {answers.email}.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <OtpField
+                  className="w-fit gap-1.5 [&_input]:size-9 [&_input]:flex-none"
+                  value={code}
+                  onValueChange={setCode}
+                  label="Email code"
+                />
+                <div className="flex items-center gap-3">
+                  <PillButton
+                    size="compact"
+                    className={typeStyle("body.large")}
+                    disabled={
+                      busy || uploading || sendingCode || code.length !== 6
+                    }
+                    onClick={() => void confirmEmail()}
+                  >
+                    {busy ? "Confirming…" : "Confirm"}
+                  </PillButton>
+                  <PillButton
+                    size="compact"
+                    className={typeStyle("body.large")}
+                    variant="ghost"
+                    disabled={sendingCode || busy}
+                    onClick={() => void resendEmailCode()}
+                  >
+                    {sendingCode ? "Sending…" : "Resend"}
+                  </PillButton>
+                </div>
+              </CardContent>
+            </Card>
+          ) : !data.submitted && missing.length ? (
+            <Card
+              aria-label="Complete before submitting"
+              className="gap-0 border border-border ring-0 py-0"
+            >
+              <CardHeader className="px-4 pt-4 pb-2">
+                <CardTitle className={typeStyle("heading.item")}>
+                  Complete before submitting
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-2">
+                <ul className="divide-y divide-border">
+                  {missing.map((item) => (
+                    <li key={item}>
+                      <Button
+                        variant="ghost"
+                        className="h-auto w-full justify-start gap-3 rounded-md px-0 py-3 text-left whitespace-normal hover:bg-muted focus-visible:ring-2"
+                        disabled={busy || uploading}
+                        aria-label={`Go to section: ${item}`}
+                        onClick={() =>
+                          void editFromReview(completionSteps[item] ?? 10)
+                        }
+                      >
+                        <Circle
+                          aria-hidden="true"
+                          className="size-4 shrink-0 text-muted-foreground"
+                        />
+                        <span
+                          className={`min-w-0 flex-1 ${typeStyle("body.default")}`}
+                        >
+                          {item}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 rounded-full border-input px-3 py-1.5 font-medium"
+                          aria-hidden="true"
+                        >
+                          Go to section
+                        </Badge>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : undefined
+        }
+        footer={
+          !data.submitted ? (
+            <>
+              <PillButton
+                size="large"
+                variant="ghost"
+                onClick={() => void navigate(25)}
+              >
+                <ChevronLeft className="size-4" />
+                Back
+              </PillButton>
+              <PillButton
+                size="large"
+                disabled={
+                  busy ||
+                  uploading ||
+                  missing.length > 0 ||
+                  !submissionConfirmed
+                }
+                onClick={() => void finalize()}
+              >
+                {busy ? "Submitting…" : "Submit"}
+              </PillButton>
+            </>
+          ) : (
+            <>
+              <PillButton size="large" variant="ghost" href="/signup">
+                All applications
+              </PillButton>
+              <PillButton
+                size="large"
+                disabled={
+                  busy ||
+                  uploading ||
+                  !data.hasUnsubmittedChanges ||
+                  !submissionConfirmed ||
+                  missing.length > 0
+                }
+                onClick={() => void finalize()}
+              >
+                {busy ? "Resubmitting…" : "Resubmit"}
+              </PillButton>
+            </>
+          )
+        }
+      />
+    );
   const canContinue =
-    step === 1
-      ? INTAKE_REASONS.includes(answers.trigger ?? "")
-      : step === 2
-        ? !!answers.effectiveDate
-        : step === 3
-          ? !!answers.requirements
-          : step === 6
-            ? details.coverages.length > 0
-            : step === 7
-              ? !!details.coverages[details.coverageIndex] &&
-                coverageOption(
-                  details.coverages[details.coverageIndex].coverage,
-                ).limits.every((limit) =>
-                  validCoverageLimit(
-                    limit.key,
-                    details.coverages[details.coverageIndex].limits[limit.key],
-                  ),
-                )
-              : step === 12
-                ? !!answers.entityType &&
-                  !!details.registrationCountry &&
-                  !!details.registrationState &&
-                  !!details.registrationAddress?.street1
-                : step === 15
-                  ? details.hasRelatedEntities === "no" ||
-                    details.relatedEntities.every(
-                      (entity) =>
-                        !!entity.legalName.trim() &&
-                        !!entity.relationship &&
-                        !!entity.insured,
+    step === 23 && details.hasClaims === "yes"
+      ? !!answers.claims?.trim()
+      : step === 25 && details.hasCancellations === "yes"
+        ? !!answers.cancellations?.trim()
+        : step === 1
+          ? INTAKE_REASONS.includes(answers.trigger ?? "")
+          : step === 2
+            ? !!answers.effectiveDate &&
+              answers.effectiveDate >= dayjs().format("YYYY-MM-DD")
+            : step === 3
+              ? !!answers.requirements
+              : step === 6
+                ? details.coverages.length > 0 &&
+                  details.coverages.every(
+                    (line) =>
+                      line.coverage !== "other" ||
+                      (!!line.limits.coverage_description?.trim() &&
+                        line.limits.coverage_description !== "I'm not sure"),
+                  )
+                : step === 7
+                  ? !!details.coverages[details.coverageIndex] &&
+                    coverageOption(
+                      details.coverages[details.coverageIndex].coverage,
+                    ).limits.every((limit) =>
+                      validCoverageLimit(
+                        limit.key,
+                        details.coverages[details.coverageIndex].limits[
+                          limit.key
+                        ],
+                      ),
                     )
-                  : step === 16
-                    ? !!answers.description?.trim() &&
-                      !!answers.industry &&
-                      (!INDUSTRIES.find(
-                        (industry) => industry.label === answers.industry,
-                      )?.verticals.length ||
-                        !!answers.industryVertical)
-                    : step === 20
-                      ? !!answers.currentInsurance
-                      : step === 9
-                        ? details.coverages.every((line) =>
-                            validCoverageScope(line, details.scopeNote),
-                          )
-                        : step === 10
-                          ? !!answers.legalName?.trim()
-                          : step === 19
-                            ? !!answers.locations?.trim()
-                            : step === 27
-                              ? answers.companyConfirmed === "yes"
-                              : step === 13
-                                ? ((details.registrationCountry ||
-                                    "United States") !== "United States" ||
-                                    !answers.fein ||
-                                    /^\d{2}-?\d{7}$/.test(
-                                      answers.fein.trim(),
-                                    )) &&
-                                  (details.registrationCountry !== "Canada" ||
-                                    !answers.businessNumber ||
-                                    /^\d{9}$/.test(
-                                      answers.businessNumber.trim(),
-                                    ))
-                                : step === 17
-                                  ? [
-                                      answers.fullTime,
-                                      answers.partTime,
-                                      answers.contractors,
-                                    ].every(
-                                      (value) =>
-                                        !value || /^\d+$/.test(value.trim()),
-                                    )
-                                  : true;
+                  : step === 12
+                    ? !!answers.entityType &&
+                      !!details.registrationCountry &&
+                      !!details.registrationState &&
+                      !!details.registrationAddress?.street1
+                    : step === 15
+                      ? details.hasRelatedEntities === "no" ||
+                        details.relatedEntities.every(
+                          (entity) =>
+                            !!entity.legalName.trim() &&
+                            !!entity.relationship &&
+                            !!entity.insured,
+                        )
+                      : step === 16
+                        ? !!answers.description?.trim() &&
+                          !!answers.industry &&
+                          (!INDUSTRIES.find(
+                            (industry) => industry.label === answers.industry,
+                          )?.verticals.length ||
+                            !!answers.industryVertical)
+                        : step === 20
+                          ? !!answers.currentInsurance
+                          : step === 9
+                            ? details.coverages.every((line) =>
+                                validCoverageScope(line, details.scopeNote),
+                              )
+                            : step === 10
+                              ? !!answers.legalName?.trim()
+                              : step === 19
+                                ? !!answers.locations?.trim()
+                                : step === 13
+                                  ? ((details.registrationCountry ||
+                                      "United States") !== "United States" ||
+                                      !answers.fein ||
+                                      /^\d{2}-?\d{7}$/.test(
+                                        answers.fein.trim(),
+                                      )) &&
+                                    (details.registrationCountry !== "Canada" ||
+                                      !answers.businessNumber ||
+                                      /^\d{9}$/.test(
+                                        answers.businessNumber.trim(),
+                                      ))
+                                  : step === 18
+                                    ? (() => {
+                                        const projected =
+                                          details.revenueStep === "projected";
+                                        const period = projected
+                                          ? details.revenue?.projectedPeriod
+                                          : details.revenue?.annualPeriod;
+                                        const amount =
+                                          (projected
+                                            ? details.revenue?.projectedAmount
+                                            : details.revenue?.annualAmount) ??
+                                          "";
+                                        return (
+                                          !amount.trim() ||
+                                          (!!period &&
+                                            /^\d[\d,]*(?:\.\d{1,2})?$/.test(
+                                              amount,
+                                            ))
+                                        );
+                                      })()
+                                    : step === 17
+                                      ? [
+                                          answers.fullTime,
+                                          answers.partTime,
+                                          answers.contractors,
+                                        ].every(
+                                          (value) =>
+                                            !value ||
+                                            /^\d+$/.test(value.trim()),
+                                        )
+                                      : true;
   const optionalValues: Record<number, string | boolean> = {
     4:
       data.files.some((file) => file.category === "requirements") ||
@@ -1182,15 +1964,20 @@ function Application({
     17: [answers.fullTime, answers.partTime, answers.contractors]
       .join("")
       .trim(),
-    18: [answers.trailingRevenue, answers.projectedRevenue].join("").trim(),
+    18:
+      details.revenueStep === "projected"
+        ? details.revenue?.projectedAmount.trim() || ""
+        : details.revenue?.annualAmount.trim() || "",
     21: data.files.some((file) => file.category === "policy"),
-    22: answers.currentInsuranceDetails?.trim() ?? "",
-    23: answers.claims?.trim() ?? "",
+    23: details.hasClaims || answers.claims?.trim() || "",
     24: data.files.some((file) => file.category === "loss_runs"),
-    25: answers.cancellations?.trim() ?? "",
-    26: answers.changes?.trim() ?? "",
+    25: details.hasCancellations || answers.cancellations?.trim() || "",
   };
-  const skipStep = step in optionalValues && !optionalValues[step];
+  // Empty notes, extra coverage requests, and website/DBA are valid answers.
+  const canSkipStep = step < 28;
+  const skipStep =
+    canSkipStep &&
+    (!canContinue || (step in optionalValues && !optionalValues[step]));
   return (
     <IntakeFrame
       section={
@@ -1222,155 +2009,153 @@ function Application({
       disabled={busy || uploading}
       footer={
         <>
-          {data.submitted && step === reviewSection ? (
-            <PillButton
-              size="large"
-              variant="ghost"
-              onClick={() => void returnToApplication()}
-            >
-              <ChevronLeft className="size-4" />
-              Your application
-            </PillButton>
-          ) : (
-            <PillButton
-              size="large"
-              variant="ghost"
-              disabled={(!data.submitted && step <= 1) || busy || uploading}
-              onClick={() =>
-                void navigate(
-                  step === 8 && details.coverages[0]?.coverage === "unknown"
-                    ? 6
-                    : step === 5 && !hasIntakeRequirements(answers)
-                      ? 2
-                      : step === 23 && answers.currentInsurance === "No"
-                        ? 20
-                        : step === 25 &&
-                            /^(none|no|0)$/i.test(answers.claims?.trim() ?? "")
-                          ? 23
-                          : step === 20
-                            ? 27
-                            : step === 27
-                              ? 19
-                              : step === 28
-                                ? 26
-                                : step - 1,
-                )
-              }
-            >
-              <ChevronLeft className="size-4" />
-              Back
-            </PillButton>
-          )}
-          {data.submitted && [4, 5, 9, 21, 24, 26, 27, 28].includes(step) ? (
-            <PillButton
-              size="large"
-              disabled={busy || uploading || !canContinue}
-              variant={skipStep ? "secondary" : "primary"}
-              onClick={() => void returnToApplication(!skipStep)}
-            >
-              {skipStep ? "Skip" : "Continue"}
-            </PillButton>
-          ) : step < INTAKE_STEPS.length - 1 ? (
-            <PillButton
-              size="large"
-              disabled={busy || uploading || !canContinue}
-              variant={skipStep ? "secondary" : "primary"}
-              onClick={() =>
-                void navigate(
-                  step === 6 && details.coverages[0]?.coverage === "unknown"
-                    ? 8
-                    : step === 3 &&
-                        ["No", "None"].includes(answers.requirements ?? "")
-                      ? 5
-                      : step === 20 && answers.currentInsurance === "No"
-                        ? 23
-                        : step === 23 &&
-                            /^(none|no|0)$/i.test(answers.claims?.trim() ?? "")
-                          ? 25
-                          : step === 10 &&
-                              data.orgId &&
-                              answers.description &&
-                              answers.locations &&
-                              !editCompany &&
-                              !data.submitted
-                            ? 27
-                            : step === 19
-                              ? 27
-                              : step === 26
-                                ? 28
+          <PillButton
+            size="large"
+            variant="ghost"
+            disabled={busy || uploading}
+            onClick={() =>
+              editingReview
+                ? void returnToReview()
+                : step === 1
+                  ? void (async () => {
+                      if (await flush()) router.push("/signup");
+                    })()
+                  : void navigate(
+                      step === 8 && details.coverages[0]?.coverage === "unknown"
+                        ? 6
+                        : step === 5
+                          ? 2
+                          : step === 25 && answers.currentInsurance === "No"
+                            ? 20
+                            : step === 25 &&
+                                /^(none|no|0)$/i.test(
+                                  answers.claims?.trim() ?? "",
+                                )
+                              ? 23
+                              : step === 20
+                                ? 27
                                 : step === 27
-                                  ? 20
-                                  : step + 1,
-                  !skipStep,
-                  skipStep,
-                )
-              }
-            >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-              {skipStep ? "Skip" : "Continue"}
-            </PillButton>
-          ) : (
-            <PillButton
-              size="large"
-              disabled={
-                busy ||
-                uploading ||
-                missing.length > 0 ||
-                (!data.verified && codeSent && code.length !== 6)
-              }
-              onClick={() => void finalize()}
-            >
-              {busy
-                ? "Finalizing…"
-                : data.verified
-                  ? "Submit insurance request"
-                  : codeSent
-                    ? "Confirm email"
-                    : "Send email code"}
-            </PillButton>
-          )}
+                                  ? 19
+                                  : step - 1,
+                    )
+            }
+          >
+            {!editingReview && step === 1 ? (
+              "Cancel"
+            ) : (
+              <>
+                <ChevronLeft className="size-4" />
+                Back
+              </>
+            )}
+          </PillButton>
+          <div className="ml-auto flex items-center gap-3">
+            {step === 10 && showSavedCompany && (
+              <PillButton
+                size="large"
+                variant="secondary"
+                disabled={busy || uploading}
+                onClick={() => void startNewCompany()}
+              >
+                New company
+              </PillButton>
+            )}
+            {step === 10 &&
+              !showSavedCompany &&
+              !data.submitted &&
+              data.canUseSavedCompany && (
+                <PillButton
+                  size="large"
+                  variant="secondary"
+                  disabled={busy || uploading}
+                  onClick={() => void restoreSavedCompany()}
+                >
+                  Use saved company
+                </PillButton>
+              )}
+            {!editingReview &&
+            data.submitted &&
+            [4, 5, 9, 21, 24, 27, 28].includes(step) ? (
+              <PillButton
+                size="large"
+                disabled={busy || uploading || (!canContinue && !canSkipStep)}
+                variant={skipStep ? "secondary" : "primary"}
+                onClick={() => void returnToApplication(!skipStep)}
+              >
+                {skipStep ? "Skip" : "Continue"}
+              </PillButton>
+            ) : step < INTAKE_STEPS.length - 1 ? (
+              <PillButton
+                size="large"
+                disabled={busy || uploading || (!canContinue && !canSkipStep)}
+                variant={skipStep ? "secondary" : "primary"}
+                onClick={() =>
+                  void navigate(
+                    step === 6 && details.coverages[0]?.coverage === "unknown"
+                      ? 8
+                      : step === 3 &&
+                          ["No", "None"].includes(answers.requirements ?? "")
+                        ? 5
+                        : step === 20 && answers.currentInsurance === "No"
+                          ? 25
+                          : step === 23 &&
+                              /^(none|no|0)$/i.test(
+                                answers.claims?.trim() ?? "",
+                              )
+                            ? 25
+                            : step === 10 &&
+                                data.orgId &&
+                                answers.description &&
+                                answers.locations &&
+                                !editCompany &&
+                                !editingReview &&
+                                !data.submitted
+                              ? 27
+                              : step === 19
+                                ? 27
+                                : step === 26
+                                  ? 28
+                                  : step === 27
+                                    ? 20
+                                    : step + 1,
+                    !skipStep,
+                    skipStep,
+                  )
+                }
+              >
+                {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+                {skipStep ? "Skip" : "Continue"}
+              </PillButton>
+            ) : (
+              <PillButton
+                size="large"
+                disabled={
+                  busy ||
+                  uploading ||
+                  missing.length > 0 ||
+                  (!data.verified && codeSent && code.length !== 6)
+                }
+                onClick={() => void finalize()}
+              >
+                {busy ? "Submitting…" : "Submit"}
+              </PillButton>
+            )}
+          </div>
         </>
       }
     >
       <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
-        {step === 7
-          ? `What limits do you need for ${coverageOption(details.coverages[details.coverageIndex]?.coverage ?? "unknown").label.toLowerCase()}?`
-          : step === 14 && details.mailingAddressStep
-            ? "What is your mailing address?"
-            : INTAKE_STEPS[step]}
+        {step === 10 && showSavedCompany
+          ? "Are you applying for your saved business?"
+          : step === 7
+            ? `What limits do you need for ${details.coverages[details.coverageIndex] ? coverageRequestLabel(details.coverages[details.coverageIndex]).toLowerCase() : "coverage"}?`
+            : step === 18 && details.revenueStep === "projected"
+              ? "Where do you project your business’s revenue to be?"
+              : step === 14 && details.mailingAddressStep
+                ? "What is your mailing address?"
+                : INTAKE_STEPS[step]}
       </h1>
       <div className="h-10" />
-      {error && (
-        <div
-          role="alert"
-          className={`mb-6 rounded-xl border border-destructive/30 p-4 text-destructive ${typeStyle("body.root")}`}
-        >
-          <p>{error}</p>
-          {hasConflict && (
-            <div className="mt-3 flex gap-3">
-              <PillButton
-                variant="secondary"
-                onClick={() => {
-                  localStorage.removeItem(key);
-                  window.location.reload();
-                }}
-              >
-                Load saved version
-              </PillButton>
-              <PillButton
-                onClick={() => {
-                  state.current.revision = data.revision;
-                  conflict.current = false;
-                  setHasConflict(false);
-                  void flush();
-                }}
-              >
-                Save my reviewed answers
-              </PillButton>
-            </div>
-          )}
-        </div>
-      )}
       <div className="space-y-6">
         {step === 0 && (
           <>
@@ -1389,31 +2174,13 @@ function Application({
             />
           </>
         )}
-        {step === 4 && (
+        {step === 4 && files("requirements", "Upload insurance requirements")}
+        {step === 5 && (
           <>
-            {files("requirements", "Upload insurance requirements")}
-            <p
-              className={`${typeStyle("caption.default")} text-muted-foreground`}
-            >
-              If your requirements are part of a mortgage, lease, or other
-              contract, you can upload the whole file.
-            </p>
-            <Field>
-              <FieldLabel htmlFor="intake-requirements" className="sr-only">
-                Insurance requirements
-              </FieldLabel>
-              <Textarea
-                id="intake-requirements"
-                placeholder="Or paste your insurance requirements here"
-                value={answers.requirements || ""}
-                onChange={(event) => change("requirements", event.target.value)}
-                onBlur={() => void flush()}
-                className={`min-h-40 ${typeStyle("body.root")}`}
-              />
-            </Field>
+            {field("requestDetails", { multiline: true })}
+            {files("supporting", "Upload a supporting document")}
           </>
         )}
-        {step === 5 && field("requestDetails", { multiline: true })}
         {step === 6 && (
           <IntakeCoverageSelection
             details={details}
@@ -1438,32 +2205,8 @@ function Application({
           <IntakeCoverageScope details={details} onChange={changeDetails} />
         )}
         {step === 10 &&
-          (data.orgId &&
-          answers.description &&
-          answers.locations &&
-          !editCompany &&
-          !data.submitted ? (
-            <div className="space-y-6">
-              <Field>
-                <FieldLabel className={typeStyle("body.root")}>
-                  Saved company details
-                </FieldLabel>
-                <p className={typeStyle("body.root")}>{answers.legalName}</p>
-                <p className={`whitespace-pre-wrap ${typeStyle("body.root")}`}>
-                  {answers.description}
-                </p>
-                <p className={`whitespace-pre-wrap ${typeStyle("body.root")}`}>
-                  {answers.locations}
-                </p>
-              </Field>
-              <PillButton
-                size="large"
-                variant="secondary"
-                onClick={() => setEditCompany(true)}
-              >
-                Update company details
-              </PillButton>
-            </div>
+          (showSavedCompany ? (
+            <IntakeSavedBusinessSummary answers={answers} details={details} />
           ) : (
             field("legalName", { required: true })
           ))}
@@ -1539,13 +2282,11 @@ function Application({
           </>
         )}
         {step === 18 && (
-          <>
-            {field("trailingRevenue")}
-            {field("projectedRevenue")}
-          </>
+          <IntakeRevenueFields details={details} onChange={changeDetails} />
         )}
         {step === 19 && (
           <IntakeLocations
+            defaultActivities={answers.description?.trim() ?? ""}
             details={details}
             onChange={changeDetails}
             disabled={false}
@@ -1554,134 +2295,21 @@ function Application({
         {step === 20 &&
           select("currentInsurance", ["Yes", "No", "Not sure"], true)}
         {step === 21 && files("policy", "Upload your current policies")}
-        {step === 22 && field("currentInsuranceDetails", { multiline: true })}
         {step === 23 &&
-          field("claims", {
-            multiline: true,
-            hint: "Include the time period and open claims, or say none / not sure.",
-          })}
+          yesNoDetails(
+            "claims",
+            "hasClaims",
+            "Has your business had any claims?",
+            "Include the time period and any open claims.",
+          )}
         {step === 24 &&
           files("loss_runs", "Upload loss runs or claims history")}
-        {step === 25 && field("cancellations", { multiline: true })}
-        {step === 26 && field("changes", { multiline: true })}
-        {step === 27 && (
-          <>
-            <OperationalLabelValueList className="[&>dl>div]:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] [&>dl>div]:gap-4 [&_dd]:text-right">
-              {COMPANY_INTAKE_FIELDS.filter((key) =>
-                key === "fein"
-                  ? (details.registrationCountry || "United States") ===
-                    "United States"
-                  : key === "businessNumber"
-                    ? details.registrationCountry === "Canada"
-                    : true,
-              ).map((key) => (
-                <OperationalLabelValueRow
-                  key={key}
-                  align="right"
-                  label={
-                    <span className={typeStyle("body.root")}>
-                      {INTAKE_FIELDS[key]}
-                    </span>
-                  }
-                  value={
-                    <span
-                      className={`whitespace-pre-wrap ${typeStyle("body.root")}`}
-                    >
-                      {answers[key] || "Not provided"}
-                    </span>
-                  }
-                />
-              ))}
-            </OperationalLabelValueList>
-            {confirm(
-              "companyConfirmed",
-              "I confirm these company details are current.",
-            )}
-          </>
-        )}
-        {step === 28 && (
-          <>
-            {missing.length > 0 && (
-              <div className="rounded-xl border p-4">
-                <h2 className={`text-wrap-pretty ${typeStyle("body.root")}`}>
-                  Needed before submission
-                </h2>
-                <ul
-                  className={`mt-3 list-disc space-y-1 pl-5 ${typeStyle("body.root")}`}
-                >
-                  {missing.map((m) => (
-                    <li key={m}>{m}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <OperationalLabelValueList className="[&>dl>div]:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] [&>dl>div]:gap-4 [&_dd]:text-right">
-              {Object.entries(answers)
-                .filter(
-                  ([key, value]) =>
-                    key !== "deadline" &&
-                    (key !== "requirements" ||
-                      hasIntakeRequirements(answers)) &&
-                    value?.trim() &&
-                    (key !== "fein" ||
-                      (details.registrationCountry || "United States") ===
-                        "United States") &&
-                    (key !== "businessNumber" ||
-                      details.registrationCountry === "Canada"),
-                )
-                .map(([key, value]) => (
-                  <OperationalLabelValueRow
-                    key={key}
-                    align="right"
-                    label={
-                      <span className={typeStyle("body.root")}>
-                        {INTAKE_FIELDS[key as IntakeField]}
-                      </span>
-                    }
-                    value={
-                      <span
-                        className={`whitespace-pre-wrap ${typeStyle("body.root")}`}
-                      >
-                        {value}
-                      </span>
-                    }
-                  />
-                ))}
-            </OperationalLabelValueList>
-            <div className={typeStyle("body.root")}>
-              <p>{data.files.length} uploaded document(s)</p>
-              <p className="mt-2 text-muted-foreground">
-                You can submit without optional documents. We’ll identify what
-                else is needed before approaching insurers.
-              </p>
-            </div>
-            {!data.verified && (
-              <div className="rounded-xl border p-5 space-y-4">
-                <h2 className={`text-wrap-pretty ${typeStyle("body.root")}`}>
-                  Confirm your work email
-                </h2>
-                <p
-                  className={`text-muted-foreground ${typeStyle("body.root")}`}
-                >
-                  We’ll send a fresh code to {answers.email}.
-                </p>
-                {codeSent && (
-                  <Field>
-                    <FieldLabel className={typeStyle("body.root")}>
-                      Email code
-                    </FieldLabel>
-                    <OtpField
-                      value={code}
-                      onValueChange={setCode}
-                      label="Email code"
-                      autoFocus
-                    />
-                  </Field>
-                )}
-              </div>
-            )}
-          </>
-        )}
+        {step === 25 &&
+          yesNoDetails(
+            "cancellations",
+            "hasCancellations",
+            "Has coverage been cancelled or declined for renewal?",
+          )}
       </div>
     </IntakeFrame>
   );

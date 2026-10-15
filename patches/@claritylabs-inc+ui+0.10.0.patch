@@ -230,7 +230,7 @@ new file mode 100644
 index 0000000..1111111
 --- /dev/null
 +++ b/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,93 @@
 +"use client"
 +
 +import * as React from "react"
@@ -263,18 +263,21 @@ index 0000000..1111111
 +  /** Optional controlled text for preserving partially typed dates. */
 +  inputValue?: string
 +  onInputChange?: (text: string) => void
++  /** Earliest selectable ISO calendar date. */
++  minDate?: string
 +  hideLabel?: boolean
 +  disabled?: boolean
 +  className?: string
 +}
 +
-+function DateField({ id, label, value, onChange, inputValue, onInputChange, hideLabel = false, disabled, className }: DateFieldProps) {
++function DateField({ id, label, value, onChange, inputValue, onInputChange, hideLabel = false, disabled, className, minDate }: DateFieldProps) {
 +  const [open, setOpen] = React.useState(false)
 +  const [draft, setDraft] = React.useState({ value, text: value ? dayjs(value).format("MM/DD/YYYY") : "" })
 +  if (draft.value !== value) setDraft({ value, text: value ? dayjs(value).format("MM/DD/YYYY") : "" })
 +  const text = inputValue ?? draft.text
 +  const selected = value && dayjs(value).isValid() ? dayjs(value).toDate() : undefined
-+  const invalid = !!text && !parseDateText(text)
++  const parsed = parseDateText(text)
++  const invalid = !!text && (!parsed || (!!minDate && parsed < minDate))
 +  return (
 +    <Field>
 +      <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>{label}</FieldLabel>
@@ -287,8 +290,9 @@ index 0000000..1111111
 +              setDraft({ value, text: next })
 +              if (onInputChange) onInputChange(next)
 +              else {
-+                const date = parseDateText(next)
-+                if (date || !next) onChange(date)
++                const parsed = parseDateText(next)
++                const date = parsed && (!minDate || parsed >= minDate) ? parsed : ""
++                onChange(date)
 +              }
 +            }} />
 +          <InputGroupAddon align="inline-end">
@@ -298,7 +302,7 @@ index 0000000..1111111
 +          </InputGroupAddon>
 +        </InputGroup>
 +        <PopoverContent align="end" className="w-auto p-0">
-+          <Calendar className="p-3 [--cell-size:--spacing(9)] sm:[--cell-size:--spacing(11)] [&_button]:text-base [&_th]:text-sm [&_.rdp-caption_label]:text-lg" mode="single" selected={selected} defaultMonth={selected} autoFocus onSelect={(date) => {
++          <Calendar className="p-3 [--cell-size:--spacing(9)] sm:[--cell-size:--spacing(11)] [&_button]:text-base [&_th]:text-sm [&_.rdp-caption_label]:text-lg [&_button:disabled]:opacity-20" mode="single" disabled={minDate ? { before: dayjs(minDate).startOf("day").toDate() } : undefined} selected={selected} defaultMonth={selected} autoFocus onSelect={(date) => {
 +            const next = date ? dayjs(date).format("YYYY-MM-DD") : ""
 +            setDraft({ value: next, text: date ? dayjs(date).format("MM/DD/YYYY") : "" })
 +            onChange(next)
@@ -320,3 +324,88 @@ index 0000000..1111111
 +
 +export { DateField, parseDateText }
 +export type { DateFieldProps }
+diff --git a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
+--- a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
++++ b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
+@@ -53,7 +53,7 @@
+   "control.buttonCompact":
+     "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
+   "control.input":
+-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-base file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
++    "font-sans text-[1rem] font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-[1rem] file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
+   "control.tab":
+     "font-sans text-label font-normal leading-normal tracking-normal normal-case not-italic normal-nums data-active:font-medium",
+   "control.menu":
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/select.tsx b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
+--- a/node_modules/@claritylabs-inc/ui/src/components/select.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
+@@ -43,7 +43,7 @@
+       data-slot="select-trigger"
+       data-size={size}
+       className={cn(
+-        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.menu")}`,
++        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground/40 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.input")}`,
+         className
+       )}
+       {...props}
+@@ -125,7 +125,7 @@
+     <SelectPrimitive.Item
+       data-slot="select-item"
+       className={cn(
+-        `relative my-0.5 flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.menu")}`,
++        `relative my-0.5 flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.input")}`,
+         className
+       )}
+       {...props}
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
+--- a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
+@@ -10,6 +10,7 @@
+   value: string
+   label: string
+   icon?: ReactNode
++  separatorBefore?: boolean
+ }
+ 
+ interface SearchableSelectProps {
+@@ -99,7 +100,7 @@
+     >
+       <Combobox.Trigger
+         aria-label={ariaLabel}
+-        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.menu")}`}
++        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.input")}`}
+       >
+         {selected?.icon ? (
+           <span aria-hidden="true" className="shrink-0">
+@@ -122,7 +123,7 @@
+           className="isolate z-50"
+         >
+           <Combobox.Popup
+-            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.menu")}`}
++            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.input")}`}
+           >
+             <div className="border-b border-border p-1.5">
+               <div className="relative">
+@@ -134,11 +135,11 @@
+               </div>
+             </div>
+             <Combobox.Empty
+-              className={`px-3 py-2 text-muted-foreground/50 ${typeStyle("control.menu")}`}
++              className={`px-3 py-2 empty:p-0 text-muted-foreground/50 ${typeStyle("control.input")}`}
+             >
+               No results
+             </Combobox.Empty>
+-            <Combobox.List className="max-h-dropdown overflow-y-auto py-1">
++            <Combobox.List className="max-h-dropdown overflow-y-auto">
+               {(option: SearchableSelectOption) => (
+                 <Combobox.Item
+                   key={option.value}
+@@ -149,7 +150,7 @@
+                     props.value.length >= props.maxSelected &&
+                     !props.value.includes(option.value)
+                   }
+-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 data-disabled:opacity-40 ${typeStyle("control.menu")}`}
++                  className={`${option.separatorBefore ? "mt-2 border-t border-border pt-3!" : ""} flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 data-disabled:opacity-40 ${typeStyle("control.input")}`}
+                 >
+                   {option.icon ? (
+                     <span aria-hidden="true" className="shrink-0">

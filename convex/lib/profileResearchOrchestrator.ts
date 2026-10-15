@@ -20,7 +20,7 @@ import {
 type Evidence = { topic: string; text: string; urls: string[] };
 type ResearchTrace = NonNullable<Parameters<typeof clRouterDecide>[0]["trace"]>;
 type ProfileIdentity = {
-  orgId: Id<"organizations">;
+  orgId?: Id<"organizations">;
   name: string;
   website: string;
   type: "client" | "broker";

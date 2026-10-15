@@ -11,6 +11,7 @@ export const intakeAddressValidator = v.object({
   formatted: v.optional(v.string()),
 });
 export const intakeDetailsValidator = v.object({
+  companyResearchSource: v.optional(v.string()),
   prefillSourceIds: v.optional(v.array(v.string())),
   coverages: v.array(
     v.object({
@@ -30,7 +31,16 @@ export const intakeDetailsValidator = v.object({
       scopeDescription: v.optional(v.string()),
       properties: v.optional(
         v.array(
-          v.object({ address: intakeAddressValidator, details: v.string() }),
+          v.object({
+            name: v.optional(v.string()),
+            address: intakeAddressValidator,
+            details: v.string(),
+            activitiesPrefilled: v.optional(v.boolean()),
+            ownership: v.optional(
+              v.union(v.literal("owned"), v.literal("leased")),
+            ),
+            staff: v.optional(v.string()),
+          }),
         ),
       ),
       vehicles: v.optional(
@@ -53,8 +63,19 @@ export const intakeDetailsValidator = v.object({
   mailingSameAsRegistered: v.optional(
     v.union(v.literal("yes"), v.literal("no")),
   ),
+  hasCancellations: v.optional(v.union(v.literal("yes"), v.literal("no"))),
+  hasPlannedChanges: v.optional(v.union(v.literal("yes"), v.literal("no"))),
+  hasClaims: v.optional(v.union(v.literal("yes"), v.literal("no"))),
+  operatingLocationPrefilled: v.optional(v.boolean()),
   locations: v.array(
-    v.object({ address: intakeAddressValidator, details: v.string() }),
+    v.object({
+      name: v.optional(v.string()),
+      address: intakeAddressValidator,
+      details: v.string(),
+      activitiesPrefilled: v.optional(v.boolean()),
+      ownership: v.optional(v.union(v.literal("owned"), v.literal("leased"))),
+      staff: v.optional(v.string()),
+    }),
   ),
   relatedEntities: v.array(
     v.object({
@@ -75,5 +96,14 @@ export const intakeDetailsValidator = v.object({
   additionalNote: v.optional(v.string()),
   dateInput: v.optional(v.string()),
   dateParts: v.object({ year: v.string(), month: v.string(), day: v.string() }),
+  revenueStep: v.optional(v.union(v.literal("annual"), v.literal("projected"))),
+  revenue: v.optional(
+    v.object({
+      annualPeriod: v.string(),
+      annualAmount: v.string(),
+      projectedPeriod: v.string(),
+      projectedAmount: v.string(),
+    }),
+  ),
   coverageIndex: v.number(),
 });

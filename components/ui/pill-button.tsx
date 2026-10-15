@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@claritylabs-inc/ui/components/tooltip";
 
+import { typeStyle } from "@/lib/typography";
 import { isInternalAppHref } from "@/lib/internal-link";
 
 // Keep Next navigation and legacy prop names at the consumer boundary.
@@ -44,6 +45,15 @@ function PillButton(props: PillButtonProps) {
   const resolvedVariant =
     variant === "icon" || variant === "iconLabel" ? "ghost" : variant;
   const resolvedSize = size === "small" ? "xs" : size;
+  const inheritedSize = usePillButtonSize();
+  const typography = typeStyle(
+    (resolvedSize ?? inheritedSize) === "large"
+      ? "control.button"
+      : "control.buttonCompact",
+  )
+    .split(" ")
+    .map((token) => `${token}!`)
+    .join(" ");
   // `expandLabel` used to grow the pill on hover, which shifted neighbouring
   // controls. Render those as icon-only pills with a tooltip instead.
   const withTooltip =
@@ -65,6 +75,7 @@ function PillButton(props: PillButtonProps) {
       };
   const shared = {
     ...content,
+    className: `${rest.className ?? ""} ${typography}`,
     variant: resolvedVariant,
     size: resolvedSize,
     "aria-label": props["aria-label"] ?? label,

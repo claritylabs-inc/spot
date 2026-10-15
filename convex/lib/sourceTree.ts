@@ -624,29 +624,15 @@ export function normalizeSourceTree(
   );
 }
 
+// Semantic identity selection belongs to the Jev-backed extraction/carrier
+// pipeline. Presentation must not reject valid names because of their wording.
 function isBadOperationalIdentityValue(value: string | undefined): boolean {
   const text = normalizeWhitespace(value ?? "");
-  if (!text) return true;
-  if (text.length > 180) return true;
-  if (/^[a-z]/.test(text)) return true;
-  if (/^(owner|policy owner|applicant)\s*:/i.test(text)) return true;
-  if (/\b(?:insured persons?|insurance amount|benefit amount|policy number|owner|plan|premium)\s*:/i.test(text)) return true;
-  if (/\b(?:risk management|notices?\s+contact|mailing address|email:|direct:)\b/i.test(text)) return true;
-  if (/[•]/.test(text)) return true;
-  if (/^[^A-Za-z0-9]+|[^A-Za-z0-9.)]$/.test(text)) return true;
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length > 10 && /\b(the|a|an|and|or|of|to|for|with|when|if|we|you|your|our|us|by)\b/i.test(text)) {
-    return true;
-  }
-  return /(__{3,}|claims-made|please read|all monetary amounts|page\s+\d+\s+of\s+\d+|in consideration of the payment|subject to the declarations|policy title|signature blocks?|errors?\s+and\s+omissions\s+liability\s+policy|insured person dies|death benefit|grace period|collateral assignee|hypothecary creditor|for a loan|preced\b|\bCanad\b)/i.test(text);
+  return !text || text.length > 180;
 }
-
 function isBadBrokerValue(value: string | undefined): boolean {
   const text = normalizeWhitespace(value ?? "");
-  if (isBadOperationalIdentityValue(text)) return true;
-  if (text.length > 140) return true;
-  if (/^[\\/]/.test(text)) return true;
-  return /\b(forms?\/endorsements?|endorsements?\s+at\s+inception|bilateral\s+discovery|discovery\/erp|erp\s+options?|list\s+of\s+forms?|coverage\s+parts?|declarations?|sublimits?|deductibles?|premium|truncated|immunosuppressive|agents)\b/i.test(text);
+  return !text || text.length > 140;
 }
 
 function sourceBackedString(value: SourceBackedValue, key: string): string | undefined {

@@ -802,3 +802,124 @@ state survives navigation. Duplicate confirmation cancellation reports the final
 message “Upload cancelled before any files were uploaded.”
 
 Insurance intake workflow coverage and outstanding validation: [insurance-intake.md](insurance-intake.md).
+
+### Local operator router recovery — October 15, 2026
+
+Manually reproduced the operator failure in Helium against local Spot/Convex. Read the persisted run failure rather than treating the web HTTP 200 as agent success: first the explicit operator model route was absent, then the production router rejected the local callback host. Initialized local model settings, configured the explicit OpenAI GPT-5.4 route, and added the approved exact HTTPS tunnel host to the production router Convex callback/asset configuration and Railway worker callback/asset configuration. No provider credentials were copied into Spot. Confirmed router jobs reached succeeded and the operator run reached completed; the reply appeared in the browser. Application lookup verification uses the existing procurement tools. No automated test suite was run.
+
+The final fresh operator chat listed all three local client organizations, read their procurement requests, compared submitted applications, and returned the latest applicant (Zac Yungblut / Tools for Enlightenment, Ltd.) with D&O limits of $500,000 and workers’ compensation marked unsure. Confirmed both persisted run status `completed` and the rendered browser reply. The exact-host tunnel remains required and running for this native-local session; its temporary hostname is not a permanent development endpoint. Railway's variable rollout rebuilt the service's configured repository source (the latest manual-model catalog commit) rather than just restarting the former CLI image; its deployment succeeded with eight replicas online.
+
+
+## Structured intake refactor — October 15, 2026
+
+Local schema/functions compiled and full TypeScript checking passed. The additive migrations component dry run and applied local run each processed 12 procurement records. Canonical accepted applications prefer the last acknowledged baseline, with original snapshots retained; administrator-owned submissions promote typed company profiles. No production migration or deployment was performed. No automated test suite was run.
+
+The client request detail was also moved to direct structured rendering, gated by the existing shared application block with attachment references omitted from that DTO. Browser verification for this refactor is pending: the native browser tool reports the Mac is locked. Repeat the owner intake review/edit/resubmit workflow, verify draft changes stay out of operator Application and active public packets until resubmission, compare per-coverage row cards, inspect company Notes, and switch Shared preview/source without revision changes. Confirm control tags survive, authored notes remain editable, generated facts reject Markdown edits, and private notes/unreleased files remain absent from client/broker views.
+
+Browser access resumed after unlock. Verified the existing submitted operator Application renders separate D&O and workers’ compensation cards, correct date/currency, business addresses/locations, and retained claims history. Verified Shared projection before removing its duplicate tab, with equivalent accepted facts and per-coverage tables. Company Notes renders the structured business profile; authored procurement notes remain intact. Removed Shared navigation and kept Share link on Application, with legacy URL mapping. The final owner amendment/resubmission and public-link checks remain outstanding.
+
+Verified the updated operator Application in the native browser: compact 14px body typography, no Shared/Notes tabs, editable Internal notes above Contact details with existing private prose preserved, and only Edit request / Share link in the header. No import/download/source controls remain on procurement Application. TypeScript passed after the inline notes change.
+
+October 15 follow-up: verified operator autosave on a disposable local request, including a vehicle with year/make but no model or VIN. The stored canonical application retained those partial details without applicant authorization being manufactured. Confirmed delete cancellation leaves the fixture intact, and confirmed deletion soft-deletes it. The disposable request was removed after QA. Verified Profile document controls appear in the navbar and Locations uses the shared 15px/500 heading style. The searchable make menu's empty live region now has zero height (7px normal search-to-first-option spacing). Commercial auto initializes one empty vehicle. All questionnaire information steps now accept skips on both the browser and server; local draft saves resumed after restarting the stalled Convex watcher. Only one relevant Skip/Continue action is rendered. Enrichment failures remain server-only and never replace entered answers. No automated test suite was run.
+
+### Supporting documents on intake review — October 15, 2026
+
+Supporting documents is now an always-visible artifact section, outside the questionnaire accordions and completion statuses. Review exposes categorized uploads through the existing intake upload flow, including other supporting documents. TypeScript passed. Browser verification of owner uploads before and after submission remains outstanding; the available Helium session was on an operator editing page. Repeat by opening an owned application review, confirming the section has no disclosure or status badge, uploading a document with its category, and checking the resulting file link and submitted-change state.
+
+### Operator company fields and Notes card — October 15, 2026
+
+Verified the local client Profile in Chrome: structured business details remain above a bordered Notes card; import, download and Preview/Markdown controls live in that card, while Edit profile remains in the page toolbar. Opened the independent Company notes source editor without changing content. Operator `update_client_business_profile` now uses the same authorized/version-checked writer as the profile editor; `get_organization` exposes the current typed business profile and tool guidance prefers structured edits over prose. TypeScript passed. Existing operator action, family and MCP catalog suites passed; orgWiki has one outdated failure expecting the removed keyword blacklist to reject policy-number prose (21/22 selected tests passed). A fresh model-driven field-edit workflow remains unverified; no existing client facts were changed during this check.
+
+### Intake documents and admin tab cleanup — October 15, 2026
+
+Supersedes the earlier standalone Supporting documents review treatment: request requirements and other documents now render as rows in the existing request card; policies and loss runs render in the history card. The section Edit action is the entry point for changes. Upload steps expose a right-aligned plain gray X with no Uploaded label. Owner-scoped removal detaches the intake association, hides matching current request releases, retains stored evidence and issued snapshots, and makes submitted file changes reviewable.
+
+Verified local admin Profile pill tabs, compact logo/change control, and the responsive two-column location editor in Chrome without changing client facts. Verified procurement has one field-group tab row including Brokers, no outer Application/Files tabs, 14px row text, and requirements documents under Request details. Internal notes are in Request details and are flushed before tab changes. Operator uploads retain their section category. Operator/MCP application field tools project from the shared registry and use the existing version-checked direct editor writer. TypeScript passed. Operator actions, family selection, MCP catalog and procurement-domain checks passed (45 tests). The additional existing intake auth suite has one stale submission fixture lacking the now-required explicit applicant confirmation; 49/50 tests passed in that broader run. Owner browser removal/replacement and a fresh model-driven correction remain outstanding.
+
+Intake follow-up: submission now retains the mounted application review after the Convex mutation instead of assigning the same URL and reloading the document. This removes the second initial-loading cycle after the reactive submitted state appears. Submission still clears local draft recovery, resets confirmation/editing state and scrolls to the top. The final upload-row treatment is a plain gray X without a status label. Requirements, policy and loss-run attachments are rows inside the existing request/history cards, without separate document headings or Update buttons.
+
+### Procurement notes sidebar and document rows — October 15, 2026
+
+Supersedes the inline Internal notes and separate document-table presentation above. Notes now opens beside Edit using the existing app-shell right-panel slot and `SettingsDrawer`, with the existing `PacketWorkspace` autosave/revision owner. Close and tab changes flush pending notes. Verified in Chrome that the existing private note appears in the shared resizable sidebar and the Request details card includes the insurance requirement attachment directly as a row. No additional sidebar implementation was introduced. Category-specific row uploads preserve their category; file controls retain the existing file editor. TypeScript and targeted ESLint passed; no client facts or notes were changed in this browser check.
+
+### Always-editable admin records — October 15, 2026
+
+Added `components/ui/inline-fields.tsx` for readable label/value cards with live controls. Client profiles and procurement applications no longer switch into Edit/Back views; normal edits use their existing autosave/revision owners, with immediate blur/tab flushes. Account identity and typed company name/website stay synchronized. Business application editing includes addresses, revenue, related entities and locations in the same business tab. Coverage selection uses a compact add selector and inline removal; existing choices use dropdowns in inline editors. Operator company notes open directly in the rich editor. Policy overview, parties and extracted breakdowns render their existing authorized editors in place. Slack member identity is directly editable rather than a separate change/save drawer. Other provider, file, team and profile editors already save directly. Destructive actions and server authorization retain their existing owners.
+
+Verified Chrome rendering of editable procurement contact rows with no Edit button. Created a disposable local client and request through normal UI, saved a DBA by changing tabs, and confirmed `intakeBusinessProfile.answers.dba` persisted. Edited a procurement contact directly, changed tabs, and confirmed canonical `intakeSubmittedApplication.answers.name` plus incremented revision, without setting applicant submission consent. The QA client was soft-deleted; its procurement history remains retained under that deleted client. TypeScript and targeted ESLint passed. Policy UI could not be exercised locally because this deployment has no policies; existing mutation paths were retained.
+
+Added a thin `border-border-subtle` divider above Changes to resubmit, with 24px top spacing. Targeted lint passed for that styling change.
+
+### Profile row consistency and notes sidebar — October 15, 2026
+
+- Account, business, addresses, related entities, revenue, and locations use the shared inline label/value row cards. Revenue now has explicit annual/projected period and amount rows; opening the tab preserves stored values.
+- Related entity and location add actions live in the profile header. Removal is a labeled action inside each card. Shared row controls inherit the label body typography.
+- Removed the profile Notes tab. Its header action opens the existing SettingsDrawer through the app-shell rightPanel slot, retaining the company Markdown editor, revision/autosave owner, suggestions, and import/export controls without nested panels.
+- Browser checked the real local ReLease profile without editing facts: Revenue showed all four rows with existing amounts; Notes opened alongside Revenue with the existing resize handle and close/import/download controls. TypeScript and targeted ESLint passed.
+
+### Admin field placement — October 15, 2026
+
+- Shared inline rows retain side-by-side label/value columns, with every value left-aligned at the same edge and labels vertically centered. Dropdown chevrons are hidden until focus/open. Single-line input and dropdown heights are both 36px.
+- Browser checked Revenue after tab switches: dropdown and amount fields each measured 36px, all values aligned; dropdown still opened and dismissed without changing data. Targeted ESLint passed.
+
+- Long-text inline fields now use content sizing with a one-line minimum instead of the shared textarea two-line minimum. Their labels align to the first line as the field grows. Browser verified the existing business description is a single compact row (approximately 36px), with no fact edits; targeted lint passed.
+
+### Procurement request row parity — October 15, 2026
+
+- Request metadata uses the same inline row cards as Profile, including labeled/searchable policy selects, centered status display, 36px controls, and hidden idle chevrons. Document rows share the value column and have labeled Remove actions. Removed the empty questionnaire timing flag and duplicate Business details tab. Coverage limits and prose use row cards too.
+- Delete request moved to the navbar, invoking the original confirmation/soft-delete flow. Browser opened and canceled that confirmation without deleting the real request.
+- Request document removal is an operator-only soft detach: marks the association removed, hides client/broker releases, removes the matching intake association, bumps packet revision, and audits the operation while keeping company evidence and issued snapshots. The editor flushes pending edits first and adopts the returned request version.
+- Browser verified real local request rendering without changing facts: no Business details tab or empty timing row; policy select height 36px, transparent idle border/chevron; status control/value/icon-text centers all measured 229.8046875px. Removal controls present and document labels left-aligned.
+- Disposable local request association roundtrip passed: attached an existing company file privately, detached it, verified omission from request details, repeated removal idempotently, then soft-deleted the QA request. Existing file-visibility/ownership regression test passed. TypeScript and targeted ESLint passed.
+
+### Vehicle manufacturer logo audit — October 15, 2026
+
+- Reviewed every local manufacturer SVG. Replaced the unrelated Greater Manchester Council GMC asset with the automotive GMC mark. Removed separate captions from Acura, Chevrolet, Lincoln, Renault and Suzuki; replaced Mazda/Volvo wordmarks and the broken Peugeot wordmark with emblems. Dodge uses only its two slashes. Fiat uses its compact badge. Added Ram and Buick and enabled the previously unmapped GMC, Jeep, Kia, Mazda, Lincoln and Volvo assets.
+- All 32 assets are mapped. Minimal identifying lettering remains for brands whose primary mark is lettering and inside badges. Removed the inaccurate General Motors → GMC alias. Existing make-label text and generic fallback remain. Bumped the SVG cache version.
+- Repeatable visual review: run `node scripts/audit-vehicle-logos.mjs`, then open `docs/testing/artifacts/vehicle-logos/audit.html` in a browser. It embeds the current SVGs and displays each at 64px and the actual 20px picker size in both themes. `audit.png` preserves the full reviewed contact sheet (74px enlarged, 20px actual).
+- Browser review covered all 32 makes, 128 image instances, zero decode failures, and verified 20×20 picker dimensions. Reviewed both halves of the grid in the local browser. SVG rasterization also decoded every file. Targeted ESLint passed with the existing Next.js native-image advisory; TypeScript passed. No business records were changed.
+- Source URLs are pinned to upstream versions where replaced; modifications and attribution are in `public/vehicle-logos/sources.json`, with Cardog's MIT license retained.
+
+### Coverage hierarchy and quiet removal actions — October 15, 2026
+
+- Coverage Requested uses one titled row card per coverage, with limits and additional requests together. Add coverage lives in the navbar. Properties and vehicles are nested row cards with their own headings and gray X actions, preserving location/vehicle typed fields and vehicle catalog controls. Existing legacy coverage notes remain editable in one notes card when present.
+- “I'm not sure” is visible only for blank/unknown limits, including the customer questionnaire. Populated amounts hide that choice.
+- Shared `RemoveButton` provides accessible plain gray X actions for coverage, entity, location, vehicle, document, policy line/insured, compliance limit, and queued-message removal. Navbar request deletion and archive/confirmation workflows retain their existing semantics.
+- Document labels align to the top of multi-content rows; Add document is a right-aligned secondary action. Pill typography now retains the shared role despite legacy operator-form density rules. Browser measured Add document and Share link at the same 32px height / 11.2px font.
+- Browser inspected the real request without editing facts: nested Property → Location 1 card, gray header X icons, right-aligned document actions, and top-aligned document labels. TypeScript and targeted lint passed; the existing vehicle-logo image lint warning remains. Vehicle nesting uses the same card path, but no vehicle-bearing record was changed for browser QA.
+
+### Shared request documents in context — October 15, 2026
+
+- Shared packet navigation now says Request Details. The redundant standalone Request heading immediately before Contact details is hidden in presentation only; stored Markdown and managed markers are untouched.
+- Authorized released file DTOs now include their document category, falling back to the request's staged intake association for older uploads. Requirements/supporting files render with Request details; requirements/policies with Coverage; policies/loss runs with Insurance history. The same authorized set remains available under All files at the end.
+- Reuses one file-list renderer for contextual and complete lists; listed-only files remain non-downloadable, and downloads keep the existing token endpoint.
+- Browser verified the existing shared request: no redundant Request heading, Request Details navigation, requirement/policy files inside Coverage, policy/loss-run files in Insurance history, and all five released files in the final list. No facts or sharing settings were changed. TypeScript, targeted lint, and the existing visibility/ownership regression passed.
+
+- Shared attachment presentation correction: contextual files now append labeled `OperationalLabelValueRow` entries directly to the existing two-column Markdown row card, using the intake review pattern (category label and underlined document links). Removed standalone icon/download-button lists and divider strips. All files uses the same grouped row presentation. Arbitrary multi-column authored tables are preserved; sections without a compatible row card receive the shared label/value card. Browser verified Request details attachments inside the existing card, with top-aligned labels and simple filename links. TypeScript and targeted lint passed.
+
+- Restored formation jurisdiction to the editable Business tab as State / province of formation and Country of formation rows, backed by the existing typed registrationState/registrationCountry fields with legacy formation-answer display fallback. Browser confirmed the existing client shows Ontario / Canada without changing its facts. Targeted lint and TypeScript passed.
+
+- Formation rows now show Country before State/province, with a divider under each row. The Business editor shows FEIN only for a U.S. formation country and Canadian business number only for Canada, preserving hidden stored values. Browser verified Canada → Ontario order, both dividers, Canadian field present, FEIN absent without editing facts. Targeted lint and TypeScript passed.
+
+### Neutral root-route loading — October 15, 2026
+
+- `/` uses the shared RootLoading transition through authentication, organization lookup, and redirects. It renders a centered accessible Loading status with a subtle spinner, without destination-specific skeletons or app-shell navigation.
+- Root route classification is shell-less; the existing intake-only redirect guard remains active for root. Customer, broker, operator, invitation, and onboarding redirect owners remain unchanged.
+- Browser opened `/`: initial visible state was only Loading, then the existing operator redirect completed to `/operator/clients`. Targeted lint and TypeScript passed. No account/session settings were changed for alternate-role QA.
+
+### Intake location layout — October 15, 2026
+
+- Location cards now use one thin border (the shared card ring is disabled), and the questionnaire lays out all location fields vertically at full width.
+- Name, address, ownership and staff inputs use the same 48px height. The shared intake count control uses compact up/down chevrons, retaining minimum-zero and integer behavior.
+- Validation: targeted ESLint and TypeScript checks; browser intake verification remains manual because the available browser session is authenticated as an operator.
+
+### PostHog browser analytics and numeric affordances — October 15, 2026
+
+- Created the Spot US PostHog project (667578), enabled session replay for all sessions, applied Total privacy masking, and disabled console recording. Browser Activity verified pageview, pageleave, web-vitals and identified opaque-user events with sanitized `:id` routes.
+- Added browser-wide analytics, explicit intake milestones, first-party ingestion/static proxy, privacy controls, and operational documentation. Production deployment and full intake success-event QA remain separate from local verification.
+- Shared intake counts reveal chevrons only while the input group contains focus; native numeric spinners follow focus-only styling. Client/admin control heights remain separately owned.
+- Follow-up browser verification: PostHog listed both intake and operator recordings; opened the operator replay and confirmed masked content. Bundled `posthog-js/full/no-external` after runtime recorder downloads failed. Retained structural styling attributes through a selective replay attribute mask to preserve layout while redacting content-bearing attributes.
+
+### Admin navbar action sizing — October 15, 2026
+
+- Centralized operator top-bar action dimensions in the existing app-shell action slot: 32px height, common horizontal padding/gap, shared compact typography, 14px icons and 32px icon-only targets. The rule overrides page-local compact/default size differences and does not affect client navigation or page content controls.

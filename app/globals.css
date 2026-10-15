@@ -1,5 +1,7 @@
 @import "@claritylabs-inc/ui/styles.css";
 @plugin "@tailwindcss/typography";
+/* PillButton applies important modifiers to its shared typography roles. */
+@source inline("font-sans! text-label! text-base! font-medium! leading-4! leading-normal! tracking-normal! normal-case! not-italic! normal-nums!");
 
 /* Fonts remain owned by Spot; the package ships no font assets. */
 
@@ -36,7 +38,8 @@
   /* The inline theme emits no --font-mono variable at runtime. */
   font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
 }
-:is([data-agent-dock], [data-agent-surface]) :is([data-prose], [data-prose] table, [data-chat-bubble]) {
+:is([data-agent-dock], [data-agent-surface])
+  :is([data-prose], [data-prose] table, [data-chat-bubble]) {
   font-weight: 300;
 }
 :is([data-agent-dock], [data-agent-surface]) :is(strong, b, th) {
@@ -65,7 +68,7 @@
   }
 }
 
-/* Drawer geometry stays app-owned; keyframes survive smooth-corner measurement. */
+/* Drawer geometry stays app-owned. */
 @keyframes spot-navigation-enter {
   from {
     translate: -100% 0;
@@ -89,4 +92,278 @@
   .spot-navigation-drawer[data-closed] {
     animation: spot-navigation-exit 120ms cubic-bezier(0.2, 0, 0, 1) both;
   }
+}
+
+/* Operator review surfaces retain the shared primitives at a denser reading size. */
+[data-app-surface="operator"] [data-review-content],
+[data-app-surface="operator"] [data-review-content] * {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+[data-app-surface="operator"] [data-review-content] :is(h1, h2, h3),
+[data-app-surface="operator"] [data-review-content] :is(h1, h2, h3) * {
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+}
+[data-app-surface="operator"] [data-review-content] dl > div {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+[data-app-surface="operator"]
+  [data-review-content].space-y-8
+  > :not(:last-child) {
+  margin-block-end: 1.5rem;
+}
+
+/* Admin navbar actions have one size, regardless of page-local pill size props. */
+[data-app-surface="operator"] [data-slot="app-top-bar-actions"]
+  :is([data-pill-preset="spot"], [data-slot="button"]) {
+  height: 2rem !important;
+  min-height: 2rem !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem !important;
+  padding-block: 0 !important;
+  padding-inline: 1.25rem !important;
+  border-radius: 9999px;
+  white-space: nowrap;
+  font-size: var(--text-label) !important;
+  line-height: 1rem !important;
+  font-weight: 500 !important;
+}
+[data-app-surface="operator"] [data-slot="app-top-bar-actions"]
+  [data-icon-only="true"] {
+  width: 2rem !important;
+  min-width: 2rem !important;
+  padding-inline: 0 !important;
+}
+[data-app-surface="operator"] [data-slot="app-top-bar-actions"]
+  :is([data-pill-preset="spot"], [data-slot="button"]) svg {
+  width: 0.875rem !important;
+  height: 0.875rem !important;
+  flex-shrink: 0;
+}
+
+/* Compact operator form controls, including dropdowns rendered through portals. */
+@media (min-width: 768px) {
+  [data-app-surface="operator"]
+    :is(
+      input,
+      textarea,
+      select,
+      [role="combobox"],
+      [data-slot="select-trigger"]
+    ),
+  [data-app-surface="operator"]
+    :is([role="combobox"], [data-slot="select-trigger"])
+    *,
+  body:has([data-app-surface="operator"]) [role="listbox"],
+  body:has([data-app-surface="operator"]) [role="listbox"] * {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}
+
+/* Reuse intake controls at operator form density. */
+[data-operator-form]
+  :is([data-slot="input-group"], [data-slot="input-group-input"]) {
+  height: 2.25rem;
+}
+[data-operator-form] [role="radio"] {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.75rem;
+}
+[data-operator-form] [role="radiogroup"] {
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+[data-operator-form] [data-slot="field-group"] {
+  gap: 0.75rem;
+}
+
+[data-operator-form]
+  :is(
+    label,
+    [data-slot="field-label"],
+    [data-slot="field-title"],
+    [data-slot="field-description"]
+  ) {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]),
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]) * {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]) {
+  min-height: 2rem;
+  height: auto;
+  padding-block: 0.375rem;
+}
+
+/* Intake uses the stronger shared border tokens in both themes. */
+[data-intake-form] {
+  --border: var(--border-emphasized);
+  --input: var(--border-emphasized);
+  --color-border: var(--border-emphasized);
+  --color-input: var(--border-emphasized);
+}
+
+/* Intake controls use the shared neutral brand pair in either theme. */
+[data-intake-form],
+[data-operator-form] {
+  --color-primary: var(--brand);
+  --color-primary-foreground: var(--brand-foreground);
+  --color-ring: var(--brand);
+  --color-border-focus: var(--brand);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --ring: var(--brand);
+  --border-focus: var(--brand);
+}
+
+/* Dense coverage editing is scoped to the operator form. */
+[data-operator-form] [data-intake-coverage-limits] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+[data-operator-form] [data-intake-coverage-limits] [data-slot="field"] {
+  gap: 6px;
+}
+[data-operator-form] [data-intake-coverage-limits] [data-slot="input-group"] {
+  min-height: 36px;
+}
+[data-operator-form] [data-intake-coverage-limits] label {
+  min-height: 0;
+}
+[data-operator-form] [data-intake-coverage-limits] button[aria-controls] {
+  width: 24px;
+  min-height: 24px;
+  height: 24px;
+  padding: 3px;
+}
+
+/* Client intake uses roomy controls; operator row cards retain their own density. */
+[data-intake-form] [data-slot="select-trigger"][data-size] {
+  height: 3rem;
+  min-height: 3rem;
+}
+
+/* Review subsections sit below the main intake section headings. */
+[data-intake-form] [data-review-content] :is(h2, h3) {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+/* Field outlines use a single, even primitive border on every edge. */
+:is([data-intake-form], [data-operator-form])
+  :is(
+    [data-slot="input-group"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"]
+  ) {
+  border-width: 1px;
+  border-style: solid;
+}
+
+/* Form controls have one edge, including focus: use border color, not an outer ring. */
+:is(
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select,
+  [data-slot="select-trigger"],
+  [role="combobox"],
+  [data-slot="input-group"]
+):is(:focus, :focus-visible, :focus-within) {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  box-shadow: none;
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+/* Admin field controls keep the readable row presentation until focused. */
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]) {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]):hover {
+  background-color: var(--muted);
+}
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]):is(:focus, :focus-visible, :focus-within) {
+  background-color: var(--background);
+  border-color: var(--input);
+}
+/* All editable values share a left edge, including numbers and select values. */
+[data-operator-inline-fields] [data-inline-field-row] :is(input, textarea, [data-slot="select-trigger"], [data-slot="select-value"]) {
+  text-align: left;
+}
+[data-operator-inline-fields] [data-inline-field-row] [data-slot="select-trigger"] {
+  justify-content: space-between;
+  align-items: center;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding-block: .25rem;
+  white-space: normal;
+}
+[data-operator-inline-fields] [data-inline-field-row] [data-slot="select-value"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: unset;
+}
+/* Keep the hit target stable; reveal the affordance only when editing. */
+[data-operator-inline-fields] [data-slot="select-trigger"] > svg:last-child {
+  opacity: 0;
+}
+[data-operator-inline-fields] [data-slot="select-trigger"]:is(:focus-visible, [data-popup-open], [aria-expanded="true"]) > svg:last-child {
+  opacity: 1;
+}
+@media (min-width: 640px) {
+  [data-operator-inline-fields] [data-inline-field-row] {
+    grid-template-columns: min(35%, 20rem) minmax(0, 1fr);
+  }
+}
+[data-operator-inline-fields] [data-inline-field-card] > label {
+  display: grid;
+  grid-template-columns: min(35%,20rem) minmax(0,1fr);
+  align-items: start;
+  gap: 1rem;
+  padding: .5rem 1rem;
+}
+[data-operator-inline-fields] [data-inline-field-card] > label > span { padding-top: .5rem; }
+@media (max-width: 639px) {
+  [data-operator-inline-fields] [data-inline-field-card] > label { grid-template-columns: minmax(0,1fr); gap: .25rem; }
+  [data-operator-inline-fields] [data-inline-field-row] :is(input, [data-slot="select-trigger"]) { text-align: left; }
+}
+
+[data-operator-inline-fields] [data-inline-field-row] input:not([type="checkbox"]) { height: 2.25rem; min-height: 2.25rem; }
+[data-operator-inline-fields] [data-inline-field-card] > .contents > label {
+  display: grid;
+  grid-template-columns: min(35%,20rem) minmax(0,1fr);
+  gap: 1rem;
+  padding: .5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Inline row controls use the same body role as their labels. */
+[data-operator-inline-fields] [data-inline-field-row] :is(input, textarea, [data-slot="select-trigger"], [data-slot="select-value"]) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* Native numeric spinners follow the same focus-only affordance as intake counts. */
+input[type="number"]:not(:focus) {
+  -moz-appearance: textfield;
+}
+input[type="number"]:not(:focus)::-webkit-inner-spin-button,
+input[type="number"]:not(:focus)::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

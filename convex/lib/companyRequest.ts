@@ -6,6 +6,7 @@ export type CompanyRequest = Doc<"procurementRequests"> & {
 export function requireCompanyRequest(
   request: Doc<"procurementRequests"> | null,
 ): asserts request is CompanyRequest {
+  if (request?.deletedAt) throw new Error("Procurement request not found");
   if (!request?.clientOrgId)
     throw new Error("Company-linked insurance request required");
 }

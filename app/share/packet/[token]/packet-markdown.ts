@@ -96,6 +96,57 @@ export function preparePacketMarkdown(markdown: string) {
         section.children.push(node);
         if (!heading) hasBody = true;
       }
+      for (const section of sections) {
+        const heading = section.children.find(
+          (node) => node.type === "element" && /^h[1-6]$/.test(node.tagName),
+        );
+        if (heading?.type !== "element") continue;
+        const text = (node: RootContent): string =>
+          node.type === "text"
+            ? node.value
+            : node.type === "element"
+              ? node.children.map(text).join("")
+              : "";
+        const label = text(heading).trim().toLowerCase();
+        const part = /^(?:your request|request details|request)$/.test(label)
+          ? "request"
+          : /^(?:coverage requested|coverage)$/.test(label)
+            ? "coverage"
+            : label === "insurance history"
+              ? "history"
+              : undefined;
+        if (part) {
+          section.properties.dataRequestPart = part;
+          const tables = section.children.filter(
+            (node): node is Element =>
+              node.type === "element" && node.tagName === "table",
+          );
+          const lastTable = tables
+            .filter((table) => {
+              const rows = table.children.flatMap((group) =>
+                group.type === "element"
+                  ? group.children.filter(
+                      (row): row is Element =>
+                        row.type === "element" && row.tagName === "tr",
+                    )
+                  : [],
+              );
+              return (
+                rows.length > 0 &&
+                rows.every(
+                  (row) =>
+                    row.children.filter((cell) => cell.type === "element")
+                      .length === 2,
+                )
+              );
+            })
+            .at(-1);
+          if (lastTable) {
+            lastTable.properties.dataRequestFilePart = part;
+            section.properties.dataFilesInTable = true;
+          }
+        }
+      }
       root.children = sections;
     };
   }

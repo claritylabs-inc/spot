@@ -31,7 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import { StatusLabel, StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import {
+  StatusLabel,
+  StatusTag,
+} from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
@@ -50,7 +53,7 @@ export const REQUEST_STATUS_OPTIONS = [
   {
     value: "submitted",
     label: "Submitted",
-    tone: "neutral",
+    tone: "success",
     indicator: "pending",
     progress: 0,
   },

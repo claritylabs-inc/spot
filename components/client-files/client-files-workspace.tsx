@@ -43,7 +43,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@claritylabs-inc/ui/components/tabs";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDate } from "@/lib/date-format";
 import { inferAttachmentContentType } from "@/lib/thread-prompt";
@@ -382,7 +386,7 @@ export function ClientFileUploadPanel({
   const [files, setFiles] = useState<File[]>([]);
   const [hint, setHint] = useState("");
   const [clientVisible, setClientVisible] = useState(false);
-  const [brokerVisible, setBrokerVisible] = useState(false);
+  const [brokerVisible, setBrokerVisible] = useState(showBrokerVisibility);
   const [uploading, setUploading] = useState(false);
 
   const addFiles = useCallback((selected: File[]) => {
@@ -618,12 +622,17 @@ export function ClientFilesWorkspace({
     archived: true,
   });
   const hasSharedFiles = Boolean(
-    activeResult?.truncated || activeResult?.files.some((file) => file.clientVisible),
+    activeResult?.truncated ||
+    activeResult?.files.some((file) => file.clientVisible),
   );
   const hasArchivedFiles = (archivedResult?.files.length ?? 0) > 0;
   const view =
-    (requestedView === "shared" && activeResult !== undefined && !hasSharedFiles) ||
-    (requestedView === "archived" && archivedResult !== undefined && !hasArchivedFiles)
+    (requestedView === "shared" &&
+      activeResult !== undefined &&
+      !hasSharedFiles) ||
+    (requestedView === "archived" &&
+      archivedResult !== undefined &&
+      !hasArchivedFiles)
       ? "private"
       : requestedView;
   const result = view === "archived" ? archivedResult : activeResult;
@@ -726,39 +735,44 @@ export function ClientFilesWorkspace({
           view === "shared" ? file.clientVisible : !file.clientVisible,
         )
       : files;
-  const visibilityTabs = operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
-    <div className="flex min-w-0 items-center justify-between gap-4">
-      {hasSharedFiles || hasArchivedFiles ? (
-        <div className="overflow-x-auto">
-          <Tabs
-            value={view}
-            onValueChange={(value) => {
-              if (
-                value === "private" ||
-                value === "shared" ||
-                value === "archived"
-              ) {
-                setView(value);
-              }
-            }}
+  const visibilityTabs =
+    operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
+      <div className="flex min-w-0 items-center justify-between gap-4">
+        {hasSharedFiles || hasArchivedFiles ? (
+          <div className="overflow-x-auto">
+            <Tabs
+              value={view}
+              onValueChange={(value) => {
+                if (
+                  value === "private" ||
+                  value === "shared" ||
+                  value === "archived"
+                ) {
+                  setView(value);
+                }
+              }}
+            >
+              <TabsList variant="pill" aria-label="Client files view">
+                <TabsTrigger value="private">Private</TabsTrigger>
+                {hasSharedFiles ? (
+                  <TabsTrigger value="shared">Shared</TabsTrigger>
+                ) : null}
+                {hasArchivedFiles ? (
+                  <TabsTrigger value="archived">Archived</TabsTrigger>
+                ) : null}
+              </TabsList>
+            </Tabs>
+          </div>
+        ) : null}
+        {result.truncated ? (
+          <span
+            className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            <TabsList variant="pill" aria-label="Client files view">
-              <TabsTrigger value="private">Private</TabsTrigger>
-              {hasSharedFiles ? <TabsTrigger value="shared">Shared</TabsTrigger> : null}
-              {hasArchivedFiles ? <TabsTrigger value="archived">Archived</TabsTrigger> : null}
-            </TabsList>
-          </Tabs>
-        </div>
-      ) : null}
-      {result.truncated ? (
-        <span
-          className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          Showing the latest 200
-        </span>
-      ) : null}
-    </div>
-  ) : null;
+            Showing the latest 200
+          </span>
+        ) : null}
+      </div>
+    ) : null;
 
   if (visibleFiles.length === 0) {
     if (!operatorView) {

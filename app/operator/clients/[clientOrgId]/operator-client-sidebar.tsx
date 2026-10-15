@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
-  NotebookPen,
+  Building2,
   ClipboardCheck,
   FileSearch,
   FolderOpen,
@@ -158,8 +158,8 @@ export function OperatorClientSidebar({
           <SectionHeader label="Client" collapsed={collapsed} />
           <SidebarMenuItem
             href={`${basePath}/wiki`}
-            label="Notes"
-            icon={NotebookPen}
+            label="Profile"
+            icon={Building2}
             active={active === "wiki"}
             collapsed={collapsed}
           />

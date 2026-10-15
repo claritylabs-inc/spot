@@ -78,7 +78,7 @@ export type ModelCallTaskKind =
   | "pce_packet_generation"
   | (string & {});
 
-type ModelCallContext = {
+export type ModelCallContext = {
   taskKind?: ModelCallTaskKind;
   trace?: ClRouterTraceInput;
 };
@@ -95,7 +95,7 @@ type AiGenerateTextResult = Awaited<
   ReturnType<typeof import("ai").generateText>
 >;
 type RoutedGenerateTextOptions = Omit<AiGenerateTextOptions, "model">;
-type RoutedGenerateObjectOptions<T> = Omit<
+export type RoutedGenerateObjectOptions<T> = Omit<
   AiGenerateTextOptions,
   "model" | "output"
 > & {

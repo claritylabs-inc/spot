@@ -1,4 +1,7 @@
 "use client";
+import { MarkdownReview } from "@/components/ui/markdown-review";
+import { hideApplicationControlMarkers } from "@/lib/intake-markdown-presentation";
+import { replaceEditorBody, splitEditorMarkdown } from "@/lib/markdown-editor";
 
 import {
   useEffect,
@@ -14,7 +17,7 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
-  Upload,
+  FileInput,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +31,7 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -162,6 +166,7 @@ type PacketWorkspaceProps = {
   requestId: Id<"procurementRequests">;
   filename: PacketFilename;
   readOnly?: boolean;
+  inlineNotes?: boolean | "sidebar";
   toolbarTarget?: HTMLElement | null;
   ref?: Ref<PacketEditorHandle>;
 };
@@ -170,6 +175,7 @@ export function PacketWorkspace({
   requestId,
   filename,
   readOnly = false,
+  inlineNotes = false,
   toolbarTarget,
   ref,
 }: PacketWorkspaceProps) {
@@ -190,6 +196,7 @@ export function PacketWorkspace({
       requestId={requestId}
       filename={filename}
       readOnly={readOnly}
+      inlineNotes={inlineNotes}
       toolbarTarget={toolbarTarget}
       document={
         document ?? {
@@ -202,6 +209,7 @@ export function PacketWorkspace({
 }
 
 function LoadedPacketEditor({
+  inlineNotes,
   toolbarTarget,
   requestId,
   filename,
@@ -246,6 +254,37 @@ function LoadedPacketEditor({
     () => ({ save: readOnly ? async () => true : autoSave.saveNow }),
     [autoSave.saveNow, readOnly],
   );
+  if (inlineNotes)
+    return (
+      <section className="space-y-2" data-review-content>
+        <label
+          htmlFor={`request-notes-${requestId}`}
+          className={
+            inlineNotes === "sidebar" ? "sr-only" : typeStyle("body.medium")
+          }
+        >
+          Internal notes
+        </label>
+        <Textarea
+          id={`request-notes-${requestId}`}
+          value={splitEditorMarkdown(draft).body}
+          onChange={(event) =>
+            setDraft(replaceEditorBody(draft, event.target.value))
+          }
+          onBlur={() => {
+            if (!readOnly) void autoSave.saveNow();
+          }}
+          readOnly={readOnly}
+          placeholder="Add internal notes about this application…"
+          className={
+            inlineNotes === "sidebar"
+              ? "min-h-[50vh] resize-none"
+              : "min-h-24 resize-y"
+          }
+        />
+        <AutoSaveStatus status={autoSave.status} />
+      </section>
+    );
   return (
     <>
       <AutoSaveStatus status={autoSave.status} />
@@ -281,6 +320,13 @@ function LoadedPacketEditor({
         }}
       />
       <MarkdownEditor
+        className="[&_.tiptap]:min-h-40"
+        showProperties={false}
+        preview={
+          <MarkdownReview>
+            {hideApplicationControlMarkers(splitEditorMarkdown(draft).body)}
+          </MarkdownReview>
+        }
         label={filename}
         value={draft}
         onChange={setDraft}
@@ -297,7 +343,7 @@ function LoadedPacketEditor({
                 variant="secondary"
                 onClick={() => fileInput.current?.click()}
               >
-                <Upload className="size-3.5" />
+                <FileInput className="size-3.5" />
               </PillButton>
             ) : null}
             <PillButton

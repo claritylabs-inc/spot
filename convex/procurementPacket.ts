@@ -1,3 +1,10 @@
+import {
+  submittedIntakeApplication,
+  projectApplicationMarkdown,
+  applicationMarkdownBlock,
+  APPLICATION_START,
+  APPLICATION_END,
+} from "../lib/intake-application";
 import { requireCompanyRequest } from "./lib/companyRequest";
 import { saveMarkdownDocument } from "./markdownDocuments";
 import {
@@ -99,9 +106,44 @@ export async function updatePacketDocumentByOperator(
   const visibility = packetFileVisibility(args.filename);
   if (parseDocumentVisibility(args.markdown, visibility) !== visibility)
     throw new Error(`${args.filename} must use visibility: ${visibility}`);
+  const application = submittedIntakeApplication(request);
+  let body = parsed.body;
+  if (visibility === "shared" && application) {
+    const block = (text: string) => {
+      const start = text.indexOf(APPLICATION_START);
+      const end = text.indexOf(APPLICATION_END);
+      if (
+        start >= 0 !== end >= 0 ||
+        (start >= 0 &&
+          (end < start ||
+            text.indexOf(APPLICATION_START, start + APPLICATION_START.length) >=
+              0 ||
+            text.indexOf(APPLICATION_END, end + APPLICATION_END.length) >= 0))
+      )
+        throw new Error("Keep both application control markers together");
+      return start >= 0
+        ? text.slice(start, end + APPLICATION_END.length)
+        : null;
+    };
+    const nextBlock = block(body);
+    const previousBlock = block(parseMarkdownDocument(previous.markdown).body);
+    if (
+      nextBlock &&
+      nextBlock !== previousBlock &&
+      nextBlock !== applicationMarkdownBlock(application)
+    )
+      throw new Error(
+        "Application facts come from the submitted intake. Edit the application and resubmit instead of changing its generated Markdown.",
+      );
+    body = projectApplicationMarkdown(
+      body,
+      application,
+      request.intakeSnapshot,
+    );
+  }
   const markdown = stringifyMarkdownDocument(
     { ...parsed.frontmatter, visibility },
-    parsed.body,
+    body,
   );
   const document = await saveMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
@@ -149,7 +191,22 @@ export async function listPacketDocuments(
   return {
     requestId: request._id,
     packetRevision: request.packetRevision ?? 0,
-    documents: projection.documents,
+    documents: projection.documents.map((document) => {
+      const application = submittedIntakeApplication(request);
+      if (document.filename !== "public.md" || !application) return document;
+      const parsed = parseMarkdownDocument(document.markdown);
+      return {
+        ...document,
+        markdown: stringifyMarkdownDocument(
+          parsed.frontmatter,
+          projectApplicationMarkdown(
+            parsed.body,
+            application,
+            request.intakeSnapshot,
+          ),
+        ),
+      };
+    }),
     clientWiki: wiki
       ? {
           orgId: wiki.orgId,
@@ -186,6 +243,15 @@ async function brokerPacketProjection(
   const visibleSections = projection.sections.map(
     ({ key, heading, body, order }) => ({ key, heading, body, order }),
   );
+  const intakeFiles = await ctx.db
+    .query("requestIntakeFiles")
+    .withIndex("request", (q) => q.eq("requestId", request._id))
+    .take(30);
+  const intakeCategories = new Map(
+    intakeFiles
+      .filter((file) => file.clientFileId)
+      .map((file) => [String(file.clientFileId), file.category]),
+  );
   const files = (
     await Promise.all(
       fileItems
@@ -209,6 +275,10 @@ async function brokerPacketProjection(
             return null;
           return {
             fileItemId: item._id,
+            documentCategory:
+              item.documentCategory ??
+              intakeCategories.get(String(file._id)) ??
+              "supporting",
             clientFileId: file._id,
             name: item.label || file.name,
             contentType: file.contentType,
@@ -753,6 +823,7 @@ async function packetAccessByToken(ctx: QueryCtx, token: string) {
   const outreach = link.outreachId ? await ctx.db.get(link.outreachId) : null;
   if (
     !request ||
+    request.deletedAt ||
     request.clientOrgId !== link.clientOrgId ||
     (link.outreachId && (!outreach || outreach.requestId !== request._id))
   )
@@ -778,6 +849,7 @@ export const getByToken = query({
     const siteUrl = process.env.CONVEX_SITE_URL?.trim() || getClientPortalUrl();
     return {
       state: "ready" as const,
+      title: request.title,
       recipientLabel: link.recipientLabel,
       contactEmail: procurementForwardingAddress(
         request.inboxToken,
@@ -792,6 +864,7 @@ export const getByToken = query({
         return {
           _id: file.fileItemId,
           name: file.name,
+          documentCategory: file.documentCategory,
           brokerRelease: file.release,
           downloadUrl:
             file.release === "attached" ? downloadUrl.toString() : null,

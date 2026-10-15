@@ -9,7 +9,6 @@ import { webmcpEnabled } from "@/lib/flags";
 import { WebMcpProvider, WebMcpToolsLoader } from "@/lib/webmcp/runtime";
 import { AutoSaveStatusProvider } from "@/components/ui/auto-save-status";
 import { AppToaster } from "@/components/ui/toaster";
-import { SmoothCornersProvider } from "@claritylabs-inc/ui/components/smooth-corners-provider";
 import { BrandThemeApplier } from "@/components/brand-theme-applier";
 import { getClientPortalUrl } from "@/convex/lib/domains";
 import { typeStyle } from "@/lib/typography";
@@ -124,7 +123,6 @@ export default async function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} ${redaction.variable} ${redaction35.variable} ${redaction50.variable} ${redaction70.variable} ${redaction100.variable} ${typeStyle("body.root")}`}
         >
-          <SmoothCornersProvider />
           <ConvexClientProvider>
             <AutoSaveStatusProvider>
               <BrandThemeApplier />

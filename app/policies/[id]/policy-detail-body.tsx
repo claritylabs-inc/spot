@@ -20,7 +20,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@claritylabs-inc/ui/components/tabs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -77,10 +81,7 @@ import {
   useReextractControl,
 } from "@/components/shared/reextract-control";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
-import {
-  extractionState,
-  hasFinalExtraction,
-} from "@/lib/extraction-state";
+import { extractionState, hasFinalExtraction } from "@/lib/extraction-state";
 import { typeStyle } from "@/lib/typography";
 
 type PolicyDetailTab =
@@ -385,9 +386,7 @@ export function PolicyDetailBody({
     ),
   );
   const policySummary = useCachedPolicySummary(id as Id<"policies">);
-  const fullPolicy = useCachedPolicyDetail(
-    id as Id<"policies">,
-  );
+  const fullPolicy = useCachedPolicyDetail(id as Id<"policies">);
   const policy = fullPolicy ?? policySummary;
   const history = useCachedQuery(
     "policyVersions.listByPolicy",
@@ -405,7 +404,10 @@ export function PolicyDetailBody({
     api.certificates.listActivityByPolicy,
     { policyId: id as Id<"policies"> },
   );
-  const hasCertificates = (certificates?.length ?? 0) > 0 || (certificateActivity?.certificates.length ?? 0) > 0 || (certificateActivity?.holds.length ?? 0) > 0;
+  const hasCertificates =
+    (certificates?.length ?? 0) > 0 ||
+    (certificateActivity?.certificates.length ?? 0) > 0 ||
+    (certificateActivity?.holds.length ?? 0) > 0;
   const fileUrl = useCachedQuery(
     "policies.getPolicyFileUrl.detail",
     api.policies.getPolicyFileUrl,
@@ -482,8 +484,11 @@ export function PolicyDetailBody({
     (!isRejectedDocument &&
       [displayName, policyNumber]
         .filter(
-          (value) => value &&
-            !/^(unknown|extracting\.{0,3}|not applicable|n\/a)$/i.test(value.trim()),
+          (value) =>
+            value &&
+            !/^(unknown|extracting\.{0,3}|not applicable|n\/a)$/i.test(
+              value.trim(),
+            ),
         )
         .join(" ")) ||
     (p.fileName as string | undefined) ||
@@ -497,7 +502,8 @@ export function PolicyDetailBody({
   const reviewQuestions = extractionReviewQuestions(p);
   const hasExtractionReviews = reviewQuestions.length > 0;
   const coverageBreakdown = buildCoverageBreakdown(p);
-  const hasCoverages = coverageBreakdown.all.length > 0 || coverageBreakdown.schedules.length > 0;
+  const hasCoverages =
+    coverageBreakdown.all.length > 0 || coverageBreakdown.schedules.length > 0;
   const visibleTabs = [
     { id: "details" as const, label: "Details" },
     ...(!isRejectedDocument && hasCoverages
@@ -649,9 +655,7 @@ export function PolicyDetailBody({
     }
     onBreadcrumb(
       <span className="inline-flex min-w-0 items-center gap-2">
-        <span className="truncate">
-          {breadcrumbLabel}
-        </span>
+        <span className="truncate">{breadcrumbLabel}</span>
         {operatorMode && Boolean(p.isDemo) ? (
           <Badge variant="ghost" className="shrink-0 text-muted-foreground">
             Demo data
@@ -719,7 +723,9 @@ export function PolicyDetailBody({
             size="compact"
             onClick={() => {
               if (!isPolicyFinal) {
-                toast.message("Available once Spot finishes reading this policy");
+                toast.message(
+                  "Available once Spot finishes reading this policy",
+                );
                 return;
               }
               setSelectedCertificate(null);
@@ -958,15 +964,50 @@ export function PolicyDetailBody({
         </Tabs>
       ) : null}
 
-      {visibleActiveTab === "details" && (
-        <PolicyDetailsTab
-          policy={policy}
-          state={state}
-          fileUrl={fileUrl}
-          canEdit={canEditPolicyDetails}
-          onEdit={openPolicyDetailsEditor}
-        />
-      )}
+      {visibleActiveTab === "details" &&
+        (operatorMode && canEditPolicyDetails && fullPolicy ? (
+          <div className="space-y-5">
+            {(
+              [
+                "overview",
+                "insured",
+                "producer",
+                "insurer",
+                "generalAgent",
+              ] as const
+            ).map((section) => (
+              <section key={section} className="space-y-3">
+                <h2 className={typeStyle("heading.item")}>
+                  {
+                    {
+                      overview: "Overview",
+                      insured: "Insured",
+                      producer: "Producer",
+                      insurer: "Insurer",
+                      generalAgent: "General agent",
+                    }[section]
+                  }
+                </h2>
+                <PolicyDetailsEditor
+                  key={`${fullPolicy._id}:${section}`}
+                  inline
+                  policy={fullPolicy}
+                  section={section}
+                  open
+                  onOpenChange={() => {}}
+                />
+              </section>
+            ))}
+          </div>
+        ) : (
+          <PolicyDetailsTab
+            policy={policy}
+            state={state}
+            fileUrl={fileUrl}
+            canEdit={!operatorMode && canEditPolicyDetails}
+            onEdit={!operatorMode ? openPolicyDetailsEditor : undefined}
+          />
+        ))}
 
       {visibleActiveTab === "sections" && operatorMode ? (
         <PolicySectionsTab policyId={policy._id} fileUrl={fileUrl} />
@@ -977,7 +1018,18 @@ export function PolicyDetailBody({
       ) : null}
 
       {visibleActiveTab === "coverages" && fullPolicy ? (
-        <PolicyCoveragesTab policy={fullPolicy} fileUrl={fileUrl} />
+        operatorMode && canEditExtractedFields && !readOnly && !isArchived ? (
+          <PolicyBreakdownEditor
+            key={fullPolicy._id}
+            inline
+            policy={fullPolicy}
+            readOnly={false}
+            open
+            onOpenChange={() => {}}
+          />
+        ) : (
+          <PolicyCoveragesTab policy={fullPolicy} fileUrl={fileUrl} />
+        )
       ) : null}
 
       {visibleActiveTab === "review" && hasExtractionReviews && (

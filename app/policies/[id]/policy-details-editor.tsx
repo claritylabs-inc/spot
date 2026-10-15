@@ -1,11 +1,13 @@
 "use client";
+import { RemoveButton } from "@/components/ui/remove-button";
+import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import { isValidPhoneNumber } from "react-phone-number-input";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
@@ -337,12 +339,10 @@ function TextField({
 }) {
   const errorId = `${id}-error`;
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id} className={`text-muted-foreground ${typeStyle("label.field")}`}>
-        {label}
-      </Label>
+    <InlineFieldRow label={label}>
       <Input
         id={id}
+        aria-label={label}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -353,11 +353,14 @@ function TextField({
         aria-describedby={error ? errorId : undefined}
       />
       {error ? (
-        <p id={errorId} className={`text-destructive ${typeStyle("caption.default")}`}>
+        <p
+          id={errorId}
+          className={`text-destructive ${typeStyle("caption.default")}`}
+        >
           {error}
         </p>
       ) : null}
-    </div>
+    </InlineFieldRow>
   );
 }
 
@@ -451,7 +454,9 @@ export function PolicyDetailsEditor({
   section,
   open,
   onOpenChange,
+  inline = false,
 }: {
+  inline?: boolean;
   policy: Record<string, unknown> & { _id: Id<"policies"> };
   section: PolicyDetailsEditSection;
   open: boolean;
@@ -459,16 +464,19 @@ export function PolicyDetailsEditor({
 }) {
   const updatePolicyDetails = useMutation(api.policies.updatePolicyDetails);
   const [draft, setDraft] = useState(() => draftFromPolicy(policy));
-  const update = useMemo(() => updateFromDraft(section, draft), [draft, section]);
+  const update = useMemo(
+    () => updateFromDraft(section, draft),
+    [draft, section],
+  );
   const producerEmailInvalid = Boolean(
     section === "producer" &&
-      draft.producerEmail.trim() &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.producerEmail.trim()),
+    draft.producerEmail.trim() &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.producerEmail.trim()),
   );
   const producerPhoneInvalid = Boolean(
     section === "producer" &&
-      draft.producerPhone.trim() &&
-      !isValidPhoneNumber(draft.producerPhone),
+    draft.producerPhone.trim() &&
+    !isValidPhoneNumber(draft.producerPhone),
   );
 
   const autoSave = useLocalFirstAutoSave({
@@ -477,7 +485,7 @@ export function PolicyDetailsEditor({
     valueKey: JSON.stringify(update),
     resetKey: `${policy._id}:${section}`,
     canSave: !producerEmailInvalid && !producerPhoneInvalid,
-    autoSave: false,
+    autoSave: inline,
     flush: (args) => updatePolicyDetails(args),
     applyLocal: (store, args) => {
       for (const cacheName of ["policies.get", "policies.getSummary"]) {
@@ -665,10 +673,8 @@ export function PolicyDetailsEditor({
               placeholder="Organization name"
               autoComplete="organization"
             />
-            <PillButton
+            <RemoveButton
               type="button"
-              size="compact"
-              variant="icon"
               label={`Remove ${name || "additional named insured"}`}
               onClick={() => {
                 setDraft((current) => ({
@@ -680,9 +686,7 @@ export function PolicyDetailsEditor({
                 }));
                 saveAfterChange();
               }}
-            >
-              <Trash2 className="size-3.5" />
-            </PillButton>
+            />
           </div>
         ))}
       </FormSection>
@@ -758,7 +762,9 @@ export function PolicyDetailsEditor({
         onBlur={() => void saveNow()}
         autoComplete="email"
         placeholder="producer@example.com"
-        error={producerEmailInvalid ? "Enter a valid email address." : undefined}
+        error={
+          producerEmailInvalid ? "Enter a valid email address." : undefined
+        }
       />
       <AddressEditor
         idPrefix="policy-producer"
@@ -813,9 +819,7 @@ export function PolicyDetailsEditor({
         <AddressEditor
           idPrefix={`policy-${party}`}
           label={
-            isInsurer
-              ? "Carrier / insurer address"
-              : "General Agent address"
+            isInsurer ? "Carrier / insurer address" : "General Agent address"
           }
           value={partyAddress}
           onChange={(nextAddress) =>
@@ -831,18 +835,29 @@ export function PolicyDetailsEditor({
     );
   };
 
-  return (
-    <SettingsDrawer
-      open={open}
-      onOpenChange={handleOpenChange}
-      title={SECTION_TITLES[section]}
-    >
+  const content = (
+    <>
       <AutoSaveStatus status={autoSave.status} />
       {section === "overview" ? renderOverview() : null}
       {section === "insured" ? renderInsured() : null}
       {section === "producer" ? renderProducer() : null}
       {section === "insurer" ? renderParty("insurer") : null}
       {section === "generalAgent" ? renderParty("generalAgent") : null}
+    </>
+  );
+  if (inline)
+    return (
+      <div data-operator-form data-operator-inline-fields>
+        <InlineFieldCard>{content}</InlineFieldCard>
+      </div>
+    );
+  return (
+    <SettingsDrawer
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={SECTION_TITLES[section]}
+    >
+      {content}
     </SettingsDrawer>
   );
 }
