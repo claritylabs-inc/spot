@@ -29,7 +29,10 @@ function assertSupportedRoute(
   route: ModelRoute,
   models: RouterModelEntry[] | null,
 ) {
-  if (!isConfigurableModelProvider(route.provider) || route.model.length === 0) {
+  if (
+    !isConfigurableModelProvider(route.provider) ||
+    route.model.length === 0
+  ) {
     throw new Error(
       `${PROVIDER_LABELS[route.provider] ?? route.provider} model ${route.model} is not available`,
     );
@@ -49,7 +52,8 @@ function assertSupportedRoute(
         ? "Voice transcription requires an audio transcription model"
         : routeId === "embeddings"
           ? "Embeddings requires an embedding model"
-          : routeId === OPERATOR_AGENT_MODEL_ROUTE_ID || routeId === "chat_vision"
+          : routeId === OPERATOR_AGENT_MODEL_ROUTE_ID ||
+              routeId === "chat_vision"
             ? "This route requires an image-capable language model"
             : `${routeId} is not supported by ${route.model}`,
     );
@@ -183,9 +187,10 @@ const RETIRED_ROUTE_KEYS = [
 
 const STRIP_RETIRED_ROUTES_BATCH_SIZE = 50;
 
-function stripRetiredRouteKeys(
-  routes: Record<string, unknown> | undefined,
-): { routes: Record<string, unknown> | undefined; strippedCount: number } {
+function stripRetiredRouteKeys(routes: Record<string, unknown> | undefined): {
+  routes: Record<string, unknown> | undefined;
+  strippedCount: number;
+} {
   if (!routes) return { routes, strippedCount: 0 };
   let strippedCount = 0;
   const next = { ...routes };
@@ -238,9 +243,10 @@ export const stripRetiredRoutesInternal = internalMutation({
       }
     }
 
-    const page = await ctx.db
-      .query("brokerModelSettings")
-      .paginate({ numItems: STRIP_RETIRED_ROUTES_BATCH_SIZE, cursor: args.cursor ?? null });
+    const page = await ctx.db.query("brokerModelSettings").paginate({
+      numItems: STRIP_RETIRED_ROUTES_BATCH_SIZE,
+      cursor: args.cursor ?? null,
+    });
 
     let brokerRowsUpdated = 0;
     let brokerKeysStripped = 0;
@@ -293,9 +299,23 @@ export const setOperatorAgentRouteInternal = internalMutation({
       explicitRouteOverrides: [...explicit],
     };
     if (!settings) {
-      throw new Error("globalModelSettings has no default row to update");
+      const operator = await ctx.db
+        .query("operatorProfiles")
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .first();
+      if (!operator)
+        throw new Error(
+          "An active operator is required to initialize model settings",
+        );
+      await ctx.db.insert("globalModelSettings", {
+        key: "default",
+        updatedBy: operator.userId,
+        ...patch,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.patch(settings._id, { ...patch, updatedAt: Date.now() });
     }
-    await ctx.db.patch(settings._id, { ...patch, updatedAt: Date.now() });
     return route;
   },
 });
@@ -343,9 +363,10 @@ export const clearOperatorModelOverridesInternal = internalMutation({
       }
     }
 
-    const page = await ctx.db
-      .query("brokerModelSettings")
-      .paginate({ numItems: CLEAR_OVERRIDES_BATCH_SIZE, cursor: args.cursor ?? null });
+    const page = await ctx.db.query("brokerModelSettings").paginate({
+      numItems: CLEAR_OVERRIDES_BATCH_SIZE,
+      cursor: args.cursor ?? null,
+    });
 
     let brokerRowsCleared = 0;
     for (const row of page.page) {

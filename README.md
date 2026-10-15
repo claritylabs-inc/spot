@@ -45,9 +45,24 @@ For a non-Conductor checkout:
 ```bash
 nvm use
 npm ci
+```
+
+Keep the local Convex backend running in one terminal:
+
+```bash
 CONVEX_AGENT_MODE=anonymous npx convex dev
+```
+
+Start Next.js in a second terminal:
+
+```bash
 npm run dev
 ```
+
+`npm run dev` starts only the web server. If `.env.local` points to
+`http://127.0.0.1:3210`, Convex must also be running there; otherwise signup
+and other backend requests fail with `ECONNREFUSED`. Restart Convex using the
+first command, keeping the same local deployment and database.
 
 Then open `http://localhost:8080`.
 
