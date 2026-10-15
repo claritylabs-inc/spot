@@ -100,6 +100,12 @@ try {
   const tab = (await browserCdp.send("Target.getTargets", { filter: [{ type: "tab" }] })).targetInfos.find((item) => item.url.startsWith(fixtureOrigin));
   await browserCdp.send("Extensions.triggerAction", { id, targetId: tab.targetId });
   pass("toolbar action opens actual side panel and grants activeTab");
+  // Interact with the same packaged panel in its tab without a second native
+  // sidebar competing for pointer coordinates in this headless browser window.
+  await panel.evaluate(async () => {
+    const current = await chrome.windows.getCurrent();
+    await chrome.sidePanel.close({ windowId: current.id });
+  });
   const capture = async () => {
     await target.bringToFront();
     await panel.evaluate(() => document.querySelector("#capture").click());
@@ -122,6 +128,11 @@ try {
   await frame.getByRole("button", { name: "Close page context" }).click();
   await frame.getByRole("button", { name: "Remove spot-page-context.txt" }).click();
   await frame.getByRole("button", { name: "History", exact: true }).click();
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector("#capture").click());
+  await frame.getByText("Page waiting for a chat", { exact: true }).waitFor();
+  await frame.getByRole("button", { name: "Remove Page waiting for a chat" }).click();
+  pass("capture waiting in history is visible and dismissible");
   await frame.getByRole("button", { name: "Ask anything", exact: true }).press("Enter");
   assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
   pass("removed capture stays removed across history/new chat");

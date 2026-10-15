@@ -945,15 +945,16 @@ The VM has no desktop/display, so the run uses actual Chrome in headless mode.
 The toolbar action opens a real side panel; the same packaged panel page is also
 opened in a tab for Playwright interaction and screenshots.
 
-Passed in the initial integrated Chrome 155 run: normal app session reuse in the
+Passed in the final integrated Chrome 155 run (18 checks): normal app session reuse in the
 sandboxed iframe; intake and signed-out gates; no capture on open; temporary tab
 permission denial/recovery and toolbar grant; whole-page and selection capture;
 source preview and exclusion of form values, hidden content and URL query/hash;
 draft preservation; removal without reattachment; rejection of wrong-origin,
 stale-session, oversized and invalid-URL messages; excluded selections never
 widening to whole-page capture; message/file persistence after reload; capture in
-an existing conversation; narrow dark rendering. Final review corrections are
-rerun with the same script before acceptance.
+an existing conversation; narrow dark rendering; visible/dismissible pending
+capture in history; preservation of the main app's dock layout; Escape keeping
+the sidebar open; and links outside the layout opening in a separate app tab.
 
 Blocked: live model response. The unmodified web dock and the sidebar both hit
 `router_rejected: The job callback is not permitted` in this local environment.

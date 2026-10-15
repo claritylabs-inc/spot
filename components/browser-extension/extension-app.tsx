@@ -6,7 +6,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import { AgentDockBar } from "@/components/agent-dock/agent-dock-bar";
 import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
-import { DockBody } from "@/components/agent-dock/agent-dock-layout";
+import { AGENT_CHAT_SURFACE, DockBody } from "@/components/agent-dock/agent-dock-layout";
 import {
   AgentDockProvider,
   useAgentDock,
@@ -33,9 +33,6 @@ const PdfPanel = dynamic(
     import("@/components/ui/pdf-panel").then((m) => ({ default: m.PdfPanel })),
   { ssr: false },
 );
-
-const CHAT_SURFACE =
-  "bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#0b0c0d]";
 
 /**
  * Links never navigate the sidebar frame; they open in a normal browser tab.
@@ -171,7 +168,7 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
     <div
       className={cn(
         "relative flex h-dvh w-full min-w-0 flex-col overflow-hidden text-foreground",
-        CHAT_SURFACE,
+        AGENT_CHAT_SURFACE,
       )}
     >
       <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">

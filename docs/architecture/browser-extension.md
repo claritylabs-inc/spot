@@ -5,6 +5,8 @@ The chat, history, attachments, policy citations and approval views reuse the
 existing client agent components. Conversation storage, authorization, tools
 and durable execution remain in Spot. There is no extension-specific agent or
 provider credential.
+Sidebar tabs and layout preferences use their own user/organization-scoped
+storage key, so opening the sidebar does not change the main app's dock layout.
 
 ## Owners
 
