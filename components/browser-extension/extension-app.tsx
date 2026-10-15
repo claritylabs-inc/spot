@@ -1,10 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import { AgentDockBar } from "@/components/agent-dock/agent-dock-bar";
+import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
 import { DockBody } from "@/components/agent-dock/agent-dock-layout";
 import {
   AgentDockProvider,
@@ -36,7 +37,11 @@ const PdfPanel = dynamic(
 const CHAT_SURFACE =
   "bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#0b0c0d]";
 
-/** Links never navigate the sidebar frame; they open in a normal browser tab. */
+/**
+ * Links never navigate the sidebar frame; they open in a normal browser tab.
+ * Installed on the document while the route is mounted so dialogs and other
+ * portaled content are covered too.
+ */
 function openLinksInTab(event: MouseEvent) {
   if (
     event.defaultPrevented ||
@@ -94,7 +99,6 @@ function ExtensionNotice({
   return (
     <div
       className="flex h-dvh w-full flex-col justify-center gap-3 bg-background px-5 text-foreground"
-      onClickCapture={openLinksInTab}
     >
       <h1 className={typeStyle("heading.micro")}>{title}</h1>
       <p className={cn("text-muted-foreground", typeStyle("body.default"))}>
@@ -155,12 +159,13 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
   const [actions, setActions] = useState<ReactNode>(null);
   const { isPdfOpen, fileUrl } = usePdf();
   const { preview } = useEntityPreview();
-  const { mode, setMode } = dock;
+  const capture = usePageCapture();
+  const closePreview = capture?.closePreview;
 
-  // The dock fills the frame, so it is never collapsed.
+  // A page preview belongs to the chat it was opened from.
   useEffect(() => {
-    if (mode !== "expanded") setMode("expanded");
-  }, [mode, setMode]);
+    closePreview?.();
+  }, [closePreview, dock.activeThreadId, dock.view]);
 
   return (
     <div
@@ -168,7 +173,6 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
         "relative flex h-dvh w-full min-w-0 flex-col overflow-hidden text-foreground",
         CHAT_SURFACE,
       )}
-      onClickCapture={openLinksInTab}
     >
       <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
         <span
@@ -179,6 +183,14 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
         </span>
         <OpenSpotButton />
       </header>
+      {capture?.pending ? (
+        <div className="flex shrink-0 items-center border-b border-border px-3 py-1.5">
+          <AgentDockContextChip
+            label="Page waiting for a chat"
+            onRemove={capture.dismiss}
+          />
+        </div>
+      ) : null}
       <DockBody
         adapter={clientDockAdapter}
         mode="expanded"
@@ -209,9 +221,11 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
 
 function ExtensionWorkspace({
   userId,
+  orgId,
   orgName,
 }: {
   userId: string;
+  orgId: string;
   orgName: string;
 }) {
   return (
@@ -219,7 +233,11 @@ function ExtensionWorkspace({
       <PdfProvider>
         <EntityPreviewProvider>
           <AppShellSlotsProvider>
-            <AgentDockProvider surface="client" userId={userId}>
+            <AgentDockProvider
+              surface="client"
+              userId={userId}
+              standaloneOrgId={orgId}
+            >
               <PageCaptureProvider>
                 <ExtensionLayout orgName={orgName} />
               </PageCaptureProvider>
@@ -277,6 +295,10 @@ function ineligibleReason(
 export function ExtensionApp() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { scope } = useSpotSync();
+  useEffect(() => {
+    document.addEventListener("click", openLinksInTab, true);
+    return () => document.removeEventListener("click", openLinksInTab, true);
+  }, []);
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
   const viewerOrg = useQuery(api.orgs.viewerOrg, isAuthenticated ? {} : "skip");
 
@@ -295,7 +317,7 @@ export function ExtensionApp() {
         body="Sign in on the Spot website, then reload this sidebar."
       >
         <PillButton
-          href="/login?next=%2Fextension"
+          href="/login"
           target="_blank"
           rel="noopener noreferrer"
           size="compact"
@@ -326,6 +348,7 @@ export function ExtensionApp() {
     <ExtensionWorkspace
       key={`${viewer._id}:${viewerOrg.org._id}`}
       userId={String(viewer._id)}
+      orgId={String(viewerOrg.org._id)}
       orgName={viewerOrg.org.name}
     />
   );
