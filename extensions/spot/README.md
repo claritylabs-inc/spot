@@ -16,6 +16,7 @@ Output goes to `extensions/spot/dist` (overwritten on every build, not committed
 The build fixes the extension ID from the public `key` in
 `config/browser-extension.json` and fails if the key does not produce the
 configured ID.
+Local builds grant access to all ports on localhost and must not be distributed.
 
 ## Load it
 
@@ -46,9 +47,12 @@ Reload in the panel). The panel shares that session; there is no separate login.
 | Host access to the Spot origin | Lets the framed app use your Spot sign-in. |
 
 There is no `cookies`, `tabs` or all-sites access. Page text excludes form
-fields, password fields, editable areas, hidden content, scripts and styles;
+fields, password fields, editable areas, HTML-hidden/ARIA-hidden content,
+CSS-hidden or transparent elements, closed detail bodies, scripts and styles;
 URLs are sent without credentials, query or fragment. Text is capped by
 `config/browser-extension.json` and marked when shortened.
+Capture is text extraction, not a screenshot: visually clipped or off-screen
+text may still be included. Review the attachment before sending it.
 
 ## Not readable
 
@@ -61,8 +65,23 @@ shadow DOM, canvases and PDFs is not captured.
 - The app must serve `/extension` and allow this extension's origin in
   `frame-ancestors`; local builds need the same on the local app. Without that
   the panel stays blank.
-- The app must send `{type:"spot:ready",version:1}` when it can stage a page;
+- The app sends `spot:ready` with protocol version 1 and a per-mount `sessionId`;
   **Use this page** stays disabled until then.
+- Captures carry that session ID and a `captureId`. The app acknowledges receipt;
+  stale-session messages are rejected. Logout/unmount disables capture.
 - Not done: Chrome Web Store or Edge Add-ons submission or review. An Edge
   listing may be assigned a different extension ID, which the app's allowed
   origin would need to include.
+
+## Local workflow QA
+
+With `npm run conductor:dev` running and the synthetic Cove fixture present:
+
+```bash
+node scripts/browser-extension-e2e.mjs
+```
+
+This uses installed Chrome, the local backend and fresh captured email OTPs.
+It temporarily changes the synthetic client's access status and restores it.
+Results and screenshots are written to `.context/qa/extension/`. See the coverage
+ledger for the live-model and Edge checks that remain unverified.

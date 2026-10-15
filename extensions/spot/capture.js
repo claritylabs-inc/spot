@@ -70,7 +70,7 @@ globalThis.spotCapturePage = function spotCapturePage(limits) {
           if (range && !range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
           if (++visited > MAX_NODES) {
             stopped = true;
-            return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
           }
           if (node.nodeType === Node.TEXT_NODE) {
             const parent = node.parentElement;
