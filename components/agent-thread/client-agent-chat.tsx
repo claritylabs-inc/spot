@@ -99,7 +99,7 @@ function NewClientChat({ onThreadCreated }: AgentDockChatProps) {
   const pageContext = detached ? null : currentContext;
   const suggestions = useMemo(() => pageSuggestions(pageContext), [pageContext]);
   const { registerComposer } = dock;
-  useStagePageCapture(composerRef);
+  useStagePageCapture(composerRef, !sending);
   const toggleContext = () => {
     if (!currentContext) return;
     if (detached) dock.attachContext();

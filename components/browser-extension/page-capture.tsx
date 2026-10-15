@@ -25,6 +25,7 @@ type PendingCapture = { id: number; file: File };
 type PageCaptureValue = {
   pending: PendingCapture | null;
   consume: (id: number) => void;
+  dismiss: () => void;
   preview: string | null;
   openPreview: (text: string) => void;
   closePreview: () => void;
@@ -69,6 +70,7 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
       if (!context || typeof event.data.captureId !== "string" || event.data.captureId.length > 80) return;
       nextId.current += 1;
       setPending({ id: nextId.current, file: pageCaptureFile(context) });
+      setPreview(null);
       window.parent.postMessage(
         { type: "spot:received", version: BROWSER_EXTENSION_READY.version, sessionId, captureId: event.data.captureId },
         BROWSER_EXTENSION_ORIGIN,
@@ -93,11 +95,12 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
     (id: number) => setPending((current) => (current?.id === id ? null : current)),
     [],
   );
+  const dismiss = useCallback(() => setPending(null), []);
   const openPreview = useCallback((text: string) => setPreview(text), []);
   const closePreview = useCallback(() => setPreview(null), []);
   const value = useMemo(
-    () => ({ pending, consume, preview, openPreview, closePreview }),
-    [closePreview, consume, openPreview, pending, preview],
+    () => ({ pending, consume, dismiss, preview, openPreview, closePreview }),
+    [closePreview, consume, dismiss, openPreview, pending, preview],
   );
 
   return (
@@ -114,15 +117,20 @@ export function usePageCapture() {
 /**
  * Stages the pending capture into the composer once it is mounted, then
  * consumes it so removing the attachment or switching chats cannot bring it back.
+ * While `enabled` is false (a send is in flight) the capture waits for the next
+ * writable composer.
  */
 export function useStagePageCapture(
   composerRef: RefObject<{ addFiles: (files: File[]) => boolean } | null>,
+  enabled = true,
 ) {
   const capture = usePageCapture();
   const stagedId = useRef<number | null>(null);
   useEffect(() => {
     const pending = capture?.pending;
-    if (!capture || !pending || stagedId.current === pending.id) return;
+    if (!enabled || !capture || !pending || stagedId.current === pending.id) {
+      return;
+    }
     if (!composerRef.current?.addFiles([pending.file])) return;
     stagedId.current = pending.id;
     capture.consume(pending.id);

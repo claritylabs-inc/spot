@@ -318,7 +318,6 @@ export function UnifiedThreadContent({
   const clearPageContext = useMutation(api.threads.clearPageContext);
   const generateUploadUrl = useMutation(api.threads.generateUploadUrl);
   const chatInputRef = useRef<ChatComposerHandle>(null);
-  useStagePageCapture(chatInputRef);
   const lastAutoOpenedEmailId = useRef<string | null>(null);
   const autoOpenPdfThreadId = useRef<string | null>(null);
   const seenAssistantPdfKeys = useRef<Set<string>>(new Set());
@@ -499,6 +498,7 @@ export function UnifiedThreadContent({
     );
   }, [messages]);
   const isInputBusy = isSubmitting || sendingQueuedNow;
+  useStagePageCapture(chatInputRef, !isInputBusy);
 
   const sendThreadMessage = useCallback(
     (message: PromptInputMessage) => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
+import { toast } from "sonner";
 
 import {
   useCallback,
@@ -163,6 +164,7 @@ function AttachmentTags({
                   void fetch(file.url)
                     .then((response) => response.text())
                     .then(pageCapture.openPreview)
+                    .catch(() => toast.error("Could not open the page context"))
                 }
               >
                 {file.filename}
