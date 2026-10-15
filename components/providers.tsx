@@ -5,6 +5,7 @@ import { ConvexReactClient } from "convex/react";
 import { ReactNode, useEffect } from "react";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { SpotSyncProvider } from "@/lib/sync/spot-sync";
+import { SpotAnalytics } from "@/components/analytics";
 import { SpotBackgroundTasks } from "@/components/background-tasks";
 
 const convex = new ConvexReactClient(
@@ -48,6 +49,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
     <ConvexAuthNextjsProvider client={convex}>
       <SpotSyncProvider>
         <StaticAssetServiceWorker />
+        <SpotAnalytics />
         <ThemeProvider>
           <SpotBackgroundTasks>{children}</SpotBackgroundTasks>
         </ThemeProvider>

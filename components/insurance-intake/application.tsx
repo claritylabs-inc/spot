@@ -1,4 +1,5 @@
 "use client";
+import { captureAnalytics } from "@/lib/analytics";
 import dayjs from "dayjs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
@@ -1181,6 +1182,7 @@ function Application({
             );
         },
       });
+      captureAnalytics("intake_upload_finished", { category, success: outcome.status === "success" });
       if (outcome.status !== "success")
         setError(
           outcome.status === "error" && outcome.error instanceof Error
@@ -1242,8 +1244,13 @@ function Application({
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (ready) captureAnalytics("intake_step_viewed", { step });
+  }, [ready, step]);
+
   async function finalize() {
     if (!data) return;
+    captureAnalytics("intake_submission_started", { resubmit: !!data.submitted });
     setBusy(true);
     setError("");
     try {
@@ -1255,6 +1262,7 @@ function Application({
         confirmedAccurateAndAuthorized: submissionConfirmed,
         expectedRevision: state.current.revision,
       });
+      captureAnalytics(data.submitted ? "intake_resubmitted" : "intake_submitted");
       try {
         localStorage.removeItem(key);
         if (data?.verified)
@@ -1271,6 +1279,7 @@ function Application({
       window.scrollTo({ top: 0, behavior: "instant" });
     } catch (e) {
       intentionalRedirect.current = false;
+      captureAnalytics("intake_submission_failed");
       setError(getUserFacingErrorMessage(e, "Could not finalize"));
     } finally {
       setBusy(false);
