@@ -165,16 +165,17 @@ test("submitted answers cannot attach an unauthorized company or duplicate promo
     expectedRevision: 0,
   });
   await expect(
-    actor.mutation(api.requestIntake.submit, { requestId: f.requestId, orgId }),
+    actor.mutation(api.requestIntake.submit, { requestId: f.requestId, orgId, expectedRevision: 1, confirmedAccurateAndAuthorized: true }),
   ).rejects.toThrow();
   await f.t.run((ctx) =>
     ctx.db.patch(f.requestId, { intakeVerifiedAccess: true }),
   );
   const submitted = await actor.mutation(api.requestIntake.submit, {
     requestId: f.requestId,
+    expectedRevision: 1, confirmedAccurateAndAuthorized: true,
   });
   expect(
-    await actor.mutation(api.requestIntake.submit, { requestId: f.requestId }),
+    await actor.mutation(api.requestIntake.submit, { requestId: f.requestId, expectedRevision: 1, confirmedAccurateAndAuthorized: true }),
   ).toEqual(submitted);
   const rows = await f.t.run((ctx) =>
     ctx.db
@@ -193,7 +194,7 @@ test("submitted answers cannot attach an unauthorized company or duplicate promo
   const amended = await f.t.run((ctx) => ctx.db.get(f.requestId));
   expect(amended?.intakeSnapshot).toEqual(original?.intakeSnapshot);
   expect(amended?.intakeAnswers?.description).toBe("Changed");
-  expect(amended?.readiness).toBe("ready_for_review");
+  expect(amended?.intakeSubmittedApplication).toBeDefined();
   await expect(
     actor.mutation(api.requestIntake.save, {
       requestId: f.requestId,

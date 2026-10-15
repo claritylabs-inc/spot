@@ -284,8 +284,8 @@ function Application({
   );
   const submit = useMutation(api.requestIntake.submit);
   const removeUploadedFile = useMutation(api.requestIntake.removeFile);
-  const useNewCompany = useMutation(api.requestIntake.useNewCompany);
-  const useSavedCompany = useMutation(api.requestIntake.useSavedCompany);
+  const selectNewCompany = useMutation(api.requestIntake.useNewCompany);
+  const selectSavedCompany = useMutation(api.requestIntake.useSavedCompany);
   const { signIn } = useAuthActions();
   const { run } = useBackgroundTasks();
   const org = useQuery(api.orgs.viewerOrg, data?.verified ? {} : "skip");
@@ -361,13 +361,13 @@ function Application({
     const sentKey = `spot:intake-code-sent:${email.toLowerCase()}`;
     try {
       if (localStorage.getItem(sentKey)) {
-        setCodeSent(true);
+        queueMicrotask(() => setCodeSent(true));
         return;
       }
     } catch {
       /* Use this mount’s one-shot guard. */
     }
-    setSendingCode(true);
+    queueMicrotask(() => setSendingCode(true));
     void signIn("resend-otp", { email })
       .then(() => {
         setCodeSent(true);
@@ -1061,7 +1061,7 @@ function Application({
     setBusy(true);
     try {
       if (!(await flush())) return;
-      const result = await useNewCompany({
+      const result = await selectNewCompany({
         requestId,
         expectedRevision: state.current.revision,
       });
@@ -1090,7 +1090,7 @@ function Application({
     setBusy(true);
     try {
       if (!(await flush())) return;
-      const result = await useSavedCompany({
+      const result = await selectSavedCompany({
         requestId,
         expectedRevision: state.current.revision,
       });
@@ -1311,36 +1311,13 @@ function Application({
     cancellations: "Describe the cancellations or renewal declines",
   };
 
-  function yesNoDetails(
-    id: "claims" | "cancellations",
-    choiceKey: "hasClaims" | "hasCancellations",
-    label: string,
-    hint?: string,
-  ) {
-    const answer = answers[id]?.trim() || "";
-    const choice =
-      details[choiceKey] ||
-      (answer ? (/^(none|no|0)$/i.test(answer) ? "no" : "yes") : "");
-    return (
-      <>
-        <IntakeRadioChoices
-          label={label}
-          choices={["Yes", "No"]}
-          value={choice === "yes" ? "Yes" : choice === "no" ? "No" : ""}
-          onChange={(value) => {
-            changeDetails({
-              ...details,
-              [choiceKey]: value === "Yes" ? "yes" : "no",
-            });
-            if (value === "No") change(id, "No");
-            else if (/^(none|no|0)$/i.test(answer)) change(id, "");
-          }}
-        />
-        {choice === "yes" && field(id, { multiline: true, hint })}
-      </>
-    );
-  }
+  const historyField = step === 23 ? "claims" : "cancellations";
+  const historyChoiceKey = step === 23 ? "hasClaims" : "hasCancellations";
+  const historyAnswer = answers[historyField]?.trim() || "";
+  const historyChoice = details[historyChoiceKey] ||
+    (historyAnswer ? (/^(none|no|0)$/i.test(historyAnswer) ? "no" : "yes") : "");
 
+  /* eslint-disable react-hooks/refs -- These render helpers only pass ref-backed callbacks to input events; they never invoke those callbacks during render. */
   function field(
     id: IntakeField,
     options?: {
@@ -1559,6 +1536,7 @@ function Application({
       </Field>
     );
   }
+  /* eslint-enable react-hooks/refs */
   function files(
     category: "requirements" | "policy" | "loss_runs" | "supporting",
     label: string,
@@ -1731,7 +1709,6 @@ function Application({
                 <div className="flex items-center gap-3">
                   <PillButton
                     size="compact"
-                    className={typeStyle("body.large")}
                     disabled={
                       busy || uploading || sendingCode || code.length !== 6
                     }
@@ -1741,7 +1718,6 @@ function Application({
                   </PillButton>
                   <PillButton
                     size="compact"
-                    className={typeStyle("body.large")}
                     variant="ghost"
                     disabled={sendingCode || busy}
                     onClick={() => void resendEmailCode()}
@@ -1785,7 +1761,7 @@ function Application({
                         </span>
                         <Badge
                           variant="outline"
-                          className="shrink-0 rounded-full border-input px-3 py-1.5 font-medium"
+                          className={`shrink-0 rounded-full border-input px-3 py-1.5 ${typeStyle("label.field")}`}
                           aria-hidden="true"
                         >
                           Go to section
@@ -2304,21 +2280,26 @@ function Application({
         {step === 20 &&
           select("currentInsurance", ["Yes", "No", "Not sure"], true)}
         {step === 21 && files("policy", "Upload your current policies")}
-        {step === 23 &&
-          yesNoDetails(
-            "claims",
-            "hasClaims",
-            "Has your business had any claims?",
-            "Include the time period and any open claims.",
-          )}
-        {step === 24 &&
-          files("loss_runs", "Upload loss runs or claims history")}
-        {step === 25 &&
-          yesNoDetails(
-            "cancellations",
-            "hasCancellations",
-            "Has coverage been cancelled or declined for renewal?",
-          )}
+        {(step === 23 || step === 25) && (
+          <>
+            <IntakeRadioChoices
+              label={step === 23 ? "Has your business had any claims?" : "Has coverage been cancelled or declined for renewal?"}
+              choices={["Yes", "No"]}
+              value={historyChoice === "yes" ? "Yes" : historyChoice === "no" ? "No" : ""}
+              onChange={(value) => {
+                changeDetails({ ...details, [historyChoiceKey]: value === "Yes" ? "yes" : "no" });
+                if (value === "No") change(historyField, "No");
+                else if (/^(none|no|0)$/i.test(historyAnswer)) change(historyField, "");
+              }}
+            />
+            {historyChoice === "yes" && field(historyField, {
+              multiline: true,
+              hint: step === 23 ? "Include the time period and any open claims." : undefined,
+            })}
+          </>
+        )}
+        {step === 24 && files("loss_runs", "Upload loss runs or claims history")}
+
       </div>
     </IntakeFrame>
   );

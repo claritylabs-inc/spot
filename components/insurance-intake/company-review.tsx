@@ -104,7 +104,7 @@ function Address({
     : (address?.formatted || address?.street1 || fallback || "").split(/,\s*/);
   const nonempty = lines.filter((line): line is string => !!line?.trim());
   return nonempty.length ? (
-    <address className="not-italic">
+    <address className={typeStyle("body.default")}>
       {nonempty.map((line, index) => (
         <div key={index}>{line}</div>
       ))}

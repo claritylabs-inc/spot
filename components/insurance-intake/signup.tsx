@@ -123,7 +123,7 @@ function SignupForm() {
     advancing.current = true;
     void claim({ token })
       .then((id) => {
-        setHandoffTransition(true);
+        queueMicrotask(() => setHandoffTransition(true));
         router.replace(`/intake?request=${id}`);
       })
       .catch((e) => {
@@ -147,7 +147,7 @@ function SignupForm() {
       return;
     autoHandoff.current = true;
     if (!handoff.existingAccount && !handoff.claimed)
-      setHandoffTransition(true);
+      queueMicrotask(() => setHandoffTransition(true));
     queueMicrotask(() => setBusy(true));
     void (
       handoff.existingAccount || handoff.claimed

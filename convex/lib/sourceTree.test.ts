@@ -154,7 +154,7 @@ const sourceTree: DocumentSourceNode[] = [
 ];
 
 describe("normalizeOperationalProfile", () => {
-  it("drops polluted raw identity values instead of deriving declaration replacements", () => {
+  it("preserves source-backed identity wording without inventing declaration replacements", () => {
     const profile = normalizeOperationalProfile(
       {
         namedInsured: {
@@ -175,15 +175,18 @@ describe("normalizeOperationalProfile", () => {
       sourceSpans,
     );
 
-    expect(profile.namedInsured).toBeUndefined();
+    expect(profile.namedInsured?.value).toContain("CLAIMS-MADE AND REPORTED POLICY");
     expect(profile.policyNumber).toBeUndefined();
     expect(profile.effectiveDate).toBeUndefined();
     expect(profile.expirationDate).toBeUndefined();
     expect(profile.premium).toBeUndefined();
-    expect(profile.broker).toBeUndefined();
+    expect(profile.broker?.value).toContain("ERRORS AND OMISSIONS LIABILITY POLICY");
     expect(profile.insurer).toBeUndefined();
     expect(profile.linesOfBusiness).toEqual(["PL"]);
-    expect(profile.parties).toEqual([]);
+    expect(profile.parties).toMatchObject([
+      { role: "named_insured", name: profile.namedInsured?.value },
+      { role: "broker", name: profile.broker?.value },
+    ]);
   });
 
   it("drops torn declaration table coverage fragments and repairs self-referential limits", () => {

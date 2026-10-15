@@ -923,3 +923,9 @@ Added a thin `border-border-subtle` divider above Changes to resubmit, with 24px
 ### Admin navbar action sizing — October 15, 2026
 
 - Centralized operator top-bar action dimensions in the existing app-shell action slot: 32px height, common horizontal padding/gap, shared compact typography, 14px icons and 32px icon-only targets. The rule overrides page-local compact/default size differences and does not affect client navigation or page content controls.
+
+### PR #451 merge validation — October 15, 2026
+
+- Fixed intake lint failures: mutation callback names no longer look like hooks, local-storage/handoff state updates are deferred, event-only ref callbacks have a narrowly documented compiler-lint exception, and controls use existing typography roles.
+- Updated existing fixtures for explicit submission consent/revisions, current submitted-application storage, broker visibility defaults, the shared session identity helper, and Jev-owned classification/identity semantics. Authorization, stale-write, immutable-snapshot and metadata-ownership assertions remain enforced.
+- Full local suite: 183 test files passed, one skipped; 1,110 tests passed, 23 skipped. Full ESLint has zero errors (10 existing warnings); router contract validation and Convex typechecking pass. Final Next.js typecheck/build and required GitHub checks are verified before merge.

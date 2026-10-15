@@ -131,7 +131,7 @@ test("supplier company documents are operator-only even when a broker member adm
   ).toMatchObject({ body: "Supplier company knowledge" });
 });
 
-test("agent Markdown edits keep the content boundary and cannot forge source ownership metadata", async () => {
+test("agent Markdown prose is not keyword-filtered and cannot forge source ownership metadata", async () => {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const orgId = await ctx.db.insert("organizations", {
@@ -158,6 +158,7 @@ test("agent Markdown edits keep the content boundary and cannot forge source own
     });
     return { orgId, userId };
   });
+  let expectedRevision = 1;
   for (const markdown of [
     "## Notes\n\nPolicy number ABC-123.",
     "---\nnotes: Draft email awaits user approval\n---\n## Company\n\nCove builds software.",
@@ -169,17 +170,17 @@ test("agent Markdown edits keep the content boundary and cannot forge source own
           operatorUserId: ids.userId,
           source: "operator",
           markdown,
-          expectedRevision: 1,
+          expectedRevision: expectedRevision++,
         }),
       ),
-    ).rejects.toThrow(/company information/);
+    ).resolves.toMatchObject({ markdown: expect.any(String) });
   }
   const saved = await t.run((ctx) =>
     upsertOrgWikiDocumentByOperator(ctx, {
       orgId: ids.orgId,
       operatorUserId: ids.userId,
       source: "operator",
-      expectedRevision: 1,
+      expectedRevision,
       markdown:
         "---\nreviewed: 2026-09-14\n_spot:\n  manual: false\n  proposals: {}\n---\n## Operations\n\nCove builds insurance policy tools.\n\n## Custom heading\n\nCove develops software for business customers.",
     }),
@@ -188,7 +189,7 @@ test("agent Markdown edits keep the content boundary and cannot forge source own
   expect(parseMarkdownDocument(saved.markdown).frontmatter._spot).toEqual({
     manual: true,
   });
-  expect(saved.revision).toBe(2);
+  expect(saved.revision).toBe(4);
 });
 
 test("company Markdown preserves human prose while research proposes additions and stale saves fail", async () => {

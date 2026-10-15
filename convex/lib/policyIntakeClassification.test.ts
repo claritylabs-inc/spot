@@ -139,7 +139,8 @@ describe("classifyPolicyIntake", () => {
     expect(decision.reason).toContain("router down");
   });
 
-  it("short-circuits specimen policies without a decide call", async () => {
+  it("classifies specimen wording through the router", async () => {
+    respond({ classification: choice("specimen_policy_document", 0.9), relationship: choice("unknown", 0.9) });
     const decision = await classifyPolicyIntake({
       ctx,
       orgId,
@@ -148,7 +149,7 @@ describe("classifyPolicyIntake", () => {
       existingPolicies,
     });
 
-    expect(decide).not.toHaveBeenCalled();
+    expect(decide).toHaveBeenCalledOnce();
     expect(decision).toMatchObject({
       classification: "specimen_policy_document",
       shouldExtract: true,

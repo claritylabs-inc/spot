@@ -6,7 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import { clRouterDecide } from "../lib/clRouterClient";
 import { recheckOwnRequirement } from "./complianceReview";
 
-vi.mock("@convex-dev/auth/server", () => ({ getAuthUserId: vi.fn() }));
+vi.mock("../lib/sessionIdentity", () => ({ getSessionUserId: vi.fn() }));
 vi.mock("../lib/clRouterClient", () => ({ clRouterDecide: vi.fn() }));
 
 const decide = vi.mocked(clRouterDecide);
