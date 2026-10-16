@@ -3,7 +3,7 @@ import type {
   DecideResponse,
   DecisionQuestion,
 } from "../../contracts/cl-router/policy";
-import { jevProceeds } from "./jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 
 export type ConnectedEmailAutomation = {
   policyImports: boolean;
@@ -101,14 +101,10 @@ export type MailboxAutomationDecision = z.infer<
   typeof mailboxAutomationDecisionSchema
 >;
 
-type MailboxAutomationExtraction = Omit<
+/** What generation still supplies: review copy only. Every decision comes from Jev. */
+type MailboxAutomationExtraction = Pick<
   MailboxAutomationDecision,
-  | "classification"
-  | "confidence"
-  | "includeEmailBodyAsRequirements"
-  | "requirementSourceType"
-  | "requirementScope"
-  | "extractCompanyMemory"
+  "emailRef" | "reason"
 >;
 
 type MailboxQuestionKind =
@@ -119,7 +115,8 @@ type MailboxQuestionKind =
   | "body"
   | "memory"
   | "source"
-  | "scope";
+  | "scope"
+  | "attention";
 
 function mailboxQuestionId(ref: string, kind: MailboxQuestionKind) {
   return `${ref}_${kind}`;
@@ -174,9 +171,18 @@ export function mailboxEmailQuestions(
     [mailboxQuestionId(ref, "relevant")]: {
       type: "noul",
       instructions: {
-        question: `Is ${message} about commercial insurance for the mailbox owner's company (policies, coverage, certificates, renewals, claims, brokers, or insurance requirements) or does it state durable facts about the company itself?`,
+        question: `Is ${message} about commercial insurance for the mailbox owner's company (policies, coverage, certificates, renewals, claims, brokers, or insurance requirements)?`,
         inspect: `${subject}, ${snippet}, ${attachments}, and first-page images when \`firstPage\` is present`,
         not_for: "marketing, receipts, scheduling, or unrelated correspondence",
+        note: UNTRUSTED_EVIDENCE,
+      },
+    },
+    [mailboxQuestionId(ref, "attention")]: {
+      type: "noul",
+      instructions: {
+        question: `Does ${message} need a person at the mailbox owner's company to review or act on it, such as a deadline, a request for a reply, a signature, a payment, or a renewal decision?`,
+        inspect: `${subject} and ${snippet}`,
+        not_for: "informational messages that need no response",
         note: UNTRUSTED_EVIDENCE,
       },
     },
@@ -235,6 +241,30 @@ export function mailboxEmailQuestions(
 const strength = (noul: number) => Math.max(noul, 1 - noul);
 const isUnsure = (noul: number) => !jevProceeds(noul) && !jevProceeds(1 - noul);
 
+/** Which document categories Jev found in an email; code, not generation, decides. */
+export function mailboxJudgedCategories(
+  answers: DecideResponse["answers"],
+  ref: string,
+) {
+  const noul = (kind: MailboxQuestionKind) => {
+    const answer = answers[mailboxQuestionId(ref, kind)];
+    return answer?.type === "noul" && jevProceeds(answer.noul);
+  };
+  return {
+    policy: noul("policy"),
+    requirements: noul("requirements"),
+    memory: noul("context"),
+  };
+}
+
+export function mailboxNeedsAttention(
+  answers: DecideResponse["answers"],
+  ref: string,
+) {
+  const answer = answers[mailboxQuestionId(ref, "attention")];
+  return answer?.type === "noul" && jevProceeds(answer.noul);
+}
+
 export function applyMailboxAutomationJudgments(
   extracted: MailboxAutomationExtraction,
   answers: DecideResponse["answers"],
@@ -269,14 +299,14 @@ export function applyMailboxAutomationJudgments(
       ["company_context", context.noul],
     ] as const
   ).filter(([, noul]) => jevProceeds(noul));
-  const policyCategory = jevProceeds(policy.noul);
   const requirementCategory = jevProceeds(requirements.noul);
   const memoryCategory = jevProceeds(context.noul);
-  const isRelevant = jevProceeds(relevant.noul);
+  // An email is relevant when it is about insurance or conveys company facts.
+  const isRelevant = jevProceeds(relevant.noul) || memoryCategory;
   // Unsure category answers matter only for relevant emails, so a clearly
   // irrelevant email with no qualifying category stays `ignore`.
   const anyUnsure =
-    isUnsure(relevant.noul) ||
+    (!isRelevant && isUnsure(relevant.noul)) ||
     (isRelevant &&
       [policy, requirements, context].some((answer) => isUnsure(answer.noul)));
 
@@ -309,39 +339,170 @@ export function applyMailboxAutomationJudgments(
         scope.choice === "none" ? null : scope.choice,
       )
     : null;
-  return sanitizeMailboxAutomationDecision(
-    {
-      ...extracted,
-      classification,
-      reason: reason.slice(0, 500),
-      confidence: Math.min(
-        strength(policy.noul),
-        strength(requirements.noul),
-        strength(context.noul),
-        strength(relevant.noul),
-        ...(requirementCategory
-          ? [
-              source.confidence,
-              scope.confidence,
-              requirementSourceType && requirementScope ? 1 : 0,
-            ]
-          : []),
-      ),
-      policyGroups: policyCategory ? extracted.policyGroups : [],
-      requirementFilenames: requirementCategory
-        ? extracted.requirementFilenames
-        : [],
-      includeEmailBodyAsRequirements:
-        requirementCategory &&
-        jevProceeds(body.noul),
-      extractCompanyMemory:
-        memoryCategory &&
-        jevProceeds(memory.noul),
-      requirementSourceType,
-      requirementScope,
-    },
-    attachments,
+  const decision: MailboxAutomationDecision = {
+    emailRef: extracted.emailRef,
+    classification,
+    reason: reason.slice(0, 500),
+    confidence: Math.min(
+      strength(policy.noul),
+      strength(requirements.noul),
+      strength(context.noul),
+      isRelevant
+        ? Math.max(relevant.noul, context.noul)
+        : strength(relevant.noul),
+      ...(requirementCategory
+        ? [
+            jevChoiceConfidence(source),
+            jevChoiceConfidence(scope),
+            requirementSourceType && requirementScope ? 1 : 0,
+          ]
+        : []),
+    ),
+    // Attachment groupings and attention copy are filled in by later Jev checks.
+    policyGroups: [],
+    requirementFilenames: [],
+    includeEmailBodyAsRequirements:
+      requirementCategory && jevProceeds(body.noul),
+    extractCompanyMemory: memoryCategory && jevProceeds(memory.noul),
+    requirementSourceType,
+    requirementScope,
+    attentionTitle: null,
+    attentionBody: null,
+  };
+  return sanitizeMailboxAutomationDecision(decision, attachments);
+}
+
+const MAX_POLICY_PDFS = 6;
+const MAX_REQUIREMENT_ATTACHMENTS = 8;
+
+type AttachmentPlan = {
+  requirementAttachments: number[];
+  policyPdfs: number[];
+  pairs: [number, number][];
+};
+
+/** Attachments worth asking about; code picks the candidates, Jev judges them. */
+export function mailboxAttachmentPlan(
+  attachments: MailboxAttachmentSummary[],
+  categories: { policy: boolean; requirements: boolean },
+): AttachmentPlan {
+  const named = attachments.flatMap((attachment, index) =>
+    attachment.filename?.trim() ? [{ attachment, index }] : [],
   );
+  const requirementAttachments = categories.requirements
+    ? named
+        .filter(({ attachment }) => isSupportedRequirementAttachment(attachment))
+        .slice(0, MAX_REQUIREMENT_ATTACHMENTS)
+        .map(({ index }) => index)
+    : [];
+  const policyPdfs = categories.policy
+    ? named
+        .filter(({ attachment }) => isPdfMailboxAttachment(attachment))
+        .slice(0, MAX_POLICY_PDFS)
+        .map(({ index }) => index)
+    : [];
+  const pairs = policyPdfs.flatMap((left, i) =>
+    policyPdfs.slice(i + 1).map((right): [number, number] => [left, right]),
+  );
+  return { requirementAttachments, policyPdfs, pairs };
+}
+
+export function mailboxAttachmentQuestionCount(plan: AttachmentPlan) {
+  return (
+    plan.requirementAttachments.length + plan.policyPdfs.length + plan.pairs.length
+  );
+}
+
+/** Atomic per-attachment questions over `state.messages.<ref>.attachments.a<n>`. */
+export function mailboxAttachmentQuestions(
+  ref: string,
+  plan: AttachmentPlan,
+): Record<string, DecisionQuestion> {
+  const attachment = (index: number) =>
+    `\`messages.${ref}.attachments.a${index}\``;
+  const inspect = (index: number) =>
+    `the filename in ${attachment(index)} and its first-page image when \`firstPage\` is present`;
+  return {
+    ...Object.fromEntries(
+      plan.requirementAttachments.map((index) => [
+        `${ref}_req_${index}`,
+        {
+          type: "noul" as const,
+          instructions: {
+            question: `Does ${attachment(index)} impose insurance coverage requirements, as a lease, client contract, lender or investor request, or vendor standard?`,
+            inspect: inspect(index),
+            not_for:
+              "policy documents, certificates, quotes, or documents without stated insurance requirements",
+            note: UNTRUSTED_EVIDENCE,
+          },
+        },
+      ]),
+    ),
+    ...Object.fromEntries(
+      plan.policyPdfs.map((index) => [
+        `${ref}_pol_${index}`,
+        {
+          type: "noul" as const,
+          instructions: {
+            question: `Is ${attachment(index)} a bound insurance policy, declarations page, binder, or endorsement?`,
+            inspect: inspect(index),
+            not_for:
+              "quotes, applications, invoices, claims correspondence, or standalone certificates of insurance",
+            note: UNTRUSTED_EVIDENCE,
+          },
+        },
+      ]),
+    ),
+    ...Object.fromEntries(
+      plan.pairs.map(([left, right]) => [
+        `${ref}_pair_${left}_${right}`,
+        {
+          type: "noul" as const,
+          instructions: {
+            question: `Do ${attachment(left)} and ${attachment(right)} belong to the same bound policy package, meaning the same policy and policy period?`,
+            inspect: `${inspect(left)}, and ${inspect(right)}`,
+            not_for: "different policies, even from the same carrier",
+            note: UNTRUSTED_EVIDENCE,
+          },
+        },
+      ]),
+    ),
+  };
+}
+
+/**
+ * Composes the attachment answers in code: requirement files are those Jev
+ * confirms, and policy PDFs are grouped greedily so every member of a group
+ * pairs with every other member.
+ */
+export function applyMailboxAttachmentJudgments(
+  ref: string,
+  attachments: MailboxAttachmentSummary[],
+  plan: AttachmentPlan,
+  answers: DecideResponse["answers"],
+) {
+  const yes = (id: string) => {
+    const answer = answers[id];
+    return answer?.type === "noul" && jevProceeds(answer.noul);
+  };
+  const filename = (index: number) => attachments[index]?.filename?.trim() ?? "";
+  const requirementFilenames = plan.requirementAttachments
+    .filter((index) => yes(`${ref}_req_${index}`))
+    .map(filename);
+  const groups: number[][] = [];
+  for (const index of plan.policyPdfs.filter((i) => yes(`${ref}_pol_${i}`))) {
+    const group = groups.find((members) =>
+      members.every((member) => yes(`${ref}_pair_${member}_${index}`)),
+    );
+    if (group) group.push(index);
+    else groups.push([index]);
+  }
+  return {
+    requirementFilenames,
+    policyGroups: groups.map((members) => ({
+      filenames: members.map(filename),
+    })),
+  };
 }
 
 export type MailboxAttachmentSummary = {
