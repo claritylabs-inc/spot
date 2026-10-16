@@ -153,29 +153,6 @@ const connectedEmailAutomationValidator = v.object({
   companyMemory: v.boolean(),
 });
 
-const publicDemoChannelValidator = v.union(
-  v.literal("email"),
-  v.literal("imessage"),
-);
-
-const publicDemoLeadStageValidator = v.union(
-  v.literal("new"),
-  v.literal("engaged"),
-  v.literal("qualified"),
-  v.literal("booking_intent"),
-  v.literal("cta_sent"),
-  v.literal("signup_intent"),
-  v.literal("not_fit"),
-  v.literal("rate_limited"),
-);
-
-const publicDemoCtaStatusValidator = v.union(
-  v.literal("not_shown"),
-  v.literal("asked_for_email"),
-  v.literal("cal_link_sent"),
-  v.literal("signup_link_sent"),
-);
-
 const certificateSourceValidator = v.union(
   v.literal("policy_page"),
   v.literal("chat"),
@@ -3371,15 +3348,6 @@ export default defineSchema({
     .index("source", ["requirementSourceDocumentId"])
     .index("file", ["fileId"]),
 
-  // Deprecated: certificate renewal settings removed; drop after data cleanup.
-  certificateWorkflowSettings: defineTable({
-    clientOrgId: v.id("organizations"),
-    renewalReissueEnabled: v.boolean(),
-    updatedByUserId: v.optional(v.id("users")),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("client", ["clientOrgId"]),
-
   // Deprecated: certificate renewal jobs removed; drop after data cleanup.
   certificateWorkflowJobs: defineTable({
     orgId: v.id("organizations"),
@@ -3588,26 +3556,6 @@ export default defineSchema({
     .index("user_organization", ["userId", "orgId"])
     .index("preference_scope", ["userId", "orgId", "type", "channel"]),
 
-  // Deprecated: chunk retrieval removed; drop after data cleanup.
-  documentChunks: defineTable({
-    orgId: v.id("organizations"),
-    policyId: v.id("policies"),
-    chunkId: v.string(), // SDK-assigned: "${docId}:${type}:${index}"
-    chunkType: v.string(), // carrier_info, named_insured, coverage, endorsement, etc.
-    text: v.string(), // chunk content for embedding + display
-    metadata: v.optional(v.any()), // SDK metadata for filtering
-    embedding: v.array(v.float64()), // 1536-dim vector (text-embedding-3-small)
-    createdAt: v.number(),
-  })
-    .index("policy", ["policyId"])
-    .index("organization", ["orgId"])
-    .index("chunk", ["chunkId"])
-    .vectorIndex("embedding", {
-      vectorField: "embedding",
-      dimensions: 1536,
-      filterFields: ["orgId"],
-    }),
-
   // Raw source spans from PDFs, emails, attachments, and manual notes.
   // These are stable evidence units used to ground exact policy values.
   sourceSpans: defineTable({
@@ -3709,95 +3657,6 @@ export default defineSchema({
     .index("organization_group", ["orgId", "fieldGroup"])
     .index("policy_active", ["policyId", "active"])
     .index("record", ["recordHash"]),
-
-  // Deprecated: public demo removed; drop after data cleanup.
-  publicDemoConversations: defineTable({
-    channel: publicDemoChannelValidator,
-    senderHash: v.string(),
-    senderContact: v.optional(v.string()),
-    agentAddress: v.optional(v.string()),
-    leadName: v.optional(v.string()),
-    leadCompany: v.optional(v.string()),
-    leadEmail: v.optional(v.string()),
-    leadUseCase: v.optional(v.string()),
-    stage: publicDemoLeadStageValidator,
-    ctaStatus: publicDemoCtaStatusValidator,
-    safetyNoticeSent: v.optional(v.boolean()),
-    turnCount: v.number(),
-    lastMessageAt: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("channel_sender", ["channel", "senderHash"])
-    .index("activity", ["lastMessageAt"])
-    .index("stage_activity", ["stage", "lastMessageAt"])
-    .index("cta_activity", ["ctaStatus", "lastMessageAt"])
-    .index("email", ["leadEmail"]),
-
-  // Deprecated: public demo removed; drop after data cleanup.
-  publicDemoChatLogs: defineTable({
-    conversationId: v.id("publicDemoConversations"),
-    channel: publicDemoChannelValidator,
-    direction: v.union(
-      v.literal("inbound"),
-      v.literal("outbound"),
-      v.literal("system"),
-    ),
-    subject: v.optional(v.string()),
-    content: v.string(),
-    contentHtml: v.optional(v.string()),
-    modelProvider: v.optional(v.string()),
-    model: v.optional(v.string()),
-    routeSource: v.optional(v.string()),
-    transport: v.optional(v.string()),
-    toolCalls: v.optional(
-      v.array(
-        v.object({
-          name: v.string(),
-          input: v.optional(v.string()),
-          output: v.optional(v.string()),
-        }),
-      ),
-    ),
-    ctaUrl: v.optional(v.string()),
-    deliveryStatus: v.optional(v.string()),
-    deliveryId: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
-  })
-    .index("conversation_created", ["conversationId", "createdAt"])
-    .index("channel_created", ["channel", "createdAt"])
-    .index("created", ["createdAt"]),
-
-  // Deprecated: public demo removed; drop after data cleanup.
-  publicDemoSalesTranscripts: defineTable({
-    conversationId: v.id("publicDemoConversations"),
-    channel: publicDemoChannelValidator,
-    senderContact: v.optional(v.string()),
-    leadName: v.optional(v.string()),
-    leadCompany: v.optional(v.string()),
-    leadEmail: v.optional(v.string()),
-    leadUseCase: v.optional(v.string()),
-    stage: publicDemoLeadStageValidator,
-    ctaStatus: publicDemoCtaStatusValidator,
-    summary: v.string(),
-    objections: v.array(v.string()),
-    nextStep: v.string(),
-    curatedTurns: v.array(
-      v.object({
-        speaker: v.string(),
-        content: v.string(),
-        at: v.number(),
-      }),
-    ),
-    createdAt: v.number(),
-    lastUpdatedAt: v.number(),
-  })
-    .index("conversation", ["conversationId"])
-    .index("updated", ["lastUpdatedAt"])
-    .index("channel_updated", ["channel", "lastUpdatedAt"])
-    .index("stage_updated", ["stage", "lastUpdatedAt"]),
 
   policyAuditLog: defineTable({
     policyId: v.optional(v.id("policies")),
@@ -5155,14 +5014,6 @@ export default defineSchema({
     count: v.number(),
     lastRequestMs: v.number(),
   }).index("token", ["tokenId"]),
-
-  // Deprecated: public demo removed; drop after data cleanup.
-  publicDemoRateCounters: defineTable({
-    rateKey: v.string(),
-    windowStart: v.number(),
-    count: v.number(),
-    lastRequestAt: v.number(),
-  }).index("key", ["rateKey"]),
 
   // ── Presence ──
 

@@ -1,68 +1,68 @@
-import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, internalQuery } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  type QueryCtx,
+} from "./_generated/server";
 
 /**
- * One-off cleanup for tables whose features were removed. Once `status`
- * reports every table empty, delete the table definitions from the schema and
- * then delete this file.
+ * One-off cleanup for the removed certificate workflow jobs feature: the
+ * `certificateWorkflowJobs` table and any `markdownDocuments` rows scoped to a
+ * job. Once `status` reports both empty, remove the table, the
+ * `certificateWorkflowJobId` field and `workflow_kind` index from the schema,
+ * and then delete this file.
  *
  *   npx convex run deprecatedTableCleanup:status
- *   npx convex run deprecatedTableCleanup:purgeAll
+ *   npx convex run deprecatedTableCleanup:purge
  *   npx convex run deprecatedTableCleanup:status
  *
  * Add `--prod` (or `--deployment-name <name>`) to target a cloud deployment.
  */
-const DEPRECATED_TABLES = [
-  "certificateWorkflowSettings",
-  "documentChunks",
-  "publicDemoConversations",
-  "publicDemoChatLogs",
-  "publicDemoSalesTranscripts",
-  "publicDemoRateCounters",
-] as const;
-
 const BATCH_SIZE = 100;
 
-/** Reports whether each deprecated table still has rows. */
+/** The index sorts rows without a job id first, so the last row has one if any do. */
+function newestJobDocuments(ctx: QueryCtx, limit: number) {
+  return ctx.db
+    .query("markdownDocuments")
+    .withIndex("workflow_kind")
+    .order("desc")
+    .take(limit);
+}
+
 export const status = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const result: Record<string, "empty" | "has rows"> = {};
-    for (const table of DEPRECATED_TABLES) {
-      const row = await ctx.db.query(table).first();
-      result[table] = row ? "has rows" : "empty";
-    }
-    return result;
+    const job = await ctx.db.query("certificateWorkflowJobs").first();
+    const [document] = await newestJobDocuments(ctx, 1);
+    return {
+      certificateWorkflowJobs: job ? "has rows" : "empty",
+      markdownDocumentsWithJobId: document?.certificateWorkflowJobId
+        ? "has rows"
+        : "empty",
+    };
   },
 });
 
-/** Deletes one batch from a table and reschedules itself until it is empty. */
+/** Deletes one batch of each and reschedules itself until both are empty. */
 export const purge = internalMutation({
-  args: { table: v.string() },
-  handler: async (ctx, args) => {
-    const table = DEPRECATED_TABLES.find((name) => name === args.table);
-    if (!table) throw new Error(`${args.table} is not a deprecated table`);
-    const rows = await ctx.db.query(table).take(BATCH_SIZE);
-    for (const row of rows) await ctx.db.delete(row._id);
-    if (rows.length === BATCH_SIZE) {
-      await ctx.scheduler.runAfter(0, internal.deprecatedTableCleanup.purge, {
-        table,
-      });
-    }
-    return { table, deleted: rows.length, done: rows.length < BATCH_SIZE };
-  },
-});
-
-/** Starts a purge for every deprecated table. */
-export const purgeAll = internalMutation({
   args: {},
   handler: async (ctx) => {
-    for (const table of DEPRECATED_TABLES) {
-      await ctx.scheduler.runAfter(0, internal.deprecatedTableCleanup.purge, {
-        table,
-      });
+    const jobs = await ctx.db.query("certificateWorkflowJobs").take(BATCH_SIZE);
+    for (const job of jobs) await ctx.db.delete(job._id);
+
+    const documents = (await newestJobDocuments(ctx, BATCH_SIZE)).filter(
+      (document) => document.certificateWorkflowJobId,
+    );
+    for (const document of documents) await ctx.db.delete(document._id);
+
+    const more = jobs.length === BATCH_SIZE || documents.length === BATCH_SIZE;
+    if (more) {
+      await ctx.scheduler.runAfter(0, internal.deprecatedTableCleanup.purge, {});
     }
-    return { scheduled: DEPRECATED_TABLES.length };
+    return {
+      deletedJobs: jobs.length,
+      deletedDocuments: documents.length,
+      done: !more,
+    };
   },
 });
