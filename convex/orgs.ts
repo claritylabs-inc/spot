@@ -1,5 +1,4 @@
 import { clientIdentity } from "./lib/clientProfile";
-import { assertNotReviewerUser, isReviewerEmail } from "./lib/reviewerAuth";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import {
@@ -75,7 +74,6 @@ async function createMemberInvitation(
   const { userId, orgId } = access;
   const email = normalizeEmail(args.email);
   if (!email) throw new Error("Email is required");
-  if (isReviewerEmail(email)) throw new Error("This address cannot be invited");
   if (isBootstrapOperatorEmail(email)) {
     throw new Error(
       "Operator emails cannot be invited to customer organizations",
@@ -834,7 +832,6 @@ export const acceptInvitation = mutation({
     }
     await assertCustomerUser(ctx, userId);
 
-    await assertNotReviewerUser(ctx, userId);
 
     // Check not already a member
     const existing = await ctx.db

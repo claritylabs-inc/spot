@@ -88,7 +88,7 @@ import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
 import { Button } from "@claritylabs-inc/ui/components/button";
-import { completeOtpSignIn } from "@/lib/otp-auth";
+import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
 import { ChevronLeft, Circle, Loader2, X } from "lucide-react";
 

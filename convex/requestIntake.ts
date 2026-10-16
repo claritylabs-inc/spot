@@ -21,7 +21,6 @@ import {
 import dayjs from "dayjs";
 import { getAuthSessionId, getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { isReviewerEmail } from "./lib/reviewerAuth";
 import { internal } from "./_generated/api";
 import {
   internalMutation,
@@ -109,7 +108,7 @@ function validateContact(name: string, email: string, phone: string) {
     !/^\+?[\d\s().-]{7,40}$/.test(contact.phone)
   )
     throw new Error("Enter your name, valid work email, and phone number.");
-  if (isBootstrapOperatorEmail(contact.email) || isReviewerEmail(contact.email))
+  if (isBootstrapOperatorEmail(contact.email))
     throw new Error("Use a customer email address.");
   return contact;
 }

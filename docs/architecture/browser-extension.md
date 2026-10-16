@@ -80,3 +80,7 @@ Run `node scripts/browser-extension-onboarding-e2e.mjs` against the native-local
 app to verify sign-in, the fixed redirect and automatic sidebar reconnection.
 It stubs only the website guide body; clarity-landing owns that page's responsive
 browser checks. The local OTP limiter remains active; allow a minute between runs.
+
+## Compact sidebar controls
+
+The embedded app owns one compact action row: Use this page, New chat, History, and More options (Open Spot/Reload). The web-app dock tabs and workspace header are omitted. The native extension toolbar is only a load-failure recovery surface. A user click posts `spot:capture-request` with the current mount session to the extension; the extension rechecks exact frame/origin/version/session and the existing activeTab grant before using the same packaged capture function. Bounded `spot:capture-status` messages return errors to the app. Page content remains a removable draft attachment and never submits automatically.

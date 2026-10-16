@@ -23,6 +23,8 @@ export const PAGE_CAPTURE_FILENAME = "spot-page-context.txt";
 type PendingCapture = { id: number; file: File };
 
 type PageCaptureValue = {
+  requestCapture: () => void;
+  captureStatus: string;
   pending: PendingCapture | null;
   consume: (id: number) => void;
   dismiss: () => void;
@@ -52,12 +54,15 @@ export function pageCaptureFile(context: BrowserPageContext) {
  * mounted composer stages it once; it never sends, edits the draft or persists.
  */
 export function PageCaptureProvider({ children }: { children: ReactNode }) {
+  const bridgeSession = useRef<string | null>(null);
+  const [captureStatus, setCaptureStatus] = useState("");
   const [pending, setPending] = useState<PendingCapture | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const nextId = useRef(0);
 
   useEffect(() => {
     const sessionId = crypto.randomUUID();
+    bridgeSession.current = sessionId;
     function handleMessage(event: MessageEvent) {
       if (
         event.source !== window.parent ||
@@ -66,11 +71,18 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
       ) {
         return;
       }
+      if (event.data?.type === "spot:capture-status" && event.data.version === BROWSER_EXTENSION_READY.version) {
+        if (typeof event.data.message === "string" && event.data.message.length <= 1000) {
+          setCaptureStatus(event.data.message);
+        }
+        return;
+      }
       const context = parseBrowserPageContext(event.data);
       if (!context || typeof event.data.captureId !== "string" || event.data.captureId.length > 80) return;
       nextId.current += 1;
       setPending({ id: nextId.current, file: pageCaptureFile(context) });
       setPreview(null);
+      setCaptureStatus("");
       window.parent.postMessage(
         { type: "spot:received", version: BROWSER_EXTENSION_READY.version, sessionId, captureId: event.data.captureId },
         BROWSER_EXTENSION_ORIGIN,
@@ -81,6 +93,7 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
       window.parent.postMessage({ ...BROWSER_EXTENSION_READY, sessionId }, BROWSER_EXTENSION_ORIGIN);
     }
     return () => {
+      bridgeSession.current = null;
       window.removeEventListener("message", handleMessage);
       if (window.parent !== window) {
         window.parent.postMessage(
@@ -91,6 +104,12 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const requestCapture = useCallback(() => {
+    if (!bridgeSession.current) return;
+    setCaptureStatus("");
+    window.parent.postMessage({ type: "spot:capture-request", version: BROWSER_EXTENSION_READY.version, sessionId: bridgeSession.current }, BROWSER_EXTENSION_ORIGIN);
+  }, []);
+
   const consume = useCallback(
     (id: number) => setPending((current) => (current?.id === id ? null : current)),
     [],
@@ -99,8 +118,8 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
   const openPreview = useCallback((text: string) => setPreview(text), []);
   const closePreview = useCallback(() => setPreview(null), []);
   const value = useMemo(
-    () => ({ pending, consume, dismiss, preview, openPreview, closePreview }),
-    [closePreview, consume, dismiss, openPreview, pending, preview],
+    () => ({ pending, consume, dismiss, preview, openPreview, closePreview, requestCapture, captureStatus }),
+    [closePreview, consume, dismiss, openPreview, pending, preview, requestCapture, captureStatus],
   );
 
   return (
