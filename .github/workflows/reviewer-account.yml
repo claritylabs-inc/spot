@@ -1,0 +1,64 @@
+name: Spot reviewer account
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Manage the isolated production demonstration account
+        required: true
+        type: choice
+        default: status
+        options:
+          - status
+          - provision
+          - rotate-password
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spot-reviewer-account
+  cancel-in-progress: false
+
+jobs:
+  account:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund --loglevel=error
+      - name: Manage reviewer account
+        env:
+          TASK: ${{ inputs.task }}
+          SPOT_REVIEWER_PASSWORD: ${{ secrets.SPOT_REVIEWER_PASSWORD }}
+        run: |
+          node --input-type=module <<'SCRIPT'
+          import { spawnSync } from "node:child_process";
+          const functions = {
+            status: "reviewerAccounts:status",
+            provision: "reviewerAccounts:provision",
+            "rotate-password": "reviewerAccounts:rotatePassword",
+          };
+          const task = process.env.TASK;
+          const fn = functions[task];
+          if (!fn) throw new Error("Unknown reviewer account task");
+          const password = process.env.SPOT_REVIEWER_PASSWORD;
+          if (task !== "status" && !password) {
+            throw new Error("Set SPOT_REVIEWER_PASSWORD before provisioning or rotation");
+          }
+          const args = task === "status" ? {} : { password };
+          const result = spawnSync("npx", ["convex", "run", "--prod", fn, JSON.stringify(args)], {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          process.stdout.write(result.stdout ?? "");
+          process.stderr.write(result.stderr ?? "");
+          process.exit(result.status ?? 1);
+          SCRIPT

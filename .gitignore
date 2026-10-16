@@ -58,6 +58,7 @@
 !/docs/procurement/data-inventory.md
 !/docs/architecture/
 /docs/architecture/*
+!/docs/architecture/reviewer-account.md
 !/docs/architecture/backend-simplification.md
 !/docs/architecture/chat-presentations.md
 !/docs/architecture/convex-section-extraction.md

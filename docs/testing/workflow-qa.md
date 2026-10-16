@@ -988,3 +988,20 @@ regression coverage; the historical workflow results above are not new coverage.
 
 No production code or replacement tests were added. Final checks run the reduced
 suite, TypeScript, lint, worker checks and production build before merging.
+
+### Extension welcome and reusable reviewer — 2026-10-16
+
+- `node scripts/browser-extension-onboarding-e2e.mjs`: native-local Chrome,
+  signed-out toolbar hidden, normal-tab OTP sign-in, fixed website redirect,
+  automatic authenticated sidebar reconnection: 4 passed. Artifacts:
+  `.context/qa/extension-onboarding/results.json`, `signed-out.png`, `reconnected.png`.
+  The guide body is stubbed; its responsive page checks live in clarity-landing.
+- `node scripts/reviewer-account-e2e.mjs`: 7 passed against explicitly pinned
+  native-local backend. Wrong credentials, forbidden signup/reset/OTP/identities,
+  real demo workspace sign-in and policies, client sidebar access, session
+  invalidation, rejected old password and accepted new password. Artifacts:
+  `.context/qa/reviewer/results.json` and screenshots. Generated local passwords
+  are rotated at the end and excluded from reports. Existing five prewritten
+  authorization/isolation tests also passed.
+- GitHub production workflow uses repository secrets; local QA does not deploy
+  or provision production accounts. No Vercel previews used.

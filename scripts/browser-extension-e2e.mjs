@@ -58,7 +58,7 @@ try {
   await login.goto(`${appOrigin}/login`);
   await login.waitForTimeout(1500);
   if (await login.locator('input[type="email"]').isVisible()) {
-    const logPath = ".context/logs/convex.log";
+    const logPath = ".context/logs/web.log";
     const offset = readFileSync(logPath, "utf8").length;
     await login.locator('input[type="email"]').fill("adyan@cove.dev");
     await login.getByRole("button", { name: /continue|send|sign in/i }).first().click();
@@ -74,11 +74,11 @@ try {
     await login.waitForURL((url) => url.pathname !== "/login");
   }
   await login.close();
-  setAccess("intake");
+  setAccess("limited");
   await panel.reload();
   await frame.getByText("Workspace not open yet", { exact: true }).waitFor();
   assert(await panel.locator("#capture").isDisabled());
-  pass("intake workspace gate; no chat or capture");
+  pass("limited workspace gate; no chat or capture");
   const webDockBefore = await frame.locator("body").evaluate((_body, key) => localStorage.getItem(key), webDockKey);
   setAccess("active");
   await panel.reload();

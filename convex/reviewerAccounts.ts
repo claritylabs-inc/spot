@@ -4,6 +4,7 @@ import {
   createAccount,
   invalidateSessions,
   modifyAccountCredentials,
+  retrieveAccount,
 } from "@convex-dev/auth/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -272,18 +273,16 @@ export const rotatePassword = internalAction({
     args,
   ): Promise<{ status: "rotated"; email: string; userId: Id<"users"> }> => {
     assertReviewerPassword(args.password);
-    const state: PrepareResult = await ctx.runQuery(
-      internal.reviewerAccounts.prepare,
-      {},
-    );
-    if (state.kind !== "exists") {
-      throw new Error("The reviewer account is not provisioned");
-    }
+    // Revocation must remain available even when the workspace has drifted.
+    const { account } = await retrieveAccount(ctx, {
+      provider: REVIEW_PROVIDER_ID,
+      account: { id: REVIEW_EMAIL },
+    });
     await modifyAccountCredentials(ctx, {
       provider: REVIEW_PROVIDER_ID,
       account: { id: REVIEW_EMAIL, secret: args.password },
     });
-    await invalidateSessions(ctx, { userId: state.userId });
-    return { status: "rotated" as const, email: REVIEW_EMAIL, userId: state.userId };
+    await invalidateSessions(ctx, { userId: account.userId });
+    return { status: "rotated" as const, email: REVIEW_EMAIL, userId: account.userId };
   },
 });

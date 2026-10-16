@@ -64,3 +64,19 @@ Use the local app/backend for acceptance; never use Vercel previews. The workflo
 and evidence ledger is in `docs/testing/workflow-qa.md`. Browser-store approval,
 Edge-specific behavior and organizational browser policies require separate
 verification before distribution.
+
+## Welcome and sign-in
+
+Signed-out sidebars show the shared Spot wordmark and one sign-in action. The
+capture toolbar appears only when a client composer is ready. A failed app load
+shows a retry after 15 seconds; a rendered sign-in gate is not a load failure.
+`/login?from=extension` uses the normal OTP flow, then navigates to the fixed
+`https://spot.insure/extension/welcome` guide in clarity-landing. No supplied URL
+or credential crosses that redirect. For ten minutes after an explicit sign-in
+click, the extension watches completion of that sign-in tab to reconnect its
+signed-out iframe. The app/backend still owns cookies and authorization.
+
+Run `node scripts/browser-extension-onboarding-e2e.mjs` against the native-local
+app to verify sign-in, the fixed redirect and automatic sidebar reconnection.
+It stubs only the website guide body; clarity-landing owns that page's responsive
+browser checks. The local OTP limiter remains active; allow a minute between runs.
