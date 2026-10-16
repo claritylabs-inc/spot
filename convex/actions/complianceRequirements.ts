@@ -224,9 +224,9 @@ function normalizeImportedRequirement(
     })),
     maxDeductible: requirement.maxDeductible
       ? {
-          amount: requirement.maxDeductible.amount,
-          label: optionalString(requirement.maxDeductible.label),
-        }
+        amount: requirement.maxDeductible.amount,
+        label: optionalString(requirement.maxDeductible.label),
+      }
       : undefined,
     coverageForm: requirement.coverageForm ?? undefined,
     retroactiveDateOnOrBefore: optionalString(
@@ -244,7 +244,8 @@ function isCheckableCoverageRequirement(
   requirement: ReturnType<typeof normalizeImportedRequirement>,
 ) {
   return Boolean(
-    requirement.lineOfBusiness && hasCheckableCoverageTerms(requirement),
+    requirement.lineOfBusiness &&
+      hasCheckableCoverageTerms(requirement),
   );
 }
 
@@ -577,18 +578,18 @@ export function buildPrompt({
   const existing = existingRequirements.length
     ? existingRequirements
         .map(
-          (requirement) =>
-            `- ${JSON.stringify({
-              scope: requirement.scope,
-              lineOfBusiness: requirement.lineOfBusiness,
-              title: requirement.title,
-              limits: requirement.limits,
-              maxDeductible: requirement.maxDeductible,
-              coverageForm: requirement.coverageForm,
-              retroactiveDateOnOrBefore: requirement.retroactiveDateOnOrBefore,
-              provisions: requirement.provisions,
-              requiredForms: requirement.requiredForms,
-            })}`,
+          (requirement) => `- ${JSON.stringify({
+            scope: requirement.scope,
+            lineOfBusiness: requirement.lineOfBusiness,
+            title: requirement.title,
+            limits: requirement.limits,
+            maxDeductible: requirement.maxDeductible,
+            coverageForm: requirement.coverageForm,
+            retroactiveDateOnOrBefore:
+              requirement.retroactiveDateOnOrBefore,
+            provisions: requirement.provisions,
+            requiredForms: requirement.requiredForms,
+          })}`,
         )
         .join("\n")
     : "None";
@@ -707,11 +708,7 @@ async function runRequirementImport(
     fileId?: Id<"_storage">;
     fileName?: string;
     contentType?: string;
-    sourceType?:
-      | "lease_agreement"
-      | "client_contract"
-      | "vendor_requirements"
-      | "other";
+    sourceType?: "lease_agreement" | "client_contract" | "vendor_requirements" | "other";
     sourceName?: string;
     scope?: RequirementScope;
     holder?: RequirementSourceHolderInput;
@@ -727,17 +724,15 @@ async function runRequirementImport(
   sourceDocumentId: Id<"requirementSourceDocuments">;
 }> {
   const runId = crypto.randomUUID();
-  const sourceType =
-    args.sourceType ?? inferRequirementSourceType(args.fileName);
+  const sourceType = args.sourceType ?? inferRequirementSourceType(args.fileName);
   const scope = args.scope ?? "vendors";
   const sourceDocumentName =
     args.sourceName?.trim() ||
     args.fileName ||
     `${titlePrefix} ${dayjs().format("YYYY-MM-DD HH:mm")}`;
-  const trigger =
-    titlePrefix === "Mailbox requirements"
-      ? ("mailbox_import" as const)
-      : ("web_import" as const);
+  const trigger = titlePrefix === "Mailbox requirements"
+    ? "mailbox_import" as const
+    : "web_import" as const;
   await ctx.runMutation(internal.requirementExtractionRuns.start, {
     runId,
     orgId: args.orgId,
@@ -757,10 +752,7 @@ async function runRequirementImport(
         error: message,
       });
     } catch (telemetryError) {
-      console.warn(
-        "Failed to record requirement extraction error",
-        telemetryError,
-      );
+      console.warn("Failed to record requirement extraction error", telemetryError);
     }
   };
 
@@ -775,9 +767,7 @@ async function runRequirementImport(
         fileName: args.fileName,
         contentType: args.contentType,
       });
-      sourceText = [sourceText, fileExtraction.text]
-        .filter(Boolean)
-        .join("\n\n");
+      sourceText = [sourceText, fileExtraction.text].filter(Boolean).join("\n\n");
     }
   } catch (error) {
     await failRun(error);
@@ -787,9 +777,7 @@ async function runRequirementImport(
   sourceText = truncateSource(sourceText);
   const sourceImages = fileExtraction?.images;
   if (!sourceText && !sourceImages?.length) {
-    const error = new Error(
-      "Paste text or upload a requirement document first",
-    );
+    const error = new Error("Paste text or upload a requirement document first");
     await failRun(error);
     throw error;
   }
@@ -802,34 +790,28 @@ async function runRequirementImport(
   const abortSignal = AbortSignal.timeout(REQUIREMENT_EXTRACTION_TIMEOUT_MS);
   let result;
   try {
-    result = await generateObjectForOrg(
-      ctx,
-      args.orgId,
-      "requirement_extraction",
-      {
-        schema: RequirementImportSchema,
-        abortSignal,
-        maxOutputTokens: 3_000,
-        system:
-          "You convert contract, lease, certificate, and vendor insurance language into typed ACORD-25-style coverage requirements for Spot.",
-        ...requirementExtractionInput(
-          buildPrompt({
-            sourceText: sourceText || IMAGE_SOURCE_PLACEHOLDER,
-            existingRequirements: context.existingRequirements,
-            scope,
-          }),
-          sourceImages,
-        ),
+    result = await generateObjectForOrg(ctx, args.orgId, "requirement_extraction", {
+      schema: RequirementImportSchema,
+      abortSignal,
+      maxOutputTokens: 3_000,
+      system:
+        "You convert contract, lease, certificate, and vendor insurance language into typed ACORD-25-style coverage requirements for Spot.",
+      ...requirementExtractionInput(
+        buildPrompt({
+          sourceText: sourceText || IMAGE_SOURCE_PLACEHOLDER,
+          existingRequirements: context.existingRequirements,
+          scope,
+        }),
+        sourceImages,
+      ),
+    }, {
+      taskKind: "requirement_extraction",
+      trace: {
+        traceId: runId,
+        channel: trigger === "mailbox_import" ? "mailbox" : "web",
+        phase: "extracting_requirements",
       },
-      {
-        taskKind: "requirement_extraction",
-        trace: {
-          traceId: runId,
-          channel: trigger === "mailbox_import" ? "mailbox" : "web",
-          phase: "extracting_requirements",
-        },
-      },
-    );
+    });
   } catch (error) {
     await failRun(error);
     if (abortSignal.aborted) {
@@ -865,12 +847,8 @@ async function runRequirementImport(
     model: result.route.model,
     ...(result.routeSource ? { routeSource: result.routeSource } : {}),
     ...(result.transport ? { transport: result.transport } : {}),
-    ...(usage.inputTokens === undefined
-      ? {}
-      : { inputTokens: usage.inputTokens }),
-    ...(usage.outputTokens === undefined
-      ? {}
-      : { outputTokens: usage.outputTokens }),
+    ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+    ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
     ...(result.clRouter ? { costUsd: result.clRouter.costUsd } : {}),
   });
   // Do not leave a completed-looking source behind when extraction fails. A
@@ -943,11 +921,7 @@ async function runRequirementImport(
     ),
   });
 
-  return {
-    createdCount: requirementIds.length,
-    requirementIds,
-    sourceDocumentId,
-  };
+  return { createdCount: requirementIds.length, requirementIds, sourceDocumentId };
 }
 
 function inferRequirementSourceType(fileName?: string) {
@@ -970,25 +944,21 @@ export const importRequirements = action({
     sourceType: v.optional(sourceDocumentTypeValidator),
     sourceName: v.optional(v.string()),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
-    holder: v.optional(
-      v.object({
-        displayName: v.string(),
-        contactName: v.optional(v.string()),
-        email: v.optional(v.string()),
-        phone: v.optional(v.string()),
-        address: v.optional(
-          v.object({
-            line1: v.optional(v.string()),
-            line2: v.optional(v.string()),
-            city: v.optional(v.string()),
-            state: v.optional(v.string()),
-            postalCode: v.optional(v.string()),
-            country: v.optional(v.string()),
-            formatted: v.optional(v.string()),
-          }),
-        ),
-      }),
-    ),
+    holder: v.optional(v.object({
+      displayName: v.string(),
+      contactName: v.optional(v.string()),
+      email: v.optional(v.string()),
+      phone: v.optional(v.string()),
+      address: v.optional(v.object({
+        line1: v.optional(v.string()),
+        line2: v.optional(v.string()),
+        city: v.optional(v.string()),
+        state: v.optional(v.string()),
+        postalCode: v.optional(v.string()),
+        country: v.optional(v.string()),
+        formatted: v.optional(v.string()),
+      })),
+    })),
     dealName: v.optional(v.string()),
     dealType: v.optional(v.string()),
     internalNotes: v.optional(v.string()),
@@ -1025,25 +995,21 @@ export const importRequirementsInternal = internalAction({
     sourceType: v.optional(sourceDocumentTypeValidator),
     sourceName: v.optional(v.string()),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
-    holder: v.optional(
-      v.object({
-        displayName: v.string(),
-        contactName: v.optional(v.string()),
-        email: v.optional(v.string()),
-        phone: v.optional(v.string()),
-        address: v.optional(
-          v.object({
-            line1: v.optional(v.string()),
-            line2: v.optional(v.string()),
-            city: v.optional(v.string()),
-            state: v.optional(v.string()),
-            postalCode: v.optional(v.string()),
-            country: v.optional(v.string()),
-            formatted: v.optional(v.string()),
-          }),
-        ),
-      }),
-    ),
+    holder: v.optional(v.object({
+      displayName: v.string(),
+      contactName: v.optional(v.string()),
+      email: v.optional(v.string()),
+      phone: v.optional(v.string()),
+      address: v.optional(v.object({
+        line1: v.optional(v.string()),
+        line2: v.optional(v.string()),
+        city: v.optional(v.string()),
+        state: v.optional(v.string()),
+        postalCode: v.optional(v.string()),
+        country: v.optional(v.string()),
+        formatted: v.optional(v.string()),
+      })),
+    })),
     dealName: v.optional(v.string()),
     dealType: v.optional(v.string()),
     internalNotes: v.optional(v.string()),

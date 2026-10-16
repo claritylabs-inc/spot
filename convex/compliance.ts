@@ -612,11 +612,7 @@ export const listCertificateRequirementSources = query({
         }
         return {
           ...source,
-          internalNotes: await readRequirementNotes(
-            ctx,
-            source,
-            access.accessType === "operator",
-          ),
+          internalNotes: await readRequirementNotes(ctx, source, access.accessType === "operator"),
           holder,
           holders,
           requirementCount: sourceRequirements.length,
@@ -658,14 +654,7 @@ export const listRequirementSources = query({
       sources
         .filter((source) => !source.archivedAt)
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map((source) =>
-          enrichRequirementSource(
-            ctx,
-            source,
-            requirements,
-            access.accessType === "operator",
-          ),
-        ),
+        .map((source) => enrichRequirementSource(ctx, source, requirements, access.accessType === "operator")),
     );
   },
 });
@@ -818,8 +807,7 @@ export const updateRequirementSource = mutation({
       sourcePatch.certificateHolderIds = [
         certificateHolderId,
         ...(source.certificateHolderIds ?? []).filter(
-          (holderId) =>
-            holderId !== previousPrimary && holderId !== certificateHolderId,
+          (holderId) => holderId !== previousPrimary && holderId !== certificateHolderId,
         ),
       ];
     }
@@ -828,13 +816,7 @@ export const updateRequirementSource = mutation({
     if (args.dealType !== undefined)
       sourcePatch.dealType = cleanOptionalString(args.dealType);
     await ctx.db.patch(args.sourceDocumentId, sourcePatch);
-    if (args.internalNotes !== undefined)
-      await saveRequirementNotes(
-        ctx,
-        { ...source, ...sourcePatch },
-        args.internalNotes,
-        { actorUserId: access.userId },
-      );
+    if (args.internalNotes !== undefined) await saveRequirementNotes(ctx, { ...source, ...sourcePatch }, args.internalNotes, { actorUserId: access.userId });
     const requirements = await ctx.db
       .query("insuranceRequirements")
       .withIndex("organization_status", (q) =>
@@ -1575,10 +1557,7 @@ export const createRequirementSourceDocumentInternal = internalMutation({
     });
     if (args.internalNotes !== undefined) {
       const source = await ctx.db.get(sourceDocumentId);
-      if (source)
-        await saveRequirementNotes(ctx, source, args.internalNotes, {
-          actorUserId: args.userId,
-        });
+      if (source) await saveRequirementNotes(ctx, source, args.internalNotes, { actorUserId: args.userId });
     }
     return sourceDocumentId;
   },
