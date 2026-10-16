@@ -108,7 +108,7 @@ const viewerOrgCacheNames = [
   "onboarding.viewerOrg",
 ];
 
-export function patchCachedViewer(
+function patchCachedViewer(
   store: SyncStore,
   patch: Record<string, unknown>,
 ) {
@@ -147,7 +147,7 @@ export function patchCachedViewerOrg(
   }
 }
 
-export function setCachedViewerOrg(store: SyncStore, next: NonNullable<ViewerOrg>) {
+function setCachedViewerOrg(store: SyncStore, next: NonNullable<ViewerOrg>) {
   for (const cacheName of viewerOrgCacheNames) {
     const collection = cachedQueryCollectionFor<ViewerOrg>(cacheName);
     const argsKey = cachedQueryArgsKey({});
@@ -229,12 +229,6 @@ export function useCachedPolicyDetail(id: Id<"policies">, enabled = true) {
     api.policies.get,
     enabled ? { id } : "skip",
   ) as PolicyDetail | undefined;
-}
-
-export function useCachedArchivedThreads() {
-  return useCachedQuery("threads.list.archived", api.threads.list, {
-    archived: true,
-  }) as ThreadList | undefined;
 }
 
 function sortMessages(messages: ThreadMessages): ThreadMessages {

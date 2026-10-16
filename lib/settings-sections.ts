@@ -30,12 +30,12 @@ export type SettingsTabId =
   | "integrations"
   | "beta";
 
-export type SettingsTab = {
+type SettingsTab = {
   id: SettingsTabId;
   label: string;
 };
 
-export type SettingsPage = {
+type SettingsPage = {
   id: SettingsPageId;
   label: string;
   icon: ComponentType<{ className?: string }>;

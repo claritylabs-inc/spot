@@ -4,25 +4,10 @@ import {
   InputGroupTextarea,
 } from "@claritylabs-inc/ui/components/input-group";
 import { cn } from "@/lib/utils";
-import type {
-  ChangeEvent,
-  ClipboardEventHandler,
-  ComponentProps,
-  HTMLAttributes,
-  KeyboardEventHandler,
-} from "react";
+import type { ChangeEvent, ClipboardEventHandler, ComponentProps, KeyboardEventHandler } from "react";
 import { useCallback, useState } from "react";
 
 import { useOptionalPromptInputController, usePromptInputAttachments } from "./context";
-
-export type PromptInputBodyProps = HTMLAttributes<HTMLDivElement>;
-
-export const PromptInputBody = ({
-  className,
-  ...props
-}: PromptInputBodyProps) => (
-  <div className={cn("contents", className)} {...props} />
-);
 
 export type PromptInputTextareaProps = ComponentProps<
   typeof InputGroupTextarea

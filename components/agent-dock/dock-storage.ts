@@ -23,7 +23,7 @@ export function clampAgentDockHeight(height: number) {
   return Math.min(AGENT_DOCK_MAX_HEIGHT, Math.max(AGENT_DOCK_MIN_HEIGHT, height));
 }
 
-export function parseStoredAgentDock(raw: string | null): StoredAgentDock {
+function parseStoredAgentDock(raw: string | null): StoredAgentDock {
   const fallback: StoredAgentDock = {
     tabs: [],
     activeThreadId: null,

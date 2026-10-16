@@ -9,7 +9,7 @@ export type UsageRow = {
   output: number;
   tokenCalls: number;
 };
-export function emptyUsage(label: string): UsageRow {
+function emptyUsage(label: string): UsageRow {
   return {
     label,
     calls: 0,
@@ -20,7 +20,7 @@ export function emptyUsage(label: string): UsageRow {
     tokenCalls: 0,
   };
 }
-export function addCall(row: UsageRow, call: ModelCall) {
+function addCall(row: UsageRow, call: ModelCall) {
   row.calls++;
   if (call.costUsd != null) {
     row.priced++;

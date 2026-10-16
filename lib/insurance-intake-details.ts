@@ -125,7 +125,7 @@ function locationText(location: IntakeLocation) {
     .filter(Boolean)
     .join(" — ");
 }
-export type RelatedEntity = {
+type RelatedEntity = {
   legalName: string;
   relationship: string;
   insured: "" | "include" | "exclude" | "unsure";

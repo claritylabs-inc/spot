@@ -24,7 +24,7 @@ import {
 
 import type { OperatorAgentToolName } from "@/convex/lib/operatorAgentToolRegistry";
 
-export const toolActivityCategories = {
+const toolActivityCategories = {
   web: { label: "Public research", icon: Globe },
   organizations: { label: "Organizations", icon: Building2 },
   brokers: { label: "Insurance providers", icon: Users },

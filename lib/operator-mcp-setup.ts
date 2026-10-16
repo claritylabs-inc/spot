@@ -10,9 +10,9 @@
  * `docs/deployment/operator-mcp.md`.
  */
 
-export const OPERATOR_MCP_SERVER_NAME = "spot";
+const OPERATOR_MCP_SERVER_NAME = "spot";
 
-export type OperatorMcpClientId = "claude-code" | "codex";
+type OperatorMcpClientId = "claude-code" | "codex";
 
 export type OperatorMcpClientSetup = {
   id: OperatorMcpClientId;

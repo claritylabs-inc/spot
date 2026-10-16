@@ -155,14 +155,14 @@ function policyPattern(carrierName: string) {
   return { patternStyle, patternVariant };
 }
 
-export function tonePolicyCardColor(value?: string | null) {
+function tonePolicyCardColor(value?: string | null) {
   const brandColor = normalizedBrandColor(value);
   return brandColor
     ? mixColors(BRANDED_CARD_BASE_COLOR, brandColor, BRAND_COLOR_WEIGHT)
     : DEFAULT_CARD_COLOR;
 }
 
-export function tonePolicyOverviewColor(value?: string | null) {
+function tonePolicyOverviewColor(value?: string | null) {
   const brandColor = normalizedBrandColor(value);
   return brandColor
     ? mixColors("#FFFFFF", brandColor, OVERVIEW_COLOR_WEIGHT)

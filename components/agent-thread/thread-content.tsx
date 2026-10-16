@@ -70,8 +70,6 @@ import {
 } from "./thread-messages";
 import { typeStyle } from "@/lib/typography";
 
-export { ThreadContextLink, UnifiedMessageBubble } from "./thread-message";
-
 function UnifiedThreadActions({
   threadId,
   thread,

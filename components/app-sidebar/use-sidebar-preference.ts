@@ -38,7 +38,7 @@ function write(key: string, value: string) {
 }
 
 /** Legacy "1" / "" values predate the `{ collapsed, width }` format. */
-export function parseSidebarPreference(raw: string | null) {
+function parseSidebarPreference(raw: string | null) {
   if (raw === "1" || raw === "") {
     return { ...parseAppSidebarPreference(null), collapsed: raw === "1" };
   }

@@ -14,21 +14,11 @@
       "required": true
     },
     "imessage": {
-      "channelRole": "customer",
-      "transport": "imessage",
-      "webhookTransport": true,
-      "imessageEnabled": true,
-      "photonConfigured": true,
-      "requiredHttpPorts": [3001]
+      "webhookTransport": true
     },
     "operatorImessage": {
       "required": true,
-      "channelRole": "operator",
-      "transport": "imessage",
-      "webhookTransport": true,
-      "imessageEnabled": true,
-      "photonConfigured": true,
-      "requiredHttpPorts": []
+      "webhookTransport": true
     },
     "email": {
       "deliveryMode": "live",
@@ -42,7 +32,6 @@
     "spotEnv": "local",
     "convexAgentHealthUrl": "http://localhost:3210/agent-health",
     "clientPortalUrl": "http://localhost:8080",
-    "imessageWorkerHealthUrl": "http://localhost:3001/health",
     "slack": {
       "enabled": true,
       "mode": "mock"
@@ -50,20 +39,8 @@
     "operatorSlack": {
       "required": true
     },
-    "imessage": {
-      "channelRole": "customer",
-      "transport": "terminal",
-      "imessageEnabled": false,
-      "photonConfigured": false,
-      "requiredHttpPorts": []
-    },
     "operatorImessage": {
-      "required": false,
-      "channelRole": "operator",
-      "transport": "terminal",
-      "imessageEnabled": false,
-      "photonConfigured": false,
-      "requiredHttpPorts": []
+      "required": false
     },
     "email": {
       "deliveryMode": "capture"

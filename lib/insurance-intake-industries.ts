@@ -1,4 +1,4 @@
-export type Vertical = {
+type Vertical = {
   value: string;
   label: string;
 };

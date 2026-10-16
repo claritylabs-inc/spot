@@ -60,7 +60,7 @@ export type CertificatePolicyRecord = {
   expirationDate?: string;
 };
 
-export type CertificateVersionRecord = {
+type CertificateVersionRecord = {
   _id: Id<"certificateVersions">;
   versionNumber: number;
   status: string;
@@ -128,7 +128,7 @@ export function certificatePolicyLabel(policy?: CertificatePolicyRecord | null) 
   ].filter(Boolean).join(" · ") || "Policy";
 }
 
-export function certificateHolderAddress(holder?: CertificateHolderRecord | null) {
+function certificateHolderAddress(holder?: CertificateHolderRecord | null) {
   const address = holder?.address;
   if (!address) return null;
   const cityLine = [
@@ -140,7 +140,7 @@ export function certificateHolderAddress(holder?: CertificateHolderRecord | null
     null;
 }
 
-export function certificateHolderActionAddress(
+function certificateHolderActionAddress(
   holder?: Pick<CertificateHolderRecord, "address"> | null,
 ) {
   const address = holder?.address;

@@ -145,7 +145,7 @@ function mergeAlignedItems(
   });
 }
 
-export function coveredAssetGroups(
+function coveredAssetGroups(
   schedules: CoveredAssetSchedule[],
 ): CoveredAssetGroup[] {
   return KIND_ORDER.flatMap((kind) => {

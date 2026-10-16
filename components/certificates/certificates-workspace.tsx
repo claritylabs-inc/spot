@@ -41,7 +41,7 @@ import { CertificateGeneratePanel } from "@/components/certificates/certificate-
 type CertificateWorkspaceTab = "active" | "archived";
 type CertificatePolicyFilter = "all" | `policy:${string}`;
 
-export type CertificatesWorkspaceShellArgs = {
+type CertificatesWorkspaceShellArgs = {
   actions: ReactNode;
   rightPanel: ReactNode;
   toolbar: ReactNode;

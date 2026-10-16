@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import dayjs from "dayjs";
 import type { FunctionReturnType } from "convex/server";
-import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -15,9 +14,6 @@ import {
 type OperatorCurrent = FunctionReturnType<typeof api.operator.current>;
 type OperatorClientList = FunctionReturnType<typeof api.operator.listClients>;
 type OperatorClientRow = OperatorClientList[number];
-export type OperatorRouterCapabilities = FunctionReturnType<
-  typeof api.clRouterOperations.getCapabilities
->;
 type OperatorExtractionRunList = FunctionReturnType<
   typeof api.operator.listExtractionRuns
 >;
@@ -61,45 +57,6 @@ export function useCachedOperatorClients() {
     api.operator.listClients,
     {},
   ) as OperatorClientList | undefined;
-}
-
-export function useOperatorRouterCapabilities() {
-  const getCapabilities = useAction(api.clRouterOperations.getCapabilities);
-  const [capabilities, setCapabilities] =
-    useState<OperatorRouterCapabilities>();
-  const [loading, setLoading] = useState(true);
-
-  const fetchCapabilities = useCallback(async () => {
-    try {
-      return await getCapabilities({});
-    } catch {
-      return {
-        availability: "unavailable",
-        fetchedAt: dayjs().valueOf(),
-        message: "Router capabilities are temporarily unavailable.",
-      } as const;
-    }
-  }, [getCapabilities]);
-
-  useEffect(() => {
-    let active = true;
-    void fetchCapabilities().then((next) => {
-      if (!active) return;
-      setCapabilities(next);
-      setLoading(false);
-    });
-    return () => {
-      active = false;
-    };
-  }, [fetchCapabilities]);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setCapabilities(await fetchCapabilities());
-    setLoading(false);
-  }, [fetchCapabilities]);
-
-  return { capabilities, loading, refresh };
 }
 
 export function useCachedOperatorExtractionRuns(policyId: Id<"policies">) {

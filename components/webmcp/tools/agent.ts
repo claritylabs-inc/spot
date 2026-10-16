@@ -59,7 +59,7 @@ type ThreadRow = {
   _creationTime: number;
 };
 
-export function threadRow(thread: ThreadRow) {
+function threadRow(thread: ThreadRow) {
   return {
     thread_id: thread._id,
     title: thread.displayTitle ?? thread.title ?? null,

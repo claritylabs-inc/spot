@@ -94,12 +94,12 @@ export function normalizeLiveEmail(result: unknown): LiveMailboxEmail {
   };
 }
 
-export function splitMailboxMessageParagraphs(text?: string) {
+function splitMailboxMessageParagraphs(text?: string) {
   const message = text?.trim();
   return message ? message.split(/\r?\n(?:[ \t]*\r?\n)+/) : [];
 }
 
-export function mailboxReadErrorMessage(error: unknown) {
+function mailboxReadErrorMessage(error: unknown) {
   if (
     error instanceof ConvexError &&
     error.data &&
@@ -226,7 +226,7 @@ export function isMailboxPdfAttachment(attachment: MailboxAttachment) {
   return type.includes("pdf") || name.endsWith(".pdf");
 }
 
-export function isMailboxRequirementAttachment(attachment: MailboxAttachment) {
+function isMailboxRequirementAttachment(attachment: MailboxAttachment) {
   const name = attachment.filename.toLowerCase();
   const type = attachment.contentType?.toLowerCase() ?? "";
   return (

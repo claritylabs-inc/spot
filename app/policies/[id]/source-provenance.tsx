@@ -158,7 +158,7 @@ export function highlightBoxesForSpans(
   );
 }
 
-export function firstEvidencePage(
+function firstEvidencePage(
   spans: SourceSpanDoc[],
   fallbackPage?: number,
 ) {

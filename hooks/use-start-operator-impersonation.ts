@@ -8,7 +8,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
-export const IMPERSONATION_ACK_TIMEOUT_MS = 10_000;
+const IMPERSONATION_ACK_TIMEOUT_MS = 10_000;
 
 const timedOut = Symbol("impersonation mutation timed out");
 

@@ -7,7 +7,7 @@ import {
   spotSocialUrlTypographyStyle,
 } from "@/lib/typography";
 
-export const SPOT_SOCIAL_IMAGE_SIZE = { width: 1200, height: 630 };
+const SPOT_SOCIAL_IMAGE_SIZE = { width: 1200, height: 630 };
 
 const ASCII_GLYPHS = "  ..::+?N9#";
 const ASCII_COLUMNS = 154;

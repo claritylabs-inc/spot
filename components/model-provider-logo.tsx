@@ -9,7 +9,6 @@ import {
   SiMistralai,
   SiX,
 } from "react-icons/si";
-import { MODEL_DISPLAY_NAMES } from "@/convex/lib/modelCatalog";
 import { scaledSvgWordmarkTypography } from "@/lib/typography";
 
 export type ModelProviderId =
@@ -21,20 +20,6 @@ export type ModelProviderId =
   | "cohere"
   | "fireworks"
   | "deepseek";
-
-export type ModelLogoRoute = {
-  provider: ModelProviderId;
-  model: string;
-};
-
-const FIREWORKS_MODEL_LOGO_URLS = {
-  deepseek: "https://app.fireworks.ai/images/logos/deepseek-icon.svg",
-  minimax: "https://app.fireworks.ai/images/logos/minimax-icon.svg",
-  nomic: "https://app.fireworks.ai/images/logos/nomic.svg",
-  openai: "https://app.fireworks.ai/images/logos/openai-icon.svg",
-  qwen: "https://app.fireworks.ai/images/logos/qwen-icon.svg",
-  z: "https://app.fireworks.ai/images/logos/z-ai.svg",
-} as const;
 
 const PROVIDER_BRAND_COLORS: Record<ModelProviderId, string> = {
   openai: "#000000",
@@ -155,49 +140,6 @@ const TEXT_MARKS: Partial<Record<ModelProviderId, string>> = {
   mistral: "M",
 };
 
-function fireworksModelLogoUrl(model: string) {
-  const normalized = model.toLowerCase();
-  if (normalized.includes("deepseek")) return FIREWORKS_MODEL_LOGO_URLS.deepseek;
-  if (normalized.includes("glm")) return FIREWORKS_MODEL_LOGO_URLS.z;
-  if (normalized.includes("gpt-oss")) return FIREWORKS_MODEL_LOGO_URLS.openai;
-  if (normalized.includes("minimax")) return FIREWORKS_MODEL_LOGO_URLS.minimax;
-  if (normalized.includes("nomic")) return FIREWORKS_MODEL_LOGO_URLS.nomic;
-  if (normalized.includes("qwen")) return FIREWORKS_MODEL_LOGO_URLS.qwen;
-  return null;
-}
-
-function modelTokenLabel(token: string) {
-  const normalized = token.toLowerCase();
-  if (normalized === "gpt") return "GPT";
-  if (normalized === "oss") return "OSS";
-  if (normalized === "glm") return "GLM";
-  if (normalized === "ai") return "AI";
-  if (normalized === "api") return "API";
-  if (normalized === "text") return "Text";
-  if (/^k\d+p\d+$/.test(normalized)) {
-    return normalized.toUpperCase().replace("P", ".");
-  }
-  if (/^\d+p\d+$/.test(normalized)) {
-    return normalized.replace("p", ".");
-  }
-  if (/^\d+b$/.test(normalized)) return normalized.toUpperCase();
-  if (/^v\d+(\.\d+)?$/.test(normalized)) return normalized.toUpperCase();
-  if (/^qwen\d*$/.test(normalized)) {
-    return `Qwen${normalized.slice(4)}`;
-  }
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-export function getModelDisplayName(routeOrModel: ModelLogoRoute | string) {
-  const model =
-    typeof routeOrModel === "string" ? routeOrModel : routeOrModel.model;
-  const known = MODEL_DISPLAY_NAMES[model];
-  if (known) return known;
-
-  const slug = model.split("/").pop() ?? model;
-  return slug.split("-").map(modelTokenLabel).join(" ");
-}
-
 export function ModelProviderLogo({
   provider,
   className,
@@ -254,45 +196,5 @@ export function ModelProviderLogo({
     >
       {TEXT_MARKS[provider] ?? provider.slice(0, 2).toUpperCase()}
     </span>
-  );
-}
-
-export function ModelRouteLogo({
-  route,
-  className,
-  size = 16,
-}: {
-  route: ModelLogoRoute;
-  className?: string;
-  size?: number;
-}) {
-  const logoUrl =
-    route.provider === "fireworks" ? fireworksModelLogoUrl(route.model) : null;
-
-  if (logoUrl) {
-    return (
-      <span
-        aria-hidden="true"
-        className={["inline-block shrink-0", className]
-          .filter(Boolean)
-          .join(" ")}
-        style={{
-          backgroundImage: `url(${logoUrl})`,
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-          backgroundSize: "contain",
-          height: size,
-          width: size,
-        }}
-      />
-    );
-  }
-
-  return (
-    <ModelProviderLogo
-      className={className}
-      provider={route.provider}
-      size={size}
-    />
   );
 }

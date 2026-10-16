@@ -694,7 +694,7 @@ function RequestEditorFrame({
   );
 }
 
-export function RequestEditor({
+function RequestEditor({
   inline = false,
   embedded = false,
   activeSection,
@@ -1045,7 +1045,7 @@ export function RequestEditor({
   );
 }
 
-export function OutreachEditor({
+function OutreachEditor({
   requestId,
   outreach,
   proposalId,

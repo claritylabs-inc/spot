@@ -258,8 +258,6 @@ for (const name of cloudConvexSelectionKeys) delete process.env[name];
 
 const {
   web,
-  imessage,
-  operatorImessage,
   convexCloud,
   convexSite,
 } = conductorPorts();
@@ -278,7 +276,7 @@ run(
   },
 );
 
-const localUrls = localConvexUrls();
+localConvexUrls();
 if (cloudEnvironment) {
   const importPath = path.join(contextDirectory, "convex-cloud-import.env");
   try {
@@ -307,14 +305,6 @@ resolveConductorClRouterConfig(
   { required: routerRequired },
 );
 
-const imessageSecret = createdLocalDeployment
-  ? randomBytes(32).toString("hex")
-  : optionalConvexEnv(convex, "IMESSAGE_WORKER_SECRET") ||
-    randomBytes(32).toString("hex");
-const operatorImessageSecret = createdLocalDeployment
-  ? randomBytes(32).toString("hex")
-  : optionalConvexEnv(convex, "OPERATOR_IMESSAGE_WORKER_SECRET") ||
-    randomBytes(32).toString("hex");
 const slackWebhookSecret = createdLocalDeployment
   ? randomBytes(32).toString("hex")
   : optionalConvexEnv(convex, "SLACK_SIGNING_SECRET") ||
@@ -348,12 +338,8 @@ try {
     IMESSAGE_TERMINAL_BROKER_PHONE: terminalPhone,
     IMESSAGE_TERMINAL_CLIENT_PHONE: terminalClientPhone,
     IMESSAGE_TERMINAL_PUBLIC_PHONE: terminalPublicPhone,
-    IMESSAGE_WORKER_URL: `http://127.0.0.1:${imessage}`,
-    IMESSAGE_WORKER_SECRET: imessageSecret,
     OPERATOR_IMESSAGE_ENABLED: "false",
     OPERATOR_IMESSAGE_TERMINAL_ENABLED: "true",
-    OPERATOR_IMESSAGE_WORKER_URL: `http://127.0.0.1:${operatorImessage}`,
-    OPERATOR_IMESSAGE_WORKER_SECRET: operatorImessageSecret,
     SLACK_ENABLED: "true",
     SLACK_MODE: "mock",
     SLACK_CLARITY_TEAM_ID: "T-CLARITY-FIXTURE",

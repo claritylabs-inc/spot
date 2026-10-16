@@ -8,7 +8,6 @@ import {
   type OperatorChannelRunResult,
 } from "../lib/operatorAgentChannel";
 import {
-  getOperatorImessageWorkerUrl,
   isImessageWebhookTransportEnabled,
 } from "../lib/imessageConfig";
 import {
@@ -93,11 +92,8 @@ export const deliver = internalAction({
       if (identity?.operatorUserId !== args.operatorUserId) {
         throw new Error("Operator iMessage recipient is no longer authorized");
       }
-      const webhookTransport = isImessageWebhookTransportEnabled("operator");
-      const workerUrl = getOperatorImessageWorkerUrl();
-      const secret = process.env.OPERATOR_IMESSAGE_WORKER_SECRET;
-      if (!webhookTransport && (!workerUrl || !secret))
-        throw new Error("Operator iMessage worker is not configured");
+      if (!isImessageWebhookTransportEnabled("operator"))
+        throw new Error("Operator iMessage is not enabled");
       const response = await operatorImessageRunResponse(ctx, result);
       const sendRequest = {
         toPhone: delivery.toPhone,
@@ -106,29 +102,14 @@ export const deliver = internalAction({
         message: response.response,
         attachments: response.attachments,
       };
-      let outcome: {
-        ok?: boolean;
-        error?: string;
-        attachmentFailures?: Array<{ filename: string; error?: string }>;
-      };
-      if (webhookTransport) {
-        const { sendImessageViaSpectrum } = await import(
-          "../lib/imessageSpectrum"
-        );
-        outcome = await sendImessageViaSpectrum(ctx, "operator", sendRequest);
-      } else {
-        const sent = await fetch(`${workerUrl}/send`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${secret}`,
-          },
-          body: JSON.stringify(sendRequest),
-          signal: AbortSignal.timeout(30_000),
-        });
-        outcome = await sent.json();
-        if (!sent.ok) outcome = { ...outcome, ok: false };
-      }
+      const { sendImessageViaSpectrum } = await import(
+        "../lib/imessageSpectrum"
+      );
+      const outcome = await sendImessageViaSpectrum(
+        ctx,
+        "operator",
+        sendRequest,
+      );
       if (!outcome.ok)
         throw new Error(outcome.error ?? "Operator iMessage delivery failed");
       if (outcome.attachmentFailures?.length && result.response) {

@@ -1,6 +1,6 @@
 import type { PageContext } from "@/hooks/use-page-context";
 
-export type PageSuggestion = { label: string; prompt: string };
+type PageSuggestion = { label: string; prompt: string };
 
 const SUGGESTIONS_BY_PAGE: Record<string, PageSuggestion[]> = {
   policy: [

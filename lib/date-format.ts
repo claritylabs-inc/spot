@@ -3,9 +3,8 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 
 dayjs.extend(customParseFormat);
 
-export const DISPLAY_DATE_FORMAT = "MMM D, YYYY";
-export const DISPLAY_DATE_TIME_FORMAT = "MMM D, YYYY [at] h:mm A";
-export const DISPLAY_DATE_TIME_SECONDS_FORMAT = "MMM D, YYYY [at] h:mm:ss A";
+const DISPLAY_DATE_FORMAT = "MMM D, YYYY";
+const DISPLAY_DATE_TIME_FORMAT = "MMM D, YYYY [at] h:mm A";
 
 const CALENDAR_DATE_INPUT_FORMATS = [
   "MM/DD/YYYY",
@@ -70,13 +69,6 @@ export function formatDisplayDateTime(
   fallback = "",
 ) {
   return formatDisplayValue(value, DISPLAY_DATE_TIME_FORMAT, fallback);
-}
-
-export function formatDisplayDateTimeWithSeconds(
-  value: DisplayDateValue,
-  fallback = "",
-) {
-  return formatDisplayValue(value, DISPLAY_DATE_TIME_SECONDS_FORMAT, fallback);
 }
 
 const UTC_DATE_TIME_PARTS = new Intl.DateTimeFormat("en-US", {
