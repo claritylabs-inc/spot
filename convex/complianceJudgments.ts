@@ -239,8 +239,11 @@ export const findMissingRequirementJudgments = internalQuery({
         requirement._id,
         args.subjectOrgId,
       );
+      // Error-only rows (judgedAt 0) still need a successful judgment.
       const knownPolicies = new Set(
-        judgments.map((judgment) => judgment.policyId),
+        judgments
+          .filter((judgment) => judgment.judgedAt > 0)
+          .map((judgment) => judgment.policyId),
       );
       if (!policies.some((policy) => !knownPolicies.has(policy._id))) continue;
       requirementIds.push(requirement._id);

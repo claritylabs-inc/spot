@@ -802,8 +802,12 @@ export function assessRequirementCompliance(
     : options?.expectedInsuredName
       ? [options.expectedInsuredName]
       : [];
+  // Error-only rows (a failed first judgment, judgedAt 0) are not judgments:
+  // those policies keep the legacy checks until Jev succeeds.
   const storedByPolicy = new Map(
-    (options?.judgments ?? []).map((entry) => [entry.policyId, entry]),
+    (options?.judgments ?? [])
+      .filter((entry) => entry.judgedAt > 0)
+      .map((entry) => [entry.policyId, entry]),
   );
   const includePreviewPolicies = options?.includePreviewPolicies !== false;
   const readablePolicies = policies.filter((policy) =>
