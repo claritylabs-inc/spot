@@ -66,7 +66,6 @@ async function generateReviewForOperator(
   const extractionTrace = createHash("sha256")
     .update(input.extractionFingerprint)
     .digest("hex");
-  const abortSignal = AbortSignal.timeout(REVIEW_TIMEOUT_MS);
   const trace = {
     traceId: `proposal-review:${input.proposalId}:${extractionTrace}:${input.packetRevision}`,
     channel: "operator",
@@ -213,7 +212,7 @@ async function generateReviewForOperator(
               }),
             ),
           }),
-          abortSignal,
+          abortSignal: AbortSignal.timeout(REVIEW_TIMEOUT_MS),
           maxOutputTokens: 4_000,
           system:
             "You write short findings for a commercial-insurance proposal review. Each section below was already judged to have a gap against the proposal evidence. In one or two sentences per section, state what the section asks for and how the cited evidence falls short. Use only the supplied text; never invent a carrier term, limit, deductible, premium, condition, exclusion, or page. Do not reconsider the judgment. Return one summary for each sectionKey given.",

@@ -30,10 +30,21 @@ function foundingYearCandidates(factTexts: string[]) {
     .slice(0, MAX_YEAR_CANDIDATES);
 }
 
-/** One checkable claim per sentence. */
+const ABBREVIATION_END =
+  /\b(?:Inc|Co|Corp|Ltd|LLC|L\.L\.C|Jr|Sr|St|Mt|No|Dept|Assn|Bros|Mfg|Intl|U\.S|vs|etc)\.$/i;
+
+/** One checkable claim per sentence; a period after an abbreviation is not a boundary. */
 function descriptionClaims(description: string) {
-  return description
-    .split(/(?<=[.!?])\s+/)
+  const claims: string[] = [];
+  for (const piece of description.split(/(?<=[.!?])\s+/)) {
+    const last = claims.length - 1;
+    if (last >= 0 && ABBREVIATION_END.test(claims[last])) {
+      claims[last] = `${claims[last]} ${piece}`;
+    } else {
+      claims.push(piece);
+    }
+  }
+  return claims
     .map((claim) => claim.trim())
     .filter(Boolean)
     .slice(0, MAX_DESCRIPTION_CLAIMS);
