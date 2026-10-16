@@ -1,14 +1,13 @@
 // Conductor Cloud entry point for `scripts.setup`.
 //
-// Local workspaces get `.env.local` and `imessage-worker/.env.local` from the
+// Local workspaces get `.env.local` from the
 // developer's checkout through `.worktreeinclude`. A cloud sandbox has no
-// source machine to copy from, so this script materializes the same two files
+// source machine to copy from, so this script materializes the same file
 // from the Cloud Computer environment and then runs the shared worktree setup.
 import { spawnSync } from "node:child_process";
 import { existsSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import {
-  ensureImessageEnvFile,
   ensureNode24,
   repoRoot,
   resolveConductorSourceDeployment,
@@ -18,12 +17,6 @@ ensureNode24();
 process.chdir(repoRoot);
 
 const rootEnvPath = path.join(repoRoot, ".env.local");
-const imessageEnvPath = path.join(repoRoot, "imessage-worker", ".env.local");
-const imessageTemplatePath = path.join(
-  repoRoot,
-  "imessage-worker",
-  ".env.template",
-);
 
 function environmentValue(name) {
   const value = process.env[name]?.trim();
@@ -69,19 +62,7 @@ function writeRootEnv() {
   console.log(`Generated .env.local selecting ${selector}`);
 }
 
-function writeImessageEnv() {
-  // The template already carries local-safe terminal defaults, so only the
-  // broker sender is worth overriding from the Cloud Computer environment.
-  ensureImessageEnvFile({
-    envPath: imessageEnvPath,
-    templatePath: imessageTemplatePath,
-    phone: environmentValue("CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE"),
-  });
-  console.log("Generated imessage-worker/.env.local from .env.template");
-}
-
 if (!existsSync(rootEnvPath)) writeRootEnv();
-if (!existsSync(imessageEnvPath)) writeImessageEnv();
 
 const result = spawnSync("npm", ["run", "conductor:setup"], {
   cwd: repoRoot,

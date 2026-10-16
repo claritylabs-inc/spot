@@ -13,10 +13,8 @@ import {
   canUseAnonymousConvexCloudFallback,
   cloudConvexSelectionKeys,
   consumerAiCredentialNames,
-  conductorImageTag,
   conductorPorts,
   convexDeploymentNameFromDeployKey,
-  ensureImessageEnvFile,
   ensureNode24,
   ensureNpmToken,
   generateLocalAuthKeys,
@@ -38,12 +36,6 @@ process.chdir(repoRoot);
 
 const contextDirectory = path.join(repoRoot, ".context");
 const rootEnvPath = path.join(repoRoot, ".env.local");
-const imessageEnvPath = path.join(repoRoot, "imessage-worker", ".env.local");
-const imessageTemplatePath = path.join(
-  repoRoot,
-  "imessage-worker",
-  ".env.template",
-);
 const localConfigPath = path.join(
   repoRoot,
   ".convex",
@@ -102,12 +94,6 @@ function captureResult(command, args, options = {}) {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
   };
-}
-
-function requiredValue(values, key, source) {
-  const value = values.get(key)?.trim();
-  if (!value) throw new Error(`${key} is missing from ${source}`);
-  return value;
 }
 
 function writePrivateFile(filePath, contents) {
@@ -179,82 +165,23 @@ function removeConsumerAiCredentials(convex) {
   }
 }
 
-function ensureContainerService() {
-  if (
-    run("node", ["scripts/check-container-cli.mjs"], { allowFailure: true }) ===
-    0
-  ) {
-    return;
-  }
-  run("/bin/zsh", ["-c", "yes | container system start"]);
-  run("node", ["scripts/check-container-cli.mjs"]);
-}
-
-function buildWorkerImages() {
-  const workers = [
-    ["imessage-worker", "imessage-worker"],
-  ];
-  for (const [imageName, directory] of workers) {
-    run("container", [
-      "build",
-      "--platform",
-      "linux/amd64",
-      "--tag",
-      conductorImageTag(imageName),
-      "--file",
-      `${directory}/Dockerfile`,
-      directory,
-    ]);
-  }
-}
-
 if (!existsSync(rootEnvPath)) {
   throw new Error(
     ".env.local is missing. Add it to the repository root so Conductor Files to copy can seed new workspaces.",
   );
 }
-if (
-  ensureImessageEnvFile({
-    envPath: imessageEnvPath,
-    templatePath: imessageTemplatePath,
-    phone: process.env.CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE,
-  })
-) {
-  console.log(
-    "Generated imessage-worker/.env.local from .env.template for this workspace.",
-  );
-}
-
 const initialRootEnv = parseEnvFile(rootEnvPath);
-const imessageEnv = parseEnvFile(imessageEnvPath);
 writePrivateFile(
   rootEnvPath,
   withoutConsumerAiCredentials(readFileSync(rootEnvPath, "utf8")),
 );
-const terminalPhone = requiredValue(
-  imessageEnv,
-  "IMESSAGE_TERMINAL_FROM_PHONE",
-  "imessage-worker/.env.local",
-);
+const terminalPhone =
+  process.env.CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE?.trim() || "+12025550123";
 if (!/^\+[1-9]\d{7,14}$/.test(terminalPhone)) {
   throw new Error("IMESSAGE_TERMINAL_FROM_PHONE must be an E.164 phone number");
 }
-const configuredTerminalClientPhone = imessageEnv
-  .get("IMESSAGE_TERMINAL_CLIENT_PHONE")
-  ?.trim();
-const terminalClientPhone =
-  !configuredTerminalClientPhone ||
-  configuredTerminalClientPhone === "+15555550102"
-    ? "+12025550102"
-    : configuredTerminalClientPhone;
-const configuredTerminalPublicPhone = imessageEnv
-  .get("IMESSAGE_TERMINAL_PUBLIC_PHONE")
-  ?.trim();
-const terminalPublicPhone =
-  !configuredTerminalPublicPhone ||
-  configuredTerminalPublicPhone === "+15555550999"
-    ? "+12025550199"
-    : configuredTerminalPublicPhone;
+const terminalClientPhone = "+12025550102";
+const terminalPublicPhone = "+12025550199";
 for (const [name, value] of [
   ["IMESSAGE_TERMINAL_CLIENT_PHONE", terminalClientPhone],
   ["IMESSAGE_TERMINAL_PUBLIC_PHONE", terminalPublicPhone],
@@ -270,7 +197,6 @@ if (
 }
 
 run("npm", ["ci"]);
-run("npm", ["--prefix", "imessage-worker", "ci"]);
 
 mkdirSync(contextDirectory, { recursive: true });
 const convex = path.join(repoRoot, "node_modules", ".bin", "convex");
@@ -403,14 +329,7 @@ const localAuthKeys =
   existingJwtPrivateKey && existingJwks
     ? { JWT_PRIVATE_KEY: existingJwtPrivateKey, JWKS: existingJwks }
     : generateLocalAuthKeys();
-const operatorTerminalPhone =
-  imessageEnv.get("OPERATOR_IMESSAGE_TERMINAL_FROM_PHONE")?.trim() ||
-  "+12025550100";
-if (!/^\+[1-9]\d{7,14}$/.test(operatorTerminalPhone)) {
-  throw new Error(
-    "OPERATOR_IMESSAGE_TERMINAL_FROM_PHONE must be an E.164 phone number",
-  );
-}
+const operatorTerminalPhone = "+12025550100";
 const localAppUrl = `http://localhost:${web}`;
 const overridesPath = path.join(contextDirectory, "convex-local-overrides.env");
 
@@ -461,44 +380,10 @@ run(convex, [
   }),
 ]);
 
-writeRuntimeEnv("imessage-worker.env", {
-  SPOT_ENV: "local",
-  IMESSAGE_CHANNEL_ROLE: "customer",
-  IMESSAGE_ENABLED: "false",
-  SPECTRUM_PROVIDER: "terminal",
-  CONVEX_SITE_URL: localUrls.site,
-  IMESSAGE_WORKER_SECRET: imessageSecret,
-  IMESSAGE_TERMINAL_FROM_PHONE: terminalPhone,
-  IMESSAGE_TERMINAL_BROKER_PHONE: terminalPhone,
-  IMESSAGE_TERMINAL_CLIENT_PHONE: terminalClientPhone,
-  IMESSAGE_TERMINAL_PUBLIC_PHONE: terminalPublicPhone,
-  IMESSAGE_TERMINAL_SPACE_ID:
-    imessageEnv.get("IMESSAGE_TERMINAL_SPACE_ID")?.trim() || "chat-1",
-});
-writeRuntimeEnv("operator-imessage-worker.env", {
-  SPOT_ENV: "local",
-  IMESSAGE_CHANNEL_ROLE: "operator",
-  OPERATOR_IMESSAGE_ENABLED: "false",
-  OPERATOR_IMESSAGE_TERMINAL_ENABLED: "true",
-  SPECTRUM_PROVIDER: "terminal",
-  CONVEX_SITE_URL: localUrls.site,
-  OPERATOR_IMESSAGE_WORKER_SECRET: operatorImessageSecret,
-  OPERATOR_IMESSAGE_TERMINAL_FROM_PHONE: operatorTerminalPhone,
-  IMESSAGE_TERMINAL_SPACE_ID:
-    imessageEnv.get("OPERATOR_IMESSAGE_TERMINAL_SPACE_ID")?.trim() ||
-    "operator-chat-1",
-});
 writeRuntimeEnv("slack-fixture.env", {
   SLACK_SIGNING_SECRET: slackWebhookSecret,
 });
 
-run("npm", ["run", "check:agent-workers"]);
-
-if (process.env.CONDUCTOR_IS_LOCAL !== "0") {
-  ensureContainerService();
-  buildWorkerImages();
-}
-
 console.log(
-  "\nConductor workspace ready with its own local Convex database. Run the default Dev template to start Spot, Convex, and automatic email/OTP capture. Start customer Spectrum with npm run conductor:spectrum or operator Spectrum with npm run conductor:operator-spectrum.",
+  "\nConductor workspace ready with its own local Convex database. Run the default Dev template to start Spot, Convex, and automatic email/OTP capture.",
 );

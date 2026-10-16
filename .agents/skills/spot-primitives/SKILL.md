@@ -8,7 +8,7 @@ description: "Use before adding or changing Spot shared UI, feature flags, model
 Search the current owners before creating another abstraction:
 
 ```bash
-rg "<concept|route|component|table|helper>" AGENTS.md components convex lib hooks app imessage-worker
+rg "<concept|route|component|table|helper>" AGENTS.md components convex lib hooks app
 ```
 
 Reuse the module whose contract already owns the behavior. Read [AGENTS.md](../../../AGENTS.md) for boundaries and [AGENT_TOOLS.md](../../../AGENT_TOOLS.md) before changing a model-callable or MCP tool. Update those inventories in the same change.

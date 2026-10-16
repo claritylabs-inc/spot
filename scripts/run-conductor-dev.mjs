@@ -58,7 +58,6 @@ delete runEnvironment.NO_COLOR;
 
 console.log(`Spot web:              http://localhost:${web}`);
 console.log(`Convex:                  http://127.0.0.1:${convexCloud}`);
-console.log("Spectrum:                npm run conductor:spectrum");
 console.log("Logs:                    .context/logs/{web,convex}.log");
 console.log("Email/OTP:               shown here; full text in convex.log");
 console.log();

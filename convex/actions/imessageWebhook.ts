@@ -6,11 +6,11 @@ import type { Message, Space } from "@spectrum-ts/core";
 import { imessage } from "@spectrum-ts/imessage";
 import { internal } from "../_generated/api";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { normalizeInboundTurn } from "../../imessage-worker/src/inboundNormalization";
+import { normalizeInboundTurn } from "../lib/imessageTransport/inboundNormalization";
 import type {
   ImessageRequest,
   ImessageResponse,
-} from "../../imessage-worker/src/convex";
+} from "../lib/imessageTransport/convex";
 import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "../lib/agentAttachmentLimits";
 import {
   isImessageWebhookTransportEnabled,

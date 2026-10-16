@@ -302,19 +302,6 @@ prefers `SPOT_IMESSAGE_CONTACT_PHONE` before the public Spot value. Both paths
 temporarily fall back to the corresponding legacy `GLASS_*` variables until the
 Spot values have been verified on every production target.
 
-The following Railway configuration is retained for rollback. Production uses
-the webhook transport described below. The operator worker uses a separate
-Photon project and isolated route on the
-`operator-imessage-worker` Railway service
-(`21ab337b-1f74-4cac-8654-fba5187c35a3`). Its production base URL is
-`https://operator-imessage-worker-production.up.railway.app`. It reuses the
-`imessage-worker` image with `IMESSAGE_CHANNEL_ROLE=operator`, but requires distinct
-`OPERATOR_PHOTON_PROJECT_ID`, `OPERATOR_PHOTON_PROJECT_SECRET`, and
-`OPERATOR_IMESSAGE_WORKER_SECRET` values. Its Convex callbacks are
-`/operator-imessage-inbound` and `/operator-imessage-delivery-events`; do not
-point the internal number at the customer routes or copy customer Photon
-credentials into the operator service.
-
 The authenticated Photon dashboard owns a Pro `Spot Operator` project separate
 from the customer project. Pro supplies an unlimited shared iMessage route for
 up to 100 explicitly registered users; it does not allocate a dedicated public
@@ -333,15 +320,6 @@ Copy the assigned shared line into the GitHub Actions variable
 number and their own linked sender number under `/operator/channels`. The
 number is never exposed through a public browser environment variable.
 
-Configure that Railway service with root directory `/imessage-worker` and
-`imessage-worker/railway.operator.json`. Set `SPOT_ENV=production`,
-`SPECTRUM_PROVIDER=imessage`, `OPERATOR_IMESSAGE_ENABLED=true`, and
-`CONVEX_SITE_URL` alongside the operator-only credentials. Convex receives the
-same operator worker secret plus `OPERATOR_IMESSAGE_ENABLED=true` and the
-service's `OPERATOR_IMESSAGE_WORKER_URL`. Production must keep
-`OPERATOR_IMESSAGE_TERMINAL_ENABLED` unset or false. Publish the service health
-URL through the GitHub Actions variable
-`SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL`.
 Every `main` release sets Convex `OPERATOR_SLACK_ENABLED=true` and
 `OPERATOR_IMESSAGE_ENABLED=true`, clears the terminal-mode flag, and verifies
 the contact number and Convex transport configuration before promotion.

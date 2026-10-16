@@ -271,11 +271,7 @@ function OperatorImessageContent() {
         <p
           className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}
         >
-          Start the local operator terminal with{" "}
-          <code className={typeStyle("technical.codeCompact")}>
-            npm run conductor:operator-spectrum
-          </code>
-          .
+          iMessage is running in terminal test mode.
         </p>
       </ChannelCard>
     );
