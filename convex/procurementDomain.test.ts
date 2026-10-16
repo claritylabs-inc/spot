@@ -2099,7 +2099,7 @@ describe("procurement domain boundaries", () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "Agent-created client",
-          operatorStatus: "onboarding",
+          clientAccessStatus: "limited",
           allowedEmails: [],
         }),
       ]),

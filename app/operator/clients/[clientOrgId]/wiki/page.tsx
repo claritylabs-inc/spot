@@ -92,7 +92,7 @@ function LoadedProfile({
   const account = {
     name: support.name,
     website: support.website ?? "",
-    status: support.operatorStatus ?? "live",
+    status: support.clientAccessStatus ?? "limited",
   } as ClientAccountDraft;
   const [draftAccount, setDraftAccount] = useState(account);
   const [answers, setAnswers] = useState(

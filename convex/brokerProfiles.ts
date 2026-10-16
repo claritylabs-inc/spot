@@ -456,7 +456,6 @@ export async function createStandaloneBrokerByOperator(
     name,
     type: "broker",
     website: args.website?.trim() || undefined,
-    operatorStatus: "live",
     onboardingComplete: true,
   });
   const profileId = await ctx.db.insert("brokerProfiles", {

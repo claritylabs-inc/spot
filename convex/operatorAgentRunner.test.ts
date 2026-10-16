@@ -894,13 +894,13 @@ test("resumes pending inference and checkpoints auto-approved writes without dup
   );
   generate.mockRejectedValueOnce(new RouterJobPending("pending-step"));
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
-    const inputs = ["onboarding", "live"].map((status) => ({
+    const inputs = ["limited", "active"].map((status) => ({
       orgId: ids.orgId,
       status,
     }));
     const results = await Promise.all(
       inputs.map((input) =>
-        options.tools.set_organization_status.execute(input),
+        options.tools.set_client_access_status.execute(input),
       ),
     );
     expect(results.map((result) => result.status)).toEqual([
@@ -924,7 +924,7 @@ test("resumes pending inference and checkpoints auto-approved writes without dup
             content: inputs.map((input, index) => ({
               type: "tool-result",
               toolCallId: `call-${index}`,
-              toolName: "set_organization_status",
+              toolName: "set_client_access_status",
               output: { type: "json", value: results[index] },
             })),
           },
@@ -933,11 +933,11 @@ test("resumes pending inference and checkpoints auto-approved writes without dup
       steps: [
         {
           toolCalls: inputs.map((input) => ({
-            toolName: "set_organization_status",
+            toolName: "set_client_access_status",
             input,
           })),
           toolResults: results.map((output) => ({
-            toolName: "set_organization_status",
+            toolName: "set_client_access_status",
             output,
           })),
         },
@@ -982,7 +982,7 @@ test("resumes pending inference and checkpoints auto-approved writes without dup
     audit: await ctx.db.query("agentActionAuditEvents").collect(),
     confirmations: await ctx.db.query("operatorAgentConfirmations").collect(),
   }));
-  expect(state.org?.operatorStatus).toBe("live");
+  expect(state.org?.clientAccessStatus).toBe("active");
   expect(state.audit).toHaveLength(2);
   expect(state.audit.every((row) => row.status === "succeeded")).toBe(true);
   expect(state.confirmations).toHaveLength(2);
@@ -1079,7 +1079,7 @@ test("cancelling pending inference atomically rejects its late result and preven
     ).toBe(false);
     expect(await t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
     await expect(
-      options.tools.set_organization_status.execute({ orgId, status: "live" }),
+      options.tools.set_client_access_status.execute({ orgId, status: "active" }),
     ).rejects.toThrow("no longer active");
     throw new RouterJobPending(invocationKey);
   });
@@ -1091,7 +1091,7 @@ test("cancelling pending inference atomically rejects its late result and preven
     audit: await ctx.db.query("agentActionAuditEvents").collect(),
   }));
   expect(state.run?.status).toBe("cancelled");
-  expect(state.org?.operatorStatus).toBeUndefined();
+  expect(state.org?.clientAccessStatus).toBeUndefined();
   expect(state.audit).toHaveLength(0);
   expect(
     (await t.query(internal.routerJobs.get, { invocationKey }))?.status,
@@ -1165,8 +1165,8 @@ test("exact model messages, route pin and parent request survive continuation an
   let continuationStorageId: Id<"_storage"> | undefined;
   let expectedMessages: unknown[] = [];
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
-    const input = { orgId, status: "live" };
-    const output = await options.tools.set_organization_status.execute(input);
+    const input = { orgId, status: "active" };
+    const output = await options.tools.set_client_access_status.execute(input);
     const responseMessages = [
       {
         role: "assistant",
@@ -1174,7 +1174,7 @@ test("exact model messages, route pin and parent request survive continuation an
           {
             type: "tool-call",
             toolCallId: "stable-call",
-            toolName: "set_organization_status",
+            toolName: "set_client_access_status",
             input,
           },
         ],
@@ -1185,7 +1185,7 @@ test("exact model messages, route pin and parent request survive continuation an
           {
             type: "tool-result",
             toolCallId: "stable-call",
-            toolName: "set_organization_status",
+            toolName: "set_client_access_status",
             output: { type: "json", value: output },
           },
         ],
@@ -1199,8 +1199,8 @@ test("exact model messages, route pin and parent request survive continuation an
       response: { messages: responseMessages },
       steps: [
         {
-          toolCalls: [{ toolName: "set_organization_status", input }],
-          toolResults: [{ toolName: "set_organization_status", output }],
+          toolCalls: [{ toolName: "set_client_access_status", input }],
+          toolResults: [{ toolName: "set_client_access_status", output }],
         },
       ],
     };
@@ -1231,10 +1231,10 @@ test("exact model messages, route pin and parent request survive continuation an
 test("abandoned runner recovery replays the same step and fences every stale attempt callback without repeating writes", async () => {
   vi.useFakeTimers();
   const { t, orgId, queued } = await durableOperatorFixture();
-  const input = { orgId, status: "live" };
+  const input = { orgId, status: "active" };
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
     expect(
-      (await options.tools.set_organization_status.execute(input)).status,
+      (await options.tools.set_client_access_status.execute(input)).status,
     ).toBe("succeeded");
     const first = await t.run((ctx) => ctx.db.get(queued.runId));
     expect(first?.runnerAttempt).toBe(1);
@@ -1295,7 +1295,7 @@ test("abandoned runner recovery replays the same step and fences every stale att
       checkpoint: { iteration: 0 },
     });
     expect(
-      (await options.tools.set_organization_status.execute(input)).status,
+      (await options.tools.set_client_access_status.execute(input)).status,
     ).toBe("succeeded");
     return {
       text: "The saved update is complete.",
@@ -1573,7 +1573,7 @@ test("expand_tools persists through later all-no selections and keeps the sticky
   const { t, orgId, queued } = await durableOperatorFixture();
   decide.mockImplementation(async (request) => familyDecision(request, []));
   generate.mockImplementationOnce(async (_ctx, _task, options) => {
-    expect(options.tools.set_organization_status).toBeUndefined();
+    expect(options.tools.set_client_access_status).toBeUndefined();
     const input = { families: ["organizations"] };
     const output = await options.tools.expand_tools.execute(input);
     expect(output).toMatchObject({
@@ -1583,7 +1583,7 @@ test("expand_tools persists through later all-no selections and keeps the sticky
     return familyToolResult("expand_tools", input, output);
   });
   generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
-    expect(options.tools.set_organization_status).toBeDefined();
+    expect(options.tools.set_client_access_status).toBeDefined();
     expect(run.durable.route).toEqual({
       provider: "openai",
       model: "gpt-5.6-terra",
@@ -1596,7 +1596,7 @@ test("expand_tools persists through later all-no selections and keeps the sticky
     );
   });
   generate.mockImplementationOnce(async (_ctx, _task, options, run) => {
-    expect(options.tools.set_organization_status).toBeDefined();
+    expect(options.tools.set_client_access_status).toBeDefined();
     expect(options.system).toContain("When importing or updating a client");
     expect(run.trace.toolFamilies).toBe("organizations");
     return { text: "Ready to update.", steps: [] };

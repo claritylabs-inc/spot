@@ -9,7 +9,7 @@ import { getSessionUserId as getAuthUserId } from "./sessionIdentity";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Id, Doc } from "../_generated/dataModel";
 import {
-  assertImpersonatedSetupWrite,
+  recordImpersonatedWrite,
   getActiveOperatorImpersonation,
   getActiveOperatorProfile,
 } from "./operatorIdentity";
@@ -29,6 +29,8 @@ export type OrgAccess = {
   accessType: "member" | "connected_client" | "operator";
   role: "admin" | "member" | undefined;
   connectedClientOrgId?: Id<"organizations">;
+  /** Operator acting as the target org; passes every org auth gate and is audited. */
+  impersonated?: boolean;
 };
 
 export type CurrentOrgAccess = OrgAccess & {
@@ -91,7 +93,8 @@ export async function getOrgAccess(
         org,
         orgType,
         accessType: "member",
-        role: impersonation.session.targetRole,
+        role: "admin",
+        impersonated: true,
       };
     }
   }
@@ -313,7 +316,7 @@ export async function requireCurrentOrgAdminWrite(
   ctx: MutationCtx,
 ): Promise<CurrentOrgAccess> {
   const access = await requireCurrentOrgAdmin(ctx);
-  await assertImpersonatedSetupWrite(ctx, access.orgId);
+  await recordImpersonatedWrite(ctx);
   return access;
 }
 
@@ -385,7 +388,7 @@ export function assertCanManageUploadedPolicy(
     uploadedBySide?: string;
   },
 ): void {
-  if (access.accessType === "operator") return;
+  if (access.accessType === "operator" || access.impersonated) return;
   if (
     access.accessType === "member" &&
     access.orgType === "client" &&

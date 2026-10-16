@@ -15,7 +15,7 @@ import {
   getOrgAccess,
   getPolicyAccessForQuery,
 } from "./lib/access";
-import { assertImpersonatedSetupWrite } from "./lib/operatorIdentity";
+import { recordImpersonatedWrite } from "./lib/operatorIdentity";
 import {
   certificateHolderDisplayBlock,
   parseCertificateHolderBlock,
@@ -452,7 +452,7 @@ export const getGenerationContext = query({
       allowOperator: true,
     });
     assertCanReadPolicies(access);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
     if (access.accessType === "connected_client") {
       throwUserFacingError(
         userFacingErrorCodes.readOnlyAccess,
@@ -488,7 +488,7 @@ export const getGenerationContextForCertificateRequest = query({
   handler: async (ctx, args) => {
     const access = await getOrgAccess(ctx, args.orgId, { allowOperator: true });
     assertCanReadPolicies(access);
-    await assertImpersonatedSetupWrite(ctx, args.orgId);
+    await recordImpersonatedWrite(ctx);
     if (access.accessType === "connected_client") {
       throwUserFacingError(
         userFacingErrorCodes.readOnlyAccess,

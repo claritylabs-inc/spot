@@ -1,4 +1,5 @@
 import { companyProfileInputSchema } from "./lib/companyProfileInput";
+import { clientAccessStatus } from "./lib/clientAccess";
 import dayjs from "dayjs";
 import { updateClientSettingsForOperator } from "./operator";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
@@ -21,7 +22,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getOrgAccess } from "./lib/access";
 import {
-  assertImpersonatedSetupWrite,
+  recordImpersonatedWrite,
   requireOperator,
   requireOperatorForUser,
   writeOperatorAudit,
@@ -152,7 +153,7 @@ async function requireWikiAdmin(
 ) {
   await requireClientWikiOrganization(ctx, orgId);
   const access = await getOrgAccess(ctx, orgId);
-  await assertImpersonatedSetupWrite(ctx, orgId);
+  await recordImpersonatedWrite(ctx);
   await requireSharedWikiWrite(ctx, orgId);
   if (access.accessType !== "member" || access.role !== "admin") {
     throwUserFacingError(
@@ -497,12 +498,7 @@ export const updateBusinessProfileForOperator = mutation({
     expectedStatus: v.string(),
     name: v.string(),
     website: v.string(),
-    status: v.union(
-      v.literal("onboarding"),
-      v.literal("live"),
-      v.literal("lost"),
-      v.literal("churned"),
-    ),
+    status: v.union(v.literal("limited"), v.literal("active")),
     answers: intakeAnswersValidator,
     details: intakeDetailsValidator,
   },
@@ -523,7 +519,7 @@ export async function updateBusinessProfileByOperator(
     expectedStatus: string;
     name: string;
     website: string;
-    status: "onboarding" | "live" | "lost" | "churned";
+    status: "limited" | "active";
     answers: import("../lib/insurance-intake").IntakeAnswers;
     details: import("../lib/insurance-intake-details").IntakeDetails;
   },
@@ -537,7 +533,7 @@ export async function updateBusinessProfileByOperator(
     (existing?.submittedAt ?? 0) !== args.expectedVersion ||
     org.name !== args.expectedName ||
     (org.website ?? "") !== args.expectedWebsite ||
-    (org.operatorStatus ?? "live") !== args.expectedStatus
+    clientAccessStatus(org) !== args.expectedStatus
   )
     throw new Error(
       "This profile changed while you were editing. Reload it before saving.",
@@ -561,7 +557,7 @@ export async function updateBusinessProfileByOperator(
       website: args.website,
     });
   await ctx.db.patch(args.orgId, {
-    operatorStatus: args.status,
+    clientAccessStatus: args.status,
     intakeBusinessProfile: {
       ...profile,
       ...(existing?.sourceRequestId
@@ -586,7 +582,7 @@ export async function updateBusinessProfileByOperator(
     account: {
       name: savedOrg.name,
       website: savedOrg.website ?? "",
-      status: savedOrg.operatorStatus ?? "live",
+      status: clientAccessStatus(savedOrg),
     },
   };
 }
@@ -622,10 +618,10 @@ export async function prepareBusinessProfileToolUpdate(
     expectedVersion: patch.expectedVersion,
     expectedName: org.name,
     expectedWebsite: org.website ?? "",
-    expectedStatus: org.operatorStatus ?? "live",
+    expectedStatus: clientAccessStatus(org),
     name: patch.answers?.legalName ?? org.name,
     website: patch.answers?.website ?? org.website ?? "",
-    status: org.operatorStatus ?? "live",
+    status: clientAccessStatus(org),
     answers,
     details,
   };

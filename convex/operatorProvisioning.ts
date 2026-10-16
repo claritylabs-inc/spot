@@ -324,7 +324,6 @@ export const upsertProvisionedBroker = internalMutation({
       primaryInsuranceContactId:
         existingBySlug?.primaryInsuranceContactId ?? args.adminUserId,
       onboardingComplete: args.markOnboardingComplete,
-      operatorStatus: existingBySlug?.operatorStatus ?? ("onboarding" as const),
     };
 
     let brokerOrgId: Id<"organizations">;

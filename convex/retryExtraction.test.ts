@@ -112,7 +112,7 @@ describe("retryExtraction", () => {
     expect(await auditActions(t, policyId)).toEqual([]);
   });
 
-  test("rejects an operator while impersonating", async () => {
+  test("allows an operator while impersonating", async () => {
     const { t, as, operatorUserId, clientOrgId, policyId } = await setup({
       uploadedBySide: "operator",
     });
@@ -125,12 +125,11 @@ describe("retryExtraction", () => {
         createdAt: 1,
       });
     });
-    await expect(
-      as(operatorUserId).action(api.actions.retryExtraction.retryExtraction, {
-        policyId,
-      }),
-    ).rejects.toThrow("impersonation is read-only");
-    expect(retried).not.toHaveBeenCalled();
+    await as(operatorUserId).action(
+      api.actions.retryExtraction.retryExtraction,
+      { policyId },
+    );
+    expect(retried).toHaveBeenCalled();
   });
 
   test("rejects while an extraction is already running", async () => {

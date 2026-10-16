@@ -14,7 +14,7 @@ test("external placement closes only the exact request without policy or access 
     const operatorUserId = await ctx.db.insert("users", {email:"operator@example.test",accountKind:"operator"});
     await ctx.db.insert("operatorProfiles", {userId:operatorUserId,email:"operator@example.test",role:"operator",status:"active",createdAt:dayjs().valueOf(),updatedAt:dayjs().valueOf()});
     const clientUserId = await ctx.db.insert("users", {email:"client@example.test",accountKind:"customer"});
-    const clientOrgId = await ctx.db.insert("organizations", {name:"Cove",type:"client",operatorStatus:"live"});
+    const clientOrgId = await ctx.db.insert("organizations", {name:"Cove",type:"client",clientAccessStatus:"active"});
     await ctx.db.insert("orgMemberships",{orgId:clientOrgId,userId:clientUserId,role:"admin"});
     const request = await createProcurementRequestByOperator(ctx,{operatorUserId,clientOrgId,title:"Auto",narrative:"Auto coverage",clientVisible:true,source:"workspace_scan"});
     const other = await createProcurementRequestByOperator(ctx,{operatorUserId,clientOrgId,title:"Cyber",narrative:"Cyber coverage",clientVisible:true,source:"workspace_scan"});
@@ -25,7 +25,7 @@ test("external placement closes only the exact request without policy or access 
     expect(await ctx.db.get(ids.requestId)).toMatchObject({status:"completed",completionOutcome:{kind:"placed_elsewhere",provider:"GEICO"}});
     expect((await ctx.db.get(ids.requestId))?.resultingPolicyId).toBeUndefined();
     expect((await ctx.db.get(ids.otherId))?.status).toBe("draft");
-    expect((await ctx.db.get(ids.clientOrgId))?.operatorStatus).toBe("live");
+    expect((await ctx.db.get(ids.clientOrgId))?.clientAccessStatus).toBe("active");
     expect(await ctx.db.query("policies").collect()).toHaveLength(0);
     expect(await ctx.db.system.query("_scheduled_functions").collect()).toHaveLength(0);
   });
