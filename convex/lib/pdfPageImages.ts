@@ -7,8 +7,18 @@ import type { DecisionBox } from "../../contracts/cl-router/policy";
 
 export const JEV_IMAGE_MIN_SIDE = 280;
 export const JEV_IMAGE_MAX_SIDE = 1568;
+/**
+ * Default longest side for whole pages. On October 16, 2026 fixtures, 1280px
+ * matched full-size answers at about 70% of the tokens; 1024px lost confidence.
+ */
+export const JEV_PAGE_MAX_SIDE = 1280;
 /** Upper bound on zoom when rendering a small region, to avoid huge rasters. */
 const MAX_REGION_SCALE = 8;
+/**
+ * Jev bills images by pixel area, not file size, so quality mainly shrinks
+ * uploads; 60 gave the same answers as 88 at half the bytes.
+ */
+export const JPEG_QUALITY = 60;
 
 export type PdfPageImage = {
   /** 1-based page number in the original PDF. */
@@ -91,7 +101,7 @@ async function renderRegion(
   page.cleanup();
   return {
     page: pageNumber,
-    bytes: new Uint8Array(await canvas.encode("jpeg", 88)),
+    bytes: new Uint8Array(await canvas.encode("jpeg", JPEG_QUALITY)),
     mediaType: "image/jpeg",
     width,
     height,
@@ -108,14 +118,14 @@ async function renderRegion(
   };
 }
 
-/** Renders whole pages, longest side at most `maxSide` (default 1568px). */
+/** Renders whole pages, longest side at most `maxSide` (default JEV_PAGE_MAX_SIDE). */
 export async function renderPdfPageImages(params: {
   pdfBytes: Uint8Array;
   pages: number[];
   maxSide?: number;
 }): Promise<PdfPageImage[]> {
   const maxSide = Math.min(
-    params.maxSide ?? JEV_IMAGE_MAX_SIDE,
+    params.maxSide ?? JEV_PAGE_MAX_SIDE,
     JEV_IMAGE_MAX_SIDE,
   );
   const doc = await openPdf(params.pdfBytes);

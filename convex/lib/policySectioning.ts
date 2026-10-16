@@ -131,8 +131,11 @@ const DIGEST_MAX_CHARS = 1200;
 
 /** Text-digest fallback batches (no PDF bytes or rendering failed). */
 const JEV_BATCH_PAGES = 25;
-/** Image batches: about 2.5k tokens per 1024px page keeps a batch and its context in Jev's window. */
-const JEV_IMAGE_BATCH_PAGES = 8;
+/**
+ * Image batches: a 1280px page costs about 3.8k Jev tokens, so five pages plus
+ * up to two context pages stay inside Jev's context; overflow is halved.
+ */
+const JEV_IMAGE_BATCH_PAGES = 5;
 const JEV_BATCH_CONCURRENCY = 4;
 
 function isPolicySectionKind(value: unknown): value is PolicySectionKind {
@@ -392,7 +395,6 @@ async function classifyRemainingPages(params: {
             ? await renderPdfPageImages({
                 pdfBytes: params.pdfBytes,
                 pages: imagePages.map((page) => page.page),
-                maxSide: 1024,
               })
             : [];
         if (images.length) {
