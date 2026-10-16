@@ -1,5 +1,6 @@
 "use client";
 import { toast } from "sonner";
+import { initializeIntakeGoogleAds, trackIntakeContactSaved } from "@/lib/google-ads";
 import {
   Card,
   CardHeader,
@@ -36,6 +37,9 @@ export function IntakeSignup() {
   return <SignupForm />;
 }
 function SignupForm() {
+  useEffect(() => {
+    initializeIntakeGoogleAds();
+  }, []);
   const params = useSearchParams();
   const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -189,6 +193,9 @@ function SignupForm() {
         });
         const outcome = await response.json();
         if (!response.ok) throw new Error(outcome.error);
+        // Match the former landing form: count accepted contact details, not
+        // a page visit, an email-only redirect, or a failed signup attempt.
+        void trackIntakeContactSaved(handoffKey.current);
         activeToken = handoffKey.current;
         existing = outcome.existingAccount;
         setToken(activeToken);

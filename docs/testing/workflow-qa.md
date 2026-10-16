@@ -989,6 +989,39 @@ regression coverage; the historical workflow results above are not new coverage.
 No production code or replacement tests were added. Final checks run the reduced
 suite, TypeScript, lint, worker checks and production build before merging.
 
+### Google Ads signup contact conversion — October 16, 2026
+
+Observed on production in Helium: marketing `/landing/form` contains the
+`AW-18451509957` base tag; its email form redirects to `/signup?email=…`.
+The signup page contains no Google tag before this fix. Google Ads' existing
+**Landing form completed** action is primary, counts One, and reports no tag
+pings in seven days (last recorded September 29). Its event destination matches
+the marketing site's older form implementation. Tag Assistant could not connect
+in the test Helium session; this does not establish tag delivery or absence.
+
+Implementation adds the base tag only on production intake routes and queues the
+existing contact-lead conversion only after `/api/intake` accepts the contact.
+Privacy, production-host/route gating, concurrent/reload deduplication, blank-ID
+rejection, and tracker/storage failure invariants were listed before code and
+covered by `lib/google-ads.test.ts` (5 checks). Evidence is in the local ignored
+`.context/qa/google-ads/` directory. Focused ESLint passes.
+
+Live Helium test: landing-to-signup email prefill passed. The first test with
+`zac@spot.insure` was rejected; source inspection confirms customer signup
+intentionally blocks operator-domain emails. A second authorized synthetic
+identity (`Spot Conversion Test`, an example.com address, and a reserved
+fictional phone number) successfully saved contact details and reached the
+first intake question with a Saved status. The live app still has no Google
+Ads script at this point, confirming the tracking gap. Evidence:
+`.context/qa/google-ads/signup-test-passed.jpg`. A synthetic draft remains; no
+insurance application was submitted and no real business details were entered.
+Post-deployment Tag Assistant conversion delivery and attribution remain
+**not run**; local invariant checks do not establish either. Follow the production QA procedure in
+`docs/architecture/product-analytics.md` after the release is deployed.
+Production build passes after applying the repository's required `postinstall`
+UI patch; the initial install intentionally skipped lifecycle scripts, so its
+missing date-field error was resolved by running the existing patch step.
+
 ### Extension welcome and reusable reviewer — 2026-10-16
 
 - `node scripts/browser-extension-onboarding-e2e.mjs`: native-local Chrome,
