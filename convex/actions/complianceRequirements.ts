@@ -11,7 +11,11 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { generateObjectForOrg } from "../lib/models";
 import { extractPdfText } from "../lib/pdfText";
-import { clRouterDecide, isClRouterPayloadTooLarge, runWithPayloadSplitting } from "../lib/clRouterClient";
+import {
+  clRouterDecide,
+  isClRouterPayloadTooLarge,
+  runWithPayloadSplitting,
+} from "../lib/clRouterClient";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { jevChoiceConfidence, jevProceeds } from "../lib/jevThreshold";
 import { locateOnPdfPage, stageJevImages } from "../lib/jevImages";
@@ -397,7 +401,9 @@ function normalizeImportedRequirement(
   defaultScope: RequirementScope,
 ) {
   return {
-    ...(requirement.classificationReview ? { classificationReview: true as const } : {}),
+    ...(requirement.classificationReview
+      ? { classificationReview: true as const }
+      : {}),
     kind: "coverage" as const,
     scope: requirement.scope ?? defaultScope,
     title: requirement.title.trim(),
@@ -1123,7 +1129,22 @@ async function runRequirementImport(
   const result = mergeRequirementChunkResults(chunkResults);
   const usage = result.usage;
   let normalizedRequirements;
+  let droppedClassificationRequirementCount = 0;
   try {
+    const classifiedRequirements = (
+      await judgeRequirementFields(ctx, result.object.requirements, {
+        orgId: args.orgId,
+        traceId: runId,
+        defaultScope: scope,
+      })
+    ).map((requirement) => normalizeImportedRequirement(requirement, scope));
+    // The shared writer requires a valid line and checkable coverage terms.
+    // Preserve an explicit audit count for classified rows it cannot accept.
+    droppedClassificationRequirementCount = classifiedRequirements.filter(
+      (requirement) =>
+        requirement.classificationReview &&
+        !isCheckableCoverageRequirement(requirement),
+    ).length;
     normalizedRequirements = await markUnverifiedImageExcerpts(
       ctx,
       {
@@ -1132,13 +1153,7 @@ async function runRequirementImport(
         sourceText,
         runId,
       },
-      (await judgeRequirementFields(ctx, result.object.requirements, {
-        orgId: args.orgId,
-        traceId: runId,
-        defaultScope: scope,
-      }))
-        .map((requirement) => normalizeImportedRequirement(requirement, scope))
-        .filter(isCheckableCoverageRequirement),
+      classifiedRequirements.filter(isCheckableCoverageRequirement),
     );
   } catch (error) {
     await failRun(error);
@@ -1148,6 +1163,7 @@ async function runRequirementImport(
     runId,
     extractedRequirementCount: result.object.requirements.length,
     checkableRequirementCount: normalizedRequirements.length,
+    droppedClassificationRequirementCount,
     extractedHolderCount: result.object.certificateHolders.length,
     ...(result.clRouter?.requestId
       ? { requestId: result.clRouter.requestId }

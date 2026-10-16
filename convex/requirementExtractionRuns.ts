@@ -91,6 +91,7 @@ export const recordExtraction = internalMutation({
     runId: v.string(),
     extractedRequirementCount: v.number(),
     checkableRequirementCount: v.number(),
+    droppedClassificationRequirementCount: v.optional(v.number()),
     extractedHolderCount: v.number(),
     requestId: v.optional(v.string()),
     provider: v.optional(modelProviderValidator),
@@ -107,6 +108,8 @@ export const recordExtraction = internalMutation({
     await ctx.db.patch(run._id, {
       extractedRequirementCount: args.extractedRequirementCount,
       checkableRequirementCount: args.checkableRequirementCount,
+      droppedClassificationRequirementCount:
+        args.droppedClassificationRequirementCount,
       extractedHolderCount: args.extractedHolderCount,
       requestId: args.requestId,
       provider: args.provider,

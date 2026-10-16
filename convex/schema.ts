@@ -1622,6 +1622,7 @@ export default defineSchema({
     costUsd: v.optional(v.union(v.number(), v.null())),
     extractedRequirementCount: v.optional(v.number()),
     checkableRequirementCount: v.optional(v.number()),
+    droppedClassificationRequirementCount: v.optional(v.number()),
     extractedHolderCount: v.optional(v.number()),
     createdRequirementCount: v.optional(v.number()),
     duplicateRequirementCount: v.optional(v.number()),
