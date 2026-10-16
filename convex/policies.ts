@@ -1723,6 +1723,7 @@ export const updatePolicyDetails = mutation({
     }
 
     await ctx.db.patch(args.id, patch);
+    await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { policyId: args.id, subjectOrgId: policy.orgId });
     await ctx.db.insert("policyAuditLog", {
       policyId: args.id,
       userId: access.userId,
@@ -2862,6 +2863,7 @@ export const promoteCompletedExtractionInternal = internalMutation({
         orgId: policy.orgId,
         data: { org_id: policy.orgId, policy_id: policy._id },
       });
+    if (policy.orgId) await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { policyId: args.id, subjectOrgId: policy.orgId });
     return { promoted: true as const, decision: recordedDecision };
   },
 });
@@ -3815,6 +3817,7 @@ export const pipelineCompleteLease = internalMutation({
         policyPipelineStatusPatch(policy, checkpoint, args.status, args.error),
       );
     }
+    if (args.status === "complete" && policy?.orgId) await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { policyId, subjectOrgId: policy.orgId });
     return true;
   },
 });

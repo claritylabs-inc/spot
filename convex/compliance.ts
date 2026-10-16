@@ -4,6 +4,7 @@ import {
   notificationSourceRefValidator,
 } from "./lib/notificationTypes";
 import { readRequirementNotes, saveRequirementNotes } from "./certificateNotes";
+import { loadComplianceJudgments } from "./complianceJudgments";
 import { v } from "convex/values";
 import dayjs from "dayjs";
 import {
@@ -17,7 +18,6 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getOrgAccess, requireAuth, type OrgAccess } from "./lib/access";
 import {
   assessRequirementCompliance,
-  complianceJudgmentPlan,
   formatComplianceReasons,
   policyReadableForCompliance,
   type ComplianceCheckResult,
@@ -352,7 +352,13 @@ async function assessForSubject(
     requirement._id,
     subjectOrgId,
   );
+  const judgments = await loadComplianceJudgments(
+    ctx,
+    requirement._id,
+    subjectOrgId,
+  );
   const result = assessRequirementCompliance(requirement, policies, {
+    judgments,
     expectedInsuredName: subjectOrg?.name,
     includePreviewPolicies: options?.includePreviewPolicies,
     existingChecks: checks,
@@ -762,6 +768,7 @@ export const upsertRequirement = mutation({
       `${args.requirementId ? "Updated" : "Added"} compliance requirement ${sanitized.title}`,
       { requirementId },
     );
+    await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { requirementId, subjectOrgId: args.orgId });
     return requirementId;
   },
 });
@@ -1258,8 +1265,8 @@ export const getManualComplianceReviewContextInternal = internalQuery({
     ) {
       throw new Error("Requirement not found");
     }
-    if (requirement.scope !== "own_org" || requirement.kind !== "coverage") {
-      throw new Error("Only own coverage requirements can be deeply rechecked");
+    if (requirement.kind !== "coverage") {
+      throw new Error("Only coverage requirements can be deeply rechecked");
     }
     const [org, policies] = await Promise.all([
       ctx.db.get(args.orgId),
@@ -1267,6 +1274,11 @@ export const getManualComplianceReviewContextInternal = internalQuery({
     ]);
     const activePolicies = policies.filter((policy) =>
       policyReadableForCompliance(policy, true),
+    );
+    const judgments = await loadComplianceJudgments(
+      ctx,
+      requirement._id,
+      args.orgId,
     );
     return {
       org: org
@@ -1281,16 +1293,10 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         activePolicies,
         {
           expectedInsuredName: org?.name,
+          judgments,
         },
       ),
-      judgmentPlans: activePolicies.map((policy) => ({
-        policyId: policy._id,
-        ...complianceJudgmentPlan(requirement, policy, org?.name ? [org.name] : []),
-      })),
       policies: activePolicies.map((policy) => ({
-        deterministicCheck: assessRequirementCompliance(requirement, [policy], {
-          expectedInsuredName: org?.name,
-        }),
         _id: policy._id,
         carrier: policy.carrier || policy.security,
         policyNumber: policy.policyNumber,
@@ -1323,46 +1329,11 @@ export const getManualComplianceReviewContextInternal = internalQuery({
   },
 });
 
-export const saveComplianceJudgmentsInternal = internalMutation({
+export const finishComplianceRecheckInternal = internalMutation({
   args: {
     orgId: v.id("organizations"),
     requirementId: v.id("insuranceRequirements"),
     userId: v.id("users"),
-    judgments: v.array(v.object({
-      policyId: v.id("policies"),
-      inputKey: v.string(),
-      answers: v.record(v.string(), v.union(v.string(), v.boolean())),
-    })),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireAdminWriteActor(ctx, args.orgId, args.userId, "Admin role required");
-    const requirement = await ctx.db.get(args.requirementId);
-    if (!requirement || requirement.orgId !== args.orgId || requirement.status !== "active" || requirement.scope !== "own_org" || requirement.kind !== "coverage") throw new Error("Requirement not found");
-    const org = await ctx.db.get(args.orgId);
-    const policies = await listPoliciesForOrg(ctx, args.orgId);
-    const names = org?.name ? [org.name] : [];
-    if (args.judgments.length > 100 || JSON.stringify(args.judgments).length > 400_000) throw new Error("Compliance evidence exceeds the stored judgment budget");
-    for (const judgment of args.judgments) {
-      const policy = policies.find((entry) => entry._id === judgment.policyId);
-      if (!policy || !policyReadableForCompliance(policy, true) || complianceJudgmentPlan(requirement, policy, names).inputKey !== judgment.inputKey) throw new Error("Compliance evidence changed; run the check again");
-    }
-    await ctx.db.patch(requirement._id, { semanticJudgments: args.judgments });
-    const result = assessRequirementCompliance({ ...requirement, semanticJudgments: args.judgments }, policies, { expectedInsuredNames: names });
-    await writeComplianceOperatorAudit(ctx, access, args.orgId, `Rechecked compliance requirement ${requirement.title}`, { requirementId: requirement._id });
-    return result;
-  },
-});
-
-export const saveManualComplianceReviewInternal = internalMutation({
-  args: {
-    orgId: v.id("organizations"),
-    requirementId: v.id("insuranceRequirements"),
-    userId: v.id("users"),
-    status: complianceCheckStatusValidator,
-    matchedPolicyIds: v.array(v.id("policies")),
-    expiresAt: v.optional(v.string()),
-    daysUntilExpiration: v.optional(v.number()),
-    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const access = await requireAdminWriteActor(
@@ -1372,30 +1343,24 @@ export const saveManualComplianceReviewInternal = internalMutation({
       "Admin role required",
     );
     const requirement = await ctx.db.get(args.requirementId);
-    if (!requirement || requirement.orgId !== args.orgId) {
+    if (
+      !requirement ||
+      requirement.orgId !== args.orgId ||
+      requirement.status !== "active"
+    )
       throw new Error("Requirement not found");
-    }
-    const checkId = await ctx.db.insert("complianceChecks", {
-      orgId: args.orgId,
-      requirementId: args.requirementId,
-      subjectOrgId: args.orgId,
-      status: args.status,
-      reasons: args.status === "met" ? [] : ["agent_review"],
-      matchedPolicyIds: args.matchedPolicyIds,
-      matchedSummary: args.notes?.trim() || undefined,
-      expiresAt: args.expiresAt,
-      checkedAt: dayjs().valueOf(),
-      checkedBy: "agent",
-      checkedByUserId: args.userId,
-    });
+    const [org, policies] = await Promise.all([
+      ctx.db.get(args.orgId),
+      listPoliciesForOrg(ctx, args.orgId),
+    ]);
     await writeComplianceOperatorAudit(
       ctx,
       access,
       args.orgId,
       `Rechecked compliance requirement ${requirement.title}`,
-      { requirementId: args.requirementId, checkId },
+      { requirementId: requirement._id },
     );
-    return checkId;
+    return assessForSubject(ctx, requirement, policies, args.orgId, org);
   },
 });
 
@@ -1452,6 +1417,7 @@ export const upsertRequirementInternal = internalMutation({
       `Added compliance requirement ${sanitized.title}`,
       { requirementId },
     );
+    await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { requirementId, subjectOrgId: args.orgId });
     return requirementId;
   },
 });
@@ -1693,6 +1659,7 @@ export const createRequirementsInternal = internalMutation({
         sourceDocumentId: args.sourceDocumentId,
       },
     );
+    for (const requirementId of ids) await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { requirementId, subjectOrgId: args.orgId });
     return ids;
   },
 });

@@ -227,6 +227,7 @@ export const run = internalAction({
         internal.compliance.listVendorComplianceInternal,
         { clientOrgId, includePreviewPolicies: false },
       );
+      for (const row of complianceRows) if (row.vendorOrg) await ctx.scheduler.runAfter(0, (await import("../complianceJudgments")).computeComplianceJudgmentsRef, { subjectOrgId: row.vendorOrg._id });
       const rows = serializeMonitorRows(complianceRows);
       checkedVendors += rows.length;
       if (rows.length === 0) continue;
