@@ -7,7 +7,9 @@
     "nodeVersion": "24",
     "externalPackages": [
       "pdfjs-dist",
-      "@napi-rs/canvas"
+      "@napi-rs/canvas",
+      "@ffmpeg-installer/ffmpeg",
+      "@ffmpeg-installer/linux-x64"
     ]
   }
 }

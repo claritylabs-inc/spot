@@ -9,7 +9,6 @@ import {
   type Message,
   type Space,
 } from "@spectrum-ts/core";
-import { ensureM4a } from "@spectrum-ts/core/authoring";
 import { imessage, nativeContactCard } from "@spectrum-ts/imessage";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
@@ -40,11 +39,17 @@ import {
   type ImessageChannelRole,
 } from "./imessageConfig";
 import { normalizeInboundImessageSender } from "./imessageIngress";
+import {
+  decideReplyThreading,
+  threadingCandidates,
+} from "./imessageReplyThreading";
+import { ensureM4aWithBundledFfmpeg } from "./imessageVoice";
 import { signSpectrumWebhook } from "./spectrumWebhookSignature";
 
 const TYPING_REFRESH_MS = 4_000;
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 15_000;
 const RAW_MESSAGE_LOOKUP_PAGE_SIZE = 25;
+const RECENT_THREADING_PAGE_SIZE = 20;
 const CONTACT_CARD_NAME = "Spot";
 const CONTACT_CARD_URL = "https://spot.insure";
 const CONTACT_CARD_NOTE =
@@ -56,6 +61,10 @@ const IMESSAGE_GUID =
 
 type RawMessage = {
   guid: string;
+  isFromMe?: boolean;
+  isSystemMessage?: boolean;
+  reaction?: unknown;
+  dateCreated?: Date;
   content: {
     text?: string;
     attachments: readonly {
@@ -324,15 +333,15 @@ export function webhookRecoveryClient(
 }
 
 /**
- * Converts voice memos to m4a like the worker. Convex has no ffmpeg binary, so
- * a memo that needs transcoding is forwarded unchanged and the inbound handler
+ * Converts voice memos to m4a like the worker, using the bundled ffmpeg. If
+ * transcoding fails, the memo is forwarded unchanged and the inbound handler
  * reports the transcription failure to the sender.
  */
 export async function readWebhookAttachment(
   content: InboundAttachmentContent,
 ): Promise<ImessageAttachment> {
   try {
-    return await readInboundAttachmentWith(ensureM4a, content);
+    return await readInboundAttachmentWith(ensureM4aWithBundledFfmpeg, content);
   } catch (error) {
     if (!isVoiceMemoContent(content)) throw error;
     console.warn("[imessage-webhook] Voice memo transcoding unavailable", {
@@ -390,14 +399,39 @@ export async function withTypingIndicator<T>(
   }
 }
 
-export async function resolveReplyTarget(
-  space: Space,
-  message: Message,
-  recoveredGuid: string | undefined,
-): Promise<Message | undefined> {
-  if (IMESSAGE_GUID.test(message.id)) return message;
-  if (!recoveredGuid) return undefined;
-  return await space.getMessage(recoveredGuid).catch(() => undefined);
+export async function resolveReplyTarget(args: {
+  ctx: ActionCtx;
+  app: SpectrumApp;
+  space: Space;
+  message: Message;
+  recoveredGuid: string | undefined;
+  incomingText: string;
+  replyText: string;
+}): Promise<Message | undefined> {
+  const { space, message } = args;
+  const inboundGuid = IMESSAGE_GUID.test(message.id)
+    ? message.id
+    : args.recoveredGuid;
+  const getTarget = async (guid: string | undefined) =>
+    guid ? await space.getMessage(guid).catch(() => undefined) : undefined;
+
+  // Jev decides whether to thread and which earlier message to answer.
+  const messages = getAdvancedImessageClient(args.app, space)?.messages;
+  const page = await messages?.listInChat?.(space.id, {
+    pageSize: RECENT_THREADING_PAGE_SIZE,
+  }).catch(() => undefined);
+  const candidates = threadingCandidates(page?.messages ?? []);
+  const decision = await decideReplyThreading(args.ctx, {
+    incomingText: args.incomingText,
+    replyText: args.replyText,
+    candidates,
+  });
+  if (decision.mode === "plain") return undefined;
+  if (decision.mode === "thread") {
+    const target = await getTarget(decision.guid);
+    if (target) return target;
+  }
+  return await getTarget(inboundGuid);
 }
 
 /** Threads the reply to the source message when it has an Apple GUID. */

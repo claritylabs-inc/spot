@@ -125,20 +125,24 @@ change). The production HTTP actions origin is `https://actions.spot.insure`.
 
 ## Known gaps to check before flipping
 
-- **Voice memos.** The worker converts CAF voice memos to m4a with the `ffmpeg`
-  in its image (`ensureM4a`). Convex's Node runtime has no ffmpeg, so on the
-  webhook path a memo that needs conversion is forwarded unchanged and the
-  sender is told it could not be transcribed. Restore parity before relying on
-  voice memos, either by adding `ffmpeg-static` as an `optionalDependency` and
-  listing it in `convex.json` `node.externalPackages` (`ensureM4a` resolves it
-  automatically; it downloads a platform binary at install time and adds ~75 MB
-  to the Node bundle budget), or by transcoding before transcription in
-  cl-router.
-- **Webhook message ids.** The Stable Events page describes `message.id` as an
-  opaque `spc-msg-<uuid>`, while the worker's ids are Apple GUIDs. Replies are
-  threaded only when the id is a GUID or the raw message was recovered; otherwise
-  they are sent as ordinary chat messages. Raw-message recovery falls back to
-  finding the message in the chat by its attachment GUID.
+- **Voice memos.** CAF memos are converted to m4a in Convex with the static
+  binary from `@ffmpeg-installer/ffmpeg` (delivered through npm, no postinstall
+  download; `convex/lib/imessageVoice.ts`). The package and its `linux-x64`
+  binary package are listed in `convex.json` `node.externalPackages`, and the
+  binary is copied to `/tmp` and made executable on first use. Verified locally
+  (CAF to M4A); **verify on the first deploy** that the Convex Node bundle
+  installs the binary and a real voice memo is transcribed. If conversion fails
+  the memo is forwarded unchanged and the sender is told it could not be
+  transcribed.
+- **Reply threading.** Webhook `message.id` is opaque (`spc-msg-<uuid>`), not an
+  Apple GUID. `convex/lib/imessageReplyThreading.ts` lists the last messages in
+  the chat (with their real GUIDs) and asks Jev (`/v1/decide`, task
+  `imessage_reply_threading`) two questions: whether the reply needs a native
+  threaded reply, and which message it answers. A confident "no" sends a plain
+  chat message; a confident "yes" threads to the chosen message; if Jev fails or
+  is unsure, the reply threads to the inbound message when its GUID is known
+  (previous behavior) and is otherwise sent plain. This adds one Jev call per
+  reply (6 s budget). The Railway worker still threads every reply.
 - **Outbound `clientMessageId`.** Chat-GUID sends now go through the live
   `Space` (markdown, like the worker's active-space path) instead of the worker's
   fallback `messages.sendText(…, { clientMessageId })`. Idempotency comes from

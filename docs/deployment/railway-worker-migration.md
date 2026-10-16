@@ -75,15 +75,16 @@ and nothing changes until you flip a flag. Follow the full runbook in
    no `Rejected delivery` log lines).
 7. Rollback: set the flag to `false`, restart the Railway service.
 
-**Decide before flipping: voice memos.** Convex Node has no ffmpeg, so CAF
-voice memos are forwarded unconverted and the sender is told they could not be
-transcribed. Either accept that, add `ffmpeg-static` per the runbook, or
-transcode in cl-router.
+**Verify on first deploy:** voice memos now transcode with a bundled ffmpeg
+(`@ffmpeg-installer/ffmpeg`, listed in `convex.json` external packages). Send a
+real iPhone voice memo and confirm it is transcribed; if the Convex bundle did
+not install the binary, memos fall back to a "could not transcribe" reply.
 
-**Also check:** webhook `message.id` is opaque (`spc-msg-<uuid>`) rather than an
-Apple GUID, so reply threading may degrade to plain chat messages; and each
-webhook delivery creates a `Spectrum()` instance (extra Spectrum Cloud calls and
-Node action time while the agent runs).
+**Reply threading** is decided by Jev per reply (thread to a specific earlier
+message, or send a plain message). Check a few conversations: a reply to an
+older question should thread to it; a normal back-and-forth should not. Each
+reply adds one Jev call; each webhook delivery also creates a `Spectrum()`
+instance (extra Spectrum Cloud calls and Node action time while the agent runs).
 
 After a soak period, do the deletions in the runbook's "Delete after cutover"
 section (worker directory, Railway services, old routes, env vars, release

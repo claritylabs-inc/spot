@@ -160,7 +160,15 @@ async function handleInboundTurn(
     if (result.response) {
       await sendResponseText(
         space,
-        await resolveReplyTarget(space, message, recoveredGuid),
+        await resolveReplyTarget({
+          ctx,
+          app,
+          space,
+          message,
+          recoveredGuid,
+          incomingText: normalizedTurn.messageText,
+          replyText: result.response,
+        }),
         result.response,
       );
     }
