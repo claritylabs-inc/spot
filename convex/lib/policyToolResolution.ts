@@ -1,27 +1,14 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
+import { clRouterDecide } from "./clRouterClient";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 import { lobLabel, policyLobCodes } from "./linesOfBusiness";
 
 function normalizeReference(value: unknown) {
   return typeof value === "string"
     ? value.toLowerCase().replace(/[^a-z0-9]+/g, "")
     : "";
-}
-
-function policyText(policy: Doc<"policies">) {
-  return [
-    policy._id,
-    policy.policyNumber,
-    policy.fileName,
-    policy.security,
-    policy.carrier,
-    policy.insuredName,
-    ...policyLobCodes(policy),
-    ...policyLobCodes(policy).map(lobLabel),
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 function policyScore(policy: Doc<"policies">, reference: string) {
@@ -31,8 +18,6 @@ function policyScore(policy: Doc<"policies">, reference: string) {
   if (normalizeReference(policy.policyNumber) === normalizedReference) return 95;
   if (normalizeReference(policy.fileName) === normalizedReference) return 85;
 
-  const normalizedText = normalizeReference(policyText(policy));
-  if (normalizedText.includes(normalizedReference)) return 60;
   return 0;
 }
 
@@ -67,6 +52,46 @@ export async function resolvePolicyReferenceForOrg(ctx: ActionCtx, args: {
     .map((policy) => ({ policy, score: policyScore(policy, args.reference) }))
     .filter((match) => match.score > 0)
     .sort((a, b) => b.score - a.score);
+
+  if (matches.length === 0 && policies.length) {
+    try {
+      const candidates = Object.fromEntries(policies.map((policy, index) => [
+        `policy_${index}`,
+        {
+          label: policyLabel(policy),
+          carrier: policy.carrier ?? null,
+          security: policy.security ?? null,
+          effectiveDate: policy.effectiveDate ?? null,
+          expirationDate: policy.expirationDate ?? null,
+        },
+      ]));
+      const result = await clRouterDecide({
+        task: "policy_reference_resolution",
+        state: { reference: args.reference, policies: candidates },
+        questions: {
+          policy: {
+            type: "choice",
+            instructions: "Which policy in `policies` does the user's `reference` identify? Use the carrier, coverage line, policy number and period to distinguish policies. Choose none if no single policy is identified.",
+            criteria: {
+              ...Object.fromEntries(Object.keys(candidates).map((key) => [key, {
+                what: `The policy labeled in \`policies.${key}\`.`,
+                not_for: "Another coverage line, carrier or period, or a reference ambiguous between policies.",
+              }])),
+              none: "No policy fits, or several policies fit without a distinguishing detail.",
+            },
+          },
+        },
+      }, { telemetry: ctx });
+      const answer = result.answers.policy;
+      if (answer?.type === "choice" && answer.choice !== "none" &&
+          jevProceeds(jevChoiceConfidence(answer))) {
+        const index = Object.keys(candidates).indexOf(answer.choice);
+        if (index >= 0) return { ok: true, policy: policies[index] };
+      }
+    } catch {
+      // Unavailable semantic resolution asks the user for an exact reference.
+    }
+  }
 
   if (matches.length === 0) {
     return {

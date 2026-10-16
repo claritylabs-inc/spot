@@ -8,7 +8,7 @@ import type { AgentScope } from "./agentScope";
 import { clRouterDecide } from "./clRouterClient";
 import { parseStandaloneEmailAddress } from "./emailAddress";
 import type { EmailCommand } from "./emailWorkflow";
-import { jevProceeds } from "./jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 
 // ---------------------------------------------------------------------------
 // Slash commands (shared by iMessage and web chat)
@@ -360,7 +360,7 @@ export async function decideTextChannelEmailControl(
     const answer = result.answers.control;
     if (
       answer?.type !== "choice" ||
-      !jevProceeds(answer.probabilities[answer.choice])
+      !jevProceeds(jevChoiceConfidence(answer))
     ) {
       return "none";
     }

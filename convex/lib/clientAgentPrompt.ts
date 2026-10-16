@@ -31,7 +31,7 @@ import {
 } from "./agentToolSelection";
 import { EMAIL_FAMILY_GUIDANCE } from "./emailTools";
 import { getClientPortalUrl } from "./domains";
-import { jevProceeds } from "./jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 import {
   SLACK_PROCESSING_REACTIONS,
   type SlackProcessingReaction,
@@ -300,14 +300,14 @@ export async function decideClientAgentTurn(
   const answerDepth =
     depth?.type === "choice" &&
     isAnswerDepth(depth.choice) &&
-    jevProceeds(depth.probabilities[depth.choice])
+    jevProceeds(jevChoiceConfidence(depth))
       ? depth.choice
       : undefined;
   const reaction = result.answers?.slack_reaction;
   const slackReaction =
     reaction?.type === "choice" &&
     isSlackProcessingReaction(reaction.choice) &&
-    jevProceeds(reaction.probabilities[reaction.choice])
+    jevProceeds(jevChoiceConfidence(reaction))
       ? reaction.choice
       : undefined;
   return {
