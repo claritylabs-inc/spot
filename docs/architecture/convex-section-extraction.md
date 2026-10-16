@@ -11,3 +11,26 @@ Spot no longer uses the cl-sdk extraction engine, although it retains cl-sdk sch
 See the post-deploy checklist in [AGENTS.md](../../AGENTS.md#post-deploy-operator-checklist-for-this-extraction-release) before removing the old service or schema.
 
 Document intake classification, including specimen/testing artifacts, uses `clRouterDecide` (`/v1/decide`); specimen wording no longer bypasses classification with a regex decision. Source-tree identity presentation no longer rejects names based on keyword blacklists; semantic extraction and carrier identity decisions remain in the Jev-backed pipeline. Mechanical source-span parsing, printed-form matching, date parsing, evidence offsets and citation checks remain deterministic.
+
+For intake, separate Jev Nouls establish insurance content, bound terms, and
+specimen status. Per-candidate insured/program questions and one endorsement
+question replace the relationship cross-product. Code compares policy numbers
+and parsed periods; missing or ambiguous evidence keeps the relationship unknown.
+These relationships remain advisory. Up to four missing-text pages are rendered
+at 1024px for intake, but sampled/image decisions cannot reject an upload.
+Sectioning uses six target pages per batch with at most eight images including
+adjacent context. Every question names its original page and state path. Printed
+form-number equality/change determines boundaries in code when both pages have
+form numbers. Rendering or router failures retain the existing complete fallback
+section plan.
+
+Scanned citations retain one model-transcription span per quote. During
+`store_sources`, `citationLocalization.ts` attempts at most 40 unique targets,
+prioritizing declarations. `locateOnPdfPage` pairs presence with a coarse Box and
+then refines it on a cropped image. Both presence and final Box confidence must
+reach the Jev threshold. Accepted boxes use PDF points and explicit
+`bboxCoordinateWidth`/`bboxCoordinateHeight` metadata. Existing text boxes are
+preserved. Unmatched page-only citations may receive presentation annotations;
+these annotations never enter the text citation index or upgrade grounding.
+Asset, rendering, and router failures leave original evidence intact. Image
+localization does not participate in promotion eligibility.

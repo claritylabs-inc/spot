@@ -55,6 +55,7 @@ import {
   type CarrierIdentityDecision,
 } from "../lib/carrierIdentitySource";
 import type { ModelRoute } from "../lib/modelCatalog";
+import { localizePolicyCitations } from "../lib/citationLocalization";
 import {
   declarationsPreviewFields,
   mergeSectionResults,
@@ -1622,6 +1623,7 @@ export function makePhases(
           orgId,
           pageCount: pdf.pageCount,
           pages: pdf.pages,
+          pdfBytes,
           existingPolicies,
           traceId: state.traceId,
           policyId,
@@ -1692,6 +1694,9 @@ export function makePhases(
         pageCount: parsed.pageCount,
         pages: parsed.pages,
         pdfByteLength: state.pdfByteLength,
+        pdfBytes: state.fileId
+          ? ((await loadPdfBytes(convexCtx, state.fileId)) ?? undefined)
+          : undefined,
         traceId: state.traceId,
         policyId,
       });
@@ -2210,7 +2215,42 @@ export function makePhases(
           convexCtx,
           await getLatestArtifactStorageId(convexCtx, policyId, "embedding_payload"),
         )) ?? {};
-      const sourceSpans = payload.sourceSpansForStorage;
+      let sourceSpans = payload.sourceSpansForStorage;
+      // Optional visual enrichment runs only after merge/grounding has finished.
+      // Its failure cannot change extracted facts or final promotion eligibility.
+      if (sourceSpans?.length && state.fileId) {
+        try {
+          const plan = await loadSectionPlan(convexCtx, policyId);
+          const sections = plan
+            ? await loadSectionOutputs(
+                convexCtx,
+                plan.sections,
+                await listSectionResults(convexCtx, policyId, plan.planHash),
+              )
+            : undefined;
+          const pdfBytes = sections
+            ? await loadPdfBytes(convexCtx, state.fileId)
+            : null;
+          if (sections && pdfBytes) {
+            sourceSpans = (await localizePolicyCitations({
+              ctx: convexCtx,
+              orgId: state.orgId as Id<"organizations">,
+              policyId,
+              pdfBytes,
+              sourceSpans: sourceSpans as SourceSpanLike[],
+              results: sections.map(({ result }) => result),
+              traceId: state.traceId,
+              isCancelled: () => isExtractionCancelled(convexCtx, policyId),
+              log: (message) => pCtx.log(message),
+            })) as SourceStoragePayload["sourceSpansForStorage"];
+          }
+        } catch (error) {
+          await pCtx.log(
+            `Citation localization unavailable; retaining source evidence (${error instanceof Error ? error.message : String(error)})`,
+            "warn",
+          );
+        }
+      }
       const sourceNodes = payload.sourceNodesForStorage;
       const isCancelled = () => isExtractionCancelled(convexCtx, policyId);
 

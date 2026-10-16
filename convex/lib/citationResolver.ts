@@ -46,6 +46,7 @@ type PageIndex = {
 
 export type CitationIndex = {
   pages: Map<number, PageIndex>;
+  annotations?: Map<string, CitationBox[]>;
 };
 
 function fallbackId(text: string): string {
@@ -173,7 +174,15 @@ function buildPageIndex(spans: IndexedSpan[]): PageIndex {
 
 export function buildCitationIndex(spans: SourceSpanLike[]): CitationIndex {
   const byPage = new Map<number, IndexedSpan[]>();
+  const annotations = new Map<string, CitationBox[]>();
   for (const span of spans) {
+    if (spanSourceUnit(span) === "citation_annotation") {
+      const quote = span.metadata?.citationQuote;
+      if (typeof quote === "string" && typeof span.pageStart === "number") {
+        annotations.set(`${span.pageStart}:${quote.trim()}`, span.bbox ?? []);
+      }
+      continue;
+    }
     const range = spanPageRange(span);
     if (!range) continue;
     const indexed: IndexedSpan = { span, id: spanIdOf(span), text: span.text ?? "" };
@@ -189,7 +198,7 @@ export function buildCitationIndex(spans: SourceSpanLike[]): CitationIndex {
     const lineSpans = pageSpans.filter((entry) => spanSourceUnit(entry.span) === "line");
     pages.set(page, buildPageIndex(lineSpans.length > 0 ? lineSpans : pageSpans));
   }
-  return { pages };
+  return { pages, annotations };
 }
 
 function spansOverlapping(page: PageIndex, start: number, end: number): IndexedSpan[] {
@@ -253,7 +262,8 @@ export function resolveCitationWithIndex(citation: SectionCitation, index: Citat
   return {
     ...citation,
     sourceSpanIds: [],
-    bbox: fullPageBbox(page.spans, citation.page),
+    bbox: index.annotations?.get(`${citation.page}:${quote}`) ??
+      fullPageBbox(page.spans, citation.page),
     match: "page_only",
   };
 }
