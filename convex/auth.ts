@@ -1,11 +1,14 @@
-import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
+import {
+  ConvexCredentials,
+  type ConvexCredentialsUserConfig,
+} from "@convex-dev/auth/providers/ConvexCredentials";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
-import { internalMutation, type ActionCtx } from "./_generated/server";
+import { internalMutation, type ActionCtx, type QueryCtx } from "./_generated/server";
 import { buildOtpEmail } from "./lib/emailTemplate";
 import { getBrandingContext } from "./lib/branding";
 import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
@@ -14,6 +17,8 @@ import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 import { generateOtpCode } from "./lib/otp";
 import {
   REVIEW_PROVIDER_ID,
+  assertReviewerIdentityUse,
+  assertReviewerSessionAllowed,
   isReviewerEmail,
   reviewerSignInProfile,
 } from "./lib/reviewerAuth";
@@ -47,6 +52,8 @@ const sendVerificationRequest = async function (this: unknown, ...args: any[]) {
     { identifier: string; token: string },
     ActionCtx,
   ];
+  // The reviewer signs in with a password; never send a code to its address.
+  if (isReviewerEmail(email)) throw new Error("Use the reviewer sign-in");
   await ctx.runMutation(internal.auth.consumeCodeEmailRateLimit, { email });
   const branding = getBrandingContext();
 
@@ -81,23 +88,28 @@ function reviewerPassword() {
     id: REVIEW_PROVIDER_ID,
     profile: reviewerSignInProfile,
   });
-  type Options = { authorize: (params: any, ctx: any) => Promise<unknown> };
-  const options = (provider as unknown as { options: Options }).options;
-  return {
-    ...provider,
-    options: {
-      ...options,
-      authorize: async (params: unknown, ctx: any) => {
-        // Reject other flows and identities, then a drifted account, before the
-        // password is checked.
-        reviewerSignInProfile(params as Record<string, unknown>);
-        const allowed = await ctx.runQuery(internal.reviewerAccounts.assertSignIn, {});
-        const result = (await options.authorize(params, ctx)) as { userId: unknown } | null;
-        if (result && result.userId !== allowed.userId) throw new Error("Invalid credentials");
-        return result;
-      },
-    },
+  // The library keeps the working config in `options`; the top-level authorize is a no-op.
+  const options = (provider as unknown as { options: ConvexCredentialsUserConfig }).options;
+  // A library change that moves these would silently drop the guard; fail the deploy instead.
+  if (
+    typeof options?.authorize !== "function" ||
+    options.id !== REVIEW_PROVIDER_ID ||
+    typeof options.crypto?.hashSecret !== "function" ||
+    typeof options.crypto?.verifySecret !== "function"
+  ) {
+    throw new Error("Unexpected Password provider shape");
+  }
+  const baseAuthorize = options.authorize;
+  const authorize: ConvexCredentialsUserConfig["authorize"] = async (params, ctx) => {
+    // Reject other flows and identities, then a drifted account, before the
+    // password is checked.
+    reviewerSignInProfile(params);
+    const allowed = await ctx.runQuery(internal.reviewerAccounts.assertSignIn, {});
+    const result = await baseAuthorize(params, ctx);
+    if (result && result.userId !== allowed.userId) throw new Error("Invalid credentials");
+    return result;
   };
+  return { ...provider, options: { ...options, authorize } };
 }
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
@@ -112,10 +124,19 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
     // Requesting an email code creates and links an auth account before any code
     // is sent. Only the reviewer provider may hold the reviewer identity.
     createOrUpdateUser: (ctx, args) => {
-      if (isReviewerEmail(args.profile.email) && args.provider.id !== REVIEW_PROVIDER_ID) {
-        throw new Error("Use the reviewer sign-in");
-      }
+      assertReviewerIdentityUse({
+        email: args.profile.email,
+        providerId: args.provider.id,
+        existingUserId: args.existingUserId,
+        emailVerified: args.profile.emailVerified,
+        shouldLinkViaEmail: "shouldLinkViaEmail" in args && args.shouldLinkViaEmail,
+        shouldLinkViaPhone: "shouldLinkViaPhone" in args && args.shouldLinkViaPhone,
+      });
       return createOrUpdateEmailUser(ctx, args);
     },
+    // Whatever the provider, a session for the reviewer user is allowed only
+    // while it is still the ordinary demo member.
+    beforeSessionCreation: (ctx, { userId }) =>
+      assertReviewerSessionAllowed(ctx as unknown as QueryCtx, userId),
   },
 });

@@ -12,107 +12,26 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
-  type QueryCtx,
 } from "./_generated/server";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
-import { isBootstrapOperatorEmail } from "./lib/operatorIdentity";
 import {
   REVIEW_EMAIL,
   REVIEW_ORG_NAME,
   REVIEW_ORG_SLUG,
   REVIEW_PROVIDER_ID,
   REVIEW_USER_NAME,
+  assertReviewerMayHaveSession,
   assertReviewerPassword,
+  collision,
+  inspectReviewer,
+  type ReviewerState,
 } from "./lib/reviewerAuth";
 
-type PrepareResult =
-  | { kind: "create" }
-  | { kind: "exists"; userId: Id<"users"> };
-
-// Providers whose accounts are keyed by email. Any of them holding the reviewer
-// email would be a second way into, or a squatter on, the identity.
-const OTHER_EMAIL_PROVIDERS = ["resend-otp", "password", "intake"] as const;
-
-function collision(reason: string): never {
-  throw new Error(`Reviewer account collision: ${reason}`);
-}
-
-/**
- * Reads everything the reviewer account touches and fails closed unless it is
- * absent, or is exactly the provisioned reviewer user and its demo organization.
- */
-async function inspect(ctx: QueryCtx): Promise<PrepareResult> {
-  const users = await ctx.db
-    .query("users")
-    .withIndex("email", (q) => q.eq("email", REVIEW_EMAIL))
-    .take(2);
-  if (users.length > 1) collision("several users share the email");
-  for (const provider of OTHER_EMAIL_PROVIDERS) {
-    const other = await ctx.db
-      .query("authAccounts")
-      .withIndex("providerAndAccountId", (q) =>
-        q.eq("provider", provider).eq("providerAccountId", REVIEW_EMAIL),
-      )
-      .first();
-    if (other) collision(`the email has a ${provider} account`);
-  }
-  const reviewAccount = await ctx.db
-    .query("authAccounts")
-    .withIndex("providerAndAccountId", (q) =>
-      q.eq("provider", REVIEW_PROVIDER_ID).eq("providerAccountId", REVIEW_EMAIL),
-    )
-    .unique();
-  const orgs = await ctx.db
-    .query("organizations")
-    .withIndex("slug", (q) => q.eq("slug", REVIEW_ORG_SLUG))
-    .take(2);
-  if (orgs.length > 1) collision("several organizations share the demo slug");
-  const org = orgs[0];
-
-  const user = users[0];
-  if (!user) {
-    if (reviewAccount || org) collision("an orphan account or organization exists");
-    return { kind: "create" };
-  }
-  const profile = await ctx.db
-    .query("operatorProfiles")
-    .withIndex("user", (q) => q.eq("userId", user._id))
-    .first();
-  if (
-    user.accountKind !== "customer" ||
-    user.isAnonymous ||
-    user.serviceAccountKind ||
-    user.intakeRestricted ||
-    profile ||
-    isBootstrapOperatorEmail(REVIEW_EMAIL) ||
-    reviewAccount?.userId !== user._id
-  ) {
-    collision("the email belongs to a different kind of account");
-  }
-
-  const memberships = await ctx.db
-    .query("orgMemberships")
-    .withIndex("user", (q) => q.eq("userId", user._id))
-    .take(3);
-  if (memberships.some((membership) => membership.orgId !== org?._id)) {
-    collision("the reviewer belongs to an organization other than the demo");
-  }
-  if (org) {
-    if (org.type !== "client") collision("the demo organization is not a client");
-    const members = await ctx.db
-      .query("orgMemberships")
-      .withIndex("organization", (q) => q.eq("orgId", org._id))
-      .take(3);
-    if (members.some((member) => member.userId !== user._id)) {
-      collision("the demo organization has other members");
-    }
-  }
-  return { kind: "exists", userId: user._id };
-}
+type PrepareResult = ReviewerState;
 
 export const prepare = internalQuery({
   args: {},
-  handler: async (ctx): Promise<PrepareResult> => inspect(ctx),
+  handler: async (ctx): Promise<PrepareResult> => inspectReviewer(ctx),
 });
 
 /**
@@ -122,31 +41,8 @@ export const prepare = internalQuery({
  */
 export const assertSignIn = internalQuery({
   args: {},
-  handler: async (ctx): Promise<{ userId: Id<"users"> }> => {
-    const state = await inspect(ctx);
-    if (state.kind !== "exists") throw new Error("Invalid credentials");
-    const org = await ctx.db
-      .query("organizations")
-      .withIndex("slug", (q) => q.eq("slug", REVIEW_ORG_SLUG))
-      .unique();
-    const membership = org
-      ? await ctx.db
-          .query("orgMemberships")
-          .withIndex("organization_user", (q) =>
-            q.eq("orgId", org._id).eq("userId", state.userId),
-          )
-          .first()
-      : null;
-    if (
-      !org ||
-      org.deletedAt !== undefined ||
-      org.clientAccessStatus !== "active" ||
-      membership?.role !== "member"
-    ) {
-      throw new Error("Invalid credentials");
-    }
-    return { userId: state.userId };
-  },
+  handler: async (ctx): Promise<{ userId: Id<"users"> }> =>
+    assertReviewerMayHaveSession(ctx),
 });
 
 const DEMO_ADDRESS = {
@@ -187,7 +83,7 @@ const DEMO_POLICIES = [
 export const ensureWorkspace = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx: MutationCtx, args) => {
-    const state = await inspect(ctx);
+    const state = await inspectReviewer(ctx);
     if (state.kind !== "exists" || state.userId !== args.userId) {
       collision("the user is not the provisioned reviewer");
     }
@@ -272,7 +168,7 @@ export const ensureWorkspace = internalMutation({
 export const status = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const state = await inspect(ctx);
+    const state = await inspectReviewer(ctx);
     if (state.kind === "create") return { provisioned: false as const };
     const org = await ctx.db
       .query("organizations")
@@ -282,12 +178,33 @@ export const status = internalQuery({
       .query("authSessions")
       .withIndex("userId", (q) => q.eq("userId", state.userId))
       .take(100);
+    const account = await ctx.db
+      .query("authAccounts")
+      .withIndex("providerAndAccountId", (q) =>
+        q.eq("provider", REVIEW_PROVIDER_ID).eq("providerAccountId", REVIEW_EMAIL),
+      )
+      .unique();
+    const limit = account
+      ? await ctx.db
+          .query("authRateLimits")
+          .withIndex("identifier", (q) => q.eq("identifier", account._id))
+          .unique()
+      : null;
+    // Mirrors the library's default hourly failed-attempt allowance (read only).
+    const attemptsLeft = limit
+      ? Math.min(
+          10,
+          limit.attemptsLeft +
+            ((dayjs().valueOf() - limit.lastAttemptTime) * 10) / (60 * 60 * 1000),
+        )
+      : 10;
     return {
       provisioned: true as const,
       email: REVIEW_EMAIL,
       userId: state.userId,
       orgId: org?._id ?? null,
       sessions: sessions.length,
+      signInRateLimited: attemptsLeft < 1,
     };
   },
 });
