@@ -973,21 +973,18 @@ claimed by this workflow.
 
 ### Test suite pruning — October 16, 2026
 
-At the user's request, removed 108 of the original 119 isolated unit-test files
-(91%), including mocked action/adapter tests, UI/state mirrors, formatting and
-prompt assertions. Removed the snapshot owned by a deleted catalog suite.
-The classification is implementation-based: isolated suites do not instantiate
-`convexTest`; the filename alone does not establish integration coverage.
+At the user's request, reduced the full default suite from 1,110 passing tests to
+109 (over 90% removed). Removed ordinary UI/state/formatting suites, mocked model
+and adapter tests, duplicated helper contracts, opt-in evals, and their obsolete
+catalog snapshot. Twelve root test files and the Slack HTTP boundary suite remain.
 
-Retained 11 isolated suites for the central router transport/capability contract,
-Jev threshold, email send authorization and executor, full-body DKIM/operator
-email authentication, API/MCP authorization, website SSRF/allocation bounds,
-extraction promotion, citation resolution, and untrusted presentation validation.
-The real Convex mutation/query integration suites, worker integration tests and
-opt-in model evals remain. This preserves cross-system authorization, revisions,
-submission, exact approval, leases, cancellation, replay and delivery checks.
+The retained core exercises intake ownership/revisions, Markdown authorization,
+router job idempotency/cancellation, verified operator identity, OAuth resource
+binding, exact single-use approvals, complete extraction promotion, authenticated
+operator email, API authorization, email executor send/attachment boundaries,
+website SSRF bounds, and Slack HTTP authentication/delivery. Browser workflow QA
+owns broader feature behavior. This intentionally removes substantial automated
+regression coverage; the historical workflow results above are not new coverage.
 
-No production code or replacement tests were added. Removed ordinary UI flows
-belong in browser workflow QA; this cleanup does not claim a new browser QA run.
-The previous 1,110-test baseline remains historical evidence, not the current
-suite count. The final retained suite and CI are rerun before merging.
+No production code or replacement tests were added. Final checks run the reduced
+suite, TypeScript, lint, worker checks and production build before merging.

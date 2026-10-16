@@ -57,7 +57,7 @@ After the release deploys to an approved target. Steps 2–3 can run in producti
 3. Run `npx convex run actions/reextractLegacyPolicies:run '{"dryRun":true}'`, then repeat with `{"dryRun":false}` after review. Page with the returned cursor until `isDone`. Run `npx convex run modelSettings:stripRetiredRoutesInternal '{}'` and `npx convex run modelSettings:clearOperatorModelOverridesInternal '{}'`, paging each returned `continueCursor` until `isDone`. Select the intended deployment explicitly and use `--prod` only for an approved production run.
 4. Drop schema tables and fields marked `// Deprecated` after data cleanup and verification on every deployed target.
 5. Set `FLAGS_SECRET` and `WEBMCP_ENABLED` where WebMCP should be available.
-6. Run client-family evals with `CL_ROUTER_EVALS=1 npx vitest run convex/lib/__evals__/clientAgentModules.eval.test.ts`.
+6. Verify client-family behavior through the browser workflow QA ledger; the opt-in unit eval suite was retired in the October 16 test reduction.
 
 The operator-agent model route and web retrieval route have no settings UI. Set the operator agent route with `npx convex run modelSettings:setOperatorAgentRouteInternal '{"provider":"openai","model":"..."}'`. `modelSettings:clearOperatorModelOverridesInternal` clears every other stored override but keeps the operator agent route, which `resolveOperatorAgentRoute` still requires. Web retrieval falls back to its default when no override is stored.
 

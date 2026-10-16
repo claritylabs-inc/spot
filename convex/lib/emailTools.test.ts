@@ -202,15 +202,6 @@ beforeEach(() => {
 });
 
 describe("discrete email tools", () => {
-  it("drafts without sending and uses the requester for requester direction", async () => {
-    const h = harness();
-    const id = await h.draft({
-      to: "wrong@example.com",
-      recipientDirection: "requester",
-    });
-    expect(h.drafts.get(id)?.recipientEmail).toBe("requester@example.com");
-    expect(h.ctx.runAction).not.toHaveBeenCalled();
-  });
 
   it("clears omitted replacement copies and attachments on the exact draft", async () => {
     const h = harness();
@@ -235,16 +226,6 @@ describe("discrete email tools", () => {
       attachments: undefined,
     });
     expect(h.drafts.size).toBe(1);
-  });
-
-  it("lists and cancels scoped drafts", async () => {
-    const h = harness();
-    const id = await h.draft();
-    expect(
-      (await h.executors.list_email_drafts.execute({})).drafts,
-    ).toMatchObject([{ id }]);
-    await h.executors.cancel_email_draft.execute({ draftId: id });
-    expect(h.drafts.get(id)?.status).toBe("cancelled");
   });
 
   it.each(["org", "thread"])(
@@ -344,19 +325,6 @@ describe("discrete email tools", () => {
     expect(h.ctx.runAction).toHaveBeenCalledTimes(1);
   });
 
-  it("passes server-owned exact confirmation to the existing final validator", async () => {
-    const confirmationId = "confirmation-1" as Id<"threadActionConfirmations">;
-    const h = harness({
-      sendAuthorization: { kind: "confirmation", confirmationId },
-    });
-    h.setSource(null);
-    const id = await h.draft();
-    await h.executors.send_email_draft.execute({ draftId: id });
-    expect(h.ctx.runAction.mock.calls[0]?.[1]).toMatchObject({
-      authorization: { kind: "confirmation", confirmationId },
-    });
-  });
-
   it("keeps unknown recipients for confirmation unless the authorized source names them", async () => {
     const h = harness({ allowedRecipients: ["known@example.com"] });
     const id = await h.draft({ to: "unknown@example.com" });
@@ -399,29 +367,6 @@ describe("discrete email tools", () => {
       policyId: "policy-1",
     });
     expect(attachmentExecutor.coi).not.toHaveBeenCalled();
-  });
-
-  it("uses the policy executor for availability and deduplicates the exact file", async () => {
-    const h = harness();
-    const id = await h.draft();
-    const input = {
-      draftId: id,
-      policyId: "policy-1",
-      explicitArtifactRequest: "original_policy_document" as const,
-      intentEvidence: "Attach the original policy PDF",
-    };
-    await h.executors.attach_policy_pdf_to_draft.execute(input);
-    await h.executors.attach_policy_pdf_to_draft.execute(input);
-    expect(h.drafts.get(id)?.attachments).toHaveLength(1);
-    expect(attachmentExecutor.policy).toHaveBeenCalledTimes(1);
-    attachmentExecutor.policy.mockImplementationOnce(
-      async () => "That policy does not have an original file available.",
-    );
-    await h.executors.attach_policy_pdf_to_draft.execute({
-      ...input,
-      policyId: "unavailable",
-    });
-    expect(h.drafts.get(id)?.attachments).toHaveLength(1);
   });
 
   it("rejects unavailable uploads and deduplicates saved files", async () => {
@@ -581,25 +526,6 @@ describe("attachment failure recovery", () => {
     ).toBe("sent");
   });
 
-  it("clears a matching failure when the requested attachment succeeds on retry", async () => {
-    const h = harness();
-    const id = await h.draft();
-    attachmentExecutor.coi.mockImplementationOnce(
-      async () => "Endorsement is not verified.",
-    );
-    await h.executors.attach_coi_to_draft.execute({
-      draftId: id,
-      policyId: "policy-1",
-    });
-    await h.executors.attach_coi_to_draft.execute({
-      draftId: id,
-      policyId: "policy-1",
-    });
-    expect(
-      (await h.executors.send_email_draft.execute({ draftId: id })).status,
-    ).toBe("sent");
-  });
-
   it.each(["policy", "coi"])(
     "reattaches %s after replacement clears the attachment",
     async (kind) => {
@@ -643,19 +569,6 @@ describe("attachment failure recovery", () => {
     ).toBe("needs_confirmation");
     expect(h.ctx.runAction).not.toHaveBeenCalled();
   });
-
-  it("does not describe cancellation as a new draft awaiting send", async () => {
-    const h = harness();
-    const id = await h.draft();
-    const result = await h.executors.cancel_email_draft.execute({
-      draftId: id,
-    });
-    expect(result.status).toBe("cancelled");
-    expect(result.workflowOutcome?.requiredSlots).toEqual([]);
-    expect(result.workflowOutcome?.sideEffects).not.toContainEqual(
-      expect.objectContaining({ kind: "draft_created" }),
-    );
-  });
 });
 
 describe("email tool fail-closed recovery", () => {
@@ -692,19 +605,6 @@ describe("email tool fail-closed recovery", () => {
       expect(h.ctx.runAction).not.toHaveBeenCalled();
     },
   );
-
-  it("reports cancellation through the callback without a send prompt", async () => {
-    const onResult = vi.fn();
-    const h = harness({ onResult });
-    const id = await h.draft();
-    await h.executors.cancel_email_draft.execute({ draftId: id });
-    expect(onResult).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        status: "cancelled",
-        workflowOutcome: expect.objectContaining({ requiredSlots: [] }),
-      }),
-    );
-  });
 
   it("never claims success when final exact-confirmation validation rejects", async () => {
     const h = harness({
