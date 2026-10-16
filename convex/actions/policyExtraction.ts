@@ -706,6 +706,35 @@ async function persistEvidenceAndPromote(
   },
 ) {
   const extractorVersion = SECTION_EXTRACTOR_VERSION;
+  const promotionContext = (await ctx.runQuery(
+    (internal as any).policies.pipelineGetPromotionContext,
+    { jobId: args.policyId },
+  )) as {
+    runId: Id<"policyExtractionRuns">;
+    leaseId: string;
+    promotedAt?: number;
+    promotionGateDecision?: {
+      allowed: boolean;
+      reasons: string[];
+      mode: "shadow" | "enforce";
+      sourceFingerprint?: string;
+      evidenceLedgerHash?: string;
+      manifestHash?: string;
+    };
+  } | null;
+  if (!promotionContext) {
+    throw new Error("Extraction promotion lost its current run or lease");
+  }
+  if (promotionContext.promotedAt) {
+    // Already promoted: return that decision without rebuilding the ledger,
+    // so a retry never re-asks Jev for a grouping that could differ.
+    if (promotionContext.promotionGateDecision) {
+      return promotionContext.promotionGateDecision;
+    }
+    throw new Error(
+      "Extraction run was already promoted without a recorded gate decision",
+    );
+  }
   const ledgerInput = {
     sourceSpans: args.sourceSpans,
     sourceTree: args.sourceNodes,
@@ -749,39 +778,6 @@ async function persistEvidenceAndPromote(
       resultHash,
     })),
   });
-  const promotionContext = (await ctx.runQuery(
-    (internal as any).policies.pipelineGetPromotionContext,
-    { jobId: args.policyId },
-  )) as {
-    runId: Id<"policyExtractionRuns">;
-    leaseId: string;
-    promotedAt?: number;
-    promotionGateDecision?: {
-      allowed: boolean;
-      reasons: string[];
-      mode: "shadow" | "enforce";
-      sourceFingerprint?: string;
-      evidenceLedgerHash?: string;
-      manifestHash?: string;
-    };
-  } | null;
-  if (!promotionContext) {
-    throw new Error("Extraction promotion lost its current run or lease");
-  }
-  if (promotionContext.promotedAt) {
-    const existing = promotionContext.promotionGateDecision;
-    if (
-      existing &&
-      existing.sourceFingerprint === ledger.sourceFingerprint &&
-      existing.evidenceLedgerHash === ledger.ledgerHash &&
-      existing.manifestHash === manifest.manifestHash
-    ) {
-      return existing;
-    }
-    throw new Error(
-      "Extraction run was already promoted with different evidence",
-    );
-  }
   const artifact = await storeJsonArtifact(
     ctx,
     args.policyId,
@@ -2117,7 +2113,8 @@ export function makePhases(
         ...transcriptions,
       ]);
       const sourceNodes = normalizeSourceTree([], sourceSpans, policyId);
-      const loadPdf = () => loadPdfBytes(convexCtx, state.fileId!);
+      let pdfLoad: Promise<Uint8Array | null> | undefined;
+      const loadPdf = () => (pdfLoad ??= loadPdfBytes(convexCtx, state.fileId!));
       const endorsementJudgments = await decideEndorsementJudgments(convexCtx, {
         orgId,
         traceId: state.traceId,
