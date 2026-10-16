@@ -1,5 +1,9 @@
 "use client";
 import { ChevronDown } from "lucide-react";
+import {
+  OperationalLabelValueList,
+  OperationalLabelValueRow,
+} from "@claritylabs-inc/ui/components/operational-panel";
 import { IntakeReviewChanges } from "./review-changes";
 import { useEffect, type ReactNode } from "react";
 import { IntakeCompanyReview, IntakeRequestReview } from "./company-review";
@@ -64,10 +68,11 @@ export function IntakeTracking({
       ...(submitted ?? []).map((request) => request.id),
     ]).size > 1;
   const a = data.answers;
+  const isSavings = a.intakeGoal === "savings";
   const has = (...keys: (keyof typeof a)[]) =>
     keys.every((key) => !!a[key]?.trim());
   const complete = [
-    has("trigger", "effectiveDate"),
+    isSavings ? has("trigger") : has("trigger", "effectiveDate"),
     has("coverage") &&
       data.details.coverages.length > 0 &&
       data.details.coverages.every(
@@ -118,6 +123,7 @@ export function IntakeTracking({
   });
   return (
     <IntakeFrame
+      showSteps={!isSavings}
       section={4}
       footer={
         footer ?? (
@@ -140,13 +146,19 @@ export function IntakeTracking({
         className={`text-wrap-pretty ${typeStyle("heading.display")}`}
         style={{ textWrap: "pretty" }}
       >
-        {data.submitted
-          ? "Your insurance application has been submitted"
-          : "Your insurance application"}
+        {isSavings
+          ? data.submitted
+            ? "We have your policies"
+            : "Review your policies and business details"
+          : data.submitted
+            ? "Your insurance application has been submitted"
+            : "Your insurance application"}
       </h1>
       {data.submitted && (
         <p className={`mt-3 text-muted-foreground ${typeStyle("body.root")}`}>
-          We’ll have quotes ready for you within 24 hours
+          {isSavings
+            ? "We’ll review your current coverage and get back to you with potentially better quotes."
+            : "We’ll have quotes ready for you within 24 hours"}
         </p>
       )}
       <div className="mt-8 space-y-2">
@@ -154,23 +166,49 @@ export function IntakeTracking({
         <>
           {[
             { title: "Contact details", step: 0, index: -1 },
-            ...sections.map((item, index) => ({ ...item, index })),
+            ...(isSavings
+              ? [
+                  { title: "Your request", step: 1, index: 0 },
+                  { title: "Current policies", step: 21, index: 4 },
+                  { title: "Your business", step: 10, index: 2 },
+                ]
+              : sections.map((item, index) => ({ ...item, index }))),
           ].map(({ index, ...item }) => {
             const isComplete =
-              index === -1 ? has("name", "email", "phone") : complete[index];
+              index === -1
+                ? has("name", "email", "phone")
+                : index === 4
+                  ? data.files.some((file) => file.category === "policy")
+                  : complete[index];
             return (
-              <details key={item.title} open={!isComplete} className="group">
+              <details
+                key={item.title}
+                open={!isComplete && !(isSavings && data.submitted)}
+                className="group"
+              >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                   <h2 className={typeStyle("heading.item")}>{item.title}</h2>
                   <div className="flex items-center gap-3">
                     <StatusTag
                       className={typeStyle("body.large")}
-                      tone={isComplete ? "success" : "neutral"}
-                      indicator={isComplete ? "complete" : "progress"}
+                      tone={
+                        isComplete || (isSavings && data.submitted)
+                          ? "success"
+                          : "neutral"
+                      }
+                      indicator={
+                        isComplete || (isSavings && data.submitted)
+                          ? "complete"
+                          : "progress"
+                      }
                     >
-                      {isComplete ? "Complete" : "In Progress"}
+                      {isSavings && data.submitted
+                        ? "Received"
+                        : isComplete
+                          ? "Complete"
+                          : "In Progress"}
                     </StatusTag>
-                    {onEdit ? (
+                    {isSavings && data.submitted ? null : onEdit ? (
                       <PillButton
                         variant="ghost"
                         onClick={(event) => {
@@ -197,6 +235,13 @@ export function IntakeTracking({
                   </div>
                 </summary>
                 <div className="space-y-4 pb-3 pt-1">
+                  {index === 4 && (
+                    <OperationalLabelValueList>
+                      <OperationalLabelValueRow
+                        {...documentRow("policy", "Current policies")}
+                      />
+                    </OperationalLabelValueList>
+                  )}
                   {index === -1 && (
                     <IntakeRequestReview
                       answers={a}

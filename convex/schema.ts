@@ -2744,6 +2744,7 @@ export default defineSchema({
     .index("owner_updated", ["ownerUserId", "updatedAt"]),
 
   requestHandoffs: defineTable({
+    intakeGoal: v.optional(v.union(v.literal("quote"), v.literal("savings"))),
     tokenHash: v.string(),
     name: v.string(),
     email: v.string(),
@@ -2778,6 +2779,7 @@ export default defineSchema({
   }).index("request", ["requestId"]),
 
   requestIntakeFiles: defineTable({
+    policyId: v.optional(v.id("policies")),
     prefillStartedAt: v.optional(v.number()),
     prefillCoveragesJson: v.optional(v.string()),
     requestId: v.id("procurementRequests"),

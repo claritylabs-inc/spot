@@ -3,20 +3,27 @@
 import posthog from "posthog-js/full/no-external";
 
 // Public, write-only ingestion token for the Spot project; never a personal API key.
-const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ||
+const projectToken =
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN ||
   "phc_r4wwom2cwB995w8VgdddnTa8faLVthutqXr6YUG298ZT";
 let initialized = false;
 
 /** URLs never include access tokens, query parameters, or individual record IDs. */
 export function analyticsPath(path: string): string {
-  return path.split(/[?#]/)[0]
+  return path
+    .split(/[?#]/)[0]
     .split("/")
-    .map((part) => /^[a-z0-9_-]{20,}$/i.test(part) ? ":id" : part)
+    .map((part) => (/^[a-z0-9_-]{20,}$/i.test(part) ? ":id" : part))
     .join("/");
 }
 
 export function initAnalytics() {
-  if (initialized || typeof window === "undefined" || process.env.NEXT_PUBLIC_POSTHOG_DISABLED === "true") return;
+  if (
+    initialized ||
+    typeof window === "undefined" ||
+    process.env.NEXT_PUBLIC_POSTHOG_DISABLED === "true"
+  )
+    return;
   initialized = true;
   posthog.init(projectToken, {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "/ingest",
@@ -34,22 +41,60 @@ export function initAnalytics() {
     disable_session_recording: false,
     enable_recording_console_log: false,
     session_recording: {
+      inlineStylesheet: true,
       maskAllInputs: true,
       maskAllElementAttributes: false,
       maskAttributeFn: (name, value, element) => {
-        if (name === "href" && element?.tagName === "LINK" && element.getAttribute("rel") === "stylesheet") return value;
+        // rrweb replaces stylesheet links with this synthetic attribute. Redacting
+        // it removes the entire stylesheet, even when class/style are preserved.
+        if (
+          name === "_cssText" &&
+          (element?.tagName === "LINK" || element?.tagName === "STYLE")
+        )
+          return value;
+        // Preserve recorder-generated layout and built-in SVG icon geometry.
+        if (
+          /^rr_(width|height|left|top|position|transform|display|scrollleft|scrolltop|mediastate|open_mode)$/.test(
+            name,
+          )
+        )
+          return value;
+        if (
+          element?.namespaceURI === "http://www.w3.org/2000/svg" &&
+          element.closest("svg")?.classList.contains("lucide") &&
+          /^(viewBox|d|fill|stroke|stroke-width|stroke-linecap|stroke-linejoin|fill-rule|clip-rule|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|points|transform|xmlns)$/.test(
+            name,
+          )
+        )
+          return value;
+        if (
+          name === "href" &&
+          element?.tagName === "LINK" &&
+          element.getAttribute("rel") === "stylesheet"
+        )
+          return value;
         if (name === "href" || name === "src") return analyticsPath(value);
-        if (/^(class|style|type|role|tabindex|disabled|readonly|checked|selected|multiple|width|height)$/.test(name) ||
-          name.startsWith("data-") && !/token|key|id|value|name|email/i.test(name) ||
-          /^(aria-expanded|aria-selected|aria-hidden|aria-disabled)$/.test(name)) return value;
+        if (
+          /^(class|style|type|role|tabindex|disabled|readonly|checked|selected|multiple|width|height)$/.test(
+            name,
+          ) ||
+          (name.startsWith("data-") &&
+            !/token|key|id|value|name|email/i.test(name)) ||
+          /^(aria-expanded|aria-selected|aria-hidden|aria-disabled)$/.test(name)
+        )
+          return value;
         return "[redacted]";
       },
       maskTextSelector: "*",
-      blockSelector: "img, canvas, iframe, object, embed, input[type=file], input[type=hidden], .ph-no-capture",
+      blockSelector:
+        "img, canvas, iframe, object, embed, input[type=file], input[type=hidden], .ph-no-capture",
       recordHeaders: false,
       recordBody: false,
       recordCrossOriginIframes: false,
-      maskCapturedNetworkRequestFn: (request) => ({ ...request, name: analyticsPath(request.name) }),
+      maskCapturedNetworkRequestFn: (request) => ({
+        ...request,
+        name: analyticsPath(request.name),
+      }),
     },
     before_send: (event) => {
       if (!event) return null;
@@ -60,7 +105,13 @@ export function initAnalytics() {
             snapshot.data.href = analyticsPath(snapshot.data.href);
         }
       }
-      for (const key of ["$current_url", "$referrer", "$initial_current_url", "$initial_referrer", "$pathname"]) {
+      for (const key of [
+        "$current_url",
+        "$referrer",
+        "$initial_current_url",
+        "$initial_referrer",
+        "$pathname",
+      ]) {
         if (typeof event.properties[key] === "string")
           event.properties[key] = analyticsPath(event.properties[key]);
       }
@@ -68,7 +119,11 @@ export function initAnalytics() {
         const person = event.properties[personKey];
         if (person && typeof person === "object") {
           for (const key of Object.keys(person)) {
-            if (/url|referrer|pathname/.test(key) && typeof person[key] === "string") person[key] = analyticsPath(person[key]);
+            if (
+              /url|referrer|pathname/.test(key) &&
+              typeof person[key] === "string"
+            )
+              person[key] = analyticsPath(person[key]);
             if (/title|utm_|gclid|fbclid/.test(key)) delete person[key];
           }
         }
@@ -84,19 +139,28 @@ export function initAnalytics() {
       delete event.properties.$exception_personURL;
       return event;
     },
-    loaded: (client) => client.register({
-      app: "spot",
-      environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV,
-    }),
+    loaded: (client) =>
+      client.register({
+        app: "spot",
+        environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV,
+      }),
   });
 }
 
-type AnalyticsEvent = "intake_step_viewed" | "intake_submission_started" |
-  "intake_submitted" | "intake_resubmitted" | "intake_submission_failed" |
-  "intake_upload_finished";
+type AnalyticsEvent =
+  | "intake_goal_selected"
+  | "intake_step_viewed"
+  | "intake_submission_started"
+  | "intake_submitted"
+  | "intake_resubmitted"
+  | "intake_submission_failed"
+  | "intake_upload_finished";
 
 /** Only structural metadata belongs here, never answers, filenames, or prose. */
-export function captureAnalytics(event: AnalyticsEvent, properties: Record<string, string | number | boolean> = {}) {
+export function captureAnalytics(
+  event: AnalyticsEvent,
+  properties: Record<string, string | number | boolean> = {},
+) {
   if (!initialized) return;
   posthog.capture(event, properties);
 }

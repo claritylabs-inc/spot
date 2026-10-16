@@ -2133,6 +2133,69 @@ async function insertUploadPlaceholder(
   return policyId;
 }
 
+/** Registers only staged policy PDFs owned by the intake actor, after company attachment. */
+export async function createOwnedIntakePolicyUpload(
+  ctx: MutationCtx,
+  args: {
+    intakeFileId: DataModelId<"requestIntakeFiles">;
+    userId: DataModelId<"users">;
+    orgId: DataModelId<"organizations">;
+  },
+) {
+  const file = await ctx.db.get(args.intakeFileId);
+  const request = file ? await ctx.db.get(file.requestId) : null;
+  const membership = await ctx.db
+    .query("orgMemberships")
+    .withIndex("organization_user", (q) =>
+      q.eq("orgId", args.orgId).eq("userId", args.userId),
+    )
+    .first();
+  if (
+    !file ||
+    !request ||
+    request.deletedAt ||
+    file.ownerUserId !== args.userId ||
+    (request.ownerUserId ?? request.createdByUserId) !== args.userId ||
+    request.clientOrgId !== args.orgId ||
+    request.intakeAnswers?.intakeGoal !== "savings" ||
+    !request.intakeSubmittedAt ||
+    !membership ||
+    file.category !== "policy" ||
+    file.contentType !== "application/pdf"
+  )
+    throw new Error("Owned policy upload required");
+  if (file.policyId) return file.policyId;
+  const policyId = await insertUploadPlaceholder(ctx, {
+    orgId: args.orgId,
+    fileId: file.fileId,
+    fileName: file.name,
+    uploadedBySide: "client",
+    uploadedByUserId: args.userId,
+  });
+  const policyFileId = await ctx.db.insert("policyFiles", {
+    policyId,
+    orgId: args.orgId,
+    fileId: file.fileId,
+    fileName: file.name,
+    fileType: "unknown",
+    createdAt: dayjs().valueOf(),
+  });
+  await ctx.db.patch(file._id, { policyId });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.actions.policyExtraction.startPolicyExtractionFromUpload,
+    {
+      policyId,
+      fileId: file.fileId,
+      fileName: file.name,
+      orgId: args.orgId,
+      userId: args.userId,
+      policyFileId,
+    },
+  );
+  return policyId;
+}
+
 // Client members upload into their own organization. The row keeps client
 // provenance so they can later archive or cancel it; extraction starts with
 // extractFromUpload.
@@ -2156,7 +2219,8 @@ export const createClientUpload = mutation({
       orgId: args.orgId,
       fileId: args.fileId,
       fileName: args.fileName,
-      uploadFileSha256s: args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
+      uploadFileSha256s:
+        args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
       uploadedBySide: "client",
       uploadedByUserId: access.userId,
     });
@@ -2219,7 +2283,8 @@ export async function createOperatorUploadByUser(
     orgId: args.clientOrgId,
     fileId: args.fileId,
     fileName: args.fileName,
-    uploadFileSha256s: args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
+    uploadFileSha256s:
+      args.uploadFileSha256s ?? (fileSha256 ? [fileSha256] : undefined),
     uploadedBySide: "operator",
     uploadedByUserId: operator.userId,
   });
@@ -2639,7 +2704,9 @@ export const promoteCompletedExtractionInternal = internalMutation({
       );
     }
     if (manifest.protocolVersion !== "convex-sections-v1") {
-      throw new Error("Extraction promotion requires a convex-sections-v1 manifest");
+      throw new Error(
+        "Extraction promotion requires a convex-sections-v1 manifest",
+      );
     }
     const sectionArtifacts = await ctx.db
       .query("policyExtractionArtifacts")
@@ -2710,10 +2777,13 @@ export const promoteCompletedExtractionInternal = internalMutation({
       promotedAt: decidedAt,
       updatedAt: decidedAt,
     });
-    if (policy.orgId) await publishMcpEvent(ctx, {
-      name: "policy.ready", key: args.runId, orgId: policy.orgId,
-      data: { org_id: policy.orgId, policy_id: policy._id },
-    });
+    if (policy.orgId)
+      await publishMcpEvent(ctx, {
+        name: "policy.ready",
+        key: args.runId,
+        orgId: policy.orgId,
+        data: { org_id: policy.orgId, policy_id: policy._id },
+      });
     return { promoted: true as const, decision: recordedDecision };
   },
 });
@@ -2845,7 +2915,8 @@ export const updateFiles = internalMutation({
     if (uploadFileSha256s !== undefined)
       patch.uploadFileSha256s = uploadFileSha256s;
     await ctx.db.patch(id, patch);
-    if (uploadFileSha256s !== undefined) await syncPolicyUploadFingerprints(ctx, id);
+    if (uploadFileSha256s !== undefined)
+      await syncPolicyUploadFingerprints(ctx, id);
   },
 });
 

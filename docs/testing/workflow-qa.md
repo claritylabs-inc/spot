@@ -930,6 +930,14 @@ Added a thin `border-border-subtle` divider above Changes to resubmit, with 24px
 - Updated existing fixtures for explicit submission consent/revisions, current submitted-application storage, broker visibility defaults, the shared session identity helper, and Jev-owned classification/identity semantics. Authorization, stale-write, immutable-snapshot and metadata-ownership assertions remain enforced.
 - Full local suite: 183 test files passed, one skipped; 1,110 tests passed, 23 skipped. Full ESLint has zero errors (10 existing warnings); router contract validation and Convex typechecking pass. Final Next.js typecheck/build and required GitHub checks are verified before merge.
 
+### Policy savings intake — October 15, 2026
+
+- Browser QA with a synthetic local applicant: opening purpose choice → contact → required PDF upload → business questions → review → “We have your policies” confirmation. Request timing, coverage and procurement questions are skipped. Missing policy disables Continue.
+- Verified the uploaded PDF appears under the same business’s admin Policies table with client provenance. Procurement displayed “No procurement requests yet.” The synthetic PDF is not evidence of insurance; extraction completion is outside this flow verification.
+- Existing intake authorization/domain tests cover owner boundaries, revision conflicts and submission consent. Savings uses the same boundaries, accepted-review uploads/removals are blocked, repeated non-resubmit submission returns the original result, and staged files link to one policy each. No new isolated tests were added.
+- Local evidence: `/tmp/spot-savings-confirmation.png`; synthetic tenant: Disposable Savings Workflow QA.
+- Final validation: 1,110 existing tests passed (23 skipped); ESLint zero errors (10 existing warnings), application and Convex TypeScript checks, production build, and whitespace checks passed. Changes are local on `codex/policy-savings-intake`; no production deployment was performed.
+
 ## Browser agent sidebar (2026-10-15)
 
 Repeat with the native-local app/backend and seeded Cove fixture running:
@@ -962,3 +970,21 @@ Message/upload persistence passes independently; no router allowlist was changed
 Not run: Edge, browser-store review, a visible desktop run, live model-generated
 certificates/email approvals and production HTTPS authentication. Those are not
 claimed by this workflow.
+
+### Test suite pruning — October 16, 2026
+
+At the user's request, reduced the full default suite from 1,110 passing tests to
+109 (over 90% removed). Removed ordinary UI/state/formatting suites, mocked model
+and adapter tests, duplicated helper contracts, opt-in evals, and their obsolete
+catalog snapshot. Twelve root test files and the Slack HTTP boundary suite remain.
+
+The retained core exercises intake ownership/revisions, Markdown authorization,
+router job idempotency/cancellation, verified operator identity, OAuth resource
+binding, exact single-use approvals, complete extraction promotion, authenticated
+operator email, API authorization, email executor send/attachment boundaries,
+website SSRF bounds, and Slack HTTP authentication/delivery. Browser workflow QA
+owns broader feature behavior. This intentionally removes substantial automated
+regression coverage; the historical workflow results above are not new coverage.
+
+No production code or replacement tests were added. Final checks run the reduced
+suite, TypeScript, lint, worker checks and production build before merging.
