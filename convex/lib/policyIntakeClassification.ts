@@ -57,7 +57,6 @@ export type PolicyIntakeDecision = {
 };
 
 const MAX_EVIDENCE_CHARS = 60_000;
-const MAX_RELATIONSHIP_EVIDENCE_CHARS = 20_000;
 const MAX_RELATIONSHIP_CANDIDATES = 20;
 
 const CLASSIFICATION_REASONS: Record<PolicyIntakeDocumentClass, string> = {
@@ -191,10 +190,6 @@ export async function classifyPolicyIntake(args: {
     relationship: { ...UNKNOWN_RELATIONSHIP },
   };
   const evidence = buildIntakeEvidence(args.pages, args.pageCount);
-  const relationshipText = evidence.text.slice(
-    0,
-    MAX_RELATIONSHIP_EVIDENCE_CHARS,
-  );
   const candidates = rankExistingPolicyCandidates(
     args.existingPolicies.filter(
       (policy) => policy.policyId && policy.policyId !== args.policyId,
@@ -210,30 +205,38 @@ export async function classifyPolicyIntake(args: {
       (page) =>
         !args.pages.some((entry) => entry.page === page && entry.text.trim()),
     );
-    const images =
-      args.pdfBytes && missingPages.length
-        ? await renderPdfPageImages({
-            pdfBytes: args.pdfBytes,
-            pages: missingPages.slice(0, 4),
-            maxSide: 1024,
-          })
-        : [];
-    if (images.length) {
-      staged = await stageJevImages(args.ctx, images.map(pdfPageJevImage), {
-        orgId: args.orgId,
-        surface: "policy-intake",
-        sessionKey: args.policyId ?? args.traceId ?? crypto.randomUUID(),
-      });
+    let images: Awaited<ReturnType<typeof renderPdfPageImages>> = [];
+    try {
+      if (args.pdfBytes && missingPages.length) {
+        images = await renderPdfPageImages({
+          pdfBytes: args.pdfBytes,
+          pages: missingPages.slice(0, 4),
+          maxSide: 1024,
+        });
+        if (images.length) {
+          staged = await stageJevImages(args.ctx, images.map(pdfPageJevImage), {
+            orgId: args.orgId,
+            surface: "policy-intake",
+            sessionKey: args.policyId ?? args.traceId ?? crypto.randomUUID(),
+          });
+        }
+      }
+    } catch (error) {
+      images = [];
+      console.warn(
+        "Intake images unavailable; using text evidence",
+        error instanceof Error ? error.message : String(error),
+      );
     }
-    const canClassify = evidence.complete || images.length > 0;
-    if (!canClassify && !relationshipText) return incomplete;
+    const canClassify = evidence.text.trim().length > 0 || images.length > 0;
+    if (!canClassify && !candidates.length) return incomplete;
     const questions: Record<string, DecisionQuestion> = {};
     if (canClassify) {
       for (const [id, instructions] of Object.entries({
         is_insurance_document:
           "Does `upload` contain an insurance document? A payment in an unrelated trust ledger or closing statement is not an insurance document.",
         is_bound_terms:
-          "Does `upload` contain already-bound policy terms, such as a binder, declarations, policy wording, or post-binding supplement? Unbound quotes, proposals, applications, and invoices do not establish binding.",
+          "Does `upload` contain already-bound policy terms, such as a binder, declarations, policy wording, endorsement, renewal policy, insurance schedule, or post-binding supplement? Unbound quotes, proposals, applications, and invoices do not establish binding.",
         is_specimen:
           "Does `upload` explicitly identify itself as a specimen, sample, or testing-only insurance policy artifact?",
       }))
@@ -242,17 +245,19 @@ export async function classifyPolicyIntake(args: {
     questions.is_endorsement = {
       type: "noul",
       instructions:
-        "Does `upload` contain an endorsement that amends an existing policy? A forms list merely mentioning endorsements does not establish this.",
+        "Is `upload` primarily a standalone mid-term change document that endorses or amends an existing policy? A complete renewal policy or a forms list merely mentioning endorsements does not establish this.",
     };
-    candidates.forEach((_, i) => {
-      questions[`same_insured_${i}`] = {
-        type: "noul",
-        instructions: `Does the policy in \`upload\` name the same insured as \`existingPolicies[${i}].namedInsured\`? Missing evidence is not a match.`,
-      };
-      questions[`same_program_${i}`] = {
-        type: "noul",
-        instructions: `Does the insurance coverage program in \`upload\` match the carrier/program described by \`existingPolicies[${i}]\`? Missing evidence is not a match.`,
-      };
+    candidates.forEach((candidate, i) => {
+      if (candidate.namedInsured)
+        questions[`same_insured_${i}`] = {
+          type: "noul",
+          instructions: `Does the policy in \`upload\` name the same insured as \`existingPolicies[${i}].namedInsured\`? Missing evidence is not a match.`,
+        };
+      if (candidate.carrier)
+        questions[`same_program_${i}`] = {
+          type: "noul",
+          instructions: `Does the insurance carrier named in \`upload\` match \`existingPolicies[${i}].carrier\`? Missing evidence is not a match.`,
+        };
     });
     const result = await clRouterDecide(
       {
@@ -295,30 +300,40 @@ export async function classifyPolicyIntake(args: {
           probability("is_insurance_document")!,
           probability("is_specimen")!,
         );
-      } else if (yes("is_bound_terms")) {
+      } else if (yes("is_bound_terms") || yes("is_endorsement")) {
         classification = "bound_policy_document";
         confidence = Math.min(
           probability("is_insurance_document")!,
-          probability("is_bound_terms")!,
+          Math.max(
+            probability("is_bound_terms") ?? 0,
+            probability("is_endorsement") ?? 0,
+          ),
         );
-      } else if (no("is_bound_terms") && no("is_specimen")) {
+      } else if (
+        no("is_bound_terms") &&
+        no("is_specimen") &&
+        no("is_endorsement")
+      ) {
         classification = "insurance_related_but_not_bound_policy";
         confidence = Math.min(
           probability("is_insurance_document")!,
           1 - probability("is_bound_terms")!,
           1 - probability("is_specimen")!,
+          1 - probability("is_endorsement")!,
         );
       }
     } else if (
       no("is_insurance_document") &&
       no("is_bound_terms") &&
-      no("is_specimen")
+      no("is_specimen") &&
+      no("is_endorsement")
     ) {
       classification = "non_insurance";
       confidence = Math.min(
         1 - probability("is_insurance_document")!,
         1 - probability("is_bound_terms")!,
         1 - probability("is_specimen")!,
+        1 - probability("is_endorsement")!,
       );
     }
     const matching = candidates.flatMap((candidate, i) =>
@@ -348,37 +363,39 @@ export async function classifyPolicyIntake(args: {
       const sameNumber =
         uploadNumbers.size === 1 &&
         uploadNumbers.has(normalized(candidate.policyNumber));
+      const samePeriod =
+        !!period &&
+        period.effectiveDate === effective &&
+        period.expirationDate === expiration;
       let kind: PolicyIntakeRelationshipKind = "unknown";
-      if (sameNumber && yes("is_endorsement")) kind = "endorsement";
-      else if (period && effective && expiration && no("is_endorsement")) {
-        if (
-          sameNumber &&
-          period.effectiveDate === effective &&
-          period.expirationDate === expiration
+      if (
+        period &&
+        effective &&
+        expiration &&
+        dayjs(period.effectiveDate, "MM/DD/YYYY").isAfter(
+          dayjs(effective, "MM/DD/YYYY"),
+        ) &&
+        dayjs(period.expirationDate, "MM/DD/YYYY").isAfter(
+          dayjs(expiration, "MM/DD/YYYY"),
         )
-          kind = "duplicate";
-        else if (
-          dayjs(period.effectiveDate, "MM/DD/YYYY").isAfter(
-            dayjs(effective, "MM/DD/YYYY"),
-          ) &&
-          dayjs(period.expirationDate, "MM/DD/YYYY").isAfter(
-            dayjs(expiration, "MM/DD/YYYY"),
-          )
-        )
-          kind = "renewal";
-      }
-      if (kind !== "unknown")
+      )
+        kind = "renewal";
+      else if (sameNumber && yes("is_endorsement")) kind = "endorsement";
+      else if (sameNumber && samePeriod && no("is_endorsement"))
+        kind = "duplicate";
+      if (kind !== "unknown") {
+        const confidence = [
+          probability(`same_insured_${i}`)!,
+          probability(`same_program_${i}`)!,
+          ...(kind === "endorsement" ? [probability("is_endorsement")!] : []),
+          ...(kind === "duplicate" ? [1 - probability("is_endorsement")!] : []),
+        ];
         relationship = {
           kind,
           policyId: candidate.policyId,
-          confidence: Math.min(
-            probability(`same_insured_${i}`)!,
-            probability(`same_program_${i}`)!,
-            kind === "endorsement"
-              ? probability("is_endorsement")!
-              : 1 - probability("is_endorsement")!,
-          ),
+          confidence: Math.min(...confidence),
         };
+      }
     } else if (
       candidates.length &&
       candidates.every(
@@ -401,6 +418,7 @@ export async function classifyPolicyIntake(args: {
       classification,
       // Sampled images are useful for routing, never sufficient to reject a packet.
       shouldExtract:
+        yes("is_endorsement") ||
         !evidence.complete ||
         !shouldRejectPolicyIntake({ classification, confidence }),
       confidence,
