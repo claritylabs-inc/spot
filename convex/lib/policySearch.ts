@@ -350,7 +350,7 @@ export async function rankPolicySearchCandidates(
   candidates.forEach((_, index) => {
     questions[`passage_${index}`] = {
       type: "score",
-      instructions: `How well does passage passage_${index} in state.passages answer state.question? Judge only the passage text.`,
+      instructions: `How well does \`passages[${index}].text\` answer \`question\`? Judge only the passage text.`,
       criteria: RELEVANCE_CRITERIA,
     };
   });

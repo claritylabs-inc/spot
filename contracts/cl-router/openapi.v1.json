@@ -1025,7 +1025,7 @@
           "sizeBytes": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 12582912
+            "maximum": 16777216
           },
           "sha256": {
             "type": "string",
@@ -1095,6 +1095,103 @@
               "additionalProperties": false
             }
           },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "openai",
+                    "anthropic",
+                    "google",
+                    "xai",
+                    "mistral",
+                    "cohere",
+                    "fireworks",
+                    "deepseek"
+                  ]
+                },
+                "model": {
+                  "type": "string"
+                },
+                "primitives": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "reasoning",
+                      "multimodal",
+                      "tool_use",
+                      "embedding",
+                      "transcription"
+                    ]
+                  }
+                },
+                "configured": {
+                  "type": "boolean"
+                },
+                "capabilities": {
+                  "type": "object",
+                  "properties": {
+                    "vision": {
+                      "type": "boolean"
+                    },
+                    "tools": {
+                      "type": "boolean"
+                    },
+                    "structuredOutput": {
+                      "type": "boolean"
+                    },
+                    "embedding": {
+                      "type": "boolean"
+                    },
+                    "audioInput": {
+                      "type": "boolean"
+                    },
+                    "maxInputTokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "maxOutputTokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "defaultOutputTokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "longListOutputTokens": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "vision",
+                    "tools",
+                    "structuredOutput",
+                    "embedding",
+                    "audioInput"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "provider",
+                "model",
+                "primitives",
+                "configured",
+                "capabilities"
+              ],
+              "additionalProperties": false
+            }
+          },
           "webRetrieval": {
             "type": "object",
             "properties": {
@@ -1136,6 +1233,7 @@
           "apiVersion",
           "credentialMode",
           "providers",
+          "models",
           "webRetrieval"
         ],
         "additionalProperties": false
@@ -1782,7 +1880,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -1854,7 +1952,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -2402,6 +2500,7 @@
             "type": "string",
             "enum": [
               "generate",
+              "manual",
               "embed",
               "retrieve",
               "transcribe"
@@ -2634,7 +2733,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -2706,7 +2805,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -3152,6 +3251,7 @@
                   "router_candidates_exhausted",
                   "router_budget_exhausted",
                   "router_rejected",
+                  "router_payload_too_large",
                   "router_internal"
                 ]
               },
@@ -3506,6 +3606,7 @@
                       "router_candidates_exhausted",
                       "router_budget_exhausted",
                       "router_rejected",
+                      "router_payload_too_large",
                       "router_internal"
                     ]
                   },
@@ -3723,7 +3824,7 @@
               "sizeBytes": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
-                "maximum": 12582912
+                "maximum": 16777216
               },
               "sha256": {
                 "type": "string",
@@ -4122,6 +4223,92 @@
               "instructions"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "box"
+              },
+              "instructions": {
+                "$ref": "#/components/schemas/DecisionEntry"
+              }
+            },
+            "required": [
+              "type",
+              "instructions"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "DecisionAsset": {
+        "description": "A PNG or JPEG (280-1568 px per side) keyed by a reference string that must appear in the state, instructions, or criteria. Inline base64 or a consumer-owned asset reference that the router fetches. Up to 8 assets, 12 MiB each, 16 MiB total; JSON requests are limited to 4 MiB, so use `source` for larger images. Requires Jev 1.13+; sets TypeSafe-Danger-Zone-Images automatically.",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "format": {
+                "enum": [
+                  "png",
+                  "jpg",
+                  "jpeg"
+                ]
+              },
+              "dataBase64": {
+                "type": "string",
+                "minLength": 4,
+                "contentEncoding": "base64"
+              }
+            },
+            "required": [
+              "format",
+              "dataBase64"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "mediaType": {
+                    "enum": [
+                      "image/png",
+                      "image/jpeg"
+                    ]
+                  },
+                  "sizeBytes": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-fA-F0-9]{64}$"
+                  },
+                  "filename": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "url",
+                  "mediaType",
+                  "sizeBytes"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -4218,6 +4405,57 @@
               "noul"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "box"
+              },
+              "box": {
+                "type": "object",
+                "properties": {
+                  "top": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "bottom": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "left": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "right": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "top",
+                  "bottom",
+                  "left",
+                  "right"
+                ],
+                "additionalProperties": false
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "type",
+              "box",
+              "confidence"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -4241,6 +4479,13 @@
           },
           "state": {
             "$ref": "#/components/schemas/DecisionEntry"
+          },
+          "assets": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DecisionAsset"
+            },
+            "minProperties": 1
           },
           "questions": {
             "type": "object",

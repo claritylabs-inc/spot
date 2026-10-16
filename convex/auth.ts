@@ -1,6 +1,7 @@
 import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
+import { Password } from "@convex-dev/auth/providers/Password";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
@@ -11,6 +12,7 @@ import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
 import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 import { generateOtpCode } from "./lib/otp";
+import { passwordSignInProfile } from "./lib/passwordAuth";
 
 const rateLimiter = new RateLimiter(components.rateLimiter, {
   codeEmailPerMinute: { kind: "token bucket", rate: 1, period: MINUTE },
@@ -69,12 +71,14 @@ const ResendOTP = Email({
 });
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [ResendOTP, ConvexCredentials({
+  providers: [ResendOTP, Password({ profile: passwordSignInProfile }), ConvexCredentials({
     id: "intake",
     authorize: async (credentials, ctx) => {
       if (typeof credentials.token !== "string") return null;
       return ctx.runMutation(internal.requestIntake.claimNewSession, { token: credentials.token });
     },
   })],
-  callbacks: { createOrUpdateUser: createOrUpdateEmailUser },
+  callbacks: {
+    createOrUpdateUser: createOrUpdateEmailUser,
+  },
 });

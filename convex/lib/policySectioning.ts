@@ -9,7 +9,13 @@ import { PDFDocument } from "pdf-lib";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { PdfPageText } from "./pdfText";
-import { clRouterDecide } from "./clRouterClient";
+import {
+  clRouterDecide,
+  isClRouterPayloadTooLarge,
+  runWithPayloadSplitting,
+} from "./clRouterClient";
+import { pdfPageJevImage, stageJevImages } from "./jevImages";
+import { renderPdfPageImages } from "./pdfPageImages";
 import { jevProceeds } from "./jevThreshold";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 
@@ -123,7 +129,13 @@ const DIGEST_FOOT_LINES = 4;
 const DIGEST_LINE_MAX_CHARS = 70;
 const DIGEST_MAX_CHARS = 1200;
 
+/** Text-digest fallback batches (no PDF bytes or rendering failed). */
 const JEV_BATCH_PAGES = 25;
+/**
+ * Image batches: a 1280px page costs about 3.8k Jev tokens, so five pages plus
+ * up to two context pages stay inside Jev's context; overflow is halved.
+ */
+const JEV_IMAGE_BATCH_PAGES = 5;
 const JEV_BATCH_CONCURRENCY = 4;
 
 function isPolicySectionKind(value: unknown): value is PolicySectionKind {
@@ -242,11 +254,10 @@ function classifyFormRun(
   return null;
 }
 
-function pageKindQuestion(): DecisionQuestion {
+function pageKindQuestion(page: number): DecisionQuestion {
   return {
     type: "choice",
-    instructions:
-      "Classify this policy document page by its predominant content, using only the provided digest.",
+    instructions: `Classify \`pages.page_${page}\` (original PDF page ${page}) by its predominant content, using its page image (or its text digest when no image is supplied).`,
     criteria: {
       declarations: "The policy declarations page: named insured, policy period, premium, limits summary.",
       schedule: "A schedule listing locations, vehicles, drivers, classifications, or other scheduled items.",
@@ -264,7 +275,7 @@ function pageKindQuestion(): DecisionQuestion {
 function pageBoundaryQuestion(page: number): DecisionQuestion {
   return {
     type: "noul",
-    instructions: `Does a new document, form, or endorsement begin on page ${page} (as opposed to continuing the previous page's document)?`,
+    instructions: `Does \`pages.page_${page}\` (original PDF page ${page}) begin a new document, form, or endorsement compared with \`pages.page_${page - 1}\`?`,
     criteria: {
       true: "Page begins a new form, endorsement, or document (e.g. a new form number, title, or heading appears).",
       false: "Page continues the same form/document as the previous page.",
@@ -295,45 +306,132 @@ async function classifyRemainingPages(params: {
   orgId: Id<"organizations">;
   pageCount: number;
   remaining: number[];
+  pdfBytes?: Uint8Array;
   getDigest: (page: number) => PolicyPageDigest;
   labels: PolicyPageLabel[];
   traceId?: string;
 }): Promise<void> {
   const { ctx, orgId, pageCount, remaining, getDigest, labels, traceId } =
     params;
+  const hasText = (page: number) => {
+    const digest = getDigest(page);
+    return digest.headLines.length > 0 || digest.footLines.length > 0;
+  };
+  // Jev judges pages from their rendered images, never their extracted text;
+  // the text digest is used only by code (form numbers) and as a fallback.
+  const imagePagesAllowed = new Set(
+    params.pdfBytes
+      ? [...new Set(remaining.flatMap((page) => [page - 1, page, page + 1]))]
+          .filter((page) => page >= 1 && page <= pageCount)
+          .sort((a, b) => a - b)
+      : [],
+  );
+  const batchSize = params.pdfBytes ? JEV_IMAGE_BATCH_PAGES : JEV_BATCH_PAGES;
   const batches: number[][] = [];
-  for (let i = 0; i < remaining.length; i += JEV_BATCH_PAGES) {
-    batches.push(remaining.slice(i, i + JEV_BATCH_PAGES));
+  let batch: number[] = [];
+  for (const page of remaining) {
+    if (!hasText(page) && !imagePagesAllowed.has(page)) {
+      labels[page - 1] = {
+        page,
+        kind: "other",
+        startsNewDocument: page === 1,
+        confidence: 0,
+        source: "fallback",
+      };
+      continue;
+    }
+    if (batch.length >= batchSize) {
+      batches.push(batch);
+      batch = [];
+    }
+    batch.push(page);
   }
+  if (batch.length) batches.push(batch);
 
-  await runBounded(batches, JEV_BATCH_CONCURRENCY, async (batchPages) => {
+  // A batch whose page images exceed the router size limit is halved and retried.
+  await runBounded(batches, JEV_BATCH_CONCURRENCY, async (pages) => {
+    await runWithPayloadSplitting(pages, labelBatch);
+  });
+
+  async function labelBatch(batchPages: number[]): Promise<void> {
     const first = batchPages[0];
     const last = batchPages[batchPages.length - 1];
     const contextBefore = first > 1 ? first - 1 : undefined;
     const contextAfter = last < pageCount ? last + 1 : undefined;
 
+    const deterministicBoundary = (page: number): boolean | undefined => {
+      if (page === 1) return true;
+      const current = getDigest(page).formNumber;
+      const previous = getDigest(page - 1).formNumber;
+      return current && previous ? current !== previous : undefined;
+    };
+
     const questions: Record<string, DecisionQuestion> = {};
     for (const page of batchPages) {
-      questions[`kind_${page}`] = pageKindQuestion();
-      questions[`boundary_${page}`] = pageBoundaryQuestion(page);
+      questions[`kind_${page}`] = pageKindQuestion(page);
+      if (deterministicBoundary(page) === undefined)
+        questions[`boundary_${page}`] = pageBoundaryQuestion(page);
     }
-
+    // Include the actual predecessor of every questioned page, even across form runs.
     const statePages = [
-      ...(contextBefore !== undefined
-        ? [{ ...getDigest(contextBefore), contextOnly: true }]
-        : []),
-      ...batchPages.map((page) => ({ ...getDigest(page), contextOnly: false })),
-      ...(contextAfter !== undefined
-        ? [{ ...getDigest(contextAfter), contextOnly: true }]
-        : []),
-    ];
-
+      ...new Set([
+        ...(contextBefore !== undefined ? [contextBefore] : []),
+        ...batchPages.flatMap((page) => (page > 1 ? [page - 1, page] : [page])),
+        ...(contextAfter !== undefined ? [contextAfter] : []),
+      ]),
+    ].map((page) => ({
+      ...getDigest(page),
+      contextOnly: !batchPages.includes(page),
+    }));
+    let staged: Awaited<ReturnType<typeof stageJevImages>> | undefined;
     try {
+      const imagePages = statePages.filter((page) =>
+        imagePagesAllowed.has(page.page),
+      );
+      const imageRefs = new Map<number, string>();
+      try {
+        const images =
+          params.pdfBytes && imagePages.length
+            ? await renderPdfPageImages({
+                pdfBytes: params.pdfBytes,
+                pages: imagePages.map((page) => page.page),
+              })
+            : [];
+        if (images.length) {
+          staged = await stageJevImages(ctx, images.map(pdfPageJevImage), {
+            orgId,
+            surface: "policy-sectioning",
+            sessionKey: traceId ?? crypto.randomUUID(),
+          });
+          images.forEach((image, i) =>
+            imageRefs.set(image.page, staged!.refs[i]),
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "Section images unavailable; using text evidence",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       const result = await clRouterDecide(
         {
           orgId: String(orgId),
           task: "policy_page_sectioning",
-          state: { pages: statePages },
+          state: {
+            pages: Object.fromEntries(
+              statePages.map((page) => [
+                `page_${page.page}`,
+                imageRefs.has(page.page)
+                  ? {
+                      page: page.page,
+                      contextOnly: page.contextOnly,
+                      image: imageRefs.get(page.page)!,
+                    }
+                  : page,
+              ]),
+            ),
+          },
+          ...(staged ? { assets: staged.assets } : {}),
           questions,
           trace: traceId ? { traceId } : undefined,
         },
@@ -343,14 +441,22 @@ async function classifyRemainingPages(params: {
       for (const page of batchPages) {
         const kindAnswer = result.answers[`kind_${page}`];
         const boundaryAnswer = result.answers[`boundary_${page}`];
+        const confidence =
+          kindAnswer?.type === "choice"
+            ? Math.min(
+                kindAnswer.confidence,
+                kindAnswer.probabilities[kindAnswer.choice] ?? 0,
+              )
+            : 0;
         const kind =
-          kindAnswer?.type === "choice" && isPolicySectionKind(kindAnswer.choice)
+          kindAnswer?.type === "choice" &&
+          isPolicySectionKind(kindAnswer.choice) &&
+          jevProceeds(confidence)
             ? kindAnswer.choice
             : "other";
-        const confidence =
-          kindAnswer?.type === "choice" ? kindAnswer.confidence : 0;
         const startsNewDocument =
-          boundaryAnswer?.type === "noul" && jevProceeds(boundaryAnswer.noul);
+          deterministicBoundary(page) ??
+          (boundaryAnswer?.type === "noul" && jevProceeds(boundaryAnswer.noul));
         labels[page - 1] = {
           page,
           kind,
@@ -362,12 +468,13 @@ async function classifyRemainingPages(params: {
           source: "classifier",
         };
       }
-    } catch {
+    } catch (error) {
+      if (isClRouterPayloadTooLarge(error) && batchPages.length > 1) throw error;
       for (const page of batchPages) {
         labels[page - 1] = {
           page,
           kind: "other",
-          startsNewDocument: false,
+          startsNewDocument: deterministicBoundary(page) ?? false,
           ...(getDigest(page).formNumber
             ? { formNumber: getDigest(page).formNumber }
             : {}),
@@ -375,8 +482,15 @@ async function classifyRemainingPages(params: {
           source: "fallback",
         };
       }
+    } finally {
+      await staged?.cleanup().catch((error: unknown) => {
+        console.warn(
+          "Jev image cleanup unavailable",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
     }
-  });
+  }
 }
 
 type SectionDraft = {
@@ -446,6 +560,14 @@ function groupPagesIntoSections(labels: PolicyPageLabel[]): SectionDraft[] {
       eventualFormNumber[j] = labels[0].formNumber;
       boundary[j] = j === 0;
     }
+  }
+
+  // Printed form boundaries survive even when page-kind decisions are uncertain.
+  for (let i = 0; i < n; i++) {
+    const form = labels[i].formNumber;
+    const previous = labels[i - 1]?.formNumber;
+    if (form) eventualFormNumber[i] = form;
+    if (form && previous && form !== previous) boundary[i] = true;
   }
 
   const sections: SectionDraft[] = [];
@@ -604,6 +726,7 @@ export async function planPolicySections(args: {
   pages: PdfPageText[];
   /** Original PDF size, used with page count to respect MAX_SECTION_BYTES. */
   pdfByteLength: number;
+  pdfBytes?: Uint8Array;
   traceId?: string;
   policyId?: string;
 }): Promise<PolicySectionPlan> {
@@ -619,7 +742,7 @@ export async function planPolicySections(args: {
     digests.get(page) ?? { page, headings: [], headLines: [], footLines: [] };
 
   const hasText = pages.some((page) => nonEmptyLines(page.text).length > 0);
-  if (!hasText) {
+  if (!hasText && !args.pdfBytes) {
     return buildFallbackPlan(pageCount, pdfByteLength);
   }
 
@@ -667,6 +790,7 @@ export async function planPolicySections(args: {
       orgId,
       pageCount,
       remaining,
+      pdfBytes: args.pdfBytes,
       getDigest,
       labels,
       traceId,

@@ -32,9 +32,13 @@ import type {
 // controls, ratings, affinity, and telemetry remain one continuous tenant.
 const CL_ROUTER_TENANT_ID = "glass";
 export const MAX_CL_ROUTER_JSON_REQUEST_BYTES = 4 * 1024 * 1024;
-export const MAX_CL_ROUTER_ASSET_BYTES = 12 * 1024 * 1024;
+/**
+ * cl-router accepts any number of assets up to 16 MiB decoded per request (see
+ * the cl-router README). Oversized work fails with router_payload_too_large;
+ * callers split it with `runWithPayloadSplitting` and retry.
+ */
 export const MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
-export const MAX_CL_ROUTER_ASSET_COUNT = 8;
+export const MAX_CL_ROUTER_ASSET_BYTES = MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES;
 
 /** All model tasks implemented by the cl-router v1 API contract. */
 export const CL_ROUTER_SUPPORTED_TASKS = MODEL_TASKS;
@@ -458,6 +462,7 @@ export const CL_ROUTER_FAILURE_CODES = [
   "router_candidates_exhausted",
   "router_budget_exhausted",
   "router_rejected",
+  "router_payload_too_large",
   "router_internal",
 ] as const;
 
@@ -500,6 +505,54 @@ export class ClRouterRequestError extends Error {
       this.executionStarted = options.executionStarted;
     if (options?.requestId !== undefined) this.requestId = options.requestId;
     this.attempts = options?.attempts ?? [];
+  }
+}
+
+/** Request too large for one router call; the caller should split its input. */
+export function clRouterPayloadTooLargeError(message: string): ClRouterRequestError {
+  return new ClRouterRequestError("configuration", message, {
+    status: 413,
+    routerCode: "router_payload_too_large",
+    retryable: false,
+    executionStarted: false,
+  });
+}
+
+/** True when the error, or an error it wraps (AI SDK retries/causes), is a too-large failure. */
+export function isClRouterPayloadTooLarge(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if (
+      current instanceof ClRouterRequestError &&
+      current.routerCode === "router_payload_too_large"
+    )
+      return true;
+    const record = current as { lastError?: unknown; cause?: unknown };
+    current = record.lastError ?? record.cause;
+  }
+  return false;
+}
+
+/**
+ * Runs `run` over all items; when the router reports the request is too large,
+ * splits the items in half and retries each half, recursively. Results are in
+ * item order. A single item that is still too large rethrows.
+ */
+export async function runWithPayloadSplitting<T, R>(
+  items: readonly T[],
+  run: (part: T[]) => Promise<R>,
+): Promise<R[]> {
+  try {
+    return [await run([...items])];
+  } catch (error) {
+    if (!isClRouterPayloadTooLarge(error) || items.length <= 1) throw error;
+    const middle = Math.ceil(items.length / 2);
+    return [
+      ...(await runWithPayloadSplitting(items.slice(0, middle), run)),
+      ...(await runWithPayloadSplitting(items.slice(middle), run)),
+    ];
   }
 }
 
@@ -903,9 +956,13 @@ function validateRouterAssets(
       size <= 0 ||
       size > MAX_CL_ROUTER_ASSET_BYTES
     ) {
+      if (Number.isSafeInteger(size) && size > 0)
+        throw clRouterPayloadTooLargeError(
+          "A router asset exceeds the 16 MiB request limit",
+        );
       throw new ClRouterRequestError(
         "configuration",
-        "Router assets must be nonempty and no larger than 12 MiB",
+        "Router assets must be nonempty",
       );
     }
     sizes.push(size);
@@ -945,18 +1002,11 @@ function validateRouterAssets(
       }
     }
   }
-  if (sizes.length > MAX_CL_ROUTER_ASSET_COUNT) {
-    throw new ClRouterRequestError(
-      "configuration",
-      "Router requests may contain at most eight assets",
-    );
-  }
   if (
     sizes.reduce((sum, size) => sum + size, 0) >
     MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES
   ) {
-    throw new ClRouterRequestError(
-      "configuration",
+    throw clRouterPayloadTooLargeError(
       "Router request assets may contain at most 16 MiB decoded data",
     );
   }
@@ -1383,6 +1433,19 @@ export async function clRouterDecide(
   request: Omit<DecideRequest, "tenantId">,
   options: ClRouterClientOptions = {},
 ): Promise<DecideResponse> {
+  const assetBytes = Object.values(request.assets ?? {}).reduce(
+    (total, asset) =>
+      total +
+      ("source" in asset
+        ? asset.source.sizeBytes
+        : Math.floor((asset.dataBase64.length * 3) / 4)),
+    0,
+  );
+  if (assetBytes > MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES) {
+    throw clRouterPayloadTooLargeError(
+      "Decision images exceed the 16 MiB request limit",
+    );
+  }
   const body = parseDecideRequest({
     ...request,
     tenantId: CL_ROUTER_TENANT_ID,

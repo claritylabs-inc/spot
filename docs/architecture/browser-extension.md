@@ -64,3 +64,25 @@ Use the local app/backend for acceptance; never use Vercel previews. The workflo
 and evidence ledger is in `docs/testing/workflow-qa.md`. Browser-store approval,
 Edge-specific behavior and organizational browser policies require separate
 verification before distribution.
+
+## Welcome and sign-in
+
+Signed-out sidebars show the shared Spot wordmark and one sign-in action. The
+capture toolbar appears only when a client composer is ready. A failed app load
+shows a retry after 15 seconds; a rendered sign-in gate is not a load failure.
+`/login?from=extension` uses the normal OTP flow, then navigates to the fixed
+`https://spot.insure/extension/welcome` guide in clarity-landing. No supplied URL
+or credential crosses that redirect. For ten minutes after an explicit sign-in
+click, the extension watches completion of that sign-in tab to reconnect its
+signed-out iframe. The app/backend still owns cookies and authorization.
+
+Run `node scripts/browser-extension-onboarding-e2e.mjs` against the native-local
+app to verify sign-in, the fixed redirect and automatic sidebar reconnection.
+It stubs only the website guide body; clarity-landing owns that page's responsive
+browser checks. The local OTP limiter remains active; allow a minute between runs.
+
+## Compact sidebar controls
+
+The embedded app owns one compact action row: Use this page, New chat, History, and More options (Open Spot/Reload). The web-app dock tabs and workspace header are omitted. The native extension toolbar is only a load-failure recovery surface. A user click posts `spot:capture-request` with the current mount session to the extension; the extension rechecks exact frame/origin/version/session and the existing activeTab grant before using the same packaged capture function. Bounded `spot:capture-status` messages return errors to the app. Page content remains a removable draft attachment and never submits automatically.
+
+Page-capture requests also require `navigator.userActivation.isActive` in the native side panel. Requests without a current user gesture are rejected even when their origin, version, and session match.

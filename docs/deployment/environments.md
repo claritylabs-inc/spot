@@ -435,8 +435,10 @@ Generic text/object helpers still fail closed when passed tool-loop-only options
 Every task family, including `operator_agent`, public/default calls, extraction,
 embeddings, and voice transcription, uses the same router-only boundary.
 
-Router asset requests accept at most eight assets, 12 MiB for any one decoded
-asset, and 16 MiB decoded in aggregate. Spot callers additionally enforce the
+Router asset requests accept any number of assets up to 16 MiB decoded in total
+(the limit comes from the 64 MiB Convex HTTP action; see the cl-router README).
+Oversized requests fail with `router_payload_too_large`; image-heavy callers use
+`runWithPayloadSplitting` to halve their input and retry. Spot callers additionally enforce the
 Convex runtime's stricter 4 MiB serialized UTF-8 JSON request ceiling, including
 base64 expansion. General attachment intake remains separately bounded at ten
 files, 25 MiB each, and 50 MiB aggregate because parseable documents become

@@ -2,7 +2,7 @@
 
 A thin Manifest V3 side panel for Chrome and Edge. The panel hosts Spot's own
 `/extension` route in an iframe, so the agent, sign-in and history are the
-existing web app. The extension only adds an explicit **Use this page** button.
+existing web app. The extension adds an explicit **Use this page** action in one compact row with new chat, history, and a menu.
 
 ## Build
 
@@ -22,6 +22,8 @@ rejects on upload. Zip the contents of `dist`, with `manifest.json` at the root.
 Never load the keyless store build unpacked: use the default build for that.
 Local builds grant access to all ports on localhost and must not be distributed.
 
+Version 0.1.3 requires the matching compact `/extension` app deployment. Deploy the app before distributing this package.
+
 ## Load it
 
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on Developer mode.
@@ -39,7 +41,8 @@ Reload in the panel). The panel shares that session; there is no separate login.
   when you press the button.
 - Reading a tab requires a click on the Spot icon **on that tab**. After you
   switch to another tab, click the Spot icon there, then press **Use this page**.
-- **Reload** reloads Spot in the panel. **Open Spot** opens Spot in a tab.
+- The **More options** menu contains **Reload** and **Open Spot**.
+- **New chat** starts a conversation; **History** opens the existing conversation list.
 
 ## Permissions
 

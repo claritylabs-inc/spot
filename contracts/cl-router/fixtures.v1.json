@@ -461,7 +461,26 @@
               "configured": false
             }
           ]
-        }
+        },
+        "models": [
+          {
+            "provider": "openai",
+            "model": "gpt-5.5",
+            "primitives": [
+              "text",
+              "multimodal",
+              "tool_use"
+            ],
+            "configured": true,
+            "capabilities": {
+              "vision": true,
+              "tools": true,
+              "structuredOutput": true,
+              "embedding": false,
+              "audioInput": false
+            }
+          }
+        ]
       }
     },
     {
@@ -545,6 +564,72 @@
           "costNanoUsd": 4200
         },
         "durationMs": 100
+      }
+    },
+    {
+      "name": "Spot image and Box decision request",
+      "schema": "DecideRequest",
+      "value": {
+        "tenantId": "spot",
+        "task": "policy_citation_box",
+        "state": {
+          "page": "5d2c7f0e-page-1",
+          "quote": "Each claim limit: $2,000,000"
+        },
+        "assets": {
+          "5d2c7f0e-page-1": {
+            "source": {
+              "url": "https://actions.spot.insure/router-assets?token=example",
+              "mediaType": "image/png",
+              "sizeBytes": 182044,
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        },
+        "questions": {
+          "quote_visible": {
+            "type": "noul",
+            "instructions": "Does `page` show the text in `quote`?"
+          },
+          "quote_box": {
+            "type": "box",
+            "instructions": "the line of text in `page` that reads `quote`"
+          }
+        }
+      }
+    },
+    {
+      "name": "Spot image and Box decision response",
+      "schema": "DecideResponse",
+      "value": {
+        "contractVersion": 1,
+        "requestId": "req_box_1",
+        "model": "jev-1.14.0",
+        "answers": {
+          "quote_visible": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "quote_box": {
+            "type": "box",
+            "box": {
+              "top": 0.49,
+              "bottom": 0.51,
+              "left": 0.1,
+              "right": 0.44
+            },
+            "confidence": 0.62
+          }
+        },
+        "usage": {
+          "inputTokens": 5552,
+          "outputTokens": 21
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 233184
+        },
+        "durationMs": 412
       }
     }
   ]

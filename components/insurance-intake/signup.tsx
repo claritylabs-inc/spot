@@ -27,7 +27,7 @@ import { OtpField } from "@/components/ui/otp-field";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
-import { completeOtpSignIn } from "@/lib/otp-auth";
+import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { AuthEntryPage } from "@/components/auth-entry-page";
 
 export function IntakeSignup() {

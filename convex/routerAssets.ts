@@ -6,7 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
-export const ROUTER_ASSET_MAX_BYTES = 12 * 1024 * 1024;
+export const ROUTER_ASSET_MAX_BYTES = 16 * 1024 * 1024;
 export const ROUTER_ASSET_MAX_AGGREGATE_BYTES = 16 * 1024 * 1024;
 export const ROUTER_ASSET_MAX_COUNT = 8;
 export const ROUTER_ASSET_TTL_MS = 10 * 60 * 1000;

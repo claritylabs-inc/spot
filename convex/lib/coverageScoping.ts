@@ -11,7 +11,7 @@ import {
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { clRouterDecide } from "./clRouterClient";
-import { jevProceeds } from "./jevThreshold";
+import { jevProceeds, jevChoiceConfidence } from "./jevThreshold";
 
 export type CoverageLike = Record<string, unknown>;
 
@@ -1061,9 +1061,9 @@ export async function scopeCoveragesWithClassifier(params: {
         },
         questions: Object.fromEntries(pending.map(({ key, candidates }) => [key, {
           type: "choice" as const,
-          instructions: `Which line of business on this policy does coverage ${key} belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
+          instructions: `Which line of business on this policy does \`coverages.${key}\` belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
           criteria: {
-            ...Object.fromEntries(candidates.map((code) => [code, lobLabel(code)])),
+            ...Object.fromEntries(candidates.map((code) => [code, { label: lobLabel(code), what: `Coverage for ${lobLabel(code)} supported by this row’s name, form, section or ACORD code; not merely another line present on the policy.` }])),
             none: "None of the listed lines of business.",
           },
         }])),
@@ -1072,10 +1072,7 @@ export async function scopeCoveragesWithClassifier(params: {
       for (const { index, key, candidates } of pending) {
         const answer = result.answers[key];
         if (answer?.type !== "choice") continue;
-        const confidence = Math.min(
-          answer.confidence,
-          answer.probabilities[answer.choice] ?? 0,
-        );
+        const confidence = jevChoiceConfidence(answer);
         if (!jevProceeds(confidence)) {
           review.questions.push(coverageLineReviewQuestion(
             coverages[index]!,

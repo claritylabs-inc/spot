@@ -512,7 +512,33 @@ export const listRequirements = query({
       orgId = membership.orgId;
     }
     await requireOrgMember(ctx, orgId);
-    return await listRequirementsVisibleToOrg(ctx, orgId);
+    const rows = await listRequirementsVisibleToOrg(ctx, orgId);
+    // The source PDF link is for the compliance page only, so it is added here
+    // rather than in the shared row builder that REST and MCP also use. Only the
+    // owning org's own PDF is linked; a vendor never receives a client's file.
+    const fileUrls = new Map<string, string | undefined>();
+    return await Promise.all(
+      rows.map(async (row) => {
+        const sourceId = row.sourceDocumentId;
+        if (!sourceId || !row.requirementSource) return row;
+        if (!fileUrls.has(sourceId)) {
+          const source = await ctx.db.get(sourceId);
+          fileUrls.set(
+            sourceId,
+            source?.fileId &&
+              source.orgId === orgId &&
+              (source.contentType?.includes("pdf") ||
+                source.fileName?.toLowerCase().endsWith(".pdf"))
+              ? ((await ctx.storage.getUrl(source.fileId)) ?? undefined)
+              : undefined,
+          );
+        }
+        const fileUrl = fileUrls.get(sourceId);
+        return fileUrl
+          ? { ...row, requirementSource: { ...row.requirementSource, fileUrl } }
+          : row;
+      }),
+    );
   },
 });
 
@@ -708,7 +734,17 @@ export const upsertRequirement = mutation({
       if (!existing || existing.orgId !== args.orgId) {
         throw new Error("Requirement not found");
       }
-      await ctx.db.patch(requirementId, patch);
+      // A moved page or rewritten excerpt makes the stored highlight stale.
+      const sourceMoved =
+        existing.sourcePageStart !== patch.sourcePageStart ||
+        existing.sourceExcerpt !== patch.sourceExcerpt ||
+        existing.sourceDocumentId !== patch.sourceDocumentId;
+      await ctx.db.patch(requirementId, {
+        ...patch,
+        ...(sourceMoved
+          ? { sourceBbox: undefined, sourceVerification: undefined }
+          : {}),
+      });
     } else {
       requirementId = await ctx.db.insert("insuranceRequirements", {
         orgId: args.orgId,
@@ -1247,6 +1283,9 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         },
       ),
       policies: activePolicies.map((policy) => ({
+        deterministicCheck: assessRequirementCompliance(requirement, [policy], {
+          expectedInsuredName: org?.name,
+        }),
         _id: policy._id,
         carrier: policy.carrier || policy.security,
         policyNumber: policy.policyNumber,
@@ -1567,6 +1606,7 @@ export const createRequirementsInternal = internalMutation({
         sourceExcerpt: v.optional(v.string()),
         sourcePageStart: v.optional(v.number()),
         sourcePageEnd: v.optional(v.number()),
+        sourceVerification: v.optional(v.literal("unverified")),
       }),
     ),
   },
@@ -1597,6 +1637,7 @@ export const createRequirementsInternal = internalMutation({
             requirement.sourceExcerpt?.trim() || sanitized.requirementText,
           sourcePageStart: requirement.sourcePageStart,
           sourcePageEnd: requirement.sourcePageEnd,
+          sourceVerification: requirement.sourceVerification,
           status: "active",
           createdByUserId: args.userId,
           updatedByUserId: args.userId,
@@ -1616,6 +1657,65 @@ export const createRequirementsInternal = internalMutation({
       },
     );
     return ids;
+  },
+});
+
+export const getRequirementsForSourceLocationInternal = internalQuery({
+  args: {
+    sourceDocumentId: v.id("requirementSourceDocuments"),
+    requirementIds: v.array(v.id("insuranceRequirements")),
+  },
+  handler: async (ctx, args) => {
+    const source = await ctx.db.get(args.sourceDocumentId);
+    if (!source?.fileId) return null;
+    const requirements = [];
+    for (const requirementId of args.requirementIds) {
+      const requirement = await ctx.db.get(requirementId);
+      if (
+        !requirement ||
+        requirement.status !== "active" ||
+        requirement.sourceDocumentId !== source._id ||
+        requirement.sourceVerification === "unverified" ||
+        !requirement.sourceExcerpt ||
+        !requirement.sourcePageStart
+      )
+        continue;
+      requirements.push({
+        _id: requirement._id,
+        sourceExcerpt: requirement.sourceExcerpt,
+        sourcePageStart: requirement.sourcePageStart,
+      });
+    }
+    return { orgId: source.orgId, fileId: source.fileId, requirements };
+  },
+});
+
+export const setRequirementSourceBboxInternal = internalMutation({
+  args: {
+    requirementId: v.id("insuranceRequirements"),
+    sourcePageStart: v.number(),
+    sourceExcerpt: v.string(),
+    sourceBbox: v.object({
+      page: v.number(),
+      x: v.number(),
+      y: v.number(),
+      width: v.number(),
+      height: v.number(),
+      pageWidth: v.number(),
+      pageHeight: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const requirement = await ctx.db.get(args.requirementId);
+    // The requirement may have been edited while the locator ran.
+    if (
+      !requirement ||
+      requirement.sourcePageStart !== args.sourcePageStart ||
+      requirement.sourceExcerpt !== args.sourceExcerpt
+    )
+      return false;
+    await ctx.db.patch(args.requirementId, { sourceBbox: args.sourceBbox });
+    return true;
   },
 });
 

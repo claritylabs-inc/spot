@@ -117,7 +117,7 @@ export async function selectAgentToolFamilies<Family extends string>(
           instructions:
             args.catalog[family].question ??
             args.question?.(family, args.catalog[family].description) ??
-            `Does this request need tools for ${args.catalog[family].description}?`,
+            `Does \`request\` or \`message\` need tools for ${args.catalog[family].description}?`,
         },
       ]),
     ),

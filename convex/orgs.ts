@@ -832,6 +832,7 @@ export const acceptInvitation = mutation({
     }
     await assertCustomerUser(ctx, userId);
 
+
     // Check not already a member
     const existing = await ctx.db
       .query("orgMemberships")

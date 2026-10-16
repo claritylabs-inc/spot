@@ -2,9 +2,15 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { generateCoiPdf, policyToCoiData } from "../lib/coiGenerator";
+import type { DecisionQuestion } from "../../contracts/cl-router/policy";
+import { clRouterDecide } from "../lib/clRouterClient";
+import { pdfPageJevImage, stageJevImages } from "../lib/jevImages";
+import { jevProceeds } from "../lib/jevThreshold";
+import { renderPdfPageImages } from "../lib/pdfPageImages";
 import { logAiError } from "../lib/aiUtils";
 import {
   CERTIFICATE_FORM_FILE_SLUGS,
@@ -55,6 +61,155 @@ const endorsementCitationValidator = v.object({
   formNumbers: v.array(v.string()),
   requiresWrittenContract: v.optional(v.boolean()),
 });
+
+const COI_QA_BUDGET_MS = 25_000;
+const COI_QA_DESCRIPTION_CHARS = 400;
+
+type CoiLayoutCheck = {
+  /** True when the question describes a defect; false when it describes a healthy layout. */
+  defectWhenYes: boolean;
+  finding: string;
+  question: DecisionQuestion;
+};
+
+function coiLayoutChecks(): Record<string, CoiLayoutCheck> {
+  const noul = (question: string, inspect: string): DecisionQuestion => ({
+    type: "noul",
+    instructions: { question, inspect },
+  });
+  return {
+    holder_visible: {
+      defectWhenYes: false,
+      finding: "Certificate holder name is not fully visible in its block.",
+      question: noul(
+        "Is the certificate holder name `coi.holder` fully visible, not clipped or cut off, inside the certificate holder block of `coi.page`?",
+        "the certificate holder block at the bottom of `coi.page`",
+      ),
+    },
+    holder_overflow: {
+      defectWhenYes: true,
+      finding: "Certificate holder text overflows its block.",
+      question: noul(
+        "Does any text in the certificate holder block of `coi.page` extend past the block's border or overlap other text?",
+        "the certificate holder block of `coi.page`",
+      ),
+    },
+    insured_visible: {
+      defectWhenYes: false,
+      finding: "Insured name is not fully visible in its block.",
+      question: noul(
+        "Is the insured name `coi.insured` fully visible, not clipped or cut off, inside the insured block of `coi.page`?",
+        "the insured block of `coi.page`",
+      ),
+    },
+    description_visible: {
+      defectWhenYes: false,
+      finding: "Description of operations is clipped or hidden.",
+      question: noul(
+        "Is the description of operations on `coi.page` readable and not clipped at the edge of its box? The beginning of `coi.description` is the expected text.",
+        "the description of operations box of `coi.page`",
+      ),
+    },
+    text_overlap: {
+      defectWhenYes: true,
+      finding: "Text overlaps other text on the first page.",
+      question: noul(
+        "Is there any place on `coi.page` where text is drawn on top of other text so that either becomes hard to read?",
+        "all of `coi.page`",
+      ),
+    },
+  };
+}
+
+type CoiLayoutQa = {
+  status: "passed" | "flagged" | "unavailable";
+  findings: string[];
+  /** Raw yes-probabilities by check, for audit. */
+  answers: Record<string, number>;
+  error?: string;
+};
+
+/**
+ * One Jev request over the rendered first page. Advisory only: a flagged or
+ * unavailable result is logged and returned, never blocks issuance. Image
+ * decisions are not production-hardened, so only confident defects are flagged.
+ */
+async function qaGeneratedCoi(
+  ctx: ActionCtx,
+  args: {
+    orgId: Id<"organizations">;
+    policyId: Id<"policies">;
+    pdf: Uint8Array;
+    coi: { holder: string; insured: string; description: string };
+  },
+): Promise<CoiLayoutQa> {
+  const checks = coiLayoutChecks();
+  try {
+    const [page] = await renderPdfPageImages({ pdfBytes: args.pdf, pages: [1] });
+    if (!page) throw new Error("Generated certificate has no first page");
+    const staged = await stageJevImages(ctx, [pdfPageJevImage(page)], {
+      orgId: args.orgId,
+      surface: "generate_coi_qa",
+      sessionKey: String(args.policyId),
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const judged = await Promise.race([
+        clRouterDecide(
+          {
+            orgId: args.orgId,
+            task: "generated_coi_layout_qa",
+            state: {
+              coi: {
+                page: staged.refs[0],
+                holder: args.coi.holder,
+                insured: args.coi.insured,
+                description: args.coi.description.slice(
+                  0,
+                  COI_QA_DESCRIPTION_CHARS,
+                ),
+              },
+            },
+            assets: staged.assets,
+            questions: Object.fromEntries(
+              Object.entries(checks).map(([key, check]) => [key, check.question]),
+            ),
+            executionBudgetMs: COI_QA_BUDGET_MS,
+          },
+          { telemetry: ctx },
+        ),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Certificate QA timed out")),
+            COI_QA_BUDGET_MS + 5_000,
+          );
+        }),
+      ]);
+      const answers: Record<string, number> = {};
+      const findings: string[] = [];
+      for (const [key, check] of Object.entries(checks)) {
+        const answer = judged.answers[key];
+        if (answer?.type !== "noul") continue;
+        answers[key] = answer.noul;
+        const defect = check.defectWhenYes
+          ? jevProceeds(answer.noul)
+          : jevProceeds(1 - answer.noul);
+        if (defect) findings.push(check.finding);
+      }
+      return { status: findings.length > 0 ? "flagged" : "passed", findings, answers };
+    } finally {
+      clearTimeout(timer);
+      await staged.cleanup();
+    }
+  } catch (error) {
+    return {
+      status: "unavailable",
+      findings: [],
+      answers: {},
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 function firstCertificateHolderLine(certificateHolder?: string, fallback = "Certificate holder") {
   return certificateHolder?.split(/\r?\n/)[0]?.trim() || fallback;
@@ -193,6 +348,44 @@ function fillCertificateDescription(
     description: requestedDescription || coiData.description,
   };
 }
+
+/**
+ * Advisory layout QA of an issued certificate. It never changes the certificate;
+ * flagged and unavailable results are logged for review.
+ */
+export const layoutQa = internalAction({
+  args: {
+    orgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    certificateId: v.string(),
+    fileId: v.id("_storage"),
+    holder: v.string(),
+    insured: v.string(),
+    description: v.string(),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    const blob = await ctx.storage.get(args.fileId);
+    if (!blob) return null;
+    const result = await qaGeneratedCoi(ctx, {
+      orgId: args.orgId,
+      policyId: args.policyId,
+      pdf: new Uint8Array(await blob.arrayBuffer()),
+      coi: {
+        holder: args.holder,
+        insured: args.insured,
+        description: args.description,
+      },
+    });
+    if (result.status !== "passed") {
+      console.warn("[generateCoi] Certificate layout QA", {
+        policyId: args.policyId,
+        certificateId: args.certificateId,
+        ...result,
+      });
+    }
+    return null;
+  },
+});
 
 /**
  * Generate a COI PDF for a policy and store it in file storage.
@@ -374,6 +567,17 @@ export const run = internalAction({
           createdByUserId: args.createdByUserId,
         },
       );
+
+      // Advisory layout QA runs off the issuance path.
+      await ctx.scheduler.runAfter(0, internal.actions.generateCoi.layoutQa, {
+        orgId: args.orgId,
+        policyId: args.policyId,
+        certificateId: String(certificateId),
+        fileId: storageId,
+        holder: firstCertificateHolderLine(coiData.certificateHolder),
+        insured: coiData.insuredName,
+        description: coiData.description ?? "",
+      });
 
       return {
         storageId: storageId as string,
