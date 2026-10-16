@@ -1006,11 +1006,17 @@ rejection, and tracker/storage failure invariants were listed before code and
 covered by `lib/google-ads.test.ts` (5 checks). Evidence is in the local ignored
 `.context/qa/google-ads/` directory. Focused ESLint passes.
 
-Live test actor: authorized `zac@spot.insure`; landing-to-signup prefill passed.
-Contact submission and OTP continuation remain blocked on the required test
-phone number. No test business application was submitted. Post-deployment
-Tag Assistant conversion delivery and attribution remain **not run**; local
-invariant checks do not establish either. Follow the production QA procedure in
+Live Helium test: landing-to-signup email prefill passed. The first test with
+`zac@spot.insure` was rejected; source inspection confirms customer signup
+intentionally blocks operator-domain emails. A second authorized synthetic
+identity (`Spot Conversion Test`, an example.com address, and a reserved
+fictional phone number) successfully saved contact details and reached the
+first intake question with a Saved status. The live app still has no Google
+Ads script at this point, confirming the tracking gap. Evidence:
+`.context/qa/google-ads/signup-test-passed.jpg`. A synthetic draft remains; no
+insurance application was submitted and no real business details were entered.
+Post-deployment Tag Assistant conversion delivery and attribution remain
+**not run**; local invariant checks do not establish either. Follow the production QA procedure in
 `docs/architecture/product-analytics.md` after the release is deployed.
 Production build passes after applying the repository's required `postinstall`
 UI patch; the initial install intentionally skipped lifecycle scripts, so its
