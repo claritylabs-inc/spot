@@ -12,6 +12,7 @@ import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
 import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 import { generateOtpCode } from "./lib/otp";
+import { passwordSignInProfile } from "./lib/passwordAuth";
 
 const rateLimiter = new RateLimiter(components.rateLimiter, {
   codeEmailPerMinute: { kind: "token bucket", rate: 1, period: MINUTE },
@@ -70,14 +71,7 @@ const ResendOTP = Email({
 });
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [ResendOTP, Password({
-    profile(params) {
-      if (params.flow !== "signIn" || typeof params.email !== "string") {
-        throw new Error("Invalid credentials");
-      }
-      return { email: params.email.trim().toLowerCase() };
-    },
-  }), ConvexCredentials({
+  providers: [ResendOTP, Password({ profile: passwordSignInProfile }), ConvexCredentials({
     id: "intake",
     authorize: async (credentials, ctx) => {
       if (typeof credentials.token !== "string") return null;

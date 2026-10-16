@@ -138,6 +138,18 @@ try {
   await frame.getByRole("button", { name: "New chat", exact: true }).press("Enter");
   assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
   pass("removed capture stays removed across history/new chat");
+  await panel.waitForTimeout(6000);
+  const appFrame = panel.frames().find(item => item.url().includes("/extension"));
+  const appCdp = await context.newCDPSession(appFrame);
+  await appCdp.send("Runtime.evaluate", {
+    expression: `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Use this page').click()`,
+    userGesture: false,
+  });
+  await panel.waitForFunction(() => document.querySelector("#status").textContent.includes("Press Use this page again"));
+  assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
+  await appCdp.detach();
+  pass("background capture request without user activation is rejected");
+
   await input.fill(draft);
   await panel.evaluate((url) => {
     const base = { type: "spot:page-context", version: 1, sessionId: window.qaSessionId, captureId: "qa", context: { title: "Bad capture", url, text: "DO NOT STAGE", selection: false } };

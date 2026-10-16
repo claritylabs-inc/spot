@@ -1005,3 +1005,10 @@ suite, TypeScript, lint, worker checks and production build before merging.
   authorization/isolation tests also passed.
 - GitHub production workflow uses repository secrets; local QA does not deploy
   or provision production accounts. No Vercel previews used.
+
+### Compact extension and optional passwords (2026-10-16)
+
+- `node scripts/browser-extension-e2e.mjs`: 19 browser checks pass after the compact-header change, including a CDP request without user activation being rejected. Artifacts: `.context/qa/extension/results.json`, `sidebar.png`, `sidebar-dark.png`, `preview.png`. Live local model response remains blocked by the router's local callback policy.
+- `node scripts/browser-extension-onboarding-e2e.mjs`: 4 checks pass for welcome, normal login tab, bounded redirect, and automatic reconnection. The guide body is stubbed only in this local auth test; the deployed guide is independently verified.
+- Optional password workflow: `node scripts/password-login-e2e.mjs`; artifacts `.context/qa/password-login/`. Final integrated result pending.
+- Demo account workflow: `node scripts/reviewer-account-e2e.mjs` uses ordinary `/login` and `password`, with seeded policies and session rotation; no reviewer-only auth gates.

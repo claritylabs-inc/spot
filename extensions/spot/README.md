@@ -22,6 +22,8 @@ rejects on upload. Zip the contents of `dist`, with `manifest.json` at the root.
 Never load the keyless store build unpacked: use the default build for that.
 Local builds grant access to all ports on localhost and must not be distributed.
 
+Version 0.1.3 requires the matching compact `/extension` app deployment. Deploy the app before distributing this package.
+
 ## Load it
 
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on Developer mode.

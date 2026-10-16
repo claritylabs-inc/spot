@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import dayjs from "dayjs";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
@@ -19,9 +20,15 @@ export function PasswordSettings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => dayjs().valueOf());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(dayjs().valueOf()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (!status?.eligible) return null;
-  const needsCurrentPassword = status.hasPassword && !status.recentSignIn;
+  const recentSignIn = status.recentSignInExpiresAt > now;
+  const needsCurrentPassword = status.hasPassword && !recentSignIn;
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,7 +78,7 @@ export function PasswordSettings() {
             </div>
             <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>Forgot your password? Sign out and use an email code to sign back in, then set a new password here.</p>
           </form>
-        ) : !status.hasPassword && !status.recentSignIn ? (
+        ) : !status.hasPassword && !recentSignIn ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>To set a password, sign out and sign back in with an email code, then return here.</p>
         ) : (
           <PillButton type="button" variant="secondary" onClick={() => { setEditing(true); setMessage(""); }}>

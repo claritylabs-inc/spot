@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: Manage the isolated production demonstration account
+        description: Manage the sample client account
         required: true
         type: choice
         default: status

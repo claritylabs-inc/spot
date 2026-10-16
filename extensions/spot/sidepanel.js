@@ -62,7 +62,7 @@
       captureButton.hidden = false;
     }
     if (data.type === "spot:capture-request" && ready && data.sessionId === sessionId) {
-      if (!navigator.userActivation.isActive) return;
+      if (!navigator.userActivation.isActive) return say("Press Use this page again to share it.");
       void usePage();
     }
     if (data.type === "spot:sign-in" && !ready) {
