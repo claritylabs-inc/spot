@@ -48,6 +48,7 @@ export type EvidenceChoiceResults = Map<
 
 /** Jev holds about 6-8 page images per call. */
 const DEFAULT_ITEMS_PER_REQUEST = 6;
+const MAX_CONCURRENT_REQUESTS = 3;
 
 export async function decideChoicesOverEvidence(
   ctx: ActionCtx,
@@ -67,12 +68,16 @@ export async function decideChoicesOverEvidence(
   const results: EvidenceChoiceResults = new Map();
   if (params.items.length === 0 || params.specs.length === 0) return results;
 
+  let pdfLoad: Promise<Uint8Array | null> | undefined;
+  const loadPdfOnce = params.loadPdf
+    ? () => (pdfLoad ??= params.loadPdf!())
+    : undefined;
   const pageImages = new Map<number, PdfPageImage | null>();
   const renderPages = async (pages: number[]) => {
     const missing = [...new Set(pages)].filter((page) => !pageImages.has(page));
-    if (missing.length === 0 || !params.loadPdf) return;
+    if (missing.length === 0 || !loadPdfOnce) return;
     try {
-      const pdfBytes = await params.loadPdf();
+      const pdfBytes = await loadPdfOnce();
       if (!pdfBytes) throw new Error("PDF unavailable");
       const rendered = await renderPdfPageImages({ pdfBytes, pages: missing });
       for (const page of missing) {
@@ -110,7 +115,9 @@ export async function decideChoicesOverEvidence(
         )
       : null;
     try {
-      const refByKey = new Map(part.map((item, index) => [item.key, `i${index}`]));
+      const refByKey = new Map(
+        part.map((item, index) => [item.key, `i${index}`]),
+      );
       const items: Record<string, JsonValue> = {};
       const questions: Record<string, DecisionQuestion> = {};
       part.forEach((item, index) => {
@@ -118,7 +125,9 @@ export async function decideChoicesOverEvidence(
         const imageIndex = imageItems.indexOf(item);
         items[ref] = {
           ...item.evidence,
-          ...(staged && imageIndex >= 0 ? { page: staged.refs[imageIndex] } : {}),
+          ...(staged && imageIndex >= 0
+            ? { page: staged.refs[imageIndex] }
+            : {}),
         };
         for (const spec of params.specs) {
           questions[`${ref}_${spec.field}`] = {
@@ -145,7 +154,12 @@ export async function decideChoicesOverEvidence(
         const answers: Record<string, EvidenceChoiceAnswer> = {};
         for (const spec of params.specs) {
           const answer = response.answers[`${ref}_${spec.field}`];
-          if (answer?.type !== "choice") continue;
+          if (
+            answer?.type !== "choice" ||
+            !Object.hasOwn(spec.criteria, answer.choice)
+          ) {
+            continue;
+          }
           answers[spec.field] = {
             choice: answer.choice,
             confidence: jevChoiceConfidence(answer),
@@ -168,30 +182,40 @@ export async function decideChoicesOverEvidence(
     chunks.push(params.items.slice(index, index + perRequest));
   }
   await renderPages(
-    params.items.flatMap((item) => (item.page !== undefined ? [item.page] : [])),
+    params.items.flatMap((item) =>
+      item.page !== undefined ? [item.page] : [],
+    ),
   );
-  await Promise.all(
-    chunks.map(async (chunk) => {
-      try {
-        const parts = await runWithPayloadSplitting(chunk, async (part) => {
-          try {
-            return await requestPart(part, true);
-          } catch (error) {
-            // One item whose image alone is too large still gets a text answer.
-            if (part.length === 1 && isClRouterPayloadTooLarge(error)) {
-              return await requestPart(part, false);
-            }
-            throw error;
+  const runChunk = async (chunk: EvidenceChoiceItem[]) => {
+    try {
+      const parts = await runWithPayloadSplitting(chunk, async (part) => {
+        try {
+          return await requestPart(part, true);
+        } catch (error) {
+          // One item whose image alone is too large still gets a text answer.
+          if (part.length === 1 && isClRouterPayloadTooLarge(error)) {
+            return await requestPart(part, false);
           }
-        });
-        for (const part of parts) {
-          for (const [key, answers] of part) results.set(key, answers);
+          throw error;
         }
-      } catch {
-        // A decision that cannot be made leaves its items unanswered; callers
-        // route unanswered items to their low-confidence fallback.
+      });
+      for (const part of parts) {
+        for (const [key, answers] of part) results.set(key, answers);
       }
-    }),
+    } catch {
+      // A decision that cannot be made leaves its items unanswered; callers
+      // route unanswered items to their low-confidence fallback.
+    }
+  };
+  // Bounded concurrency: a few requests at a time.
+  let next = 0;
+  await Promise.all(
+    Array.from(
+      { length: Math.min(MAX_CONCURRENT_REQUESTS, chunks.length) },
+      async () => {
+        while (next < chunks.length) await runChunk(chunks[next++]!);
+      },
+    ),
   );
   return results;
 }
