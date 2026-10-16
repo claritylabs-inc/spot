@@ -86,7 +86,8 @@ function SignupForm() {
     };
   }, [error]);
 
-  const [recoverable, setRecoverable] = useState<string[]>([]);
+  const [recoverableIds, setRecoverable] = useState<string[] | null>(null);
+  const recoverable = recoverableIds ?? [];
   useEffect(() => {
     if (!isAuthenticated) return;
     queueMicrotask(() => {
@@ -98,6 +99,7 @@ function SignupForm() {
         );
       } catch {
         /* Recovery is unavailable on this browser. */
+        setRecoverable([]);
       }
     });
   }, [isAuthenticated]);
@@ -221,6 +223,29 @@ function SignupForm() {
       setBusy(false);
     }
   }
+  const autoStart = useRef(false);
+  const orgReady =
+    viewer !== undefined &&
+    (!viewer?.emailVerificationTime || !!viewer.intakeRestricted || org !== undefined);
+  useEffect(() => {
+    if (
+      autoStart.current ||
+      !isAuthenticated ||
+      token ||
+      handoffTransition ||
+      !orgReady ||
+      recoverableIds === null ||
+      drafts === undefined ||
+      submitted === undefined ||
+      drafts.length ||
+      submitted.length ||
+      recoverableIds.length
+    )
+      return;
+    autoStart.current = true;
+    void newRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, token, handoffTransition, orgReady, recoverableIds, drafts, submitted]);
   async function verify() {
     setBusy(true);
     setError("");

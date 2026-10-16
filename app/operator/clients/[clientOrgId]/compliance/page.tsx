@@ -85,7 +85,6 @@ export default function OperatorClientCompliancePage() {
         orgType: "client",
         role: "admin",
         featureFlags: client.featureFlags,
-        isReadOnlyImpersonation: Boolean(activeImpersonation),
       }}
       renderCertificatesTab={({
         onActions,

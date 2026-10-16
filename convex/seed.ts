@@ -469,7 +469,6 @@ export const insertLocalFixture = internalMutation({
       slug: LOCAL_FIXTURE.broker.slug,
       website: LOCAL_FIXTURE.broker.website,
       onboardingComplete: true,
-      operatorStatus: "live" as const,
     };
     let brokerOrgId: Id<"organizations">;
     if (existingBroker) {
@@ -539,7 +538,7 @@ export const insertLocalFixture = internalMutation({
       allowedDomains: [] as string[],
       emailVerification: "strict" as const,
       onboardingComplete: true,
-      operatorStatus: "live" as const,
+      clientAccessStatus: "active" as const,
     };
     let clientOrgId: Id<"organizations">;
     if (existingClient) {

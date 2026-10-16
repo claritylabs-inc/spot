@@ -22,7 +22,7 @@ type OperatorExtractionRunList = FunctionReturnType<
   typeof api.operator.listExtractionRuns
 >;
 type EmptyArgs = Record<string, never>;
-type OperatorStatus = OperatorClientRow["operatorStatus"];
+type OperatorStatus = OperatorClientRow["clientAccessStatus"];
 type OptimisticClientInput = {
   clientOrgId: Id<"organizations">;
   name: string;
@@ -130,7 +130,7 @@ export function useOperatorClientCacheActions() {
         iconStorageId: undefined,
         iconUrl: null,
         agentHandle: undefined,
-        operatorStatus: "onboarding",
+        clientAccessStatus: "limited",
         onboardingComplete: true,
         primaryContactName: input.adminName,
         primaryContactEmail: input.adminEmail,
@@ -157,7 +157,7 @@ export function useOperatorClientCacheActions() {
       await updateClients({}, (current) =>
         current.map((client) =>
           client._id === clientOrgId
-            ? { ...client, operatorStatus: status }
+            ? { ...client, clientAccessStatus: status }
             : client,
         ),
       );

@@ -86,11 +86,8 @@ function ClientWorkspace({
   const [teamInviteOpen, setTeamInviteOpen] = useState(false);
   const handleOperatorActivationSent = useCallback(
     () =>
-      patchClientStatus(
-        clientOrgId,
-        client.operatorStatus === "onboarding" ? "live" : client.operatorStatus,
-      ),
-    [clientOrgId, client.operatorStatus, patchClientStatus],
+      patchClientStatus(clientOrgId, "active"),
+    [clientOrgId, patchClientStatus],
   );
   const [savingFeatureFlagId, setSavingFeatureFlagId] =
     useState<FeatureFlagId | null>(null);

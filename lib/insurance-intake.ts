@@ -23,7 +23,7 @@ export function hasIntakeRequirements(a: IntakeAnswers) {
 }
 export const INTAKE_STEPS = [
   "What are your contact details?",
-  "Why are you buying insurance?",
+  "What’s got you looking for insurance?",
   "When do you need coverage?",
   "Are you buying insurance to meet a customer, lender, or landlord requirement?",
   "Can you share the insurance requirements?",

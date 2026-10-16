@@ -148,7 +148,6 @@ export type ComplianceWorkspaceOrgContext = {
   orgType: "client" | "broker";
   role: "admin" | "member" | undefined;
   featureFlags?: FeatureFlagMap;
-  isReadOnlyImpersonation: boolean;
 };
 
 export type ComplianceWorkspaceShellArgs = {
@@ -2332,15 +2331,11 @@ function ComplianceWorkspace({
     useState<ReactNode>(null);
   const [certificateTabRightPanel, setCertificateTabRightPanel] =
     useState<ReactNode>(null);
-  const canManageCompliance =
-    currentOrg?.role === "admin" && !currentOrg.isReadOnlyImpersonation;
-  const complianceWriteRestriction = !currentOrg
-    ? null
-    : currentOrg.isReadOnlyImpersonation
-      ? "Live-organization operator mode is read-only. Exit operator mode to make changes."
-      : currentOrg.role !== "admin"
-        ? "Only an organization admin can make compliance changes."
-        : null;
+  const canManageCompliance = currentOrg?.role === "admin";
+  const complianceWriteRestriction =
+    currentOrg && currentOrg.role !== "admin"
+      ? "Only an organization admin can make compliance changes."
+      : null;
 
   const hasActiveClients = (clientRows ?? []).some(
     (row) => row.status === "active",
