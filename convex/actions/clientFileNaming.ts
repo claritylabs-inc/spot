@@ -25,6 +25,7 @@ import {
 } from "../lib/pdfPageImages";
 
 const CATEGORY_THUMBNAIL_MAX_SIDE = 1024;
+const CATEGORY_THUMBNAIL_MAX_FILE_BYTES = 15 * 1024 * 1024;
 const CATEGORY_TEXT_EXCERPT_CHARS = 3_000;
 // Same categories as procurement file items, plus `other` when none fits.
 const CLIENT_FILE_CATEGORY_LABELS = {
@@ -48,15 +49,16 @@ const CLIENT_FILE_CATEGORY_QUESTION: DecisionQuestion = {
       not_for: "a policy, a certificate, or a loss run",
     },
     policy: {
-      what: "An issued policy, declarations page, binder, endorsement, or certificate of insurance that evidences coverage already in force.",
-      not_for: "a document that only states coverage someone is required to carry",
+      what: "An issued policy, declarations page, binder, or endorsement for coverage already in force.",
+      not_for:
+        "a certificate of insurance, or a document that only states coverage someone is required to carry",
     },
     loss_runs: {
       what: "A carrier loss run or claims history listing past claims and losses.",
       not_for: "a policy or a single claim letter",
     },
     supporting: {
-      what: "Other insurance-related support such as an application, quote, invoice, financial statement, schedule, or correspondence.",
+      what: "Other insurance-related support such as a certificate of insurance, application, quote, invoice, financial statement, schedule, or correspondence.",
       not_for: "a policy, requirements document, or loss run",
     },
     other: "Not an insurance document, or none of the other kinds fits.",
@@ -96,12 +98,14 @@ async function clientFileFirstPageImage(
     fileId: Id<"_storage">;
     originalName: string;
     contentType: string;
+    size: number;
   },
 ): Promise<JevImage | null> {
   const type = file.contentType.toLowerCase();
   const isPdf = type.includes("pdf") || /\.pdf$/i.test(file.originalName);
   const isImage = type === "image/png" || type === "image/jpeg";
   if (!isPdf && !isImage) return null;
+  if (file.size > CATEGORY_THUMBNAIL_MAX_FILE_BYTES) return null;
   const blob = await ctx.storage.get(file.fileId);
   if (!blob) return null;
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -130,6 +134,7 @@ async function categorizeClientFile(
     fileId: Id<"_storage">;
     originalName: string;
     contentType: string;
+    size: number;
   },
   context: {
     hint?: string;
@@ -275,9 +280,8 @@ export const infer = internalAction({
 
 Original filename: ${file.originalName}
 Operator hint: ${args.hint ?? "None"}
-Document type: ${category ? CLIENT_FILE_CATEGORY_LABELS[category] : "Not determined"}
-
-Use the file contents as the primary evidence and the operator hint only as context. ${category ? "The document type is already decided; start the title with it." : "Include the document type when supported."} Add a useful subject, property, company, or date when supported. Do not invent facts. Return the title without a file extension.`;
+${category ? `Document category (context from a classifier, may be imprecise): ${CLIENT_FILE_CATEGORY_LABELS[category]}\n` : ""}
+Use the file contents as the primary evidence and the operator hint only as context. Include the document type and a useful subject, property, company, or date when supported. Do not invent facts. Return the title without a file extension.`;
       const messages: ModelMessage[] = [
         {
           role: "user",

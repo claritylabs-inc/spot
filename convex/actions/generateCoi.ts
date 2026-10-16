@@ -5,7 +5,7 @@ import { internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { generateCoiPdf, policyToCoiData, type CoiData } from "../lib/coiGenerator";
+import { generateCoiPdf, policyToCoiData } from "../lib/coiGenerator";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { clRouterDecide } from "../lib/clRouterClient";
 import { pdfPageJevImage, stageJevImages } from "../lib/jevImages";
@@ -136,7 +136,12 @@ type CoiLayoutQa = {
  */
 async function qaGeneratedCoi(
   ctx: ActionCtx,
-  args: { orgId: Id<"organizations">; policyId: Id<"policies">; pdf: Uint8Array; coi: CoiData },
+  args: {
+    orgId: Id<"organizations">;
+    policyId: Id<"policies">;
+    pdf: Uint8Array;
+    coi: { holder: string; insured: string; description: string };
+  },
 ): Promise<CoiLayoutQa> {
   const checks = coiLayoutChecks();
   try {
@@ -147,6 +152,7 @@ async function qaGeneratedCoi(
       surface: "generate_coi_qa",
       sessionKey: String(args.policyId),
     });
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const judged = await Promise.race([
         clRouterDecide(
@@ -156,9 +162,9 @@ async function qaGeneratedCoi(
             state: {
               coi: {
                 page: staged.refs[0],
-                holder: firstCertificateHolderLine(args.coi.certificateHolder),
-                insured: args.coi.insuredName,
-                description: (args.coi.description ?? "").slice(
+                holder: args.coi.holder,
+                insured: args.coi.insured,
+                description: args.coi.description.slice(
                   0,
                   COI_QA_DESCRIPTION_CHARS,
                 ),
@@ -172,12 +178,12 @@ async function qaGeneratedCoi(
           },
           { telemetry: ctx },
         ),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
             () => reject(new Error("Certificate QA timed out")),
             COI_QA_BUDGET_MS + 5_000,
-          ),
-        ),
+          );
+        }),
       ]);
       const answers: Record<string, number> = {};
       const findings: string[] = [];
@@ -192,6 +198,7 @@ async function qaGeneratedCoi(
       }
       return { status: findings.length > 0 ? "flagged" : "passed", findings, answers };
     } finally {
+      clearTimeout(timer);
       await staged.cleanup();
     }
   } catch (error) {
@@ -343,6 +350,44 @@ function fillCertificateDescription(
 }
 
 /**
+ * Advisory layout QA of an issued certificate. It never changes the certificate;
+ * flagged and unavailable results are logged for review.
+ */
+export const layoutQa = internalAction({
+  args: {
+    orgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    certificateId: v.string(),
+    fileId: v.id("_storage"),
+    holder: v.string(),
+    insured: v.string(),
+    description: v.string(),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    const blob = await ctx.storage.get(args.fileId);
+    if (!blob) return null;
+    const result = await qaGeneratedCoi(ctx, {
+      orgId: args.orgId,
+      policyId: args.policyId,
+      pdf: new Uint8Array(await blob.arrayBuffer()),
+      coi: {
+        holder: args.holder,
+        insured: args.insured,
+        description: args.description,
+      },
+    });
+    if (result.status !== "passed") {
+      console.warn("[generateCoi] Certificate layout QA", {
+        policyId: args.policyId,
+        certificateId: args.certificateId,
+        ...result,
+      });
+    }
+    return null;
+  },
+});
+
+/**
  * Generate a COI PDF for a policy and store it in file storage.
  * Returns the storage ID and byte size for download/attachment metadata.
  */
@@ -400,7 +445,6 @@ export const run = internalAction({
     versionNumber?: number;
     formCode: CertificateFormCode;
     descriptionOfOperations?: string;
-    layoutQa: CoiLayoutQa;
   }> => {
     try {
       const policy = await ctx.runQuery(internal.policies.getInternal, { id: args.policyId });
@@ -524,23 +568,18 @@ export const run = internalAction({
         },
       );
 
-      // Advisory layout QA runs after issuance is recorded, so it can never block it.
-      const layoutQa = await qaGeneratedCoi(ctx, {
+      // Advisory layout QA runs off the issuance path.
+      await ctx.scheduler.runAfter(0, internal.actions.generateCoi.layoutQa, {
         orgId: args.orgId,
         policyId: args.policyId,
-        pdf: pdfBuffer,
-        coi: coiData,
+        certificateId: String(certificateId),
+        fileId: storageId,
+        holder: firstCertificateHolderLine(coiData.certificateHolder),
+        insured: coiData.insuredName,
+        description: coiData.description ?? "",
       });
-      if (layoutQa.status !== "passed") {
-        console.warn("[generateCoi] Certificate layout QA", {
-          policyId: args.policyId,
-          certificateId: String(certificateId),
-          ...layoutQa,
-        });
-      }
 
       return {
-        layoutQa,
         storageId: storageId as string,
         size,
         fileName,

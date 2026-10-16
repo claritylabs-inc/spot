@@ -174,7 +174,7 @@ export function mailboxEmailQuestions(
     [mailboxQuestionId(ref, "relevant")]: {
       type: "noul",
       instructions: {
-        question: `Is ${message} about commercial insurance for the mailbox owner's company (policies, coverage, certificates, renewals, claims, brokers, or insurance requirements)?`,
+        question: `Is ${message} about commercial insurance for the mailbox owner's company (policies, coverage, certificates, renewals, claims, brokers, or insurance requirements) or does it state durable facts about the company itself?`,
         inspect: `${subject}, ${snippet}, ${attachments}, and first-page images when \`firstPage\` is present`,
         not_for: "marketing, receipts, scheduling, or unrelated correspondence",
         note: UNTRUSTED_EVIDENCE,
@@ -273,9 +273,12 @@ export function applyMailboxAutomationJudgments(
   const requirementCategory = jevProceeds(requirements.noul);
   const memoryCategory = jevProceeds(context.noul);
   const isRelevant = jevProceeds(relevant.noul);
-  const anyUnsure = [policy, requirements, context, relevant].some((answer) =>
-    isUnsure(answer.noul),
-  );
+  // Unsure category answers matter only for relevant emails, so a clearly
+  // irrelevant email with no qualifying category stays `ignore`.
+  const anyUnsure =
+    isUnsure(relevant.noul) ||
+    (isRelevant &&
+      [policy, requirements, context].some((answer) => isUnsure(answer.noul)));
 
   let classification: MailboxAutomationClassification;
   let reason = extracted.reason;
@@ -288,7 +291,7 @@ export function applyMailboxAutomationJudgments(
   if (classification !== "review_needed" && classification !== "ignore") {
     if (!isRelevant) {
       classification = "review_needed";
-      reason = `Category found in an email not judged insurance-related: ${reason}`;
+      reason = `Category found in an email not judged relevant: ${reason}`;
     }
   }
   if (anyUnsure && classification !== "review_needed") {
@@ -329,8 +332,11 @@ export function applyMailboxAutomationJudgments(
         ? extracted.requirementFilenames
         : [],
       includeEmailBodyAsRequirements:
-        requirementCategory && jevProceeds(body.noul),
-      extractCompanyMemory: memoryCategory && jevProceeds(memory.noul),
+        requirementCategory &&
+        jevProceeds(body.noul),
+      extractCompanyMemory:
+        memoryCategory &&
+        jevProceeds(memory.noul),
       requirementSourceType,
       requirementScope,
     },
