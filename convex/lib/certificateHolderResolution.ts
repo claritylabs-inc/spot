@@ -440,33 +440,35 @@ function formatIdentity(identity: CertificateHolderIdentity) {
   return {
     name: identity.displayName,
     normalizedName: identity.normalizedName,
-    address: identity.address,
-    normalizedAddress: identity.normalizedAddress,
+    address: identity.address
+      ? Object.fromEntries(
+          Object.entries(identity.address).map(([key, value]) => [
+            key,
+            value ?? null,
+          ]),
+        )
+      : null,
+  };
+}
+
+export function buildHolderIdentityReviewState<T>(args: {
+  requested: CertificateHolderIdentity;
+  candidates: CertificateHolderResolutionCandidate<T>[];
+}) {
+  return {
+    requested: formatIdentity(args.requested),
+    candidates: Object.fromEntries(
+      args.candidates.map((candidate, index) => [
+        `candidate_${index}`,
+        formatIdentity(candidate.identity),
+      ]),
+    ),
   };
 }
 
 export function buildHolderIdentityReviewPrompt<T>(args: {
   requested: CertificateHolderIdentity;
   candidates: CertificateHolderResolutionCandidate<T>[];
-}) {
-  return `Decide whether the requested certificate holder is the same real-world certificate holder as one of the existing issued certificate candidates.
-
-Rules:
-- Only choose a candidate listed below. Do not invent candidates.
-- Compare holder legal/display name plus address.
-- Ignore casing, punctuation, line breaks, common street/unit abbreviations, and whether suite/unit is on line 1 or line 2.
-- Contact name, email, and phone are delivery metadata. They must not make different holder names match.
-- If the holder name is materially different, do not select that candidate even when email or contact details look related.
-- If multiple candidates could be the same holder and you cannot choose one, return ambiguous.
-- If the requested holder has no address and exactly one plausible same-name candidate exists, selecting that candidate is acceptable.
-
-Requested holder:
-${JSON.stringify(formatIdentity(args.requested), null, 2)}
-
-Existing issued certificate candidates:
-${JSON.stringify(args.candidates.map((candidate) => ({
-  candidateId: candidate.candidateId,
-  issuedAt: candidate.issuedAt,
-  identity: formatIdentity(candidate.identity),
-})), null, 2)}`;
+}): string {
+  return JSON.stringify(buildHolderIdentityReviewState(args));
 }
