@@ -1,3 +1,4 @@
+import { createOwnedIntakePolicyUpload } from "./policies";
 import {
   applicationMarkdownBlock,
   submittedIntakeApplication,
@@ -20,6 +21,7 @@ import {
 import dayjs from "dayjs";
 import { getAuthSessionId, getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { isReviewerEmail } from "./lib/reviewerAuth";
 import { internal } from "./_generated/api";
 import {
   internalMutation,
@@ -38,6 +40,8 @@ import {
   completedIntakeSteps,
   COMPANY_INTAKE_FIELDS,
   INTAKE_VERSION,
+  INTAKE_REASONS,
+  SAVINGS_INTAKE_REASON,
   INTAKE_STEPS,
   missingIntakeAnswers,
   type IntakeAnswers,
@@ -105,7 +109,7 @@ function validateContact(name: string, email: string, phone: string) {
     !/^\+?[\d\s().-]{7,40}$/.test(contact.phone)
   )
     throw new Error("Enter your name, valid work email, and phone number.");
-  if (isBootstrapOperatorEmail(contact.email))
+  if (isBootstrapOperatorEmail(contact.email) || isReviewerEmail(contact.email))
     throw new Error("Use a customer email address.");
   return contact;
 }
@@ -196,7 +200,7 @@ async function newDraft(
           }
         : {}),
     },
-    intakeStep: 1,
+    intakeStep: answers.intakeGoal === "savings" ? 21 : 1,
     intakeRevision: 0,
   });
   await queueIntakeSlack(ctx, requestId, "started", "Application started");
@@ -204,6 +208,7 @@ async function newDraft(
 }
 export const createHandoff = internalMutation({
   args: {
+    intakeGoal: v.optional(v.union(v.literal("quote"), v.literal("savings"))),
     token: v.string(),
     name: v.string(),
     email: v.string(),
@@ -223,6 +228,7 @@ export const createHandoff = internalMutation({
         previous.email !== contact.email ||
         previous.name !== contact.name ||
         previous.phone !== contact.phone ||
+        previous.intakeGoal !== args.intakeGoal ||
         previous.expiresAt < dayjs().valueOf()
       )
         throw new Error("Handoff expired or changed. Start again.");
@@ -241,10 +247,14 @@ export const createHandoff = internalMutation({
         intakeRestricted: true,
         onboardingComplete: false,
       });
-      requestId = await newDraft(ctx, userId, contact);
+      requestId = await newDraft(ctx, userId, {
+        ...contact,
+        intakeGoal: args.intakeGoal,
+      });
     }
     await ctx.db.insert("requestHandoffs", {
       ...contact,
+      intakeGoal: args.intakeGoal,
       tokenHash,
       requestId,
       expiresAt: dayjs().add(30, "minute").valueOf(),
@@ -361,6 +371,7 @@ export const claimHandoff = mutation({
         name: handoff.name,
         email: handoff.email,
         phone: handoff.phone,
+        intakeGoal: handoff.intakeGoal,
       },
       orgId,
       companyDetails,
@@ -584,7 +595,10 @@ export const drafts = query({
       .map((r) => ({
         id: r._id,
         title: r.intakeAnswers?.legalName || r.title,
-        coverage: r.intakeAnswers?.coverage || "",
+        coverage:
+          r.intakeAnswers?.intakeGoal === "savings"
+            ? "Policy savings review"
+            : r.intakeAnswers?.coverage || "",
         effectiveDate: r.intakeAnswers?.effectiveDate || "",
         insuredName:
           r.intakeAnswers?.legalName ||
@@ -631,7 +645,10 @@ export const submitted = query({
           return {
             id: r._id,
             title: r.intakeAnswers?.legalName || r.title,
-            coverage: r.intakeAnswers?.coverage || "",
+            coverage:
+              r.intakeAnswers?.intakeGoal === "savings"
+                ? "Policy savings review"
+                : r.intakeAnswers?.coverage || "",
             effectiveDate:
               r.intakeAnswers?.effectiveDate || r.targetEffectiveDate || "",
             insuredName: r.intakeAnswers?.legalName || org.name,
@@ -654,6 +671,27 @@ export const save = mutation({
   },
   handler: async (ctx, args) => {
     const { user, request } = await ownedRequest(ctx, args.requestId);
+    if (
+      args.answers.trigger !== undefined &&
+      INTAKE_REASONS.includes(args.answers.trigger)
+    ) {
+      args.answers = {
+        ...args.answers,
+        intakeGoal:
+          args.answers.trigger === SAVINGS_INTAKE_REASON ? "savings" : "quote",
+      };
+    }
+    if (
+      args.answers.intakeGoal !== undefined &&
+      !["quote", "savings"].includes(args.answers.intakeGoal)
+    )
+      throw new Error("Choose a new quote or a policy savings review");
+    if (
+      request.intakeSubmittedAt &&
+      args.answers.intakeGoal !== undefined &&
+      args.answers.intakeGoal !== request.intakeAnswers?.intakeGoal
+    )
+      throw new Error("A submitted application cannot change its purpose");
     if ((request.intakeRevision ?? 0) !== args.expectedRevision)
       throw new Error(
         "This request changed in another tab. Reload to review the latest answers; your edits remain on this device.",
@@ -977,6 +1015,11 @@ export const attachFile = mutation({
   },
   handler: async (ctx, args) => {
     const { user, request } = await ownedRequest(ctx, args.requestId);
+    if (
+      request.intakeSubmittedAt &&
+      request.intakeAnswers?.intakeGoal === "savings"
+    )
+      throw new Error("Start a new savings review to add policies");
     const intent = await ctx.db.get(args.intentId);
     if (
       !intent ||
@@ -987,6 +1030,12 @@ export const attachFile = mutation({
     )
       throw new Error("Upload authorization expired or invalid");
     const metadata = await ctx.db.system.get(args.fileId);
+    if (
+      request.intakeAnswers?.intakeGoal === "savings" &&
+      (args.category !== "policy" ||
+        metadata?.contentType !== "application/pdf")
+    )
+      throw new Error("Upload your current policy as a PDF");
     if (metadata && metadata._creationTime < intent.createdAt - 1000)
       throw new Error("Upload does not match this upload authorization");
     if (
@@ -1082,6 +1131,11 @@ export const removeFile = mutation({
   },
   handler: async (ctx, { requestId, intakeFileId }) => {
     const { user, request } = await ownedRequest(ctx, requestId);
+    if (
+      request.intakeSubmittedAt &&
+      request.intakeAnswers?.intakeGoal === "savings"
+    )
+      throw new Error("Submitted policy reviews cannot be changed");
     const file = await ctx.db.get(intakeFileId);
     if (!file) return null;
     if (file.requestId !== request._id || file.ownerUserId !== user._id)
@@ -1127,6 +1181,11 @@ export const submit = mutation({
     const { user, request } = await ownedRequest(ctx, args.requestId);
     if (request.intakeSubmittedAt && !args.resubmit)
       return { requestId: request._id, orgId: request.clientOrgId! };
+    if (
+      request.intakeSubmittedAt &&
+      request.intakeAnswers?.intakeGoal === "savings"
+    )
+      throw new Error("Start a new savings review to add policies");
     if (!args.confirmedAccurateAndAuthorized)
       throw new Error(
         "Confirm the application is accurate and authorize Spot to shop for insurance before submitting",
@@ -1141,11 +1200,16 @@ export const submit = mutation({
       answers.email ?? "",
       answers.phone ?? "",
     );
+    const savings = answers.intakeGoal === "savings";
     const missing = missingIntakeAnswers(answers);
     const details = request.intakeDetails ?? detailsFromAnswers(answers);
-    if (details.hasClaims === "yes" && !answers.claims?.trim())
+    if (!savings && details.hasClaims === "yes" && !answers.claims?.trim())
       missing.push("Claims details");
-    if (details.hasCancellations === "yes" && !answers.cancellations?.trim())
+    if (
+      !savings &&
+      details.hasCancellations === "yes" &&
+      !answers.cancellations?.trim()
+    )
       missing.push("Cancellation or renewal-decline details");
     if (
       (details.registrationCountry || "United States") === "United States" &&
@@ -1159,7 +1223,7 @@ export const submit = mutation({
       !/^\d{9}$/.test(answers.businessNumber.trim())
     )
       missing.push("Valid nine-digit Canadian business number");
-    for (const line of details.coverages) {
+    for (const line of savings ? [] : details.coverages) {
       if (
         line.coverage === "other" &&
         (!line.limits.coverage_description?.trim() ||
@@ -1187,6 +1251,16 @@ export const submit = mutation({
       .query("requestIntakeFiles")
       .withIndex("request", (q) => q.eq("requestId", request._id))
       .take(30);
+    if (
+      savings &&
+      (!files.some((file) => file.category === "policy") ||
+        files.some(
+          (file) =>
+            file.category === "policy" &&
+            file.contentType !== "application/pdf",
+        ))
+    )
+      throw new Error("Upload at least one current policy as a PDF");
     const contentHash = await hashIntakeToken(
       submissionContent(
         answers,
@@ -1209,6 +1283,10 @@ export const submit = mutation({
         "I confirm that the information in this application is accurate and authorize Spot to shop for insurance on my behalf.",
     };
     if (request.intakeSubmittedAt) {
+      if (savings)
+        throw new Error(
+          "Start a new policy savings review to send more policies",
+        );
       if (contentHash !== request.intakeSubmittedContentHash) {
         await ctx.db.patch(request._id, {
           intakeSubmittedContentHash: contentHash,
@@ -1300,8 +1378,8 @@ export const submit = mutation({
     const now = dayjs().valueOf();
     await ctx.db.patch(request._id, {
       clientOrgId: orgId,
-      status: "submitted",
-      clientVisible: true,
+      status: savings ? "draft" : "submitted",
+      clientVisible: !savings,
       targetEffectiveDate: answers.effectiveDate || undefined,
       intakeSnapshot: answers,
       intakeDetailsSnapshot:
@@ -1313,6 +1391,39 @@ export const submit = mutation({
 
       updatedAt: now,
     });
+    if (savings) {
+      if (writeCompanyProfile)
+        await saveIntakeBusinessProfile(
+          ctx,
+          orgId,
+          user._id,
+          request._id,
+          submissionBaseline,
+        );
+      for (const file of files.filter((file) => file.category === "policy"))
+        await createOwnedIntakePolicyUpload(ctx, {
+          intakeFileId: file._id,
+          userId: user._id,
+          orgId,
+        });
+      const phone = normalizeUserPhone(answers.phone);
+      const phoneOwner = phone
+        ? await findUserByNormalizedPhone(ctx, phone)
+        : null;
+      await ctx.db.patch(user._id, {
+        name: answers.name,
+        ...(!phoneOwner || phoneOwner._id === user._id ? { phone } : {}),
+        onboardingComplete: true,
+      });
+      await queueIntakeSlack(
+        ctx,
+        request._id,
+        `submitted:${contentHash}`,
+        "Policies received for a savings review",
+        true,
+      );
+      return { requestId: request._id, orgId };
+    }
     await seedRequestIntake(ctx, {
       requestId: request._id,
       clientOrgId: orgId,

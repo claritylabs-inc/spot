@@ -1,6 +1,7 @@
 (() => {
   const config = globalThis.SPOT_EXTENSION;
   const frame = document.getElementById("app");
+  const toolbar = document.querySelector(".bar");
   const captureButton = document.getElementById("capture");
   const statusLine = document.getElementById("status");
   const appUrl = config.appOrigin + config.path;
@@ -15,7 +16,10 @@
   let ready = false;
   let sessionId = null;
   let pendingReceipt = null;
-  let loadedAt = 0;
+  let mounted = false;
+  let loadTimeout;
+  let signInUntil = 0;
+  let signInTabId = null;
 
   function say(message) {
     statusLine.textContent = message;
@@ -25,35 +29,45 @@
     ready = value;
     if (!value) sessionId = null;
     captureButton.disabled = !value;
+    toolbar.hidden = !value;
+    if (value) signInUntil = 0;
   }
 
   function loadApp() {
     setReady(false);
-    loadedAt = 0;
-    say("Loading Spot…");
+    mounted = false;
+    clearTimeout(loadTimeout);
+    loadTimeout = setTimeout(() => {
+      if (!mounted) {
+        toolbar.hidden = false;
+        captureButton.hidden = true;
+        say("Spot couldn’t load. Check your connection and try again.");
+      }
+    }, 15000);
     frame.src = appUrl;
   }
-
-  frame.addEventListener("load", () => {
-    loadedAt = Date.now();
-    setTimeout(() => {
-      if (!ready && loadedAt) {
-        say("If Spot doesn't load, press Reload. Sign in below if prompted.");
-      }
-    }, 1500);
-  });
 
   window.addEventListener("message", (event) => {
     if (event.source !== frame.contentWindow || event.origin !== config.appOrigin) return;
     const data = event.data;
     if (!data || typeof data !== "object") return;
     if (data.version !== config.protocolVersion) return;
+    if (data.type === "spot:mounted") {
+      mounted = true;
+      clearTimeout(loadTimeout);
+      toolbar.hidden = !ready;
+      captureButton.hidden = false;
+    }
+    if (data.type === "spot:sign-in" && !ready) {
+      signInUntil = Date.now() + 10 * 60 * 1000;
+      signInTabId = null;
+    }
     if (data.type === "spot:received" && data.sessionId === sessionId && data.captureId === pendingReceipt?.id) {
       pendingReceipt.resolve(true);
     }
     if (data.type === "spot:unavailable" && data.sessionId === sessionId) {
       setReady(false);
-      say("Sign in to Spot, then press Reload.");
+      say("");
     }
     if (data.type === "spot:ready" && typeof data.sessionId === "string" && data.sessionId.length <= 80) {
       sessionId = data.sessionId;
@@ -159,8 +173,15 @@
   captureButton.addEventListener("click", () => void usePage());
   document.getElementById("reload").addEventListener("click", loadApp);
   chrome.tabs.onActivated.addListener(() => void refreshHint());
-  chrome.tabs.onUpdated.addListener((_id, change) => {
-    if (change.status === "complete") void refreshHint();
+  chrome.tabs.onUpdated.addListener((id, change, tab) => {
+    if (!ready && signInUntil > Date.now() && tab.url?.startsWith(config.appOrigin + "/login?from=extension")) {
+      signInTabId = id;
+    }
+    if (change.status !== "complete") return;
+    // A sign-in tab finishes by opening the welcome guide. Reload only the
+    // signed-out frame; cookies stay with the app and never enter this bridge.
+    if (!ready && signInUntil > Date.now() && id === signInTabId) loadApp();
+    else void refreshHint();
   });
 
   loadApp();

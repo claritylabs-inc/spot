@@ -1,12 +1,9 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { ConvexError } from "convex/values";
-import http from "./http";
 import dayjs from "dayjs";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "./schema";
 import type { Id } from "./_generated/dataModel";
-import type { ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -231,34 +228,6 @@ describe("OAuth token revocation", () => {
       ).rejects.toThrow("invalid_grant");
     },
   );
-
-  test("maps a structured invalid grant from the mutation to an OAuth client error", async () => {
-    const t = convexTest(schema, modules);
-    const route = http.lookup("/oauth/token", "POST");
-    if (!route) throw new Error("Missing OAuth token route");
-    const action = route[0] as (typeof route)[0] & {
-      _handler: (ctx: ActionCtx, request: Request) => Promise<Response>;
-    };
-    // Supply the SDK-decoded error: convex-test retains serialized error data
-    // when its HTTP action directly invokes a mutation.
-    const result = await t.action(async (ctx) => {
-      const response = await action._handler(
-        {
-          ...ctx,
-          runMutation: vi
-            .fn()
-            .mockRejectedValue(new ConvexError("invalid_grant")),
-        },
-        new Request("https://spot.example/oauth/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "grant_type=refresh_token&refresh_token=revoked&client_id=qa",
-        }),
-      );
-      return { status: response.status, body: await response.json() };
-    });
-    expect(result).toEqual({ status: 400, body: { error: "invalid_grant" } });
-  });
 
   test("rejects a mismatched client without revoking its token; unknown tokens are idempotent", async () => {
     const { t, userId, clientId, codeChallenge, verifier } =

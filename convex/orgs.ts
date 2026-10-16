@@ -1,4 +1,5 @@
 import { clientIdentity } from "./lib/clientProfile";
+import { assertNotReviewerUser, isReviewerEmail } from "./lib/reviewerAuth";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import {
@@ -74,6 +75,7 @@ async function createMemberInvitation(
   const { userId, orgId } = access;
   const email = normalizeEmail(args.email);
   if (!email) throw new Error("Email is required");
+  if (isReviewerEmail(email)) throw new Error("This address cannot be invited");
   if (isBootstrapOperatorEmail(email)) {
     throw new Error(
       "Operator emails cannot be invited to customer organizations",
@@ -832,6 +834,8 @@ export const acceptInvitation = mutation({
     }
     await assertCustomerUser(ctx, userId);
 
+    await assertNotReviewerUser(ctx, userId);
+
     // Check not already a member
     const existing = await ctx.db
       .query("orgMemberships")
@@ -1329,31 +1333,5 @@ export const setClientAccessStatus = mutation({
       throw new Error("Client organization not found");
     }
     await ctx.db.patch(args.orgId, { clientAccessStatus: args.status });
-  },
-});
-
-// One-time backfill for the retired `operatorStatus`: live clients become active, everything else becomes limited, and the retired "intake" value is renamed to "limited".
-export const migrateOperatorStatusInternal = internalMutation({
-  args: { cursor: v.optional(v.string()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, args) => {
-    const page = await ctx.db
-      .query("organizations")
-      .paginate({ numItems: 100, cursor: args.cursor ?? null });
-    let updated = 0;
-    for (const org of page.page) {
-      if (org.type === "broker") continue;
-      if (org.clientAccessStatus !== undefined && org.clientAccessStatus !== "intake")
-        continue;
-      const status =
-        org.clientAccessStatus === "intake" ||
-        (org.clientAccessStatus === undefined &&
-          (org.operatorStatus ?? "live") !== "live")
-          ? "limited"
-          : "active";
-      updated += 1;
-      if (!args.dryRun)
-        await ctx.db.patch(org._id, { clientAccessStatus: status });
-    }
-    return { updated, isDone: page.isDone, continueCursor: page.continueCursor };
   },
 });

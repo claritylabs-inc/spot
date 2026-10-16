@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
         name: String(contact.name ?? ""),
         email: String(contact.email ?? ""),
         phone: String(contact.phone ?? ""),
+        ...(contact.intakeGoal === "quote" || contact.intakeGoal === "savings"
+          ? { intakeGoal: contact.intakeGoal as "quote" | "savings" }
+          : {}),
       },
     );
     return NextResponse.json(

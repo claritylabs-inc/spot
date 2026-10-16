@@ -10,6 +10,7 @@ const limiter = new RateLimiter(components.rateLimiter, {
 });
 export const create = action({
   args: {
+    intakeGoal: v.optional(v.union(v.literal("quote"), v.literal("savings"))),
     token: v.string(),
     name: v.string(),
     email: v.string(),

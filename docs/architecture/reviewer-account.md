@@ -162,3 +162,17 @@ Resolve it by hand rather than adopting it.
    and `results.json`.
 4. `npx vitest run convex/reviewerAccounts.test.ts` runs the isolation checks
    for flows, identity collisions, idempotency, and sign-in drift.
+
+## Managed production operation
+
+The manual **Spot reviewer account** GitHub workflow runs only on `main` with
+that repository's production Convex deploy key. Its `provision` and
+`rotate-password` tasks read `SPOT_REVIEWER_PASSWORD` from repository secrets.
+Changing the secret alone does not change an existing password: run
+`rotate-password` afterward. Rotation still works when workspace health checks
+fail, so existing sessions can be revoked before repairing drift. `status`
+fails closed with the collision reason when the account has drifted.
+
+Invitation creation and acceptance reject the reserved reviewer identity;
+insurance intake cannot pre-create it. No production credentials belong in
+source control, test reports, screenshots, or workflow inputs.

@@ -184,6 +184,7 @@ function SignupForm() {
             email,
             phone,
             handoffKey: handoffKey.current,
+            intakeGoal: "quote",
           }),
         });
         const outcome = await response.json();
@@ -270,7 +271,7 @@ function SignupForm() {
               disabled={busy}
               onClick={() => void newRequest()}
             >
-              New request
+              New application
             </PillButton>
             <PillButton
               size="large"
@@ -334,7 +335,7 @@ function SignupForm() {
         {codeSent
           ? "Can you confirm your work email?"
           : isAuthenticated && !token && !handoffTransition
-            ? "Which request would you like to view?"
+            ? "Which application would you like to view?"
             : "What are your contact details?"}
       </h1>
       <div className="h-10" />
@@ -410,7 +411,9 @@ function SignupForm() {
                       {request.submitted === null
                         ? "Saved request"
                         : request.submitted
-                          ? "Submitted"
+                          ? request.coverage === "Policy savings review"
+                            ? "Policies received"
+                            : "Submitted"
                           : "Draft"}
                     </StatusTag>
                   </span>

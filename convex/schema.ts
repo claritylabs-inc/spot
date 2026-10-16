@@ -517,8 +517,7 @@ export default defineSchema({
   organizations: defineTable({
     intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
     clientAccessStatus: v.optional(
-      // "intake" is the retired name for "limited"; orgs:migrateOperatorStatusInternal rewrites it. Drop with operatorStatus.
-      v.union(v.literal("limited"), v.literal("active"), v.literal("intake")),
+      v.union(v.literal("limited"), v.literal("active")),
     ),
     name: v.string(),
     deletedAt: v.optional(v.number()),
@@ -589,15 +588,6 @@ export default defineSchema({
     featureFlags: v.optional(v.record(v.string(), v.boolean())),
     // Onboarding
     onboardingComplete: v.optional(v.boolean()),
-    // Deprecated: replaced by clientAccessStatus. Drop after orgs:migrateOperatorStatusInternal has run on every deployment.
-    operatorStatus: v.optional(
-      v.union(
-        v.literal("onboarding"),
-        v.literal("live"),
-        v.literal("lost"),
-        v.literal("churned"),
-      ),
-    ),
     // Branding
     iconStorageId: v.optional(v.id("_storage")),
     // Dual-org: org type discriminator
@@ -2744,6 +2734,7 @@ export default defineSchema({
     .index("owner_updated", ["ownerUserId", "updatedAt"]),
 
   requestHandoffs: defineTable({
+    intakeGoal: v.optional(v.union(v.literal("quote"), v.literal("savings"))),
     tokenHash: v.string(),
     name: v.string(),
     email: v.string(),
@@ -2778,6 +2769,7 @@ export default defineSchema({
   }).index("request", ["requestId"]),
 
   requestIntakeFiles: defineTable({
+    policyId: v.optional(v.id("policies")),
     prefillStartedAt: v.optional(v.number()),
     prefillCoveragesJson: v.optional(v.string()),
     requestId: v.id("procurementRequests"),
