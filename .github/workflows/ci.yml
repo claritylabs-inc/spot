@@ -69,9 +69,6 @@ jobs:
         working-directory: imessage-worker
         run: npm ci --include=dev --no-audit --no-fund --loglevel=error && npm run build
 
-      - name: Build and test Slack worker
-        working-directory: slack-worker
-        run: npm ci --include=dev --no-audit --no-fund --loglevel=error && npm run build && npm test
 
   packages:
     runs-on: ubuntu-latest

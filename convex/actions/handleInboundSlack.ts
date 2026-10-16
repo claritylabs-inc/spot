@@ -30,8 +30,8 @@ import {
 } from "../lib/slackThreadContext";
 import { decideSlackControlIntent } from "../lib/channelControls";
 import { operatorSlackConversationKey } from "../lib/operatorSlackConfig";
+import { slackWebApi } from "../lib/slackWebApi";
 
-const WORKER_TIMEOUT_MS = 30_000;
 const CHANNEL_NAME_TIMEOUT_MS = 3_000;
 const internalApi = internal as any;
 const OPERATOR_SLACK_PROCESSING_REACTION = "eyes";
@@ -95,63 +95,36 @@ export async function sendOperatorSlackResponse(
     confirmation?: OperatorSlackConfirmation | null;
   },
 ) {
-  const attachments = await Promise.all(
-    (args.response.attachments ?? [])
-      .flatMap((attachment) => (attachment.fileId ? [attachment] : []))
-      .map(async (attachment) => ({
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        url: await ctx.storage.getUrl(attachment.fileId!),
-      })),
+  const attachments = (args.response.attachments ?? []).flatMap((attachment) =>
+    attachment.fileId
+      ? [
+          {
+            fileId: attachment.fileId,
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+          },
+        ]
+      : [],
   );
-  const availableAttachments = attachments.flatMap((attachment) =>
-    attachment.url ? [{ ...attachment, url: attachment.url }] : [],
-  );
-  if (availableAttachments.length !== attachments.length) {
-    throw new Error("An operator Slack attachment URL is unavailable");
-  }
   const content =
     args.response.content?.trim() ||
-    (availableAttachments.length > 0
-      ? ""
-      : "I couldn't complete that request.");
-  const worker = workerConfig();
-  const response = await fetch(`${worker.url}/send`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${worker.secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      clientMessageId: args.clientMessageId,
-      teamId: args.delivery.teamId,
-      channelId: args.delivery.channelId,
-      threadTs: args.delivery.threadTs,
-      mrkdwnText: `${args.mentionHere ? "<!here> " : ""}${formatSlackAnswerText(content)}`,
-      blocks: args.confirmation
-        ? buildOperatorSlackConfirmationBlocks({
-            confirmationId: args.confirmation._id,
-            summary: args.confirmation.summary,
-            destructive: args.confirmation.effect === "destructive",
-          })
-        : undefined,
-      attachments: availableAttachments,
-    }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    (attachments.length > 0 ? "" : "I couldn't complete that request.");
+  const result = await slackWebApi(ctx).sendMessage({
+    clientMessageId: args.clientMessageId,
+    teamId: args.delivery.teamId,
+    channelId: args.delivery.channelId,
+    threadTs: args.delivery.threadTs,
+    mrkdwnText: `${args.mentionHere ? "<!here> " : ""}${formatSlackAnswerText(content)}`,
+    blocks: args.confirmation
+      ? buildOperatorSlackConfirmationBlocks({
+          confirmationId: args.confirmation._id,
+          summary: args.confirmation.summary,
+          destructive: args.confirmation.effect === "destructive",
+        })
+      : undefined,
+    attachments,
   });
-  const result = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    messageId?: string;
-    sending?: boolean;
-    attachmentFailures?: Array<{ filename: string; error: string }>;
-  };
-  if (!response.ok) {
-    throw new Error(result.error ?? `Slack worker returned ${response.status}`);
-  }
-  if (response.status === 202 || result.sending) {
-    throw new Error("Slack worker is still processing this send");
-  }
-  if (result.attachmentFailures?.length) {
+  if (result.attachmentFailures.length) {
     throw new Error(
       result.attachmentFailures
         .map(({ filename, error }) => `${filename}: ${error}`)
@@ -172,36 +145,21 @@ function operatorSlackDelivery(
 }
 
 export async function updateOperatorSlackActivity(
+  ctx: ActionCtx,
   event: Pick<Doc<"slackInboundEvents">, "teamId" | "channelId" | "messageTs">,
   state: OperatorSlackActivityState,
 ) {
+  const slack = slackWebApi(ctx);
   const reaction = async (operation: "add" | "remove", name: string) => {
+    const input = {
+      teamId: event.teamId,
+      channelId: event.channelId,
+      messageTs: event.messageTs,
+      name,
+    };
     try {
-      const worker = workerConfig();
-      const response = await fetch(`${worker.url}/reaction/${operation}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${worker.secret}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          teamId: event.teamId,
-          channelId: event.channelId,
-          messageTs: event.messageTs,
-          name,
-        }),
-        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-      });
-      if (!response.ok) {
-        const result = (await response.json().catch(() => ({}))) as {
-          error?: string;
-          providerErrorCode?: string;
-        };
-        throw new Error(
-          [result.providerErrorCode, result.error].filter(Boolean).join(": ") ||
-            `Slack worker returned ${response.status}`,
-        );
-      }
+      if (operation === "add") await slack.addReaction(input);
+      else await slack.removeReaction(input);
       return true;
     } catch (error) {
       console.error(
@@ -233,32 +191,17 @@ async function updateOperatorSlackConfirmation(
     summary: string;
   } & OperatorSlackConfirmationResolution,
 ) {
-  const worker = workerConfig();
-  const response = await fetch(`${worker.url}/message/update`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${worker.secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      teamId: args.delivery.teamId,
-      channelId: args.delivery.channelId,
-      messageTs: args.messageTs,
-      mrkdwnText: operatorSlackConfirmationText(args),
-      blocks: buildOperatorSlackConfirmationResolvedBlocks({
-        summary: args.summary,
-        decision: args.decision,
-        error: args.error,
-      }),
+  await slackWebApi(ctx).updateMessage({
+    teamId: args.delivery.teamId,
+    channelId: args.delivery.channelId,
+    messageTs: args.messageTs,
+    mrkdwnText: operatorSlackConfirmationText(args),
+    blocks: buildOperatorSlackConfirmationResolvedBlocks({
+      summary: args.summary,
+      decision: args.decision,
+      error: args.error,
     }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
-  if (!response.ok) {
-    const result = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    throw new Error(result.error ?? `Slack worker returned ${response.status}`);
-  }
 }
 
 async function processOperatorBatch(
@@ -276,22 +219,24 @@ async function processOperatorBatch(
   );
   await Promise.all(
     authorized.map(({ event }) =>
-      updateOperatorSlackActivity(event, "processing"),
+      updateOperatorSlackActivity(ctx, event, "processing"),
     ),
   );
   try {
     const firstAuthorizedEvent = authorized[0]?.event;
     const channelName = firstAuthorizedEvent?.isDirectMessage
       ? undefined
-      : await resolveSlackChannelName(firstAuthorizedEvent).catch((error) => {
-          console.warn(
-            "[slack] Could not resolve operator channel name",
-            error,
-          );
-          return undefined;
-        });
+      : await resolveSlackChannelName(ctx, firstAuthorizedEvent).catch(
+          (error) => {
+            console.warn(
+              "[slack] Could not resolve operator channel name",
+              error,
+            );
+            return undefined;
+          },
+        );
     const slackThreadContext = authorized.at(-1)?.event
-      ? await fetchThreadContext(authorized.at(-1)!.event)
+      ? await fetchThreadContext(ctx, authorized.at(-1)!.event)
       : undefined;
     for (const { event, operatorUserId } of authorized) {
       let refreshedEvent = (await ctx.runQuery(
@@ -345,7 +290,7 @@ async function processOperatorBatch(
             clientMessageId,
             response: result.response ?? {},
           });
-          await updateOperatorSlackActivity(refreshedEvent, "complete");
+          await updateOperatorSlackActivity(ctx, refreshedEvent, "complete");
         }
         await ctx.runMutation(internalApi.operatorSlack.completeEvent, {
           eventId: refreshedEvent._id,
@@ -432,106 +377,58 @@ async function processOperatorBatch(
       await ctx.runMutation(internalApi.operatorSlack.completeEvent, {
         eventId: refreshedEvent._id,
       });
-      await updateOperatorSlackActivity(refreshedEvent, "complete");
+      await updateOperatorSlackActivity(ctx, refreshedEvent, "complete");
       pendingActivity.delete(event._id);
     }
   } finally {
     await Promise.all(
       [...pendingActivity.values()].map((event) =>
-        updateOperatorSlackActivity(event, "failed"),
+        updateOperatorSlackActivity(ctx, event, "failed"),
       ),
     );
   }
 }
 
-function workerConfig() {
-  const url = process.env.SLACK_WORKER_URL?.trim();
-  const secret = process.env.SLACK_WORKER_SECRET?.trim();
-  if (!url || !secret) throw new Error("Slack worker is not configured");
-  return { url: url.replace(/\/$/, ""), secret };
-}
-
 async function resolveSlackChannelName(
+  ctx: ActionCtx,
   event: Doc<"slackInboundEvents"> | undefined,
 ) {
   if (!event) return undefined;
-  const worker = workerConfig();
-  const response = await fetch(`${worker.url}/channel`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${worker.secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      teamId: event.teamId,
-      channelId: event.channelId,
-    }),
-    signal: AbortSignal.timeout(CHANNEL_NAME_TIMEOUT_MS),
+  const name = await slackWebApi(ctx).resolveChannelName({
+    teamId: event.teamId,
+    channelId: event.channelId,
+    timeoutMs: CHANNEL_NAME_TIMEOUT_MS,
   });
-  const result = (await response.json().catch(() => ({}))) as {
-    channelId?: string;
-    name?: string;
-  };
-  if (!response.ok || result.channelId !== event.channelId) return undefined;
-  return result.name?.trim() || undefined;
+  return name.trim() || undefined;
 }
 
 async function fetchThreadContext(
+  ctx: ActionCtx,
   event: Doc<"slackInboundEvents">,
 ): Promise<SlackThreadContextSnapshot | undefined> {
   if (event.isDirectMessage) return undefined;
   try {
-    const worker = workerConfig();
-    const response = await fetch(`${worker.url}/thread-context`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${worker.secret}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        teamId: event.teamId,
-        channelId: event.channelId,
-        threadTs: event.threadTs,
-        latestMessageTs: event.messageTs,
-      }),
-      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    const context = await slackWebApi(ctx).fetchThreadContext({
+      teamId: event.teamId,
+      channelId: event.channelId,
+      threadTs: event.threadTs,
+      latestMessageTs: event.messageTs,
     });
-    if (!response.ok) {
-      console.warn(
-        `[slack] Thread context retrieval failed (${response.status})`,
-      );
-      return undefined;
-    }
-    const payload = (await response.json()) as {
-      messages?: unknown;
-      truncated?: unknown;
+    return {
+      messages: context.messages
+        .slice(0, MAX_SLACK_THREAD_CONTEXT_MESSAGES)
+        .map((message) => ({
+          messageTs: message.messageTs.slice(0, 50),
+          ...(message.senderUserId
+            ? { senderUserId: message.senderUserId.slice(0, 100) }
+            : {}),
+          ...(message.senderName
+            ? { senderName: message.senderName.slice(0, 200) }
+            : {}),
+          content: message.content.slice(0, 4_000),
+        })),
+      truncated: context.truncated,
     };
-    if (!Array.isArray(payload.messages)) return undefined;
-    const messages = payload.messages
-      .slice(0, MAX_SLACK_THREAD_CONTEXT_MESSAGES)
-      .flatMap((value) => {
-        if (!value || typeof value !== "object") return [];
-        const message = value as Record<string, unknown>;
-        if (
-          typeof message.messageTs !== "string" ||
-          typeof message.content !== "string"
-        ) {
-          return [];
-        }
-        return [
-          {
-            messageTs: message.messageTs.slice(0, 50),
-            ...(typeof message.senderUserId === "string"
-              ? { senderUserId: message.senderUserId.slice(0, 100) }
-              : {}),
-            ...(typeof message.senderName === "string"
-              ? { senderName: message.senderName.slice(0, 200) }
-              : {}),
-            content: message.content.slice(0, 4_000),
-          },
-        ];
-      });
-    return { messages, truncated: payload.truncated === true };
   } catch (error) {
     console.warn("[slack] Thread context retrieval failed", error);
     return undefined;
@@ -560,29 +457,17 @@ async function fetchAttachment(
   }
   const pending = attachments.filter((attachment) => !attachment.fileId);
   if (pending.length === 0) return;
-  const worker = workerConfig();
+  const slack = slackWebApi(ctx);
   const downloaded: Array<{
     attachment: (typeof pending)[number];
     bytes: ArrayBuffer;
   }> = [];
   let downloadedBytes = 0;
   for (const attachment of pending) {
-    const response = await fetch(`${worker.url}/attachment`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${worker.secret}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        teamId: event.teamId,
-        fileId: attachment.providerFileId,
-      }),
-      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    const { bytes } = await slack.downloadFile({
+      teamId: event.teamId,
+      fileId: attachment.providerFileId,
     });
-    if (!response.ok) {
-      throw new Error(`Slack attachment retrieval failed (${response.status})`);
-    }
-    const bytes = await response.arrayBuffer();
     if (bytes.byteLength > MAX_AGENT_ATTACHMENT_BYTES) {
       throw new Error("Slack attachment exceeds the 25 MB ingestion limit");
     }
@@ -613,37 +498,12 @@ async function fetchAttachment(
 }
 
 async function enrichActor(ctx: ActionCtx, event: Doc<"slackInboundEvents">) {
-  const worker = workerConfig();
-  const response = await fetch(`${worker.url}/actor`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${worker.secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      teamId: event.teamId,
-      userId: event.senderUserId,
-    }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+  const actor = await slackWebApi(ctx).resolveActor({
+    teamId: event.teamId,
+    userId: event.senderUserId,
   });
-  const actor = (await response.json()) as {
-    teamId?: string;
-    userId?: string;
-    displayName?: string;
-    email?: string;
-    isBot?: boolean;
-    botUserId?: string;
-    error?: string;
-  };
-  if (
-    !response.ok ||
-    !actor.teamId ||
-    actor.userId !== event.senderUserId ||
-    typeof actor.isBot !== "boolean"
-  ) {
-    throw new Error(
-      actor.error ?? `Slack actor resolution failed (${response.status})`,
-    );
+  if (actor.userId !== event.senderUserId) {
+    throw new Error("Slack actor resolution failed");
   }
   await ctx.runMutation(internalApi.slack.enrichInboundActor, {
     eventId: event._id,
@@ -689,7 +549,7 @@ export const processDebounced = internalAction({
       )) as Array<Doc<"slackInboundEvents">>;
       if (authorized.length === 0) return;
       const slackThreadContext = authorized.at(-1)
-        ? await fetchThreadContext(authorized.at(-1)!)
+        ? await fetchThreadContext(ctx, authorized.at(-1)!)
         : undefined;
       await Promise.all(authorized.map((event) => fetchAttachment(ctx, event)));
       const controlIntents = await Promise.all(

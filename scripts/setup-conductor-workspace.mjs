@@ -193,7 +193,6 @@ function ensureContainerService() {
 function buildWorkerImages() {
   const workers = [
     ["imessage-worker", "imessage-worker"],
-    ["slack-worker", "slack-worker"],
   ];
   for (const [imageName, directory] of workers) {
     run("container", [
@@ -272,7 +271,6 @@ if (
 
 run("npm", ["ci"]);
 run("npm", ["--prefix", "imessage-worker", "ci"]);
-run("npm", ["--prefix", "slack-worker", "ci"]);
 
 mkdirSync(contextDirectory, { recursive: true });
 const convex = path.join(repoRoot, "node_modules", ".bin", "convex");
@@ -335,7 +333,6 @@ for (const name of cloudConvexSelectionKeys) delete process.env[name];
 const {
   web,
   imessage,
-  slack,
   operatorImessage,
   convexCloud,
   convexSite,
@@ -392,10 +389,6 @@ const operatorImessageSecret = createdLocalDeployment
   ? randomBytes(32).toString("hex")
   : optionalConvexEnv(convex, "OPERATOR_IMESSAGE_WORKER_SECRET") ||
     randomBytes(32).toString("hex");
-const slackSecret = createdLocalDeployment
-  ? randomBytes(32).toString("hex")
-  : optionalConvexEnv(convex, "SLACK_WORKER_SECRET") ||
-    randomBytes(32).toString("hex");
 const slackWebhookSecret = createdLocalDeployment
   ? randomBytes(32).toString("hex")
   : optionalConvexEnv(convex, "SLACK_SIGNING_SECRET") ||
@@ -447,8 +440,6 @@ try {
     SLACK_CLARITY_TEAM_ID: "T-CLARITY-FIXTURE",
     OPERATOR_SLACK_ENABLED: "true",
     OPERATOR_SLACK_BOT_USER_ID: "U-SPOT",
-    SLACK_WORKER_URL: `http://127.0.0.1:${slack}`,
-    SLACK_WORKER_SECRET: slackSecret,
     SLACK_SIGNING_SECRET: slackWebhookSecret,
     APP_SITE_URL: localAppUrl,
     AUTH_LINK_SITE_URL: localAppUrl,
@@ -497,10 +488,7 @@ writeRuntimeEnv("operator-imessage-worker.env", {
     imessageEnv.get("OPERATOR_IMESSAGE_TERMINAL_SPACE_ID")?.trim() ||
     "operator-chat-1",
 });
-writeRuntimeEnv("slack-worker.env", {
-  SPOT_ENV: "local",
-  SLACK_WORKER_MODE: "mock",
-  SLACK_WORKER_SECRET: slackSecret,
+writeRuntimeEnv("slack-fixture.env", {
   SLACK_SIGNING_SECRET: slackWebhookSecret,
 });
 
@@ -512,5 +500,5 @@ if (process.env.CONDUCTOR_IS_LOCAL !== "0") {
 }
 
 console.log(
-  "\nConductor workspace ready with its own local Convex database. Run the default Dev template to start Spot, Convex, the Slack mock worker, and automatic email/OTP capture. Start customer Spectrum with npm run conductor:spectrum or operator Spectrum with npm run conductor:operator-spectrum.",
+  "\nConductor workspace ready with its own local Convex database. Run the default Dev template to start Spot, Convex, and automatic email/OTP capture. Start customer Spectrum with npm run conductor:spectrum or operator Spectrum with npm run conductor:operator-spectrum.",
 );

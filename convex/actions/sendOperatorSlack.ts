@@ -5,16 +5,9 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import { formatSlackAnswerText } from "../lib/slackBlocks";
+import { slackWebApi, SlackProviderError } from "../lib/slackWebApi";
 
 const internalApi = internal as any;
-const WORKER_TIMEOUT_MS = 30_000;
-
-function workerConfig() {
-  const url = process.env.SLACK_WORKER_URL?.trim();
-  const secret = process.env.SLACK_WORKER_SECRET?.trim();
-  if (!url || !secret) throw new Error("Slack worker is not configured");
-  return { url: url.replace(/\/$/, ""), secret };
-}
 
 export const sendInternal = internalAction({
   args: {
@@ -60,38 +53,13 @@ export const sendInternal = internalAction({
       );
     }
 
-    const worker = workerConfig();
-    let providerErrorCode: string | undefined;
     try {
-      const response = await fetch(`${worker.url}/send`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${worker.secret}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          clientMessageId: `operator-agent:${claim.row._id}`,
-          teamId: recipient.teamId,
-          channelId: recipient.slackUserId,
-          mrkdwnText: formatSlackAnswerText(args.content),
-        }),
-        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+      const result = await slackWebApi(ctx).sendMessage({
+        clientMessageId: `operator-agent:${claim.row._id}`,
+        teamId: recipient.teamId,
+        channelId: recipient.slackUserId,
+        mrkdwnText: formatSlackAnswerText(args.content),
       });
-      const result = (await response.json().catch(() => ({}))) as {
-        messageId?: string;
-        error?: string;
-        providerErrorCode?: string;
-        sending?: boolean;
-      };
-      if (!response.ok || response.status === 202 || result.sending) {
-        providerErrorCode = result.providerErrorCode;
-        const error =
-          result.error ||
-          (response.status === 202
-            ? "Slack worker is still processing this send"
-            : `Slack worker returned ${response.status}`);
-        throw new Error(error);
-      }
       if (!result.messageId) {
         throw new Error("Slack did not return a message timestamp");
       }
@@ -107,10 +75,14 @@ export const sendInternal = internalAction({
         idempotent: false,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       await ctx.runMutation(
         internalApi.slackOutbound.markOperatorDirectMessageFailed,
-        { id: claim.row._id, error: message, providerErrorCode },
+        {
+          id: claim.row._id,
+          error: error instanceof Error ? error.message : String(error),
+          providerErrorCode:
+            error instanceof SlackProviderError ? error.code : undefined,
+        },
       );
       throw error;
     }

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import dayjs from "dayjs";
 import {
@@ -15,10 +16,10 @@ function option(name, fallback) {
   return index >= 0 ? process.argv[index + 1] : fallback;
 }
 
-const workerEnv = parseEnvFile(
-  path.join(repoRoot, ".context", "slack-worker.env"),
-);
-const signingSecret = workerEnv.get("SLACK_SIGNING_SECRET")?.trim();
+const fixtureEnvPath = path.join(repoRoot, ".context", "slack-fixture.env");
+const signingSecret = existsSync(fixtureEnvPath)
+  ? parseEnvFile(fixtureEnvPath).get("SLACK_SIGNING_SECRET")?.trim()
+  : undefined;
 if (!signingSecret) {
   throw new Error(
     "SLACK_SIGNING_SECRET is missing. Run npm run conductor:setup first.",

@@ -15,57 +15,10 @@ import {
   type SlackEmailDraftCard,
 } from "../lib/slackBlocks";
 import { MAX_POLICY_CARDS_PER_TURN } from "../lib/agentPolicyPresentation";
+import { slackWebApi, SlackProviderError } from "../lib/slackWebApi";
 
 // Break the generated API's recursive reference to this action module.
 const internalApi = internal as any;
-const WORKER_TIMEOUT_MS = 30_000;
-
-class SlackPresentationError extends Error {
-  constructor(
-    message: string,
-    readonly providerErrorCode: string | undefined,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "SlackPresentationError";
-  }
-}
-
-function workerConfig() {
-  const url = process.env.SLACK_WORKER_URL?.trim();
-  const secret = process.env.SLACK_WORKER_SECRET?.trim();
-  if (!url || !secret) throw new Error("Slack worker is not configured");
-  return { url: url.replace(/\/$/, ""), secret };
-}
-
-async function workerRequest<T>(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<T> {
-  const worker = workerConfig();
-  const response = await fetch(`${worker.url}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${worker.secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-  });
-  const payload = (await response.json().catch(() => ({}))) as T & {
-    error?: string;
-    providerErrorCode?: string;
-    retryable?: boolean;
-  };
-  if (!response.ok) {
-    throw new SlackPresentationError(
-      payload.error ?? `Slack worker returned ${response.status}`,
-      payload.providerErrorCode,
-      payload.retryable ?? response.status >= 500,
-    );
-  }
-  return payload;
-}
 
 async function recordProviderFailure(
   ctx: ActionCtx,
@@ -74,14 +27,12 @@ async function recordProviderFailure(
   operationKey: string,
   error: unknown,
 ) {
-  if (!(error instanceof SlackPresentationError) || !error.providerErrorCode) {
-    return;
-  }
+  if (!(error instanceof SlackProviderError) || !error.code) return;
   await ctx.runMutation(internalApi.slackLifecycle.recordProviderFailure, {
     connectionId: presentation.connectionId,
     channelId,
     operationKey: `presentation:${presentation._id}:${operationKey}`,
-    providerErrorCode: error.providerErrorCode,
+    providerErrorCode: error.code,
     errorSummary: error.message,
     retryable: error.retryable,
     occurredAt: dayjs().valueOf(),
@@ -92,21 +43,27 @@ function hashPayload(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-async function bestEffortReaction(args: {
-  operation: "add" | "remove";
-  teamId: string;
-  channelId: string;
-  messageTs?: string;
-  name: string;
-}) {
+async function bestEffortReaction(
+  ctx: ActionCtx,
+  args: {
+    operation: "add" | "remove";
+    teamId: string;
+    channelId: string;
+    messageTs?: string;
+    name: string;
+  },
+) {
   if (!args.messageTs) return false;
+  const reaction = {
+    teamId: args.teamId,
+    channelId: args.channelId,
+    messageTs: args.messageTs,
+    name: args.name,
+  };
   try {
-    await workerRequest(`/reaction/${args.operation}`, {
-      teamId: args.teamId,
-      channelId: args.channelId,
-      messageTs: args.messageTs,
-      name: args.name,
-    });
+    const slack = slackWebApi(ctx);
+    if (args.operation === "add") await slack.addReaction(reaction);
+    else await slack.removeReaction(reaction);
     return true;
   } catch (error) {
     console.warn(
@@ -296,7 +253,7 @@ export const start = internalAction({
     if (presentation.phase === "active" || presentation.providerMessageId) {
       return { ...presentation, actionToken: created.actionToken };
     }
-    await bestEffortReaction({
+    await bestEffortReaction(ctx, {
       operation: "add",
       teamId: target.teamId,
       channelId: target.channelId,
@@ -329,7 +286,7 @@ export const setReaction = internalAction({
     const previousName =
       presentation.processingReaction ?? SLACK_DEFAULT_PROCESSING_REACTION;
     const messageTs = await sourceMessageTimestamp(ctx, args.threadMessageId);
-    const added = await bestEffortReaction({
+    const added = await bestEffortReaction(ctx, {
       operation: "add",
       teamId: presentation.teamId,
       channelId: presentation.channelId,
@@ -338,7 +295,7 @@ export const setReaction = internalAction({
     });
     if (!added) return { applied: false, name: previousName };
     if (name === previousName) return { applied: true, name };
-    await bestEffortReaction({
+    await bestEffortReaction(ctx, {
       operation: "remove",
       teamId: presentation.teamId,
       channelId: presentation.channelId,
@@ -396,17 +353,18 @@ export const finish = internalAction({
     const target = await presentationTarget(ctx, presentation);
 
     const deliver = async (blocks: SlackBlock[]) => {
+      const slack = slackWebApi(ctx);
       let providerMessageId = presentation.providerMessageId;
       const mrkdwnText = formatSlackAnswerText(message.content);
       if (providerMessageId && presentation.mode === "stream") {
-        await workerRequest("/stream/stop", {
+        await slack.stopStream({
           teamId: target.teamId,
           channelId: target.channelId,
           messageTs: providerMessageId,
           blocks,
         });
       } else if (providerMessageId) {
-        await workerRequest("/message/update", {
+        await slack.updateMessage({
           teamId: target.teamId,
           channelId: target.channelId,
           messageTs: providerMessageId,
@@ -414,7 +372,7 @@ export const finish = internalAction({
           blocks,
         });
       } else {
-        const sent = await workerRequest<{ messageId: string }>("/send", {
+        const sent = await slack.sendMessage({
           clientMessageId: `agent:${message._id}:final`,
           teamId: target.teamId,
           channelId: target.channelId,
@@ -457,11 +415,11 @@ export const finish = internalAction({
         error,
       );
       const providerError =
-        error instanceof SlackPresentationError ? error : undefined;
+        error instanceof SlackProviderError ? error : undefined;
       await ctx.runMutation(internalApi.slackPresentation.markFailed, {
         id: presentation._id,
         error: error instanceof Error ? error.message : String(error),
-        providerErrorCode: providerError?.providerErrorCode,
+        providerErrorCode: providerError?.code,
         retryable: providerError?.retryable,
       });
       throw error;
@@ -474,7 +432,7 @@ export const clearReaction = internalAction({
   handler: async (ctx, args) => {
     const presentation = await currentPresentation(ctx, args.threadMessageId);
     if (!presentation) return;
-    await bestEffortReaction({
+    await bestEffortReaction(ctx, {
       operation: "remove",
       teamId: presentation.teamId,
       channelId: presentation.channelId,
@@ -530,7 +488,7 @@ export const processInteraction = internalAction({
         return;
       }
       const target = await presentationTarget(ctx, presentation);
-      await workerRequest("/ephemeral", {
+      await slackWebApi(ctx).postEphemeral({
         teamId: target.teamId,
         channelId: target.channelId,
         userId: actor.slackUserId,

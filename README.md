@@ -95,7 +95,7 @@ deployment and database that belong only to that worktree. Workspace setup:
    Spectrum starts in an org-scoped broker context. Setup then compiles the
    workers. Local macOS setup also starts Apple `container` and builds
    worktree-tagged Linux/amd64 worker images for the remaining Railway workers
-   (imessage, slack, mailbox-scan); cloud setup uses the compiled workers
+   (imessage, mailbox-scan); cloud setup uses the compiled workers
    directly.
 
 When credentials are available, the imported environment includes integration
@@ -122,13 +122,12 @@ local and cloud Conductor workspaces:
 - Spot on `http://localhost:$CONDUCTOR_PORT`
 - `convex dev` with the worktree's native local database, including local
   email/OTP capture logs, on `$CONDUCTOR_PORT + 3` (client) and `+ 4` (HTTP actions)
-- the mock Slack worker on `$CONDUCTOR_PORT + 5`
 - a local email capture watcher that surfaces delivery context and OTPs
 
 Extraction runs inline inside Convex actions, with no separate process or port.
 The Run terminal automatically prints a compact notice for every captured local
-email, including an explicit `OTP:` line when a six-digit code is present. Web,
-Convex, and Slack output is written to `.context/logs/{web,convex,slack}.log`;
+email, including an explicit `OTP:` line when a six-digit code is present. Web
+and Convex output is written to `.context/logs/{web,convex}.log`;
 full captured email bodies remain in `convex.log`. The separate **Email
 deliveries** Run template opens the same capture stream in a dedicated terminal
 when desired.
@@ -141,8 +140,7 @@ TUI in a separate terminal with `npm run conductor:spectrum`, or use the
 `/as +<E.164 phone>` can test an explicit local identity; the following message
 uses the newly selected sender.
 Conductor runs are concurrent: each local worktree reserves one port namespace
-from its unique `CONDUCTOR_PORT` (`+0` web, `+2` Spectrum, `+3/+4` Convex,
-`+5` Slack), and the app/workers wait for that exact local instance before
+from its unique `CONDUCTOR_PORT` (`+0` web, `+2` Spectrum, `+3/+4` Convex), and the app/workers wait for that exact local instance before
 starting. Cloud workspaces use the same offsets from port 8080 because
 `CONDUCTOR_PORT` is not set there. Explicit Convex ports avoid a Convex CLI
 collision edge case where automatic fallback can select the same port for its
@@ -180,7 +178,7 @@ not rewrite committed agent skills and guidance; refresh those explicitly with
 - `npm run conductor:setup` - prepare a fresh Conductor worktree end to end
 - `npm run conductor:setup:cloud` - Conductor Cloud entry point; generates the
   gitignored env files a cloud sandbox cannot copy, then runs `conductor:setup`
-- `npm run conductor:dev` - start Spot, Convex, Slack, and email capture
+- `npm run conductor:dev` - start Spot, Convex, and email capture
 - `npm run conductor:spectrum` - open the optional Spectrum iMessage TUI in a separate terminal
 - `npm run conductor:emails` - show captured local email deliveries and OTPs in a dedicated terminal
 - `npm run lint` - ESLint
@@ -232,7 +230,7 @@ cp imessage-worker/.env.template imessage-worker/.env
 npm run container:run:imessage-worker
 ```
 
-Repeat with a local Slack environment file for that service. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
+Repeat with a local environment file for the operator iMessage service. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
 
 ## Environment
 

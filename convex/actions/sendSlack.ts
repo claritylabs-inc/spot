@@ -6,6 +6,7 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { formatSlackAnswerText } from "../lib/slackBlocks";
+import { slackWebApi, SlackProviderError } from "../lib/slackWebApi";
 
 const attachmentValidator = v.object({
   fileId: v.id("_storage"),
@@ -13,20 +14,8 @@ const attachmentValidator = v.object({
   contentType: v.string(),
 });
 const slackBlocksValidator = v.array(v.any());
-const WORKER_TIMEOUT_MS = 30_000;
 // Break the generated API's recursive reference to this action module.
 const internalApi = internal as any;
-
-class SlackDeliveryError extends Error {
-  constructor(
-    message: string,
-    readonly providerErrorCode: string | undefined,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "SlackDeliveryError";
-  }
-}
 
 type SlackAttachment = {
   fileId: Id<"_storage">;
@@ -62,13 +51,6 @@ const sendArgs = {
   attachments: v.optional(v.array(attachmentValidator)),
 };
 
-function workerConfig() {
-  const url = process.env.SLACK_WORKER_URL?.trim();
-  const secret = process.env.SLACK_WORKER_SECRET?.trim();
-  if (!url || !secret) throw new Error("Slack worker is not configured");
-  return { url: url.replace(/\/$/, ""), secret };
-}
-
 async function performSend(
   ctx: ActionCtx,
   args: {
@@ -87,71 +69,32 @@ async function performSend(
     channelId: args.channelId,
   });
   if (!target?.available) {
-    throw new SlackDeliveryError(
+    throw new SlackProviderError(
       target?.unavailableReason ?? "Slack delivery target is unavailable",
-      undefined,
+      "",
       false,
     );
   }
-  const attachments = await Promise.all(
-    (args.attachments ?? []).map(async (attachment) => ({
-      ...attachment,
-      url: await ctx.storage.getUrl(attachment.fileId),
-    })),
-  );
-  if (attachments.some((attachment) => !attachment.url)) {
-    throw new Error("A Slack attachment URL is unavailable");
-  }
+  const attachments = args.attachments ?? [];
   const mrkdwnText = formatSlackAnswerText(args.content);
   const transportText =
     mrkdwnText ||
     (attachments.length > 0 ? "" : "I couldn't complete that request.");
-  const worker = workerConfig();
-  const response = await fetch(`${worker.url}/send`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${worker.secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      clientMessageId: args.idempotencyKey,
-      teamId: target.teamId,
-      channelId: target.channelId,
-      threadTs: args.threadTs,
-      mrkdwnText: transportText,
-      blocks: args.blocks,
-      attachments: attachments.map(({ filename, contentType, url }) => ({
-        filename,
-        contentType,
-        url,
-      })),
-    }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+  const result = await slackWebApi(ctx).sendMessage({
+    clientMessageId: args.idempotencyKey,
+    teamId: target.teamId,
+    channelId: target.channelId,
+    threadTs: args.threadTs,
+    mrkdwnText: transportText,
+    blocks: args.blocks,
+    attachments,
   });
-  const result = (await response.json().catch(() => ({}))) as {
-    messageId?: string;
-    error?: string;
-    providerErrorCode?: string;
-    retryable?: boolean;
-    sending?: boolean;
-    attachmentFailures?: Array<{ filename: string; error: string }>;
-  };
-  if (!response.ok) {
-    throw new SlackDeliveryError(
-      result.error || `Slack worker returned ${response.status}`,
-      result.providerErrorCode,
-      result.retryable ?? response.status >= 500,
-    );
-  }
-  if (result.attachmentFailures?.length) {
+  if (result.attachmentFailures.length) {
     throw new Error(
       result.attachmentFailures
         .map((failure) => `${failure.filename}: ${failure.error}`)
         .join("; "),
     );
-  }
-  if (response.status === 202 || result.sending) {
-    throw new Error("Slack worker is still processing this send");
   }
   await ctx.runMutation(internalApi.slackOutbound.markSent, {
     id: args.ledgerId,
@@ -175,26 +118,27 @@ async function sendSingle(ctx: ActionCtx, args: SlackSendArgs) {
     });
   } catch (error) {
     const deliveryError =
-      error instanceof SlackDeliveryError ? error : undefined;
+      error instanceof SlackProviderError ? error : undefined;
+    const providerErrorCode = deliveryError?.code || undefined;
     const nextAttemptAt = await ctx.runMutation(
       internalApi.slackOutbound.markFailed,
       {
         id: claim.row._id,
         error: error instanceof Error ? error.message : String(error),
         retry: deliveryError?.retryable ?? true,
-        providerErrorCode: deliveryError?.providerErrorCode,
+        providerErrorCode,
         failureReason:
           deliveryError?.retryable === false
             ? "provider_rejected_target"
             : "provider_transient_error",
       },
     );
-    if (deliveryError?.providerErrorCode) {
+    if (deliveryError && providerErrorCode) {
       await ctx.runMutation(internalApi.slackLifecycle.recordProviderFailure, {
         connectionId: claim.row.connectionId,
         channelId: claim.row.channelId,
         ledgerId: claim.row._id,
-        providerErrorCode: deliveryError.providerErrorCode,
+        providerErrorCode,
         errorSummary: deliveryError.message,
         retryable: deliveryError.retryable,
         occurredAt: dayjs().valueOf(),

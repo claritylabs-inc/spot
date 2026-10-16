@@ -4361,6 +4361,14 @@ export default defineSchema({
     .index("connection_status", ["connectionId", "status"])
     .index("retry_schedule", ["connectionId", "status", "nextAttemptAt"]),
 
+  // Short-lived Web API send claims keyed by caller clientMessageId.
+  slackSendReceipts: defineTable({
+    clientMessageId: v.string(),
+    status: v.union(v.literal("sending"), v.literal("sent")),
+    messageId: v.optional(v.string()),
+    expiresAt: v.number(),
+  }).index("by_clientMessageId", ["clientMessageId"]),
+
   operatorSlackOutboundSends: defineTable({
     idempotencyKey: v.string(),
     senderOperatorUserId: v.id("users"),

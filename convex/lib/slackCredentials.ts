@@ -15,6 +15,13 @@ const internalApi = internal as any;
 const REQUEST_TIMEOUT_MS = 30_000;
 const REFRESH_EARLY_MS = 5 * 60 * 1_000;
 
+export class SlackCredentialRefreshInProgressError extends Error {
+  constructor() {
+    super("Slack token refresh is in progress; retry the request");
+    this.name = "SlackCredentialRefreshInProgressError";
+  }
+}
+
 type EncryptedValue = {
   v: 1;
   iv: string;
@@ -110,7 +117,7 @@ async function refreshSlackToken(
         expiresAt: claim.installation.botTokenExpiresAt,
       };
     }
-    throw new Error("Slack token refresh is in progress; retry the request");
+    throw new SlackCredentialRefreshInProgressError();
   }
   if (!claim.installation.encryptedRefreshToken) {
     await ctx.runMutation(

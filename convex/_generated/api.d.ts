@@ -61,7 +61,6 @@ import type * as actions_sendNotificationSlack from "../actions/sendNotification
 import type * as actions_sendOperatorSlack from "../actions/sendOperatorSlack.js";
 import type * as actions_sendPendingEmail from "../actions/sendPendingEmail.js";
 import type * as actions_sendSlack from "../actions/sendSlack.js";
-import type * as actions_slackCredentials from "../actions/slackCredentials.js";
 import type * as actions_slackOAuth from "../actions/slackOAuth.js";
 import type * as actions_slackPresentation from "../actions/slackPresentation.js";
 import type * as actions_slackReconciliation from "../actions/slackReconciliation.js";
@@ -330,6 +329,7 @@ import type * as lib_slackRetry from "../lib/slackRetry.js";
 import type * as lib_slackSecurity from "../lib/slackSecurity.js";
 import type * as lib_slackThreadContext from "../lib/slackThreadContext.js";
 import type * as lib_slackThreadTitle from "../lib/slackThreadTitle.js";
+import type * as lib_slackWebApi from "../lib/slackWebApi.js";
 import type * as lib_sourceTree from "../lib/sourceTree.js";
 import type * as lib_spreadsheetText from "../lib/spreadsheetText.js";
 import type * as lib_storedAgentFile from "../lib/storedAgentFile.js";
@@ -409,6 +409,7 @@ import type * as slackLifecycle from "../slackLifecycle.js";
 import type * as slackOnboarding from "../slackOnboarding.js";
 import type * as slackOutbound from "../slackOutbound.js";
 import type * as slackPresentation from "../slackPresentation.js";
+import type * as slackSendReceipts from "../slackSendReceipts.js";
 import type * as sourceNodes from "../sourceNodes.js";
 import type * as sourceSpans from "../sourceSpans.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
@@ -475,7 +476,6 @@ declare const fullApi: ApiFromModules<{
   "actions/sendOperatorSlack": typeof actions_sendOperatorSlack;
   "actions/sendPendingEmail": typeof actions_sendPendingEmail;
   "actions/sendSlack": typeof actions_sendSlack;
-  "actions/slackCredentials": typeof actions_slackCredentials;
   "actions/slackOAuth": typeof actions_slackOAuth;
   "actions/slackPresentation": typeof actions_slackPresentation;
   "actions/slackReconciliation": typeof actions_slackReconciliation;
@@ -744,6 +744,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slackSecurity": typeof lib_slackSecurity;
   "lib/slackThreadContext": typeof lib_slackThreadContext;
   "lib/slackThreadTitle": typeof lib_slackThreadTitle;
+  "lib/slackWebApi": typeof lib_slackWebApi;
   "lib/sourceTree": typeof lib_sourceTree;
   "lib/spreadsheetText": typeof lib_spreadsheetText;
   "lib/storedAgentFile": typeof lib_storedAgentFile;
@@ -823,6 +824,7 @@ declare const fullApi: ApiFromModules<{
   slackOnboarding: typeof slackOnboarding;
   slackOutbound: typeof slackOutbound;
   slackPresentation: typeof slackPresentation;
+  slackSendReceipts: typeof slackSendReceipts;
   sourceNodes: typeof sourceNodes;
   sourceSpans: typeof sourceSpans;
   threadActionConfirmations: typeof threadActionConfirmations;

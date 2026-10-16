@@ -7,12 +7,10 @@
     "clRouterHealthUrlEnv": "SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL",
     "imessageWorkerHealthUrl": "https://spot-production-4618.up.railway.app/health",
     "operatorImessageWorkerHealthUrlEnv": "SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL",
-    "slackWorkerHealthUrlEnv": "SPOT_PRODUCTION_SLACK_WORKER_HEALTH_URL",
     "slack": {
       "appId": "A0BMW4TG7JB",
       "enabled": true,
-      "mode": "slack",
-      "required": true
+      "mode": "slack"
     },
     "operatorSlack": {
       "required": true
@@ -48,11 +46,9 @@
     "convexAgentHealthUrl": "http://localhost:3210/agent-health",
     "clientPortalUrl": "http://localhost:8080",
     "imessageWorkerHealthUrl": "http://localhost:3001/health",
-    "slackWorkerHealthUrl": "http://localhost:8085/health",
     "slack": {
       "enabled": true,
-      "mode": "mock",
-      "required": true
+      "mode": "mock"
     },
     "operatorSlack": {
       "required": true
