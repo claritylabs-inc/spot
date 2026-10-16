@@ -393,35 +393,47 @@ export async function classifyPolicyIntake(args: {
         ].map((match) => normalized(match[1])),
       );
       if (!uploadNumbers.size) {
+        const text = evidence.text.slice(0, MAX_EVIDENCE_CHARS);
         const numbers = [...new Set(
-          [...evidence.text.matchAll(/\b[A-Z0-9][A-Z0-9/-]{3,39}\b/gi)]
+          [...text.matchAll(/\b[A-Z0-9][A-Z0-9/-]{3,39}\b/gi)]
             .map(([value]) => value)
-            .filter((value) => /\d/.test(value)),
-        )];
-        for (let offset = 0; offset < numbers.length; offset += 127) {
-          const batchNumbers = numbers.slice(offset, offset + 127);
-          const selection = await clRouterDecide({
-            orgId: String(args.orgId),
-            task: "policy_extraction_intake",
-            state: { text: evidence.text.slice(0, MAX_EVIDENCE_CHARS), numbers: batchNumbers },
-            questions: { policyNumber: {
-              type: "choice",
-              instructions: "Which candidate in `numbers` is the policy number of the uploaded policy in `text`?",
-              criteria: {
-                ...Object.fromEntries(batchNumbers.map((value, index) => [`number_${index}`, {
-                  what: `The policy identifier ${value} in \`numbers[${index}]\`.`,
-                  not_for: "Form numbers, dates, premiums, limits or account identifiers.",
-                }])),
-                none: "None of the candidates is the uploaded policy number.",
-              },
-            } },
-            trace: args.traceId ? { traceId: args.traceId } : undefined,
-          }, { telemetry: args.ctx });
-          const answer = selection.answers.policyNumber;
-          if (answer?.type === "choice" && jevProceeds(jevChoiceConfidence(answer))) {
-            const selected = batchNumbers[Number(answer.choice.replace("number_", ""))];
-            if (answer.choice.startsWith("number_") && selected) uploadNumbers.add(normalized(selected));
+            .filter((value) =>
+              /\d/.test(value) &&
+              !/^(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})$/.test(value) &&
+              !/^(?:\d{1,3}-)?\d{3}-\d{3}-\d{4}$/.test(value) &&
+              !/^\d{10,11}$/.test(value),
+            ),
+        )].slice(0, 127);
+        try {
+          if (numbers.length) {
+            const selection = await clRouterDecide({
+              orgId: String(args.orgId),
+              task: "policy_extraction_intake",
+              state: { text, numbers },
+              questions: { policyNumber: {
+                type: "choice",
+                instructions: "Which candidate in `numbers` is the policy number of the uploaded policy in `text`?",
+                criteria: {
+                  ...Object.fromEntries(numbers.map((value, index) => [`number_${index}`, {
+                    what: `The policy identifier ${value} in \`numbers[${index}]\`.`,
+                    not_for: "Form numbers, dates, premiums, limits or account identifiers.",
+                  }])),
+                  none: "None of the candidates is the uploaded policy number.",
+                },
+              } },
+              trace: args.traceId ? { traceId: args.traceId } : undefined,
+            }, { telemetry: args.ctx });
+            const answer = selection.answers.policyNumber;
+            if (answer?.type === "choice" && jevProceeds(jevChoiceConfidence(answer))) {
+              const selected = numbers[Number(answer.choice.replace("number_", ""))];
+              if (answer.choice.startsWith("number_") && selected) uploadNumbers.add(normalized(selected));
+            }
           }
+        } catch (error) {
+          console.warn(
+            "Policy number selection unavailable; retaining intake classification",
+            error instanceof Error ? error.message : String(error),
+          );
         }
       }
       const sameNumber =

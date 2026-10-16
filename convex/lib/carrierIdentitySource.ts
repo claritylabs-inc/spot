@@ -74,7 +74,7 @@ const CARRIER_CONTAMINATION_PATTERN =
 const CARRIER_FINANCIAL_CONTAMINATION_PATTERN =
   /(?:[$€£]\s*\d|\b\d+(?:\.\d+)?\s*%)/i;
 const COMPLETE_LEGAL_ENTITY_SUFFIX =
-  "(?:Insurance\\s+Company|Assurance\\s+Company|Insurance\\s+Corporation|Assurance\\s+Corporation|Indemnity\\s+Company|Company|Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|L\\.?L\\.?C\\.?|PLC|S\\.?(?:E\\.?)?)(?:\\s+of\\s+[A-Za-z][A-Za-z’.-]*(?:\\s+(?!(?:and|or|operating|doing)\\b)[A-Za-z][A-Za-z’.-]*){0,5})?";
+  "(?:Insurance\\s+Company|Assurance\\s+Company|Insurance\\s+Corporation|Assurance\\s+Corporation|Indemnity\\s+Company|Company|Corporation|Corp\\.?|Incorporated|Inc\\.?|Limited|Ltd\\.?|L\\.?L\\.?C\\.?|PLC|S\\.?(?:E\\.?)?)(?:\\s+of\\s+[A-Za-z][A-Za-z’.-]*(?:\\s+(?!(?:and|or|operating|doing|dba|d\\s*\\/?\\s*b\\s*\\/?\\s*a)\\b)[A-Za-z][A-Za-z’.-]*){0,5})?";
 const COMPLETE_LEGAL_ENTITY_PATTERN = new RegExp(
   `(?:^|[,;]|\\b(?:and\\s*\\/\\s*or|and|or)\\b)\\s*` +
     `([A-Z][A-Za-z0-9&'’.-]*(?:\\s+[A-Za-z0-9&'’.-]+){0,10}\\s+${COMPLETE_LEGAL_ENTITY_SUFFIX})` +

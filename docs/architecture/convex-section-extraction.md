@@ -41,7 +41,9 @@ localization does not participate in promotion eligibility.
 
 Extraction decision hygiene keeps exact normalized labeled insured/carrier matches
 in code. When labeled policy-number parsing finds nothing, an advisory Choice
-selects among identifier candidates from the text, with a none option; number and
+selects among at most 127 identifier candidates from the same bounded text slice,
+excluding date- and phone-shaped tokens, with a none option. Selection failures
+retain the intake classification and leave the number unknown. Number and
 period equality remain deterministic. Coverage scoping processes every ambiguous
 row in batches of 100. Section-kind choices contrast base forms, endorsements,
 form lists, item schedules and declarations; other means none of those types,
@@ -50,8 +52,7 @@ while uncertain answers follow the confidence fallback.
 Citation localization preserves pdf.js line-position boxes without a model call.
 Remaining targets are grouped by page, rendered and staged once, and receive one
 presence Noul and Box pair per quote in a payload-splittable request. Confident
-coarse matches are cropped before refinement through `locateOnPdfPage`, reusing
-the crop as its page image. The current shared locator performs another presence
-and Box pass before its final zoom; accepting an optional coarse location there
-would eliminate that redundant pass. Cancellation and the phase deadline are
+coarse matches are cropped once with padding and receive one presence Noul and
+Box refinement on that crop. Crop-relative boxes map through the rendered crop
+region into PDF points. Cancellation and the phase deadline are
 checked before each batch and quote; in-flight requests are not interrupted.
