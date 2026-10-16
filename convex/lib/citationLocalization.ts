@@ -2,7 +2,12 @@
 
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { resolveCitation } from "./citationResolver";
+import dayjs from "dayjs";
+import {
+  buildCitationIndex,
+  resolveCitationWithIndex,
+  type ResolvedCitation,
+} from "./citationResolver";
 import { locateOnPdfPage } from "./jevImages";
 import { jevProceeds } from "./jevThreshold";
 import { renderPdfPageImages } from "./pdfPageImages";
@@ -12,6 +17,12 @@ import { citationPageCandidates } from "./sectionExtraction/prompts";
 import type { SectionCitation } from "./sectionExtraction/schemas";
 
 const MAX_LOCALIZED_CITATIONS = 40;
+const MATCH_RANK: Record<ResolvedCitation["match"], number> = {
+  exact: 3,
+  normalized: 2,
+  page_only: 1,
+  unresolved: 0,
+};
 
 function citationsIn(value: unknown): SectionCitation[] {
   if (Array.isArray(value)) return value.flatMap(citationsIn);
@@ -38,10 +49,16 @@ export async function localizePolicyCitations(args: {
   sourceSpans: SourceSpanLike[];
   results: SectionResult[];
   traceId?: string;
+  deadlineMs?: number;
   isCancelled?: () => Promise<boolean>;
   log?: (message: string) => Promise<void>;
 }): Promise<SourceSpanLike[]> {
   const spans = args.sourceSpans.map((span) => ({ ...span }));
+  const deadlineMs = args.deadlineMs ?? dayjs().add(120, "seconds").valueOf();
+  const citationIndex = buildCitationIndex(spans);
+  const spansById = new Map(
+    spans.map((span) => [span.id ?? span.spanId ?? "", span]),
+  );
   const seen = new Set<string>();
   let attempted = 0;
   let localized = 0;
@@ -52,22 +69,37 @@ export async function localizePolicyCitations(args: {
   );
   for (const { section, output } of results) {
     for (const citation of citationsIn(output)) {
-      if (attempted >= MAX_LOCALIZED_CITATIONS || (await args.isCancelled?.()))
+      if (
+        attempted >= MAX_LOCALIZED_CITATIONS ||
+        dayjs().valueOf() >= deadlineMs
+      )
         return spans;
-      const page = citationPageCandidates(citation.page, section)[0];
       const quote = citation.quote.trim();
-      if (page === undefined || !quote) continue;
+      if (!quote) continue;
+      let resolved: ResolvedCitation | undefined;
+      for (const page of citationPageCandidates(citation.page, section)) {
+        const candidate = resolveCitationWithIndex(
+          { page, quote },
+          citationIndex,
+        );
+        if (
+          !resolved ||
+          MATCH_RANK[candidate.match] > MATCH_RANK[resolved.match]
+        )
+          resolved = candidate;
+      }
+      if (!resolved || resolved.match === "unresolved") continue;
+      const page = resolved.page;
       const key = `${page}:${quote}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const resolved = resolveCitation({ page, quote }, spans);
-      if (resolved.match === "unresolved") continue;
-      const targets = spans.filter(
-        (span) =>
-          resolved.sourceSpanIds.includes(span.id ?? span.spanId ?? "") &&
-          !span.bbox?.length,
-      );
+      const targets = resolved.sourceSpanIds.flatMap((id) => {
+        const span = spansById.get(id);
+        return span && !span.bbox?.length ? [span] : [];
+      });
       if (resolved.match !== "page_only" && !targets.length) continue;
+      if (await args.isCancelled?.()) return spans;
+      if (dayjs().valueOf() >= deadlineMs) return spans;
       attempted += 1;
       try {
         const [pageImage] = await renderPdfPageImages({
@@ -127,6 +159,7 @@ export async function localizePolicyCitations(args: {
           const index = spans.indexOf(span);
           if (index < 0) spans.push(next);
           else spans[index] = next;
+          spansById.set(next.id ?? next.spanId ?? "", next);
         }
         localized += 1;
       } catch (error) {

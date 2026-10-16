@@ -2204,6 +2204,7 @@ export function makePhases(
   const storeSourcesPhase: Phase<PolicyExtractionState> = {
     name: "store_sources",
     run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
+      const localizationDeadlineMs = nowMs() + 120_000;
       const { state } = pCtx.checkpoint;
       const policyId = pCtx.jobId;
       if (await isExtractionCancelled(convexCtx, policyId)) {
@@ -2240,6 +2241,7 @@ export function makePhases(
               sourceSpans: sourceSpans as SourceSpanLike[],
               results: sections.map(({ result }) => result),
               traceId: state.traceId,
+              deadlineMs: localizationDeadlineMs,
               isCancelled: () => isExtractionCancelled(convexCtx, policyId),
               log: (message) => pCtx.log(message),
             })) as SourceStoragePayload["sourceSpansForStorage"];
