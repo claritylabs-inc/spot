@@ -55,7 +55,11 @@ export async function resolvePolicyReferenceForOrg(ctx: ActionCtx, args: {
 
   if (matches.length === 0 && policies.length) {
     try {
-      const candidates = Object.fromEntries(policies.map((policy, index) => [
+      const semanticPolicies = [...policies]
+        .sort((a, b) => b._creationTime - a._creationTime)
+        .slice(0, 60);
+      const orgIds = new Set(semanticPolicies.map((policy) => policy.orgId));
+      const candidates = Object.fromEntries(semanticPolicies.map((policy, index) => [
         `policy_${index}`,
         {
           label: policyLabel(policy),
@@ -66,6 +70,7 @@ export async function resolvePolicyReferenceForOrg(ctx: ActionCtx, args: {
         },
       ]));
       const result = await clRouterDecide({
+        ...(orgIds.size === 1 ? { orgId: String(semanticPolicies[0].orgId) } : {}),
         task: "policy_reference_resolution",
         state: { reference: args.reference, policies: candidates },
         questions: {
@@ -86,7 +91,23 @@ export async function resolvePolicyReferenceForOrg(ctx: ActionCtx, args: {
       if (answer?.type === "choice" && answer.choice !== "none" &&
           jevProceeds(jevChoiceConfidence(answer))) {
         const index = Object.keys(candidates).indexOf(answer.choice);
-        if (index >= 0) return { ok: true, policy: policies[index] };
+        if (index >= 0) return { ok: true, policy: semanticPolicies[index] };
+      }
+      if (answer?.type === "choice") {
+        const plausible = semanticPolicies.filter((_, index) => {
+          const probability = answer.probabilities[`policy_${index}`];
+          return probability !== undefined && !jevProceeds(1 - probability);
+        });
+        if (plausible.length > 1) {
+          return {
+            ok: false,
+            message: [
+              "I found multiple matching policies. Choose one:",
+              ...plausible.slice(0, 5).map((policy, index) =>
+                `${index + 1}. ${policyLabel(policy)}`),
+            ].join("\n"),
+          };
+        }
       }
     } catch {
       // Unavailable semantic resolution asks the user for an exact reference.
