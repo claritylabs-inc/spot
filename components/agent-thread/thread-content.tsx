@@ -40,6 +40,7 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
 import { PromptReferenceText } from "@/components/prompt-reference-tag";
 import { usePdf } from "@/components/pdf-context";
+import { useStagePageCapture } from "@/components/browser-extension/page-capture";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
 import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
@@ -497,6 +498,7 @@ export function UnifiedThreadContent({
     );
   }, [messages]);
   const isInputBusy = isSubmitting || sendingQueuedNow;
+  useStagePageCapture(chatInputRef, !isInputBusy);
 
   const sendThreadMessage = useCallback(
     (message: PromptInputMessage) => {

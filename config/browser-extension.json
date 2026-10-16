@@ -1,0 +1,10 @@
+{
+  "appOrigin": "https://app.spot.insure",
+  "path": "/extension",
+  "extensionId": "akehiiagpjnaifccilicaefmhedhhbng",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwIY5q5+RJcWHslaP3ewidRrEGgw+67nzlhI0z5v+VVTKvoNGeTbnjqOM2tPVRci3wCzmnSZxLZFzTHK2z7Nyq/VkDv3Qm4vbsF3RxNwSeJ/s4JpyEhWP2ThkhmWZCFEfAoqfKs5v2pqXoEIpzWk15q5spFAmvAxX9qZ474Rbxk/n/N9+JtTGmxz1nAwWTeXeE0wapLjzO+oSWH3Sw8Cz7U5ZDcoXF2lbvUdll+Q7xCMuE9BZrHqNbKDg/RPcs+kXq2gSxCjgDaLpGsALoqFJALDgW/T0iZWSXMy5tJrW16GGB7pXM+JwUeiRfUB9t7Zn1ICIfkynKCjqPOZnmv9QpwIDAQAB",
+  "protocolVersion": 1,
+  "maxTextLength": 20000,
+  "maxTitleLength": 300,
+  "maxUrlLength": 2048
+}

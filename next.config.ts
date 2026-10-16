@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import browserExtension from "./config/browser-extension.json";
 
 const convexSiteUrl =
   process.env.NEXT_PUBLIC_CONVEX_SITE_URL ??
@@ -82,6 +83,13 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: "/extension",
+        headers: [{
+          key: "Content-Security-Policy",
+          value: `frame-ancestors 'self' chrome-extension://${browserExtension.extensionId}`,
+        }],
+      },
       {
         // The whole app is a logged-in product; keep it out of search results.
         source: "/:path*",

@@ -21,6 +21,8 @@ import { AGENT_DOCK_MAX_HEIGHT, AGENT_DOCK_MIN_HEIGHT } from "./dock-storage";
 import type { AgentDockAdapter } from "./types";
 
 export const AGENT_DOCK_BAR_HEIGHT = 44;
+export const AGENT_CHAT_SURFACE =
+  "bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#0b0c0d]";
 /** Frame around the lifted app card while the agent is open. */
 const CARD_GAP = 8;
 const CARD_RADIUS = 12;
@@ -119,7 +121,7 @@ function ResizeHandle({
   );
 }
 
-function DockBody({
+export function DockBody({
   adapter,
   mode,
   onActions,
@@ -251,7 +253,7 @@ export function AgentDockLayout({
   const transition = reduceMotion || dragHeight !== null ? { duration: 0 } : SPRING;
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#0b0c0d]">
+    <div className={cn("relative h-dvh w-full overflow-hidden", AGENT_CHAT_SURFACE)}>
       {adapter ? (
         <motion.section
           data-agent-dock

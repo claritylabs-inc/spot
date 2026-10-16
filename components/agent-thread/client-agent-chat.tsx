@@ -16,6 +16,7 @@ import {
   type ChatComposerHandle,
 } from "@/components/chat/chat-composer";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { useStagePageCapture } from "@/components/browser-extension/page-capture";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -98,6 +99,7 @@ function NewClientChat({ onThreadCreated }: AgentDockChatProps) {
   const pageContext = detached ? null : currentContext;
   const suggestions = useMemo(() => pageSuggestions(pageContext), [pageContext]);
   const { registerComposer } = dock;
+  useStagePageCapture(composerRef, !sending);
   const toggleContext = () => {
     if (!currentContext) return;
     if (detached) dock.attachContext();
