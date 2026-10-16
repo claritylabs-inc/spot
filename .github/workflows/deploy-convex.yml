@@ -42,11 +42,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund --loglevel=error
 
-      - name: Install iMessage worker test dependencies
-        if: matrix.check == 'test'
-        working-directory: imessage-worker
-        run: npm ci --include=dev --no-audit --no-fund --loglevel=error
-
       - name: Lint
         if: matrix.check == 'lint'
         run: npm run lint
