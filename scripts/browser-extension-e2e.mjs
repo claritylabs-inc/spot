@@ -201,7 +201,7 @@ try {
   await frame.locator("body").evaluate(() => { localStorage.setItem("theme", "light"); document.documentElement.classList.remove("dark"); });
   await context.clearCookies();
   await panel.reload();
-  await frame.getByRole("heading", { name: "Sign in to Spot" }).waitFor();
+  await frame.getByRole("heading", { name: "Your insurance agent, right here." }).waitFor();
   assert(await panel.locator("#capture").isDisabled());
   pass("signed-out gate disables capture and removes agent view");
 } catch (error) {
@@ -210,7 +210,7 @@ try {
   console.error(error);
   process.exitCode = 1;
 } finally {
-  setAccess(org.clientAccessStatus ?? "intake");
+  setAccess(org.clientAccessStatus ?? "limited");
   await context.close();
   fixture.close();
   writeFileSync(path.join(out, "results.json"), JSON.stringify({ browser: "Chrome", appOrigin, headed: !!process.env.DISPLAY, results }, null, 2) + "\n");
