@@ -7,28 +7,18 @@ type OperatorClientList = FunctionReturnType<typeof api.operator.listClients>;
 export type OperatorClientRow = OperatorClientList[number];
 
 export const OPERATOR_CLIENT_STATUSES = {
-  onboarding: {
-    label: "Onboarding",
+  limited: {
+    label: "Limited",
     tone: "warning",
     indicator: "progress",
   },
-  live: {
-    label: "Live",
+  active: {
+    label: "Active",
     tone: "success",
     indicator: "complete",
   },
-  lost: {
-    label: "Lost",
-    tone: "danger",
-    indicator: "cancelled",
-  },
-  churned: {
-    label: "Churned",
-    tone: "danger",
-    indicator: "cancelled",
-  },
 } satisfies Record<
-  NonNullable<OperatorClientRow["operatorStatus"]>,
+  NonNullable<OperatorClientRow["clientAccessStatus"]>,
   StatusPresentation & { label: string }
 >;
 
@@ -40,12 +30,12 @@ export const operatorClientStatuses = Object.fromEntries(
 ) as Record<keyof typeof OPERATOR_CLIENT_STATUSES, string>;
 
 export function operatorClientStatusLabel(client: OperatorClientRow) {
-  return OPERATOR_CLIENT_STATUSES[client.operatorStatus].label;
+  return OPERATOR_CLIENT_STATUSES[client.clientAccessStatus].label;
 }
 
 export function operatorClientStatusPresentation(
   client: OperatorClientRow,
 ): StatusPresentation {
-  const { tone, indicator } = OPERATOR_CLIENT_STATUSES[client.operatorStatus];
+  const { tone, indicator } = OPERATOR_CLIENT_STATUSES[client.clientAccessStatus];
   return { tone, indicator };
 }

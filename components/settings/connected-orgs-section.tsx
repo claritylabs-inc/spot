@@ -453,8 +453,7 @@ export function ConnectedOrgsSection({
   const router = useRouter();
   const currentOrg = useActiveOrgContext();
   const orgId = currentOrg?.orgId;
-  const canManage =
-    currentOrg?.role === "admin" && !currentOrg.isReadOnlyImpersonation;
+  const canManage = currentOrg?.role === "admin";
   const vendorRows = useCachedQuery(
     "connectedOrgs.listVendors",
     connectedOrgsApi.connectedOrgs.listVendors,

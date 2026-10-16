@@ -1316,11 +1316,11 @@ export const getById = query({
   },
 });
 
-// Operator-controlled rollout of the client workspace. Unset clients remain in intake.
+// Operator-controlled rollout of the client workspace. Unset clients remain limited.
 export const setClientAccessStatus = mutation({
   args: {
     orgId: v.id("organizations"),
-    status: v.union(v.literal("intake"), v.literal("active")),
+    status: v.union(v.literal("limited"), v.literal("active")),
   },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
@@ -1329,5 +1329,31 @@ export const setClientAccessStatus = mutation({
       throw new Error("Client organization not found");
     }
     await ctx.db.patch(args.orgId, { clientAccessStatus: args.status });
+  },
+});
+
+// One-time backfill for the retired `operatorStatus`: live clients become active, everything else becomes limited, and the retired "intake" value is renamed to "limited".
+export const migrateOperatorStatusInternal = internalMutation({
+  args: { cursor: v.optional(v.string()), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("organizations")
+      .paginate({ numItems: 100, cursor: args.cursor ?? null });
+    let updated = 0;
+    for (const org of page.page) {
+      if (org.type === "broker") continue;
+      if (org.clientAccessStatus !== undefined && org.clientAccessStatus !== "intake")
+        continue;
+      const status =
+        org.clientAccessStatus === "intake" ||
+        (org.clientAccessStatus === undefined &&
+          (org.operatorStatus ?? "live") !== "live")
+          ? "limited"
+          : "active";
+      updated += 1;
+      if (!args.dryRun)
+        await ctx.db.patch(org._id, { clientAccessStatus: status });
+    }
+    return { updated, isDone: page.isDone, continueCursor: page.continueCursor };
   },
 });

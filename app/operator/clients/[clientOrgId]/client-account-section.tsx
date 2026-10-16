@@ -22,7 +22,7 @@ import { ClientLogoField } from "../client-logo-field";
 export type ClientAccountDraft = {
   name: string;
   website: string;
-  status: OperatorClientRow["operatorStatus"];
+  status: OperatorClientRow["clientAccessStatus"];
 };
 export function ClientAccountSection({
   client,

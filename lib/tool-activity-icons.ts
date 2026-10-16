@@ -59,7 +59,7 @@ const operatorToolCategories = {
   invite_operator: "settings",
   update_organization_profile: "organizations",
   update_client_business_profile: "organizations",
-  set_organization_status: "organizations",
+  set_client_access_status: "organizations",
   get_broker_network_profile: "brokers",
   list_broker_network_profiles: "brokers",
   create_broker_network_profile: "brokers",

@@ -36,7 +36,6 @@ import {
 type OperatorClientTeamTarget = {
   _id: Id<"organizations">;
   primaryInsuranceContactId?: Id<"users">;
-  operatorStatus?: "onboarding" | "live" | "lost" | "churned";
 };
 
 export function TeamSection({
@@ -531,12 +530,7 @@ export function TeamSection({
             operatorClientOrgId && !editingMember.isActivated ? (
               <PillButton
                 variant="secondary"
-                disabled={
-                  activationUserId !== null ||
-                  !editingMember.email ||
-                  (operatorClient?.operatorStatus === "onboarding" &&
-                    editingMember.role !== "admin")
-                }
+                disabled={activationUserId !== null || !editingMember.email}
                 onClick={() => void sendOperatorActivation(editingMember)}
               >
                 {activationUserId === editingMember.userId ? (
@@ -609,7 +603,6 @@ export function TeamSection({
     cancellingInvitation,
     cancelPendingInvitation,
     activationUserId,
-    operatorClient?.operatorStatus,
     sendOperatorActivation,
     editName,
     editEmail,

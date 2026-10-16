@@ -341,7 +341,8 @@ export async function writeOperatorAudit(
       | "impersonation_chat_message"
       | "demo_lead_deleted"
       | "memory_cleared"
-      | "setup_write";
+      | "setup_write"
+      | "impersonated_write";
     targetOrgId?: Id<"organizations">;
     targetUserId?: Id<"users">;
     summary: string;
@@ -392,18 +393,15 @@ export async function getActiveOperatorImpersonation(ctx: Ctx) {
   return { operator, session, targetOrg };
 }
 
-export async function assertImpersonatedSetupWrite(
-  ctx: Ctx,
-  orgId: Id<"organizations">,
-) {
+/** Impersonated actions run as the target member and never fail auth; each write is audited. */
+export async function recordImpersonatedWrite(ctx: Ctx) {
   const active = await getActiveOperatorImpersonation(ctx);
-  if (!active) return null;
-
-  if (
-    active.targetOrg._id !== orgId ||
-    (active.targetOrg.operatorStatus ?? "live") !== "onboarding"
-  ) {
-    throwUserFacingError(userFacingErrorCodes.impersonationReadOnly);
-  }
-  return active;
+  if (!active || !("insert" in ctx.db)) return;
+  await writeOperatorAudit(ctx as MutationCtx, {
+    type: "impersonated_write",
+    operatorUserId: active.operator.userId,
+    targetOrgId: active.targetOrg._id,
+    summary: `Operator acted as ${active.session.targetRole} in ${active.targetOrg.name}`,
+    metadata: { targetRole: active.session.targetRole },
+  });
 }

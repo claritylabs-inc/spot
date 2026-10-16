@@ -59,7 +59,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_client_business_profile",
   "research_client",
   "research_broker",
-  "set_organization_status",
+  "set_client_access_status",
   "set_client_feature_flag",
   "send_operator_slack_message",
   "clear_all_agent_memory",
@@ -1044,23 +1044,9 @@ export async function preflightOperatorToolConfirmation(
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
       return;
-    case "set_organization_status": {
-      const organization = await requireDocument(
-        ctx,
-        "organizations",
-        args.input.orgId,
-        "Organization",
-      );
-      if (
-        organization.type !== "client" &&
-        (args.input.status === "lost" || args.input.status === "churned")
-      ) {
-        throw new Error(
-          "Lost and churned statuses are only available for clients",
-        );
-      }
+    case "set_client_access_status":
+      await requireClientOrganization(ctx, args.input.orgId);
       return;
-    }
     case "set_client_feature_flag": {
       const organization = await requireClientOrganization(
         ctx,

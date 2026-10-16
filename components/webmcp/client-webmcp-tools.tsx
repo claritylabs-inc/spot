@@ -78,7 +78,6 @@ export function ClientWebMcpTools() {
       viewer.accountKind !== "operator" &&
       viewer.onboardingComplete &&
       org?.type === "client" &&
-      (org.operatorStatus ?? "live") !== "onboarding" &&
       !onPath(pathname, NO_CLIENT_TOOLS),
   );
 

@@ -35,7 +35,7 @@ import {
 import { isLobCode, policyLobCodes } from "./lib/linesOfBusiness";
 import { notify } from "./lib/notify";
 import {
-  assertImpersonatedSetupWrite,
+  recordImpersonatedWrite,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
 import {
@@ -158,7 +158,7 @@ async function requireOrgAdminWrite(
   errorMessage: string,
 ) {
   const access = await requireOrgMember(ctx, orgId);
-  await assertImpersonatedSetupWrite(ctx, orgId);
+  await recordImpersonatedWrite(ctx);
   if (access.accessType === "operator") return access;
   if (access.role !== "admin") {
     throwUserFacingError(userFacingErrorCodes.orgAdminRequired, errorMessage);
@@ -186,7 +186,7 @@ async function requireAdminWriteActor(
   if (access.userId !== userId) {
     throwUserFacingError(userFacingErrorCodes.orgAccessRequired);
   }
-  await assertImpersonatedSetupWrite(ctx, orgId);
+  await recordImpersonatedWrite(ctx);
   if (access.accessType === "operator") return access;
   if (access.role === "admin") return access;
   throwUserFacingError(userFacingErrorCodes.orgAdminRequired, errorMessage);

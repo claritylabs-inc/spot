@@ -22,7 +22,7 @@ import {
   type OrgAccess,
 } from "./lib/access";
 import {
-  assertImpersonatedSetupWrite,
+  recordImpersonatedWrite,
   getActiveOperatorImpersonation,
   requireOperator,
   requireOperatorForUser,
@@ -1236,7 +1236,7 @@ export const insert = mutation({
     const client = await ctx.db.get(args.orgId);
     if (!client || client.type !== "client")
       throw new Error("Client not found");
-    await assertImpersonatedSetupWrite(ctx, args.orgId);
+    await recordImpersonatedWrite(ctx);
     const now = nowMs();
     const fileSha256 = normalizeFileSha256(args.fileSha256);
     const uploadFileSha256s = normalizeFileSha256s(
@@ -1544,7 +1544,7 @@ export const updateExtractedFields = mutation({
       allowOperator: true,
     });
     assertCanEditPolicyExtractedFields(access);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
 
     const patch: Record<string, unknown> = {};
     const normalizedFields = normalizeEditableFields(args.fields);
@@ -1617,7 +1617,7 @@ export const updatePolicyDetails = mutation({
       allowOperator: true,
     });
     assertCanEditPolicyExtractedFields(access);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
 
     const existingOverrides = policy.policyDetailOverrides ?? {};
     const patch: Record<string, unknown> = {
@@ -1802,7 +1802,7 @@ export const answerCoverageReviewQuestion = mutation({
       allowOperator: true,
     });
     assertCanReviewPolicyExtraction(access);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
 
     const review = policy.extractionReview as
       | { questions?: Array<Record<string, unknown>> }
@@ -2015,7 +2015,7 @@ export const generateUploadUrlForOrg = mutation({
       allowOperator: true,
     });
     assertCanUploadPolicy(access);
-    await assertImpersonatedSetupWrite(ctx, args.orgId);
+    await recordImpersonatedWrite(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -2092,7 +2092,7 @@ export const createOperatorUpload = mutation({
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    await assertImpersonatedSetupWrite(ctx, args.clientOrgId);
+    await recordImpersonatedWrite(ctx);
     return createOperatorUploadByUser(ctx, operator.userId, args);
   },
 });
@@ -2379,7 +2379,7 @@ export const cancelExtraction = mutation({
       allowOperator: true,
     });
     assertCanManageUploadedPolicy(access, policy);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
     const { userId } = access;
     const orgId = policy.orgId;
     const state = await readPolicyPipelineState(ctx, args.id);
@@ -2435,7 +2435,7 @@ export const archive = mutation({
       allowOperator: true,
     });
     assertCanManageUploadedPolicy(access, policy);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
     if (policy.deletedAt) return;
     await ctx.db.patch(args.id, { deletedAt: dayjs().valueOf() });
     await deactivatePolicyDeclarationFacts(ctx, args.id);
@@ -2929,7 +2929,7 @@ export const restore = mutation({
       allowOperator: true,
     });
     assertCanManageUploadedPolicy(access, policy);
-    await assertImpersonatedSetupWrite(ctx, policy.orgId);
+    await recordImpersonatedWrite(ctx);
     if (!policy.deletedAt) return;
     await ctx.db.patch(args.id, { deletedAt: undefined });
     await reactivatePolicyDeclarationFacts(ctx, args.id);

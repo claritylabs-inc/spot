@@ -14,7 +14,6 @@ type OperatorImpersonationContext = {
     targetOrgName?: string;
     targetOrgType: "broker" | "client";
     targetRole: "admin" | "member";
-    targetOrgOperatorStatus?: "onboarding" | "live";
   } | null;
 };
 
@@ -31,8 +30,6 @@ export function OperatorImpersonationBanner() {
   );
   const impersonation = operatorContext?.activeImpersonation;
   const hasImpersonation = Boolean(impersonation);
-  const isReadOnly =
-    impersonation?.targetOrgOperatorStatus !== "onboarding";
 
   useEffect(() => {
     const root = document.documentElement;
@@ -72,7 +69,7 @@ export function OperatorImpersonationBanner() {
         <div className="min-w-0">
           <p className={`truncate ${typeStyle("body.medium")}`}>Operator mode</p>
           <p className={`truncate text-white/62 dark:text-black/62 ${typeStyle("caption.default")}`}>
-            {isReadOnly ? "Read-only live organization" : "Onboarding setup access"}
+            Read-only view
           </p>
         </div>
         <div className="flex min-w-0 items-center justify-between gap-3 sm:justify-end">

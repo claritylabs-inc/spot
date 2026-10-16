@@ -1,4 +1,5 @@
 import { clientIdentity, clientIdentityMatches } from "./lib/clientProfile";
+import { clientAccessStatus } from "./lib/clientAccess";
 import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
@@ -54,12 +55,7 @@ import {
   type ExtractionSectionFactView,
 } from "./lib/extractionRunView";
 
-const clientStatusValidator = v.union(
-  v.literal("onboarding"),
-  v.literal("live"),
-  v.literal("lost"),
-  v.literal("churned"),
-);
+const clientStatusValidator = v.union(v.literal("limited"), v.literal("active"));
 const orgRoleValidator = v.union(v.literal("admin"), v.literal("member"));
 const operatorClientUserValidator = v.object({
   email: v.string(),
@@ -154,7 +150,6 @@ export const current = query({
               ...activeImpersonation,
               targetOrgName: targetOrg.name,
               targetOrgType: targetOrg.type ?? "client",
-              targetOrgOperatorStatus: targetOrg.operatorStatus ?? "live",
             }
           : null,
     };
@@ -226,7 +221,7 @@ async function listOperatorClientRows(ctx: QueryCtx) {
         name: client.name,
         ...(await orgBrandFields(ctx, client)),
         agentHandle: client.agentHandle,
-        operatorStatus: client.operatorStatus ?? "live",
+        clientAccessStatus: clientAccessStatus(client),
         onboardingComplete: client.onboardingComplete,
         primaryContactName: client.primaryContactName,
         primaryContactEmail: client.primaryContactEmail,
@@ -259,6 +254,7 @@ export const getClientSupportDetails = query({
       return null;
     return {
       ...client,
+      clientAccessStatus: clientAccessStatus(client),
       ...(await orgBrandFields(ctx, client)),
     };
   },
@@ -507,8 +503,8 @@ export const setSoloClientStatus = mutation({
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
-    const previous = client.operatorStatus ?? "live";
-    await ctx.db.patch(args.clientOrgId, { operatorStatus: args.status });
+    const previous = clientAccessStatus(client);
+    await ctx.db.patch(args.clientOrgId, { clientAccessStatus: args.status });
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "client_status_changed",
@@ -901,7 +897,7 @@ export async function createStandaloneClientOrganizationByOperator(
     operatorUserId: Id<"users">;
     name: string;
     website?: string;
-    operatorStatus?: Doc<"organizations">["operatorStatus"];
+    clientAccessStatus?: "limited" | "active";
   },
 ) {
   await requireOperatorForUser(ctx, args.operatorUserId);
@@ -928,7 +924,7 @@ export async function createStandaloneClientOrganizationByOperator(
     allowedEmails: [],
     emailVerification: "strict",
     onboardingComplete: true,
-    operatorStatus: args.operatorStatus ?? "onboarding",
+    clientAccessStatus: args.clientAccessStatus ?? "limited",
   });
   await scheduleCompanyResearch(ctx, orgId);
   return orgId;
@@ -1075,13 +1071,7 @@ export const getSoloClientLaunchContextInternal = internalQuery({
     const targetMembership = args.adminUserId
       ? memberships.find((membership) => membership.userId === args.adminUserId)
       : memberships.find((membership) => membership.role === "admin");
-    if (
-      !targetMembership ||
-      ((client.operatorStatus ?? "live") === "onboarding" &&
-        targetMembership.role !== "admin")
-    ) {
-      return null;
-    }
+    if (!targetMembership) return null;
     const recipient = await ctx.db.get(targetMembership.userId);
     if (!recipient || recipient.serviceAccountKind) return null;
     return {
@@ -1106,10 +1096,9 @@ export const markSoloClientLaunchedInternal = internalMutation({
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
-    const wasOnboarding = client.operatorStatus === "onboarding";
+    const wasLimited = clientAccessStatus(client) === "limited";
     await ctx.db.patch(args.clientOrgId, {
-      operatorStatus:
-        client.operatorStatus === "onboarding" ? "live" : client.operatorStatus,
+      clientAccessStatus: "active",
       onboardingComplete: true,
     });
     await writeOperatorAudit(ctx, {
@@ -1117,7 +1106,7 @@ export const markSoloClientLaunchedInternal = internalMutation({
       type: "client_launch_email_sent",
       targetOrgId: args.clientOrgId,
       targetUserId: args.adminUserId,
-      summary: `${wasOnboarding ? "Launched" : "Sent activation email for"} ${client.name}; email provider accepted client login email`,
+      summary: `${wasLimited ? "Launched" : "Sent activation email for"} ${client.name}; email provider accepted client login email`,
       metadata: {
         recipientEmail: args.recipientEmail,
         resendEmailId: args.resendEmailId,
