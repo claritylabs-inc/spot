@@ -1,10 +1,7 @@
 "use node";
 
-import { spawn } from "node:child_process";
-import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { EnsureM4a } from "../../imessage-worker/src/attachmentPolicy";
 
 const M4A_MIME_TYPES = new Set([
@@ -24,63 +21,56 @@ function isM4a(bytes: Buffer): boolean {
   );
 }
 
-let ffmpegPath: Promise<string> | undefined;
+type FfmpegCore = {
+  FS: {
+    writeFile(path: string, data: Uint8Array): void;
+    readFile(path: string): Uint8Array;
+  };
+  exec(...args: string[]): number;
+};
+
+let wasmBinary: Promise<Buffer> | undefined;
 
 /**
- * Convex's Node runtime has no ffmpeg. `@ffmpeg-installer/ffmpeg` ships a static
- * binary through npm (no postinstall download). The deployed package directory
- * may not preserve the executable bit, so the binary is copied to /tmp once per
- * container and marked executable.
+ * `@ffmpeg/core` is an Emscripten build for browsers, so it needs a `self` and
+ * `location` while it initializes and the wasm bytes handed in directly (there
+ * is no fetch of a local path in Node). The globals are removed again so other
+ * libraries do not mistake this Node action for a browser. Each conversion gets
+ * a fresh core; ffmpeg's `main` is not safely re-entrant.
  */
-function resolveFfmpeg(): Promise<string> {
-  ffmpegPath ??= (async () => {
-    const installed = createRequire(import.meta.url)(
-      "@ffmpeg-installer/ffmpeg",
-    ) as { path: string };
-    const target = join(tmpdir(), "spot-ffmpeg");
-    await copyFile(installed.path, target);
-    await chmod(target, 0o755);
-    return target;
-  })().catch((error) => {
-    ffmpegPath = undefined;
-    throw error;
-  });
-  return ffmpegPath;
+async function loadFfmpegCore(): Promise<FfmpegCore> {
+  const require = createRequire(import.meta.url);
+  wasmBinary ??= readFile(require.resolve("@ffmpeg/core/wasm")).catch(
+    (error) => {
+      wasmBinary = undefined;
+      throw error;
+    },
+  );
+  const globals = globalThis as Record<string, unknown>;
+  const hadSelf = "self" in globals;
+  const hadLocation = "location" in globals;
+  if (!hadSelf) globals.self = globalThis;
+  if (!hadLocation) globals.location = { href: "file:///" };
+  try {
+    const createCore = require("@ffmpeg/core") as
+      | ((options: { wasmBinary: Buffer }) => Promise<FfmpegCore>)
+      | { default: (options: { wasmBinary: Buffer }) => Promise<FfmpegCore> };
+    const factory = typeof createCore === "function" ? createCore : createCore.default;
+    return await factory({ wasmBinary: await wasmBinary });
+  } finally {
+    if (!hadSelf) delete globals.self;
+    if (!hadLocation) delete globals.location;
+  }
 }
 
-function runFfmpeg(binary: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(binary, args, { stdio: ["ignore", "ignore", "pipe"] });
-    let stderr = "";
-    proc.stderr.on("data", (chunk) => {
-      stderr = (stderr + chunk).slice(-2000);
-    });
-    proc.on("error", reject);
-    proc.on("exit", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`ffmpeg exited ${code}: ${stderr}`)),
-    );
-  });
-}
-
-/** Same contract as Spectrum's `ensureM4a`, backed by the bundled ffmpeg. */
-export const ensureM4aWithBundledFfmpeg: EnsureM4a = async (
-  bytes,
-  mimeType,
-) => {
+/** Same contract as Spectrum's `ensureM4a`, backed by ffmpeg compiled to wasm. */
+export const ensureM4aWithWasmFfmpeg: EnsureM4a = async (bytes, mimeType) => {
   if (M4A_MIME_TYPES.has(mimeType.toLowerCase()) || isM4a(bytes)) {
     return { buffer: bytes };
   }
-  const binary = await resolveFfmpeg();
-  const dir = await mkdtemp(join(tmpdir(), "spot-voice-"));
-  try {
-    const input = join(dir, "in");
-    const output = join(dir, "out.m4a");
-    await writeFile(input, bytes);
-    await runFfmpeg(binary, ["-y", "-i", input, "-f", "ipod", "-c:a", "aac", output]);
-    return { buffer: await readFile(output) };
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-  }
+  const core = await loadFfmpegCore();
+  core.FS.writeFile("in", bytes);
+  const code = core.exec("-y", "-i", "in", "-f", "ipod", "-c:a", "aac", "out.m4a");
+  if (code !== 0) throw new Error(`ffmpeg exited ${code}`);
+  return { buffer: Buffer.from(core.FS.readFile("out.m4a")) };
 };

@@ -43,7 +43,7 @@ import {
   decideReplyThreading,
   threadingCandidates,
 } from "./imessageReplyThreading";
-import { ensureM4aWithBundledFfmpeg } from "./imessageVoice";
+import { ensureM4aWithWasmFfmpeg } from "./imessageVoice";
 import { signSpectrumWebhook } from "./spectrumWebhookSignature";
 
 const TYPING_REFRESH_MS = 4_000;
@@ -341,7 +341,7 @@ export async function readWebhookAttachment(
   content: InboundAttachmentContent,
 ): Promise<ImessageAttachment> {
   try {
-    return await readInboundAttachmentWith(ensureM4aWithBundledFfmpeg, content);
+    return await readInboundAttachmentWith(ensureM4aWithWasmFfmpeg, content);
   } catch (error) {
     if (!isVoiceMemoContent(content)) throw error;
     console.warn("[imessage-webhook] Voice memo transcoding unavailable", {

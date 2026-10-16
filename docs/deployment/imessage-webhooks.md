@@ -125,15 +125,15 @@ change). The production HTTP actions origin is `https://actions.spot.insure`.
 
 ## Known gaps to check before flipping
 
-- **Voice memos.** CAF memos are converted to m4a in Convex with the static
-  binary from `@ffmpeg-installer/ffmpeg` (delivered through npm, no postinstall
-  download; `convex/lib/imessageVoice.ts`). The package and its `linux-x64`
-  binary package are listed in `convex.json` `node.externalPackages`, and the
-  binary is copied to `/tmp` and made executable on first use. Verified locally
-  (CAF to M4A); **verify on the first deploy** that the Convex Node bundle
-  installs the binary and a real voice memo is transcribed. If conversion fails
-  the memo is forwarded unchanged and the sender is told it could not be
-  transcribed.
+- **Voice memos.** CAF memos are converted to m4a in Convex with ffmpeg compiled
+  to WebAssembly (`@ffmpeg/core`, listed in `convex.json`
+  `node.externalPackages`; `convex/lib/imessageVoice.ts`). There is no native
+  binary, so nothing depends on executable permissions. Each conversion loads a
+  fresh core (~130 ms, ~31 MB wasm); a 60 s Opus-in-CAF memo converts in ~1.2 s
+  with ~150 MB peak memory locally. The package is GPL-2.0-or-later (server-side
+  use only; confirm with legal). **Verify on the first deploy** that a real
+  iPhone voice memo is transcribed on Convex. If conversion fails the memo is
+  forwarded unchanged and the sender is told it could not be transcribed.
 - **Reply threading.** Webhook `message.id` is opaque (`spc-msg-<uuid>`), not an
   Apple GUID. `convex/lib/imessageReplyThreading.ts` lists the last messages in
   the chat (with their real GUIDs) and asks Jev (`/v1/decide`, task

@@ -54,7 +54,7 @@
     "@convex-dev/auth": "^0.0.91",
     "@convex-dev/migrations": "^0.3.5",
     "@convex-dev/rate-limiter": "^0.3.2",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffmpeg/core": "^0.12.10",
     "@json-render/core": "0.21.0",
     "@json-render/react": "0.21.0",
     "@lezer/highlight": "^1.2.3",

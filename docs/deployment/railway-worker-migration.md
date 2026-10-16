@@ -75,10 +75,10 @@ and nothing changes until you flip a flag. Follow the full runbook in
    no `Rejected delivery` log lines).
 7. Rollback: set the flag to `false`, restart the Railway service.
 
-**Verify on first deploy:** voice memos now transcode with a bundled ffmpeg
-(`@ffmpeg-installer/ffmpeg`, listed in `convex.json` external packages). Send a
+**Verify on first deploy:** voice memos now transcode with ffmpeg compiled to wasm
+(`@ffmpeg/core`, listed in `convex.json` external packages). Send a
 real iPhone voice memo and confirm it is transcribed; if the Convex bundle did
-not install the binary, memos fall back to a "could not transcribe" reply.
+not include the wasm package, memos fall back to a "could not transcribe" reply.
 
 **Reply threading** is decided by Jev per reply (thread to a specific earlier
 message, or send a plain message). Check a few conversations: a reply to an

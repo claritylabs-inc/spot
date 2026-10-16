@@ -8,8 +8,7 @@
     "externalPackages": [
       "pdfjs-dist",
       "@napi-rs/canvas",
-      "@ffmpeg-installer/ffmpeg",
-      "@ffmpeg-installer/linux-x64"
+      "@ffmpeg/core"
     ]
   }
 }
