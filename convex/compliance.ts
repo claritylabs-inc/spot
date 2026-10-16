@@ -467,15 +467,6 @@ async function listRequirementsVisibleToOrg(
         {
           title: source.title,
           sourceType: source.sourceType,
-          // Only the owning org's own PDF is linked; a vendor viewing a
-          // client's requirement never receives the client's file.
-          fileUrl:
-            source.fileId &&
-            source.orgId === orgId &&
-            (source.contentType?.includes("pdf") ||
-              source.fileName?.toLowerCase().endsWith(".pdf"))
-              ? ((await ctx.storage.getUrl(source.fileId)) ?? undefined)
-              : undefined,
           dealName: source.dealName,
           dealType: source.dealType,
           holder: holders[0]
@@ -521,7 +512,33 @@ export const listRequirements = query({
       orgId = membership.orgId;
     }
     await requireOrgMember(ctx, orgId);
-    return await listRequirementsVisibleToOrg(ctx, orgId);
+    const rows = await listRequirementsVisibleToOrg(ctx, orgId);
+    // The source PDF link is for the compliance page only, so it is added here
+    // rather than in the shared row builder that REST and MCP also use. Only the
+    // owning org's own PDF is linked; a vendor never receives a client's file.
+    const fileUrls = new Map<string, string | undefined>();
+    return await Promise.all(
+      rows.map(async (row) => {
+        const sourceId = row.sourceDocumentId;
+        if (!sourceId || !row.requirementSource) return row;
+        if (!fileUrls.has(sourceId)) {
+          const source = await ctx.db.get(sourceId);
+          fileUrls.set(
+            sourceId,
+            source?.fileId &&
+              source.orgId === orgId &&
+              (source.contentType?.includes("pdf") ||
+                source.fileName?.toLowerCase().endsWith(".pdf"))
+              ? ((await ctx.storage.getUrl(source.fileId)) ?? undefined)
+              : undefined,
+          );
+        }
+        const fileUrl = fileUrls.get(sourceId);
+        return fileUrl
+          ? { ...row, requirementSource: { ...row.requirementSource, fileUrl } }
+          : row;
+      }),
+    );
   },
 });
 

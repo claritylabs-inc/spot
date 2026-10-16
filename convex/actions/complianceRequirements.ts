@@ -18,6 +18,7 @@ import {
   JEV_IMAGE_MAX_SIDE,
   JEV_IMAGE_MIN_SIDE,
   renderPdfPageImages,
+  type PdfPageImage,
 } from "../lib/pdfPageImages";
 import {
   REQUIREMENT_LIMIT_KINDS,
@@ -264,8 +265,8 @@ export type RequirementSourceMaterial = ExtractedFileText & {
 };
 
 export const MAX_REQUIREMENT_SOURCE_IMAGES = 8;
-/** A PDF text layer shorter than this per page is a scan with stray page numbers. */
-const MIN_PDF_TEXT_CHARS_PER_PAGE = 40;
+/** A PDF whose longest page has less text than this is a scan with stray page numbers. */
+const MIN_PDF_TEXT_CHARS = 40;
 
 function isPdfSource(fileName?: string, contentType?: string) {
   return (
@@ -323,10 +324,12 @@ async function extractPdfRequirementMaterial(
     sourceKind: "attachment",
   });
   const text = parsed.text.trim();
+  // Same bar as the text-only path had: any page with real text keeps text.
   if (
     !parsed.textLayerMissing &&
-    text.replace(/\s/g, "").length >=
-      MIN_PDF_TEXT_CHARS_PER_PAGE * Math.max(1, parsed.pageCount)
+    parsed.pages.some(
+      (page) => page.text.replace(/\s/g, "").length >= MIN_PDF_TEXT_CHARS,
+    )
   ) {
     return {
       text: truncateSource(text),
@@ -498,22 +501,23 @@ export async function verifyExcerptsOnPageImages(
           : true,
       );
       if (!checks.length) return;
-      const staged = await stageJevImages(
-        ctx,
-        [
-          {
-            bytes: image.bytes,
-            mediaType: image.mediaType,
-            label: `page-${image.page}`,
-          },
-        ],
-        {
-          surface: args.surface,
-          sessionKey: args.sessionKey,
-          ...(args.orgId ? { orgId: args.orgId } : {}),
-        },
-      );
+      let staged: Awaited<ReturnType<typeof stageJevImages>> | undefined;
       try {
+        staged = await stageJevImages(
+          ctx,
+          [
+            {
+              bytes: image.bytes,
+              mediaType: image.mediaType,
+              label: `page-${image.page}`,
+            },
+          ],
+          {
+            surface: args.surface,
+            sessionKey: args.sessionKey,
+            ...(args.orgId ? { orgId: args.orgId } : {}),
+          },
+        );
         const result = await clRouterDecide(
           {
             ...(args.orgId ? { orgId: String(args.orgId) } : {}),
@@ -559,7 +563,7 @@ export async function verifyExcerptsOnPageImages(
           error instanceof Error ? error.message : "Unknown error",
         );
       } finally {
-        await staged.cleanup();
+        await staged?.cleanup();
       }
     }),
   );
@@ -783,7 +787,8 @@ async function runRequirementImport(
   }
   await ctx.runMutation(internal.requirementExtractionRuns.recordSource, {
     runId,
-    parserBackend: fileExtraction?.parserBackend ?? "plain_text",
+    // Image uploads have no parser; omit rather than mislabel them.
+    parserBackend: fileExtraction ? fileExtraction.parserBackend : "plain_text",
     sourceCharacterCount: sourceText.length,
   });
 
@@ -823,18 +828,24 @@ async function runRequirementImport(
   }
 
   const usage = result.totalUsage ?? result.usage;
-  const normalizedRequirements = await markUnverifiedImageExcerpts(
-    ctx,
-    {
-      orgId: args.orgId,
-      images: sourceImages,
-      sourceText,
-      runId,
-    },
-    result.object.requirements
-      .map((requirement) => normalizeImportedRequirement(requirement, scope))
-      .filter(isCheckableCoverageRequirement),
-  );
+  let normalizedRequirements;
+  try {
+    normalizedRequirements = await markUnverifiedImageExcerpts(
+      ctx,
+      {
+        orgId: args.orgId,
+        images: sourceImages,
+        sourceText,
+        runId,
+      },
+      result.object.requirements
+        .map((requirement) => normalizeImportedRequirement(requirement, scope))
+        .filter(isCheckableCoverageRequirement),
+    );
+  } catch (error) {
+    await failRun(error);
+    throw error;
+  }
   await ctx.runMutation(internal.requirementExtractionRuns.recordExtraction, {
     runId,
     extractedRequirementCount: result.object.requirements.length,
@@ -1059,12 +1070,25 @@ export const locateRequirementSources = internalAction({
     const pdfBytes = new Uint8Array(await blob.arrayBuffer());
     const sessionKey = String(args.sourceDocumentId);
     const queue = [...located.requirements];
+    // Requirements on one page share a single render.
+    const pageImages = new Map<number, Promise<PdfPageImage | undefined>>();
+    const pageImageFor = (page: number) => {
+      let image = pageImages.get(page);
+      if (!image) {
+        image = renderPdfPageImages({ pdfBytes, pages: [page] }).then(
+          (images) => images[0],
+        );
+        pageImages.set(page, image);
+      }
+      return image;
+    };
     const worker = async () => {
       for (let next = queue.shift(); next; next = queue.shift()) {
         try {
           const location = await locateOnPdfPage(ctx, {
             pdfBytes,
             page: next.sourcePageStart,
+            pageImage: await pageImageFor(next.sourcePageStart),
             target: {
               description: "printed text passage",
               text: next.sourceExcerpt.slice(0, 600),
