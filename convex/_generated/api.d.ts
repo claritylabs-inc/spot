@@ -91,7 +91,6 @@ import type * as connectedEmailAutomation from "../connectedEmailAutomation.js";
 import type * as connectedOrgs from "../connectedOrgs.js";
 import type * as crons from "../crons.js";
 import type * as declarationFacts from "../declarationFacts.js";
-import type * as deprecatedTableCleanup from "../deprecatedTableCleanup.js";
 import type * as devClear from "../devClear.js";
 import type * as emailDeliveryAttempts from "../emailDeliveryAttempts.js";
 import type * as emailDraftReviewLinks from "../emailDraftReviewLinks.js";
@@ -514,7 +513,6 @@ declare const fullApi: ApiFromModules<{
   connectedOrgs: typeof connectedOrgs;
   crons: typeof crons;
   declarationFacts: typeof declarationFacts;
-  deprecatedTableCleanup: typeof deprecatedTableCleanup;
   devClear: typeof devClear;
   emailDeliveryAttempts: typeof emailDeliveryAttempts;
   emailDraftReviewLinks: typeof emailDraftReviewLinks;

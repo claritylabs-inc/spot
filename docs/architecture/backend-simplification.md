@@ -168,7 +168,6 @@ Read-only discovery performed against current checkout on 2026-09-14 before impl
 | acordTaxonomyDryRunPages, acordTaxonomyWriteRuns, acordTaxonomyWritePages, acordTaxonomyWritePolicyResults | Keep migration cursor/results/idempotency across partial action retries. Do not fold per-policy commit result into page-only summary. |
 | sourceSpans | Keep canonical source evidence text/provenance. |
 | sourceNodes | Keep canonical hierarchy/section retrieval. |
-| documentChunks | Keep vector-indexed structured fact retrieval; different job from raw source spans/nodes. |
 | sourceChunks | Remove unused compatibility persistence/read layer after bounded purge. |
 | policyVersions | Keep immutable version snapshots/diffs/links; issuance needs exact historic terms, current policy references cannot substitute. Legacy caseId can unset/narrow after audit. |
 | policyUpdateRuns | Dormant runtime; audit historical unique payloads then migrate/retire, correct stale docs. |
@@ -182,7 +181,6 @@ Read-only discovery performed against current checkout on 2026-09-14 before impl
 | certificateHolderPolicyLinks | Keep source-backed relationship evidence/version/status. Holder is not automatically an additional insured. |
 | policyCertificates | Keep holder/policy parent with current/latest issued pointers and dedupe identity. |
 | certificateVersions | Keep issued artifact, immutable holder/policy/requirement snapshots and request fingerprint. Deduplicate input validators, not historical issuance facts. |
-| certificateWorkflowSettings | Collapse to client + renewal toggle + audit timestamps. |
 | certificateWorkflowJobs | Keep review queue, frozen recipients, per-version idempotency, sent/cancelled state. Optional brokerOrgId is retired ownership candidate for cleanup. |
 | certificates | Existing legacy bridge; migrate artifacts and old links before removal; remove dormant legacy writer now if full caller check confirms. |
 | certificateRequestHolds | Keep unresolved requests, evidence why issue is blocked, email draft, exact request snapshots; remove retired policy-change links/status only after preserving meaning. Do not give human hold an expiry. |
@@ -335,7 +333,6 @@ Plan: normalize singular transport input to array at one ingress boundary, keep 
 | Workspace reconciliation finding sources/inventories/contexts/imports/findings/changes/identities | Keep original evidence, resumable inventories, imported-file provenance, independently reviewable findings, before/after corrections and identity dedupe. Active writes `operatorGoogleWorkspaceReconciliation.ts:165`, `:323`, `:500`, `:584`, `:617`, `:757`. Before/after JSON is historical audit snapshot, not a second live business object. Future narrowing should use typed operation discriminants, only after cataloging consumers. |
 | `operatorAuthNonces`, `operatorImpersonationSessions`, `employeeProvisioningRequests`, `operatorAuditEvents` | Keep security replay/impersonation/provisioning idempotency/audit boundaries. Safe shared audit metadata typing is preferable to schema flattening. |
 | OAuth clients/codes/tokens/rate counters; auth library tables; user email change requests | Keep protocol lifecycles; canonical scopes is the evidenced simplification. Security expiry remains. |
-| `publicDemoConversations`, `publicDemoChatLogs`, `publicDemoSalesTranscripts`, `publicDemoRateCounters` | Keep public/untrusted lead context isolated from tenant/operator authorization. Curated sales transcript is a derived handoff snapshot; measure usage before considering consolidation. |
 | `notifications`, `notificationPreferences`, `agentChannelSettings`, `presence` | Keep per-user preference distinct from org enablement, and ephemeral page presence separate from business profile. Canonicalize notification validators; do not move operational state into wiki. |
 
 ## Acceptance and release contract
