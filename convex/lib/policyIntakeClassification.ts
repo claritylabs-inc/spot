@@ -229,7 +229,8 @@ export async function classifyPolicyIntake(args: {
       );
     }
     const canClassify = evidence.text.trim().length > 0 || images.length > 0;
-    if (!canClassify && !candidates.length) return incomplete;
+    // Without text or images there is nothing for Jev to judge.
+    if (!canClassify) return incomplete;
     const questions: Record<string, DecisionQuestion> = {};
     if (canClassify) {
       for (const [id, instructions] of Object.entries({
@@ -259,6 +260,12 @@ export async function classifyPolicyIntake(args: {
           instructions: `Does the insurance carrier named in \`upload\` match \`existingPolicies[${i}].carrier\`? Missing evidence is not a match.`,
         };
     });
+    // Candidates with no comparable fields carry no evidence either way.
+    const comparable = candidates.flatMap((_, i) =>
+      `same_insured_${i}` in questions || `same_program_${i}` in questions
+        ? [i]
+        : [],
+    );
     const result = await clRouterDecide(
       {
         orgId: String(args.orgId),
@@ -397,15 +404,15 @@ export async function classifyPolicyIntake(args: {
         };
       }
     } else if (
-      candidates.length &&
-      candidates.every(
-        (_, i) => no(`same_insured_${i}`) || no(`same_program_${i}`),
+      comparable.length &&
+      comparable.every(
+        (i) => no(`same_insured_${i}`) || no(`same_program_${i}`),
       )
     ) {
       relationship = {
         kind: "new_policy",
         confidence: Math.min(
-          ...candidates.map((_, i) =>
+          ...comparable.map((i) =>
             Math.max(
               1 - (probability(`same_insured_${i}`) ?? 1),
               1 - (probability(`same_program_${i}`) ?? 1),

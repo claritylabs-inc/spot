@@ -92,23 +92,33 @@ async function clientImageJevImage(
   };
 }
 
+type AttachmentParts = Awaited<
+  ReturnType<typeof buildAgentAttachmentParts>
+>["parts"];
+
+/**
+ * Builds the category thumbnail from bytes the attachment context already
+ * loaded (scanned PDFs and images arrive as base64 rich parts), so the file is
+ * downloaded once. Text PDFs carry no bytes and need no thumbnail.
+ */
 async function clientFileFirstPageImage(
-  ctx: ActionCtx,
-  file: {
-    fileId: Id<"_storage">;
-    originalName: string;
-    contentType: string;
-    size: number;
-  },
+  file: { originalName: string; contentType: string; size: number },
+  parts: AttachmentParts,
 ): Promise<JevImage | null> {
   const type = file.contentType.toLowerCase();
   const isPdf = type.includes("pdf") || /\.pdf$/i.test(file.originalName);
   const isImage = type === "image/png" || type === "image/jpeg";
   if (!isPdf && !isImage) return null;
   if (file.size > CATEGORY_THUMBNAIL_MAX_FILE_BYTES) return null;
-  const blob = await ctx.storage.get(file.fileId);
-  if (!blob) return null;
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const data = parts.flatMap((part) =>
+    part.type === "file" && typeof part.data === "string"
+      ? [part.data]
+      : part.type === "image" && typeof part.image === "string"
+        ? [part.image]
+        : [],
+  )[0];
+  if (!data) return null;
+  const bytes = new Uint8Array(Buffer.from(data, "base64"));
   if (isPdf) {
     const [page] = await renderPdfPageImages({
       pdfBytes: bytes,
@@ -139,12 +149,14 @@ async function categorizeClientFile(
   context: {
     hint?: string;
     textExcerpt?: string;
+    parts: AttachmentParts;
   },
 ): Promise<ClientFileCategory | null> {
   try {
-    const thumbnail = await clientFileFirstPageImage(ctx, file).catch(
-      () => null,
-    );
+    const thumbnail = await clientFileFirstPageImage(
+      file,
+      context.parts,
+    ).catch(() => null);
     const request = {
       orgId: file.orgId,
       task: "client_file_category",
@@ -212,7 +224,7 @@ const ClientFileNameSchema = z.object({
 });
 
 function hasReadableContent(
-  parts: Awaited<ReturnType<typeof buildAgentAttachmentParts>>["parts"],
+  parts: AttachmentParts,
 ) {
   return parts.some(
     (part) =>
@@ -272,6 +284,7 @@ export const infer = internalAction({
       const category = await categorizeClientFile(ctx, file, {
         hint: args.hint,
         textExcerpt: textExcerpt || undefined,
+        parts: context.parts,
       });
       const prompt = `Create a short, specific client-facing document title for this uploaded file.
 

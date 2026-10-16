@@ -264,7 +264,10 @@ export type RequirementSourceMaterial = ExtractedFileText & {
   images?: RequirementSourceImage[];
 };
 
+/** Page images per extraction request; the router accepts at most eight assets. */
 export const MAX_REQUIREMENT_SOURCE_IMAGES = 8;
+/** Scanned PDFs are read in chunks of eight pages, up to this many pages. */
+export const MAX_REQUIREMENT_SOURCE_PAGES = 24;
 /** A PDF whose longest page has less text than this is a scan with stray page numbers. */
 const MIN_PDF_TEXT_CHARS = 40;
 
@@ -340,7 +343,7 @@ async function extractPdfRequirementMaterial(
   const rendered = await renderPdfPageImages({
     pdfBytes,
     pages: Array.from(
-      { length: Math.min(parsed.pageCount, MAX_REQUIREMENT_SOURCE_IMAGES) },
+      { length: Math.min(parsed.pageCount, MAX_REQUIREMENT_SOURCE_PAGES) },
       (_, index) => index + 1,
     ),
   });
@@ -454,6 +457,78 @@ export function requirementExtractionInput(
         ],
       },
     ],
+  };
+}
+
+type RequirementImport = z.infer<typeof RequirementImportSchema>;
+/** Splits page images into router-sized requests; text-only sources make one request. */
+export function requirementImageChunks(
+  images: RequirementSourceImage[] | undefined,
+): (RequirementSourceImage[] | undefined)[] {
+  if (!images?.length) return [undefined];
+  return Array.from(
+    { length: Math.ceil(images.length / MAX_REQUIREMENT_SOURCE_IMAGES) },
+    (_, index) =>
+      images.slice(
+        index * MAX_REQUIREMENT_SOURCE_IMAGES,
+        (index + 1) * MAX_REQUIREMENT_SOURCE_IMAGES,
+      ),
+  );
+}
+
+/** Merges chunked extraction results: rows deduplicated, usage and cost summed. */
+export function mergeRequirementChunkResults<
+  T extends {
+    object: RequirementImport;
+    usage: { inputTokens?: number; outputTokens?: number };
+    totalUsage?: { inputTokens?: number; outputTokens?: number };
+    clRouter?: { costUsd: number | null };
+  },
+>(results: T[]) {
+  const [first] = results;
+  if (results.length === 1) {
+    return { ...first, usage: first.totalUsage ?? first.usage };
+  }
+  const unique = <T,>(rows: T[], limit: number) =>
+    [...new Map(rows.map((row) => [JSON.stringify(row), row])).values()].slice(
+      0,
+      limit,
+    );
+  const sum = (
+    pick: (usage: T["usage"]) => number | undefined,
+  ) =>
+    results.reduce<number | undefined>((total, chunk) => {
+      const value = pick(chunk.totalUsage ?? chunk.usage);
+      return value === undefined ? total : (total ?? 0) + value;
+    }, undefined);
+  return {
+    ...first,
+    object: {
+      requirements: unique(
+        results.flatMap((chunk) => chunk.object.requirements),
+        32,
+      ),
+      certificateHolders: unique(
+        results.flatMap((chunk) => chunk.object.certificateHolders),
+        20,
+      ),
+    },
+    usage: {
+      ...(first.totalUsage ?? first.usage),
+      inputTokens: sum((usage) => usage.inputTokens),
+      outputTokens: sum((usage) => usage.outputTokens),
+    },
+    clRouter: first.clRouter
+      ? {
+          ...first.clRouter,
+          costUsd: results.some((chunk) => chunk.clRouter?.costUsd == null)
+            ? null
+            : results.reduce(
+                (total, chunk) => total + (chunk.clRouter?.costUsd ?? 0),
+                0,
+              ),
+        }
+      : first.clRouter,
   };
 }
 
@@ -792,10 +867,14 @@ async function runRequirementImport(
     sourceCharacterCount: sourceText.length,
   });
 
+  // Scanned sources are read eight pages per request; each chunk gets its own
+  // time budget and the extracted rows are merged.
+  const imageChunks = requirementImageChunks(sourceImages);
+  const chunkResults = [];
+  for (const chunkImages of imageChunks) {
   const abortSignal = AbortSignal.timeout(REQUIREMENT_EXTRACTION_TIMEOUT_MS);
-  let result;
   try {
-    result = await generateObjectForOrg(ctx, args.orgId, "requirement_extraction", {
+    chunkResults.push(await generateObjectForOrg(ctx, args.orgId, "requirement_extraction", {
       schema: RequirementImportSchema,
       abortSignal,
       maxOutputTokens: 3_000,
@@ -807,7 +886,7 @@ async function runRequirementImport(
           existingRequirements: context.existingRequirements,
           scope,
         }),
-        sourceImages,
+        chunkImages,
       ),
     }, {
       taskKind: "requirement_extraction",
@@ -816,7 +895,7 @@ async function runRequirementImport(
         channel: trigger === "mailbox_import" ? "mailbox" : "web",
         phase: "extracting_requirements",
       },
-    });
+    }));
   } catch (error) {
     await failRun(error);
     if (abortSignal.aborted) {
@@ -826,8 +905,10 @@ async function runRequirementImport(
     }
     throw error;
   }
+  }
 
-  const usage = result.totalUsage ?? result.usage;
+  const result = mergeRequirementChunkResults(chunkResults);
+  const usage = result.usage;
   let normalizedRequirements;
   try {
     normalizedRequirements = await markUnverifiedImageExcerpts(

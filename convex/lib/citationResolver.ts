@@ -25,6 +25,14 @@ export type ResolvedCitation = SectionCitation & {
   match: "exact" | "normalized" | "page_only" | "unresolved";
 };
 
+/** Preference order when one quote is tried on several candidate pages. */
+export const MATCH_RANK: Record<ResolvedCitation["match"], number> = {
+  exact: 3,
+  normalized: 2,
+  page_only: 1,
+  unresolved: 0,
+};
+
 type IndexedSpan = {
   span: SourceSpanLike;
   id: string;

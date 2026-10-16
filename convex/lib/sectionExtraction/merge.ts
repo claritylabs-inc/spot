@@ -1,7 +1,11 @@
 "use node";
 
 import { createHash } from "crypto";
-import { resolveCitation, type ResolvedCitation } from "../citationResolver";
+import {
+  MATCH_RANK,
+  resolveCitation,
+  type ResolvedCitation,
+} from "../citationResolver";
 import { mergeCoverageRows, type CoverageLike } from "../coverageScoping";
 import { MODEL_TRANSCRIPTION_TEXT_SOURCE } from "../extractionPromotion";
 import { toLobCodes } from "../linesOfBusiness";
@@ -105,13 +109,6 @@ export type MergedSectionExtraction = {
 };
 
 type Evidence = SourceBacked & { pages: number[]; exact: boolean };
-
-const MATCH_RANK: Record<ResolvedCitation["match"], number> = {
-  exact: 3,
-  normalized: 2,
-  page_only: 1,
-  unresolved: 0,
-};
 
 const ENDORSEMENT_RECORD_PARTY_ROLES = new Set([
   "additional_insured",

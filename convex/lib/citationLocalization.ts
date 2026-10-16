@@ -5,6 +5,7 @@ import type { Id } from "../_generated/dataModel";
 import dayjs from "dayjs";
 import {
   buildCitationIndex,
+  MATCH_RANK,
   resolveCitationWithIndex,
   type ResolvedCitation,
 } from "./citationResolver";
@@ -17,12 +18,6 @@ import { citationPageCandidates } from "./sectionExtraction/prompts";
 import type { SectionCitation } from "./sectionExtraction/schemas";
 
 const MAX_LOCALIZED_CITATIONS = 40;
-const MATCH_RANK: Record<ResolvedCitation["match"], number> = {
-  exact: 3,
-  normalized: 2,
-  page_only: 1,
-  unresolved: 0,
-};
 
 function citationsIn(value: unknown): SectionCitation[] {
   if (Array.isArray(value)) return value.flatMap(citationsIn);
@@ -62,6 +57,12 @@ export async function localizePolicyCitations(args: {
   const seen = new Set<string>();
   let attempted = 0;
   let localized = 0;
+  const finish = async (stopped?: string) => {
+    await args.log?.(
+      `Localized ${localized}/${attempted} citation targets (maximum ${MAX_LOCALIZED_CITATIONS})${stopped ? `; stopped early: ${stopped}` : ""}.`,
+    );
+    return spans;
+  };
   // Stable sorting preserves extraction order within each priority.
   const results = [...args.results].sort(
     (a, b) =>
@@ -69,11 +70,8 @@ export async function localizePolicyCitations(args: {
   );
   for (const { section, output } of results) {
     for (const citation of citationsIn(output)) {
-      if (
-        attempted >= MAX_LOCALIZED_CITATIONS ||
-        dayjs().valueOf() >= deadlineMs
-      )
-        return spans;
+      if (attempted >= MAX_LOCALIZED_CITATIONS) return finish("target cap");
+      if (dayjs().valueOf() >= deadlineMs) return finish("time budget");
       const quote = citation.quote.trim();
       if (!quote) continue;
       let resolved: ResolvedCitation | undefined;
@@ -98,8 +96,8 @@ export async function localizePolicyCitations(args: {
         return span && !span.bbox?.length ? [span] : [];
       });
       if (resolved.match !== "page_only" && !targets.length) continue;
-      if (await args.isCancelled?.()) return spans;
-      if (dayjs().valueOf() >= deadlineMs) return spans;
+      if (await args.isCancelled?.()) return finish("cancelled");
+      if (dayjs().valueOf() >= deadlineMs) return finish("time budget");
       attempted += 1;
       try {
         const [pageImage] = await renderPdfPageImages({
@@ -167,12 +165,9 @@ export async function localizePolicyCitations(args: {
           `Citation localization unavailable on page ${page}; retaining page evidence (${error instanceof Error ? error.message : String(error)}).`,
         );
         // Infrastructure failure affects subsequent images too; avoid 40 failed calls.
-        return spans;
+        return finish("localization unavailable");
       }
     }
   }
-  await args.log?.(
-    `Localized ${localized}/${attempted} citation targets (maximum ${MAX_LOCALIZED_CITATIONS}).`,
-  );
-  return spans;
+  return finish();
 }
