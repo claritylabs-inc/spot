@@ -54,7 +54,7 @@ checks, and the Vercel production-alias gate.
 
 Client intake uses the existing client object correctly, researches public company identity even without a supplied website, and grows the company wiki from supported evidence. Backend simplification removes verified dead behavior and competing live representations while preserving authorization, source evidence, immutable issued artifacts, and resumable operations.
 
-The audit covers 153 tables declared directly in schema.ts, the 12 local Workspace scan/reconciliation tables, and the six additional Convex Auth tables. Related domain findings and table dispositions follow below. Table count alone is not a quality target.
+The audit covers the tables declared directly in schema.ts and the six additional Convex Auth tables. Related domain findings and table dispositions follow below. Table count alone is not a quality target.
 
 ## Client information contract
 
