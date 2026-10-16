@@ -428,13 +428,12 @@ export function conductorPorts(workspaceRoot = repoRoot) {
     imessage: basePort + 2,
     convexCloud: basePort + 3,
     convexSite: basePort + 4,
-    slack: basePort + 5,
     operatorImessage: basePort + 6,
   };
 }
 
 export function conductorLocalRuntimeOverrides() {
-  const { web, imessage, slack, operatorImessage } =
+  const { web, imessage, operatorImessage } =
     conductorPorts();
   const appUrl = `http://localhost:${web}`;
   return {
@@ -444,7 +443,6 @@ export function conductorLocalRuntimeOverrides() {
     SITE_URL: appUrl,
     IMESSAGE_WORKER_URL: `http://127.0.0.1:${imessage}`,
     OPERATOR_IMESSAGE_WORKER_URL: `http://127.0.0.1:${operatorImessage}`,
-    SLACK_WORKER_URL: `http://127.0.0.1:${slack}`,
   };
 }
 
@@ -465,8 +463,6 @@ export function conductorImageTag(workerName, workspacePath = repoRoot) {
 export function conductorImageTags(workspacePath = repoRoot) {
   return [
     "imessage-worker",
-    "slack-worker",
-    "mailbox-scan-worker",
   ].map((workerName) => conductorImageTag(workerName, workspacePath));
 }
 

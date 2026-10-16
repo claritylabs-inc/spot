@@ -10,13 +10,14 @@ conversation, agent actions, delivery evidence, retries, and failures.
 
 Spot owns one native Slack app:
 
-- `slack-worker/manifests/production.json` configures production app
+- `config/slack/manifests/production.json` configures production app
   `A0BMW4TG7JB` against the Convex HTTP origin
   `https://actions.spot.insure` (deployment `merry-platypus-82`).
 
 Do not route Slack through Photon or Spectrum. Photon remains the production
 iMessage provider only. Shared dev and local development use the signed
-native-event fixture and mock worker; only production uses the native app.
+native-event fixture and the `SLACK_MODE=mock` transport; only production uses
+the native app.
 
 ## Native app provisioning
 
@@ -98,19 +99,19 @@ The OAuth callback exchanges codes directly with `oauth.v2.access`, validates
 the granted customer scopes, and AES-GCM encrypts bot and refresh tokens with
 `SLACK_TOKEN_ENCRYPTION_KEY`. The workspace team ID is authenticated additional
 data, so ciphertext cannot be moved between workspace records. Ciphertext never
-appears in user-facing channel queries. The stateless worker retrieves a current
-customer installation only from the bearer-authenticated
-`POST /slack-worker/installation` token broker. Convex refreshes expiring tokens
-through Slack, persists the replacement access and one-use refresh tokens, and
-returns only the current installation to the worker. A short database refresh
-lease serializes rotation across concurrent worker requests so Slack's one-use
-refresh token is never redeemed twice.
+appears in user-facing channel queries. Convex actions decrypt the current
+installation in process through `convex/lib/slackCredentials.ts` immediately
+before each Web API call; tokens never leave the action or appear in results.
+Convex refreshes expiring tokens through Slack and persists the replacement
+access and one-use refresh tokens. A short database refresh lease serializes
+rotation across concurrent actions so Slack's one-use refresh token is never
+redeemed twice; actions that find a refresh in progress wait briefly for it.
 
 The Clarity workspace is one environment-level host installation rather than a
 customer connection. Operators install it through the Agent channels setup
 surface with the broader host scopes. Its rotating credentials use the same
-encrypted Convex installation store and private worker token broker as customer
-installations. No Slack bot token belongs in Railway variables. Disconnect
+encrypted Convex installation store as customer installations. No Slack bot
+token belongs in deployment variables. Disconnect
 calls `apps.uninstall`, then clears encrypted local credentials and disables the
 connection. Native `app_uninstalled` and `tokens_revoked` events also revoke the
 matching installation.
@@ -136,11 +137,10 @@ host or customer identity that produced them. Renames update display metadata,
 makes the selected binding unavailable without deleting threads, preferences,
 or delivery evidence. Rebinding is an explicit, audited operator action.
 
-Every 15 minutes Convex asks the worker to run `auth.test` and bounded
-`conversations.info` checks for due active installations and selected channel
-IDs. The worker obtains a fresh installation through the token broker for every
-operation and returns only normalized health fields—never tokens or raw Slack
-payloads. Definitive authorization failures revoke immediately; transient
+Every 15 minutes Convex runs `auth.test` and bounded `conversations.info`
+checks for due active installations and selected channel IDs. Each check
+resolves a fresh installation and records only normalized health fields—never
+tokens or raw Slack payloads. Definitive authorization failures revoke immediately; transient
 provider failures degrade health and retry with bounded exponential backoff.
 Reconciliation covers event-delivery gaps, but it cannot infer an unknown
 replacement channel ID.
@@ -158,15 +158,15 @@ threads and automation preferences are preserved.
 
 ## Direct Web API transport
 
-`slack-worker/` calls Slack Web API directly. It owns:
+Convex actions call the Slack Web API directly through
+`convex/lib/slackWebApi.ts`. It owns:
 
 - `chat.postMessage` and `chat.update` with Slack-mrkdwn and Block Kit;
 - `reactions.add` and `reactions.remove` for the temporary model-selected
   processing acknowledgement on the triggering user message, with `eyes` as
   the immediate default;
-- `assistant.threads.setStatus`, `chat.startStream`, `chat.appendStream`, and
-  `chat.stopStream` only for compatibility with presentations started before
-  the reaction-first delivery change;
+- `chat.stopStream` only to finish presentations started before the
+  reaction-first delivery change;
 - `chat.postEphemeral` for interaction confirmations;
 - `files.getUploadURLExternal` plus `files.completeUploadExternal` for outbound
   files (never retired `files.upload`);
@@ -181,10 +181,18 @@ threads and automation preferences are preserved.
 
 Private and Slack Connect channels cannot be joined from Spot. A Slack member
 must add the app from Slack, after which the next channel inventory sync reports
-the membership. The worker exposes channel, Block Kit, message-update,
-assistant-status, streaming, and interaction-response capabilities in health
-output so deploy checks can distinguish them from basic outbound messaging.
-`reconciliationEnabled` confirms that token-safe verification is live.
+the membership.
+
+Every `chat.postMessage` and file share is claimed in `slackSendReceipts` by
+its caller's client message ID for ten minutes, so a recovered or concurrent
+delivery returns the original Slack timestamp instead of posting twice.
+Attachment failures and provider errors release the claim for retry. Slack
+rate-limit `Retry-After` values stay in the error text that the outbound retry
+ledgers use for backoff. Inbound files are downloaded with the bot token and
+stored in Convex file storage; outbound files are read from Convex storage and
+uploaded with `files.getUploadURLExternal`. In `SLACK_MODE=mock`, the same
+module returns deterministic mock results without contacting Slack; mock
+channel join/leave state is process-local and may reset between actions.
 
 Never infer that a sender belongs to the installation workspace when native
 event data omits `user_team`. Actor resolution must succeed before
@@ -206,30 +214,18 @@ Convex requires:
 | `SLACK_TOKEN_ENCRYPTION_KEY`              | Encrypt customer bot and refresh tokens                          |
 | `SLACK_OAUTH_REDIRECT_URI`                | Optional callback override                                       |
 | `SLACK_CLARITY_TEAM_ID`                   | Clarity host workspace ID                                        |
-| `SLACK_WORKER_URL`, `SLACK_WORKER_SECRET` | Worker URL and shared bearer secret                              |
 | `OPERATOR_SLACK_ENABLED`                  | Enable internal operator DMs and activated host-channel threads  |
 | `NEXT_PUBLIC_APP_URL` or `APP_URL`        | Post-OAuth settings redirect                                     |
 
-The Railway worker requires `SPOT_ENV`, `SLACK_WORKER_MODE`,
-`SLACK_WORKER_SECRET`, and `PORT`. Native live mode additionally requires
-`CONVEX_SITE_URL` and `SLACK_CLARITY_TEAM_ID`. The worker retrieves both host
-and customer installations through the token broker. The worker and Convex must
-use the same mode and worker secret.
+There is no separate Slack service. Release checks use the Convex
+`/agent-health` endpoint, which verifies Slack mode, signing and encryption
+configuration, and that the Clarity host workspace has an active encrypted
+installation with the required scopes.
 
-Use `SPOT_PRODUCTION_SLACK_WORKER_HEALTH_URL` for release checks. Native worker
-health must report `tokenBrokerConfigured`, `outboundEnabled`,
-`actorResolutionEnabled`, `clarityTeamConfigured`, `channelInventoryEnabled`,
-`publicChannelJoinEnabled`, `blockKitEnabled`, `messageUpdatesEnabled`,
-`reactionsEnabled`, `agentStatusEnabled`, `streamingEnabled`,
-`interactivityResponsesEnabled`.
-The Convex agent health endpoint separately verifies that the Clarity host
-workspace has an active encrypted installation; worker configuration alone
-cannot prove that OAuth installation exists.
-
-Internal operator chat reuses this same Clarity host installation and worker.
+Internal operator chat reuses this same Clarity host installation.
 Production release health requires `OPERATOR_SLACK_ENABLED=true` and a
-configured `SLACK_CLARITY_TEAM_ID`; the shared worker and active host
-installation remain covered by the existing Slack health contract. The `main`
+configured `SLACK_CLARITY_TEAM_ID`; the active host installation remains
+covered by the existing Slack health contract. The `main`
 release workflow sets `OPERATOR_SLACK_ENABLED=true` on production Convex before
 running that health gate, so a release cannot promote with operator Slack
 silently disabled.
@@ -369,8 +365,7 @@ upload and proactive alerts. The processing reaction requires
 existing customer installations. Until an installation is reauthorized,
 reaction failures remain advisory and completed answers still deliver.
 
-For lifecycle changes, first exercise signed fixtures and worker integration
-tests, then use a designated disposable customer workspace and a real private
+For lifecycle changes, first exercise signed fixtures, then use a designated disposable customer workspace and a real private
 Slack Connect channel during an explicitly controlled production smoke test.
 Record the Slack event ID,
 the corresponding `slackLifecycleEvents` row, connection/binding health, and a
@@ -389,9 +384,8 @@ production evidence must include real Events API delivery for every event Slack
 can produce and explicit reconciliation evidence for lifecycle states whose
 event delivery is unavailable or asymmetric.
 
-Before progression run Slack-focused tests, worker build/tests, root and Convex
-typechecks, lint, build, worker checks, deployment health, and
-`git diff --check`.
+Before progression run Slack-focused tests, root and Convex typechecks, lint,
+build, deployment health, and `git diff --check`.
 
 For rollback, disable Slack for the client. For a lane-wide stop set
 `SLACK_ENABLED=false` and leave durable records intact. Disconnect only for a

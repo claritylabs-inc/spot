@@ -4361,6 +4361,14 @@ export default defineSchema({
     .index("connection_status", ["connectionId", "status"])
     .index("retry_schedule", ["connectionId", "status", "nextAttemptAt"]),
 
+  // Short-lived Web API send claims keyed by caller clientMessageId.
+  slackSendReceipts: defineTable({
+    clientMessageId: v.string(),
+    status: v.union(v.literal("sending"), v.literal("sent")),
+    messageId: v.optional(v.string()),
+    expiresAt: v.number(),
+  }).index("by_clientMessageId", ["clientMessageId"]),
+
   operatorSlackOutboundSends: defineTable({
     idempotencyKey: v.string(),
     senderOperatorUserId: v.id("users"),
@@ -4900,6 +4908,22 @@ export default defineSchema({
     .index("idempotency", ["idempotencyKey"])
     .index("thread", ["threadId"])
     .index("message", ["threadMessageId"]),
+
+  // Spectrum webhook transport: inbound `message.id` dedupe and outbound
+  // `clientMessageId` claims that replaced the Railway worker's in-memory cache.
+  imessageTransportClaims: defineTable({
+    role: v.union(v.literal("customer"), v.literal("operator")),
+    kind: v.union(v.literal("webhook_message"), v.literal("send")),
+    key: v.string(),
+    status: v.union(
+      v.literal("accepted"),
+      v.literal("sending"),
+      v.literal("sent"),
+    ),
+    expiresAt: v.number(),
+  })
+    .index("role_kind_key", ["role", "kind", "key"])
+    .index("expiration", ["expiresAt"]),
 
   appCardAccessLinks: defineTable({
     orgId: v.id("organizations"),

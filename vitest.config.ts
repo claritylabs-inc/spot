@@ -8,11 +8,6 @@ export default defineConfig({
   test: {
     environment: "edge-runtime",
     server: { deps: { inline: ["convex-test"] } },
-    exclude: [
-      ...configDefaults.exclude,
-      ".claude/**",
-      ".context/**",
-      "slack-worker/**",
-    ],
+    exclude: [...configDefaults.exclude, ".claude/**", ".context/**"],
   },
 });

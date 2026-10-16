@@ -18,9 +18,9 @@ The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
   their existing publication credentials remain separate.
 - Vercel: configure `NPM_TOKEN` on the Spot project for Production, Preview,
   and any Development environment that installs dependencies.
-- Railway: tenant/operator iMessage and Slack Docker builds install
-  only their worker manifests, which do not depend on UI. The mailbox scan
-  Dockerfile performs no npm install. These builds need no UI package token.
+- Railway: tenant/operator iMessage Docker builds install
+  only their worker manifests, which do not depend on UI. These builds need no
+  UI package token.
   Keep each service rooted in its worker directory; a future root dependency
   install would require package authentication at build time.
 - Local development: provide `NPM_TOKEN` in the install process environment.
@@ -51,9 +51,8 @@ package versions. Deployment requires every validation job to pass. After
 validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
-2. waits for the exact commit's three established Railway contexts
-   (`imessage-worker`, `slack-worker`, and
-   `spot-mailbox-scan-worker`) plus `operator-imessage-worker` after its
+2. waits for the exact commit's two established Railway contexts
+   (`imessage-worker`) plus `operator-imessage-worker` after its
    production health URL variable is configured, to report
    success, including explicit `No deployment needed` watch-path results;
 3. runs the deployed Convex, iMessage, Slack, and cl-router
@@ -356,10 +355,16 @@ status, sets Convex `OPERATOR_SLACK_ENABLED=true` and
 the operator worker health contract, contact number, and fail-closed Convex
 wiring before production promotion.
 
+Both iMessage lanes can instead run on Photon Spectrum webhooks handled in
+Convex, behind the per-role flags `IMESSAGE_WEBHOOK_ENABLED` and
+`OPERATOR_IMESSAGE_WEBHOOK_ENABLED` (off by default). Credentials, the
+cutover and rollback runbook, and what to delete afterwards are in
+[iMessage over Spectrum webhooks](./imessage-webhooks.md).
+
 Slack environment/app setup and the client-owned policy-delivery migration are
 documented in [Slack privileged service channel](./slack.md). Production owns
-the native Slack app and live worker; shared dev and local development use the
-mock path. Photon is not part of the Slack deployment path.
+the native Slack app, which Convex calls directly through the Slack Web API;
+shared dev and local development use the `SLACK_MODE=mock` path. Photon is not part of the Slack deployment path.
 
 ## cl-router
 

@@ -30,11 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": [
-    "node_modules",
-    "cli",
-    "operator-cli",
-    "imessage-worker",
-    "slack-worker"
-  ]
+  "exclude": ["node_modules", "cli", "operator-cli", "imessage-worker"]
 }

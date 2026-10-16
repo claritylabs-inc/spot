@@ -47,6 +47,7 @@
 !/docs/deployment/
 /docs/deployment/*
 !/docs/deployment/environments.md
+!/docs/deployment/imessage-webhooks.md
 !/docs/deployment/slack.md
 !/docs/deployment/operator-mcp.md
 !/docs/deployment/operator-mcp-sources.md
@@ -84,7 +85,6 @@ yarn-error.log*
 .env*
 !.env.template
 !**/.env.template
-!slack-worker/.env.example
 
 # vercel
 .vercel

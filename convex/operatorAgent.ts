@@ -5393,11 +5393,7 @@ export const getRunContextInternal = internalQuery({
             ? workspace.directoryAdminEmail
             : workspace.mailboxes.length),
         ),
-        slack: Boolean(
-          process.env.SLACK_CLARITY_TEAM_ID?.trim() &&
-          process.env.SLACK_WORKER_URL?.trim() &&
-          process.env.SLACK_WORKER_SECRET?.trim(),
-        ),
+        slack: Boolean(process.env.SLACK_CLARITY_TEAM_ID?.trim()),
         mapbox: Boolean(
           process.env.MAPBOX_ACCESS_TOKEN?.trim() ||
           process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim(),

@@ -12,9 +12,10 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
 import {
-  getImessageWorkerUrl,
   getOperatorImessageContactPhone,
   isImessageInboundEnabled,
+  isImessageTransportConfigured,
+  isImessageWebhookTransportEnabled,
   isOperatorImessageInboundEnabled,
   isOperatorImessageTerminalEnabled,
 } from "./lib/imessageConfig";
@@ -39,6 +40,10 @@ import {
 } from "./lib/slackPayload";
 import { verifySlackRequest } from "./lib/slackSecurity";
 import { quoBrokerWebhook } from "./quoBrokerWebhook";
+import {
+  customerImessageWebhook,
+  operatorImessageWebhook,
+} from "./imessageWebhookHttp";
 import {
   operatorSlackConfirmationDecision,
   parseSlackInteraction,
@@ -434,41 +439,6 @@ http.route({
 });
 
 http.route({
-  path: "/slack-worker/installation",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const secret = process.env.SLACK_WORKER_SECRET?.trim();
-    if (
-      !secret ||
-      request.headers.get("Authorization") !== `Bearer ${secret}`
-    ) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
-    let body: { teamId?: unknown };
-    try {
-      body = (await request.json()) as { teamId?: unknown };
-    } catch {
-      return jsonResponse({ error: "Invalid JSON" }, 400);
-    }
-    const teamId = typeof body.teamId === "string" ? body.teamId.trim() : "";
-    if (!teamId) return jsonResponse({ error: "teamId is required" }, 400);
-    try {
-      return jsonResponse(
-        await ctx.runAction(
-          internalApi.actions.slackCredentials.resolveInstallation,
-          { teamId },
-        ),
-      );
-    } catch (error) {
-      return jsonResponse(
-        { error: error instanceof Error ? error.message : String(error) },
-        404,
-      );
-    }
-  }),
-});
-
-http.route({
   path: "/agent-health",
   method: "GET",
   handler: httpAction(async (ctx) => {
@@ -476,6 +446,10 @@ http.route({
     const operatorSlack = getOperatorSlackConfig();
     const operatorImessageEnabled = isOperatorImessageInboundEnabled();
     const operatorImessageTerminalEnabled = isOperatorImessageTerminalEnabled();
+    const operatorImessageWebhook =
+      isImessageWebhookTransportEnabled("operator");
+    const operatorImessageTransportConfigured =
+      isImessageTransportConfigured("operator");
     const slackMode = getSlackMode();
     const slackHostInstallation =
       slackEnabled && slackMode === "slack"
@@ -503,16 +477,9 @@ http.route({
     const checks = {
       operatorAgentModelConfigured,
       imessageInboundEnabled: isImessageInboundEnabled(),
-      imessageWorkerUrlConfigured: Boolean(getImessageWorkerUrl()),
-      imessageWorkerSecretConfigured: Boolean(
-        process.env.IMESSAGE_WORKER_SECRET,
-      ),
-      operatorImessageWorkerUrlConfigured:
-        !operatorImessageEnabled ||
-        Boolean(process.env.OPERATOR_IMESSAGE_WORKER_URL),
-      operatorImessageWorkerSecretConfigured:
-        !operatorImessageEnabled ||
-        Boolean(process.env.OPERATOR_IMESSAGE_WORKER_SECRET),
+      imessageTransportConfigured: isImessageTransportConfigured("customer"),
+      operatorImessageTransportConfigured:
+        !operatorImessageEnabled || operatorImessageTransportConfigured,
       operatorImessageContactPhoneConfigured:
         !operatorImessageEnabled ||
         operatorImessageTerminalEnabled ||
@@ -521,17 +488,9 @@ http.route({
         process.env.RESEND_WEBHOOK_SECRET,
       ),
       emailOutboundConfigured: Boolean(process.env.AUTH_RESEND_KEY),
-      emailScanCronSecretConfigured: Boolean(
-        process.env.EMAIL_SCAN_CRON_SECRET,
-      ),
       connectedEmailEncryptionConfigured: Boolean(
         process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
       ),
-      slackWorkerConfigured:
-        !slackEnabled ||
-        Boolean(
-          process.env.SLACK_WORKER_URL && process.env.SLACK_WORKER_SECRET,
-        ),
       slackWebhookConfigured:
         !slackEnabled || Boolean(process.env.SLACK_SIGNING_SECRET),
       slackTokenEncryptionConfigured:
@@ -563,12 +522,15 @@ http.route({
         operatorImessage: {
           inboundEnabled: operatorImessageEnabled,
           contactPhoneConfigured: Boolean(getOperatorImessageContactPhone()),
-          workerUrlConfigured: Boolean(
-            process.env.OPERATOR_IMESSAGE_WORKER_URL,
-          ),
-          workerSecretConfigured: Boolean(
-            process.env.OPERATOR_IMESSAGE_WORKER_SECRET,
-          ),
+          webhookTransport: operatorImessageWebhook,
+          // Read by the release health check; in webhook mode both report the
+          // Spectrum credentials instead of the retired worker wiring.
+          workerUrlConfigured: operatorImessageWebhook
+            ? operatorImessageTransportConfigured
+            : Boolean(process.env.OPERATOR_IMESSAGE_WORKER_URL),
+          workerSecretConfigured: operatorImessageWebhook
+            ? operatorImessageTransportConfigured
+            : Boolean(process.env.OPERATOR_IMESSAGE_WORKER_SECRET),
         },
         operatorSlack: {
           enabled: operatorSlack.enabled,
@@ -581,8 +543,6 @@ http.route({
         slack: {
           enabled: slackEnabled,
           mode: slackMode,
-          workerUrlConfigured: Boolean(process.env.SLACK_WORKER_URL),
-          workerSecretConfigured: Boolean(process.env.SLACK_WORKER_SECRET),
           webhookSigningSecretConfigured: Boolean(
             process.env.SLACK_SIGNING_SECRET,
           ),
@@ -624,6 +584,20 @@ http.route({
     });
     return new Response("OK", { status: 200 });
   }),
+});
+
+// Photon Spectrum webhooks; inert until IMESSAGE_WEBHOOK_ENABLED /
+// OPERATOR_IMESSAGE_WEBHOOK_ENABLED replaces the Railway worker lanes.
+http.route({
+  path: "/imessage-webhook",
+  method: "POST",
+  handler: customerImessageWebhook,
+});
+
+http.route({
+  path: "/operator-imessage-webhook",
+  method: "POST",
+  handler: operatorImessageWebhook,
 });
 
 http.route({
@@ -920,40 +894,6 @@ http.route({
       return jsonResponse({ error: "Operator message not found" }, 404);
     }
     return jsonResponse({ ok: true });
-  }),
-});
-
-http.route({
-  path: "/cron/connected-email/scan",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const expectedSecret = process.env.EMAIL_SCAN_CRON_SECRET;
-    if (!expectedSecret) {
-      return new Response(
-        JSON.stringify({ error: "EMAIL_SCAN_CRON_SECRET is not configured" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-
-    const authHeader = request.headers.get("Authorization") ?? "";
-    if (authHeader !== `Bearer ${expectedSecret}`) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const result = await ctx.runAction(
-      internal.actions.connectedEmailScan.scanAllMailboxes,
-      {},
-    );
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
   }),
 });
 

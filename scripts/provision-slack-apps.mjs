@@ -39,7 +39,8 @@ if (!serviceToken) {
 for (const target of targets) {
   const manifestPath = path.join(
     repoRoot,
-    "slack-worker",
+    "config",
+    "slack",
     "manifests",
     `${target}.json`,
   );

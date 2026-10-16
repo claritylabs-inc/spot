@@ -18,6 +18,13 @@ crons.cron(
   {},
 );
 
+crons.cron(
+  "scan connected mailboxes",
+  "0 15 * * *",
+  internal.actions.connectedEmailScan.scanAllMailboxes,
+  {},
+);
+
 crons.interval(
   "sweep stale policy extractions",
   { minutes: 5 },
