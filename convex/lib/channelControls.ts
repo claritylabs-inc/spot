@@ -94,9 +94,7 @@ export function parseTextChannelCommand(
 export type TaskControlIntent = "cancel_task" | "reset_task";
 
 /** `/cancel`, `/reset`, and `/new` clear the current task on every channel. */
-export function parseTaskControlCommand(
-  text: string,
-): TaskControlIntent | null {
+export function parseTaskControlCommand(text: string): TaskControlIntent | null {
   const command = parseTextChannelCommand(text);
   if (command?.kind !== "known" || command.args.length > 0) return null;
   if (command.name === "cancel") return "cancel_task";
@@ -200,11 +198,7 @@ export function isShowMoreEmailDraftIntent(text: string) {
 }
 
 export function isContextualConfirmation(text: string) {
-  const normalized = text
-    .trim()
-    .toLowerCase()
-    .replace(/[.!?]+$/, "")
-    .trim();
+  const normalized = text.trim().toLowerCase().replace(/[.!?]+$/, "").trim();
   return CONTEXTUAL_CONFIRMATIONS.has(normalized);
 }
 
@@ -335,7 +329,7 @@ export async function decideTextChannelEmailControl(
           control: {
             type: "choice",
             instructions:
-              "Classify `message` as one of the email controls only when it is clearly a standalone instruction about those emails. Anything else, including questions, edits, new requests, and mixed instructions, is none.",
+              "Classify `message` as one of the email controls only when it is clearly a standalone instruction about the user's current email drafts or pending emails. Anything else, including questions, edits, new requests, and mixed instructions, is none.",
             criteria: {
               ...(args.draftCount > 0
                 ? {
@@ -431,10 +425,7 @@ export async function resolveChannelEmailControl<EmailId>(
       return null;
     case "restore":
       return args.latestCancelledEmailId
-        ? {
-            kind: "restore_cancelled_email",
-            emailId: args.latestCancelledEmailId,
-          }
+        ? { kind: "restore_cancelled_email", emailId: args.latestCancelledEmailId }
         : null;
     case "show_drafts":
       return args.allowDraftList && draftCount > 0
