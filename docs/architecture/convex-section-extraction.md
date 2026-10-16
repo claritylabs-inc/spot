@@ -16,11 +16,13 @@ For intake, separate Jev Nouls establish insurance content, bound terms, and
 specimen status. Per-candidate insured/carrier questions and one endorsement
 question replace the relationship cross-product. Code compares policy numbers
 and parsed periods; missing or ambiguous evidence keeps the relationship unknown.
-These relationships remain advisory. Up to four missing-text pages are rendered
-at 1024px for intake, but sampled/image decisions cannot reject an upload.
-Sectioning uses 25-page batches; text-less pages and their neighbours are sent as
-page images with no image count cap. A batch whose images exceed cl-router's
-16 MiB request limit is halved and retried. Image preparation failures retain text-only decisions. Every question
+These relationships remain advisory. Jev reads pages as rendered 1024px images,
+not as extracted text: intake sends the first six pages, and an upload can be
+rejected only when Jev saw every page. Sectioning sends every page (with its
+neighbours as context) in 8-page image batches; the text layer stays in code for
+form-number boundaries. A batch that exceeds cl-router's 16 MiB limit or Jev's
+context (about six full-size pages) is reported as too large and halved. If
+rendering or staging fails, decisions fall back to the text digest. Every question
 names its original page and state path. Printed form-number equality/change
 determines boundaries in code when both pages have form numbers. Router failures
 retain the existing complete fallback section plan.

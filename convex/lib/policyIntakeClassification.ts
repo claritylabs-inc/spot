@@ -57,6 +57,8 @@ export type PolicyIntakeDecision = {
 };
 
 const MAX_EVIDENCE_CHARS = 60_000;
+/** Leading pages Jev sees as images (about 2.5k tokens each at 1024px). */
+const INTAKE_IMAGE_PAGES = 6;
 const MAX_RELATIONSHIP_CANDIDATES = 20;
 
 const CLASSIFICATION_REASONS: Record<PolicyIntakeDocumentClass, string> = {
@@ -198,19 +200,18 @@ export async function classifyPolicyIntake(args: {
   );
   let staged: Awaited<ReturnType<typeof stageJevImages>> | undefined;
   try {
-    const missingPages = Array.from(
-      { length: args.pageCount },
+    // Jev reads the leading pages as images, not as extracted text. The text
+    // layer stays in code (candidate ranking) and is only sent if rendering fails.
+    const leadingPages = Array.from(
+      { length: Math.min(args.pageCount, INTAKE_IMAGE_PAGES) },
       (_, i) => i + 1,
-    ).filter(
-      (page) =>
-        !args.pages.some((entry) => entry.page === page && entry.text.trim()),
     );
     let images: Awaited<ReturnType<typeof renderPdfPageImages>> = [];
     try {
-      if (args.pdfBytes && missingPages.length) {
+      if (args.pdfBytes && leadingPages.length) {
         images = await renderPdfPageImages({
           pdfBytes: args.pdfBytes,
-          pages: missingPages.slice(0, 4),
+          pages: leadingPages,
           maxSide: 1024,
         });
         if (images.length) {
@@ -224,7 +225,7 @@ export async function classifyPolicyIntake(args: {
     } catch (error) {
       images = [];
       console.warn(
-        "Intake images unavailable; using text evidence",
+        "Intake images unavailable; falling back to text evidence",
         error instanceof Error ? error.message : String(error),
       );
     }
@@ -271,13 +272,15 @@ export async function classifyPolicyIntake(args: {
         orgId: String(args.orgId),
         task: "policy_extraction_intake",
         state: {
-          upload: {
-            text: evidence.text.slice(0, MAX_EVIDENCE_CHARS),
-            pages: images.map((image, i) => ({
-              page: image.page,
-              image: staged!.refs[i],
-            })),
-          },
+          upload: images.length
+            ? {
+                pageCount: args.pageCount,
+                pages: images.map((image, i) => ({
+                  page: image.page,
+                  image: staged!.refs[i],
+                })),
+              }
+            : { text: evidence.text.slice(0, MAX_EVIDENCE_CHARS) },
           existingPolicies: candidates.map(({ namedInsured, carrier }) => ({
             ...(namedInsured ? { namedInsured } : {}),
             ...(carrier ? { carrier } : {}),
@@ -423,10 +426,13 @@ export async function classifyPolicyIntake(args: {
     }
     return {
       classification,
-      // Sampled images are useful for routing, never sufficient to reject a packet.
+      // A packet can be rejected only when Jev saw every page, as images or as
+      // complete text; a sample of leading pages is never sufficient.
       shouldExtract:
         yes("is_endorsement") ||
-        !evidence.complete ||
+        !(images.length
+          ? images.length === args.pageCount
+          : evidence.complete) ||
         !shouldRejectPolicyIntake({ classification, confidence }),
       confidence,
       reason: CLASSIFICATION_REASONS[classification],

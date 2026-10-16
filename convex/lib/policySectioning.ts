@@ -129,7 +129,10 @@ const DIGEST_FOOT_LINES = 4;
 const DIGEST_LINE_MAX_CHARS = 70;
 const DIGEST_MAX_CHARS = 1200;
 
+/** Text-digest fallback batches (no PDF bytes or rendering failed). */
 const JEV_BATCH_PAGES = 25;
+/** Image batches: about 2.5k tokens per 1024px page keeps a batch and its context in Jev's window. */
+const JEV_IMAGE_BATCH_PAGES = 8;
 const JEV_BATCH_CONCURRENCY = 4;
 
 function isPolicySectionKind(value: unknown): value is PolicySectionKind {
@@ -251,7 +254,7 @@ function classifyFormRun(
 function pageKindQuestion(page: number): DecisionQuestion {
   return {
     type: "choice",
-    instructions: `Classify \`pages.page_${page}\` (original PDF page ${page}) by its predominant content, using its digest or image.`,
+    instructions: `Classify \`pages.page_${page}\` (original PDF page ${page}) by its predominant content, using its page image (or its text digest when no image is supplied).`,
     criteria: {
       declarations: "The policy declarations page: named insured, policy period, premium, limits summary.",
       schedule: "A schedule listing locations, vehicles, drivers, classifications, or other scheduled items.",
@@ -311,13 +314,16 @@ async function classifyRemainingPages(params: {
     const digest = getDigest(page);
     return digest.headLines.length > 0 || digest.footLines.length > 0;
   };
+  // Jev judges pages from their rendered images, never their extracted text;
+  // the text digest is used only by code (form numbers) and as a fallback.
   const imagePagesAllowed = new Set(
     params.pdfBytes
       ? [...new Set(remaining.flatMap((page) => [page - 1, page, page + 1]))]
-          .filter((page) => page >= 1 && page <= pageCount && !hasText(page))
+          .filter((page) => page >= 1 && page <= pageCount)
           .sort((a, b) => a - b)
       : [],
   );
+  const batchSize = params.pdfBytes ? JEV_IMAGE_BATCH_PAGES : JEV_BATCH_PAGES;
   const batches: number[][] = [];
   let batch: number[] = [];
   for (const page of remaining) {
@@ -331,7 +337,7 @@ async function classifyRemainingPages(params: {
       };
       continue;
     }
-    if (batch.length >= JEV_BATCH_PAGES) {
+    if (batch.length >= batchSize) {
       batches.push(batch);
       batch = [];
     }
@@ -413,12 +419,13 @@ async function classifyRemainingPages(params: {
             pages: Object.fromEntries(
               statePages.map((page) => [
                 `page_${page.page}`,
-                {
-                  ...page,
-                  ...(imageRefs.has(page.page)
-                    ? { image: imageRefs.get(page.page)! }
-                    : {}),
-                },
+                imageRefs.has(page.page)
+                  ? {
+                      page: page.page,
+                      contextOnly: page.contextOnly,
+                      image: imageRefs.get(page.page)!,
+                    }
+                  : page,
               ]),
             ),
           },
