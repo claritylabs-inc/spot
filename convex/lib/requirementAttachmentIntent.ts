@@ -104,7 +104,10 @@ const isYes = (probability: number) => probability > 0.5;
 
 export function validateRequirementAttachmentDecision<
   T extends AttachmentCandidate,
->(value: unknown, attachments: T[]): RequirementImportResolution<T> {
+>(
+  value: unknown,
+  attachments: T[],
+): RequirementImportResolution<T> {
   const parsed = RequirementAttachmentDecisionSchema.safeParse(value);
   if (!parsed.success) return { authorization: "none", attachments: [] };
 
@@ -113,8 +116,7 @@ export function validateRequirementAttachmentDecision<
     attachments
       .filter(
         (attachment): attachment is T & { fileId: Id<"_storage"> } =>
-          Boolean(attachment.fileId) &&
-          supportedRequirementCandidate(attachment),
+          Boolean(attachment.fileId) && supportedRequirementCandidate(attachment),
       )
       .map((attachment) => [String(attachment.fileId), attachment]),
   );
@@ -176,8 +178,7 @@ export async function decideRequirementAttachmentImport<
   },
 ): Promise<RequirementImportResolution<T>> {
   const candidates = args.attachments.filter(
-    (attachment) =>
-      attachment.fileId && supportedRequirementCandidate(attachment),
+    (attachment) => attachment.fileId && supportedRequirementCandidate(attachment),
   );
   if (candidates.length === 0) {
     return { authorization: "none", attachments: [] };
@@ -186,89 +187,83 @@ export async function decideRequirementAttachmentImport<
   try {
     // Ids stay out of the model's view; state keys are the only handles.
     const attachmentKeys = candidates.map((_, index) => `d${index}`);
-    const result = await clRouterDecide(
-      {
-        orgId: args.orgId,
-        task: "requirement_attachment_import",
-        state: {
-          message: args.messageText,
-          attachments: Object.fromEntries(
-            candidates.map((attachment, index) => [
-              attachmentKeys[index],
-              { filename: attachment.filename },
-            ]),
-          ),
-        },
-        questions: {
-          wants_new_requirements: {
-            type: "noul",
-            instructions: {
-              question:
-                "Does `message` ask to use the newly attached files as sources of insurance requirements?",
-              focus:
-                "Importing or analyzing the attached files as requirement sources.",
-              not_for:
-                "Checking a policy or certificate against requirements that are already saved; asking about the files without asking to use them as requirements.",
-            },
-          },
-          persistence_negated: {
-            type: "noul",
-            instructions: {
-              question:
-                "Does `message` tell the assistant not to save, import, or store the attached files or the requirements in them?",
-              focus:
-                "Explicit refusals such as 'don't save this' or 'just read it'.",
-            },
-          },
-          scope: {
-            type: "choice",
-            instructions:
-              "Whose obligations are described by the insurance requirements the user wants taken from the attached files, according to `message`?",
-            criteria: {
-              vendors: {
-                what: "Requirements that vendors, contractors, suppliers, or tenants must satisfy.",
-                not_for:
-                  "Requirements the user's own organization must satisfy.",
-              },
-              own_org: {
-                what: "Requirements the user's own organization must satisfy.",
-                not_for:
-                  "Requirements placed on vendors, contractors, or tenants.",
-              },
-              mixed: {
-                what: "Both groups are named explicitly for the same files.",
-              },
-            },
-          },
-          ...Object.fromEntries(
-            candidates.flatMap((attachment, index) => [
-              [
-                `doc_${index}_is_requirements_source`,
-                {
-                  type: "noul" as const,
-                  instructions: {
-                    question: `Judging by the filename in \`attachments.${attachmentKeys[index]}.filename\`, is this an agreement, lease, contract, or schedule of insurance requirements?`,
-                    not_for:
-                      "An insurance policy, binder, declarations page, endorsement, or certificate of insurance.",
-                  },
-                },
-              ],
-              [
-                `doc_${index}_selected_by_user`,
-                {
-                  type: "noul" as const,
-                  instructions: {
-                    question: `Does \`message\` refer to the file named in \`attachments.${attachmentKeys[index]}.filename\`, or to all the attachments, as a file to use?`,
-                    not_for: "A message that points only at other attachments.",
-                  },
-                },
-              ],
-            ]),
-          ),
-        },
+    const result = await clRouterDecide({
+      orgId: args.orgId,
+      task: "requirement_attachment_import",
+      state: {
+        message: args.messageText,
+        attachments: Object.fromEntries(
+          candidates.map((attachment, index) => [
+            attachmentKeys[index],
+            { filename: attachment.filename },
+          ]),
+        ),
       },
-      { telemetry: _ctx },
-    );
+      questions: {
+        wants_new_requirements: {
+          type: "noul",
+          instructions: {
+            question:
+              "Does `message` ask to use the newly attached files as sources of insurance requirements?",
+            focus:
+              "Importing or analyzing the attached files as requirement sources.",
+            not_for:
+              "Checking a policy or certificate against requirements that are already saved; asking about the files without asking to use them as requirements.",
+          },
+        },
+        persistence_negated: {
+          type: "noul",
+          instructions: {
+            question:
+              "Does `message` tell the assistant not to save, import, or store the attached files or the requirements in them?",
+            focus: "Explicit refusals such as 'don't save this' or 'just read it'.",
+          },
+        },
+        scope: {
+          type: "choice",
+          instructions:
+            "Whose obligations are described by the insurance requirements the user wants taken from the attached files, according to `message`?",
+          criteria: {
+            vendors: {
+              what: "Requirements that vendors, contractors, suppliers, or tenants must satisfy.",
+              not_for: "Requirements the user's own organization must satisfy.",
+            },
+            own_org: {
+              what: "Requirements the user's own organization must satisfy.",
+              not_for: "Requirements placed on vendors, contractors, or tenants.",
+            },
+            mixed: {
+              what: "Both groups are named explicitly for the same files.",
+            },
+          },
+        },
+        ...Object.fromEntries(
+          candidates.flatMap((attachment, index) => [
+            [
+              `doc_${index}_is_requirements_source`,
+              {
+                type: "noul" as const,
+                instructions: {
+                  question: `Judging by the filename in \`attachments.${attachmentKeys[index]}.filename\`, is this an agreement, lease, contract, or schedule of insurance requirements?`,
+                  not_for:
+                    "An insurance policy, binder, declarations page, endorsement, or certificate of insurance.",
+                },
+              },
+            ],
+            [
+              `doc_${index}_selected_by_user`,
+              {
+                type: "noul" as const,
+                instructions: {
+                  question: `Does \`message\` refer to the file named in \`attachments.${attachmentKeys[index]}.filename\`, or to all the attachments, as a file to use?`,
+                  not_for: "A message that points only at other attachments.",
+                },
+              },
+            ],
+          ]),
+        ),
+      },
+    }, { telemetry: _ctx });
     const noul = (id: string) => {
       const answer = result.answers[id];
       return answer?.type === "noul" ? answer.noul : undefined;
@@ -295,8 +290,7 @@ export async function decideRequirementAttachmentImport<
         intentEvidence: args.messageText.slice(0, 240),
         documents: candidates.map((attachment, index) => ({
           fileId: String(attachment.fileId),
-          isRequirementsSource:
-            noul(`doc_${index}_is_requirements_source`) ?? 0,
+          isRequirementsSource: noul(`doc_${index}_is_requirements_source`) ?? 0,
           selectedByUser: noul(`doc_${index}_selected_by_user`) ?? 0,
         })),
       },
@@ -373,7 +367,9 @@ export async function importRequirementSources(
     nextAction: "review_imported_requirements",
     requiredSlots: [],
     forbiddenQuestions: [],
-    forbiddenClaims: ["import_completed_without_import_completed_side_effect"],
+    forbiddenClaims: [
+      "import_completed_without_import_completed_side_effect",
+    ],
     sideEffects: imports.flatMap((imported) => [
       {
         kind: "import_completed" as const,
