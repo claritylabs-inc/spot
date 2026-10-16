@@ -44,6 +44,10 @@ export type DirectModelProvider = (typeof DIRECT_MODEL_PROVIDERS)[number];
 /** Response `model` is the actual Jev version TypeSafe served (e.g. "jev-1.14.0"), not a fixed pin. */
 export const JEV_MODEL_PATTERN = /^jev-/;
 
+export const MAX_DECISION_ASSET_COUNT = 8;
+export const MAX_DECISION_ASSET_BYTES = 12 * 1024 * 1024;
+export const MAX_DECISION_TOTAL_ASSET_BYTES = 16 * 1024 * 1024;
+
 export type JsonValue =
   | string
   | number
@@ -72,7 +76,31 @@ export type DecisionQuestion =
       type: "noul";
       instructions: DecisionEntry;
       criteria?: { true?: DecisionEntry; false?: DecisionEntry };
-    };
+    }
+  | { type: "box"; instructions: DecisionEntry };
+
+/** Jev 1.14 Box answers are fractions of the image, measured from the top-left corner. */
+export type DecisionBox = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
+
+export type DecisionAssetFormat = "png" | "jpg" | "jpeg";
+
+/** Spot-owned storage reference; the router worker fetches and checksum-verifies it. */
+export interface DecisionAssetSource {
+  url: string;
+  mediaType: "image/png" | "image/jpeg";
+  sizeBytes: number;
+  sha256?: string;
+  filename?: string;
+}
+
+export type DecisionAsset =
+  | { format: DecisionAssetFormat; dataBase64: string }
+  | { source: DecisionAssetSource };
 
 export type DecisionAnswer =
   | {
@@ -88,13 +116,19 @@ export type DecisionAnswer =
       probabilities: Record<string, number>;
       confidence: number;
     }
-  | { type: "noul"; noul: number };
+  | { type: "noul"; noul: number }
+  | { type: "box"; box: DecisionBox; confidence: number };
 
 export interface DecideRequest {
   tenantId: string;
   orgId?: string;
   task?: string;
   state: DecisionEntry;
+  /**
+   * Images keyed by reference string. Each key must appear verbatim in a string of
+   * `state`, `instructions`, or `criteria`; Jev replaces it with the image.
+   */
+  assets?: Record<string, DecisionAsset>;
   questions: Record<string, DecisionQuestion>;
   executionBudgetMs?: number;
   parentRequestId?: string;
@@ -194,7 +228,10 @@ export function parseDecisionQuestion(value: unknown): DecisionQuestion {
   const q = object(value);
   exact(q, ["type", "instructions", "criteria"]);
   parseDecisionEntry(q.instructions);
-  if (q.type === "choice") {
+  if (q.type === "box") {
+    // Box locates a target in an image; it has no options to judge against.
+    if (q.criteria !== undefined) invalid();
+  } else if (q.type === "choice") {
     const criteria = object(q.criteria);
     if (Object.keys(criteria).length < 2 || Object.keys(criteria).length > 128) {
       invalid();
@@ -224,6 +261,111 @@ export function parseDecisionQuestion(value: unknown): DecisionQuestion {
   return value as DecisionQuestion;
 }
 
+const MAX_ASSET_REFERENCE_BYTES = 1_024;
+const MAX_ASSET_REFERENCE_TOTAL_BYTES = 65_536;
+
+function base64DecodedBytes(value: unknown): number {
+  if (typeof value !== "string" || !value.length || value.length % 4 !== 0) {
+    return invalid();
+  }
+  let padding = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    const alphabet =
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      (c >= 48 && c <= 57) ||
+      c === 43 ||
+      c === 47;
+    if (alphabet && padding === 0) continue;
+    // Padding is only legal as the final one or two characters.
+    if (c === 61 && i >= value.length - 2) {
+      padding += 1;
+      continue;
+    }
+    return invalid();
+  }
+  return (value.length / 4) * 3 - padding;
+}
+
+function parseDecisionAsset(value: unknown): number {
+  const asset = object(value);
+  if (Object.hasOwn(asset, "source")) {
+    exact(asset, ["source"]);
+    const source = object(asset.source);
+    exact(source, ["url", "mediaType", "sizeBytes", "sha256", "filename"]);
+    if (
+      typeof source.url !== "string" ||
+      source.url.length > 4_096 ||
+      !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?\/)/.test(
+        source.url,
+      )
+    ) {
+      invalid();
+    }
+    if (source.mediaType !== "image/png" && source.mediaType !== "image/jpeg") {
+      invalid();
+    }
+    natural(source.sizeBytes);
+    const sizeBytes = source.sizeBytes as number;
+    if (sizeBytes < 1 || sizeBytes > MAX_DECISION_ASSET_BYTES) invalid();
+    if (
+      source.sha256 !== undefined &&
+      !(typeof source.sha256 === "string" && /^[a-f0-9]{64}$/i.test(source.sha256))
+    ) {
+      invalid();
+    }
+    if (source.filename !== undefined) text(source.filename);
+    return sizeBytes;
+  }
+  exact(asset, ["format", "dataBase64"]);
+  if (asset.format !== "png" && asset.format !== "jpg" && asset.format !== "jpeg") {
+    invalid();
+  }
+  const bytes = base64DecodedBytes(asset.dataBase64);
+  if (bytes < 1 || bytes > MAX_DECISION_ASSET_BYTES) invalid();
+  return bytes;
+}
+
+function collectStrings(value: unknown, into: string[]): void {
+  if (typeof value === "string") into.push(value);
+  else if (Array.isArray(value)) value.forEach((item) => collectStrings(item, into));
+  else if (value && typeof value === "object") {
+    Object.values(value).forEach((item) => collectStrings(item, into));
+  }
+}
+
+function parseDecisionAssets(
+  assets: unknown,
+  state: unknown,
+  questions: Record<string, DecisionQuestion>,
+): void {
+  const entries = Object.entries(object(assets));
+  if (!entries.length || entries.length > MAX_DECISION_ASSET_COUNT) invalid();
+  const referencable: string[] = [];
+  collectStrings(state, referencable);
+  for (const question of Object.values(questions)) {
+    collectStrings(question.instructions, referencable);
+    if ("criteria" in question) collectStrings(question.criteria, referencable);
+  }
+  let referenceBytes = 0;
+  let totalBytes = 0;
+  for (const [reference, asset] of entries) {
+    const size = utf8Bytes(reference);
+    referenceBytes += size;
+    if (!reference.trim() || size > MAX_ASSET_REFERENCE_BYTES) invalid();
+    // Jev rejects unreferenced assets; fail before the router call.
+    if (!referencable.some((candidate) => candidate.includes(reference))) invalid();
+    totalBytes += parseDecisionAsset(asset);
+  }
+  if (
+    referenceBytes > MAX_ASSET_REFERENCE_TOTAL_BYTES ||
+    totalBytes > MAX_DECISION_TOTAL_ASSET_BYTES
+  ) {
+    invalid();
+  }
+}
+
 export function parseDecideRequest(value: unknown): DecideRequest {
   const r = object(value);
   exact(r, [
@@ -231,6 +373,7 @@ export function parseDecideRequest(value: unknown): DecideRequest {
     "orgId",
     "task",
     "state",
+    "assets",
     "questions",
     "executionBudgetMs",
     "parentRequestId",
@@ -248,6 +391,12 @@ export function parseDecideRequest(value: unknown): DecideRequest {
   for (const [key, question] of Object.entries(questions)) {
     text(key);
     parseDecisionQuestion(question);
+  }
+  const typedQuestions = questions as Record<string, DecisionQuestion>;
+  if (r.assets !== undefined) {
+    parseDecisionAssets(r.assets, r.state, typedQuestions);
+  } else if (Object.values(typedQuestions).some((q) => q.type === "box")) {
+    invalid();
   }
   if (r.executionBudgetMs !== undefined) {
     natural(r.executionBudgetMs);
@@ -280,7 +429,19 @@ export function parseDecideRequest(value: unknown): DecideRequest {
 
 function parseAnswer(value: unknown): DecisionAnswer {
   const a = object(value);
-  if (a.type === "noul") {
+  if (a.type === "box") {
+    exact(a, ["type", "box", "confidence"]);
+    probability(a.confidence);
+    const box = object(a.box);
+    exact(box, ["top", "bottom", "left", "right"]);
+    for (const edge of ["top", "bottom", "left", "right"]) probability(box[edge]);
+    if (
+      (box.left as number) >= (box.right as number) ||
+      (box.top as number) >= (box.bottom as number)
+    ) {
+      invalid();
+    }
+  } else if (a.type === "noul") {
     exact(a, ["type", "noul"]);
     probability(a.noul);
   } else if (a.type === "choice" || a.type === "score") {
