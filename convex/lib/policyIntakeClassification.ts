@@ -7,6 +7,14 @@
 
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import dayjs from "dayjs";
+import type { DecisionQuestion } from "../../contracts/cl-router/policy";
+import { pdfPageJevImage, stageJevImages } from "./jevImages";
+import { renderPdfPageImages } from "./pdfPageImages";
+import {
+  extractPolicyPeriodFromSourceSpans,
+  normalizePolicyDate,
+} from "./policyPeriodExtraction";
 import { clRouterDecide } from "./clRouterClient";
 import { jevProceeds } from "./jevThreshold";
 import type { PdfPageText } from "./pdfText";
@@ -51,18 +59,6 @@ export type PolicyIntakeDecision = {
 const MAX_EVIDENCE_CHARS = 60_000;
 const MAX_RELATIONSHIP_EVIDENCE_CHARS = 20_000;
 const MAX_RELATIONSHIP_CANDIDATES = 20;
-
-const CLASSIFICATION_CRITERIA: Record<PolicyIntakeDocumentClass, string> = {
-  bound_policy_document:
-    "An already-bound insurance policy, binder, declarations page, renewal policy, insurance schedule, policy wording, endorsement, or post-binding supplement containing bound policy terms.",
-  specimen_policy_document:
-    "A specimen, sample, or testing-only insurance policy artifact suitable for extraction testing.",
-  insurance_related_but_not_bound_policy:
-    "An unbound quote, proposal, submission, application, marketing material, invoice, or other insurance-related document that is not a bound policy artifact.",
-  non_insurance:
-    "A novel, textbook, resume, generic contract, unrelated legal document, trust ledger, closing statement, disbursement statement, or other non-policy document.",
-  unknown: "Insufficient evidence to determine the document type.",
-};
 
 const CLASSIFICATION_REASONS: Record<PolicyIntakeDocumentClass, string> = {
   bound_policy_document:
@@ -159,38 +155,6 @@ export function rankExistingPolicyCandidates(
     .map(({ candidate }) => candidate);
 }
 
-function relationshipCriteria(candidates: ExistingPolicyCandidate[]) {
-  const criteria: Record<string, string | Record<string, string>> = {
-    new_policy:
-      "A policy that is not a renewal, endorsement, or copy of any listed existing policy.",
-  };
-  for (const candidate of candidates) {
-    const policy = Object.fromEntries(
-      Object.entries(candidate).filter(
-        ([, value]) => typeof value === "string" && value,
-      ),
-    ) as Record<string, string>;
-    criteria[`renewal__${candidate.policyId}`] = {
-      relationship:
-        "Renews or replaces this existing policy for a later policy period.",
-      ...policy,
-    };
-    criteria[`endorsement__${candidate.policyId}`] = {
-      relationship:
-        "Endorses, amends, or changes this existing policy mid-term.",
-      ...policy,
-    };
-    criteria[`duplicate__${candidate.policyId}`] = {
-      relationship:
-        "Another copy of this existing policy for the same policy period.",
-      ...policy,
-    };
-  }
-  criteria.unknown =
-    "The document does not establish its relationship to the listed policies.";
-  return criteria;
-}
-
 export function parseRelationshipChoice(
   choice: string,
   candidateIds: Set<string>,
@@ -212,6 +176,7 @@ export async function classifyPolicyIntake(args: {
   orgId: Id<"organizations">;
   pageCount: number;
   pages: PdfPageText[];
+  pdfBytes?: Uint8Array;
   existingPolicies: ExistingPolicyCandidate[];
   traceId?: string;
   policyId?: string;
@@ -236,67 +201,208 @@ export async function classifyPolicyIntake(args: {
     ),
     evidence.text,
   );
-  const askRelationship = candidates.length > 0 && relationshipText.length > 0;
-  if (!evidence.complete && !askRelationship) return incomplete;
-
+  let staged: Awaited<ReturnType<typeof stageJevImages>> | undefined;
   try {
+    const missingPages = Array.from(
+      { length: args.pageCount },
+      (_, i) => i + 1,
+    ).filter(
+      (page) =>
+        !args.pages.some((entry) => entry.page === page && entry.text.trim()),
+    );
+    const images =
+      args.pdfBytes && missingPages.length
+        ? await renderPdfPageImages({
+            pdfBytes: args.pdfBytes,
+            pages: missingPages.slice(0, 4),
+            maxSide: 1024,
+          })
+        : [];
+    if (images.length) {
+      staged = await stageJevImages(args.ctx, images.map(pdfPageJevImage), {
+        orgId: args.orgId,
+        surface: "policy-intake",
+        sessionKey: args.policyId ?? args.traceId ?? crypto.randomUUID(),
+      });
+    }
+    const canClassify = evidence.complete || images.length > 0;
+    if (!canClassify && !relationshipText) return incomplete;
+    const questions: Record<string, DecisionQuestion> = {};
+    if (canClassify) {
+      for (const [id, instructions] of Object.entries({
+        is_insurance_document:
+          "Does `upload` contain an insurance document? A payment in an unrelated trust ledger or closing statement is not an insurance document.",
+        is_bound_terms:
+          "Does `upload` contain already-bound policy terms, such as a binder, declarations, policy wording, or post-binding supplement? Unbound quotes, proposals, applications, and invoices do not establish binding.",
+        is_specimen:
+          "Does `upload` explicitly identify itself as a specimen, sample, or testing-only insurance policy artifact?",
+      }))
+        questions[id] = { type: "noul", instructions };
+    }
+    questions.is_endorsement = {
+      type: "noul",
+      instructions:
+        "Does `upload` contain an endorsement that amends an existing policy? A forms list merely mentioning endorsements does not establish this.",
+    };
+    candidates.forEach((_, i) => {
+      questions[`same_insured_${i}`] = {
+        type: "noul",
+        instructions: `Does the policy in \`upload\` name the same insured as \`existingPolicies[${i}].namedInsured\`? Missing evidence is not a match.`,
+      };
+      questions[`same_program_${i}`] = {
+        type: "noul",
+        instructions: `Does the insurance coverage program in \`upload\` match the carrier/program described by \`existingPolicies[${i}]\`? Missing evidence is not a match.`,
+      };
+    });
     const result = await clRouterDecide(
       {
         orgId: String(args.orgId),
         task: "policy_extraction_intake",
         state: {
-          documentText: evidence.complete ? evidence.text : relationshipText,
-          ...(askRelationship ? { existingPolicies: candidates } : {}),
+          upload: {
+            text: evidence.text.slice(0, MAX_EVIDENCE_CHARS),
+            pages: images.map((image, i) => ({
+              page: image.page,
+              image: staged!.refs[i],
+            })),
+          },
+          existingPolicies: candidates.map(({ namedInsured, carrier }) => ({
+            ...(namedInsured ? { namedInsured } : {}),
+            ...(carrier ? { carrier } : {}),
+          })),
         },
-        questions: {
-          ...(evidence.complete
-            ? {
-                classification: {
-                  type: "choice" as const,
-                  instructions: `Classify this uploaded document for post-binding insurance extraction. Use only the document evidence. A premium payment in a trust ledger, closing statement, or disbursement statement does not make it a bound policy artifact. A disclaimer that a specimen is not actual insurance does not disqualify an otherwise valid specimen. Choose unknown when the excerpts cannot establish the document type.`,
-                  criteria: CLASSIFICATION_CRITERIA,
-                },
-              }
-            : {}),
-          ...(askRelationship
-            ? {
-                relationship: {
-                  type: "choice" as const,
-                  instructions:
-                    "How does this uploaded document relate to the client's existing policies listed in existingPolicies? Match on policy number, named insured, carrier, and policy period. A renewal covers a later period; a duplicate covers the same period; an endorsement changes an existing policy. Choose unknown when the evidence cannot establish the relationship.",
-                  criteria: relationshipCriteria(candidates),
-                },
-              }
-            : {}),
-        },
+        ...(staged ? { assets: staged.assets } : {}),
+        questions,
         trace: args.traceId ? { traceId: args.traceId } : undefined,
       },
       { telemetry: args.ctx },
     );
-
-    const relationshipAnswer = result.answers.relationship;
-    const relationship: PolicyIntakeDecision["relationship"] =
-      relationshipAnswer?.type === "choice" &&
-      jevProceeds(relationshipAnswer.confidence)
-        ? {
-            ...parseRelationshipChoice(
-              relationshipAnswer.choice,
-              new Set(candidates.map((candidate) => candidate.policyId)),
+    const probability = (id: string) => {
+      const answer = result.answers[id];
+      return answer?.type === "noul" ? answer.noul : undefined;
+    };
+    const yes = (id: string) => jevProceeds(probability(id));
+    const no = (id: string) => {
+      const p = probability(id);
+      return p !== undefined && jevProceeds(1 - p);
+    };
+    let classification: PolicyIntakeDocumentClass = "unknown";
+    let confidence = 0;
+    if (yes("is_insurance_document")) {
+      if (yes("is_specimen")) {
+        classification = "specimen_policy_document";
+        confidence = Math.min(
+          probability("is_insurance_document")!,
+          probability("is_specimen")!,
+        );
+      } else if (yes("is_bound_terms")) {
+        classification = "bound_policy_document";
+        confidence = Math.min(
+          probability("is_insurance_document")!,
+          probability("is_bound_terms")!,
+        );
+      } else if (no("is_bound_terms") && no("is_specimen")) {
+        classification = "insurance_related_but_not_bound_policy";
+        confidence = Math.min(
+          probability("is_insurance_document")!,
+          1 - probability("is_bound_terms")!,
+          1 - probability("is_specimen")!,
+        );
+      }
+    } else if (
+      no("is_insurance_document") &&
+      no("is_bound_terms") &&
+      no("is_specimen")
+    ) {
+      classification = "non_insurance";
+      confidence = Math.min(
+        1 - probability("is_insurance_document")!,
+        1 - probability("is_bound_terms")!,
+        1 - probability("is_specimen")!,
+      );
+    }
+    const matching = candidates.flatMap((candidate, i) =>
+      yes(`same_insured_${i}`) && yes(`same_program_${i}`)
+        ? [{ candidate, i }]
+        : [],
+    );
+    let relationship: PolicyIntakeDecision["relationship"] = {
+      ...UNKNOWN_RELATIONSHIP,
+    };
+    // Relationships remain advisory. Dates and identifiers are compared in code;
+    // image-only evidence cannot supply a mechanically verified period here.
+    if (matching.length === 1) {
+      const { candidate, i } = matching[0];
+      const period = extractPolicyPeriodFromSourceSpans(
+        args.pages.map((page) => ({ text: page.text, pageStart: page.page })),
+      );
+      const effective = normalizePolicyDate(candidate.effectiveDate);
+      const expiration = normalizePolicyDate(candidate.expirationDate);
+      const uploadNumbers = new Set(
+        [
+          ...evidence.text.matchAll(
+            /\bpolicy\s*(?:number|no\.?|#)\s*[:#-]?\s*([a-z0-9][a-z0-9/-]*)/gi,
+          ),
+        ].map((match) => normalized(match[1])),
+      );
+      const sameNumber =
+        uploadNumbers.size === 1 &&
+        uploadNumbers.has(normalized(candidate.policyNumber));
+      let kind: PolicyIntakeRelationshipKind = "unknown";
+      if (sameNumber && yes("is_endorsement")) kind = "endorsement";
+      else if (period && effective && expiration && no("is_endorsement")) {
+        if (
+          sameNumber &&
+          period.effectiveDate === effective &&
+          period.expirationDate === expiration
+        )
+          kind = "duplicate";
+        else if (
+          dayjs(period.effectiveDate, "MM/DD/YYYY").isAfter(
+            dayjs(effective, "MM/DD/YYYY"),
+          ) &&
+          dayjs(period.expirationDate, "MM/DD/YYYY").isAfter(
+            dayjs(expiration, "MM/DD/YYYY"),
+          )
+        )
+          kind = "renewal";
+      }
+      if (kind !== "unknown")
+        relationship = {
+          kind,
+          policyId: candidate.policyId,
+          confidence: Math.min(
+            probability(`same_insured_${i}`)!,
+            probability(`same_program_${i}`)!,
+            kind === "endorsement"
+              ? probability("is_endorsement")!
+              : 1 - probability("is_endorsement")!,
+          ),
+        };
+    } else if (
+      candidates.length &&
+      candidates.every(
+        (_, i) => no(`same_insured_${i}`) || no(`same_program_${i}`),
+      )
+    ) {
+      relationship = {
+        kind: "new_policy",
+        confidence: Math.min(
+          ...candidates.map((_, i) =>
+            Math.max(
+              1 - (probability(`same_insured_${i}`) ?? 1),
+              1 - (probability(`same_program_${i}`) ?? 1),
             ),
-            confidence: relationshipAnswer.confidence,
-          }
-        : { ...UNKNOWN_RELATIONSHIP };
-    if (!evidence.complete) return { ...incomplete, relationship };
-
-    const answer = result.answers.classification;
-    const classification =
-      answer?.type === "choice" && answer.choice in CLASSIFICATION_CRITERIA
-        ? (answer.choice as PolicyIntakeDocumentClass)
-        : "unknown";
-    const confidence = answer?.type === "choice" ? answer.confidence : 0;
+          ),
+        ),
+      };
+    }
     return {
       classification,
-      shouldExtract: !shouldRejectPolicyIntake({ classification, confidence }),
+      // Sampled images are useful for routing, never sufficient to reject a packet.
+      shouldExtract:
+        !evidence.complete ||
+        !shouldRejectPolicyIntake({ classification, confidence }),
       confidence,
       reason: CLASSIFICATION_REASONS[classification],
       detectedTitle: null,
@@ -308,5 +414,12 @@ export async function classifyPolicyIntake(args: {
       ...incomplete,
       reason: `Intake classifier unavailable; continuing extraction (${error instanceof Error ? error.message : String(error)}).`,
     };
+  } finally {
+    await staged?.cleanup().catch((error: unknown) => {
+      console.warn(
+        "Jev image cleanup unavailable",
+        error instanceof Error ? error.message : String(error),
+      );
+    });
   }
 }

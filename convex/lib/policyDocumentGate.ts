@@ -19,7 +19,12 @@ export function buildDocumentGateEvidence(
 ): { complete: boolean; text: string } {
   const pages = new Map<number, string[]>();
   for (const span of sourceSpans) {
-    if ((span.sourceUnit ?? span.metadata?.sourceUnit) === "section_candidate")
+    const unit = span.sourceUnit ?? span.metadata?.sourceUnit;
+    if (
+      unit === "section_candidate" ||
+      unit === "citation_annotation" ||
+      span.metadata?.textSource === "model_transcription"
+    )
       continue;
     const page = span.pageStart;
     const text = span.text.trim();
