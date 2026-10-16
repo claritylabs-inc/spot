@@ -130,26 +130,26 @@ const FAMILY_REQUIRED_TOOLS: Partial<
 
 const FAMILY_QUESTIONS: Record<ClientToolFamily, string> = {
   policy_qa:
-    "Could `message` ask about the user's own insurance policies: any policy fact (policy number, carrier, named insured, effective or expiration dates, premium, limits, deductibles), a list or comparison of policies, coverage wording, exclusions, endorsements, definitions, whether something is covered, or a policy summary?",
-  coi: "Could `message` involve a certificate of insurance (COI), a certificate holder, an additional insured, or delivering a certificate?",
+    "Could `message` (with `attachments` when supplied) ask about the user's own insurance policies: any policy fact (policy number, carrier, named insured, effective or expiration dates, premium, limits, deductibles), a list or comparison of policies, coverage wording, exclusions, endorsements, definitions, whether something is covered, or a policy summary?",
+  coi: "Could `message` (with `attachments` when supplied) involve a certificate of insurance (COI), a certificate holder, an additional insured, or delivering a certificate?",
   compliance:
-    "Could `message` involve insurance requirements imposed by a lease, contract, or other requirement document, checking compliance against such requirements, or vendor compliance? Questions only about the user's own policy facts or dates are not compliance.",
+    "Could `message` (with `attachments` when supplied) involve insurance requirements imposed by a lease, contract, or other requirement document, checking compliance against such requirements, or vendor compliance? Questions only about the user's own policy facts or dates are not compliance.",
   policy_change_email:
-    "Could `message` involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
+    "Could `message` (with `attachments` when supplied) involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
   email:
-    "Could `message` require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and broker follow-ups.",
+    "Could `message` (with `attachments` when supplied) require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and broker follow-ups.",
   procurement:
-    "Could `message` involve buying new coverage, quotes, applications, carrier submissions, or a procurement project?",
+    "Could `message` (with `attachments` when supplied) involve buying new coverage, quotes, applications, carrier submissions, or a procurement project?",
   mailbox:
-    "Could `message` need a connected mailbox: searching email, reading messages, or importing email attachments?",
+    "Could `message` (with `attachments` when supplied) need a connected mailbox: searching email, reading messages, or importing email attachments?",
   web_research:
-    "Could `message` need public web facts such as a company website, public news, or public research?",
+    "Could `message` (with `attachments` when supplied) need public web facts such as a company website, public news, or public research?",
   collaboration:
-    "Could `message` benefit from looping in a broker, teammate, client, or vendor, for example through a group chat?",
+    "Could `message` (with `attachments` when supplied) benefit from looping in a broker, teammate, client, or vendor, for example through a group chat?",
   history:
-    "Does `message` refer to earlier messages, a prior decision, an older attachment, or context that is not in the current message?",
+    "Does `message` (with `attachments` when supplied) refer to earlier messages, a prior decision, an older attachment, or context that is not in the current message?",
   presentation:
-    "Does `message` ask to open, show, link, or send one specific policy record?",
+    "Does `message` (with `attachments` when supplied) ask to open, show, link, or send one specific policy record?",
 };
 
 const SLACK_REACTION_CRITERIA: Record<SlackProcessingReaction, string> = {
