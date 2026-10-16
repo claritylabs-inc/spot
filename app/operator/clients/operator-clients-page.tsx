@@ -390,7 +390,7 @@ export default function OperatorClientsScreen() {
                     <TableCell>
                       <StatusTag
                         tone={
-                          client.operatorStatus === "live"
+                          client.clientAccessStatus === "active"
                             ? "success"
                             : "warning"
                         }

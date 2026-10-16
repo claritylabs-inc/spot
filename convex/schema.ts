@@ -517,7 +517,8 @@ export default defineSchema({
   organizations: defineTable({
     intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
     clientAccessStatus: v.optional(
-      v.union(v.literal("intake"), v.literal("active")),
+      // "intake" is the retired name for "limited"; orgs:migrateOperatorStatusInternal rewrites it. Drop with operatorStatus.
+      v.union(v.literal("limited"), v.literal("active"), v.literal("intake")),
     ),
     name: v.string(),
     deletedAt: v.optional(v.number()),
@@ -588,7 +589,7 @@ export default defineSchema({
     featureFlags: v.optional(v.record(v.string(), v.boolean())),
     // Onboarding
     onboardingComplete: v.optional(v.boolean()),
-    // Internal operator lifecycle for operator-provisioned tenants. Missing legacy value means live.
+    // Deprecated: replaced by clientAccessStatus. Drop after orgs:migrateOperatorStatusInternal has run on every deployment.
     operatorStatus: v.optional(
       v.union(
         v.literal("onboarding"),
@@ -933,6 +934,7 @@ export default defineSchema({
       v.literal("demo_lead_deleted"),
       v.literal("memory_cleared"),
       v.literal("setup_write"),
+      v.literal("impersonated_write"),
     ),
     targetOrgId: v.optional(v.id("organizations")),
     targetUserId: v.optional(v.id("users")),

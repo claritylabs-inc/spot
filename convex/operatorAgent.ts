@@ -2,6 +2,7 @@ import {
   prepareApplicationToolUpdate,
   updateApplicationByOperator,
 } from "./procurementRequests";
+import { clientAccessStatus } from "./lib/clientAccess";
 import { readIntakeBusinessProfile } from "./lib/intakeApplication";
 import {
   prepareBusinessProfileToolUpdate,
@@ -1613,7 +1614,9 @@ async function executeToolDomain(
         orgId: organization._id,
         name: organization.name,
         type: organization.type ?? "client",
-        status: organization.operatorStatus ?? "live",
+        ...(organization.type === "client"
+          ? { clientAccessStatus: clientAccessStatus(organization) }
+          : {}),
         slug: organization.slug,
         website: organization.website,
         brokerOrgId: organization.brokerOrgId,
@@ -1643,7 +1646,9 @@ async function executeToolDomain(
         isSpotOwnedBrokerIdentity(organization)
           ? "spot"
           : (organization.type ?? "client"),
-      status: organization.operatorStatus ?? "live",
+      ...(organization.type === "client"
+        ? { clientAccessStatus: clientAccessStatus(organization) }
+        : {}),
       slug: organization.slug,
       website: organization.website,
       companyResearch: organization.companyResearch ?? null,
@@ -2814,35 +2819,28 @@ async function executeToolDomain(
     };
   }
 
-  if (toolName === "set_organization_status") {
+  if (toolName === "set_client_access_status") {
     const orgId = normalizeOrganizationId(ctx, input.orgId);
     const organization = await ctx.db.get(orgId);
-    if (!organization || organization.deletedAt !== undefined)
-      throw new Error("Organization not found");
-    const status = input.status;
     if (
-      status !== "onboarding" &&
-      status !== "live" &&
-      !(
-        organization.type === "client" &&
-        (status === "lost" || status === "churned")
-      )
-    ) {
-      throw new Error("Invalid organization status");
-    }
-    const previous = organization.operatorStatus ?? "live";
-    await ctx.db.patch(orgId, { operatorStatus: status });
+      !organization ||
+      organization.deletedAt !== undefined ||
+      organization.type !== "client"
+    )
+      throw new Error("Client organization not found");
+    const next = input.status;
+    if (next !== "limited" && next !== "active")
+      throw new Error("Invalid client access status");
+    const previous = clientAccessStatus(organization);
+    await ctx.db.patch(orgId, { clientAccessStatus: next });
     await writeOperatorAudit(ctx, {
       operatorUserId: args.operatorUserId,
-      type:
-        organization.type === "broker"
-          ? "broker_status_changed"
-          : "client_status_changed",
+      type: "client_status_changed",
       targetOrgId: orgId,
-      summary: `${organization.name} changed from ${previous} to ${status}`,
-      metadata: { previous, next: status, domain: "operator_agent" },
+      summary: `${organization.name} changed from ${previous} to ${next}`,
+      metadata: { previous, next, domain: "operator_agent" },
     });
-    return { status: "updated", orgId, previous, next: status };
+    return { status: "updated", orgId, previous, next };
   }
 
   if (toolName === "set_client_feature_flag") {

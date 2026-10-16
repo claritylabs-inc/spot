@@ -151,26 +151,6 @@ function OperatorLoading({ pathname }: { pathname: string }) {
   );
 }
 
-function PendingLiveScreen() {
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-6">
-        <div className="rounded-lg border border-input bg-card p-6">
-          <h1 className={`text-foreground ${typeStyle("heading.micro")}`}>
-            Workspace is being prepared
-          </h1>
-          <p
-            className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}
-          >
-            Your Spot workspace is not live yet. You will receive an email when
-            it is ready.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const pathname = usePathname();
@@ -380,18 +360,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         router.replace("/");
         return;
       }
-      if (
-        viewer?.accountKind !== "operator" &&
-        !!viewerOrg?.org &&
-        ((
-          viewerOrg.org as {
-            operatorStatus?: "onboarding" | "live" | "lost" | "churned";
-          }
-        ).operatorStatus ?? "live") === "onboarding" &&
-        !isPublic
-      ) {
-        return;
-      }
       // Redirect to onboarding if not complete
       if (
         viewer &&
@@ -491,20 +459,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated && !isPublic) {
     return rootRedirectLoading;
-  }
-
-  if (
-    isAuthenticated &&
-    viewer?.accountKind !== "operator" &&
-    !!viewerOrg?.org &&
-    ((
-      viewerOrg.org as {
-        operatorStatus?: "onboarding" | "live" | "lost" | "churned";
-      }
-    ).operatorStatus ?? "live") === "onboarding" &&
-    !isPublic
-  ) {
-    return <PendingLiveScreen />;
   }
 
   if (

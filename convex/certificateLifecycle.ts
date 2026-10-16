@@ -27,7 +27,7 @@ import {
   certificateHolderIdentity,
   type CertificateHolderResolutionCandidate,
 } from "./lib/certificateHolderResolution";
-import { assertImpersonatedSetupWrite } from "./lib/operatorIdentity";
+import { recordImpersonatedWrite } from "./lib/operatorIdentity";
 import {
   throwUserFacingError,
   userFacingErrorCodes,
@@ -403,7 +403,7 @@ export const archive = mutation({
       allowOperator: true,
     });
     assertCanWriteCertificates(access);
-    await assertImpersonatedSetupWrite(ctx, certificate.orgId);
+    await recordImpersonatedWrite(ctx);
     if (certificate.status === "archived") {
       return { status: "archived", cancelledJobs: 0 };
     }
@@ -449,7 +449,7 @@ export const unarchive = mutation({
       allowOperator: true,
     });
     assertCanWriteCertificates(access);
-    await assertImpersonatedSetupWrite(ctx, certificate.orgId);
+    await recordImpersonatedWrite(ctx);
     if (certificate.status !== "archived") {
       throw new Error("Certificate is not archived.");
     }

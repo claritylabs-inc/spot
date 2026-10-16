@@ -2013,14 +2013,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Research and enrich insurance provider ${input.orgId}`,
   }),
-  set_organization_status: defineOperatorTool({
+  set_client_access_status: defineOperatorTool({
     family: "organizations",
     version: 1,
     description:
-      "Set the internal operator lifecycle of one exact organization. Clients support onboarding, live, lost (never became live), and churned (formerly live). Brokers support onboarding and live. Invitation state is separate.",
+      "Set the client workspace access of one exact client organization: limited (routed to the intake application) or active (full client workspace).",
     inputSchema: z.object({
       orgId: organizationId,
-      status: z.enum(["onboarding", "live", "lost", "churned"]),
+      status: z.enum(["limited", "active"]),
     }),
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -2028,7 +2028,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) =>
-      `Set organization ${input.orgId} status to ${input.status}`,
+      `Set client ${input.orgId} access to ${input.status}`,
   }),
   set_client_feature_flag: defineOperatorTool({
     family: "organizations",

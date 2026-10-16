@@ -5,6 +5,9 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthCard, AuthMinimalShell, BrandWordmark } from "@/components/auth-shell";
+import { IntakeFrame } from "@/components/insurance-intake/frame";
+import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
+import { Input } from "@claritylabs-inc/ui/components/input";
 import { OtpField } from "@/components/ui/otp-field";
 import { PillButton } from "@/components/ui/pill-button";
 import { completeOtpSignIn } from "@/lib/otp-auth";
@@ -175,6 +178,107 @@ export function AuthEntryPage({
   const alternateHref = isSignup ? "/login" : "/signup";
   const alternateLabel = isSignup ? "Log in" : "Sign up";
   const alternateText = isSignup ? "Already have an account?" : "Need an account?";
+
+  if (!isSignup) {
+    const formId = "login-form";
+    const onCodeStep = step === "code";
+    return (
+      <IntakeFrame
+        showSteps={false}
+        status={loading ? "Continuing…" : undefined}
+        footer={
+          <>
+            <p className={`text-muted-foreground ${typeStyle("body.root")}`}>
+              <span className="hidden sm:inline">{alternateText} </span>
+              <a href={alternateHref} className="underline">
+                {alternateLabel}
+              </a>
+            </p>
+            <PillButton
+              size="large"
+              type="submit"
+              form={formId}
+              disabled={loading || (onCodeStep ? code.length < 6 : !email)}
+            >
+              {loading ? "Continuing…" : onCodeStep ? "Confirm and continue" : "Continue"}
+            </PillButton>
+          </>
+        }
+      >
+        <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
+          {onCodeStep ? "Can you confirm your work email?" : "Welcome back"}
+        </h1>
+        <div className="h-10" />
+        {!onCodeStep ? (
+          <form
+            id={formId}
+            key={requestCodeTool}
+            onSubmit={handleEmailSubmit}
+            className="space-y-5"
+            {...(webMcpEnabled ? webMcpFormAttributes(requestCodeTool) : {})}
+          >
+            <Field>
+              <FieldLabel htmlFor="auth-email" className={typeStyle("body.root")}>
+                Work email
+              </FieldLabel>
+              <Input
+                id="auth-email"
+                {...(webMcpEnabled ? webMcpParamAttributes(requestCodeTool, "email") : {})}
+                type="email"
+                autoComplete="email"
+                className="mt-2 h-12"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                required
+                autoFocus
+              />
+            </Field>
+            {error && <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{error}</p>}
+          </form>
+        ) : (
+          <form
+            id={formId}
+            key={verifyCodeTool}
+            onSubmit={handleCodeSubmit}
+            className="space-y-5"
+            {...(webMcpEnabled ? webMcpFormAttributes(verifyCodeTool) : {})}
+          >
+            <p className={typeStyle("body.root")}>
+              Enter the code sent to {email} to log in.
+            </p>
+            <Field>
+              <FieldLabel htmlFor="auth-verification-code" className={typeStyle("body.root")}>
+                Email code
+              </FieldLabel>
+              <OtpField
+                id="auth-verification-code"
+                name="code"
+                label="Email code"
+                paramDescription={(webMcpEnabled ? webMcpParamAttributes(verifyCodeTool, "code").toolparamdescription : undefined)}
+                value={code}
+                onValueChange={setCode}
+                autoFocus
+                required
+              />
+            </Field>
+            {error && <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{error}</p>}
+            <button
+              type="button"
+              onClick={() => {
+                setStep("email");
+                setCode("");
+                setError("");
+              }}
+              className={`text-muted-foreground transition-colors hover:text-foreground ${typeStyle("control.button")}`}
+            >
+              Use a different email
+            </button>
+          </form>
+        )}
+      </IntakeFrame>
+    );
+  }
 
   return (
     <AuthMinimalShell>
