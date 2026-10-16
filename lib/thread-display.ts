@@ -12,7 +12,7 @@ export type ThreadDisplayLike = {
   visibility?: "broker_visible" | "client_internal" | "user_private";
 };
 
-export function isImessageThread(thread: ThreadDisplayLike) {
+function isImessageThread(thread: ThreadDisplayLike) {
   return (
     thread.originChannel === "imessage" ||
     Boolean(thread.threadPhone) ||

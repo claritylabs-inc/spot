@@ -57,7 +57,7 @@ export const AUTOMATION_ENABLED: MailboxAutomation = {
   companyMemory: true,
 };
 
-export const AUTOMATION_DISABLED: MailboxAutomation = {
+const AUTOMATION_DISABLED: MailboxAutomation = {
   policyImports: false,
   requirementImports: false,
   companyMemory: false,

@@ -1,5 +1,5 @@
 export type AgentDockMode = "collapsed" | "expanded" | "full";
-export type AgentDockView = "chat" | "history";
+type AgentDockView = "chat" | "history";
 
 export type AgentDockTab = {
   threadId: string;
@@ -40,7 +40,7 @@ export type AgentDockAction =
       mode: AgentDockMode;
     };
 
-export const AGENT_DOCK_MAX_TABS = 8;
+const AGENT_DOCK_MAX_TABS = 8;
 
 export const initialAgentDockState: AgentDockState = {
   mode: "collapsed",
@@ -68,7 +68,7 @@ function withTab(tabs: AgentDockTab[], tab: AgentDockTab, keep: string | null) {
 }
 
 /** The tab to the right of a closed tab takes focus, else the one to its left. */
-export function neighborAfterClose(tabs: AgentDockTab[], threadId: string) {
+function neighborAfterClose(tabs: AgentDockTab[], threadId: string) {
   const index = tabs.findIndex((tab) => tab.threadId === threadId);
   if (index === -1) return null;
   return (tabs[index + 1] ?? tabs[index - 1])?.threadId ?? null;
@@ -161,12 +161,4 @@ export function agentDockReducer(
       return { ...state, mode, tabs, activeThreadId };
     }
   }
-}
-
-export function isTabUnread(
-  tab: AgentDockTab,
-  lastMessageAt: number | undefined,
-  active: boolean,
-) {
-  return !active && lastMessageAt !== undefined && lastMessageAt > tab.seenAt;
 }

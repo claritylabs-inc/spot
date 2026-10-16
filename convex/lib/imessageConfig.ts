@@ -12,11 +12,6 @@ export function isImessageInboundEnabled(): boolean {
   return isImessageEnabled() || isImessageTerminalEnabled();
 }
 
-export function getImessageWorkerUrl(): string | undefined {
-  if (!isImessageInboundEnabled()) return undefined;
-  return process.env.IMESSAGE_WORKER_URL;
-}
-
 export function isOperatorImessageEnabled(): boolean {
   return process.env.OPERATOR_IMESSAGE_ENABLED === "true";
 }
@@ -27,11 +22,6 @@ export function isOperatorImessageTerminalEnabled(): boolean {
 
 export function isOperatorImessageInboundEnabled(): boolean {
   return isOperatorImessageEnabled() || isOperatorImessageTerminalEnabled();
-}
-
-export function getOperatorImessageWorkerUrl(): string | undefined {
-  if (!isOperatorImessageInboundEnabled()) return undefined;
-  return process.env.OPERATOR_IMESSAGE_WORKER_URL;
 }
 
 export function getOperatorImessageContactPhone(): string | undefined {
@@ -46,18 +36,11 @@ export function getOperatorImessageContactPhone(): string | undefined {
 
 export type ImessageChannelRole = "customer" | "operator";
 
-/**
- * Per-role cutover flag. When on, Photon delivers inbound messages to the
- * Convex Spectrum webhook and outbound sends run through Spectrum inside Convex
- * instead of the Railway worker's `/send`. Terminal (dev) lanes keep the worker.
- */
+/** Photon delivers inbound messages to the Convex Spectrum webhook and outbound sends run through Spectrum inside Convex. */
 export function isImessageWebhookTransportEnabled(
   role: ImessageChannelRole,
 ): boolean {
-  return role === "operator"
-    ? isOperatorImessageEnabled() &&
-        process.env.OPERATOR_IMESSAGE_WEBHOOK_ENABLED === "true"
-    : isImessageEnabled() && process.env.IMESSAGE_WEBHOOK_ENABLED === "true";
+  return role === "operator" ? isOperatorImessageEnabled() : isImessageEnabled();
 }
 
 export function getSpectrumWebhookSecret(
@@ -92,17 +75,9 @@ export function getSpectrumCredentials(
   return { projectId, projectSecret, webhookSecret };
 }
 
-/** True when the active transport for the role has its credentials. */
+/** True when the role has its Spectrum credentials. */
 export function isImessageTransportConfigured(
   role: ImessageChannelRole,
 ): boolean {
-  if (isImessageWebhookTransportEnabled(role)) {
-    return Boolean(getSpectrumCredentials(role));
-  }
-  return role === "operator"
-    ? Boolean(
-        getOperatorImessageWorkerUrl() &&
-        process.env.OPERATOR_IMESSAGE_WORKER_SECRET?.trim(),
-      )
-    : Boolean(getImessageWorkerUrl() && process.env.IMESSAGE_WORKER_SECRET);
+  return Boolean(getSpectrumCredentials(role));
 }

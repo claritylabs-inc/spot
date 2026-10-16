@@ -8,7 +8,7 @@ export type AgentDockThread = {
   channel?: string;
 };
 
-export type AgentDockTabStatus = "working" | "approval" | null;
+type AgentDockTabStatus = "working" | "approval" | null;
 
 export type AgentDockTabSummary = {
   title: string;

@@ -36,7 +36,7 @@ const CLIENT_PAGE_SUMMARIES: Record<string, string> = {
 };
 
 /** The page a new chat starts from when the page registers no richer context. */
-export function clientPageContextFromPathname(
+function clientPageContextFromPathname(
   pathname: string,
 ): PageContext | null {
   const area = pathname.split("/").filter(Boolean)[0];

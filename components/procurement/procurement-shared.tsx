@@ -159,7 +159,7 @@ export const OUTREACH_STATUS_OPTIONS = [
 export type ProcurementOutreachStatus =
   (typeof OUTREACH_STATUS_OPTIONS)[number]["value"];
 
-export const EMAIL_CATEGORY_OPTIONS = [
+const EMAIL_CATEGORY_OPTIONS = [
   { value: "broker", label: "Broker" },
   { value: "client", label: "Client" },
   { value: "internal", label: "Internal" },
@@ -257,15 +257,15 @@ export function EmailCategoryBadge({
   );
 }
 
-export function procurementRequestStatusLabel(value: string) {
+function procurementRequestStatusLabel(value: string) {
   return optionForValue(REQUEST_STATUS_OPTIONS, value)?.label ?? value;
 }
 
-export function procurementOutreachStatusLabel(value: string) {
+function procurementOutreachStatusLabel(value: string) {
   return optionForValue(OUTREACH_STATUS_OPTIONS, value)?.label ?? value;
 }
 
-export function procurementEmailCategoryLabel(value: string) {
+function procurementEmailCategoryLabel(value: string) {
   return optionForValue(EMAIL_CATEGORY_OPTIONS, value)?.label ?? value;
 }
 

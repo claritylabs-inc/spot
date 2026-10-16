@@ -35,16 +35,6 @@ export function operatorPageContextLabel(context: PageContext) {
   return context.summary?.trim() || context.pageType.replaceAll("_", " ");
 }
 
-export function operatorPageContextsShareScope(
-  left: PageContext,
-  right: PageContext,
-) {
-  if (left.entityId || right.entityId) {
-    return Boolean(left.entityId && left.entityId === right.entityId);
-  }
-  return left.pageType === right.pageType;
-}
-
 export function operatorPageContextFromPathname(
   pathname: string,
 ): PageContext | null {

@@ -4,7 +4,7 @@ import { webMcpError } from "@/lib/webmcp/runtime";
 import type { ToolMap } from "@/components/webmcp/tools/helpers";
 
 /** Last path segment of a token page, for example /share/email/:token. */
-export function pageToken(pathname: string): string | null {
+function pageToken(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
   return segments.length >= 3 ? decodeURIComponent(segments[segments.length - 1]!) : null;
 }

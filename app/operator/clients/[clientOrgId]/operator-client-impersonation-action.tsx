@@ -13,7 +13,6 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 type OperatorClientImpersonationActionProps = {
   clientOrgId: Id<"organizations"> | string;
   activeImpersonation: OperatorImpersonationTarget | null | undefined;
-  beforeStart?: () => Promise<boolean | void>;
   disabled?: boolean;
   collapsed: boolean;
 };
@@ -21,7 +20,6 @@ type OperatorClientImpersonationActionProps = {
 export function OperatorClientImpersonationAction({
   clientOrgId,
   activeImpersonation,
-  beforeStart,
   disabled = false,
   collapsed,
 }: OperatorClientImpersonationActionProps) {
@@ -41,7 +39,6 @@ export function OperatorClientImpersonationAction({
         return;
       }
 
-      if ((await beforeStart?.()) === false) return;
       await startImpersonation({
         targetOrgId: clientOrgId as Id<"organizations">,
         targetRole: "admin",

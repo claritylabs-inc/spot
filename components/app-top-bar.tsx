@@ -29,7 +29,7 @@ const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/operator/settings": { label: "Settings" },
 };
 
-export function resolveAppBreadcrumb(pathname: string) {
+function resolveAppBreadcrumb(pathname: string) {
   const normalizedPathname =
     pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
 

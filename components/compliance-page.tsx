@@ -144,7 +144,7 @@ function openOnKeyboard(event: KeyboardEvent<HTMLElement>, open: () => void) {
   }
 }
 
-export type ComplianceWorkspaceOrgContext = {
+type ComplianceWorkspaceOrgContext = {
   orgId: Id<"organizations">;
   orgType: "client" | "broker";
   role: "admin" | "member" | undefined;
@@ -1290,7 +1290,7 @@ function requirementEditValuesFromDrafts(
   };
 }
 
-export function RequirementEditForm({
+function RequirementEditForm({
   ref,
   requirement,
   onSave,

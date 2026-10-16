@@ -71,15 +71,6 @@ export function policyPeriod(
   );
 }
 
-export function labelForStatus(status?: string) {
-  if (!status) return "Not listed";
-  return status
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 export function compactList(parts: Array<string | undefined | null>) {
   return parts.filter((part): part is string => Boolean(part?.trim())).join(" | ");
 }

@@ -25,7 +25,7 @@ type ToastPolicy = ExtractionStatePolicy & {
   policyNumber?: string | null;
 };
 
-export function policyExtractionToastId(policyId: string) {
+function policyExtractionToastId(policyId: string) {
   return `policy-extraction:${policyId}`;
 }
 

@@ -23,7 +23,7 @@ import { usePresentation } from "./context";
 type FormField = PresentationProps<"ClarificationForm">["fields"][number];
 const MAX_ANSWER_LENGTH = 2000;
 
-export function buildClarificationFollowUp(
+function buildClarificationFollowUp(
   fields: FormField[],
   values: Record<string, string>,
   references: Map<string, PresentationReference>,

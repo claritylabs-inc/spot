@@ -35,7 +35,7 @@ type BackendMessage = {
   attachments?: BackendAttachment[];
 };
 
-export type OperatorAgentAttachment = {
+type OperatorAgentAttachment = {
   fileId: Id<"_storage">;
   filename: string;
   contentType: string;
@@ -170,7 +170,7 @@ export type OperatorAgentMessage = {
   attachments?: BackendAttachment[];
 };
 
-export type OperatorAgentToolCall = {
+type OperatorAgentToolCall = {
   name: string;
   effect?: BackendConfirmation["effect"];
   input?: string;

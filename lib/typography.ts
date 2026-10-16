@@ -1,33 +1,9 @@
 import type { CSSProperties } from "react";
 
-import {
-  typeStyle,
-  typographyRoles,
-  type TypographyRole,
-} from "@claritylabs-inc/ui/lib/typography";
+import { typeStyle, type TypographyRole } from "@claritylabs-inc/ui/lib/typography";
 
-export { typeStyle, typographyRoles };
+export { typeStyle };
 export type { TypographyRole };
-
-export const redactionLevels = ["clean", "35", "50", "70", "100"] as const;
-export type RedactionLevel = (typeof redactionLevels)[number];
-export type BrandTypographyRole = Extract<TypographyRole, `brand.${string}`>;
-
-const redactionFamilyClasses: Record<RedactionLevel, string> = {
-  clean: "font-brand",
-  "35": "font-redaction35",
-  "50": "font-redaction50",
-  "70": "font-redaction70",
-  "100": "font-redaction100",
-};
-
-/** Selects a Redaction cut only through a brand role, never as a raw token. */
-export function redactionTypeStyle(
-  role: BrandTypographyRole,
-  level: RedactionLevel = "clean",
-): string {
-  return typographyRoles[role].replace("font-brand", redactionFamilyClasses[level]);
-}
 
 /** Typography contract for the Spot social card rendered through next/og. */
 export const spotSocialAsciiTypographyStyle = Object.freeze({

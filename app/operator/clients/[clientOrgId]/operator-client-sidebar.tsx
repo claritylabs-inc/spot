@@ -25,15 +25,6 @@ import {
 } from "@/lib/sync/operator-cached-queries";
 import { OperatorClientImpersonationAction } from "./operator-client-impersonation-action";
 
-let beforeImpersonationStart: (() => Promise<boolean>) | null = null;
-
-/** The settings page saves pending edits before the sidebar starts impersonating. */
-export function registerOperatorClientBeforeImpersonationStart(
-  handler: (() => Promise<boolean>) | null,
-) {
-  beforeImpersonationStart = handler;
-}
-
 type OperatorClientNavigationSection =
   | "policies"
   | "procurement"
@@ -111,20 +102,18 @@ function activeClientSection({
   return "wiki";
 }
 
-export function OperatorClientSidebar({
+function OperatorClientSidebar({
   collapsed,
   onToggleCollapse,
   clientOrgId,
   activeImpersonation,
   impersonationDisabled = false,
-  beforeImpersonationStart,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
   clientOrgId: string;
   activeImpersonation: OperatorImpersonationTarget | null | undefined;
   impersonationDisabled?: boolean;
-  beforeImpersonationStart?: () => Promise<boolean | void>;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -203,7 +192,6 @@ export function OperatorClientSidebar({
           <OperatorClientImpersonationAction
             clientOrgId={clientOrgId}
             activeImpersonation={activeImpersonation}
-            beforeStart={beforeImpersonationStart}
             disabled={impersonationDisabled}
             collapsed={collapsed}
           />
@@ -234,7 +222,6 @@ export function OperatorClientShellSidebar({
       impersonationDisabled={
         !clients?.some((client) => client._id === clientOrgId)
       }
-      beforeImpersonationStart={async () => beforeImpersonationStart?.()}
     />
   );
 }

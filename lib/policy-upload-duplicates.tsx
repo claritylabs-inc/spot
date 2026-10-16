@@ -10,7 +10,7 @@ export type PolicyUploadCandidate = {
   fileSha256: string;
 };
 
-export type DuplicatePolicyUploadMatch = {
+type DuplicatePolicyUploadMatch = {
   policyId?: string;
   fileName?: string | null;
   policyNumber?: string | null;
@@ -27,7 +27,7 @@ function hexDigest(buffer: ArrayBuffer) {
     .join("");
 }
 
-export async function hashPolicyUploadFile(file: File): Promise<string> {
+async function hashPolicyUploadFile(file: File): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   return hexDigest(digest);
 }

@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import {
-  chmodSync,
   existsSync,
   readFileSync,
   statSync,
@@ -186,7 +185,7 @@ export function withoutConsumerAiCredentials(contents) {
     .replace(/\n+$/, "")}\n`;
 }
 
-export function localConvexSelectionContents(contents, config) {
+function localConvexSelectionContents(contents, config) {
   const deploymentName = config?.deploymentName;
   const cloudPort = config?.ports?.cloud;
   const sitePort = config?.ports?.site;
@@ -270,13 +269,13 @@ export function convexDeploymentNameFromDeployKey(deployKey) {
 // product that Spot was rebranded from. `dev:kindhearted-labrador-258` was the
 // retired `sms-experiment` project (the pre-rebrand Spot); cloning from it would
 // import the old product's environment.
-export const conductorSourceDeployment = "dev:acoustic-caiman-755";
+const conductorSourceDeployment = "dev:acoustic-caiman-755";
 
 const retiredConductorSourceDeployments = new Set([
   "kindhearted-labrador-258",
 ]);
 
-export function conductorSourceDeploymentName(selector) {
+function conductorSourceDeploymentName(selector) {
   const trimmed = selector?.trim();
   if (!trimmed) return undefined;
   const fromKey = convexDeploymentNameFromDeployKey(trimmed);
@@ -303,7 +302,7 @@ export function resolveConductorSourceDeployment({ explicit, copied } = {}) {
   return conductorSourceDeployment;
 }
 
-export function isMissingConvexAccessToken(output) {
+function isMissingConvexAccessToken(output) {
   return /\bMissingAccessToken\b/i.test(output);
 }
 
@@ -395,35 +394,20 @@ export function conductorPorts(workspaceRoot = repoRoot) {
   }
   return {
     web: basePort,
-    imessage: basePort + 2,
     convexCloud: basePort + 3,
     convexSite: basePort + 4,
-    operatorImessage: basePort + 6,
   };
 }
 
 export function conductorLocalRuntimeOverrides() {
-  const { web, imessage, operatorImessage } =
-    conductorPorts();
+  const { web } = conductorPorts();
   const appUrl = `http://localhost:${web}`;
   return {
     APP_SITE_URL: appUrl,
     AUTH_LINK_SITE_URL: appUrl,
     CLIENT_PORTAL_URL: appUrl,
     SITE_URL: appUrl,
-    IMESSAGE_WORKER_URL: `http://127.0.0.1:${imessage}`,
-    OPERATOR_IMESSAGE_WORKER_URL: `http://127.0.0.1:${operatorImessage}`,
   };
-}
-
-export function workspaceSlug(workspacePath = repoRoot) {
-  return (
-    path
-      .basename(path.resolve(workspacePath))
-      .toLowerCase()
-      .replace(/[^a-z0-9_.-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "workspace"
-  );
 }
 
 export function localConvexUrls() {
@@ -508,101 +492,3 @@ export async function waitForLocalConvex({ timeoutMs = 120_000 } = {}) {
   );
 }
 
-/**
- * @typedef {(command: string, args: string[], options: import("node:child_process").SpawnSyncOptionsWithStringEncoding | import("node:child_process").SpawnSyncOptions) => { error?: Error; status: number | null; stdout: string; stderr?: string }} ConductorCommandRunner
- */
-
-/**
- * @param {{ startServiceIfNeeded?: boolean; runCommand?: ConductorCommandRunner }} [options]
- */
-export function containerGateway({
-  startServiceIfNeeded = false,
-  runCommand = /** @type {ConductorCommandRunner} */ (spawnSync),
-} = {}) {
-  const inspectNetworks = () =>
-    runCommand("container", ["network", "list", "--format", "json"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-
-  let result = inspectNetworks();
-  if (result.error) throw result.error;
-  if (result.status !== 0 && startServiceIfNeeded) {
-    console.log("Apple container service is unavailable; starting it...");
-    const start = runCommand(
-      "/bin/zsh",
-      ["-c", "yes | container system start"],
-      {
-        cwd: repoRoot,
-        env: process.env,
-        stdio: "inherit",
-      },
-    );
-    if (start.error) throw start.error;
-    if (start.status !== 0) {
-      throw new Error(
-        "Unable to start the Apple container service. Run `npm run container:system:start` and retry Dev.",
-      );
-    }
-    result = inspectNetworks();
-    if (result.error) throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      "Unable to inspect the Apple container default network. Run `npm run container:system:start` and retry Dev.",
-    );
-  }
-
-  const networks = JSON.parse(result.stdout);
-  const defaultNetwork = networks.find(
-    (network) =>
-      network.id === "default" || network.configuration?.name === "default",
-  );
-  const gateway = defaultNetwork?.status?.ipv4Gateway;
-  if (typeof gateway !== "string" || !/^\d+\.\d+\.\d+\.\d+$/.test(gateway)) {
-    throw new Error("Apple container did not report an IPv4 gateway");
-  }
-  return gateway;
-}
-
-export async function listenOnContainerGateway(
-  server,
-  {
-    gateway,
-    port,
-    timeoutMs = 30_000,
-    retryDelayMs = 250,
-    now = () => performance.now(),
-    sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
-  },
-) {
-  const started = now();
-  let lastError;
-
-  while (now() - started < timeoutMs) {
-    try {
-      await new Promise((resolve, reject) => {
-        const onError = (error) => {
-          server.off("listening", onListening);
-          reject(error);
-        };
-        const onListening = () => {
-          server.off("error", onError);
-          resolve();
-        };
-        server.once("error", onError);
-        server.once("listening", onListening);
-        server.listen(port, gateway);
-      });
-      return;
-    } catch (error) {
-      lastError = error;
-      if (error?.code !== "EADDRNOTAVAIL") throw error;
-      await sleep(retryDelayMs);
-    }
-  }
-
-  throw new Error(
-    `Apple container gateway ${gateway} did not become available within ${timeoutMs / 1000} seconds: ${lastError instanceof Error ? lastError.message : "unknown error"}`,
-  );
-}

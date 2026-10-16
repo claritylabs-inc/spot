@@ -54,10 +54,6 @@ export const INTAKE_STEPS = [
   "Are these company details accurate?",
   "Is your request ready to submit?",
 ] as const;
-export const INTAKE_GOALS = {
-  quote: "Get a new quote",
-  savings: SAVINGS_INTAKE_REASON,
-} as const;
 export const INTAKE_FIELDS = {
   intakeGoal: "What would you like help with?",
   name: "Full name",

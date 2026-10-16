@@ -7,18 +7,12 @@ import {
   FileText,
   Users,
 } from "lucide-react";
-import { getPublicAgentDomain } from "@/lib/domains";
 import type { NavItemConfig, NavShortcut } from "./types";
-
-export const AGENT_DOMAIN = getPublicAgentDomain();
 
 export {
   MENU_ITEM_BASE,
-  MENU_ITEM_HOVER,
   MENU_ITEM_ACTIVE,
   MENU_ITEM_INACTIVE,
-  MENU_ITEM_INACTIVE_SUBTLE,
-  SIDEBAR_TOOLTIP_DELAY_MS,
   SIDEBAR_TOOLTIP_SIDE_OFFSET,
   SIDEBAR_TOOLTIP_CLASS,
 } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
@@ -26,7 +20,7 @@ export {
 export const SHORTCUT_PREFIX_KEY = "g";
 export const SHORTCUT_SEQUENCE_TIMEOUT_MS = 1500;
 
-export function navShortcut(key: string): NavShortcut {
+function navShortcut(key: string): NavShortcut {
   return { key };
 }
 

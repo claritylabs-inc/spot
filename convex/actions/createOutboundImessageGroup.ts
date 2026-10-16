@@ -6,7 +6,6 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
-  getImessageWorkerUrl,
   getSpectrumCredentials,
   isImessageWebhookTransportEnabled,
 } from "../lib/imessageConfig";
@@ -68,13 +67,9 @@ export const createOutboundImessageGroupInternal = internalAction({
       };
     }
 
-    const webhookTransport = isImessageWebhookTransportEnabled("customer");
-    const workerUrl = getImessageWorkerUrl();
-    const secret = process.env.IMESSAGE_WORKER_SECRET ?? "";
     if (
-      webhookTransport
-        ? !getSpectrumCredentials("customer")
-        : !workerUrl || !secret
+      !isImessageWebhookTransportEnabled("customer") ||
+      !getSpectrumCredentials("customer")
     ) {
       return {
         status: "unavailable" as const,
@@ -88,28 +83,12 @@ export const createOutboundImessageGroupInternal = internalAction({
       title: args.title ?? resolved.title,
       clientMessageId: `spot-group-${args.orgId}-${dayjs().valueOf()}`,
     };
-    let body: WorkerGroupResponse;
-    if (webhookTransport) {
-      const { sendImessageViaSpectrum } = await import("../lib/imessageSpectrum");
-      body = await sendImessageViaSpectrum(ctx, "customer", groupRequest);
-    } else {
-      const response = await fetch(`${workerUrl!.replace(/\/$/, "")}/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${secret}`,
-        },
-        body: JSON.stringify(groupRequest),
-      });
-      body = (await response.json().catch(() => ({}))) as WorkerGroupResponse;
-      if (!response.ok) {
-        body = {
-          ...body,
-          ok: false,
-          error: body.error ?? `iMessage worker returned ${response.status}`,
-        };
-      }
-    }
+    const { sendImessageViaSpectrum } = await import("../lib/imessageSpectrum");
+    const body: WorkerGroupResponse = await sendImessageViaSpectrum(
+      ctx,
+      "customer",
+      groupRequest,
+    );
     if (!body.ok || !body.chatGuid) {
       return {
         status: "failed" as const,

@@ -44,7 +44,7 @@ export type CachedShellRecord = SyncRecord & {
   updatedAt: number;
 };
 
-export const cachedShellCollection = defineCollection<CachedShellRecord>({
+const cachedShellCollection = defineCollection<CachedShellRecord>({
   name: "spot.cachedShell",
   persist: true,
 });

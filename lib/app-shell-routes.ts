@@ -46,7 +46,7 @@ function segmentsOf(pathname: string) {
   return pathname.split("/").filter(Boolean);
 }
 
-export function operatorActiveSection(
+function operatorActiveSection(
   pathname: string,
 ): OperatorNavSection | null {
   const area = segmentsOf(pathname)[1];

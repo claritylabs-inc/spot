@@ -78,7 +78,7 @@ const CLIENT_FILE_EMPTY_STATES: Record<
   },
 };
 
-export type ClientFilePolicyOption = {
+type ClientFilePolicyOption = {
   _id: Id<"policies">;
   carrier?: string | null;
   policyNumber?: string | null;

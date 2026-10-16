@@ -18,11 +18,6 @@ The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
   their existing publication credentials remain separate.
 - Vercel: configure `NPM_TOKEN` on the Spot project for Production, Preview,
   and any Development environment that installs dependencies.
-- Railway: tenant/operator iMessage Docker builds install
-  only their worker manifests, which do not depend on UI. These builds need no
-  UI package token.
-  Keep each service rooted in its worker directory; a future root dependency
-  install would require package authentication at build time.
 - Local development: provide `NPM_TOKEN` in the install process environment.
   Never put the credential in tracked `.npmrc`, build arguments, or logs.
 
@@ -69,9 +64,7 @@ timed-out Convex deploy, compatibility audit, or stale-head
 check leaves the candidate unpromoted; use Vercel's explicit force-promotion
 control only for an incident-approved bypass.
 
-Production iMessage runs through Photon webhooks in Convex. The retained
-Railway iMessage services are stopped with Git autodeploy disabled for rollback;
-release readiness no longer waits for their status contexts or HTTP health.
+Production iMessage runs through Photon webhooks in Convex.
 The mailbox scan runs on the Convex cron and Slack uses the Convex Web API
 transport. The compatibility audit runs after the Convex deployment.
 `agent-safeguards.yml` exposes the same production audit only as a manual
@@ -324,11 +317,8 @@ Every `main` release sets Convex `OPERATOR_SLACK_ENABLED=true` and
 `OPERATOR_IMESSAGE_ENABLED=true`, clears the terminal-mode flag, and verifies
 the contact number and Convex transport configuration before promotion.
 
-Both production iMessage lanes run on Photon Spectrum webhooks in Convex with
-`IMESSAGE_WEBHOOK_ENABLED=true` and `OPERATOR_IMESSAGE_WEBHOOK_ENABLED=true`.
-The release audit requires both webhook flags; local terminal development keeps
-its worker health checks. Credentials, cutover, rollback, and final worker
-removal are documented in [iMessage over Spectrum webhooks](./imessage-webhooks.md).
+Both production iMessage lanes run on Photon Spectrum webhooks in Convex.
+Credentials and setup are documented in [iMessage over Spectrum webhooks](./imessage-webhooks.md).
 
 Slack environment/app setup and the client-owned policy-delivery migration are
 documented in [Slack privileged service channel](./slack.md). Production owns

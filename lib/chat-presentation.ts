@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const CHAT_PRESENTATION_VERSION = 1 as const;
-export const CHAT_PRESENTATION_MAX_BYTES = 96 * 1024;
+const CHAT_PRESENTATION_MAX_BYTES = 96 * 1024;
 const text = z.string().max(4000);
 const label = z.string().min(1).max(200);
 const id = z
@@ -12,7 +12,7 @@ const id = z
     (value) => !["__proto__", "prototype", "constructor"].includes(value),
   );
 const sourceIds = z.array(id).max(12);
-export const presentationReferenceSchema = z
+const presentationReferenceSchema = z
   .object({
     id,
     kind: z.enum([
@@ -163,7 +163,7 @@ export const presentationPropsSchemas = {
     })
     .strict(),
 } as const;
-export type PresentationComponent = keyof typeof presentationPropsSchemas;
+type PresentationComponent = keyof typeof presentationPropsSchemas;
 export type PresentationReference = z.infer<typeof presentationReferenceSchema>;
 export type PresentationProps<K extends PresentationComponent> = z.infer<
   (typeof presentationPropsSchemas)[K]
@@ -175,7 +175,7 @@ export type PresentationElement = {
     children: string[];
   };
 }[PresentationComponent];
-export type PresentationSpec = {
+type PresentationSpec = {
   root: string;
   elements: Record<string, PresentationElement>;
 };
@@ -193,7 +193,7 @@ export type PresentationCandidate = {
   element: PresentationElement;
   resource?: string;
 };
-export type PresentationToolResult = {
+type PresentationToolResult = {
   name: string;
   input?: unknown;
   output: unknown;

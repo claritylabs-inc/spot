@@ -7,7 +7,7 @@ import type { WebMcpToolName } from "@/lib/webmcp/catalog";
 import type { WebMcpResult } from "@/lib/webmcp/runtime";
 
 export type ToolInput = Record<string, unknown>;
-export type ToolExecute = (input: ToolInput) => Promise<WebMcpResult>;
+type ToolExecute = (input: ToolInput) => Promise<WebMcpResult>;
 export type ToolMap = Partial<Record<WebMcpToolName, ToolExecute>>;
 
 export type ClientToolContext = {

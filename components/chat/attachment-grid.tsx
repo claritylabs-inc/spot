@@ -18,7 +18,7 @@ import {
 
 export type DownloadableAttachment = { url: string; filename: string };
 
-export function uniqueZipFilename(filename: string, usedNames: Set<string>) {
+function uniqueZipFilename(filename: string, usedNames: Set<string>) {
   const trimmed = filename.trim() || "attachment";
   if (!usedNames.has(trimmed)) {
     usedNames.add(trimmed);

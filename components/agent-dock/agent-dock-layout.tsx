@@ -20,7 +20,7 @@ import type { AgentDockMode } from "./dock-state";
 import { AGENT_DOCK_MAX_HEIGHT, AGENT_DOCK_MIN_HEIGHT } from "./dock-storage";
 import type { AgentDockAdapter } from "./types";
 
-export const AGENT_DOCK_BAR_HEIGHT = 44;
+const AGENT_DOCK_BAR_HEIGHT = 44;
 export const AGENT_CHAT_SURFACE =
   "bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#0b0c0d]";
 /** Frame around the lifted app card while the agent is open. */

@@ -4,7 +4,6 @@ import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import {
-  getImessageWorkerUrl,
   isImessageWebhookTransportEnabled,
 } from "./imessageConfig";
 
@@ -148,9 +147,7 @@ async function sendOutboundImessageWithResult(
     logPrefix?: string;
   },
 ): Promise<ImessageSendResult> {
-  const webhookTransport = isImessageWebhookTransportEnabled("customer");
-  const workerUrl = getImessageWorkerUrl();
-  if (!webhookTransport && !workerUrl) {
+  if (!isImessageWebhookTransportEnabled("customer")) {
     return { ok: false, attachmentFailures: [] };
   }
   if (!params.toPhone && !params.chatGuid) {
@@ -169,92 +166,24 @@ async function sendOutboundImessageWithResult(
           : "");
   if (!message) return { ok: false, attachmentFailures: [] };
 
-  if (webhookTransport) {
-    const { sendImessageViaSpectrum } = await import("./imessageSpectrum");
-    const result = await sendImessageViaSpectrum(ctx, "customer", {
-      toPhone: params.toPhone,
-      chatGuid: params.chatGuid,
-      message,
-      clientMessageId: params.clientMessageId,
-      attachments,
-      appCards,
-    });
-    const prefix = params.logPrefix ?? "imessageOutbound";
-    if (!result.ok) {
-      console.warn(`[${prefix}] iMessage send failed: ${result.error}`);
-    } else if (result.attachmentFailures.length > 0) {
-      console.warn(`[${prefix}] iMessage attachment send failed`, {
-        attachmentFailures: result.attachmentFailures,
-      });
-    }
-    return { ok: result.ok, attachmentFailures: result.attachmentFailures };
-  }
-
-  try {
-    const res = await fetch(`${workerUrl}/send`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.IMESSAGE_WORKER_SECRET ?? ""}`,
-      },
-      body: JSON.stringify({
-        toPhone: params.toPhone,
-        chatGuid: params.chatGuid,
-        message,
-        clientMessageId: params.clientMessageId,
-        attachments: attachments.length > 0 ? attachments : undefined,
-        appCards: appCards.length > 0 ? appCards : undefined,
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      const prefix = params.logPrefix ?? "imessageOutbound";
-      console.warn(
-        `[${prefix}] iMessage send failed ${res.status}: ${body}`,
-      );
-      return { ok: false, attachmentFailures: [] };
-    }
-    const body = await res.json().catch(() => null);
-    const attachmentFailures = parseAttachmentFailures(body);
-    if (attachmentFailures.length > 0) {
-      const prefix = params.logPrefix ?? "imessageOutbound";
-      console.warn(`[${prefix}] iMessage attachment send failed`, {
-        attachmentFailures,
-      });
-    }
-    return { ok: true, attachmentFailures };
-  } catch (error) {
-    const prefix = params.logPrefix ?? "imessageOutbound";
-    console.warn(
-      `[${prefix}] iMessage send failed:`,
-      error,
-    );
-    return { ok: false, attachmentFailures: [] };
-  }
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function parseAttachmentFailures(body: unknown): ImessageAttachmentFailure[] {
-  const failures = objectRecord(body)?.attachmentFailures;
-  if (!Array.isArray(failures)) return [];
-  return failures.flatMap((failure) => {
-    const record = objectRecord(failure);
-    if (!record) return [];
-    const filename = record.filename;
-    if (typeof filename !== "string" || !filename.trim()) return [];
-    const error = record.error;
-    const errorText = typeof error === "string" ? error.trim() : "";
-    return [
-      errorText
-        ? { filename: filename.trim(), error: errorText }
-        : { filename: filename.trim() },
-    ];
+  const { sendImessageViaSpectrum } = await import("./imessageSpectrum");
+  const result = await sendImessageViaSpectrum(ctx, "customer", {
+    toPhone: params.toPhone,
+    chatGuid: params.chatGuid,
+    message,
+    clientMessageId: params.clientMessageId,
+    attachments,
+    appCards,
   });
+  const prefix = params.logPrefix ?? "imessageOutbound";
+  if (!result.ok) {
+    console.warn(`[${prefix}] iMessage send failed: ${result.error}`);
+  } else if (result.attachmentFailures.length > 0) {
+    console.warn(`[${prefix}] iMessage attachment send failed`, {
+      attachmentFailures: result.attachmentFailures,
+    });
+  }
+  return { ok: result.ok, attachmentFailures: result.attachmentFailures };
 }
 
 export async function sendIdempotentOutboundImessage(
