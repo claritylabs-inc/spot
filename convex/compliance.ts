@@ -17,6 +17,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getOrgAccess, requireAuth, type OrgAccess } from "./lib/access";
 import {
   assessRequirementCompliance,
+  complianceJudgmentPlan,
   formatComplianceReasons,
   policyReadableForCompliance,
   type ComplianceCheckResult,
@@ -1282,6 +1283,10 @@ export const getManualComplianceReviewContextInternal = internalQuery({
           expectedInsuredName: org?.name,
         },
       ),
+      judgmentPlans: activePolicies.map((policy) => ({
+        policyId: policy._id,
+        ...complianceJudgmentPlan(requirement, policy, org?.name ? [org.name] : []),
+      })),
       policies: activePolicies.map((policy) => ({
         deterministicCheck: assessRequirementCompliance(requirement, [policy], {
           expectedInsuredName: org?.name,
@@ -1315,6 +1320,36 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         })),
       })),
     };
+  },
+});
+
+export const saveComplianceJudgmentsInternal = internalMutation({
+  args: {
+    orgId: v.id("organizations"),
+    requirementId: v.id("insuranceRequirements"),
+    userId: v.id("users"),
+    judgments: v.array(v.object({
+      policyId: v.id("policies"),
+      inputKey: v.string(),
+      answers: v.record(v.string(), v.union(v.string(), v.boolean())),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireAdminWriteActor(ctx, args.orgId, args.userId, "Admin role required");
+    const requirement = await ctx.db.get(args.requirementId);
+    if (!requirement || requirement.orgId !== args.orgId || requirement.status !== "active" || requirement.scope !== "own_org" || requirement.kind !== "coverage") throw new Error("Requirement not found");
+    const org = await ctx.db.get(args.orgId);
+    const policies = await listPoliciesForOrg(ctx, args.orgId);
+    const names = org?.name ? [org.name] : [];
+    if (args.judgments.length > 100 || JSON.stringify(args.judgments).length > 400_000) throw new Error("Compliance evidence exceeds the stored judgment budget");
+    for (const judgment of args.judgments) {
+      const policy = policies.find((entry) => entry._id === judgment.policyId);
+      if (!policy || !policyReadableForCompliance(policy, true) || complianceJudgmentPlan(requirement, policy, names).inputKey !== judgment.inputKey) throw new Error("Compliance evidence changed; run the check again");
+    }
+    await ctx.db.patch(requirement._id, { semanticJudgments: args.judgments });
+    const result = assessRequirementCompliance({ ...requirement, semanticJudgments: args.judgments }, policies, { expectedInsuredNames: names });
+    await writeComplianceOperatorAudit(ctx, access, args.orgId, `Rechecked compliance requirement ${requirement.title}`, { requirementId: requirement._id });
+    return result;
   },
 });
 

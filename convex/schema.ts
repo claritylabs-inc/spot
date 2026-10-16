@@ -1681,6 +1681,11 @@ export default defineSchema({
     .index("operator_created", ["operatorUserId", "createdAt"]),
 
   insuranceRequirements: defineTable({
+    semanticJudgments: v.optional(v.array(v.object({
+      policyId: v.id("policies"),
+      inputKey: v.string(),
+      answers: v.record(v.string(), v.union(v.string(), v.boolean())),
+    }))),
     orgId: v.id("organizations"),
     kind: v.union(
       v.literal("coverage"),
