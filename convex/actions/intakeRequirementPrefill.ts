@@ -4,6 +4,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateObjectForPublicTask } from "../lib/models";
 import {
+  judgeRequirementFields,
   IMAGE_SOURCE_PLACEHOLDER,
   RequirementImportSchema,
   buildPrompt,
@@ -92,16 +93,23 @@ export const extract = internalAction({
           ),
       );
       const result = mergeRequirementChunkResults(chunkResults);
+      const requirements = await judgeRequirementFields(
+        ctx, result.object.requirements,
+        { traceId: String(intakeFileId), defaultScope: "own_org" },
+      );
+      const exactExcerpt = (excerpt: string) =>
+        Boolean(excerpt.trim()) && text.includes(excerpt);
       const compact = (value: string) => value.trim().replace(/\s+/g, " ");
       // Excerpts read from images are checked against the page images; text
       // excerpts must be exact substrings of the extracted text.
       const imageVerdicts = images?.length
         ? await verifyExcerptsOnPageImages(ctx, {
             images,
-            excerpts: result.object.requirements.flatMap(
+            excerpts: requirements.flatMap(
               (requirement, index) =>
                 lines[requirement.lineOfBusiness ?? ""] &&
-                requirement.scope !== "vendors" &&
+                requirement.scope === "own_org" &&
+                !exactExcerpt(requirement.sourceExcerpt) &&
                 compact(requirement.sourceExcerpt)
                   ? [
                       {
@@ -121,17 +129,18 @@ export const extract = internalAction({
       for (const [
         requirementIndex,
         requirement,
-      ] of result.object.requirements.entries()) {
+      ] of requirements.entries()) {
         const coverage = lines[requirement.lineOfBusiness ?? ""];
-        if (!coverage || requirement.scope === "vendors") continue;
+        if (
+          !coverage || requirement.scope !== "own_org" || requirement.sourceVerification
+        ) continue;
         // Reuse grounded requirements, never contract instructions or unsupported lines.
         const excerpt = compact(requirement.sourceExcerpt);
         if (!excerpt) continue;
-        if (imageVerdicts) {
-          if (!imageVerdicts.get(requirementIndex)?.verified) continue;
-        } else if (!compact(text).includes(excerpt)) {
-          continue;
-        }
+        if (
+          !exactExcerpt(requirement.sourceExcerpt) &&
+          !imageVerdicts?.get(requirementIndex)?.verified
+        ) continue;
         const row = coverages.get(coverage) ?? newCoverage(coverage);
         for (const limit of requirement.limits ?? []) {
           let key = limitKeys[limit.kind];
