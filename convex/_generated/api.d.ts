@@ -156,6 +156,7 @@ import type * as lib_chatPresentationCandidates from "../lib/chatPresentationCan
 import type * as lib_chatPresentationComposer from "../lib/chatPresentationComposer.js";
 import type * as lib_chatPresentationValidators from "../lib/chatPresentationValidators.js";
 import type * as lib_chatTools from "../lib/chatTools.js";
+import type * as lib_citationLocalization from "../lib/citationLocalization.js";
 import type * as lib_citationResolver from "../lib/citationResolver.js";
 import type * as lib_clRouterClient from "../lib/clRouterClient.js";
 import type * as lib_clRouterLanguageModel from "../lib/clRouterLanguageModel.js";
@@ -222,7 +223,9 @@ import type * as lib_imessageDeterministicControls from "../lib/imessageDetermin
 import type * as lib_imessageGroupResolution from "../lib/imessageGroupResolution.js";
 import type * as lib_imessageIngress from "../lib/imessageIngress.js";
 import type * as lib_imessageOutbound from "../lib/imessageOutbound.js";
+import type * as lib_imessageReplyThreading from "../lib/imessageReplyThreading.js";
 import type * as lib_imessageSpectrum from "../lib/imessageSpectrum.js";
+import type * as lib_imessageVoice from "../lib/imessageVoice.js";
 import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmailDeterministicControls.js";
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
 import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js";
@@ -577,6 +580,7 @@ declare const fullApi: ApiFromModules<{
   "lib/chatPresentationComposer": typeof lib_chatPresentationComposer;
   "lib/chatPresentationValidators": typeof lib_chatPresentationValidators;
   "lib/chatTools": typeof lib_chatTools;
+  "lib/citationLocalization": typeof lib_citationLocalization;
   "lib/citationResolver": typeof lib_citationResolver;
   "lib/clRouterClient": typeof lib_clRouterClient;
   "lib/clRouterLanguageModel": typeof lib_clRouterLanguageModel;
@@ -643,7 +647,9 @@ declare const fullApi: ApiFromModules<{
   "lib/imessageGroupResolution": typeof lib_imessageGroupResolution;
   "lib/imessageIngress": typeof lib_imessageIngress;
   "lib/imessageOutbound": typeof lib_imessageOutbound;
+  "lib/imessageReplyThreading": typeof lib_imessageReplyThreading;
   "lib/imessageSpectrum": typeof lib_imessageSpectrum;
+  "lib/imessageVoice": typeof lib_imessageVoice;
   "lib/inboundEmailDeterministicControls": typeof lib_inboundEmailDeterministicControls;
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
   "lib/insuranceIntakeSchema": typeof lib_insuranceIntakeSchema;
