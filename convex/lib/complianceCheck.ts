@@ -1,11 +1,13 @@
 import dayjs from "dayjs";
+import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import type { Doc, Id } from "../_generated/dataModel";
-import { lobLabel, policyLobCodes } from "./linesOfBusiness";
+import { policyLobCodes } from "./linesOfBusiness";
 import {
   isRequirementLimitKind,
   isRequirementProvision,
   normalizeRequirementLineOfBusiness,
   REQUIREMENT_LIMIT_KIND_LABELS,
+  REQUIREMENT_LIMIT_KINDS,
   REQUIREMENT_PROVISION_LABELS,
   type ComplianceCheckStatus,
   type RequirementLimitKind,
@@ -63,41 +65,16 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
-const INSURED_NAME_STOPWORDS = new Set([
-  "inc",
-  "incorporated",
-  "llc",
-  "ltd",
-  "limited",
-  "corp",
-  "corporation",
-  "company",
-  "co",
-  "the",
-]);
-
-function significantNameTokens(value: string | undefined | null) {
-  return normalizeText(value)
-    .split(/\s+/)
-    .filter((token) => token.length >= 3 && !INSURED_NAME_STOPWORDS.has(token));
+function legalName(value: string | undefined | null) {
+  return normalizeText(value).replace(/(?:\s+(?:inc|incorporated|llc|ltd|limited|corp|corporation|company|co))+$/, "").trim();
 }
 
 export function insuredNameMatches(
   actual: string | undefined | null,
   expected: string | undefined | null,
 ) {
-  const actualText = normalizeText(actual);
-  const expectedText = normalizeText(expected);
-  if (!expectedText) return true;
-  if (!actualText) return false;
-  if (actualText.includes(expectedText) || expectedText.includes(actualText)) {
-    return true;
-  }
-  const expectedTokens = significantNameTokens(expected);
-  if (expectedTokens.length === 0) return true;
-  const actualTokens = new Set(significantNameTokens(actual));
-  const matched = expectedTokens.filter((token) => actualTokens.has(token));
-  return matched.length / expectedTokens.length >= 0.7;
+  if (!normalizeText(expected)) return true;
+  return !!legalName(actual) && legalName(actual) === legalName(expected);
 }
 
 function parseDate(value: string | undefined) {
@@ -137,35 +114,6 @@ function normalizeLimitKind(value: unknown): RequirementLimitKind | undefined {
   if (typeof value !== "string") return undefined;
   const direct = value.trim().toLowerCase();
   if (isRequirementLimitKind(direct)) return direct;
-  const text = normalizeText(value);
-  if (/\b(per occurrence|each occurrence|occurrence)\b/.test(text)) {
-    return "per_occurrence";
-  }
-  if (/\b(general aggregate|aggregate limit)\b/.test(text)) {
-    return "general_aggregate";
-  }
-  if (/\b(products?|completed operations?)\b/.test(text)) {
-    return "products_completed_ops_aggregate";
-  }
-  if (/\b(personal|advertising injury)\b/.test(text)) {
-    return "personal_adv_injury";
-  }
-  if (/\b(rented premises|damage to premises)\b/.test(text)) {
-    return "damage_to_rented_premises";
-  }
-  if (/\b(medical expense|med exp)\b/.test(text)) return "medical_expense";
-  if (/\b(each claim|per claim|claim)\b/.test(text)) return "per_claim";
-  if (/\b(combined single|csl)\b/.test(text)) return "combined_single_limit";
-  if (/\b(each accident|el each accident|bodily injury by accident)\b/.test(text)) {
-    return "el_each_accident";
-  }
-  if (/\b(disease each employee|each employee)\b/.test(text)) {
-    return "el_disease_each_employee";
-  }
-  if (/\b(disease policy limit|policy limit)\b/.test(text)) {
-    return "el_disease_policy_limit";
-  }
-  if (/\baggregate\b/.test(text)) return "aggregate";
   return undefined;
 }
 
@@ -189,114 +137,128 @@ function coverageLobMatches(
   ) {
     return true;
   }
-  const requiredText = normalizeText(`${required} ${lobLabel(required)}`);
-  return (policy.coverages ?? []).some((coverage) =>
-    normalizeText(
-      [
-        coverage.lineOfBusiness,
-        coverage.name,
-        coverage.coverageCode,
-        coverage.originalContent,
-      ].join(" "),
-    ).includes(requiredText),
-  );
+  return !!bestCoverageForRequirement(policy, requirement);
 }
 
 function coverageText(coverage: NonNullable<Doc<"policies">["coverages"]>[number]) {
-  return normalizeText(
-    [
-      coverage.name,
-      coverage.lineOfBusiness,
-      coverage.coverageCode,
-      coverage.limit,
-      coverage.limitType,
-      coverage.formNumber,
-      coverage.originalContent,
-      coverage.resolvedOriginalContent,
-    ].join(" "),
-  );
+  return [coverage.name, coverage.originalContent, coverage.resolvedOriginalContent].filter(Boolean).join(" ");
 }
-
-const COVERAGE_SEARCH_TERMS: Partial<Record<string, string[]>> = {
-  CYBER: ["cyber", "privacy", "network security", "data breach"],
-  EO: ["errors omissions", "professional liability"],
-  PL: ["professional liability"],
-  CGL: ["commercial general liability", "general liability"],
-  CRIM: ["crime", "fidelity"],
-  DO: ["directors officers", "d o liability"],
-  EPLI: ["employment practices"],
-  FIDUC: ["fiduciary"],
-};
 
 function coverageMatchScore(
   coverage: NonNullable<Doc<"policies">["coverages"]>[number],
   requiredCode: string | undefined,
 ) {
-  if (!requiredCode) return 1;
-  if (
-    normalizeRequirementLineOfBusiness(coverage.lineOfBusiness) === requiredCode
-  ) {
-    return 100;
-  }
-  const text = coverageText(coverage);
-  const terms = COVERAGE_SEARCH_TERMS[requiredCode] ?? [];
-  return terms.reduce(
-    (score, term) => score + (text.includes(term) ? term.split(" ").length * 10 : 0),
-    0,
-  );
+  if (!requiredCode || requiredCode === "UN") return 0;
+  return [coverage.lineOfBusiness, coverage.coverageCode].some(
+    (code) => normalizeRequirementLineOfBusiness(code) === requiredCode,
+  ) ? 100 : 0;
 }
 
-function policyText(policy: Doc<"policies">) {
-  return normalizeText(
-    [
-      policy.summary,
-      policy.carrier,
-      policy.security,
-      policy.generalAgent?.agencyName,
-      policy.broker,
-      policy.insuredName,
-      // Structured fields must be flattened to their text; joining the objects
-      // directly produced "[object Object]" and hid every form and endorsement.
-      ...(policy.formInventory ?? []).flatMap((form) => [
-        form.formNumber,
-        form.title,
-      ]),
-      ...(policy.coverages ?? []).flatMap((coverage) => [
-        coverage.name,
-        coverage.formNumber,
-      ]),
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
+export function policyHasRequiredForm(policy: Doc<"policies">, form: string) {
+  const normalizeForm = (value: string) => normalizeText(value).replace(/ /g, "");
+  const needle = normalizeForm(form);
+  return !!needle && [
+    ...(policy.formInventory ?? []).map((entry) => entry.formNumber),
+    ...(policy.coverages ?? []).map((entry) => entry.formNumber),
+  ].some((value) => !!value && normalizeForm(value) === needle);
 }
 
-function policyHasRequiredForm(policy: Doc<"policies">, form: string) {
-  const needle = normalizeText(form);
-  if (!needle) return true;
-  return policyText(policy).includes(needle);
+function policyHasProvision(policy: Doc<"policies">, provision: RequirementProvision) {
+  const titles = [
+    ...(policy.formInventory ?? []).map((form) => form.title),
+    ...(policy.coverages ?? []).map((coverage) => coverage.name),
+  ].map(normalizeText);
+  const phrases: Record<RequirementProvision, string[]> = {
+    additional_insured: ["additional insured"],
+    waiver_of_subrogation: ["waiver of subrogation", "subrogation waived"],
+    primary_non_contributory: ["primary and non contributory", "primary non contributory"],
+  };
+  return titles.some((title) => phrases[provision].includes(title));
 }
 
-function policyHasProvision(
+export function complianceJudgmentPlan(
+  requirement: Doc<"insuranceRequirements">,
   policy: Doc<"policies">,
-  provision: RequirementProvision,
+  expectedNames: string[],
 ) {
-  const text = policyText(policy);
-  switch (provision) {
-    case "additional_insured":
-      return /\badditional insured\b/.test(text);
-    case "waiver_of_subrogation":
-      return /\bwaiver of subrogation\b|\bsubrogation waived\b|\bwos\b/.test(
-        text,
-      );
-    case "primary_non_contributory":
-      return /\bprimary\b/.test(text) && /\bnon contributory\b/.test(text);
+  const state = {
+    requirement: {
+      party: expectedNames,
+      lineOfBusiness: requirement.lineOfBusiness ?? requirement.title,
+      provisions: requirement.provisions ?? [],
+      requiredForms: requirement.requiredForms ?? [],
+    },
+    policy: {
+      insuredName: policy.insuredName ?? null,
+      formInventory: (policy.formInventory ?? []).map((form) => ({ formNumber: form.formNumber ?? null, title: form.title ?? null })),
+      coverages: (policy.coverages ?? []).map((coverage) => ({
+        name: coverage.name,
+        lineOfBusiness: coverage.lineOfBusiness ?? null,
+        coverageCode: coverage.coverageCode ?? null,
+        text: coverageText(coverage),
+        limitType: coverage.limitType ?? coverage.limit ?? null,
+        limits: (coverage.limits ?? []).map((limit) => limit.kind ?? limit.label ?? limit.appliesTo ?? null),
+      })),
+    },
+  };
+  const questions: Record<string, DecisionQuestion> = {};
+  if (expectedNames.length && !expectedNames.some((name) => insuredNameMatches(policy.insuredName, name))) {
+    questions.insured = { type: "noul", instructions: "Is `policy.insuredName` the same legal entity as any party in `requirement.party` (including a DBA or trading name)? Similar words alone do not establish identity." };
   }
+  if (state.policy.coverages.length > 0 && state.policy.coverages.length < 128 &&
+    !(policy.coverages ?? []).some((coverage) => coverageMatchScore(coverage, normalizeRequirementLineOfBusiness(requirement.lineOfBusiness)))) {
+    questions.coverage = {
+      type: "choice",
+      instructions: "Which row in `policy.coverages` provides the insurance line in `requirement.lineOfBusiness`? Select none when no row provides that line.",
+      criteria: Object.fromEntries([
+        ...state.policy.coverages.map((_, index) => [`c${index}`, { what: `The coverage row at \`policy.coverages[${index}]\` provides the requested line.`, not_for: "A row describing another insurance line or merely mentioning the requested line in an exclusion." }]),
+        ["none", "No coverage row provides the requested insurance line."],
+      ]),
+    };
+  }
+  for (const [index, provision] of (requirement.provisions ?? []).entries()) {
+    if (isRequirementProvision(provision) && policyHasProvision(policy, provision)) continue;
+    questions[`provision_${index}`] = { type: "noul", instructions: `Do the endorsement/form titles in \`policy.formInventory\` and coverage text in \`policy.coverages\` establish the provision at \`requirement.provisions[${index}]\`? An exclusion, unrelated words, or a request to add it does not establish the provision.` };
+  }
+  for (const [index, form] of (requirement.requiredForms ?? []).entries()) {
+    if (policyHasRequiredForm(policy, form)) continue;
+    // Printed form identifiers are deterministic; only descriptive form titles need semantics.
+    if (/\d/.test(form)) continue;
+    questions[`form_${index}`] = { type: "noul", instructions: `Does \`policy.formInventory\` establish the descriptive form required at \`requirement.requiredForms[${index}]\`?` };
+  }
+  for (const [index, coverage] of state.policy.coverages.entries()) {
+    for (const [limitIndex, label] of [coverage.limitType, ...coverage.limits].entries()) {
+      if (!label || normalizeLimitKind(label)) continue;
+      questions[`limit_${index}_${limitIndex}`] = {
+        type: "choice",
+        instructions: `Which typed limit kind describes ${limitIndex === 0 ? `\`policy.coverages[${index}].limitType\`` : `\`policy.coverages[${index}].limits[${limitIndex - 1}]\``}? Classify the limit's scope, not the policy's occurrence/claims-made trigger.`,
+        criteria: Object.fromEntries([
+          ...REQUIREMENT_LIMIT_KINDS.map((kind) => [kind, {
+            what: REQUIREMENT_LIMIT_KIND_LABELS[kind],
+            not_for: kind.startsWith("el_") ? "Non-employers-liability limits; a generic policy limit is insufficient." : kind === "per_claim" ? "Aggregate limits, including claims-made aggregates." : kind === "aggregate" ? "Per-claim or specifically general/products-completed-operations aggregates." : "Limits with a different scope; prefer the explicitly named scope.",
+          }]),
+          ["none", "The label does not identify a limit scope."],
+        ]),
+      };
+    }
+  }
+  return { state, questions, inputKey: JSON.stringify({ version: 1, state, requirementUpdatedAt: requirement.updatedAt }) };
+}
+
+function storedJudgments(requirement: Doc<"insuranceRequirements">, policy: Doc<"policies">, expectedNames: string[]) {
+  const plan = complianceJudgmentPlan(requirement, policy, expectedNames);
+  return requirement.semanticJudgments?.find((entry) => entry.policyId === policy._id && entry.inputKey === plan.inputKey)?.answers ?? {};
+}
+
+function semanticLimitKind(value: string | boolean | undefined) {
+  return isRequirementLimitKind(value) ? value : undefined;
 }
 
 function coverageAmountForKind(
   coverage: NonNullable<Doc<"policies">["coverages"]>[number],
   requiredKind: RequirementLimitKind,
+  judgments: Record<string, string | boolean>,
+  coverageIndex: number,
 ) {
   const candidates: Array<{
     kind?: RequirementLimitKind;
@@ -305,14 +267,14 @@ function coverageAmountForKind(
   }> = [];
   if (coverage.limitAmount !== undefined) {
     candidates.push({
-      kind: normalizeLimitKind(coverage.limitType ?? coverage.limit),
+      kind: normalizeLimitKind(coverage.limitType ?? coverage.limit) ?? semanticLimitKind(judgments[`limit_${coverageIndex}_0`]),
       amount: coverage.limitAmount,
       label: coverage.limit,
     });
   }
-  for (const limit of coverage.limits ?? []) {
+  for (const [index, limit] of (coverage.limits ?? []).entries()) {
     candidates.push({
-      kind: normalizeLimitKind(limit.kind ?? limit.label ?? limit.appliesTo),
+      kind: normalizeLimitKind(limit.kind ?? limit.label ?? limit.appliesTo) ?? semanticLimitKind(judgments[`limit_${coverageIndex}_${index + 1}`]),
       amount: limit.amount,
       label: [limit.label, limit.value].filter(Boolean).join(": "),
     });
@@ -323,20 +285,16 @@ function coverageAmountForKind(
       candidate.kind === requiredKind && typeof candidate.amount === "number",
   );
   if (exact) return exact;
-  if (
-    requiredKind === "other" &&
-    candidates.length === 1 &&
-    candidates[0]?.amount !== undefined
-  ) {
-    return candidates[0];
-  }
   return undefined;
 }
 
 function bestCoverageForRequirement(
   policy: Doc<"policies">,
   requirement: Doc<"insuranceRequirements">,
+  judgments: Record<string, string | boolean> = {},
 ) {
+  const selected = judgments.coverage;
+  if (typeof selected === "string" && /^c\d+$/.test(selected)) return policy.coverages?.[Number(selected.slice(1))];
   const required = requirement.lineOfBusiness;
   const requiredCode = normalizeRequirementLineOfBusiness(required);
   let best:
@@ -521,10 +479,10 @@ export function assessRequirementCompliance(
       : [];
   const candidates = policies
     .filter((policy) => policyReadableForCompliance(policy, includePreviewPolicies))
-    .filter((policy) => coverageLobMatches(requirement, policy))
+    .filter((policy) => coverageLobMatches(requirement, policy) || !!bestCoverageForRequirement(policy, requirement, storedJudgments(requirement, policy, insuredNames)))
     .map((policy) => ({
       policy,
-      coverage: bestCoverageForRequirement(policy, requirement),
+      coverage: bestCoverageForRequirement(policy, requirement, storedJudgments(requirement, policy, insuredNames)),
       expiration: parseDate(policy.expirationDate),
     }))
     .sort(
@@ -536,7 +494,7 @@ export function assessRequirementCompliance(
   if (candidates.length === 0) {
     return {
       requirementId: requirement._id,
-      status: "not_met",
+      status: "unverified",
       reasons: ["no_matching_policy"],
       matchedPolicyIds: [],
       matchedSummary: "No active policy appears to match this coverage requirement.",
@@ -550,13 +508,15 @@ export function assessRequirementCompliance(
       ({ expiration }) => Number.isFinite(expiration) && expiration >= now,
     ) ?? candidates[0]!;
   const reasons: string[] = [];
+  const judgments = storedJudgments(requirement, active.policy, insuredNames);
+  if (!active.coverage) reasons.push("coverage_unverifiable");
   let bestDetectedAmount: number | undefined;
   for (const required of requirement.limits ?? []) {
     const requiredKind = isRequirementLimitKind(required.kind)
       ? required.kind
       : "other";
     const matched = active.coverage
-      ? coverageAmountForKind(active.coverage, requiredKind)
+      ? coverageAmountForKind(active.coverage, requiredKind, judgments, active.policy.coverages?.indexOf(active.coverage) ?? -1)
       : undefined;
     if (!matched || matched.amount === undefined) {
       reasons.push(`limit_unverifiable:${requiredKind}`);
@@ -604,25 +564,29 @@ export function assessRequirementCompliance(
       reasons.push("retroactive_date_after_required");
     }
   }
-  for (const rawProvision of requirement.provisions ?? []) {
-    if (!isRequirementProvision(rawProvision)) continue;
-    if (!policyHasProvision(active.policy, rawProvision)) {
-      reasons.push(`provision_missing:${rawProvision}`);
+  for (const [index, rawProvision] of (requirement.provisions ?? []).entries()) {
+    if (!(isRequirementProvision(rawProvision) && policyHasProvision(active.policy, rawProvision)) && judgments[`provision_${index}`] !== true) {
+      reasons.push(`provision_${judgments[`provision_${index}`] === false ? "missing" : "unverifiable"}:${rawProvision}`);
     }
   }
-  for (const form of requirement.requiredForms ?? []) {
-    if (!policyHasRequiredForm(active.policy, form)) {
-      reasons.push(`required_form_missing:${form}`);
+  for (const [index, form] of (requirement.requiredForms ?? []).entries()) {
+    if (!policyHasRequiredForm(active.policy, form) && judgments[`form_${index}`] !== true) {
+      reasons.push(`required_form_unverifiable:${form}`);
     }
   }
   if (
     active.expiration >= now &&
     insuredNames.length > 0 &&
-    !insuredNames.some((name) => insuredNameMatches(active.policy.insuredName, name))
+    !insuredNames.some((name) => insuredNameMatches(active.policy.insuredName, name)) &&
+    judgments.insured !== true
   ) {
-    reasons.push("insured_name_mismatch");
+    reasons.push(judgments.insured === false ? "insured_name_mismatch" : "insured_name_unverifiable");
   }
 
+  if (!Number.isFinite(active.expiration)) reasons.push("expiration_unverifiable");
+  const effective = parseDate(active.policy.effectiveDate);
+  if (!Number.isFinite(effective)) reasons.push("effective_date_unverifiable");
+  else if (effective > now) reasons.push("policy_not_yet_effective");
   const daysUntilExpiration = Number.isFinite(active.expiration)
     ? Math.ceil((active.expiration - now) / (24 * 60 * 60 * 1000))
     : undefined;
