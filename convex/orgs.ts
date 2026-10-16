@@ -1332,27 +1332,18 @@ export const setClientAccessStatus = mutation({
   },
 });
 
-// One-time backfill for the retired `operatorStatus`: live clients become active, everything else becomes limited, and the retired "intake" value is renamed to "limited".
-export const migrateOperatorStatusInternal = internalMutation({
-  args: { cursor: v.optional(v.string()), dryRun: v.optional(v.boolean()) },
+// Removes the retired `operatorStatus` from stored orgs so the schema field can be dropped.
+export const clearOperatorStatusInternal = internalMutation({
+  args: { cursor: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const page = await ctx.db
       .query("organizations")
       .paginate({ numItems: 100, cursor: args.cursor ?? null });
     let updated = 0;
     for (const org of page.page) {
-      if (org.type === "broker") continue;
-      if (org.clientAccessStatus !== undefined && org.clientAccessStatus !== "intake")
-        continue;
-      const status =
-        org.clientAccessStatus === "intake" ||
-        (org.clientAccessStatus === undefined &&
-          (org.operatorStatus ?? "live") !== "live")
-          ? "limited"
-          : "active";
+      if (org.operatorStatus === undefined) continue;
       updated += 1;
-      if (!args.dryRun)
-        await ctx.db.patch(org._id, { clientAccessStatus: status });
+      await ctx.db.patch(org._id, { operatorStatus: undefined });
     }
     return { updated, isDone: page.isDone, continueCursor: page.continueCursor };
   },
