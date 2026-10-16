@@ -6,7 +6,10 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { clRouterDecide } from "./lib/clRouterClient";
+import { jevProceeds } from "./lib/jevThreshold";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   assertCanReadPolicies,
@@ -54,16 +57,25 @@ async function findExistingHolder(
     normalizedName: string;
     normalizedEmail?: string;
     normalizedAddressKey?: string;
+    /** Holder an action confirmed (with Jev) is the same organization despite a different name. */
+    confirmedEmailHolderId?: Id<"certificateHolders">;
   },
 ) {
   if (args.normalizedEmail) {
+    // A shared inbox can belong to several organizations, so an email match
+    // alone is not an identity match: the name must agree or be confirmed.
     const byEmail = await ctx.db
       .query("certificateHolders")
       .withIndex("organization_email", (q) =>
         q.eq("orgId", args.orgId).eq("normalizedEmail", args.normalizedEmail),
       )
-      .first();
-    if (byEmail) return byEmail;
+      .collect();
+    const sameOrganization = byEmail.find(
+      (holder: Doc<"certificateHolders">) =>
+        holder.normalizedName === args.normalizedName ||
+        holder._id === args.confirmedEmailHolderId,
+    );
+    if (sameOrganization) return sameOrganization;
   }
 
   const named = await ctx.db
@@ -85,6 +97,77 @@ async function findExistingHolder(
       (holder: Doc<"certificateHolders">) => !holder.normalizedAddressKey,
     ) ?? (named.length === 1 ? named[0] : null)
   );
+}
+
+/** Holder sharing the email whose name differs, for an action to ask Jev about. */
+export const findEmailNameConflictInternal = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    displayName: v.string(),
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const normalizedEmail = normalizeCertificateHolderEmail(args.email);
+    if (!normalizedEmail) return null;
+    const normalizedName = normalizeCertificateHolderName(args.displayName);
+    const byEmail = await ctx.db
+      .query("certificateHolders")
+      .withIndex("organization_email", (q) =>
+        q.eq("orgId", args.orgId).eq("normalizedEmail", normalizedEmail),
+      )
+      .collect();
+    if (byEmail.some((holder) => holder.normalizedName === normalizedName))
+      return null;
+    const holder = byEmail[0];
+    return holder ? { holderId: holder._id, displayName: holder.displayName } : null;
+  },
+});
+
+/**
+ * Same email, different name: asks Jev whether the saved holder is the same
+ * organization. Returns its id only when Jev is confident; otherwise (or on a
+ * router failure) the upsert treats the request as a new holder.
+ */
+export async function confirmEmailHolderSameOrganization(
+  ctx: ActionCtx,
+  args: { orgId: Id<"organizations">; displayName: string; email?: string },
+): Promise<Id<"certificateHolders"> | undefined> {
+  const name = args.displayName.trim();
+  if (!name || !args.email) return undefined;
+  const conflict = (await ctx.runQuery(
+    internal.certificateHolders.findEmailNameConflictInternal,
+    { orgId: args.orgId, displayName: name, email: args.email },
+  )) as { holderId: Id<"certificateHolders">; displayName: string } | null;
+  if (!conflict) return undefined;
+  try {
+    const result = await clRouterDecide(
+      {
+        orgId: String(args.orgId),
+        task: "certificate_holder_resolution",
+        state: {
+          requested: { name },
+          candidate: { name: conflict.displayName },
+        },
+        questions: {
+          same_organization: {
+            type: "noul",
+            instructions:
+              "Is `candidate.name` the same organization as `requested.name`? A different legal entity, branch, or unrelated company sharing an inbox is not the same.",
+          },
+        },
+      },
+      { telemetry: ctx },
+    );
+    const answer = result.answers.same_organization;
+    return answer?.type === "noul" && jevProceeds(answer.noul)
+      ? conflict.holderId
+      : undefined;
+  } catch (error) {
+    console.warn("[certificateHolders] holder name comparison failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
 }
 
 export const listForOrg = query({
@@ -179,6 +262,8 @@ export async function upsertCertificateHolder(
     notes?: string;
     createdByUserId?: Id<"users">;
     updatedByUserId?: Id<"users">;
+    /** See `confirmEmailHolderSameOrganization`. */
+    confirmedEmailHolderId?: Id<"certificateHolders">;
   },
 ) {
   const displayName = args.displayName.trim();
@@ -191,6 +276,7 @@ export async function upsertCertificateHolder(
     normalizedName,
     normalizedEmail,
     normalizedAddressKey,
+    confirmedEmailHolderId: args.confirmedEmailHolderId,
   });
   const now = dayjs().valueOf();
   const preserveExistingOptionalFields =
@@ -255,6 +341,7 @@ export const upsertInternal = internalMutation({
     notes: v.optional(v.string()),
     createdByUserId: v.optional(v.id("users")),
     updatedByUserId: v.optional(v.id("users")),
+    confirmedEmailHolderId: v.optional(v.id("certificateHolders")),
   },
   handler: async (ctx, args) => {
     return await upsertCertificateHolder(ctx, args);
