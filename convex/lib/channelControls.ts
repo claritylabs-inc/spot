@@ -324,25 +324,32 @@ export async function decideTextChannelEmailControl(
       {
         orgId: String(args.orgId),
         task: TEXT_CHANNEL_EMAIL_CONTROL_TASK,
-        state: {
-          messageText: args.messageText,
-          draftCount: args.draftCount,
-          pendingCount: args.pendingCount,
-          hasCancelledEmail: args.hasCancelledEmail,
-        },
+        state: { message: args.messageText },
         questions: {
           control: {
             type: "choice",
             instructions:
-              "The user has email drafts or pending emails in this conversation. Classify the short message as one of the email controls only when it is clearly a standalone instruction about those emails. Anything else, including questions, edits, new requests, and mixed instructions, is none.",
+              "Classify `message` as one of the email controls only when it is clearly a standalone instruction about the user's current email drafts or pending emails. Anything else, including questions, edits, new requests, and mixed instructions, is none.",
             criteria: {
-              send: "Instructs Spot to send the current draft(s) now",
-              cancel:
-                "Instructs Spot to cancel, discard, or stop the current draft or pending email",
-              restore:
-                "Instructs Spot to restore or undo cancelling the most recently cancelled email",
-              show_drafts:
-                "Asks Spot to show or list the current email drafts",
+              ...(args.draftCount > 0
+                ? {
+                    send: "Instructs Spot to send the current draft(s) now",
+                    show_drafts:
+                      "Asks Spot to show or list the current email drafts",
+                  }
+                : {}),
+              ...(args.draftCount > 0 || args.pendingCount > 0
+                ? {
+                    cancel:
+                      "Instructs Spot to cancel, discard, or stop the current draft or pending email",
+                  }
+                : {}),
+              ...(args.hasCancelledEmail
+                ? {
+                    restore:
+                      "Instructs Spot to restore or undo cancelling the most recently cancelled email",
+                  }
+                : {}),
               none: "Anything else",
             },
           },
@@ -1022,7 +1029,7 @@ export async function decideSlackControlIntent(
           resolve: {
             type: "noul",
             instructions:
-              "Is this Slack message, on its own, an instruction to mark the current support thread as resolved or closed? Thanks, follow-up questions, and new requests do not qualify.",
+              "Is `messageText`, on its own, an instruction to mark the current support thread as resolved or closed? Thanks, follow-up questions, and new requests do not qualify.",
             criteria: {
               true: "A standalone instruction to resolve or close the thread",
               false: "Anything else",
@@ -1031,7 +1038,7 @@ export async function decideSlackControlIntent(
           humanRequest: {
             type: "noul",
             instructions:
-              "Is this Slack message, on its own, a request to talk to a human, a person, or an operator instead of the assistant?",
+              "Is `messageText`, on its own, a request to talk to a human, a person, or an operator instead of the assistant?",
             criteria: {
               true: "A standalone request for a human or operator handoff",
               false: "Anything else",

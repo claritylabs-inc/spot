@@ -46,8 +46,8 @@ The router fetches raw request JSON from the request capability URL. For binary
 references, Spot rewrites source URLs to `/router-jobs/asset?token=...&index=...`.
 These assets belong to the invocation and stay available throughout active work,
 even when the original asset signature expires or its caller cleans up staging.
-The request remains limited to 4 MiB; assets retain 12 MiB each, 16 MiB aggregate,
-and eight-asset limits.
+The request remains limited to 4 MiB; assets are limited to 16 MiB decoded in
+total, with no asset count limit.
 
 The router posts this envelope to the result capability URL:
 

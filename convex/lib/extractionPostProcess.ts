@@ -554,7 +554,7 @@ async function verifyGroundingClaims(
       },
       questions: Object.fromEntries(batch.map((claim, index) => [`claim_${index}`, {
         type: "noul" as const,
-        instructions: `Does claims.claim_${index}.citedText state claims.claim_${index}.value as the policy's ${claim.field}? Formatting, casing, abbreviation, punctuation, or OCR differences are acceptable; a different, partial, or merely implied value is not.`,
+        instructions: `Does \`claims.claim_${index}.citedText\` state \`claims.claim_${index}.value\` as the policy's ${claim.field}? Formatting, casing, abbreviation, punctuation, or OCR differences are acceptable; a different, partial, or merely implied value is not.`,
         criteria: {
           true: "The cited text supports the value.",
           false: "The cited text does not support the value.",
@@ -621,6 +621,19 @@ function orgNameValue(fields: Record<string, unknown>, key: string) {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+function orgNameCriterion(text: string) {
+  const notes = [
+    /\b(?:incorporated|inc|llc|ltd|corp|corporation|limited)\b/i.test(text)
+      ? "contains legal suffix"
+      : undefined,
+    /administered\s+by/i.test(text)
+      ? "contains administered-by clause"
+      : undefined,
+    /[()]/.test(text) ? "contains parenthetical metadata" : undefined,
+  ].filter(Boolean);
+  return { text, note: notes.join("; ") || "verbatim source spelling" };
+}
+
 /**
  * Jev picks a concise display spelling for organization names among spellings
  * found verbatim in the source text; low confidence keeps the extracted value.
@@ -649,12 +662,12 @@ async function normalizeOrgNamesWithClassifier(
       },
       questions: Object.fromEntries(pending.map((item) => [item.question, {
         type: "choice" as const,
-        instructions: `Choose the concise user-facing display name for the ${item.role} in organizations.${item.question}. Candidates are spellings found verbatim in the policy text. Prefer the canonical entity or brand name without legal disclaimers, "administered by" clauses, or parenthetical metadata. Choose keep_extracted when the extracted name is already the best display name.`,
+        instructions: `Choose the concise user-facing display name for the ${item.role} in \`organizations.${item.question}\`. Candidates are spellings found verbatim in the policy text. Prefer the canonical entity or brand name without legal disclaimers, "administered by" clauses, or parenthetical metadata. Choose keep_extracted when the extracted name is already the best display name.`,
         criteria: {
-          keep_extracted: item.extracted,
+          keep_extracted: orgNameCriterion(item.extracted),
           ...Object.fromEntries(item.candidates.map((candidate, index) => [
             `spelling_${index}`,
-            candidate,
+            orgNameCriterion(candidate),
           ])),
         },
       }])),

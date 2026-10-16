@@ -37,9 +37,9 @@ import {
   ClRouterRequestError,
   MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES,
   MAX_CL_ROUTER_ASSET_BYTES,
-  MAX_CL_ROUTER_ASSET_COUNT,
   MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
+  clRouterPayloadTooLargeError,
   clRouterEmbed,
   clRouterGenerateMaybeManual,
   normalizeClRouterTrace,
@@ -331,7 +331,6 @@ async function withClRouterPromptInput<T>(
 ): Promise<T> {
   const options = providerOptions as ExtractionProviderOptions | undefined;
   const cleanup: RouterAssetCleanup[] = [];
-  let assetCount = 0;
   let decodedAssetBytes = 0;
   let estimatedInlineBytes = new TextEncoder().encode(prompt).byteLength + 1024;
   const sessionKey =
@@ -344,17 +343,19 @@ async function withClRouterPromptInput<T>(
     mediaType: string,
     filename?: string,
   ): Promise<ClRouterMessagePart> => {
-    assetCount += 1;
     decodedAssetBytes += bytes.byteLength;
-    if (
-      !bytes.byteLength ||
-      bytes.byteLength > MAX_CL_ROUTER_ASSET_BYTES ||
-      assetCount > MAX_CL_ROUTER_ASSET_COUNT ||
-      decodedAssetBytes > MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES
-    ) {
+    if (!bytes.byteLength) {
       throw new ClRouterRequestError(
         "configuration",
-        "Router model assets exceed the request limits",
+        "Router model assets must be nonempty",
+      );
+    }
+    if (
+      bytes.byteLength > MAX_CL_ROUTER_ASSET_BYTES ||
+      decodedAssetBytes > MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES
+    ) {
+      throw clRouterPayloadTooLargeError(
+        "Router model assets exceed the 16 MiB request limit",
       );
     }
     const data = Buffer.from(bytes).toString("base64");

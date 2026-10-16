@@ -1,3 +1,4 @@
+import { jevProceeds } from "./lib/jevThreshold";
 import { syncPolicyUploadFingerprints } from "./lib/policyImportDedup";
 import { publishMcpEvent } from "./mcpEvents";
 import { paginationOptsValidator } from "convex/server";
@@ -1905,6 +1906,55 @@ export const answerCoverageReviewQuestion = mutation({
   },
 });
 
+// The Node executor performs grounding; the writer binds its answers to this
+// exact policy/evidence snapshot and rechecks confidence inside the transaction.
+async function policyFactEvidence(
+  ctx: QueryCtx | MutationCtx,
+  args: {
+    id: DataModelId<"policies">;
+    orgId: DataModelId<"organizations">;
+    sourceSpanIds: string[];
+  },
+) {
+  const policy = await ctx.db.get(args.id);
+  if (!policy || policy.orgId !== args.orgId)
+    throw new Error("Policy not found");
+  if (!isFinalExtractedPolicy(policy))
+    throw new Error("Full source-backed extraction is required");
+  if (!args.sourceSpanIds.length || args.sourceSpanIds.length > 128)
+    throw new Error("Supply 1–128 source spans");
+  const spans = await Promise.all(
+    [...new Set(args.sourceSpanIds)].map(async (spanId) => {
+      const span = await ctx.db
+        .query("sourceSpans")
+        .withIndex("policy_span", (q) =>
+          q.eq("policyId", args.id).eq("spanId", spanId),
+        )
+        .unique();
+      if (!span)
+        throw new Error("Source evidence was not found on this policy");
+      return span;
+    }),
+  );
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify({ policy, spans })),
+  );
+  const snapshotHash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return { policy, spans, snapshotHash };
+}
+
+export const getPolicyFactEvidence = internalQuery({
+  args: {
+    id: v.id("policies"),
+    orgId: v.id("organizations"),
+    sourceSpanIds: v.array(v.string()),
+  },
+  handler: policyFactEvidence,
+});
+
 export const confirmPolicyFactFromSource = internalMutation({
   args: {
     id: v.id("policies"),
@@ -1920,6 +1970,10 @@ export const confirmPolicyFactFromSource = internalMutation({
         v.literal("slack"),
       ),
     ),
+    grounding: v.object({
+      snapshotHash: v.string(),
+      probabilities: v.record(v.string(), v.number()),
+    }),
     fieldUpdates: v.optional(
       v.object({
         carrier: v.optional(v.string()),
@@ -1939,62 +1993,86 @@ export const confirmPolicyFactFromSource = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const policy = await ctx.db.get(args.id);
-    if (!policy || policy.orgId !== args.orgId)
-      throw new Error("Policy not found");
-    if (!isFinalExtractedPolicy(policy)) {
+    const { policy, snapshotHash } = await policyFactEvidence(ctx, args);
+    if (args.grounding.snapshotHash !== snapshotHash) {
       throw new Error(
-        "Policy facts can be confirmed after full source-backed extraction finishes.",
+        "Source grounding is missing or stale; look up the evidence again.",
       );
     }
-    if (args.sourceSpanIds.length === 0)
-      throw new Error("Source evidence is required");
-
-    const policySpans = await ctx.db
-      .query("sourceSpans")
-      .withIndex("policy", (q) => q.eq("policyId", args.id))
-      .collect();
-    const validSpanIds = new Set(policySpans.map((span) => span.spanId));
-    const invalidSpanIds = args.sourceSpanIds.filter(
-      (id) => !validSpanIds.has(id),
-    );
-    if (invalidSpanIds.length > 0) {
-      throw new Error("Source evidence was not found on this policy");
+    if (
+      !Object.values(args.fieldUpdates ?? {}).some(
+        (value) => value !== undefined,
+      ) &&
+      !jevProceeds(args.grounding.probabilities.fact)
+    ) {
+      throw new Error("Cited evidence does not confidently support this fact");
     }
-
+    const acceptedUpdates: Record<string, string> = {};
+    const rejectedFields: Array<{ field: string; reason: string }> = [];
+    for (const [field, raw] of Object.entries(args.fieldUpdates ?? {})) {
+      if (raw === undefined) continue;
+      let value = raw.trim();
+      let reason = "";
+      if (!value) reason = "Value must not be blank";
+      if (field === "effectiveDate" || field === "expirationDate") {
+        const normalized = normalizeExtractedDate(value);
+        if (!normalized) reason = "Invalid date";
+        else value = normalized;
+      }
+      if (
+        ["premium", "totalCost", "minPremium", "depositPremium"].includes(field)
+      ) {
+        if (
+          !/^\$?\s*\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:k|m|mm|million|thousand)?$/i.test(
+            value,
+          )
+        )
+          reason = "Invalid monetary amount";
+        else value = normalizeMoneyString(value) ?? value;
+      }
+      if (!reason && !jevProceeds(args.grounding.probabilities[field]))
+        reason = "Cited evidence does not confidently support this value";
+      if (reason) rejectedFields.push({ field, reason });
+      else acceptedUpdates[field] = value;
+    }
     const patch: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(args.fieldUpdates ?? {})) {
+    for (const [key, value] of Object.entries(acceptedUpdates)) {
       if (value === undefined || key === "generalAgentName") continue;
       patch[key] = value;
     }
-    if (args.fieldUpdates?.generalAgentName !== undefined) {
+    if (acceptedUpdates.generalAgentName !== undefined) {
       patch.generalAgent = {
         ...(policy.generalAgent ?? {}),
-        agencyName: args.fieldUpdates.generalAgentName,
+        agencyName: acceptedUpdates.generalAgentName,
         sourceSpanIds: args.sourceSpanIds,
       };
     }
-    const derivedYear = policyYearFromInput(args.fieldUpdates?.effectiveDate);
+    const derivedYear = policyYearFromInput(acceptedUpdates.effectiveDate);
     if (derivedYear !== undefined) patch.policyYear = derivedYear;
 
     if (Object.keys(patch).length > 0) {
-      await ctx.db.patch(args.id, patch);
+      await ctx.db.patch(args.id, normalizeEditableFields(patch));
     }
 
     await ctx.db.insert("policyAuditLog", {
       policyId: args.id,
       userId: args.userId,
       orgId: args.orgId,
-      action: "agent_confirmed_policy_fact",
-      detail: args.fact,
+      action:
+        rejectedFields.length > 0 && Object.keys(acceptedUpdates).length === 0
+          ? "agent_rejected_policy_fact"
+          : "agent_confirmed_policy_fact",
+      detail: "Evaluated source-backed policy fact: " + args.fact,
       metadata: {
+        rejectedFields,
         sourceSpanIds: args.sourceSpanIds,
         fields: Object.keys(patch),
       },
     });
 
     return {
-      updatedFields: Object.keys(patch),
+      rejectedFields,
+      updatedFields: Object.keys(acceptedUpdates),
       sourceSpanIds: args.sourceSpanIds,
     };
   },

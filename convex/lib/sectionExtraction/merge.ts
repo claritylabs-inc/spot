@@ -1,7 +1,11 @@
 "use node";
 
 import { createHash } from "crypto";
-import { resolveCitation, type ResolvedCitation } from "../citationResolver";
+import {
+  MATCH_RANK,
+  resolveCitation,
+  type ResolvedCitation,
+} from "../citationResolver";
 import { mergeCoverageRows, type CoverageLike } from "../coverageScoping";
 import { MODEL_TRANSCRIPTION_TEXT_SOURCE } from "../extractionPromotion";
 import { toLobCodes } from "../linesOfBusiness";
@@ -106,13 +110,6 @@ export type MergedSectionExtraction = {
 
 type Evidence = SourceBacked & { pages: number[]; exact: boolean };
 
-const MATCH_RANK: Record<ResolvedCitation["match"], number> = {
-  exact: 3,
-  normalized: 2,
-  page_only: 1,
-  unresolved: 0,
-};
-
 const ENDORSEMENT_RECORD_PARTY_ROLES = new Set([
   "additional_insured",
   "loss_payee",
@@ -177,9 +174,9 @@ function citationsIn(value: unknown): SectionCitation[] {
 
 /**
  * pdf.js has no text for scanned pages, so citations there cannot resolve even
- * though the model read those pages from its PDF slice. Each page without
- * pdf.js spans gets one page span whose text is the verbatim quotes its section
- * cited there, so those citations resolve to page-level evidence. Pages with
+ * though the model read those pages from its PDF slice. Each quote on a page without
+ * pdf.js text gets its own span, so visual localization cannot attach one
+ * quote’s box to an unrelated fact on the same page. Pages with
  * pdf.js text never get one.
  */
 export function modelTranscriptionSpans(args: {
@@ -187,7 +184,9 @@ export function modelTranscriptionSpans(args: {
   results: SectionResult[];
   sourceSpans: SourceSpanLike[];
 }): SourceSpanLike[] {
-  const textPages = new Set(args.sourceSpans.flatMap(spanPages));
+  const textPages = new Set(
+    args.sourceSpans.filter((span) => span.text?.trim()).flatMap(spanPages),
+  );
   const quotesByPage = new Map<number, Set<string>>();
   for (const { section, output } of args.results) {
     for (const citation of citationsIn(output)) {
@@ -202,25 +201,28 @@ export function modelTranscriptionSpans(args: {
   }
   return [...quotesByPage]
     .sort(([left], [right]) => left - right)
-    .map(([page, quotes]) => {
-      // "|" ends the evidence ledger's value captures at quote boundaries.
-      const text = [...quotes].join(" | ");
-      const textHash = createHash("sha256").update(text).digest("hex");
-      return {
-        id: `${args.documentId}:span:${page}:transcription:${textHash.slice(0, 12)}`,
-        documentId: args.documentId,
-        sourceKind: "policy_pdf",
-        kind: "pdf_text",
-        pageStart: page,
-        pageEnd: page,
-        sourceUnit: "page",
-        text,
-        textHash,
-        hash: textHash,
-        location: { page, startPage: page, endPage: page },
-        metadata: { sourceUnit: "page", textSource: MODEL_TRANSCRIPTION_TEXT_SOURCE },
-      };
-    });
+    .flatMap(([page, quotes]) =>
+      [...quotes].map((text) => {
+        const textHash = createHash("sha256").update(text).digest("hex");
+        return {
+          id: `${args.documentId}:span:${page}:transcription:${textHash.slice(0, 12)}`,
+          documentId: args.documentId,
+          sourceKind: "policy_pdf",
+          kind: "pdf_text",
+          pageStart: page,
+          pageEnd: page,
+          sourceUnit: "line",
+          text,
+          textHash,
+          hash: textHash,
+          location: { page, startPage: page, endPage: page },
+          metadata: {
+            sourceUnit: "line",
+            textSource: MODEL_TRANSCRIPTION_TEXT_SOURCE,
+          },
+        };
+      }),
+    );
 }
 
 function createEvidenceResolver(

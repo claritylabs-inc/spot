@@ -130,26 +130,26 @@ const FAMILY_REQUIRED_TOOLS: Partial<
 
 const FAMILY_QUESTIONS: Record<ClientToolFamily, string> = {
   policy_qa:
-    "Could this turn ask about the user's own insurance policies: any policy fact (policy number, carrier, named insured, effective or expiration dates, premium, limits, deductibles), a list or comparison of policies, coverage wording, exclusions, endorsements, definitions, whether something is covered, or a policy summary?",
-  coi: "Could this turn involve a certificate of insurance (COI), a certificate holder, an additional insured, or delivering a certificate?",
+    "Could `message` (with `attachments` when supplied) ask about the user's own insurance policies: any policy fact (policy number, carrier, named insured, effective or expiration dates, premium, limits, deductibles), a list or comparison of policies, coverage wording, exclusions, endorsements, definitions, whether something is covered, or a policy summary?",
+  coi: "Could `message` (with `attachments` when supplied) involve a certificate of insurance (COI), a certificate holder, an additional insured, or delivering a certificate?",
   compliance:
-    "Could this turn involve insurance requirements imposed by a lease, contract, or other requirement document, checking compliance against such requirements, or vendor compliance? Questions only about the user's own policy facts or dates are not compliance.",
+    "Could `message` (with `attachments` when supplied) involve insurance requirements imposed by a lease, contract, or other requirement document, checking compliance against such requirements, or vendor compliance? Questions only about the user's own policy facts or dates are not compliance.",
   policy_change_email:
-    "Could this turn involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
+    "Could `message` (with `attachments` when supplied) involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
   email:
-    "Could this turn require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and broker follow-ups.",
+    "Could `message` (with `attachments` when supplied) require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and broker follow-ups.",
   procurement:
-    "Could this turn involve buying new coverage, quotes, applications, carrier submissions, or a procurement project?",
+    "Could `message` (with `attachments` when supplied) involve buying new coverage, quotes, applications, carrier submissions, or a procurement project?",
   mailbox:
-    "Could this turn need a connected mailbox: searching email, reading messages, or importing email attachments?",
+    "Could `message` (with `attachments` when supplied) need a connected mailbox: searching email, reading messages, or importing email attachments?",
   web_research:
-    "Could this turn need public web facts such as a company website, public news, or public research?",
+    "Could `message` (with `attachments` when supplied) need public web facts such as a company website, public news, or public research?",
   collaboration:
-    "Could this turn benefit from looping in a broker, teammate, client, or vendor, for example through a group chat?",
+    "Could `message` (with `attachments` when supplied) benefit from looping in a broker, teammate, client, or vendor, for example through a group chat?",
   history:
-    "Does this turn refer to earlier messages, a prior decision, an older attachment, or context that is not in the current message?",
+    "Does `message` (with `attachments` when supplied) refer to earlier messages, a prior decision, an older attachment, or context that is not in the current message?",
   presentation:
-    "Does the user ask to open, show, link, or send one specific policy record?",
+    "Does `message` (with `attachments` when supplied) ask to open, show, link, or send one specific policy record?",
 };
 
 const SLACK_REACTION_CRITERIA: Record<SlackProcessingReaction, string> = {
@@ -271,8 +271,9 @@ export async function decideClientAgentTurn(
         answer_depth: {
           type: "choice",
           instructions:
-            "How much policy detail does this turn call for? Prefer basic_summary for broad policy detail or summary requests, specific_section when the user names a section, clause, term, or fact, and comprehensive only when the user explicitly asks for full details or a complete breakdown.",
+            "How much policy detail does `message` call for? Prefer basic_summary for broad policy detail or summary requests, specific_section when the user names a section, clause, term, or fact, and comprehensive only when the user explicitly asks for full details or a complete breakdown.",
           criteria: {
+            none: "No policy detail is requested, or no offered depth fits",
             basic_summary:
               "A basic policy summary: carrier, line, period, named insured, and the main limit or deductible",
             specific_section:
@@ -286,7 +287,7 @@ export async function decideClientAgentTurn(
               slack_reaction: {
                 type: "choice" as const,
                 instructions:
-                  "Pick the Slack emoji reaction that best matches this request while Spot works on it.",
+                  "Pick the Slack emoji reaction that best matches `message` while Spot works on it.",
                 criteria: SLACK_REACTION_CRITERIA,
               },
             }

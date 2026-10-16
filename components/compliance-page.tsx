@@ -18,6 +18,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
+  FileSearch,
   FileUp,
   Plus,
   BadgeCheck,
@@ -245,6 +246,17 @@ type Requirement = {
   sourceExcerpt?: string;
   sourcePageStart?: number;
   sourcePageEnd?: number;
+  sourceVerification?: "unverified";
+  sourceBbox?: {
+    page: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageWidth: number;
+    pageHeight: number;
+  };
+  requirementSource?: { fileUrl?: string };
   updatedAt: number;
   complianceCheck?: {
     status: ComplianceStatus;
@@ -461,6 +473,47 @@ function pageLabel(requirement: Requirement) {
   return `p. ${requirement.sourcePageStart}`;
 }
 
+/** Opens the source PDF at the clause's page, boxing the clause when located. */
+function SourcePageLink({ requirement }: { requirement: Requirement }) {
+  const { openWithUrl } = usePdf();
+  const label = pageLabel(requirement);
+  const fileUrl = requirement.requirementSource?.fileUrl;
+  const page = requirement.sourcePageStart;
+  if (!label) return null;
+  if (!fileUrl || !page) return <>{label}</>;
+  const bbox = requirement.sourceBbox;
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 rounded-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-2"
+      aria-label={`Open source on page ${page}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        openWithUrl(
+          fileUrl,
+          page,
+          bbox && bbox.page === page
+            ? [
+                {
+                  page: bbox.page,
+                  x: bbox.x,
+                  y: bbox.y,
+                  width: bbox.width,
+                  height: bbox.height,
+                  coordinateWidth: bbox.pageWidth,
+                  coordinateHeight: bbox.pageHeight,
+                },
+              ]
+            : [],
+        );
+      }}
+    >
+      <FileSearch className="size-3" />
+      {label}
+    </button>
+  );
+}
+
 function requirementSourceLine(requirement: Requirement) {
   return [
     requirementSourcePrimary(requirement),
@@ -492,7 +545,6 @@ function requirementSourceSecondary(requirement: Requirement) {
     requirement.clientRequirementSource?.clientOrg
       ? `Required by ${requirement.clientRequirementSource.clientOrg.name}`
       : undefined,
-    pageLabel(requirement),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -504,7 +556,6 @@ function requirementTableSourceSecondary(requirement: Requirement) {
     requirement.clientRequirementSource?.clientOrg
       ? `Required by ${requirement.clientRequirementSource.clientOrg.name}`
       : undefined,
-    pageLabel(requirement),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -757,11 +808,15 @@ function RequirementsTable({
                   <p className="text-foreground">
                     {requirementSourcePrimary(requirement)}
                   </p>
-                  {sourceSecondary ? (
+                  {sourceSecondary || requirement.sourcePageStart ? (
                     <p
                       className={`text-muted-foreground ${typeStyle("caption.default")}`}
                     >
                       {sourceSecondary}
+                      {sourceSecondary && requirement.sourcePageStart
+                        ? " · "
+                        : null}
+                      <SourcePageLink requirement={requirement} />
                     </p>
                   ) : null}
                 </TableCell>
@@ -1058,8 +1113,23 @@ function RequirementDrawer({
               ) : null}
               <DrawerDetail
                 label="Source"
-                value={requirementSourceLine(requirement)}
+                value={
+                  <>
+                    {requirementSourceLine(requirement)}
+                    {requirementSourceLine(requirement) &&
+                    requirement.sourcePageStart
+                      ? " · "
+                      : null}
+                    <SourcePageLink requirement={requirement} />
+                  </>
+                }
               />
+              {requirement.sourceVerification === "unverified" ? (
+                <DrawerDetail
+                  label="Source check"
+                  value="This clause was read from a scan and could not be matched to the page. Review it against the source before relying on it."
+                />
+              ) : null}
             </section>
           </>
         )}
@@ -3147,11 +3217,11 @@ function ComplianceWorkspace({
           />
         </label>
         <FileDropZone
-          accept=".txt,.md,.markdown,.pdf,.docx,.csv,.json,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/json"
+          accept=".txt,.md,.markdown,.pdf,.docx,.csv,.json,.png,.jpg,.jpeg,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/json,image/png,image/jpeg"
           disabled={importing}
           idleLabel="Upload requirement document"
           busyLabel="Upload requirement document"
-          hint="TXT, Markdown, PDF, DOCX, CSV, or JSON"
+          hint="TXT, Markdown, PDF, DOCX, CSV, JSON, PNG, or JPEG"
           onFile={(file) => {
             setSourceFile(file);
             setSourceName((current) => current.trim() || file.name);

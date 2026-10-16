@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  collectSourceSpanIds,
+  SourceEvidenceButton,
+  usePolicySourceSpans,
+} from "./source-provenance";
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { CheckCircle2, Loader2 } from "lucide-react";
@@ -231,6 +236,11 @@ export function PolicyExtractionReview({
   readOnly: boolean;
 }) {
   const questions = extractionReviewQuestions(policy);
+  const sourceSpans = usePolicySourceSpans(
+    policy._id,
+    collectSourceSpanIds(questions),
+    { allowOperatorAccess: true },
+  );
   const answerQuestion = useMutation(api.policies.answerCoverageReviewQuestion);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<
@@ -327,73 +337,84 @@ export function PolicyExtractionReview({
                   const details = optionDetailParts(option);
                   const selected = selectedKey === key;
                   return (
-                    <button
-                      key={key}
-                      type="button"
-                      disabled={readOnly || pendingId !== null}
-                      onClick={() =>
-                        setSelectedOptions((current) => ({
-                          ...current,
-                          [questionId]: key,
-                        }))
-                      }
-                      aria-pressed={selected}
-                      className={`flex w-full min-w-0 flex-wrap items-start justify-between gap-3 px-0 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                        selected
-                          ? "bg-foreground/[0.025]"
-                          : "hover:bg-foreground/[0.015]"
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <p
-                          className={`text-muted-foreground ${typeStyle("label.eyebrow")}`}
-                        >
-                          {heading}
-                        </p>
-                        <p
-                          className={`mt-1 text-foreground ${typeStyle("body.medium")}`}
-                        >
-                          {optionDisplayLabel(option)}
-                        </p>
-                        {details.source || details.type ? (
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {[details.type, details.source]
-                              .filter(Boolean)
-                              .join(" from ")}
-                          </p>
-                        ) : null}
-                        {key === recommendedEntry?.key ? (
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {recommendationText(question, option)}
-                          </p>
-                        ) : details.name ? (
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {details.name}
-                          </p>
-                        ) : null}
-                        {details.text ? (
-                          <p
-                            className={`mt-1 line-clamp-2 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {details.text}
-                          </p>
-                        ) : null}
-                      </div>
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border border-border-emphasized px-3 py-1 text-muted-foreground ${typeStyle("label.tag")}`}
+                    <div key={key}>
+                      <button
+                        type="button"
+                        disabled={readOnly || pendingId !== null}
+                        onClick={() =>
+                          setSelectedOptions((current) => ({
+                            ...current,
+                            [questionId]: key,
+                          }))
+                        }
+                        aria-pressed={selected}
+                        className={`flex w-full min-w-0 flex-wrap items-start justify-between gap-3 px-0 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                          selected
+                            ? "bg-foreground/[0.025]"
+                            : "hover:bg-foreground/[0.015]"
+                        }`}
                       >
-                        {selected ? (
-                          <CheckCircle2 className="size-3.5" />
-                        ) : null}
-                        {selected ? "Selected" : "Select"}
-                      </span>
-                    </button>
+                        <div className="min-w-0">
+                          <p
+                            className={`text-muted-foreground ${typeStyle("label.eyebrow")}`}
+                          >
+                            {heading}
+                          </p>
+                          <p
+                            className={`mt-1 text-foreground ${typeStyle("body.medium")}`}
+                          >
+                            {optionDisplayLabel(option)}
+                          </p>
+                          {details.source || details.type ? (
+                            <p
+                              className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+                            >
+                              {[details.type, details.source]
+                                .filter(Boolean)
+                                .join(" from ")}
+                            </p>
+                          ) : null}
+                          {key === recommendedEntry?.key ? (
+                            <p
+                              className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+                            >
+                              {recommendationText(question, option)}
+                            </p>
+                          ) : details.name ? (
+                            <p
+                              className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+                            >
+                              {details.name}
+                            </p>
+                          ) : null}
+                          {details.text ? (
+                            <p
+                              className={`mt-1 line-clamp-2 text-muted-foreground ${typeStyle("caption.default")}`}
+                            >
+                              {details.text}
+                            </p>
+                          ) : null}
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full border border-border-emphasized px-3 py-1 text-muted-foreground ${typeStyle("label.tag")}`}
+                        >
+                          {selected ? (
+                            <CheckCircle2 className="size-3.5" />
+                          ) : null}
+                          {selected ? "Selected" : "Select"}
+                        </span>
+                      </button>
+                      <SourceEvidenceButton
+                        sourceSpanIds={collectSourceSpanIds(option)}
+                        sourceSpans={sourceSpans}
+                        fallbackPage={
+                          option.pageNumber ??
+                          (typeof option.coverage?.pageNumber === "number"
+                            ? option.coverage.pageNumber
+                            : undefined)
+                        }
+                      />
+                    </div>
                   );
                 })}
               </div>
