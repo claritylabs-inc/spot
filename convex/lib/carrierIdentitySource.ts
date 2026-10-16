@@ -807,7 +807,25 @@ export async function resolveCarrierIdentityDecision(args: {
       -1,
       ...passing.map((item) => tier(item.candidate)),
     );
-    const top = passing.filter((item) => tier(item.candidate) === topTier);
+    const topTierPassing = passing.filter(
+      (item) => tier(item.candidate) === topTier,
+    );
+    // Candidates naming the same entity are one answer: keep the most confident.
+    const entityKeys = new Set(
+      topTierPassing.map(({ candidate }) =>
+        normalizedCarrierIdentityText(
+          candidate.legalNames[0] ?? candidate.displayName,
+        ),
+      ),
+    );
+    const top =
+      entityKeys.size === 1
+        ? [
+            topTierPassing.reduce((best, item) =>
+              item.confidence > best.confidence ? item : best,
+            ),
+          ]
+        : topTierPassing;
     if (top.length !== 1) {
       const confidence = Math.max(0, ...judged.map((item) => item.confidence));
       const ambiguous = top.length > 1 || judged.some((item) => item.unsure);
