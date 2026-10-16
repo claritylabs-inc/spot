@@ -4,7 +4,10 @@ import {
   notificationSourceRefValidator,
 } from "./lib/notificationTypes";
 import { readRequirementNotes, saveRequirementNotes } from "./certificateNotes";
-import { loadComplianceJudgments } from "./complianceJudgments";
+import {
+  computeComplianceJudgmentsRef,
+  loadComplianceJudgments,
+} from "./complianceJudgments";
 import { v } from "convex/values";
 import dayjs from "dayjs";
 import {
@@ -768,7 +771,10 @@ export const upsertRequirement = mutation({
       `${args.requirementId ? "Updated" : "Added"} compliance requirement ${sanitized.title}`,
       { requirementId },
     );
-    await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { requirementId, subjectOrgId: args.orgId });
+    await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+      requirementId,
+      subjectOrgId: args.orgId,
+    });
     return requirementId;
   },
 });
@@ -1265,8 +1271,8 @@ export const getManualComplianceReviewContextInternal = internalQuery({
     ) {
       throw new Error("Requirement not found");
     }
-    if (requirement.kind !== "coverage") {
-      throw new Error("Only coverage requirements can be deeply rechecked");
+    if (requirement.scope !== "own_org" || requirement.kind !== "coverage") {
+      throw new Error("Only own coverage requirements can be deeply rechecked");
     }
     const [org, policies] = await Promise.all([
       ctx.db.get(args.orgId),
@@ -1417,7 +1423,10 @@ export const upsertRequirementInternal = internalMutation({
       `Added compliance requirement ${sanitized.title}`,
       { requirementId },
     );
-    await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { requirementId, subjectOrgId: args.orgId });
+    await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+      requirementId,
+      subjectOrgId: args.orgId,
+    });
     return requirementId;
   },
 });
@@ -1659,7 +1668,11 @@ export const createRequirementsInternal = internalMutation({
         sourceDocumentId: args.sourceDocumentId,
       },
     );
-    for (const requirementId of ids) await ctx.scheduler.runAfter(0, (await import("./complianceJudgments")).computeComplianceJudgmentsRef, { requirementId, subjectOrgId: args.orgId });
+    for (const requirementId of ids)
+      await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+        requirementId,
+        subjectOrgId: args.orgId,
+      });
     return ids;
   },
 });

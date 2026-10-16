@@ -119,6 +119,7 @@ export const save = internalMutation({
     inputHash: v.string(),
     answers: v.record(v.string(), v.union(v.string(), v.boolean())),
     error: v.optional(v.string()),
+    force: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const [requirement, policy, org] = await Promise.all([
@@ -163,7 +164,11 @@ export const save = internalMutation({
         });
       else
         await ctx.db.insert("complianceJudgments", {
-          ...args,
+          requirementId: args.requirementId,
+          subjectOrgId: args.subjectOrgId,
+          policyId: args.policyId,
+          inputHash: args.inputHash,
+          error: args.error.slice(0, 1000),
           answers: {},
           judgedAt: 0,
           errorAt: now,
@@ -176,7 +181,9 @@ export const save = internalMutation({
       policyId: args.policyId,
       inputHash: args.inputHash,
       answers: {
-        ...(previous?.inputHash === args.inputHash ? previous.answers : {}),
+        ...(!args.force && previous?.inputHash === args.inputHash
+          ? previous.answers
+          : {}),
         ...args.answers,
       },
       judgedAt: now,
@@ -185,6 +192,61 @@ export const save = internalMutation({
     };
     if (previous) await ctx.db.patch(previous._id, value);
     else await ctx.db.insert("complianceJudgments", value);
+  },
+});
+
+export const findMissingRequirementJudgments = internalQuery({
+  args: {
+    ownerOrgId: v.id("organizations"),
+    subjectOrgId: v.id("organizations"),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50)
+      throw new Error("Missing judgment batch must contain 1–50 requirements");
+    const scope = args.ownerOrgId === args.subjectOrgId ? "own_org" : "vendors";
+    if (scope === "vendors") {
+      const relationships = await ctx.db
+        .query("connectedOrgRelationships")
+        .withIndex("client_vendor", (q) =>
+          q
+            .eq("clientOrgId", args.ownerOrgId)
+            .eq("vendorOrgId", args.subjectOrgId),
+        )
+        .collect();
+      if (
+        !relationships.some((relationship) => relationship.status === "active")
+      )
+        return [];
+    }
+    const policies = (
+      await ctx.db
+        .query("policies")
+        .withIndex("organization", (q) => q.eq("orgId", args.subjectOrgId))
+        .collect()
+    ).filter((policy) => policyReadableForCompliance(policy, false));
+    if (!policies.length) return [];
+    const requirementIds: Id<"insuranceRequirements">[] = [];
+    for await (const requirement of ctx.db
+      .query("insuranceRequirements")
+      .withIndex("organization_status", (q) =>
+        q.eq("orgId", args.ownerOrgId).eq("status", "active"),
+      )) {
+      if (requirement.kind !== "coverage" || requirement.scope !== scope)
+        continue;
+      const judgments = await loadComplianceJudgments(
+        ctx,
+        requirement._id,
+        args.subjectOrgId,
+      );
+      const knownPolicies = new Set(
+        judgments.map((judgment) => judgment.policyId),
+      );
+      if (!policies.some((policy) => !knownPolicies.has(policy._id))) continue;
+      requirementIds.push(requirement._id);
+      if (requirementIds.length === args.limit) break;
+    }
+    return requirementIds;
   },
 });
 
@@ -277,6 +339,7 @@ type JudgmentQueries = ApiFromModules<{
     requirementPage: typeof requirementPage;
     subjectPage: typeof subjectPage;
     requirementOwner: typeof requirementOwner;
+    findMissingRequirementJudgments: typeof findMissingRequirementJudgments;
   };
 }>["judgments"];
 
@@ -299,6 +362,7 @@ export const saveJudgmentRef = makeFunctionReference<
     inputHash: string;
     answers: Record<string, string | boolean>;
     error?: string;
+    force?: boolean;
   },
   null
 >("complianceJudgments:save");
@@ -328,3 +392,13 @@ export const requirementOwnerRef = makeFunctionReference<
   { requirementId: Id<"insuranceRequirements"> },
   FunctionReturnType<JudgmentQueries["requirementOwner"]>
 >("complianceJudgments:requirementOwner");
+
+export const findMissingRequirementJudgmentsRef = makeFunctionReference<
+  "query",
+  {
+    ownerOrgId: Id<"organizations">;
+    subjectOrgId: Id<"organizations">;
+    limit: number;
+  },
+  FunctionReturnType<JudgmentQueries["findMissingRequirementJudgments"]>
+>("complianceJudgments:findMissingRequirementJudgments");

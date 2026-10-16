@@ -1,5 +1,9 @@
 "use node";
 
+import {
+  computeComplianceJudgmentsRef,
+  findMissingRequirementJudgmentsRef,
+} from "../complianceJudgments";
 import dayjs from "dayjs";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -41,6 +45,7 @@ export const run = internalAction({
       internal.compliance.listOrgIdsWithActiveOwnRequirementsInternal,
       {},
     );
+    let remainingJudgmentRequirements = 50;
     let checkedOrgs = 0;
     let skippedPendingExtraction = 0;
     let notifications = 0;
@@ -55,7 +60,22 @@ export const run = internalAction({
         continue;
       }
 
-      await ctx.scheduler.runAfter(0, (await import("../complianceJudgments")).computeComplianceJudgmentsRef, { subjectOrgId: orgId });
+      if (remainingJudgmentRequirements > 0) {
+        const missingRequirementIds = await ctx.runQuery(
+          findMissingRequirementJudgmentsRef,
+          {
+            ownerOrgId: orgId,
+            subjectOrgId: orgId,
+            limit: remainingJudgmentRequirements,
+          },
+        );
+        for (const requirementId of missingRequirementIds)
+          await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+            requirementId,
+            subjectOrgId: orgId,
+          });
+        remainingJudgmentRequirements -= missingRequirementIds.length;
+      }
       const assessments: OwnComplianceAssessment[] = await ctx.runQuery(
         internal.compliance.assessOwnRequirementsInternal,
         { orgId, includePreviewPolicies: false },
