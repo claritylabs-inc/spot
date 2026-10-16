@@ -78,9 +78,14 @@ shadow DOM, canvases and PDFs is not captured.
   stale-session messages are rejected. Logout/unmount disables capture.
 - Chrome Web Store item: `ioghpiffchcecdfkekjdgkgakemgfdhi`. Its current review
   and publication status is shown in the developer dashboard. Edge Add-ons
-  submission remains separate. An Edge
-  listing may be assigned a different extension ID, which the app's allowed
-  origin would need to include.
+  submission remains separate. Edge Add-ons draft product ID:
+  `2ea28992-245b-434c-a872-0a372379d202`; CRX ID:
+  `bjdellngobanihjicilhpiodbocglhhh`. Both store IDs are explicitly allowed by
+  the app's frame policy and message bridge. Deploy this app configuration and
+  verify the Edge sidebar before publishing. The draft is not yet published;
+  the company's Certificate of Incorporation was submitted for Microsoft
+  business verification on October 16, 2026. Microsoft confirmed receipt and
+  says review should complete within five days; approval remains pending.
 
 ## Local workflow QA
 

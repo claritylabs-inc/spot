@@ -1039,6 +1039,23 @@ missing date-field error was resolved by running the existing patch step.
 - GitHub production workflow uses repository secrets; local QA does not deploy
   or provision production accounts. No Vercel previews used.
 
+### Edge Add-ons draft and origin support (2026-10-16)
+
+- Helium computer-use workflow registered Tools for Enlightenment Inc. as a US
+  company publisher, verified the contact email, and uploaded Spot 0.1.3.
+  Microsoft reports the package verified and all five draft listing sections
+  complete. Product: `2ea28992-245b-434c-a872-0a372379d202`; Edge CRX:
+  `bjdellngobanihjicilhpiodbocglhhh`. Not published. The company's Certificate
+  of Incorporation was retrieved from Google Drive and submitted under
+  Formation documents. Microsoft confirmed successful submission and says
+  review should complete within five days; business approval remains pending.
+- Focused origin boundary check passes for the Chrome and Edge IDs, rejects
+  unlisted/lookalike origins, and verifies outgoing messages never use `*`.
+  Local artifact: `.context/edge-addons/check-origin-bridge.cjs`. Targeted ESLint,
+  `tsc --noEmit --incremental false`, and `git diff --check` pass.
+- The Edge origin app change is not deployed. Real Edge sidebar sign-in,
+  capture, and rejected-origin workflow QA remain required before release.
+
 ### Compact extension and optional passwords (2026-10-16)
 
 - `node scripts/browser-extension-e2e.mjs`: 19 browser checks pass after the compact-header change, including a CDP request without user activation being rejected. Artifacts: `.context/qa/extension/results.json`, `sidebar.png`, `sidebar-dark.png`, `preview.png`. Live local model response remains blocked by the router's local callback policy.

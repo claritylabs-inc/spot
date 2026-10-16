@@ -2,6 +2,7 @@
   "appOrigin": "https://app.spot.insure",
   "path": "/extension",
   "extensionId": "ioghpiffchcecdfkekjdgkgakemgfdhi",
+  "edgeExtensionId": "bjdellngobanihjicilhpiodbocglhhh",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxEm4f677udGzHq7Ii8p/bt5hmEgvNjC0stO/+1WBR98sh5V7TdrCHG1/JAuG6zcbNz2ek1RKz6wPCquCm7gt40wE6oDckVGf1rvBubCA98McMgvy+e4rNxxoFjY4nupATOxtUD91Ozpb1Ra3aGBaZrimfOafHUcJEOJUFkk86ZCFUdYCUi4BtvsZZ3AVCvmOR7YSqQ8s6nWQ5ZZu66WQ+l5KnKUGKgyJj2YiElA2/bP/J0p2S0fcoBv+HoTXG2WJjp59+cNJtwnSp318a5ZFhcGIiXKjZSvAOmSEw9pVQgbn5wwHfU1gMK9+y1LyHXiV/Qnt8XlQ0zd6lAal+GdhuQIDAQAB",
   "protocolVersion": 1,
   "maxTextLength": 20000,
