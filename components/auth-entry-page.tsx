@@ -14,6 +14,7 @@ import { completeOtpSignIn } from "@/lib/otp-auth";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
+import { BROWSER_EXTENSION_WELCOME_URL } from "@/lib/browser-extension";
 import {
   agentSubmitEvent,
   respondToAgent,
@@ -57,6 +58,7 @@ export function AuthEntryPage({
   const searchParams = useSearchParams();
 
   const isBroker = role === "broker";
+  const fromExtension = mode === "login" && searchParams.get("from") === "extension";
   const nextPath = searchParams.get("next");
   const isSignup = mode === "signup";
   const defaultPostLogin = isSignup
@@ -67,6 +69,7 @@ export function AuthEntryPage({
   const requestCodeTool = isSignup ? "request_signup_code" : "request_login_code";
   const verifyCodeTool = isSignup ? "verify_signup_code" : "verify_login_code";
   const postLoginPath =
+    fromExtension ? BROWSER_EXTENSION_WELCOME_URL :
     nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : defaultPostLogin;
 
   const [step, setStep] = useState<"email" | "code">("email");
@@ -76,8 +79,10 @@ export function AuthEntryPage({
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (isAuthenticated) router.replace(postLoginPath);
-  }, [isAuthenticated, postLoginPath, router]);
+    if (!isAuthenticated) return;
+    if (fromExtension) window.location.replace(BROWSER_EXTENSION_WELCOME_URL);
+    else router.replace(postLoginPath);
+  }, [isAuthenticated, fromExtension, postLoginPath, router]);
 
   useWebMcpToolActivated(requestCodeTool, () => {
     const input = document.querySelector<HTMLInputElement>(

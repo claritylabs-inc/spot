@@ -5,6 +5,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import { AgentDockBar } from "@/components/agent-dock/agent-dock-bar";
+import { BrandWordmark } from "@/components/auth-shell";
+import { BROWSER_EXTENSION_WELCOME_URL, notifyBrowserExtension } from "@/lib/browser-extension";
 import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
 import { AGENT_CHAT_SURFACE, DockBody } from "@/components/agent-dock/agent-dock-layout";
 import {
@@ -115,6 +117,44 @@ function ReloadButton() {
     >
       Reload
     </PillButton>
+  );
+}
+
+function ExtensionWelcome() {
+  const [signingIn, setSigningIn] = useState(false);
+  return (
+    <main className="flex min-h-dvh flex-col bg-background px-6 py-8 text-foreground">
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <BrandWordmark />
+        <h1 className={cn("mt-8 max-w-xs text-balance", typeStyle("heading.page"))}>
+          Your insurance agent, right here.
+        </h1>
+        <p className={cn("mt-3 max-w-xs text-pretty text-muted-foreground", typeStyle("body.default"))}>
+          Ask questions, review documents, and bring the page you’re reading into your Spot conversation.
+        </p>
+        <PillButton
+          href="/login?from=extension"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-7"
+          size="large"
+          onClick={() => {
+            setSigningIn(true);
+            notifyBrowserExtension("spot:sign-in");
+          }}
+        >
+          Sign in to Spot
+          <ExternalLink className="size-4" />
+        </PillButton>
+        <p role="status" className={cn("mt-4 max-w-xs text-muted-foreground", typeStyle("caption.default"))}>
+          {signingIn ? "Finish signing in in the new tab. Your sidebar will reconnect." : "Requires an active Spot client workspace."}
+        </p>
+      </div>
+      <a href={BROWSER_EXTENSION_WELCOME_URL} target="_blank" rel="noopener noreferrer"
+        className={cn("mt-8 self-center text-muted-foreground underline underline-offset-4 hover:text-foreground", typeStyle("body.default"))}>
+        See how it works
+      </a>
+    </main>
   );
 }
 
@@ -288,6 +328,7 @@ export function ExtensionApp() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { scope } = useSpotSync();
   useEffect(() => {
+    notifyBrowserExtension("spot:mounted");
     document.addEventListener("click", openLinksInTab, true);
     return () => document.removeEventListener("click", openLinksInTab, true);
   }, []);
@@ -303,23 +344,7 @@ export function ExtensionApp() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <ExtensionNotice
-        title="Sign in to Spot"
-        body="Sign in on the Spot website, then reload this sidebar."
-      >
-        <PillButton
-          href="/login"
-          target="_blank"
-          rel="noopener noreferrer"
-          size="compact"
-        >
-          Sign in
-          <ExternalLink className="size-3" />
-        </PillButton>
-        <ReloadButton />
-      </ExtensionNotice>
-    );
+    return <ExtensionWelcome />;
   }
 
   const reason = ineligibleReason(viewer ?? null, viewerOrg ?? null);

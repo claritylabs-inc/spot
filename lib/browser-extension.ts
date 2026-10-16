@@ -1,6 +1,11 @@
 import config from "@/config/browser-extension.json";
 
 export const BROWSER_EXTENSION_ORIGIN = `chrome-extension://${config.extensionId}`;
+export const BROWSER_EXTENSION_WELCOME_URL = "https://spot.insure/extension/welcome";
+
+export function notifyBrowserExtension(type: "spot:mounted" | "spot:sign-in") {
+  window.parent.postMessage({ type, version: config.protocolVersion }, BROWSER_EXTENSION_ORIGIN);
+}
 export const BROWSER_EXTENSION_READY = {
   type: "spot:ready",
   version: config.protocolVersion,
