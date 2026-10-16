@@ -139,7 +139,7 @@ const FIELD_PATTERNS: Record<PromotionEvidenceField, RegExp[]> = {
     /\binsured\s+name\s*[:#-]?\s*([^\n|;]{2,160})/i,
   ],
   carrier: [
-    /\b(?:carrier|insurer|insurance\s+company|company\s+name)\s*[:#-]?\s*([^\n|;]{2,180})/i,
+    /\b(?:carrier|insurer|insurance\s+company)\s*[:#-]?\s*([^\n|;]{2,180})/i,
   ],
   effective_date: [
     /\b(?:policy\s+)?effective\s+date(?:\s*\/\s*time)?\s*[:#-]?\s*([^\n|;]{4,80})/i,
@@ -154,10 +154,19 @@ const FIELD_PATTERNS: Record<PromotionEvidenceField, RegExp[]> = {
 const LABEL_ONLY: Record<PromotionEvidenceField, RegExp> = {
   policy_number: /^\s*policy\s*(?:number|no\.?|#)\s*[:#-]?\s*$/i,
   named_insured: /^\s*(?:first\s+)?named\s+insured(?:\s+name)?\s*[:#-]?\s*$/i,
-  carrier: /^\s*(?:carrier|insurer|insurance\s+company|company\s+name)\s*[:#-]?\s*$/i,
+  carrier: /^\s*(?:carrier|insurer|insurance\s+company)\s*[:#-]?\s*$/i,
   effective_date: /^\s*(?:policy\s+)?effective\s+date(?:\s*\/\s*time)?\s*[:#-]?\s*$/i,
   expiration_date: /^\s*(?:policy\s+)?(?:expiration|expiry)\s+date(?:\s*\/\s*time)?\s*[:#-]?\s*$/i,
 };
+
+/**
+ * "Company name" labels the carrier on declarations but also the party in
+ * additional-insured and certificate-holder schedules, so it only counts as a
+ * carrier label outside those schedules.
+ */
+const COMPANY_NAME_PATTERN = /\bcompany\s+name\s*[:#-]?\s*([^\n|;]{2,180})/i;
+const COMPANY_NAME_LABEL_ONLY = /^\s*company\s+name\s*[:#-]?\s*$/i;
+const PARTY_SCHEDULE_CONTEXT = /\b(?:additional\s+insured|certificate\s+holder|loss\s+payee|mortgagee|mortgage\s+holder|lienholder|interested\s+part(?:y|ies)|schedule\s+of\s+(?:named|additional))/i;
 
 const COVERAGE_PATTERN = /\b(?:coverage|coverages|covered|limit(?:s)?\s+of\s+(?:insurance|liability)|deductible|retention|insuring\s+agreement|schedule\s+of|vehicle\s+schedule|auto\s+schedule|property\s+schedule|location\s+schedule|coverage\s+part|premium\s+schedule)\b/i;
 
@@ -393,10 +402,19 @@ function fieldCandidates(
     const key = `${candidate.normalizedValue}\u0000${candidate.sourceSpanIds.join(",")}`;
     if (!byKey.has(key)) byKey.set(key, candidate);
   };
-  const patterns = FIELD_PATTERNS[field];
+  const outsidePartySchedule = (item: (typeof projected)[number]) =>
+    !item.nodes.some((node) =>
+      PARTY_SCHEDULE_CONTEXT.test(
+        [node.title, node.description, node.path].filter(Boolean).join(" "),
+      ));
+  const patterns =
+    field === "carrier"
+      ? [...FIELD_PATTERNS.carrier, COMPANY_NAME_PATTERN]
+      : FIELD_PATTERNS[field];
   for (const projection of projected) {
     if (projection.nodes.length === 0) continue;
     for (const pattern of patterns) {
+      if (pattern === COMPANY_NAME_PATTERN && !outsidePartySchedule(projection)) continue;
       const match = pattern.exec(projection.span.text);
       if (match?.[1]) addCandidate(match[1], [projection]);
     }
@@ -405,7 +423,12 @@ function fieldCandidates(
     const label = projected[index]!;
     const value = projected[index + 1]!;
     if (label.nodes.length === 0 || value.nodes.length === 0) continue;
-    if (!LABEL_ONLY[field].test(label.span.text)) continue;
+    const companyNameLabel =
+      field === "carrier" &&
+      COMPANY_NAME_LABEL_ONLY.test(label.span.text) &&
+      outsidePartySchedule(label) &&
+      outsidePartySchedule(value);
+    if (!LABEL_ONLY[field].test(label.span.text) && !companyNameLabel) continue;
     const labelPage = spanPageStart(label.span);
     const valuePage = spanPageStart(value.span);
     if (labelPage !== undefined && valuePage !== undefined && labelPage !== valuePage) continue;
