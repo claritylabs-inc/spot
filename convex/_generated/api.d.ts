@@ -158,6 +158,7 @@ import type * as lib_citationResolver from "../lib/citationResolver.js";
 import type * as lib_clRouterClient from "../lib/clRouterClient.js";
 import type * as lib_clRouterLanguageModel from "../lib/clRouterLanguageModel.js";
 import type * as lib_clRouterPrimitive from "../lib/clRouterPrimitive.js";
+import type * as lib_clientAccess from "../lib/clientAccess.js";
 import type * as lib_clientAgentPrompt from "../lib/clientAgentPrompt.js";
 import type * as lib_clientFileNames from "../lib/clientFileNames.js";
 import type * as lib_clientFiles from "../lib/clientFiles.js";
@@ -565,6 +566,7 @@ declare const fullApi: ApiFromModules<{
   "lib/clRouterClient": typeof lib_clRouterClient;
   "lib/clRouterLanguageModel": typeof lib_clRouterLanguageModel;
   "lib/clRouterPrimitive": typeof lib_clRouterPrimitive;
+  "lib/clientAccess": typeof lib_clientAccess;
   "lib/clientAgentPrompt": typeof lib_clientAgentPrompt;
   "lib/clientFileNames": typeof lib_clientFileNames;
   "lib/clientFiles": typeof lib_clientFiles;
