@@ -9,7 +9,11 @@ import { PDFDocument } from "pdf-lib";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { PdfPageText } from "./pdfText";
-import { clRouterDecide } from "./clRouterClient";
+import {
+  clRouterDecide,
+  isClRouterPayloadTooLarge,
+  runWithPayloadSplitting,
+} from "./clRouterClient";
 import { pdfPageJevImage, stageJevImages } from "./jevImages";
 import { renderPdfPageImages } from "./pdfPageImages";
 import { jevProceeds } from "./jevThreshold";
@@ -126,9 +130,6 @@ const DIGEST_LINE_MAX_CHARS = 70;
 const DIGEST_MAX_CHARS = 1200;
 
 const JEV_BATCH_PAGES = 25;
-// Leave two asset slots for adjacent scanned context pages.
-const JEV_IMAGE_BATCH_PAGES = 6;
-const MAX_IMAGE_PAGES = 48;
 const JEV_BATCH_CONCURRENCY = 4;
 
 function isPolicySectionKind(value: unknown): value is PolicySectionKind {
@@ -315,16 +316,10 @@ async function classifyRemainingPages(params: {
       ? [...new Set(remaining.flatMap((page) => [page - 1, page, page + 1]))]
           .filter((page) => page >= 1 && page <= pageCount && !hasText(page))
           .sort((a, b) => a - b)
-          .slice(0, MAX_IMAGE_PAGES)
       : [],
   );
-  const usesImages = (page: number) =>
-    [page - 1, page, page + 1].some((candidate) =>
-      imagePagesAllowed.has(candidate),
-    );
   const batches: number[][] = [];
   let batch: number[] = [];
-  let imageBatch = false;
   for (const page of remaining) {
     if (!hasText(page) && !imagePagesAllowed.has(page)) {
       labels[page - 1] = {
@@ -336,21 +331,20 @@ async function classifyRemainingPages(params: {
       };
       continue;
     }
-    const needsImages = usesImages(page);
-    if (
-      batch.length &&
-      (needsImages !== imageBatch ||
-        batch.length >= (imageBatch ? JEV_IMAGE_BATCH_PAGES : JEV_BATCH_PAGES))
-    ) {
+    if (batch.length >= JEV_BATCH_PAGES) {
       batches.push(batch);
       batch = [];
     }
-    imageBatch = needsImages;
     batch.push(page);
   }
   if (batch.length) batches.push(batch);
 
-  await runBounded(batches, JEV_BATCH_CONCURRENCY, async (batchPages) => {
+  // A batch whose page images exceed the router size limit is halved and retried.
+  await runBounded(batches, JEV_BATCH_CONCURRENCY, async (pages) => {
+    await runWithPayloadSplitting(pages, labelBatch);
+  });
+
+  async function labelBatch(batchPages: number[]): Promise<void> {
     const first = batchPages[0];
     const last = batchPages[batchPages.length - 1];
     const contextBefore = first > 1 ? first - 1 : undefined;
@@ -382,11 +376,9 @@ async function classifyRemainingPages(params: {
     }));
     let staged: Awaited<ReturnType<typeof stageJevImages>> | undefined;
     try {
-      // Adjacent text context has no asset cost. Bound image batches separately.
-      const imagePages = statePages
-        .filter((page) => imagePagesAllowed.has(page.page))
-        .sort((a, b) => Number(a.contextOnly) - Number(b.contextOnly))
-        .slice(0, 8);
+      const imagePages = statePages.filter((page) =>
+        imagePagesAllowed.has(page.page),
+      );
       const imageRefs = new Map<number, string>();
       try {
         const images =
@@ -467,7 +459,8 @@ async function classifyRemainingPages(params: {
           source: "classifier",
         };
       }
-    } catch {
+    } catch (error) {
+      if (isClRouterPayloadTooLarge(error) && batchPages.length > 1) throw error;
       for (const page of batchPages) {
         labels[page - 1] = {
           page,
@@ -488,7 +481,7 @@ async function classifyRemainingPages(params: {
         );
       });
     }
-  });
+  }
 }
 
 type SectionDraft = {

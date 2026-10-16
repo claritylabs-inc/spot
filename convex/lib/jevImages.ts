@@ -14,7 +14,6 @@ import type {
   DecisionBox,
   DecisionEntry,
 } from "../../contracts/cl-router/policy";
-import { MAX_DECISION_ASSET_COUNT } from "../../contracts/cl-router/policy";
 import { clRouterDecide } from "./clRouterClient";
 import { jevProceeds } from "./jevThreshold";
 import {
@@ -52,11 +51,7 @@ export async function stageJevImages(
   images: JevImage[],
   scope: StageScope,
 ): Promise<StagedJevImages> {
-  if (!images.length || images.length > MAX_DECISION_ASSET_COUNT) {
-    throw new Error(
-      `Jev decisions accept 1-${MAX_DECISION_ASSET_COUNT} images`,
-    );
-  }
+  if (!images.length) throw new Error("Jev image decisions need an image");
   const staged: Awaited<ReturnType<typeof createSignedActionRouterAsset>>[] =
     [];
   try {

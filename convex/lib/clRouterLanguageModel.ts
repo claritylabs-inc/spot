@@ -15,8 +15,10 @@ import type {
 } from "@ai-sdk/provider";
 import {
   ClRouterRequestError,
+  MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES,
   MAX_CL_ROUTER_JSON_REQUEST_BYTES,
   clRouterAssetReferenceFromUrl,
+  clRouterPayloadTooLargeError,
   clRouterGenerateMaybeManual,
   clRouterGenerateMaybeManualStream,
   isClRouterFailureCode,
@@ -104,12 +106,10 @@ function dataContent(data: Uint8Array | string): string {
   return typeof data === "string" ? data : Buffer.from(data).toString("base64");
 }
 
-const MAX_ROUTER_ASSET_BYTES = 12 * 1024 * 1024;
-const MAX_ROUTER_ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
-const MAX_ROUTER_ASSET_COUNT = 8;
+// cl-router has one 16 MiB decoded limit per request and no asset count limit.
+const MAX_ROUTER_ASSET_AGGREGATE_BYTES = MAX_CL_ROUTER_ASSET_AGGREGATE_BYTES;
 
 type StagedAssetState = {
-  count: number;
   decodedBytes: number;
 };
 
@@ -120,23 +120,15 @@ function decodedData(data: Uint8Array | string): Uint8Array {
 }
 
 function accountAsset(state: StagedAssetState, sizeBytes: number): void {
-  state.count += 1;
   state.decodedBytes += sizeBytes;
-  if (sizeBytes <= 0 || sizeBytes > MAX_ROUTER_ASSET_BYTES) {
+  if (sizeBytes <= 0) {
     throw new ClRouterRequestError(
       "configuration",
-      "Router assets must be nonempty and no larger than 12 MiB",
-    );
-  }
-  if (state.count > MAX_ROUTER_ASSET_COUNT) {
-    throw new ClRouterRequestError(
-      "configuration",
-      "Router requests may contain at most eight assets",
+      "Router assets must be nonempty",
     );
   }
   if (state.decodedBytes > MAX_ROUTER_ASSET_AGGREGATE_BYTES) {
-    throw new ClRouterRequestError(
-      "configuration",
+    throw clRouterPayloadTooLargeError(
       "Router request assets may contain at most 16 MiB decoded data",
     );
   }
@@ -271,7 +263,6 @@ export async function clRouterMessagesFromPrompt(
   fetchImpl: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<ClRouterMessage[]> {
   return clRouterMessagesFromPromptWithState(prompt, fetchImpl, process.env, {
-    count: 0,
     decodedBytes: 0,
   });
 }
@@ -345,7 +336,6 @@ async function requestForCall(
     adapter.client?.fetch ?? globalThis.fetch,
     adapter.client?.environment ?? process.env,
     assetState ?? {
-      count: 0,
       decodedBytes: 0,
     },
   );
@@ -642,7 +632,6 @@ export function createClRouterLanguageModel(
       const step = stepContext(options);
       const cleanups: Array<() => void | Promise<void>> = [];
       const assetState: StagedAssetState = {
-        count: 0,
         decodedBytes: 0,
       };
       try {
@@ -695,7 +684,6 @@ export function createClRouterLanguageModel(
       const step = stepContext(options);
       const cleanups: Array<() => void | Promise<void>> = [];
       const assetState: StagedAssetState = {
-        count: 0,
         decodedBytes: 0,
       };
       let response: Awaited<ReturnType<typeof clRouterGenerateMaybeManualStream>>;

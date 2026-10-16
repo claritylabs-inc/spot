@@ -44,8 +44,7 @@ export type DirectModelProvider = (typeof DIRECT_MODEL_PROVIDERS)[number];
 /** Response `model` is the actual Jev version TypeSafe served (e.g. "jev-1.14.0"), not a fixed pin. */
 export const JEV_MODEL_PATTERN = /^jev-/;
 
-export const MAX_DECISION_ASSET_COUNT = 8;
-export const MAX_DECISION_ASSET_BYTES = 12 * 1024 * 1024;
+/** One limit for all decoded assets in a request; there is no count limit. */
 export const MAX_DECISION_TOTAL_ASSET_BYTES = 16 * 1024 * 1024;
 
 export type JsonValue =
@@ -308,7 +307,7 @@ function parseDecisionAsset(value: unknown): number {
     }
     natural(source.sizeBytes);
     const sizeBytes = source.sizeBytes as number;
-    if (sizeBytes < 1 || sizeBytes > MAX_DECISION_ASSET_BYTES) invalid();
+    if (sizeBytes < 1 || sizeBytes > MAX_DECISION_TOTAL_ASSET_BYTES) invalid();
     if (
       source.sha256 !== undefined &&
       !(typeof source.sha256 === "string" && /^[a-f0-9]{64}$/i.test(source.sha256))
@@ -323,7 +322,7 @@ function parseDecisionAsset(value: unknown): number {
     invalid();
   }
   const bytes = base64DecodedBytes(asset.dataBase64);
-  if (bytes < 1 || bytes > MAX_DECISION_ASSET_BYTES) invalid();
+  if (bytes < 1 || bytes > MAX_DECISION_TOTAL_ASSET_BYTES) invalid();
   return bytes;
 }
 
@@ -341,7 +340,7 @@ function parseDecisionAssets(
   questions: Record<string, DecisionQuestion>,
 ): void {
   const entries = Object.entries(object(assets));
-  if (!entries.length || entries.length > MAX_DECISION_ASSET_COUNT) invalid();
+  if (!entries.length) invalid();
   const referencable: string[] = [];
   collectStrings(state, referencable);
   for (const question of Object.values(questions)) {

@@ -3,8 +3,11 @@
 import dayjs from "dayjs";
 import { z } from "zod";
 import type { DecisionAsset } from "../../contracts/cl-router/policy";
-import { MAX_DECISION_ASSET_COUNT } from "../../contracts/cl-router/policy";
-import { ClRouterRequestError, clRouterDecide } from "../lib/clRouterClient";
+import {
+  ClRouterRequestError,
+  clRouterDecide,
+  runWithPayloadSplitting,
+} from "../lib/clRouterClient";
 import {
   pdfPageJevImage,
   stageJevImages,
@@ -582,26 +585,15 @@ async function loadMessageThumbnails(
 }
 
 /** Batches by email count and by the router's image limit per request. */
-function classificationBatches(
-  messages: AutomationMessage[],
-  thumbnails: Map<string, MessageThumbnail[]>,
-) {
+function classificationBatches(messages: AutomationMessage[]) {
   const batches: AutomationMessage[][] = [];
   let current: AutomationMessage[] = [];
-  let images = 0;
   for (const message of messages) {
-    const count = thumbnails.get(message.emailRef)?.length ?? 0;
-    if (
-      current.length > 0 &&
-      (current.length >= AUTOMATION_CLASSIFICATION_BATCH_SIZE ||
-        images + count > MAX_DECISION_ASSET_COUNT)
-    ) {
+    if (current.length >= AUTOMATION_CLASSIFICATION_BATCH_SIZE) {
       batches.push(current);
       current = [];
-      images = 0;
     }
     current.push(message);
-    images += count;
   }
   if (current.length > 0) batches.push(current);
   return batches;
@@ -628,7 +620,7 @@ async function classifyAutomationMessages(
   if (candidates.length === 0) return decisions;
 
   const thumbnails = await loadMessageThumbnails(account, candidates);
-  for (const batch of classificationBatches(candidates, thumbnails)) {
+  for (const batch of classificationBatches(candidates)) {
     const messageByCandidateRef = new Map(
       batch.map((message, index) => [`e${index + 1}`, message]),
     );
@@ -713,12 +705,26 @@ Rules:
   return decisions;
 }
 
+/** Judges a batch, halving it while the router reports the images are too large. */
+async function judgeBatch(
+  ctx: ActionCtx,
+  account: ConnectedEmailAccount,
+  messageByRef: Map<string, AutomationMessage>,
+  thumbnails: Map<string, MessageThumbnail[]>,
+) {
+  const parts = await runWithPayloadSplitting([...messageByRef], (entries) =>
+    judgeBatchOnce(ctx, account, new Map(entries), thumbnails),
+  );
+  // Question ids embed each email's ref, so the halves never collide.
+  return Object.assign({}, ...parts) as (typeof parts)[number];
+}
+
 /**
  * One request per batch: structured per-email state keyed by emailRef, atomic
  * questions per email. Thumbnails ride in the state beside their attachment;
  * if the router rejects the image request, the same questions run text-only.
  */
-async function judgeBatch(
+async function judgeBatchOnce(
   ctx: ActionCtx,
   account: ConnectedEmailAccount,
   messageByRef: Map<string, AutomationMessage>,

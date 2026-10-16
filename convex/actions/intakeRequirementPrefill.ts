@@ -9,7 +9,7 @@ import {
   buildPrompt,
   extractRequirementSource,
   mergeRequirementChunkResults,
-  requirementImageChunks,
+  extractRequirementsInParts,
   requirementExtractionInput,
   verifyExcerptsOnPageImages,
 } from "./complianceRequirements";
@@ -67,10 +67,10 @@ export const extract = internalAction({
         existingRequirements: [],
         scope: "own_org",
       });
-      const chunkResults = [];
-      for (const chunkImages of requirementImageChunks(images)) {
-        chunkResults.push(
-          await generateObjectForPublicTask(
+      const chunkResults = await extractRequirementsInParts(
+        images,
+        (chunkImages) =>
+          generateObjectForPublicTask(
             ctx,
             "requirement_extraction",
             {
@@ -90,8 +90,7 @@ export const extract = internalAction({
               },
             },
           ),
-        );
-      }
+      );
       const result = mergeRequirementChunkResults(chunkResults);
       const compact = (value: string) => value.trim().replace(/\s+/g, " ");
       // Excerpts read from images are checked against the page images; text

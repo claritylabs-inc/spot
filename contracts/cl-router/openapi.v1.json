@@ -1025,7 +1025,7 @@
           "sizeBytes": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 12582912
+            "maximum": 16777216
           },
           "sha256": {
             "type": "string",
@@ -1880,7 +1880,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -1952,7 +1952,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -2733,7 +2733,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -2805,7 +2805,7 @@
                                       "sizeBytes": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
-                                        "maximum": 12582912
+                                        "maximum": 16777216
                                       },
                                       "sha256": {
                                         "type": "string",
@@ -3251,6 +3251,7 @@
                   "router_candidates_exhausted",
                   "router_budget_exhausted",
                   "router_rejected",
+                  "router_payload_too_large",
                   "router_internal"
                 ]
               },
@@ -3605,6 +3606,7 @@
                       "router_candidates_exhausted",
                       "router_budget_exhausted",
                       "router_rejected",
+                      "router_payload_too_large",
                       "router_internal"
                     ]
                   },
@@ -3822,7 +3824,7 @@
               "sizeBytes": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
-                "maximum": 12582912
+                "maximum": 16777216
               },
               "sha256": {
                 "type": "string",
@@ -4483,8 +4485,7 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/DecisionAsset"
             },
-            "minProperties": 1,
-            "maxProperties": 8
+            "minProperties": 1
           },
           "questions": {
             "type": "object",

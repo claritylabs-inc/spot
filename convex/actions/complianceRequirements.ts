@@ -11,7 +11,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { generateObjectForOrg } from "../lib/models";
 import { extractPdfText } from "../lib/pdfText";
-import { clRouterDecide } from "../lib/clRouterClient";
+import { clRouterDecide, runWithPayloadSplitting } from "../lib/clRouterClient";
 import { jevProceeds } from "../lib/jevThreshold";
 import { locateOnPdfPage, stageJevImages } from "../lib/jevImages";
 import {
@@ -264,10 +264,6 @@ export type RequirementSourceMaterial = ExtractedFileText & {
   images?: RequirementSourceImage[];
 };
 
-/** Page images per extraction request; the router accepts at most eight assets. */
-export const MAX_REQUIREMENT_SOURCE_IMAGES = 8;
-/** Scanned PDFs are read in chunks of eight pages, up to this many pages. */
-export const MAX_REQUIREMENT_SOURCE_PAGES = 24;
 /** A PDF whose longest page has less text than this is a scan with stray page numbers. */
 const MIN_PDF_TEXT_CHARS = 40;
 
@@ -343,7 +339,7 @@ async function extractPdfRequirementMaterial(
   const rendered = await renderPdfPageImages({
     pdfBytes,
     pages: Array.from(
-      { length: Math.min(parsed.pageCount, MAX_REQUIREMENT_SOURCE_PAGES) },
+      { length: parsed.pageCount },
       (_, index) => index + 1,
     ),
   });
@@ -461,19 +457,16 @@ export function requirementExtractionInput(
 }
 
 type RequirementImport = z.infer<typeof RequirementImportSchema>;
-/** Splits page images into router-sized requests; text-only sources make one request. */
-export function requirementImageChunks(
+/**
+ * Runs extraction over all page images at once; when the router reports the
+ * request is too large, the pages are halved and each half extracted separately.
+ */
+export async function extractRequirementsInParts<R>(
   images: RequirementSourceImage[] | undefined,
-): (RequirementSourceImage[] | undefined)[] {
-  if (!images?.length) return [undefined];
-  return Array.from(
-    { length: Math.ceil(images.length / MAX_REQUIREMENT_SOURCE_IMAGES) },
-    (_, index) =>
-      images.slice(
-        index * MAX_REQUIREMENT_SOURCE_IMAGES,
-        (index + 1) * MAX_REQUIREMENT_SOURCE_IMAGES,
-      ),
-  );
+  run: (images: RequirementSourceImage[] | undefined) => Promise<R>,
+): Promise<R[]> {
+  if (!images?.length) return [await run(undefined)];
+  return await runWithPayloadSplitting(images, run);
 }
 
 /** Merges chunked extraction results: rows deduplicated, usage and cost summed. */
@@ -867,14 +860,14 @@ async function runRequirementImport(
     sourceCharacterCount: sourceText.length,
   });
 
-  // Scanned sources are read eight pages per request; each chunk gets its own
-  // time budget and the extracted rows are merged.
-  const imageChunks = requirementImageChunks(sourceImages);
-  const chunkResults = [];
-  for (const chunkImages of imageChunks) {
-  const abortSignal = AbortSignal.timeout(REQUIREMENT_EXTRACTION_TIMEOUT_MS);
+  // All pages go in one request; if it is too large the pages are halved and
+  // each part gets its own time budget. Extracted rows are merged.
+  let abortSignal: AbortSignal | undefined;
+  let chunkResults;
   try {
-    chunkResults.push(await generateObjectForOrg(ctx, args.orgId, "requirement_extraction", {
+    chunkResults = await extractRequirementsInParts(sourceImages, async (chunkImages) => {
+    abortSignal = AbortSignal.timeout(REQUIREMENT_EXTRACTION_TIMEOUT_MS);
+    return await generateObjectForOrg(ctx, args.orgId, "requirement_extraction", {
       schema: RequirementImportSchema,
       abortSignal,
       maxOutputTokens: 3_000,
@@ -895,16 +888,16 @@ async function runRequirementImport(
         channel: trigger === "mailbox_import" ? "mailbox" : "web",
         phase: "extracting_requirements",
       },
-    }));
+    });
+    });
   } catch (error) {
     await failRun(error);
-    if (abortSignal.aborted) {
+    if (abortSignal?.aborted) {
       throw new Error(
         "Requirement extraction took too long. Try the import again in a moment.",
       );
     }
     throw error;
-  }
   }
 
   const result = mergeRequirementChunkResults(chunkResults);

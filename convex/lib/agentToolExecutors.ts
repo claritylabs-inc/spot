@@ -1197,8 +1197,7 @@ export function buildAgentToolExecutors(
                 if (
                   !span.pageStart ||
                   !span.pageEnd ||
-                  span.pageEnd < span.pageStart ||
-                  span.pageEnd - span.pageStart >= 8
+                  span.pageEnd < span.pageStart
                 ) {
                   throw new Error(
                     "Image evidence requires a bounded page range",
@@ -1211,10 +1210,8 @@ export function buildAgentToolExecutors(
               }),
             ),
           ];
-          if (pages.length > 8)
-            throw new Error(
-              "Image evidence exceeds eight pages; narrow the citations",
-            );
+          // One judgment over all cited pages; if their images exceed the 16 MiB
+          // router limit the confirmation is rejected and the agent must cite fewer pages.
           let staged: Awaited<ReturnType<typeof stageJevImages>> | undefined;
           const probabilities: Record<string, number> = {};
           try {
