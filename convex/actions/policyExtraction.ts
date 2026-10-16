@@ -63,6 +63,12 @@ import {
   parseSectionResult,
   type SectionResult,
 } from "../lib/sectionExtraction/merge";
+import {
+  decideAdditionalInsuredTreatment,
+  type AdditionalInsuredClass,
+  type NamedAdditionalInsuredCandidate,
+} from "../lib/additionalInsuredDecisions";
+import { decideEndorsementJudgments } from "../lib/endorsementDecisions";
 import { buildDeclarationsSummary } from "../lib/sectionExtraction/prompts";
 import {
   SECTION_EXTRACTOR_VERSION,
@@ -855,23 +861,35 @@ const scheduledAdditionalInsuredSchema = z.object({
   sourceSpanIds: z.array(z.string()),
 });
 
-const namedAdditionalInsuredSchema = z.object({
+const namedAdditionalInsuredCandidateSchema = z.object({
   name: z.string(),
-  status: z.enum([
-    "scheduled_by_endorsement",
-    "automatic_class",
-    "review_required",
-  ]),
   scope: z.string(),
   endorsementTitle: z.string().nullable(),
   sourceNodeIds: z.array(z.string()),
   sourceSpanIds: z.array(z.string()),
 });
 
+const namedAdditionalInsuredSchema = namedAdditionalInsuredCandidateSchema.extend({
+  status: z.enum([
+    "scheduled_by_endorsement",
+    "automatic_class",
+    "review_required",
+  ]),
+});
+
+/** What generation extracts; Jev sorts classes and sets named-insured status afterwards. */
+const additionalInsuredExtractionSchema = z.object({
+  classes: z.array(additionalInsuredEligibilityTermSchema).max(28),
+  scheduledAdditionalInsureds: z
+    .array(scheduledAdditionalInsuredSchema)
+    .max(40),
+  additionalInsureds: z.array(namedAdditionalInsuredCandidateSchema).max(60),
+});
+
 const additionalInsuredEligibilitySchema = z.object({
-  withoutEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(12),
-  requiresEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(12),
-  reviewRequired: z.array(additionalInsuredEligibilityTermSchema).max(8),
+  withoutEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(28),
+  requiresEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(28),
+  reviewRequired: z.array(additionalInsuredEligibilityTermSchema).max(28),
   scheduledAdditionalInsureds: z
     .array(scheduledAdditionalInsuredSchema)
     .max(40),
@@ -933,10 +951,17 @@ function additionalInsuredEligibilityExcerpt(
   };
 }
 
-function validateAdditionalInsuredEligibility(
-  value: AdditionalInsuredEligibility,
+type CleanedAdditionalInsuredExtraction = {
+  classes: AdditionalInsuredClass[];
+  fixedRequiresEndorsement: AdditionalInsuredClass[];
+  scheduled: AdditionalInsuredEligibility["scheduledAdditionalInsureds"];
+  named: NamedAdditionalInsuredCandidate[];
+};
+
+function cleanAdditionalInsuredExtraction(
+  value: z.infer<typeof additionalInsuredExtractionSchema>,
   sourceTree: DocumentSourceNode[],
-): AdditionalInsuredEligibility {
+): CleanedAdditionalInsuredExtraction {
   const validNodeIds = new Set(sourceTree.map((node) => node.id));
   const spanIdsByNodeId = new Map(
     sourceTree.map((node) => [node.id, node.sourceSpanIds]),
@@ -995,9 +1020,7 @@ function validateAdditionalInsuredEligibility(
     ];
     return { sourceNodeIds, sourceSpanIds };
   };
-  const cleanTerms = (
-    terms: AdditionalInsuredEligibility["withoutEndorsement"],
-  ) =>
+  const cleanTerms = (terms: AdditionalInsuredClass[]) =>
     terms
       .map((term) => {
         const evidence = normalizeEvidence(
@@ -1040,9 +1063,7 @@ function validateAdditionalInsuredEligibility(
           term.name &&
           (term.sourceNodeIds.length > 0 || term.sourceSpanIds.length > 0),
       );
-  const cleanNamed = (
-    terms: AdditionalInsuredEligibility["additionalInsureds"],
-  ) =>
+  const cleanNamed = (terms: NamedAdditionalInsuredCandidate[]) =>
     terms
       .map((term) => {
         const evidence = normalizeEvidence(
@@ -1051,7 +1072,6 @@ function validateAdditionalInsuredEligibility(
         );
         return {
           name: term.name.trim().slice(0, 180),
-          status: term.status,
           scope: term.scope.trim().slice(0, 700),
           endorsementTitle: term.endorsementTitle?.trim().slice(0, 180) || null,
           sourceNodeIds: evidence.sourceNodeIds,
@@ -1072,41 +1092,30 @@ function validateAdditionalInsuredEligibility(
       /\b(endorsement|endorsed|scheduled|named|added)\b/i.test(text)
     );
   };
-  const automaticTerms = cleanTerms(value.withoutEndorsement);
-  const movedEndorsementTerms = automaticTerms.filter(
-    isEndorsementOnlyAdditionalInsured,
-  );
-  const withoutEndorsement = automaticTerms.filter(
-    (term) => !isEndorsementOnlyAdditionalInsured(term),
-  );
-  const requiresEndorsement = [
-    ...cleanTerms(value.requiresEndorsement),
-    ...movedEndorsementTerms.map((term) => ({
+  const extractedClasses = cleanTerms(value.classes);
+  // Scheduled-AI wording is endorsement-only by definition; it skips Jev.
+  const fixedRequiresEndorsement = extractedClasses
+    .filter(isEndorsementOnlyAdditionalInsured)
+    .map((term) => ({
       ...term,
       category: term.category || "Scheduled Additional Insureds",
-      summary:
-        term.summary ||
-        "Scheduled Additional Insured status requires endorsement-backed scheduling/naming in the policy evidence.",
-    })),
-  ];
+    }));
   const scheduledRequirement = sourceBackedScheduledRequirement();
   if (
     scheduledRequirement &&
-    !requiresEndorsement.some((term) =>
+    !fixedRequiresEndorsement.some((term) =>
       /\bscheduled additional insured/i.test(term.category),
     )
   ) {
-    requiresEndorsement.push(scheduledRequirement);
+    fixedRequiresEndorsement.push(scheduledRequirement);
   }
   return {
-    withoutEndorsement,
-    requiresEndorsement,
-    reviewRequired: cleanTerms(value.reviewRequired ?? []),
-    scheduledAdditionalInsureds: cleanScheduled(
-      value.scheduledAdditionalInsureds ?? [],
+    classes: extractedClasses.filter(
+      (term) => !isEndorsementOnlyAdditionalInsured(term),
     ),
-    additionalInsureds: cleanNamed(value.additionalInsureds ?? []),
-    overallSummary: value.overallSummary.trim().slice(0, 1200),
+    fixedRequiresEndorsement,
+    scheduled: cleanScheduled(value.scheduledAdditionalInsureds ?? []),
+    named: cleanNamed(value.additionalInsureds ?? []),
   };
 }
 
@@ -1117,6 +1126,7 @@ async function extractAdditionalInsuredEligibility(params: {
   policyId: string;
   sourceTree: DocumentSourceNode[];
   profile: PolicyOperationalProfile;
+  loadPdf?: () => Promise<Uint8Array | null>;
   log?: (message: string, level?: PipelineLogLevel) => Promise<void>;
 }): Promise<PolicyOperationalProfile> {
   const excerpt = additionalInsuredEligibilityExcerpt(params.sourceTree);
@@ -1131,37 +1141,47 @@ async function extractAdditionalInsuredEligibility(params: {
   });
   try {
     const result = await generateEligibilityObject({
-      schema: additionalInsuredEligibilitySchema,
+      schema: additionalInsuredExtractionSchema,
       maxTokens: 2200,
-      system: `You extract additional-insured certificate eligibility from insurance policy source nodes.
+      system: `You extract additional-insured classes and names from insurance policy source nodes. You do not decide how a class is treated; that is decided separately.
 
 Rules:
-- Separate classes that can be treated as additional insureds without a new endorsement from classes that require a scheduled/additional endorsement.
-- "Without endorsement" means the policy wording itself automatically includes the class, usually subject to stated conditions.
-- "Requires endorsement" means the class only qualifies when scheduled, named, added, or endorsed.
-- If the policy only says "any Scheduled Additional Insured added by endorsement", that belongs under requiresEndorsement, not withoutEndorsement.
+- Extract each class or situation the wording names as an additional insured (for example "any person or organization you agree in a written contract to add", "any Scheduled Additional Insured added by endorsement", "subsidiaries"), with its stated conditions.
 - Extract scheduledAdditionalInsureds when an endorsement, schedule, table, or form names a specific person/company as an additional insured.
-- Extract additionalInsureds as a lookup list of named people/companies already identifiable from policy or endorsement evidence. Do not include generic classes like "subsidiary" unless a specific name is shown.
-- Do not decide whether a specific certificate holder qualifies unless the wording identifies that class.
+- Extract additionalInsureds as a lookup list of named people/companies already identifiable from policy or endorsement evidence, with the endorsement title that names them when printed. Do not include generic classes like "subsidiary" unless a specific name is shown.
+- Do not decide whether a specific certificate holder qualifies.
 - Use only sourceNodeIds supplied in the evidence. Do not invent IDs.
 - Keep categories short and operational, suitable for COI gating.`,
-      prompt: `Extract additional insured eligibility from these source nodes.
+      prompt: `Extract additional insured classes and names from these source nodes.
 
 Return:
-- withoutEndorsement: each automatic class and its conditions.
-- requiresEndorsement: each class or situation that needs a scheduled/named/additional endorsement.
-- reviewRequired: ambiguous classes that need human review.
+- classes: each additional insured class or situation, its category, conditions, and a one-sentence summary.
 - scheduledAdditionalInsureds: specific people/companies already named or scheduled by endorsement as additional insureds.
-- additionalInsureds: every specific named additional insured, with status scheduled_by_endorsement, automatic_class, or review_required.
-- overallSummary: one concise sentence explaining certificate impact.
+- additionalInsureds: every specific named additional insured.
 
 Evidence:
 ${excerpt.text}`,
     });
-    const eligibility = validateAdditionalInsuredEligibility(
-      result.object as AdditionalInsuredEligibility,
+    const cleaned = cleanAdditionalInsuredExtraction(
+      result.object as z.infer<typeof additionalInsuredExtractionSchema>,
       params.sourceTree,
     );
+    const treatment = await decideAdditionalInsuredTreatment(params.ctx, {
+      orgId: params.orgId,
+      traceId: params.traceId,
+      policyId: params.policyId,
+      ...cleaned,
+      sourceTree: params.sourceTree,
+      loadPdf: params.loadPdf,
+    });
+    const eligibility: AdditionalInsuredEligibility = {
+      withoutEndorsement: treatment.withoutEndorsement,
+      requiresEndorsement: treatment.requiresEndorsement,
+      reviewRequired: treatment.reviewRequired,
+      scheduledAdditionalInsureds: cleaned.scheduled,
+      additionalInsureds: treatment.additionalInsureds,
+      overallSummary: additionalInsuredOverallSummary(treatment),
+    };
     if (
       eligibility.withoutEndorsement.length === 0 &&
       eligibility.requiresEndorsement.length === 0 &&
@@ -1187,6 +1207,25 @@ ${excerpt.text}`,
     );
     return params.profile;
   }
+}
+
+function additionalInsuredOverallSummary(counts: {
+  withoutEndorsement: unknown[];
+  requiresEndorsement: unknown[];
+  reviewRequired: unknown[];
+}): string {
+  const parts = [
+    counts.withoutEndorsement.length
+      ? `${counts.withoutEndorsement.length} additional insured ${counts.withoutEndorsement.length === 1 ? "class qualifies" : "classes qualify"} without an endorsement`
+      : "",
+    counts.requiresEndorsement.length
+      ? `${counts.requiresEndorsement.length} ${counts.requiresEndorsement.length === 1 ? "class needs" : "classes need"} a scheduled or added endorsement`
+      : "",
+    counts.reviewRequired.length
+      ? `${counts.reviewRequired.length} ${counts.reviewRequired.length === 1 ? "class needs" : "classes need"} review`
+      : "",
+  ].filter(Boolean);
+  return parts.length ? `${parts.join("; ")}.` : "";
 }
 
 function percent(confidence: number) {
@@ -2071,11 +2110,21 @@ export function makePhases(
         ...transcriptions,
       ]);
       const sourceNodes = normalizeSourceTree([], sourceSpans, policyId);
+      const loadPdf = () => loadPdfBytes(convexCtx, state.fileId!);
+      const endorsementJudgments = await decideEndorsementJudgments(convexCtx, {
+        orgId,
+        traceId: state.traceId,
+        policyId,
+        results,
+        loadPdf,
+        log,
+      });
       const merged = mergeSectionResults({
         policyId,
         results,
         sourceSpans,
         sourceTree: sourceNodes,
+        endorsementJudgments,
       });
       const matches = merged.citationMatches;
       await pCtx.log(
@@ -2110,6 +2159,7 @@ export function makePhases(
           sourceNodes,
           sourceSpans,
         ),
+        loadPdf,
         log,
       });
       const carrierDecision = await resolveCarrierDecision({

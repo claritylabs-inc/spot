@@ -192,6 +192,23 @@ export const ENDORSEMENT_TYPES = [
   "other",
 ] as const;
 
+export const ENDORSEMENT_SUPPORT_STATUSES = [
+  "supported",
+  "excluded",
+  "requires_review",
+] as const;
+
+/** Decided by Jev after extraction (`endorsementDecisions.ts`), not by the extraction model. */
+export type EndorsementJudgment = {
+  endorsementType: (typeof ENDORSEMENT_TYPES)[number];
+  supportStatus: (typeof ENDORSEMENT_SUPPORT_STATUSES)[number];
+};
+
+export const ENDORSEMENT_JUDGMENT_FALLBACK: EndorsementJudgment = {
+  endorsementType: "other",
+  supportStatus: "requires_review",
+};
+
 export const ENDORSEMENT_PARTY_ROLES = [
   "additional_insured",
   "additional_named_insured",
@@ -209,8 +226,6 @@ export const endorsementSectionSchema = z.object({
       editionDate: z.string().nullable(),
       title: z.string(),
       endorsementNumber: z.string().nullable(),
-      endorsementType: z.enum(ENDORSEMENT_TYPES),
-      supportStatus: z.enum(["supported", "excluded", "requires_review"]),
       summary: z.string(),
       citations,
       effectiveDate: citedValueSchema.nullable(),
