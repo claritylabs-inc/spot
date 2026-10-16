@@ -435,7 +435,7 @@ export function resolveDeterministicCertificateHolder<T>(
       verdict: reviewable ? "needs_model" : "ambiguous",
       confidence: "moderate",
       reason: "Holder name matches but address identity is ambiguous.",
-      candidates: ambiguous,
+      candidates: reviewable ? ambiguous.slice(0, 5) : ambiguous,
     };
   }
 

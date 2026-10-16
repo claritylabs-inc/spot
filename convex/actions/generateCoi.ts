@@ -382,6 +382,7 @@ export const layoutQa = internalAction({
     /** Field fit was measured in code at render time (see `CoiLayoutReport`). */
     fieldsMeasured: v.optional(v.boolean()),
     measuredFindings: v.optional(v.array(v.string())),
+    movedToRemarks: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<null> => {
     const blob = await ctx.storage.get(args.fileId);
@@ -402,6 +403,7 @@ export const layoutQa = internalAction({
       console.warn("[generateCoi] Certificate layout QA", {
         policyId: args.policyId,
         certificateId: args.certificateId,
+        movedToRemarks: args.movedToRemarks ?? [],
         ...result,
       });
     }
@@ -601,6 +603,7 @@ export const run = internalAction({
         description: coiData.description ?? "",
         fieldsMeasured: layout.measured,
         measuredFindings: layout.findings,
+        movedToRemarks: layout.movedToRemarks,
       });
 
       return {
