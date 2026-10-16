@@ -393,7 +393,7 @@ export const saveNote = tool({
 
 export const confirmPolicyFact = tool({
   description:
-    "Confirm a policy fact from original PDF source evidence and optionally update a small set of top-level extracted policy fields. Use only after lookup_policy_section returns original-PDF sourceSpanIds that directly support the fact. This does not save policy details to long-term org memory.",
+    "Confirm a policy fact from original PDF source evidence and optionally update a small set of top-level extracted policy fields. Use only after lookup_policy_section returns original-PDF sourceSpanIds that directly support the fact. Each field is checked independently against the cited evidence. Only confidently supported values are written; rejectedFields explains withheld updates. Router failures write nothing. This does not save policy details to long-term org memory.",
   inputSchema: z.object({
     policyId: z
       .string()
