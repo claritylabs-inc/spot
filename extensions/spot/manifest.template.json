@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Spot",
-  "version": "0.1.1",
-  "description": "Ask Spot about the page you are reading.",
+  "version": "0.1.2",
+  "description": "Ask insurance questions, review your policies, and share web pages with Spot—all from your browser’s side panel.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "sidePanel"],
   "action": { "default_title": "Open Spot" },
