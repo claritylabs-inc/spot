@@ -22,7 +22,7 @@ import {
 } from "./lib/userFacingErrors";
 import {
   getOperatorImessageContactPhone,
-  getOperatorImessageWorkerUrl,
+  isImessageTransportConfigured,
   isOperatorImessageInboundEnabled,
   isOperatorImessageTerminalEnabled,
 } from "./lib/imessageConfig";
@@ -2207,17 +2207,14 @@ export const getOperatorImessageStatus = query({
     const enabled = isOperatorImessageInboundEnabled();
     const terminalEnabled = isOperatorImessageTerminalEnabled();
     const contactPhone = getOperatorImessageContactPhone();
-    const workerConfigured = Boolean(
-      getOperatorImessageWorkerUrl() &&
-      process.env.OPERATOR_IMESSAGE_WORKER_SECRET?.trim(),
-    );
+    const transportConfigured = isImessageTransportConfigured("operator");
 
     return {
       enabled,
       mode: terminalEnabled ? ("terminal" as const) : ("imessage" as const),
       configured:
         enabled &&
-        workerConfigured &&
+        transportConfigured &&
         (terminalEnabled || Boolean(contactPhone)),
       contactPhone: terminalEnabled ? null : (contactPhone ?? null),
       senderPhone: operator.user.phone ?? null,

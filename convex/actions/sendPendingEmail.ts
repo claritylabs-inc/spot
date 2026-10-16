@@ -406,7 +406,7 @@ async function sendPendingEmailById(
             ? ` CC ${pending.ccAddresses.join(", ")}`
             : "";
         const confirmation = `Email sent to ${pending.recipientEmail}.${ccNote}`;
-        const sent = await sendOutboundImessage({
+        const sent = await sendOutboundImessage(ctx, {
           toPhone: thread.threadPhone,
           chatGuid: thread.imessageChatGuid,
           message: confirmation,

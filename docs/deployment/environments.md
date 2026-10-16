@@ -355,6 +355,12 @@ status, sets Convex `OPERATOR_SLACK_ENABLED=true` and
 the operator worker health contract, contact number, and fail-closed Convex
 wiring before production promotion.
 
+Both iMessage lanes can instead run on Photon Spectrum webhooks handled in
+Convex, behind the per-role flags `IMESSAGE_WEBHOOK_ENABLED` and
+`OPERATOR_IMESSAGE_WEBHOOK_ENABLED` (off by default). Credentials, the
+cutover and rollback runbook, and what to delete afterwards are in
+[iMessage over Spectrum webhooks](./imessage-webhooks.md).
+
 Slack environment/app setup and the client-owned policy-delivery migration are
 documented in [Slack privileged service channel](./slack.md). Production owns
 the native Slack app, which Convex calls directly through the Slack Web API;

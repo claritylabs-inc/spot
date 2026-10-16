@@ -1,7 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { stepCountIs } from "ai";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
@@ -80,12 +80,15 @@ type ImessageResponse = {
   sendContactCard?: boolean;
 };
 
-async function sendImmediateImessage(params: {
-  toPhone: string;
-  chatGuid?: string;
-  message: string;
-}): Promise<boolean> {
-  return await sendOutboundImessage({
+async function sendImmediateImessage(
+  ctx: ActionCtx,
+  params: {
+    toPhone: string;
+    chatGuid?: string;
+    message: string;
+  },
+): Promise<boolean> {
+  return await sendOutboundImessage(ctx, {
     toPhone: params.toPhone,
     chatGuid: params.chatGuid,
     message: params.message,
@@ -792,7 +795,7 @@ export const processInbound = internalAction({
           }
         }
         if (emailResult.status === "pending") {
-          const sent = await sendImmediateImessage({
+          const sent = await sendImmediateImessage(ctx, {
             toPhone: fromPhone,
             chatGuid,
             message: visibleEmailResponseBody,

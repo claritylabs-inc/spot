@@ -5,7 +5,11 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { getImessageWorkerUrl } from "../lib/imessageConfig";
+import {
+  getImessageWorkerUrl,
+  getSpectrumCredentials,
+  isImessageWebhookTransportEnabled,
+} from "../lib/imessageConfig";
 
 type ResolvedParticipant = {
   address: string;
@@ -64,34 +68,52 @@ export const createOutboundImessageGroupInternal = internalAction({
       };
     }
 
+    const webhookTransport = isImessageWebhookTransportEnabled("customer");
     const workerUrl = getImessageWorkerUrl();
     const secret = process.env.IMESSAGE_WORKER_SECRET ?? "";
-    if (!workerUrl || !secret) {
+    if (
+      webhookTransport
+        ? !getSpectrumCredentials("customer")
+        : !workerUrl || !secret
+    ) {
       return {
         status: "unavailable" as const,
         reason: "iMessage is not configured for outbound group creation.",
       };
     }
 
-    const response = await fetch(`${workerUrl.replace(/\/$/, "")}/send`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${secret}`,
-      },
-      body: JSON.stringify({
-        participants: resolved.participants.map((participant) => participant.address),
-        message: args.openingMessage,
-        title: args.title ?? resolved.title,
-        clientMessageId: `spot-group-${args.orgId}-${dayjs().valueOf()}`,
-      }),
-    });
-
-    const body = (await response.json().catch(() => ({}))) as WorkerGroupResponse;
-    if (!response.ok || !body.ok || !body.chatGuid) {
+    const groupRequest = {
+      participants: resolved.participants.map((participant) => participant.address),
+      message: args.openingMessage,
+      title: args.title ?? resolved.title,
+      clientMessageId: `spot-group-${args.orgId}-${dayjs().valueOf()}`,
+    };
+    let body: WorkerGroupResponse;
+    if (webhookTransport) {
+      const { sendImessageViaSpectrum } = await import("../lib/imessageSpectrum");
+      body = await sendImessageViaSpectrum(ctx, "customer", groupRequest);
+    } else {
+      const response = await fetch(`${workerUrl!.replace(/\/$/, "")}/send`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${secret}`,
+        },
+        body: JSON.stringify(groupRequest),
+      });
+      body = (await response.json().catch(() => ({}))) as WorkerGroupResponse;
+      if (!response.ok) {
+        body = {
+          ...body,
+          ok: false,
+          error: body.error ?? `iMessage worker returned ${response.status}`,
+        };
+      }
+    }
+    if (!body.ok || !body.chatGuid) {
       return {
         status: "failed" as const,
-        reason: body.error ?? `iMessage worker returned ${response.status}`,
+        reason: body.error ?? "iMessage group creation failed",
       };
     }
 

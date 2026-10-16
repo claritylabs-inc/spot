@@ -7,7 +7,10 @@ import {
   operatorChannelDeliveryValidator,
   type OperatorChannelRunResult,
 } from "../lib/operatorAgentChannel";
-import { getOperatorImessageWorkerUrl } from "../lib/imessageConfig";
+import {
+  getOperatorImessageWorkerUrl,
+  isImessageWebhookTransportEnabled,
+} from "../lib/imessageConfig";
 import {
   sendOperatorSlackResponse,
   updateOperatorSlackActivity,
@@ -90,32 +93,43 @@ export const deliver = internalAction({
       if (identity?.operatorUserId !== args.operatorUserId) {
         throw new Error("Operator iMessage recipient is no longer authorized");
       }
+      const webhookTransport = isImessageWebhookTransportEnabled("operator");
       const workerUrl = getOperatorImessageWorkerUrl();
       const secret = process.env.OPERATOR_IMESSAGE_WORKER_SECRET;
-      if (!workerUrl || !secret)
+      if (!webhookTransport && (!workerUrl || !secret))
         throw new Error("Operator iMessage worker is not configured");
       const response = await operatorImessageRunResponse(ctx, result);
-      const sent = await fetch(`${workerUrl}/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${secret}`,
-        },
-        body: JSON.stringify({
-          toPhone: delivery.toPhone,
-          chatGuid: delivery.chatGuid,
-          clientMessageId: delivery.clientMessageId,
-          message: response.response,
-          attachments: response.attachments,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const outcome = (await sent.json()) as {
+      const sendRequest = {
+        toPhone: delivery.toPhone,
+        chatGuid: delivery.chatGuid,
+        clientMessageId: delivery.clientMessageId,
+        message: response.response,
+        attachments: response.attachments,
+      };
+      let outcome: {
         ok?: boolean;
         error?: string;
         attachmentFailures?: Array<{ filename: string; error?: string }>;
       };
-      if (!sent.ok || !outcome.ok)
+      if (webhookTransport) {
+        const { sendImessageViaSpectrum } = await import(
+          "../lib/imessageSpectrum"
+        );
+        outcome = await sendImessageViaSpectrum(ctx, "operator", sendRequest);
+      } else {
+        const sent = await fetch(`${workerUrl}/send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${secret}`,
+          },
+          body: JSON.stringify(sendRequest),
+          signal: AbortSignal.timeout(30_000),
+        });
+        outcome = await sent.json();
+        if (!sent.ok) outcome = { ...outcome, ok: false };
+      }
+      if (!outcome.ok)
         throw new Error(outcome.error ?? "Operator iMessage delivery failed");
       if (outcome.attachmentFailures?.length && result.response) {
         await ctx.runMutation(
