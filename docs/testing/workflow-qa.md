@@ -929,3 +929,36 @@ Added a thin `border-border-subtle` divider above Changes to resubmit, with 24px
 - Fixed intake lint failures: mutation callback names no longer look like hooks, local-storage/handoff state updates are deferred, event-only ref callbacks have a narrowly documented compiler-lint exception, and controls use existing typography roles.
 - Updated existing fixtures for explicit submission consent/revisions, current submitted-application storage, broker visibility defaults, the shared session identity helper, and Jev-owned classification/identity semantics. Authorization, stale-write, immutable-snapshot and metadata-ownership assertions remain enforced.
 - Full local suite: 183 test files passed, one skipped; 1,110 tests passed, 23 skipped. Full ESLint has zero errors (10 existing warnings); router contract validation and Convex typechecking pass. Final Next.js typecheck/build and required GitHub checks are verified before merge.
+
+## Browser agent sidebar (2026-10-15)
+
+Repeat with the native-local app/backend and seeded Cove fixture running:
+`node scripts/browser-extension-e2e.mjs`. It builds an unpacked local extension,
+loads it in installed Chrome via the browser CDP extension API, signs in with a
+fresh captured OTP when needed, temporarily toggles synthetic client access and
+restores it. It does not deploy or use Vercel previews. QA conversations retain
+`QA SIDEBAR-427` for identification. No unit tests were added.
+
+Artifacts: `.context/qa/extension/results.json`, `sidebar.png`, `preview.png`,
+`sidebar-dark.png`. The committed script is the repeatable workflow artifact.
+The VM has no desktop/display, so the run uses actual Chrome in headless mode.
+The toolbar action opens a real side panel; the same packaged panel page is also
+opened in a tab for Playwright interaction and screenshots.
+
+Passed in the final integrated Chrome 155 run (18 checks): normal app session reuse in the
+sandboxed iframe; intake and signed-out gates; no capture on open; temporary tab
+permission denial/recovery and toolbar grant; whole-page and selection capture;
+source preview and exclusion of form values, hidden content and URL query/hash;
+draft preservation; removal without reattachment; rejection of wrong-origin,
+stale-session, oversized and invalid-URL messages; excluded selections never
+widening to whole-page capture; message/file persistence after reload; capture in
+an existing conversation; narrow dark rendering; visible/dismissible pending
+capture in history; preservation of the main app's dock layout; Escape keeping
+the sidebar open; and links outside the layout opening in a separate app tab.
+
+Blocked: live model response. The unmodified web dock and the sidebar both hit
+`router_rejected: The job callback is not permitted` in this local environment.
+Message/upload persistence passes independently; no router allowlist was changed.
+Not run: Edge, browser-store review, a visible desktop run, live model-generated
+certificates/email approvals and production HTTPS authentication. Those are not
+claimed by this workflow.

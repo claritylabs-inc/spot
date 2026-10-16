@@ -70,10 +70,17 @@ const AgentDockContext = createContext<AgentDockContextValue | null>(null);
 export function AgentDockProvider({
   surface,
   userId,
+  standaloneOrgId,
   children,
 }: {
   surface: AppShellSurface;
   userId: string | undefined;
+  /**
+   * The dock fills its frame (browser sidebar): it stays expanded, ignores the
+   * collapse and full-screen shortcuts, and keeps its tabs under a layout key
+   * for this user and organization, apart from the web dock's preference.
+   */
+  standaloneOrgId?: string;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -84,7 +91,11 @@ export function AgentDockProvider({
   const [detachedContextKey, setDetachedContextKey] = useState<string | null>(
     null,
   );
-  const storageKey = userId ? agentDockStorageKey(surface, userId) : null;
+  const storageKey = userId
+    ? standaloneOrgId
+      ? `${agentDockStorageKey(surface, userId)}:sidebar:${standaloneOrgId}`
+      : agentDockStorageKey(surface, userId)
+    : null;
   const [restoredKey, setRestoredKey] = useState<string | null>(null);
   const composerRef = useRef<AgentDockComposerHandle | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -98,7 +109,7 @@ export function AgentDockProvider({
       type: "restore",
       tabs: stored.tabs,
       activeThreadId: stored.activeThreadId,
-      mode: stored.mode,
+      mode: standaloneOrgId ? "expanded" : stored.mode,
     });
     setHeightState(stored.height);
   }
@@ -199,6 +210,7 @@ export function AgentDockProvider({
   );
 
   useEffect(() => {
+    if (standaloneOrgId) return;
     function handleKeyDown(event: KeyboardEvent) {
       const shortcut = agentDockShortcut(event, {
         mode: state.mode,
@@ -210,7 +222,7 @@ export function AgentDockProvider({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [run, state.mode]);
+  }, [run, standaloneOrgId, state.mode]);
 
   const value = useMemo<AgentDockContextValue>(
     () => ({
