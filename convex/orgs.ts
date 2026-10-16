@@ -1331,20 +1331,3 @@ export const setClientAccessStatus = mutation({
     await ctx.db.patch(args.orgId, { clientAccessStatus: args.status });
   },
 });
-
-// Removes the retired `operatorStatus` from stored orgs so the schema field can be dropped.
-export const clearOperatorStatusInternal = internalMutation({
-  args: { cursor: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const page = await ctx.db
-      .query("organizations")
-      .paginate({ numItems: 100, cursor: args.cursor ?? null });
-    let updated = 0;
-    for (const org of page.page) {
-      if (org.operatorStatus === undefined) continue;
-      updated += 1;
-      await ctx.db.patch(org._id, { operatorStatus: undefined });
-    }
-    return { updated, isDone: page.isDone, continueCursor: page.continueCursor };
-  },
-});

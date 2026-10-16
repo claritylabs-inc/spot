@@ -588,15 +588,6 @@ export default defineSchema({
     featureFlags: v.optional(v.record(v.string(), v.boolean())),
     // Onboarding
     onboardingComplete: v.optional(v.boolean()),
-    // Deprecated: replaced by clientAccessStatus. Unused; run orgs:clearOperatorStatusInternal on every deployment, then drop this field.
-    operatorStatus: v.optional(
-      v.union(
-        v.literal("onboarding"),
-        v.literal("live"),
-        v.literal("lost"),
-        v.literal("churned"),
-      ),
-    ),
     // Branding
     iconStorageId: v.optional(v.id("_storage")),
     // Dual-org: org type discriminator
