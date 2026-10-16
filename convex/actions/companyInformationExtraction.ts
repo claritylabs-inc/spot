@@ -378,8 +378,8 @@ export const extractClientFile = internalAction({
         sourceRef: source.sourceRef,
         task: "company_information_document_verification",
         source: {
-          // Page images carry the document; text covers formats with no pages.
-          ...(!images.length && text.trim() ? { text } : {}),
+          // Text covers pages beyond the rendered images and formats with no pages.
+          ...(text.trim() ? { text } : {}),
           ...(images.length
             ? {
                 pages: {
