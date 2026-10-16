@@ -23,13 +23,16 @@
 
   function say(message) {
     statusLine.textContent = message;
+    if (ready && sessionId) {
+      frame.contentWindow.postMessage({ type: "spot:capture-status", version: config.protocolVersion, sessionId, message }, config.appOrigin);
+    }
   }
 
   function setReady(value) {
     ready = value;
     if (!value) sessionId = null;
     captureButton.disabled = !value;
-    toolbar.hidden = !value;
+    toolbar.hidden = true;
     if (value) signInUntil = 0;
   }
 
@@ -55,8 +58,12 @@
     if (data.type === "spot:mounted") {
       mounted = true;
       clearTimeout(loadTimeout);
-      toolbar.hidden = !ready;
+      toolbar.hidden = true;
       captureButton.hidden = false;
+    }
+    if (data.type === "spot:capture-request" && ready && data.sessionId === sessionId) {
+      if (!navigator.userActivation.isActive) return say("Press Use this page again to share it.");
+      void usePage();
     }
     if (data.type === "spot:sign-in" && !ready) {
       signInUntil = Date.now() + 10 * 60 * 1000;
@@ -120,7 +127,7 @@
   }
 
   async function usePage() {
-    if (!ready) return;
+    if (!ready || captureButton.disabled) return;
     const captureSession = sessionId;
     captureButton.disabled = true;
     statusLine.dataset.sticky = "1";
@@ -157,13 +164,7 @@
       clearTimeout(receiptTimeout);
       pendingReceipt = null;
       if (!received || sessionId !== captureSession) return say("Spot didn't receive that page. Press Reload and try again.");
-      const { title, text, selection } = result.context;
-      const shortTitle = title.length > 60 ? `${title.slice(0, 57)}…` : title;
-      say(
-        `Shared “${shortTitle}” · ${text.length.toLocaleString()} characters. Review the attachment in your chat.` +
-          (selection ? " · selected text" : "") +
-          (result.truncated ? " · shortened to fit" : ""),
-      );
+      say("");
     } finally {
       delete statusLine.dataset.sticky;
       captureButton.disabled = !ready;

@@ -10,7 +10,7 @@ import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { OtpField } from "@/components/ui/otp-field";
 import { PillButton } from "@/components/ui/pill-button";
-import { completeOtpSignIn } from "@/lib/otp-auth";
+import { completeOtpSignIn, completePasswordSignIn } from "@/lib/auth-sign-in";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
@@ -75,6 +75,8 @@ export function AuthEntryPage({
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -134,6 +136,19 @@ export function AuthEntryPage({
       setError(message);
       setLoading(false);
       return webMcpError(message, { next_tool: verifyCodeTool });
+    }
+  }
+
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      await completePasswordSignIn(email, password);
+      window.location.assign(postLoginPath);
+    } catch {
+      setError("Email or password didn't work. Try again, or use an email code.");
+      setLoading(false);
     }
   }
 
@@ -203,7 +218,7 @@ export function AuthEntryPage({
               size="large"
               type="submit"
               form={formId}
-              disabled={loading || (onCodeStep ? code.length < 6 : !email)}
+              disabled={loading || (onCodeStep ? code.length < 6 : !email || (usePassword && !password))}
             >
               {loading ? "Continuing…" : onCodeStep ? "Confirm and continue" : "Continue"}
             </PillButton>
@@ -217,10 +232,10 @@ export function AuthEntryPage({
         {!onCodeStep ? (
           <form
             id={formId}
-            key={requestCodeTool}
-            onSubmit={handleEmailSubmit}
+            key={usePassword ? "password" : requestCodeTool}
+            onSubmit={usePassword ? handlePasswordSubmit : handleEmailSubmit}
             className="space-y-5"
-            {...(webMcpEnabled ? webMcpFormAttributes(requestCodeTool) : {})}
+            {...(webMcpEnabled && !usePassword ? webMcpFormAttributes(requestCodeTool) : {})}
           >
             <Field>
               <FieldLabel htmlFor="auth-email" className={typeStyle("body.root")}>
@@ -228,7 +243,7 @@ export function AuthEntryPage({
               </FieldLabel>
               <Input
                 id="auth-email"
-                {...(webMcpEnabled ? webMcpParamAttributes(requestCodeTool, "email") : {})}
+                {...(webMcpEnabled && !usePassword ? webMcpParamAttributes(requestCodeTool, "email") : {})}
                 type="email"
                 autoComplete="email"
                 className="mt-2 h-12"
@@ -239,7 +254,41 @@ export function AuthEntryPage({
                 autoFocus
               />
             </Field>
-            {error && <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{error}</p>}
+            {usePassword && (
+              <Field>
+                <FieldLabel htmlFor="auth-password" className={typeStyle("body.root")}>
+                  Password
+                </FieldLabel>
+                <Input
+                  id="auth-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  className="mt-2 h-12"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </Field>
+            )}
+            {error && <p role="alert" className={`text-muted-foreground ${typeStyle("body.default")}`}>{error}</p>}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setUsePassword(!usePassword);
+                setPassword("");
+                setError("");
+              }}
+              className={`text-muted-foreground transition-colors hover:text-foreground ${typeStyle("control.button")}`}
+            >
+              {usePassword ? "Use an email code instead" : "Use a password instead"}
+            </button>
+            {usePassword && (
+              <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+                Forgot your password? Sign in with an email code to change it in your profile settings.
+              </p>
+            )}
           </form>
         ) : (
           <form

@@ -9,7 +9,7 @@ import { AuthCard, AuthShell } from "@/components/auth-shell";
 import { OtpField } from "@/components/ui/otp-field";
 import { PillButton } from "@/components/ui/pill-button";
 import { Loader2, ArrowLeft, ArrowRight, X } from "lucide-react";
-import { completeOtpSignIn } from "@/lib/otp-auth";
+import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";

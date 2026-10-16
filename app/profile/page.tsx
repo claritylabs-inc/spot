@@ -28,6 +28,7 @@ import {
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { PasswordSettings } from "@/components/profile/password-settings";
 import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
@@ -384,6 +385,7 @@ export default function ProfilePage() {
           </FadeIn>
 
           <FadeIn when={true} staggerIndex={2} duration={0.6}>
+            <PasswordSettings />
             <OperationalPanel className="mt-4">
               <OperationalPanelHeader
                 title="Proactive conversations"

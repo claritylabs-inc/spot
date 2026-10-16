@@ -1005,3 +1005,12 @@ suite, TypeScript, lint, worker checks and production build before merging.
   authorization/isolation tests also passed.
 - GitHub production workflow uses repository secrets; local QA does not deploy
   or provision production accounts. No Vercel previews used.
+
+### Compact extension and optional passwords (2026-10-16)
+
+- `node scripts/browser-extension-e2e.mjs`: 19 browser checks pass after the compact-header change, including a CDP request without user activation being rejected. Artifacts: `.context/qa/extension/results.json`, `sidebar.png`, `sidebar-dark.png`, `preview.png`. Live local model response remains blocked by the router's local callback policy.
+- `node scripts/browser-extension-onboarding-e2e.mjs`: 4 checks pass for welcome, normal login tab, bounded redirect, and automatic reconnection. The guide body is stubbed only in this local auth test; the deployed guide is independently verified.
+- Optional password workflow: `node scripts/password-login-e2e.mjs`; artifacts `.context/qa/password-login/`. 9 checks pass on the integrated atomic password writer: email-code default, opt-in, normal sign-in, rejected wrong/old passwords, cross-browser session revocation, and removed reviewer page.
+- Demo account workflow: `node scripts/reviewer-account-e2e.mjs` uses ordinary `/login` and `password`, with seeded policies and session rotation; no reviewer-only auth gates. The final integrated run passes all 5 checks.
+
+- `node scripts/password-account-e2e.mjs` and `node scripts/password-account-boundary-e2e.mjs`: integrated backend workflows pass 5/5 and 4/4; closed public signup/reset, hash-only opt-in, revoked JWTs and concurrent credential writes. Artifacts: `.context/qa/password/results.json` and `boundary-results.json`. The author also verified the stale-session case (6/6) on the same backend correction; see `docs/testing/password-account.md`.

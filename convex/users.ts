@@ -396,6 +396,23 @@ export const confirmEmailChange = mutation({
       await ctx.db.delete(account._id);
     }
 
+    const passwordAccounts = await ctx.db
+      .query("authAccounts")
+      .withIndex("userIdAndProvider", (q) => q.eq("userId", userId).eq("provider", "password"))
+      .take(2);
+    if (passwordAccounts.length > 1) throw new Error("Password accounts conflict");
+    if (passwordAccounts[0]) {
+      const collision = await ctx.db
+        .query("authAccounts")
+        .withIndex("providerAndAccountId", (q) => q.eq("provider", "password").eq("providerAccountId", normalized))
+        .unique();
+      if (collision && collision.userId !== userId) throw new Error(EMAIL_IN_USE_MESSAGE);
+      await ctx.db.patch(passwordAccounts[0]._id, {
+        providerAccountId: normalized,
+        emailVerified: normalized,
+      });
+    }
+
     await ctx.db.patch(userId, {
       email: normalized,
       emailVerificationTime: now,

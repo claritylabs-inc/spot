@@ -53,63 +53,32 @@ else run("reviewerAccounts:provision", { password });
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
-  headless: !process.env.DISPLAY,
+  headless: true,
+  args: ["--no-sandbox"],
 });
 const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const page = await context.newPage();
 
 try {
-  // 1. The page is public: unauthenticated visitors are not redirected away.
-  await page.goto(`${app}/login/review`);
-  await page.getByLabel("Email").waitFor();
-  assert.equal(new URL(page.url()).pathname, "/login/review");
-  await page.screenshot({ path: path.join(out, "01-login.png") });
-  pass("review login page is public");
-
-  // 2. A wrong password shows an error and signs nobody in.
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("definitely-not-the-password-123456");
-  await page.getByRole("button", { name: "Sign in" }).click();
+  // Ordinary password login, with the same errors as any account.
+  await page.goto(`${app}/login?next=/policies`);
+  await page.getByRole("button", { name: "Use a password instead" }).click();
+  await page.getByLabel("Work email", {exact: true}).fill(email);
+  await page.getByLabel("Password", {exact: true}).fill("incorrect-password");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("alert").waitFor();
-  assert.equal(new URL(page.url()).pathname, "/login/review");
-  await page.screenshot({ path: path.join(out, "02-wrong-password.png") });
-  pass("wrong password shows an error and signs nobody in");
-
-  // 3. No sign-up, reset, other identity, or OTP path to the reviewer.
-  const usersBefore = rows("users").length;
-  const sessionsBefore = rows("authSessions").length;
+  pass("wrong password is rejected through normal login");
   const auth = async (provider, params) => {
-    const response = await page.request.post(`${app}/api/auth`, {
-      data: { action: "auth:signIn", args: { provider, params } },
-    });
+    const response = await page.request.post(`${app}/api/auth`, {data: {action: "auth:signIn", args: {provider, params}}});
     const body = await response.json().catch(() => ({}));
     return response.ok() && Boolean(body.tokens?.token);
   };
-  for (const [label, params] of [
-    ["signUp for a new identity", { flow: "signUp", email: "new-person@example.com", password }],
-    ["signUp for the reviewer identity", { flow: "signUp", email, password }],
-    ["reset for the reviewer identity", { flow: "reset", email }],
-    ["reset-verification for the reviewer", { flow: "reset-verification", email, newPassword: password, code: "000000" }],
-    ["signIn as an operator alias", { flow: "signIn", email: "chrome-review@spot.insure", password }],
-    ["signIn as another user", { flow: "signIn", email: "adyan@cove.dev", password }],
-  ]) {
-    assert.equal(await auth("review-password", params), false, label);
-  }
-  assert.equal(await auth("resend-otp", { email }), false, "OTP for the reviewer");
-  assert.equal(rows("users").length, usersBefore, "no user was created");
-  assert.equal(rows("authSessions").length, sessionsBefore, "no session was created");
-  assert.deepEqual(
-    rows("authAccounts").filter((a) => a.providerAccountId === email).map((a) => a.provider),
-    ["review-password"],
-    "only the review provider holds the reviewer identity",
-  );
-  pass("sign-up, reset, other identities and OTP for the reviewer are rejected without creating anything");
-
   // 4. The right password signs in as an ordinary active demo client.
-  await page.goto(`${app}/login/review?next=/policies`);
-  await page.getByLabel("Email").fill(email);
+  await page.goto(`${app}/login?next=/policies`);
+  await page.getByRole("button", { name: "Use a password instead" }).click();
+  await page.getByLabel("Work email", {exact: true}).fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.waitForURL(`${app}/policies`, { timeout: 30000 });
   await page.getByText("DEMO-GL-0001").first().waitFor({ timeout: 30000 });
   await page.screenshot({ path: path.join(out, "03-signed-in-policies.png") });
@@ -145,8 +114,8 @@ try {
   await page.goto(`${app}/policies`);
   await page.waitForURL(/\/login/, { timeout: 60000 });
   pass("rotation signs the existing session out");
-  assert.equal(await auth("review-password", { flow: "signIn", email, password }), false);
-  assert.equal(await auth("review-password", { flow: "signIn", email, password: rotated }), true);
+  assert.equal(await auth("password", { flow: "signIn", email, password }), false);
+  assert.equal(await auth("password", { flow: "signIn", email, password: rotated }), true);
   pass("old password is rejected and the rotated password works");
 } finally {
   await browser.close();

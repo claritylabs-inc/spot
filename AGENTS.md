@@ -77,8 +77,4 @@ Operator navbar action sizing is enforced at the shared `app-top-bar-actions` sl
 
 Policy savings is selected as “Save money on my current policies” in the shared buying-reason question, with no separate entry goal question. That answer sets `intakeGoal: savings`; applicants upload at least one PDF policy, then provide business information. Coverage selection is skipped on normal navigation, review edits and resumed links. The existing owner-scoped intake record stores recovery and the accepted snapshot with `intakeGoal: savings`; it remains excluded from Procurement lists and resource access. Submission creates idempotently linked policy uploads through `createOwnedIntakePolicyUpload` and the existing policy extraction pipeline, without procurement packets, file items, or marketing lifecycle. Admin follow-up is under the business’s Policies page. The received confirmation makes no fixed turnaround promise, and accepted savings reviews are read-only.
 
-The reusable extension reviewer identity is provisioned by `convex/reviewerAccounts.ts`
-into one synthetic client workspace. `/login/review` accepts the restricted password
-provider; OTP, signup, intake and invitations cannot acquire or link that identity.
-Use the manual Spot reviewer account workflow on main for status/provision/rotation;
-its password is a repository secret. See `docs/architecture/reviewer-account.md`.
+Password sign-in is optional. Accounts use email codes by default; verified users can set a password in profile settings through `convex/passwordAccounts.ts`. The normal `/login` page offers both methods. `convex/reviewerAccounts.ts` seeds an ordinary client account and synthetic policies for extension review/testing; it adds no special runtime authentication or membership rules. The manual reviewer workflow stores its preset password in a repository secret. See `docs/architecture/reviewer-account.md`.

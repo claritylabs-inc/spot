@@ -83,9 +83,11 @@ try {
   setAccess("active");
   await panel.reload();
   await panel.waitForFunction(() => !document.querySelector("#capture").disabled);
-  await frame.getByText("Cove", { exact: true }).waitFor();
+  await frame.getByRole("button", { name: "Use this page", exact: true }).waitFor();
+  assert.equal(await panel.locator(".bar").isVisible(), false);
+  assert.equal(await frame.getByRole("tablist", { name: "Open chats" }).count(), 0);
   pass("existing login reused in sandboxed extension iframe");
-  await frame.getByRole("button", { name: "Ask anything", exact: true }).press("Enter");
+  await frame.getByRole("button", { name: "New chat", exact: true }).press("Enter");
   const input = frame.locator("textarea");
   const draft = "Review this page without taking any action. QA SIDEBAR-427";
   await input.fill(draft);
@@ -94,7 +96,7 @@ try {
   const target = await context.newPage();
   await target.goto(`${fixtureOrigin}/?secret=NOT_CAPTURED#private`);
   await target.bringToFront();
-  await panel.evaluate(() => document.querySelector("#capture").click());
+  await frame.getByRole("button", { name: "Use this page", exact: true }).evaluate(button => button.click());
   await panel.waitForFunction(() => document.querySelector("#status").textContent.includes("Click the Spot icon"));
   pass("ungranted tab gives recovery without capture");
   const tab = (await browserCdp.send("Target.getTargets", { filter: [{ type: "tab" }] })).targetInfos.find((item) => item.url.startsWith(fixtureOrigin));
@@ -108,9 +110,9 @@ try {
   });
   const capture = async () => {
     await target.bringToFront();
-    await panel.evaluate(() => document.querySelector("#capture").click());
+    await frame.getByRole("button", { name: "Use this page", exact: true }).evaluate(button => button.click());
     await frame.getByRole("button", { name: "Preview page context" }).waitFor();
-    await panel.waitForFunction(() => document.querySelector("#status").textContent.startsWith("Shared"));
+    await panel.waitForFunction(() => !document.querySelector("#capture").disabled);
   };
   await capture();
   assert.equal(await input.inputValue(), draft);
@@ -129,13 +131,25 @@ try {
   await frame.getByRole("button", { name: "Remove spot-page-context.txt" }).click();
   await frame.getByRole("button", { name: "History", exact: true }).click();
   await target.bringToFront();
-  await panel.evaluate(() => document.querySelector("#capture").click());
+  await frame.getByRole("button", { name: "Use this page", exact: true }).evaluate(button => button.click());
   await frame.getByText("Page waiting for a chat", { exact: true }).waitFor();
   await frame.getByRole("button", { name: "Remove Page waiting for a chat" }).click();
   pass("capture waiting in history is visible and dismissible");
-  await frame.getByRole("button", { name: "Ask anything", exact: true }).press("Enter");
+  await frame.getByRole("button", { name: "New chat", exact: true }).press("Enter");
   assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
   pass("removed capture stays removed across history/new chat");
+  await panel.waitForTimeout(6000);
+  const appFrame = panel.frames().find(item => item.url().includes("/extension"));
+  const appCdp = await context.newCDPSession(appFrame);
+  await appCdp.send("Runtime.evaluate", {
+    expression: `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Use this page').click()`,
+    userGesture: false,
+  });
+  await panel.waitForFunction(() => document.querySelector("#status").textContent.includes("Press Use this page again"));
+  assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
+  await appCdp.detach();
+  pass("background capture request without user activation is rejected");
+
   await input.fill(draft);
   await panel.evaluate((url) => {
     const base = { type: "spot:page-context", version: 1, sessionId: window.qaSessionId, captureId: "qa", context: { title: "Bad capture", url, text: "DO NOT STAGE", selection: false } };
@@ -150,7 +164,7 @@ try {
   pass("wrong origin, stale session, oversized and invalid URL messages rejected");
   await target.evaluate(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector("#editable")); const s = getSelection(); s.removeAllRanges(); s.addRange(range); });
   await target.bringToFront();
-  await panel.evaluate(() => document.querySelector("#capture").click());
+  await frame.getByRole("button", { name: "Use this page", exact: true }).evaluate(button => button.click());
   await panel.waitForFunction(() => document.querySelector("#status").textContent.includes("selection can't be read"));
   assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
   pass("excluded selection never widens to whole-page capture");

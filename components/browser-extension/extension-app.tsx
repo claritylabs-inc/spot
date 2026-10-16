@@ -3,8 +3,8 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, type ReactNode } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { ExternalLink, Loader2, X } from "lucide-react";
-import { AgentDockBar } from "@/components/agent-dock/agent-dock-bar";
+import { Clock, ExternalLink, Loader2, MoreHorizontal, Plus, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { BrandWordmark } from "@/components/auth-shell";
 import { BROWSER_EXTENSION_WELCOME_URL, notifyBrowserExtension } from "@/lib/browser-extension";
 import { AgentDockContextChip } from "@/components/agent-dock/agent-dock-context-chip";
@@ -190,10 +190,11 @@ function CapturePreviewPanel() {
   );
 }
 
-function ExtensionLayout({ orgName }: { orgName: string }) {
+const ignoreDockActions = () => {};
+
+function ExtensionLayout() {
   const dock = useAgentDock();
   const { setTarget } = useAppShellSlot("artifactPanel");
-  const [actions, setActions] = useState<ReactNode>(null);
   const { isPdfOpen, fileUrl } = usePdf();
   const { preview } = useEntityPreview();
   const capture = usePageCapture();
@@ -211,15 +212,29 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
         AGENT_CHAT_SURFACE,
       )}
     >
-      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
-        <span
-          title={orgName}
-          className={cn("min-w-0 truncate text-foreground", typeStyle("body.medium"))}
-        >
-          {orgName}
-        </span>
-        <OpenSpotButton />
+      <header className="flex h-10 shrink-0 items-center gap-1 px-2">
+        <PillButton variant="ghost" size="compact" onClick={capture?.requestCapture} className="mr-auto">
+          Use this page
+        </PillButton>
+        <PillButton variant="icon" size="compact" iconOnly label="New chat" onClick={dock.newChat}>
+          <Plus className="size-4" />
+        </PillButton>
+        <PillButton variant="icon" size="compact" iconOnly label="History" aria-pressed={dock.view === "history"} onClick={() => dock.view === "history" ? dock.showChat() : dock.showHistory()}>
+          <Clock className="size-4" />
+        </PillButton>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<PillButton variant="icon" size="compact" iconOnly label="More options" />}>
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => window.open("/", "_blank", "noopener,noreferrer")}>Open Spot</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.location.reload()}>Reload</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
+      {capture?.captureStatus ? (
+        <p role="status" className={cn("px-3 pb-2 text-muted-foreground", typeStyle("caption.default"))}>{capture.captureStatus}</p>
+      ) : null}
       {capture?.pending ? (
         <div className="flex shrink-0 items-center border-b border-border px-3 py-1.5">
           <AgentDockContextChip
@@ -231,15 +246,8 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
       <DockBody
         adapter={clientDockAdapter}
         mode="expanded"
-        onActions={setActions}
+        onActions={ignoreDockActions}
         artifactPanelRef={setTarget}
-      />
-      <AgentDockBar
-        adapter={clientDockAdapter}
-        mode="expanded"
-        mobile
-        actions={actions}
-        sizeControls={false}
       />
       <CapturePreviewPanel />
       {preview ? (
@@ -259,11 +267,9 @@ function ExtensionLayout({ orgName }: { orgName: string }) {
 function ExtensionWorkspace({
   userId,
   orgId,
-  orgName,
 }: {
   userId: string;
   orgId: string;
-  orgName: string;
 }) {
   return (
     <PageContextProvider>
@@ -276,7 +282,7 @@ function ExtensionWorkspace({
               standaloneOrgId={orgId}
             >
               <PageCaptureProvider>
-                <ExtensionLayout orgName={orgName} />
+                <ExtensionLayout />
               </PageCaptureProvider>
             </AgentDockProvider>
           </AppShellSlotsProvider>
@@ -366,7 +372,6 @@ export function ExtensionApp() {
       key={`${viewer._id}:${viewerOrg.org._id}`}
       userId={String(viewer._id)}
       orgId={String(viewerOrg.org._id)}
-      orgName={viewerOrg.org.name}
     />
   );
 }

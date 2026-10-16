@@ -9,7 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { AuthCard, AuthMinimalShell, BrandWordmark } from "@/components/auth-shell";
 import { OtpField } from "@/components/ui/otp-field";
 import { PillButton } from "@/components/ui/pill-button";
-import { completeOtpSignIn } from "@/lib/otp-auth";
+import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
