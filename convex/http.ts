@@ -521,9 +521,6 @@ http.route({
         process.env.RESEND_WEBHOOK_SECRET,
       ),
       emailOutboundConfigured: Boolean(process.env.AUTH_RESEND_KEY),
-      emailScanCronSecretConfigured: Boolean(
-        process.env.EMAIL_SCAN_CRON_SECRET,
-      ),
       connectedEmailEncryptionConfigured: Boolean(
         process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
       ),
@@ -920,40 +917,6 @@ http.route({
       return jsonResponse({ error: "Operator message not found" }, 404);
     }
     return jsonResponse({ ok: true });
-  }),
-});
-
-http.route({
-  path: "/cron/connected-email/scan",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const expectedSecret = process.env.EMAIL_SCAN_CRON_SECRET;
-    if (!expectedSecret) {
-      return new Response(
-        JSON.stringify({ error: "EMAIL_SCAN_CRON_SECRET is not configured" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-
-    const authHeader = request.headers.get("Authorization") ?? "";
-    if (authHeader !== `Bearer ${expectedSecret}`) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const result = await ctx.runAction(
-      internal.actions.connectedEmailScan.scanAllMailboxes,
-      {},
-    );
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
   }),
 });
 

@@ -1,3 +1,2 @@
 .env.local
 imessage-worker/.env.local
-mailbox-scan-worker/.env.local

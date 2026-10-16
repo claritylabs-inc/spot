@@ -194,7 +194,6 @@ function buildWorkerImages() {
   const workers = [
     ["imessage-worker", "imessage-worker"],
     ["slack-worker", "slack-worker"],
-    ["mailbox-scan-worker", "mailbox-scan-worker"],
   ];
   for (const [imageName, directory] of workers) {
     run("container", [

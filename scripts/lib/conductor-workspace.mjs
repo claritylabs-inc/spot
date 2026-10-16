@@ -466,7 +466,6 @@ export function conductorImageTags(workspacePath = repoRoot) {
   return [
     "imessage-worker",
     "slack-worker",
-    "mailbox-scan-worker",
   ].map((workerName) => conductorImageTag(workerName, workspacePath));
 }
 
