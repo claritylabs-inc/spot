@@ -255,10 +255,19 @@ function policyText(policy: Doc<"policies">) {
       policy.generalAgent?.agencyName,
       policy.broker,
       policy.insuredName,
-      policy.formInventory,
-      policy.operationalProfile,
-      ...(policy.coverages ?? []),
-    ].join(" "),
+      // Structured fields must be flattened to their text; joining the objects
+      // directly produced "[object Object]" and hid every form and endorsement.
+      ...(policy.formInventory ?? []).flatMap((form) => [
+        form.formNumber,
+        form.title,
+      ]),
+      ...(policy.coverages ?? []).flatMap((coverage) => [
+        coverage.name,
+        coverage.formNumber,
+      ]),
+    ]
+      .filter(Boolean)
+      .join(" "),
   );
 }
 
