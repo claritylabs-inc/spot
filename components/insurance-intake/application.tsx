@@ -135,6 +135,7 @@ function IntakeApplicationLoading() {
 
 export function InsuranceIntake() {
   const params = useSearchParams();
+  const router = useRouter();
   const requestId = params.get("request") as Id<"procurementRequests"> | null;
   const requestedStep = params.get("step");
   const reviewStep =
@@ -178,6 +179,11 @@ export function InsuranceIntake() {
   }, [confirmationError]);
   const verification = params.get("verify");
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
+  const needsLogin = !isLoading && (!isAuthenticated || viewer === null);
+  useEffect(() => {
+    if (!requestId || !needsLogin) return;
+    router.replace(`/login?next=${encodeURIComponent(`/intake?${params.toString()}`)}`);
+  }, [requestId, needsLogin, router, params]);
   const [recovered, setRecovered] = useState(false);
   useEffect(() => {
     if (verification || !requestId || !isAuthenticated || viewer === undefined)
@@ -220,6 +226,8 @@ export function InsuranceIntake() {
         );
       });
   }, [verification, requestId, isAuthenticated, confirmOwnership]);
+  if (requestId && (isLoading || needsLogin))
+    return <IntakeApplicationLoading />;
   if (verification)
     return (
       <IntakeFrame>
@@ -234,18 +242,6 @@ export function InsuranceIntake() {
       </IntakeFrame>
     );
   if (!requestId) return null;
-  if (isLoading) return <IntakeApplicationLoading />;
-  if (!isAuthenticated || viewer === null)
-    return (
-      <IntakeFrame>
-        <p>Log in to resume your saved application.</p>
-        <PillButton
-          href={`/login?next=${encodeURIComponent(`/intake?request=${requestId}`)}`}
-        >
-          Log in
-        </PillButton>
-      </IntakeFrame>
-    );
   if (confirmationError)
     return (
       <IntakeFrame>
