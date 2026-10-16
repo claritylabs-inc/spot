@@ -6,7 +6,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getOrgAccess } from "./lib/access";
 import { resolveMailboxAutomationPolicy } from "./lib/mailboxAutomation";
-import { assertImpersonatedSetupWrite } from "./lib/operatorIdentity";
+import { recordImpersonatedWrite } from "./lib/operatorIdentity";
 import {
   throwUserFacingError,
   userFacingErrorCodes,
@@ -289,7 +289,7 @@ export const updateScope = mutation({
         "Only an organization admin can make a mailbox available to the organization.",
       );
     }
-    await assertImpersonatedSetupWrite(ctx, account.orgId);
+    await recordImpersonatedWrite(ctx);
     await ctx.db.patch(account._id, {
       scope: args.scope,
       updatedAt: dayjs().valueOf(),
@@ -323,7 +323,7 @@ export const updateSettings = mutation({
         "Only an organization admin can make a mailbox available to the organization.",
       );
     }
-    await assertImpersonatedSetupWrite(ctx, account.orgId);
+    await recordImpersonatedWrite(ctx);
     await ctx.db.patch(account._id, {
       scope: args.scope,
       automation: args.automation,
@@ -356,7 +356,7 @@ export const revoke = mutation({
         "Only the mailbox owner can manage a personal mailbox. Organization admins can manage shared mailboxes.",
       );
     }
-    await assertImpersonatedSetupWrite(ctx, account.orgId);
+    await recordImpersonatedWrite(ctx);
     await ctx.db.patch(account._id, {
       status: "revoked",
       updatedAt: dayjs().valueOf(),

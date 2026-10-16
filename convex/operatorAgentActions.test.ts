@@ -584,15 +584,15 @@ test("Approve all is shared across operators and channels, while default approva
       operatorUserId: adyan.userId,
       channel,
       conversationKey: key,
-      toolName: "set_organization_status",
-      input: { orgId: ids.orgId, status: "live" },
+      toolName: "set_client_access_status",
+      input: { orgId: ids.orgId, status: "active" },
       idempotencyKey: key,
     });
   expect((await invoke("default")).outcome.status).toBe(
     "confirmation_required",
   );
   expect(
-    (await t.run((ctx) => ctx.db.get(ids.orgId)))?.operatorStatus,
+    (await t.run((ctx) => ctx.db.get(ids.orgId)))?.clientAccessStatus,
   ).toBeUndefined();
   await expect(
     t
@@ -630,8 +630,8 @@ test("Approve all is shared across operators and channels, while default approva
       (await invoke(`automatic-${channel}`, channel)).outcome,
     ).toMatchObject({ status: "succeeded", idempotent: true });
   }
-  expect((await t.run((ctx) => ctx.db.get(ids.orgId)))?.operatorStatus).toBe(
-    "live",
+  expect((await t.run((ctx) => ctx.db.get(ids.orgId)))?.clientAccessStatus).toBe(
+    "active",
   );
   expect(
     (

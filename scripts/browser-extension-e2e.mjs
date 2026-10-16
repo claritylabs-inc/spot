@@ -16,7 +16,10 @@ const local = JSON.parse(readFileSync(".convex/local/default/config.json", "utf8
 const flags = ["--url", "http://127.0.0.1:8083", "--admin-key", local.adminKey];
 const convex = (args) => execFileSync("./node_modules/.bin/convex", [...args, ...flags], { encoding: "utf8" });
 const rows = (table) => JSON.parse(convex(["data", table, "--format", "json"]));
-const operator = rows("users").find((user) => user.email === "terry@claritylabs.inc");
+const users = rows("users");
+const operator = users.find((user) => user.email === "terry@claritylabs.inc");
+const client = users.find((user) => user.email === "adyan@cove.dev");
+const webDockKey = `spot:agent-dock:client:${client?._id}`;
 const org = rows("organizations").find((item) => item.name === "Cove");
 assert(operator && org, "Native-local synthetic fixture required");
 const setAccess = (status) => convex(["run", "orgs:setClientAccessStatus", JSON.stringify({ orgId: org._id, status }), "--identity", JSON.stringify({ subject: operator._id })]);
@@ -76,6 +79,7 @@ try {
   await frame.getByText("Workspace not open yet", { exact: true }).waitFor();
   assert(await panel.locator("#capture").isDisabled());
   pass("intake workspace gate; no chat or capture");
+  const webDockBefore = await frame.locator("body").evaluate((_body, key) => localStorage.getItem(key), webDockKey);
   setAccess("active");
   await panel.reload();
   await panel.waitForFunction(() => !document.querySelector("#capture").disabled);
@@ -96,6 +100,12 @@ try {
   const tab = (await browserCdp.send("Target.getTargets", { filter: [{ type: "tab" }] })).targetInfos.find((item) => item.url.startsWith(fixtureOrigin));
   await browserCdp.send("Extensions.triggerAction", { id, targetId: tab.targetId });
   pass("toolbar action opens actual side panel and grants activeTab");
+  // Interact with the same packaged panel in its tab without a second native
+  // sidebar competing for pointer coordinates in this headless browser window.
+  await panel.evaluate(async () => {
+    const current = await chrome.windows.getCurrent();
+    await chrome.sidePanel.close({ windowId: current.id });
+  });
   const capture = async () => {
     await target.bringToFront();
     await panel.evaluate(() => document.querySelector("#capture").click());
@@ -111,11 +121,18 @@ try {
   const text = await preview.innerText();
   assert(text.includes("SIDEBAR-427") && text.includes("untrusted page content"));
   assert(!/SECRET_|NOT_CAPTURED|#private/.test(text));
+  await panel.bringToFront();
+  await panel.waitForTimeout(150);
   await panel.screenshot({ path: path.join(out, "preview.png") });
   pass("preview contains source; excludes fields, hidden text and URL secrets");
   await frame.getByRole("button", { name: "Close page context" }).click();
   await frame.getByRole("button", { name: "Remove spot-page-context.txt" }).click();
   await frame.getByRole("button", { name: "History", exact: true }).click();
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector("#capture").click());
+  await frame.getByText("Page waiting for a chat", { exact: true }).waitFor();
+  await frame.getByRole("button", { name: "Remove Page waiting for a chat" }).click();
+  pass("capture waiting in history is visible and dismissible");
   await frame.getByRole("button", { name: "Ask anything", exact: true }).press("Enter");
   assert.equal(await frame.getByRole("button", { name: "Preview page context" }).count(), 0);
   pass("removed capture stays removed across history/new chat");
@@ -144,6 +161,8 @@ try {
   assert(!(await preview.innerText()).includes("Insurance request"));
   await frame.getByRole("button", { name: "Close page context" }).click();
   pass("selection capture only includes selected text");
+  await panel.bringToFront();
+  await panel.waitForTimeout(150);
   await panel.screenshot({ path: path.join(out, "sidebar.png") });
   await input.press("Enter");
   await frame.getByText(draft, { exact: true }).waitFor();
@@ -161,8 +180,22 @@ try {
   assert.equal(await input.inputValue(), "Follow-up draft");
   await frame.getByRole("button", { name: "Remove spot-page-context.txt" }).click();
   pass("existing conversation can stage/remove capture and preserve draft");
+  assert.equal(await frame.locator("body").evaluate((_body, key) => localStorage.getItem(key), webDockKey), webDockBefore);
+  await input.press("Escape");
+  assert(await input.isVisible());
+  pass("sidebar interactions preserve web dock layout; Escape keeps composer visible");
+  await frame.locator("body").evaluate((body) => { const a = document.createElement("a"); a.id = "qa-portal-link"; a.href = "/policies"; a.textContent = "QA portal navigation"; body.append(a); });
+  const opened = context.waitForEvent("page");
+  await frame.locator("#qa-portal-link").click();
+  const appTab = await opened;
+  await appTab.waitForURL(`${appOrigin}/policies`);
+  await appTab.close();
+  await frame.locator("#qa-portal-link").evaluate((element) => element.remove());
+  pass("links outside layout open in app tab without navigating sidebar");
   await panel.emulateMedia({ colorScheme: "dark" });
   await frame.locator("body").evaluate(() => { localStorage.setItem("theme", "dark"); document.documentElement.classList.add("dark"); });
+  await panel.bringToFront();
+  await panel.waitForTimeout(150);
   await panel.screenshot({ path: path.join(out, "sidebar-dark.png") });
   pass("narrow dark-mode sidebar rendered");
   await frame.locator("body").evaluate(() => { localStorage.setItem("theme", "light"); document.documentElement.classList.remove("dark"); });

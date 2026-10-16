@@ -19,13 +19,10 @@ export type ActiveOrgContext = {
   slug: string | undefined;
   featureFlags: FeatureFlagMap | undefined;
   isOperatorImpersonation: boolean;
-  isReadOnlyImpersonation: boolean;
 };
 
 type OperatorContext = {
-  activeImpersonation?: {
-    targetOrgOperatorStatus?: "onboarding" | "live" | "lost" | "churned";
-  } | null;
+  activeImpersonation?: object | null;
 };
 
 /**
@@ -91,10 +88,6 @@ export function useActiveOrgContext(): ActiveOrgContext | null | undefined {
   const isOperatorImpersonation =
     viewer?.accountKind === "operator" &&
     Boolean(operatorContext?.activeImpersonation);
-  const isReadOnlyImpersonation =
-    isOperatorImpersonation &&
-    operatorContext?.activeImpersonation?.targetOrgOperatorStatus !==
-      "onboarding";
 
   return {
     orgId: org._id,
@@ -105,6 +98,5 @@ export function useActiveOrgContext(): ActiveOrgContext | null | undefined {
     slug: org.slug,
     featureFlags: org.featureFlags,
     isOperatorImpersonation,
-    isReadOnlyImpersonation,
   };
 }

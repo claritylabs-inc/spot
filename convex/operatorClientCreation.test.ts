@@ -36,7 +36,7 @@ test("operator logo updates preserve client identity and research, and reject im
         name: "Harbor Robotics",
         type: "client",
         website: "https://harbor.example",
-        operatorStatus: "onboarding",
+        clientAccessStatus: "limited",
       }),
       logoStorageId: await ctx.storage.store(
         new Blob(["logo"], { type: "image/png" }),
@@ -93,12 +93,12 @@ test("operator logo updates preserve client identity and research, and reject im
   await expect(
     operator.mutation(api.operator.setSoloClientStatus, {
       clientOrgId,
-      status: "live",
+      status: "active",
     }),
   ).rejects.toThrow();
 });
 
-test("client lifecycle survives team activation and permits explicit reactivation", async () => {
+test("client access survives team activation and can be set explicitly", async () => {
   const { t, operatorUserId } = await fixture();
   const { clientOrgId, userId, membershipId } = await t.run(async (ctx) => {
     const userId = await ctx.db.insert("users", {
@@ -108,7 +108,7 @@ test("client lifecycle survives team activation and permits explicit reactivatio
     const clientOrgId = await ctx.db.insert("organizations", {
       name: "Harbor Robotics",
       type: "client",
-      operatorStatus: "onboarding",
+      clientAccessStatus: "limited",
       inviteStatus: "invited",
     });
     const membershipId = await ctx.db.insert("orgMemberships", {
@@ -127,35 +127,26 @@ test("client lifecycle survives team activation and permits explicit reactivatio
       recipientEmail: "admin@harbor.example",
     });
   await activate();
-  expect((await t.run((ctx) => ctx.db.get(clientOrgId)))?.operatorStatus).toBe(
-    "live",
-  );
-  for (const status of ["lost", "churned"] as const) {
-    await operator.mutation(api.operator.setSoloClientStatus, {
-      clientOrgId,
-      status,
-    });
-    await activate();
-    const clients = await operator.query(api.operator.listClients, {});
-    expect(
-      clients.find((client) => client._id === clientOrgId)?.operatorStatus,
-    ).toBe(status);
-    expect(await t.run((ctx) => ctx.db.get(membershipId))).toMatchObject({
-      orgId: clientOrgId,
-      userId,
-      role: "admin",
-    });
-  }
+  expect(
+    (await t.run((ctx) => ctx.db.get(clientOrgId)))?.clientAccessStatus,
+  ).toBe("active");
   await operator.mutation(api.operator.setSoloClientStatus, {
     clientOrgId,
-    status: "live",
+    status: "limited",
   });
-  expect((await t.run((ctx) => ctx.db.get(clientOrgId)))?.operatorStatus).toBe(
-    "live",
-  );
+  await activate();
+  const clients = await operator.query(api.operator.listClients, {});
+  expect(
+    clients.find((client) => client._id === clientOrgId)?.clientAccessStatus,
+  ).toBe("active");
+  expect(await t.run((ctx) => ctx.db.get(membershipId))).toMatchObject({
+    orgId: clientOrgId,
+    userId,
+    role: "admin",
+  });
 });
 
-test("operator tools update client relationship status without extending broker lifecycle", async () => {
+test("operator tools set client access and reject brokers", async () => {
   const { t, operatorUserId } = await fixture();
   const { clientOrgId, brokerOrgId } = await t.run(async (ctx) => ({
     clientOrgId: await ctx.db.insert("organizations", {
@@ -170,21 +161,21 @@ test("operator tools update client relationship status without extending broker 
   await t
     .withIdentity({ subject: operatorUserId })
     .mutation(api.operator.setApproveAll, { approveAll: true });
-  for (const status of ["lost", "churned"] as const) {
+  for (const status of ["active", "limited"] as const) {
     const result = await t.action(
       internal.operatorAgent.invokeRegisteredToolInternal,
       {
         operatorUserId,
         channel: "mcp",
         conversationKey: "client-lifecycle",
-        toolName: "set_organization_status",
+        toolName: "set_client_access_status",
         input: { orgId: clientOrgId, status },
         idempotencyKey: status,
       },
     );
     expect(result.outcome.status).toBe("succeeded");
     expect(
-      (await t.run((ctx) => ctx.db.get(clientOrgId)))?.operatorStatus,
+      (await t.run((ctx) => ctx.db.get(clientOrgId)))?.clientAccessStatus,
     ).toBe(status);
   }
   await expect(
@@ -192,9 +183,9 @@ test("operator tools update client relationship status without extending broker 
       operatorUserId,
       channel: "mcp",
       conversationKey: "client-lifecycle",
-      toolName: "set_organization_status",
-      input: { orgId: brokerOrgId, status: "churned" },
-      idempotencyKey: "broker-churned",
+      toolName: "set_client_access_status",
+      input: { orgId: brokerOrgId, status: "active" },
+      idempotencyKey: "broker-active",
     }),
   ).resolves.toMatchObject({
     outcome: {
@@ -203,6 +194,6 @@ test("operator tools update client relationship status without extending broker 
     },
   });
   expect(
-    (await t.run((ctx) => ctx.db.get(brokerOrgId)))?.operatorStatus,
+    (await t.run((ctx) => ctx.db.get(brokerOrgId)))?.clientAccessStatus,
   ).toBeUndefined();
 });

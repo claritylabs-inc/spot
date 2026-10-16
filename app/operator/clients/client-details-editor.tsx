@@ -44,7 +44,7 @@ export function ClientDetailsEditor({
   const draft = useLiveRecordDraft(client._id, {
     name: client.name,
     website: client.website ?? "",
-    status: client.operatorStatus,
+    status: client.clientAccessStatus,
   });
   const { label: statusLabel, ...statusPresentation } =
     OPERATOR_CLIENT_STATUSES[draft.value.status];
@@ -123,12 +123,7 @@ export function ClientDetailsEditor({
           items={operatorClientStatuses}
           disabled={disabled}
           onValueChange={(value) => {
-            if (
-              value === "live" ||
-              value === "onboarding" ||
-              value === "lost" ||
-              value === "churned"
-            )
+            if (value === "limited" || value === "active")
               draft.field("status")(value);
           }}
         >

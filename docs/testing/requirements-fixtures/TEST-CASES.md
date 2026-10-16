@@ -200,7 +200,7 @@ Expected:
 
 Goal: verify that requirements remain read-only for users without write authority.
 
-1. Open the same Cove compliance surface in a read-only operator impersonation or with a non-admin client role.
+1. Open the same Cove compliance surface in operator impersonation (admin access, audited) or with a non-admin client role.
 2. Attempt to import, edit, archive, run a persistent deep check, or generate a certificate.
 
 Expected:

@@ -5,6 +5,8 @@ The chat, history, attachments, policy citations and approval views reuse the
 existing client agent components. Conversation storage, authorization, tools
 and durable execution remain in Spot. There is no extension-specific agent or
 provider credential.
+Sidebar tabs and layout preferences use their own user/organization-scoped
+storage key, so opening the sidebar does not change the main app's dock layout.
 
 ## Owners
 
@@ -42,7 +44,9 @@ Use ordinary file attachments when page access is unavailable.
 The extension sends plain text with a title, sanitized source URL and selection
 indicator. Query strings, fragments and URL credentials are excluded. The app
 checks the exact parent window, extension origin, protocol version, field types
-and size limits. The bridge cannot send chat messages or execute tools.
+and size limits. A per-mount session ID rejects transfers that outlive a signed-in
+workspace; a receipt confirms delivery. The bridge cannot send chat messages or
+execute tools.
 
 Captured text stages as a removable file in the current composer. Existing draft
 text is preserved. The user reviews and submits it through the normal attachment
