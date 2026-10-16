@@ -831,21 +831,18 @@ async function reviewHolderIdentityWithModel(args: {
     );
     const questions: DecideRequest["questions"] = {};
     for (const [key, candidate] of Object.entries(candidates)) {
+      const address = compareCertificateHolderAddresses(
+        args.requested.normalizedAddress,
+        candidate.identity.normalizedAddress,
+      );
+      if (address === "one_missing") continue;
       if (candidate.identity.normalizedName !== args.requested.normalizedName) {
         questions[`${key}_name`] = {
           type: "noul",
           instructions: `Does \`candidates.${key}.name\` name the same organization as \`requested.name\`? Related organizations are not the same entity.`,
         };
       }
-      const address = compareCertificateHolderAddresses(
-        args.requested.normalizedAddress,
-        candidate.identity.normalizedAddress,
-      );
-      if (
-        args.requested.normalizedAddress &&
-        address !== "same" &&
-        address !== "different"
-      ) {
+      if (address === "ambiguous") {
         questions[`${key}_address`] = {
           type: "noul",
           instructions: `Is \`candidates.${key}.address\` the same location as \`requested.address\`?`,
@@ -880,6 +877,10 @@ async function reviewHolderIdentityWithModel(args: {
         args.requested.normalizedAddress,
         candidate.identity.normalizedAddress,
       );
+      if (address === "one_missing") {
+        uncertain = true;
+        return false;
+      }
       const name =
         candidate.identity.normalizedName === args.requested.normalizedName
           ? 1
