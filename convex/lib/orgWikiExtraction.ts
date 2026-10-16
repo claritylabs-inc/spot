@@ -1,3 +1,5 @@
+"use node";
+
 import { z } from "zod";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";

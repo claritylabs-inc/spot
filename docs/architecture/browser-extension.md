@@ -17,6 +17,11 @@ storage key, so opening the sidebar does not change the main app's dock layout.
   credential. It matches Chrome Web Store item
   `ioghpiffchcecdfkekjdgkgakemgfdhi`; `--store` builds omit the development key
   from the upload manifest.
+  `edgeExtensionId` identifies the separate Edge Add-ons package
+  `bjdellngobanihjicilhpiodbocglhhh`. Framing and messages permit only these two
+  exact extension origins. Outgoing bridge messages target each known origin;
+  only the matching parent receives them, and capture receipts use the verified
+  sender origin. There is no wildcard target.
 - `lib/browser-extension.ts`: versioned message validation.
 - `app/extension/` and `components/browser-extension/`: app view, access gate
   and capture staging, using the shared chat/dock and composer owners.

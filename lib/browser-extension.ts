@@ -1,10 +1,26 @@
 import config from "@/config/browser-extension.json";
 
 export const BROWSER_EXTENSION_ORIGIN = `chrome-extension://${config.extensionId}`;
+const BROWSER_EXTENSION_ORIGINS = [
+  BROWSER_EXTENSION_ORIGIN,
+  `chrome-extension://${config.edgeExtensionId}`,
+];
+
+export function isBrowserExtensionOrigin(origin: string) {
+  return BROWSER_EXTENSION_ORIGINS.includes(origin);
+}
+
+/** Only the matching parent receives the message; never use a wildcard target. */
+export function postBrowserExtensionMessage(message: unknown) {
+  for (const origin of BROWSER_EXTENSION_ORIGINS) {
+    window.parent.postMessage(message, origin);
+  }
+}
+
 export const BROWSER_EXTENSION_WELCOME_URL = "https://spot.insure/extension/welcome";
 
 export function notifyBrowserExtension(type: "spot:mounted" | "spot:sign-in") {
-  window.parent.postMessage({ type, version: config.protocolVersion }, BROWSER_EXTENSION_ORIGIN);
+  postBrowserExtensionMessage({ type, version: config.protocolVersion });
 }
 export const BROWSER_EXTENSION_READY = {
   type: "spot:ready",

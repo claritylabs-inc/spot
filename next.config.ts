@@ -87,7 +87,7 @@ const nextConfig: NextConfig = {
         source: "/extension",
         headers: [{
           key: "Content-Security-Policy",
-          value: `frame-ancestors 'self' chrome-extension://${browserExtension.extensionId}`,
+          value: `frame-ancestors 'self' chrome-extension://${browserExtension.extensionId} chrome-extension://${browserExtension.edgeExtensionId}`,
         }],
       },
       {

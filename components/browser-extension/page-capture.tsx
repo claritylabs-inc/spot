@@ -12,7 +12,8 @@ import {
   type RefObject,
 } from "react";
 import {
-  BROWSER_EXTENSION_ORIGIN,
+  isBrowserExtensionOrigin,
+  postBrowserExtensionMessage,
   BROWSER_EXTENSION_READY,
   parseBrowserPageContext,
   type BrowserPageContext,
@@ -66,7 +67,7 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
     function handleMessage(event: MessageEvent) {
       if (
         event.source !== window.parent ||
-        event.origin !== BROWSER_EXTENSION_ORIGIN ||
+        !isBrowserExtensionOrigin(event.origin) ||
         event.data?.sessionId !== sessionId
       ) {
         return;
@@ -85,20 +86,19 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
       setCaptureStatus("");
       window.parent.postMessage(
         { type: "spot:received", version: BROWSER_EXTENSION_READY.version, sessionId, captureId: event.data.captureId },
-        BROWSER_EXTENSION_ORIGIN,
+        event.origin,
       );
     }
     window.addEventListener("message", handleMessage);
     if (window.parent !== window) {
-      window.parent.postMessage({ ...BROWSER_EXTENSION_READY, sessionId }, BROWSER_EXTENSION_ORIGIN);
+      postBrowserExtensionMessage({ ...BROWSER_EXTENSION_READY, sessionId });
     }
     return () => {
       bridgeSession.current = null;
       window.removeEventListener("message", handleMessage);
       if (window.parent !== window) {
-        window.parent.postMessage(
+        postBrowserExtensionMessage(
           { ...BROWSER_EXTENSION_READY, type: "spot:unavailable", sessionId },
-          BROWSER_EXTENSION_ORIGIN,
         );
       }
     };
@@ -110,7 +110,7 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
       return;
     }
     setCaptureStatus("");
-    window.parent.postMessage({ type: "spot:capture-request", version: BROWSER_EXTENSION_READY.version, sessionId: bridgeSession.current }, BROWSER_EXTENSION_ORIGIN);
+    postBrowserExtensionMessage({ type: "spot:capture-request", version: BROWSER_EXTENSION_READY.version, sessionId: bridgeSession.current });
   }, []);
 
   const consume = useCallback(
