@@ -55,6 +55,7 @@ export const run = internalAction({
         continue;
       }
 
+      await ctx.scheduler.runAfter(0, (await import("../complianceJudgments")).computeComplianceJudgmentsRef, { subjectOrgId: orgId });
       const assessments: OwnComplianceAssessment[] = await ctx.runQuery(
         internal.compliance.assessOwnRequirementsInternal,
         { orgId, includePreviewPolicies: false },

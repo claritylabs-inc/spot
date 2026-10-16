@@ -1681,11 +1681,6 @@ export default defineSchema({
     .index("operator_created", ["operatorUserId", "createdAt"]),
 
   insuranceRequirements: defineTable({
-    semanticJudgments: v.optional(v.array(v.object({
-      policyId: v.id("policies"),
-      inputKey: v.string(),
-      answers: v.record(v.string(), v.union(v.string(), v.boolean())),
-    }))),
     orgId: v.id("organizations"),
     kind: v.union(
       v.literal("coverage"),
@@ -1769,6 +1764,21 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("organization_status", ["orgId", "status"])
     .index("status_scope", ["status", "scope"]),
+
+  complianceJudgments: defineTable({
+    requirementId: v.id("insuranceRequirements"),
+    subjectOrgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    inputHash: v.string(),
+    answers: v.record(v.string(), v.union(v.string(), v.boolean())),
+    judgedAt: v.number(),
+    error: v.optional(v.string()),
+    errorAt: v.optional(v.number()),
+  }).index("requirement_subject_policy", [
+    "requirementId",
+    "subjectOrgId",
+    "policyId",
+  ]),
 
   complianceChecks: defineTable({
     orgId: v.id("organizations"),

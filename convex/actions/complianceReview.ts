@@ -5,8 +5,7 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { clRouterDecide, runWithPayloadSplitting } from "../lib/clRouterClient";
-import { jevProceeds, jevChoiceConfidence } from "../lib/jevThreshold";
+import { computeRequirementJudgments } from "./complianceJudgments";
 import {
   throwUserFacingError,
   userFacingErrorCodes,
@@ -23,8 +22,6 @@ type ComplianceReviewResult = {
 type ManualReviewContext = import("convex/server").FunctionReturnType<
   typeof internal.compliance.getManualComplianceReviewContextInternal
 >;
-const COMPLIANCE_REVIEW_TIMEOUT_MS = 75_000;
-const MAX_DECISION_QUESTIONS = 128;
 
 function reviewNote(
   review: Omit<ComplianceReviewResult, "notes">,
@@ -76,50 +73,34 @@ export const recheckOwnRequirement = action({
       },
     )) as ManualReviewContext;
 
-    if (context.judgmentPlans.length > 100) throw new Error("Too many compliance policies");
-    const abortSignal = AbortSignal.timeout(COMPLIANCE_REVIEW_TIMEOUT_MS);
-    const traceId = `compliance-review:${args.requirementId}:${crypto.randomUUID()}`;
-    const judgments = [];
-    for (const plan of context.judgmentPlans) {
-      const answers: Record<string, string | boolean> = {};
-      const entries = Object.entries(plan.questions);
-      for (let offset = 0; offset < entries.length; offset += MAX_DECISION_QUESTIONS) {
-        const batch = entries.slice(offset, offset + MAX_DECISION_QUESTIONS);
-        try {
-          const results = await runWithPayloadSplitting(batch, (part) => clRouterDecide({
-            orgId: String(args.orgId),
-            task: "compliance_manual_review",
-            trace: { traceId },
-            state: plan.state,
-            questions: Object.fromEntries(part),
-          }, { telemetry: ctx, abortSignal }));
-          for (const result of results) {
-            for (const [key, answer] of Object.entries(result.answers)) {
-              if (answer.type === "noul") {
-                if (jevProceeds(answer.noul)) answers[key] = true;
-                else if (jevProceeds(1 - answer.noul)) answers[key] = false;
-              } else if (answer.type === "choice" && jevProceeds(jevChoiceConfidence(answer))) {
-                answers[key] = answer.choice;
-              }
-            }
-          }
-        } catch {
-          // Missing judgments remain unverified, including router failures.
-        }
-      }
-      judgments.push({ policyId: plan.policyId, inputKey: plan.inputKey, answers });
-    }
-    const result = await ctx.runMutation(internal.compliance.saveComplianceJudgmentsInternal, {
-      ...args,
-      userId: userId as Id<"users">,
-      judgments,
+    await computeRequirementJudgments(ctx, {
+      requirementId: args.requirementId,
+      subjectOrgId: args.orgId,
+      force: true,
     });
+    const result = await ctx.runMutation(
+      internal.compliance.finishComplianceRecheckInternal,
+      {
+        ...args,
+        userId: userId as Id<"users">,
+      },
+    );
     const verdict = {
       status: result.status,
       matchedPolicyIds: result.matchedPolicyIds,
       ...(result.expiresAt ? { expiresAt: result.expiresAt } : {}),
-      ...(result.daysUntilExpiration !== undefined ? { daysUntilExpiration: result.daysUntilExpiration } : {}),
+      ...(result.daysUntilExpiration !== undefined
+        ? { daysUntilExpiration: result.daysUntilExpiration }
+        : {}),
     };
-    return { ...verdict, notes: reviewNote(verdict, context.policies.filter((policy) => result.matchedPolicyIds.includes(policy._id))) };
+    return {
+      ...verdict,
+      notes: reviewNote(
+        verdict,
+        context.policies.filter((policy) =>
+          result.matchedPolicyIds.includes(policy._id),
+        ),
+      ),
+    };
   },
 });
