@@ -82,7 +82,7 @@ export const claim = internalMutation({
     const lease = dayjs().add(1, "minute").valueOf();
     await ctx.db.patch(requestId, { intakeSlackLeaseUntil: lease });
     await ctx.db.patch(event._id, { attempts: event.attempts + 1 });
-    // Recover a worker that stops after claiming; the Slack worker deduplicates the event ID.
+    // Recover a delivery that stops after claiming; Slack send receipts deduplicate the event ID.
     await ctx.scheduler.runAfter(61000, internal.actions.intakeSlack.deliver, {
       requestId,
     });

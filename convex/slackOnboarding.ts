@@ -1,9 +1,12 @@
+"use node";
+
 import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, type ActionCtx } from "./_generated/server";
 import { isSlackMockMode } from "./lib/slackConfig";
+import { slackWebApi, type SlackChannel } from "./lib/slackWebApi";
 import {
   resolveSlackAutomaticChannel,
   type SlackAutomaticChannelConnection,
@@ -15,7 +18,6 @@ import {
 } from "./lib/userFacingErrors";
 
 const internalApi = internal as any;
-const WORKER_TIMEOUT_MS = 30_000;
 const MANUAL_SETUP_ERRORS = new Set([
   "not_paid",
   "paid_teams_only",
@@ -36,46 +38,8 @@ const MANUAL_SETUP_ERRORS = new Set([
   "team_access_not_granted",
 ]);
 
-function requiredEnv(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is not configured`);
-  return value;
-}
-
 function slackErrorCode(message: string | undefined) {
   return message?.split(";")[0]?.trim();
-}
-
-type AvailableSlackChannel = {
-  id: string;
-  name: string;
-  isMember: boolean;
-  isPrivate: boolean;
-  isShared: boolean;
-};
-
-async function fetchAvailableChannels(args: {
-  teamId: string;
-  currentChannelId?: string;
-  currentChannelName?: string;
-}) {
-  const response = await fetch(`${requiredEnv("SLACK_WORKER_URL")}/channels`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${requiredEnv("SLACK_WORKER_SECRET")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(args),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-  });
-  const result = (await response.json()) as {
-    channels?: AvailableSlackChannel[];
-    error?: string;
-  };
-  if (!response.ok || !Array.isArray(result.channels)) {
-    throw new Error(result.error ?? "Slack channels could not be loaded");
-  }
-  return result.channels;
 }
 
 async function syncJoinedChannels(
@@ -83,7 +47,7 @@ async function syncJoinedChannels(
   args: {
     clientOrgId: Id<"organizations">;
     connectionId: Id<"slackWorkspaceConnections">;
-    channels: AvailableSlackChannel[];
+    channels: SlackChannel[];
   },
 ) {
   return await ctx.runMutation(
@@ -152,43 +116,17 @@ export const createPrimaryChannel = action({
       }),
     ]);
 
-    const response = await fetch(
-      `${requiredEnv("SLACK_WORKER_URL")}/connect-channel`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${requiredEnv("SLACK_WORKER_SECRET")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          clientSlug: args.clientSlug,
-          inviteEmail: args.inviteEmail,
-          operatorUserIds: supportContext.linkedOperatorUserIds,
-          existingChannelId: existingBinding?.hostChannelId,
-          existingChannelName: existingBinding?.channelName,
-        }),
-        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-      },
-    );
-    const result = (await response.json()) as {
-      channelId?: string;
-      channelName?: string;
-      inviteId?: string;
-      reusedChannel?: boolean;
-      operatorInvites?: {
-        requested: number;
-        succeeded: boolean;
-        error?: string;
-      };
-      supportInvite?: {
-        succeeded: boolean;
-        pending: boolean;
-        error?: string;
-      };
-      error?: string;
-    };
-    if (!response.ok || !result.channelId || !result.channelName) {
-      const code = result.error ?? `HTTP ${response.status}`;
+    let result;
+    try {
+      result = await slackWebApi(ctx).createConnectChannel({
+        clientSlug: args.clientSlug,
+        inviteEmail: args.inviteEmail,
+        operatorUserIds: supportContext.linkedOperatorUserIds,
+        existingChannelId: existingBinding?.hostChannelId,
+        existingChannelName: existingBinding?.channelName,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : String(error);
       return {
         created: false as const,
         manualSetupRequired: MANUAL_SETUP_ERRORS.has(code),
@@ -212,14 +150,13 @@ export const createPrimaryChannel = action({
         clientOrgId: args.clientOrgId,
         operatorUserId: userId,
         omittedOperators: supportContext.omittedOperators,
-        operatorInvitesSucceeded:
-          result.operatorInvites?.succeeded ?? true,
-        operatorInviteError: result.operatorInvites?.error,
-        supportInviteSucceeded: result.supportInvite?.succeeded ?? true,
-        supportInviteError: result.supportInvite?.error,
+        operatorInvitesSucceeded: result.operatorInvites.succeeded,
+        operatorInviteError: result.operatorInvites.error,
+        supportInviteSucceeded: result.supportInvite.succeeded,
+        supportInviteError: result.supportInvite.error,
       },
     );
-    const supportInviteError = result.supportInvite?.error;
+    const supportInviteError = result.supportInvite.error;
     const supportInviteCode = slackErrorCode(supportInviteError);
     return {
       created: true as const,
@@ -254,8 +191,11 @@ export const listAvailableChannels = action({
       }),
     ]);
     if (!connection) throw new Error("The Slack workspace is not connected");
-    const automaticChannel = resolveInventoryChannel(connection, supportChannel);
-    const channels = await fetchAvailableChannels({
+    const automaticChannel = resolveInventoryChannel(
+      connection,
+      supportChannel,
+    );
+    const channels = await slackWebApi(ctx).listChannels({
       teamId: connection.teamId,
       currentChannelId: automaticChannel?.channelId,
       currentChannelName: automaticChannel?.channelName,
@@ -295,8 +235,11 @@ export const selectAutomaticChannel = action({
       }),
     ]);
     if (!connection) throw new Error("The Slack workspace is not connected");
-    const automaticChannel = resolveInventoryChannel(connection, supportChannel);
-    const channels = await fetchAvailableChannels({
+    const automaticChannel = resolveInventoryChannel(
+      connection,
+      supportChannel,
+    );
+    const channels = await slackWebApi(ctx).listChannels({
       teamId: connection.teamId,
       currentChannelId: automaticChannel?.channelId,
       currentChannelName: automaticChannel?.channelName,
@@ -342,34 +285,23 @@ export const joinPublicChannel = action({
       internalApi.agentChannels.authorizeSetup,
       { clientOrgId: args.clientOrgId, userId },
     );
-    const connection = await ctx.runQuery(internalApi.slack.getActiveConnection, {
-      clientOrgId: args.clientOrgId,
-    });
-    if (!connection) throw new Error("The Slack workspace is not connected");
-
-    const response = await fetch(
-      `${requiredEnv("SLACK_WORKER_URL")}/channels/join`,
+    const connection = await ctx.runQuery(
+      internalApi.slack.getActiveConnection,
       {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${requiredEnv("SLACK_WORKER_SECRET")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          teamId: connection.teamId,
-          channelId: args.channelId,
-        }),
-        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+        clientOrgId: args.clientOrgId,
       },
     );
-    const result = (await response.json()) as {
-      channel?: AvailableSlackChannel;
-      error?: string;
-    };
-    if (!response.ok || !result.channel?.isMember) {
-      throw new Error(result.error ?? "Spot could not be added to that channel");
+    if (!connection) throw new Error("The Slack workspace is not connected");
+
+    const slack = slackWebApi(ctx);
+    const channel = await slack.joinPublicChannel({
+      teamId: connection.teamId,
+      channelId: args.channelId,
+    });
+    if (!channel.isMember) {
+      throw new Error("Spot could not be added to that channel");
     }
-    const channels = await fetchAvailableChannels({ teamId: connection.teamId });
+    const channels = await slack.listChannels({ teamId: connection.teamId });
     await syncJoinedChannels(ctx, {
       clientOrgId: args.clientOrgId,
       connectionId: connection._id,
@@ -380,13 +312,13 @@ export const joinPublicChannel = action({
       {
         clientOrgId: args.clientOrgId,
         connectionId: connection._id,
-        channelId: result.channel.id,
-        channelName: result.channel.name,
+        channelId: channel.id,
+        channelName: channel.name,
         actorUserId: userId,
         actorKind: permission.kind,
       },
     );
-    return { channel: result.channel, channels };
+    return { channel, channels };
   },
 });
 
@@ -411,29 +343,13 @@ export const leavePublicChannel = action({
     );
     if (!connection) throw new Error("The Slack workspace is not connected");
 
-    const response = await fetch(
-      `${requiredEnv("SLACK_WORKER_URL")}/channels/leave`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${requiredEnv("SLACK_WORKER_SECRET")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          teamId: connection.teamId,
-          channelId: args.channelId,
-        }),
-        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-      },
-    );
-    const result = (await response.json()) as {
-      channel?: AvailableSlackChannel;
-      error?: string;
-    };
-    if (!response.ok || result.channel?.isMember !== false) {
-      throw new Error(result.error ?? "Spot could not leave that channel");
-    }
-    const channels = await fetchAvailableChannels({ teamId: connection.teamId });
+    const slack = slackWebApi(ctx);
+    const channel = await slack.leavePublicChannel({
+      teamId: connection.teamId,
+      channelId: args.channelId,
+    });
+    if (channel.isMember) throw new Error("Spot could not leave that channel");
+    const channels = await slack.listChannels({ teamId: connection.teamId });
     await syncJoinedChannels(ctx, {
       clientOrgId: args.clientOrgId,
       connectionId: connection._id,
@@ -444,12 +360,12 @@ export const leavePublicChannel = action({
       {
         clientOrgId: args.clientOrgId,
         connectionId: connection._id,
-        channelId: result.channel.id,
-        channelName: result.channel.name,
+        channelId: channel.id,
+        channelName: channel.name,
         actorUserId: userId,
         actorKind: permission.kind,
       },
     );
-    return { channel: result.channel, channels };
+    return { channel, channels };
   },
 });

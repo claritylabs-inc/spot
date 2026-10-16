@@ -434,41 +434,6 @@ http.route({
 });
 
 http.route({
-  path: "/slack-worker/installation",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const secret = process.env.SLACK_WORKER_SECRET?.trim();
-    if (
-      !secret ||
-      request.headers.get("Authorization") !== `Bearer ${secret}`
-    ) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
-    let body: { teamId?: unknown };
-    try {
-      body = (await request.json()) as { teamId?: unknown };
-    } catch {
-      return jsonResponse({ error: "Invalid JSON" }, 400);
-    }
-    const teamId = typeof body.teamId === "string" ? body.teamId.trim() : "";
-    if (!teamId) return jsonResponse({ error: "teamId is required" }, 400);
-    try {
-      return jsonResponse(
-        await ctx.runAction(
-          internalApi.actions.slackCredentials.resolveInstallation,
-          { teamId },
-        ),
-      );
-    } catch (error) {
-      return jsonResponse(
-        { error: error instanceof Error ? error.message : String(error) },
-        404,
-      );
-    }
-  }),
-});
-
-http.route({
   path: "/agent-health",
   method: "GET",
   handler: httpAction(async (ctx) => {
@@ -527,11 +492,6 @@ http.route({
       connectedEmailEncryptionConfigured: Boolean(
         process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
       ),
-      slackWorkerConfigured:
-        !slackEnabled ||
-        Boolean(
-          process.env.SLACK_WORKER_URL && process.env.SLACK_WORKER_SECRET,
-        ),
       slackWebhookConfigured:
         !slackEnabled || Boolean(process.env.SLACK_SIGNING_SECRET),
       slackTokenEncryptionConfigured:
@@ -581,8 +541,6 @@ http.route({
         slack: {
           enabled: slackEnabled,
           mode: slackMode,
-          workerUrlConfigured: Boolean(process.env.SLACK_WORKER_URL),
-          workerSecretConfigured: Boolean(process.env.SLACK_WORKER_SECRET),
           webhookSigningSecretConfigured: Boolean(
             process.env.SLACK_SIGNING_SECRET,
           ),

@@ -84,7 +84,6 @@ yarn-error.log*
 .env*
 !.env.template
 !**/.env.template
-!slack-worker/.env.example
 
 # vercel
 .vercel

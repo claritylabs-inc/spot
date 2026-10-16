@@ -70,6 +70,7 @@ export const deliver = internalAction({
           });
           if (event)
             await updateOperatorSlackActivity(
+              ctx,
               event,
               result.run.status === "failed" ||
                 result.run.status === "cancelled"
@@ -144,7 +145,7 @@ export const deliver = internalAction({
         const event = await ctx.runQuery(internal.slack.getInboundEvent, {
           eventId: delivery.eventId,
         });
-        if (event) await updateOperatorSlackActivity(event, "failed");
+        if (event) await updateOperatorSlackActivity(ctx, event, "failed");
       }
       throw error;
     }
