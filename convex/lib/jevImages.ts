@@ -146,11 +146,12 @@ function padBox(box: DecisionBox, pad: number): DecisionBox {
 function mapFromRegion(inner: DecisionBox, region: DecisionBox): DecisionBox {
   const width = region.right - region.left;
   const height = region.bottom - region.top;
+  const clamp = (value: number) => Math.min(1, Math.max(0, value));
   return {
-    left: region.left + inner.left * width,
-    right: region.left + inner.right * width,
-    top: region.top + inner.top * height,
-    bottom: region.top + inner.bottom * height,
+    left: clamp(region.left + inner.left * width),
+    right: clamp(region.left + inner.right * width),
+    top: clamp(region.top + inner.top * height),
+    bottom: clamp(region.top + inner.bottom * height),
   };
 }
 
@@ -266,13 +267,27 @@ export async function locateOnPdfPage(
         ...request,
         state: { crop: zoomed.refs[0], target: params.target },
         assets: zoomed.assets,
-        questions: { box: { type: "box", instructions: "`target` in `crop`" } },
+        questions: {
+          present: {
+            type: "noul",
+            instructions: "Does `crop` show `target`?",
+          },
+          box: { type: "box", instructions: "`target` in `crop`" },
+        },
       },
       { telemetry: ctx },
     );
+    const cropPresent = result.answers.present;
     const answer = result.answers.box;
-    if (answer?.type !== "box") return { ...unlocated, present };
-    const box = mapFromRegion(answer.box, region);
+    // The coarse box can land on a similar label; require the crop to show the target too.
+    if (
+      cropPresent?.type !== "noul" ||
+      !jevProceeds(cropPresent.noul) ||
+      answer?.type !== "box"
+    ) {
+      return { ...unlocated, present };
+    }
+    const box = mapFromRegion(answer.box, crop.region);
     return {
       present,
       box,

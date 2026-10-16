@@ -20,7 +20,7 @@ export type PdfPageImage = {
   /** Page size in PDF points at scale 1, matching `sourceSpans.bbox` coordinates. */
   pageWidth: number;
   pageHeight: number;
-  /** The rendered region as fractions of the page; the full page is 0..1. */
+  /** Page area the image covers, as fractions of the page; the full page is 0..1. */
   region: DecisionBox;
 };
 
@@ -97,7 +97,14 @@ async function renderRegion(
     height,
     pageWidth: base.width,
     pageHeight: base.height,
-    region,
+    // The canvas can be clamped (long thin regions) or padded (tiny regions),
+    // so report the page area it actually covers for mapping answers back.
+    region: {
+      left: region.left,
+      top: region.top,
+      right: region.left + width / (scale * base.width),
+      bottom: region.top + height / (scale * base.height),
+    },
   };
 }
 
