@@ -8,12 +8,14 @@ import {
 } from "./insurance-intake-details";
 
 export const INTAKE_VERSION = 2;
+export const SAVINGS_INTAKE_REASON = "Save money on my current policies";
 export const INTAKE_REASONS = [
   "Purchasing or leasing equipment/vehicles",
   "Purchasing or leasing real estate",
   "Meeting a customer/lender/investor requirement",
   "Starting a new business",
   "Shopping for renewal",
+  SAVINGS_INTAKE_REASON,
   "Other",
 ];
 export function hasIntakeRequirements(a: IntakeAnswers) {
@@ -52,7 +54,12 @@ export const INTAKE_STEPS = [
   "Are these company details accurate?",
   "Is your request ready to submit?",
 ] as const;
+export const INTAKE_GOALS = {
+  quote: "Get a new quote",
+  savings: SAVINGS_INTAKE_REASON,
+} as const;
 export const INTAKE_FIELDS = {
+  intakeGoal: "What would you like help with?",
   name: "Full name",
   email: "Work email",
   phone: "Phone number",
@@ -98,6 +105,20 @@ export type IntakeField = keyof typeof INTAKE_FIELDS;
 export type IntakeAnswers = Partial<Record<IntakeField, string>>;
 export function missingIntakeAnswers(a: IntakeAnswers) {
   const missing: string[] = [];
+  if (a.intakeGoal === "savings") {
+    return (
+      [
+        "name",
+        "email",
+        "phone",
+        "legalName",
+        "description",
+        "locations",
+      ] as const
+    )
+      .filter((key) => !a[key]?.trim())
+      .map((key) => INTAKE_FIELDS[key]);
+  }
   for (const key of [
     "name",
     "email",

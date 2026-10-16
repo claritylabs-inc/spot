@@ -58,6 +58,7 @@ import {
   COMPANY_INTAKE_FIELDS,
   INTAKE_FIELDS,
   INTAKE_REASONS,
+  SAVINGS_INTAKE_REASON,
   hasIntakeRequirements,
   INTAKE_STEPS,
   INTAKE_VERSION,
@@ -255,13 +256,15 @@ export function InsuranceIntake() {
   if (!recovered)
     return <IntakeFrame>Checking your saved application…</IntakeFrame>;
   return (
-    <Application
-      key={`${requestId}:${reviewStep ?? "application"}`}
-      requestId={requestId}
-      reviewStep={reviewStep}
-      reviewSection={reviewSection}
-      reviewCoverageIndex={reviewCoverageIndex}
-    />
+    <>
+      <Application
+        key={`${requestId}:${reviewStep ?? "application"}`}
+        requestId={requestId}
+        reviewStep={reviewStep}
+        reviewSection={reviewSection}
+        reviewCoverageIndex={reviewCoverageIndex}
+      />
+    </>
   );
 }
 function Application({
@@ -290,6 +293,8 @@ function Application({
   const { run } = useBackgroundTasks();
   const org = useQuery(api.orgs.viewerOrg, data?.verified ? {} : "skip");
   const [answers, setAnswers] = useState<IntakeAnswers>({});
+  const isSavings =
+    (answers.intakeGoal ?? data?.answers.intakeGoal) === "savings";
   const [details, setDetails] = useState<IntakeDetails>(detailsFromAnswers({}));
   const [step, setStep] = useState(0);
   const [editingReview, setEditingReview] = useState(
@@ -430,6 +435,8 @@ function Application({
         revision: data.revision,
         dirty: false,
       };
+    if (isSavings && [6, 7, 8, 9].includes(state.current.step))
+      state.current.step = 10;
     if (state.current.step === 27) state.current.step = 20;
     state.current.details = state.current.details ?? data.details;
     if (data.submitted && !recovery?.dirty)
@@ -597,6 +604,11 @@ function Application({
         ...(field === "industry" ? { industryVertical: "" } : {}),
 
         [field]: value,
+        ...(field === "trigger"
+          ? {
+              intakeGoal: value === SAVINGS_INTAKE_REASON ? "savings" : "quote",
+            }
+          : {}),
       },
       dirty: true,
     };
@@ -899,6 +911,17 @@ function Application({
     fromReview = false,
   ) {
     if (busy || uploading) return;
+    // Existing policies supply savings coverage; skip these questions on every
+    // entry path, including review navigation and older saved step links.
+    if (isSavings && [6, 7, 8, 9].includes(next)) next = 10;
+    if (isSavings && !fromReview) {
+      if (step === 1 && next === 2) next = 21;
+      else if (step === 21 && next < 21) next = 1;
+      else if (step === 21 && next > 21) next = 10;
+      else if (step === 10 && next < 10) next = 21;
+      else if ((step === 19 || step === 10) && next === 27) next = 28;
+      else if (step === 0 && next === 1) next = 21;
+    }
     // Keep old saved step numbers compatible without showing the retired confirmation page.
     if (next === 27) next = step >= 20 ? 19 : 20;
     const previousStep = step;
@@ -918,6 +941,7 @@ function Application({
       if (next === 3) next = requiresDocument ? 4 : 2;
       if (next === 4 && !requiresDocument) next = 2;
       if (
+        !isSavings &&
         [21, 22, 23, 24].includes(next) &&
         state.current.answers.currentInsurance === "No"
       )
@@ -1001,7 +1025,7 @@ function Application({
           start === 0
             ? next === 0
             : start === 1
-              ? next >= 1 && next <= 5
+              ? (next >= 1 && next <= 5) || (isSavings && next === 21)
               : start === 6
                 ? next >= 6 && next <= 9
                 : start === 10
@@ -1182,7 +1206,10 @@ function Application({
             );
         },
       });
-      captureAnalytics("intake_upload_finished", { category, success: outcome.status === "success" });
+      captureAnalytics("intake_upload_finished", {
+        category,
+        success: outcome.status === "success",
+      });
       if (outcome.status !== "success")
         setError(
           outcome.status === "error" && outcome.error instanceof Error
@@ -1250,7 +1277,9 @@ function Application({
 
   async function finalize() {
     if (!data) return;
-    captureAnalytics("intake_submission_started", { resubmit: !!data.submitted });
+    captureAnalytics("intake_submission_started", {
+      resubmit: !!data.submitted,
+    });
     setBusy(true);
     setError("");
     try {
@@ -1262,7 +1291,9 @@ function Application({
         confirmedAccurateAndAuthorized: submissionConfirmed,
         expectedRevision: state.current.revision,
       });
-      captureAnalytics(data.submitted ? "intake_resubmitted" : "intake_submitted");
+      captureAnalytics(
+        data.submitted ? "intake_resubmitted" : "intake_submitted",
+      );
       try {
         localStorage.removeItem(key);
         if (data?.verified)
@@ -1314,8 +1345,13 @@ function Application({
   const historyField = step === 23 ? "claims" : "cancellations";
   const historyChoiceKey = step === 23 ? "hasClaims" : "hasCancellations";
   const historyAnswer = answers[historyField]?.trim() || "";
-  const historyChoice = details[historyChoiceKey] ||
-    (historyAnswer ? (/^(none|no|0)$/i.test(historyAnswer) ? "no" : "yes") : "");
+  const historyChoice =
+    details[historyChoiceKey] ||
+    (historyAnswer
+      ? /^(none|no|0)$/i.test(historyAnswer)
+        ? "no"
+        : "yes"
+      : "");
 
   /* eslint-disable react-hooks/refs -- These render helpers only pass ref-backed callbacks to input events; they never invoke those callbacks during render. */
   function field(
@@ -1578,14 +1614,20 @@ function Application({
                 }
                 busyLabel="Uploading…"
                 disabled={uploading}
-                accept=".pdf,.png,.jpg,.jpeg,.docx"
+                accept={
+                  isSavings && category === "policy"
+                    ? ".pdf"
+                    : ".pdf,.png,.jpg,.jpeg,.docx"
+                }
                 padding={
                   category === "requirements" ? "px-6 pt-6 pb-14" : "px-6 py-12"
                 }
                 className={`border-input ${category === "requirements" ? "h-full" : ""}`}
                 hint={
                   <span className={typeStyle("body.root")}>
-                    PDF, PNG, JPEG, or DOCX · Up to 20 MB
+                    {isSavings && category === "policy"
+                      ? "PDF · Up to 20 MB"
+                      : "PDF, PNG, JPEG, or DOCX · Up to 20 MB"}
                   </span>
                 }
                 onFile={(file) => void upload(file, category)}
@@ -1660,10 +1702,16 @@ function Application({
     "Cancellation or renewal-decline details": 25,
   };
   const missing = missingIntakeAnswers(answers);
-  if (details.hasClaims === "yes" && !answers.claims?.trim())
+  if (!isSavings && details.hasClaims === "yes" && !answers.claims?.trim())
     missing.push("Claims details");
-  if (details.hasCancellations === "yes" && !answers.cancellations?.trim())
+  if (
+    !isSavings &&
+    details.hasCancellations === "yes" &&
+    !answers.cancellations?.trim()
+  )
     missing.push("Cancellation or renewal-decline details");
+  if (isSavings && !data.files.some((file) => file.category === "policy"))
+    missing.push("Current policy PDF");
   if (
     (data.submitted && reviewStep === undefined && !editingReview) ||
     step === 28
@@ -1671,7 +1719,11 @@ function Application({
     return (
       <IntakeTracking
         data={{ ...data, answers, details }}
-        onEdit={(next) => void editFromReview(next)}
+        onEdit={
+          isSavings && data.submitted
+            ? undefined
+            : (next) => void editFromReview(next)
+        }
         confirmation={
           !data.submitted || data.hasUnsubmittedChanges ? (
             <div className="pt-4">
@@ -1775,7 +1827,11 @@ function Application({
           ) : undefined
         }
         footer={
-          !data.submitted ? (
+          isSavings && data.submitted ? (
+            <PillButton size="large" variant="ghost" href="/signup">
+              All applications
+            </PillButton>
+          ) : !data.submitted ? (
             <>
               <PillButton
                 size="large"
@@ -1822,110 +1878,113 @@ function Application({
       />
     );
   const canContinue =
-    step === 23 && details.hasClaims === "yes"
-      ? !!answers.claims?.trim()
-      : step === 25 && details.hasCancellations === "yes"
-        ? !!answers.cancellations?.trim()
-        : step === 1
-          ? INTAKE_REASONS.includes(answers.trigger ?? "")
-          : step === 2
-            ? !!answers.effectiveDate &&
-              answers.effectiveDate >= dayjs().format("YYYY-MM-DD")
-            : step === 3
-              ? !!answers.requirements
-              : step === 6
-                ? details.coverages.length > 0 &&
-                  details.coverages.every(
-                    (line) =>
-                      line.coverage !== "other" ||
-                      (!!line.limits.coverage_description?.trim() &&
-                        line.limits.coverage_description !== "I'm not sure"),
-                  )
-                : step === 7
-                  ? !!details.coverages[details.coverageIndex] &&
-                    coverageOption(
-                      details.coverages[details.coverageIndex].coverage,
-                    ).limits.every((limit) =>
-                      validCoverageLimit(
-                        limit.key,
-                        details.coverages[details.coverageIndex].limits[
-                          limit.key
-                        ],
-                      ),
+    isSavings && step === 21
+      ? data.files.some((file) => file.category === "policy")
+      : step === 23 && details.hasClaims === "yes"
+        ? !!answers.claims?.trim()
+        : step === 25 && details.hasCancellations === "yes"
+          ? !!answers.cancellations?.trim()
+          : step === 1
+            ? INTAKE_REASONS.includes(answers.trigger ?? "")
+            : step === 2
+              ? !!answers.effectiveDate &&
+                answers.effectiveDate >= dayjs().format("YYYY-MM-DD")
+              : step === 3
+                ? !!answers.requirements
+                : step === 6
+                  ? details.coverages.length > 0 &&
+                    details.coverages.every(
+                      (line) =>
+                        line.coverage !== "other" ||
+                        (!!line.limits.coverage_description?.trim() &&
+                          line.limits.coverage_description !== "I'm not sure"),
                     )
-                  : step === 12
-                    ? !!answers.entityType &&
-                      !!details.registrationCountry &&
-                      !!details.registrationState &&
-                      !!details.registrationAddress?.street1
-                    : step === 15
-                      ? details.hasRelatedEntities === "no" ||
-                        details.relatedEntities.every(
-                          (entity) =>
-                            !!entity.legalName.trim() &&
-                            !!entity.relationship &&
-                            !!entity.insured,
-                        )
-                      : step === 16
-                        ? !!answers.description?.trim() &&
-                          !!answers.industry &&
-                          (!INDUSTRIES.find(
-                            (industry) => industry.label === answers.industry,
-                          )?.verticals.length ||
-                            !!answers.industryVertical)
-                        : step === 20
-                          ? !!answers.currentInsurance
-                          : step === 9
-                            ? details.coverages.every((line) =>
-                                validCoverageScope(line, details.scopeNote),
-                              )
-                            : step === 10
-                              ? !!answers.legalName?.trim()
-                              : step === 19
-                                ? !!answers.locations?.trim()
-                                : step === 13
-                                  ? ((details.registrationCountry ||
-                                      "United States") !== "United States" ||
-                                      !answers.fein ||
-                                      /^\d{2}-?\d{7}$/.test(
-                                        answers.fein.trim(),
-                                      )) &&
-                                    (details.registrationCountry !== "Canada" ||
-                                      !answers.businessNumber ||
-                                      /^\d{9}$/.test(
-                                        answers.businessNumber.trim(),
-                                      ))
-                                  : step === 18
-                                    ? (() => {
-                                        const projected =
-                                          details.revenueStep === "projected";
-                                        const period = projected
-                                          ? details.revenue?.projectedPeriod
-                                          : details.revenue?.annualPeriod;
-                                        const amount =
-                                          (projected
-                                            ? details.revenue?.projectedAmount
-                                            : details.revenue?.annualAmount) ??
-                                          "";
-                                        return (
-                                          !amount.trim() ||
-                                          (!!period &&
-                                            /^\d[\d,]*(?:\.\d{1,2})?$/.test(
-                                              amount,
-                                            ))
-                                        );
-                                      })()
-                                    : step === 17
-                                      ? [
-                                          answers.fullTime,
-                                          answers.partTime,
-                                          answers.contractors,
-                                        ].every(
-                                          (value) =>
-                                            !value ||
-                                            /^\d+$/.test(value.trim()),
-                                        )
-                                      : true;
+                  : step === 7
+                    ? !!details.coverages[details.coverageIndex] &&
+                      coverageOption(
+                        details.coverages[details.coverageIndex].coverage,
+                      ).limits.every((limit) =>
+                        validCoverageLimit(
+                          limit.key,
+                          details.coverages[details.coverageIndex].limits[
+                            limit.key
+                          ],
+                        ),
+                      )
+                    : step === 12
+                      ? !!answers.entityType &&
+                        !!details.registrationCountry &&
+                        !!details.registrationState &&
+                        !!details.registrationAddress?.street1
+                      : step === 15
+                        ? details.hasRelatedEntities === "no" ||
+                          details.relatedEntities.every(
+                            (entity) =>
+                              !!entity.legalName.trim() &&
+                              !!entity.relationship &&
+                              !!entity.insured,
+                          )
+                        : step === 16
+                          ? !!answers.description?.trim() &&
+                            !!answers.industry &&
+                            (!INDUSTRIES.find(
+                              (industry) => industry.label === answers.industry,
+                            )?.verticals.length ||
+                              !!answers.industryVertical)
+                          : step === 20
+                            ? !!answers.currentInsurance
+                            : step === 9
+                              ? details.coverages.every((line) =>
+                                  validCoverageScope(line, details.scopeNote),
+                                )
+                              : step === 10
+                                ? !!answers.legalName?.trim()
+                                : step === 19
+                                  ? !!answers.locations?.trim()
+                                  : step === 13
+                                    ? ((details.registrationCountry ||
+                                        "United States") !== "United States" ||
+                                        !answers.fein ||
+                                        /^\d{2}-?\d{7}$/.test(
+                                          answers.fein.trim(),
+                                        )) &&
+                                      (details.registrationCountry !==
+                                        "Canada" ||
+                                        !answers.businessNumber ||
+                                        /^\d{9}$/.test(
+                                          answers.businessNumber.trim(),
+                                        ))
+                                    : step === 18
+                                      ? (() => {
+                                          const projected =
+                                            details.revenueStep === "projected";
+                                          const period = projected
+                                            ? details.revenue?.projectedPeriod
+                                            : details.revenue?.annualPeriod;
+                                          const amount =
+                                            (projected
+                                              ? details.revenue?.projectedAmount
+                                              : details.revenue
+                                                  ?.annualAmount) ?? "";
+                                          return (
+                                            !amount.trim() ||
+                                            (!!period &&
+                                              /^\d[\d,]*(?:\.\d{1,2})?$/.test(
+                                                amount,
+                                              ))
+                                          );
+                                        })()
+                                      : step === 17
+                                        ? [
+                                            answers.fullTime,
+                                            answers.partTime,
+                                            answers.contractors,
+                                          ].every(
+                                            (value) =>
+                                              !value ||
+                                              /^\d+$/.test(value.trim()),
+                                          )
+                                        : true;
   const optionalValues: Record<number, string | boolean> = {
     4:
       data.files.some((file) => file.category === "requirements") ||
@@ -1959,12 +2018,13 @@ function Application({
     25: details.hasCancellations || answers.cancellations?.trim() || "",
   };
   // Empty notes, extra coverage requests, and website/DBA are valid answers.
-  const canSkipStep = step < 28;
+  const canSkipStep = step < 28 && !(isSavings && step === 21);
   const skipStep =
     canSkipStep &&
     (!canContinue || (step in optionalValues && !optionalValues[step]));
   return (
     <IntakeFrame
+      showSteps={!isSavings}
       section={
         step < 6
           ? 0
@@ -2130,15 +2190,17 @@ function Application({
       }
     >
       <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
-        {step === 10 && showSavedCompany
-          ? "Are you applying for your saved business?"
-          : step === 7
-            ? `What limits do you need for ${details.coverages[details.coverageIndex] ? coverageRequestLabel(details.coverages[details.coverageIndex]).toLowerCase() : "coverage"}?`
-            : step === 18 && details.revenueStep === "projected"
-              ? "Where do you project your business’s revenue to be?"
-              : step === 14 && details.mailingAddressStep
-                ? "What is your mailing address?"
-                : INTAKE_STEPS[step]}
+        {isSavings && step === 21
+          ? "Can you upload your current policies?"
+          : step === 10 && showSavedCompany
+            ? "Are you applying for your saved business?"
+            : step === 7
+              ? `What limits do you need for ${details.coverages[details.coverageIndex] ? coverageRequestLabel(details.coverages[details.coverageIndex]).toLowerCase() : "coverage"}?`
+              : step === 18 && details.revenueStep === "projected"
+                ? "Where do you project your business’s revenue to be?"
+                : step === 14 && details.mailingAddressStep
+                  ? "What is your mailing address?"
+                  : INTAKE_STEPS[step]}
       </h1>
       <div className="h-10" />
       <div className="space-y-6">
@@ -2283,23 +2345,41 @@ function Application({
         {(step === 23 || step === 25) && (
           <>
             <IntakeRadioChoices
-              label={step === 23 ? "Has your business had any claims?" : "Has coverage been cancelled or declined for renewal?"}
+              label={
+                step === 23
+                  ? "Has your business had any claims?"
+                  : "Has coverage been cancelled or declined for renewal?"
+              }
               choices={["Yes", "No"]}
-              value={historyChoice === "yes" ? "Yes" : historyChoice === "no" ? "No" : ""}
+              value={
+                historyChoice === "yes"
+                  ? "Yes"
+                  : historyChoice === "no"
+                    ? "No"
+                    : ""
+              }
               onChange={(value) => {
-                changeDetails({ ...details, [historyChoiceKey]: value === "Yes" ? "yes" : "no" });
+                changeDetails({
+                  ...details,
+                  [historyChoiceKey]: value === "Yes" ? "yes" : "no",
+                });
                 if (value === "No") change(historyField, "No");
-                else if (/^(none|no|0)$/i.test(historyAnswer)) change(historyField, "");
+                else if (/^(none|no|0)$/i.test(historyAnswer))
+                  change(historyField, "");
               }}
             />
-            {historyChoice === "yes" && field(historyField, {
-              multiline: true,
-              hint: step === 23 ? "Include the time period and any open claims." : undefined,
-            })}
+            {historyChoice === "yes" &&
+              field(historyField, {
+                multiline: true,
+                hint:
+                  step === 23
+                    ? "Include the time period and any open claims."
+                    : undefined,
+              })}
           </>
         )}
-        {step === 24 && files("loss_runs", "Upload loss runs or claims history")}
-
+        {step === 24 &&
+          files("loss_runs", "Upload loss runs or claims history")}
       </div>
     </IntakeFrame>
   );

@@ -22,7 +22,9 @@ export async function queueIntakeSlack(
   const answers = request.intakeAnswers ?? {};
   const name = escape(answers.legalName || answers.name || "New applicant");
   const link = request.clientOrgId
-    ? `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/procurement/${requestId}`
+    ? answers.intakeGoal === "savings"
+      ? `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/policies`
+      : `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/procurement/${requestId}`
     : `${getClientPortalUrl()}/operator/clients`;
   const add = async (key: string, content: string) => {
     const exists = await ctx.db
@@ -49,7 +51,7 @@ export async function queueIntakeSlack(
   if (eventKey !== "started")
     await add(
       eventKey,
-      `**${escape(progress)}**\n${name}${submitted ? `\nCoverage: ${escape(answers.coverage || "Not specified")}\nEffective date: ${escape(answers.effectiveDate || "Not specified")}\n[Review application](${link})` : ""}`,
+      `**${escape(progress)}**\n${name}${submitted && answers.intakeGoal === "savings" ? `\n[Review policies](${link})` : submitted ? `\nCoverage: ${escape(answers.coverage || "Not specified")}\nEffective date: ${escape(answers.effectiveDate || "Not specified")}\n[Review application](${link})` : ""}`,
     );
   await ctx.scheduler.runAfter(0, internal.actions.intakeSlack.deliver, {
     requestId,

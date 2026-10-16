@@ -929,3 +929,11 @@ Added a thin `border-border-subtle` divider above Changes to resubmit, with 24px
 - Fixed intake lint failures: mutation callback names no longer look like hooks, local-storage/handoff state updates are deferred, event-only ref callbacks have a narrowly documented compiler-lint exception, and controls use existing typography roles.
 - Updated existing fixtures for explicit submission consent/revisions, current submitted-application storage, broker visibility defaults, the shared session identity helper, and Jev-owned classification/identity semantics. Authorization, stale-write, immutable-snapshot and metadata-ownership assertions remain enforced.
 - Full local suite: 183 test files passed, one skipped; 1,110 tests passed, 23 skipped. Full ESLint has zero errors (10 existing warnings); router contract validation and Convex typechecking pass. Final Next.js typecheck/build and required GitHub checks are verified before merge.
+
+### Policy savings intake — October 15, 2026
+
+- Browser QA with a synthetic local applicant: opening purpose choice → contact → required PDF upload → business questions → review → “We have your policies” confirmation. Request timing, coverage and procurement questions are skipped. Missing policy disables Continue.
+- Verified the uploaded PDF appears under the same business’s admin Policies table with client provenance. Procurement displayed “No procurement requests yet.” The synthetic PDF is not evidence of insurance; extraction completion is outside this flow verification.
+- Existing intake authorization/domain tests cover owner boundaries, revision conflicts and submission consent. Savings uses the same boundaries, accepted-review uploads/removals are blocked, repeated non-resubmit submission returns the original result, and staged files link to one policy each. No new isolated tests were added.
+- Local evidence: `/tmp/spot-savings-confirmation.png`; synthetic tenant: Disposable Savings Workflow QA.
+- Final validation: 1,110 existing tests passed (23 skipped); ESLint zero errors (10 existing warnings), application and Convex TypeScript checks, production build, and whitespace checks passed. Changes are local on `codex/policy-savings-intake`; no production deployment was performed.

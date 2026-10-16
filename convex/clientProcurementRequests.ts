@@ -79,6 +79,7 @@ async function requireVisibleRequest(
     !request ||
     request.deletedAt ||
     request.clientOrgId !== access.orgId ||
+    request.intakeAnswers?.intakeGoal === "savings" ||
     !request.clientVisible
   )
     throw new Error("Request not found");
@@ -163,7 +164,12 @@ export const list = query({
       .collect();
     return await Promise.all(
       rows
-        .filter((row) => !row.deletedAt && row.clientVisible)
+        .filter(
+          (row) =>
+            !row.deletedAt &&
+            row.clientVisible &&
+            row.intakeAnswers?.intakeGoal !== "savings",
+        )
         .map((row) => requestDto(ctx, row)),
     );
   },

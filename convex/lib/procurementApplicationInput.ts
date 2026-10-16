@@ -16,6 +16,7 @@ export const procurementApplicationInputSchema = z
           Object.keys(INTAKE_FIELDS).filter(
             (key) =>
               ![
+                "intakeGoal",
                 "coverage",
                 "limits",
                 "separateQuotes",

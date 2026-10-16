@@ -548,7 +548,9 @@ export async function listProcurementRequestSummaries(
         )
         .order("desc")
         .take(MAX_REQUESTS);
-  const activeRows = rows.filter((row) => !row.deletedAt);
+  const activeRows = rows.filter(
+    (row) => !row.deletedAt && row.intakeAnswers?.intakeGoal !== "savings",
+  );
   const search = args.query?.trim().toLowerCase();
   const matches = search
     ? (
@@ -1971,7 +1973,12 @@ export const resolveInboxInternal = internalQuery({
       .query("procurementRequests")
       .withIndex("inbox", (index) => index.eq("inboxToken", args.inboxToken))
       .unique();
-    if (!request?.clientOrgId || request.deletedAt) return null;
+    if (
+      !request?.clientOrgId ||
+      request.deletedAt ||
+      request.intakeAnswers?.intakeGoal === "savings"
+    )
+      return null;
     const client = await ctx.db.get(request.clientOrgId);
     return client?.type === "client" && client.deletedAt === undefined
       ? { request, client }
