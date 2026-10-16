@@ -247,7 +247,6 @@ function ExtensionWorkspace({
 }
 
 type OrgType = "broker" | "client" | "partner";
-type OperatorStatus = "onboarding" | "live" | "lost" | "churned";
 
 /**
  * Active client workspaces only. The server enforces the same boundaries; this
@@ -259,7 +258,6 @@ function ineligibleReason(
     org: {
       type?: OrgType;
       clientAccessStatus?: string;
-      operatorStatus?: OperatorStatus;
     };
   } | null,
 ) {
@@ -282,9 +280,6 @@ function ineligibleReason(
   }
   if (viewerOrg.org.clientAccessStatus !== "active") {
     return { title: "Workspace not open yet", body: "Your Spot workspace isn't open yet. Open Spot to finish your request." };
-  }
-  if ((viewerOrg.org.operatorStatus ?? "live") === "onboarding") {
-    return { title: "Workspace is being prepared", body: "You'll receive an email when your Spot workspace is ready. Reload this sidebar then." };
   }
   return null;
 }

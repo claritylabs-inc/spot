@@ -517,8 +517,7 @@ export default defineSchema({
   organizations: defineTable({
     intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
     clientAccessStatus: v.optional(
-      // "intake" is the retired name for "limited"; orgs:migrateOperatorStatusInternal rewrites it. Drop with operatorStatus.
-      v.union(v.literal("limited"), v.literal("active"), v.literal("intake")),
+      v.union(v.literal("limited"), v.literal("active")),
     ),
     name: v.string(),
     deletedAt: v.optional(v.number()),
@@ -589,7 +588,7 @@ export default defineSchema({
     featureFlags: v.optional(v.record(v.string(), v.boolean())),
     // Onboarding
     onboardingComplete: v.optional(v.boolean()),
-    // Deprecated: replaced by clientAccessStatus. Drop after orgs:migrateOperatorStatusInternal has run on every deployment.
+    // Deprecated: replaced by clientAccessStatus. Unused; run orgs:clearOperatorStatusInternal on every deployment, then drop this field.
     operatorStatus: v.optional(
       v.union(
         v.literal("onboarding"),
