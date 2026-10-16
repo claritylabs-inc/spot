@@ -1,23 +1,24 @@
 import dayjs from "dayjs";
 import { ConvexError, v } from "convex/values";
 import {
-  createAccount,
   getAuthSessionId,
-  getAuthUserId,
   invalidateSessions,
-  modifyAccountCredentials,
   retrieveAccount,
 } from "@convex-dev/auth/server";
+import type { ConvexCredentialsUserConfig } from "@convex-dev/auth/providers/ConvexCredentials";
+import { Password } from "@convex-dev/auth/providers/Password";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
   internalQuery,
   query,
+  type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import { getActiveOperatorImpersonation } from "./lib/operatorIdentity";
+import { getSessionUserId } from "./lib/sessionIdentity";
 import {
   PASSWORD_PROVIDER_ID,
   RECENT_SIGN_IN_MS,
@@ -32,10 +33,12 @@ import { throwUserFacingError, userFacingErrorCodes } from "./lib/userFacingErro
  *
  * Failure modes: anonymous, service, intake-restricted, unverified, impersonated
  * or pending-email-change callers cannot set one; identity is derived from the
- * session, never args; a stale session needs the current password; only `signIn`
- * exists (no sign-up/reset); the library stores only a scrypt hash; setting links
- * to the existing user (no duplicate user); other sessions are revoked on change;
- * an email change between check and write removes the mismatched account.
+ * session, never args; a revoked session cannot change credentials; a stale
+ * session needs the current password; only `signIn` exists (no sign-up/reset);
+ * only a scrypt hash is stored. The write is one transaction that re-derives the
+ * caller and rejects any drift (email, session, account, hash, freshness) before
+ * touching `authAccounts`, so the credential can only land on the same user and
+ * email that were checked, and concurrent changes cannot both win.
  */
 
 type Reason =
@@ -46,26 +49,17 @@ type Reason =
   | "email_change_pending"
   | "impersonating";
 
-type Context = {
+type Derived = {
   userId: Id<"users">;
   email: string;
-  sessionId: Id<"authSessions"> | null;
-  recentSignIn: boolean;
-  hasPassword: boolean;
+  sessionId: Id<"authSessions">;
+  recentSignInExpiresAt: number;
+  account: Doc<"authAccounts"> | null;
   reason?: Reason;
 };
 
-async function derive(ctx: QueryCtx): Promise<Context | null> {
-  const userId = await getAuthUserId(ctx);
-  if (!userId) return null;
-  const user = await ctx.db.get(userId);
-  if (!user) return null;
-  const email = normalizePasswordEmail(user.email);
-  const sessionId = await getAuthSessionId(ctx);
-  const session = sessionId ? await ctx.db.get(sessionId) : null;
-  const now = dayjs().valueOf();
-  const recentSignIn = !!session && now - session._creationTime <= RECENT_SIGN_IN_MS;
-  const account = email
+async function passwordAccountFor(ctx: QueryCtx, email: string) {
+  return email
     ? await ctx.db
         .query("authAccounts")
         .withIndex("providerAndAccountId", (q) =>
@@ -73,12 +67,24 @@ async function derive(ctx: QueryCtx): Promise<Context | null> {
         )
         .first()
     : null;
+}
+
+/** The authenticated caller, from the session only. `null` unless the session is live. */
+async function derive(ctx: QueryCtx): Promise<Derived | null> {
+  // Re-reads the session row, so a revoked or expired token is not a caller.
+  const userId = await getSessionUserId(ctx, true);
+  const sessionId = await getAuthSessionId(ctx);
+  if (!userId || !sessionId) return null;
+  const [user, session] = await Promise.all([ctx.db.get(userId), ctx.db.get(sessionId)]);
+  if (!user || !session || session.userId !== userId) return null;
+  const email = normalizePasswordEmail(user.email);
+  const now = dayjs().valueOf();
   const pending = await ctx.db
     .query("userEmailChangeRequests")
     .withIndex("target_status", (q) =>
       q.eq("targetUserId", userId).eq("status", "pending"),
     )
-    .collect();
+    .take(20);
   const reason: Reason | undefined = user.isAnonymous
     ? "anonymous"
     : user.serviceAccountKind
@@ -96,8 +102,8 @@ async function derive(ctx: QueryCtx): Promise<Context | null> {
     userId,
     email,
     sessionId,
-    recentSignIn,
-    hasPassword: !!account && account.userId === userId,
+    recentSignInExpiresAt: session._creationTime + RECENT_SIGN_IN_MS,
+    account: await passwordAccountFor(ctx, email),
     reason,
   };
 }
@@ -106,43 +112,133 @@ async function derive(ctx: QueryCtx): Promise<Context | null> {
 export const status = query({
   args: {},
   handler: async (ctx) => {
-    const context = await derive(ctx);
-    if (!context) return null;
+    const derived = await derive(ctx);
+    if (!derived) return null;
     return {
-      eligible: context.reason === undefined,
-      reason: context.reason,
-      hasPassword: context.hasPassword,
-      recentSignIn: context.recentSignIn,
+      eligible: derived.reason === undefined,
+      reason: derived.reason,
+      hasPassword: derived.account?.userId === derived.userId,
+      recentSignIn: dayjs().valueOf() <= derived.recentSignInExpiresAt,
+      /** Epoch ms when the sign-in stops counting as recent; use it to refresh the UI. */
+      recentSignInExpiresAt: derived.recentSignInExpiresAt,
     };
   },
 });
 
-export const getContext = internalQuery({
+export const snapshot = internalQuery({
   args: {},
-  handler: async (ctx): Promise<Context | null> => derive(ctx),
+  handler: async (ctx) => {
+    const derived = await derive(ctx);
+    if (!derived) return null;
+    return {
+      userId: derived.userId,
+      email: derived.email,
+      sessionId: derived.sessionId,
+      recent: dayjs().valueOf() <= derived.recentSignInExpiresAt,
+      reason: derived.reason,
+      accountId: derived.account?._id ?? null,
+      accountUserId: derived.account?.userId ?? null,
+      secret: derived.account?.secret ?? null,
+    };
+  },
 });
 
+const changed = () =>
+  new ConvexError({
+    category: "authentication",
+    code: "PASSWORD_CHANGE_CONFLICT",
+    message: "Your account changed while saving. Try again.",
+  });
+
 /**
- * After the library wrote the credential: drop password accounts keyed to any
- * other email, and undo the write if the email changed in the meantime.
+ * The only writer of a self-service credential. Re-derives the caller inside
+ * this transaction and applies the new hash only if everything the action
+ * checked still holds; then drops other sessions.
  */
-export const finishChange = internalMutation({
-  args: { userId: v.id("users"), email: v.string() },
-  handler: async (ctx, args): Promise<{ ok: boolean }> => {
-    const user = await ctx.db.get(args.userId);
-    const current = normalizePasswordEmail(user?.email);
-    const accounts = await ctx.db
+export const commit = internalMutation({
+  args: {
+    userId: v.id("users"),
+    sessionId: v.id("authSessions"),
+    email: v.string(),
+    /** The account the action verified or saw: its id and hash, or null for none. */
+    expectedAccountId: v.union(v.id("authAccounts"), v.null()),
+    expectedSecret: v.union(v.string(), v.null()),
+    /** The current password was verified against `expectedSecret`. */
+    currentVerified: v.boolean(),
+    hash: v.string(),
+  },
+  handler: async (ctx: MutationCtx, args) => {
+    const derived = await derive(ctx);
+    if (
+      !derived ||
+      derived.reason ||
+      derived.userId !== args.userId ||
+      derived.sessionId !== args.sessionId ||
+      derived.email !== args.email
+    ) {
+      throw changed();
+    }
+    // Exactly one user owns this email; it is the caller.
+    const owners = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", args.email))
+      .take(2);
+    if (owners.length !== 1 || owners[0]._id !== args.userId) throw changed();
+
+    const account = derived.account;
+    if (account && account.userId !== args.userId) throw changed();
+    if ((account?._id ?? null) !== args.expectedAccountId) throw changed();
+    if ((account?.secret ?? null) !== args.expectedSecret) throw changed();
+    const recent = dayjs().valueOf() <= derived.recentSignInExpiresAt;
+    if (!recent && !(args.currentVerified && account)) throw changed();
+
+    if (account) {
+      await ctx.db.patch(account._id, { secret: args.hash });
+    } else {
+      await ctx.db.insert("authAccounts", {
+        userId: args.userId,
+        provider: PASSWORD_PROVIDER_ID,
+        providerAccountId: args.email,
+        secret: args.hash,
+      });
+    }
+    // Password accounts keyed to any other email can no longer sign in; drop them.
+    const own = await ctx.db
       .query("authAccounts")
       .withIndex("userIdAndProvider", (q) =>
         q.eq("userId", args.userId).eq("provider", PASSWORD_PROVIDER_ID),
       )
-      .collect();
-    for (const account of accounts) {
-      if (account.providerAccountId !== current) await ctx.db.delete(account._id);
+      .take(10);
+    for (const stale of own) {
+      if (stale.providerAccountId !== args.email) await ctx.db.delete(stale._id);
     }
-    return { ok: current === args.email };
+    // Revoke other sessions in the same transaction (bounded; the action finishes
+    // any remainder with the library's own invalidation).
+    const sessions = await ctx.db
+      .query("authSessions")
+      .withIndex("userId", (q) => q.eq("userId", args.userId))
+      .take(20);
+    for (const session of sessions) {
+      if (session._id === args.sessionId) continue;
+      const tokens = await ctx.db
+        .query("authRefreshTokens")
+        .withIndex("sessionId", (q) => q.eq("sessionId", session._id))
+        .take(200);
+      for (const token of tokens) await ctx.db.delete(token._id);
+      await ctx.db.delete(session._id);
+    }
   },
 });
+
+/** Hashes with the same scrypt the `Password` sign-in provider verifies with. */
+async function hashPassword(password: string) {
+  const crypto = (Password() as unknown as { options?: ConvexCredentialsUserConfig })
+    .options?.crypto;
+  if (typeof crypto?.hashSecret !== "function") {
+    throw new Error("Unexpected Password provider shape");
+  }
+  return await crypto.hashSecret(password);
+}
 
 /**
  * Sets or changes the caller's own password. Allowed with a recent sign-in
@@ -151,73 +247,73 @@ export const finishChange = internalMutation({
 export const setPassword = action({
   args: { newPassword: v.string(), currentPassword: v.optional(v.string()) },
   handler: async (ctx, args): Promise<{ ok: true }> => {
-    const context: Context | null = await ctx.runQuery(
-      internal.passwordAccounts.getContext,
-      {},
-    );
-    if (!context) throwUserFacingError(userFacingErrorCodes.authRequired);
-    if (context.reason === "impersonating") {
+    const snap = await ctx.runQuery(internal.passwordAccounts.snapshot, {});
+    if (!snap) throwUserFacingError(userFacingErrorCodes.authRequired);
+    if (snap.reason === "impersonating") {
       throwUserFacingError(userFacingErrorCodes.impersonationReadOnly);
     }
-    if (context.reason) {
+    if (snap.reason) {
       throw new ConvexError({
+        category: "authentication",
         code: "PASSWORD_NOT_AVAILABLE",
-        reason: context.reason,
+        reason: snap.reason,
         message: "Passwords are not available for this account.",
       });
     }
-    assertNewPassword(args.newPassword, context.email);
+    assertNewPassword(args.newPassword, snap.email);
 
-    if (!context.recentSignIn) {
-      if (!context.hasPassword || args.currentPassword === undefined) {
+    let expectedAccountId = snap.accountId;
+    let expectedSecret = snap.secret;
+    let currentVerified = false;
+    if (!snap.recent) {
+      if (!snap.accountId || args.currentPassword === undefined) {
         throw new ConvexError({
+          category: "authentication",
           code: "RECENT_SIGN_IN_REQUIRED",
           message:
             "Sign in again with an email code, or enter your current password, to change your password.",
         });
       }
       try {
-        await retrieveAccount(ctx, {
+        // Library verification, including its failed-attempt rate limit. The
+        // account it returns is the one the commit must still find unchanged.
+        const { account } = await retrieveAccount(ctx, {
           provider: PASSWORD_PROVIDER_ID,
-          account: { id: context.email, secret: args.currentPassword },
+          account: { id: snap.email, secret: args.currentPassword },
         });
-      } catch {
-        throw new ConvexError({
-          code: "CURRENT_PASSWORD_INCORRECT",
-          message: "Your current password is incorrect.",
-        });
+        expectedAccountId = account._id;
+        expectedSecret = account.secret ?? null;
+        currentVerified = true;
+      } catch (error) {
+        // The library throws its own result codes for lockout and bad secrets.
+        const lockedOut = String((error as Error)?.message).includes("TooManyFailedAttempts");
+        throw new ConvexError(
+          lockedOut
+            ? {
+                category: "authentication",
+                code: "TOO_MANY_ATTEMPTS",
+                message: "Too many incorrect attempts. Try again later or sign in with an email code.",
+              }
+            : {
+                category: "authentication",
+                code: "CURRENT_PASSWORD_INCORRECT",
+                message: "Your current password is incorrect.",
+              },
+        );
       }
     }
 
-    if (context.hasPassword) {
-      await modifyAccountCredentials(ctx, {
-        provider: PASSWORD_PROVIDER_ID,
-        account: { id: context.email, secret: args.newPassword },
-      });
-    } else {
-      // Link by email to the existing user; never create a second one.
-      await createAccount(ctx, {
-        provider: PASSWORD_PROVIDER_ID,
-        account: { id: context.email, secret: args.newPassword },
-        profile: { email: context.email },
-        shouldLinkViaEmail: true,
-        shouldLinkViaPhone: false,
-      });
-    }
-    const { ok } = await ctx.runMutation(internal.passwordAccounts.finishChange, {
-      userId: context.userId,
-      email: context.email,
+    const hash = await hashPassword(args.newPassword);
+    await ctx.runMutation(internal.passwordAccounts.commit, {
+      userId: snap.userId,
+      sessionId: snap.sessionId,
+      email: snap.email,
+      expectedAccountId,
+      expectedSecret,
+      currentVerified,
+      hash,
     });
-    if (!ok) {
-      throw new ConvexError({
-        code: "EMAIL_CHANGED",
-        message: "Your email changed while saving. Try again.",
-      });
-    }
-    await invalidateSessions(ctx, {
-      userId: context.userId,
-      ...(context.sessionId ? { except: [context.sessionId] } : {}),
-    });
+    await invalidateSessions(ctx, { userId: snap.userId, except: [snap.sessionId] });
     return { ok: true };
   },
 });
