@@ -18,7 +18,7 @@ import {
 } from "../lib/models";
 import { ORG_WIKI_SECTIONS } from "../lib/orgWiki";
 import { clRouterDecide } from "../lib/clRouterClient";
-import { jevProceeds } from "../lib/jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "../lib/jevThreshold";
 import {
   gatherProfileEvidenceWithTrace,
   selectBrokerAppetiteWithTrace,
@@ -274,7 +274,7 @@ export async function researchCompanyProfile(
       if (
         choice?.type === "choice" &&
         jevProceeds(
-          Math.min(choice.confidence, choice.probabilities[choice.choice] ?? 0),
+          jevChoiceConfidence(choice),
         )
       )
         selected = passing.find(({ key }) => key === choice.choice);

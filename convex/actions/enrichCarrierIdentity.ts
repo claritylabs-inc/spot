@@ -15,7 +15,7 @@ import {
   type GroundedCarrierIdentitySelection,
 } from "../lib/carrierIdentityEnrichment";
 import { clRouterDecide } from "../lib/clRouterClient";
-import { jevProceeds } from "../lib/jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "../lib/jevThreshold";
 import { runWebRetrieval, type WebRetrievalSource } from "../lib/webRetrieval";
 import {
   normalizePublicWebsiteUrl,
@@ -361,7 +361,7 @@ export async function selectCarrierIdentityWithJev(
     if (
       choice?.type === "choice" &&
       jevProceeds(
-        Math.min(choice.confidence, choice.probabilities[choice.choice] ?? 0),
+        jevChoiceConfidence(choice),
       )
     ) {
       candidateIndex =
@@ -422,10 +422,7 @@ export async function selectCarrierIdentityWithJev(
       if (
         relationship?.type === "choice" &&
         jevProceeds(
-          Math.min(
-            relationship.confidence,
-            relationship.probabilities[relationship.choice] ?? 0,
-          ),
+          jevChoiceConfidence(relationship),
         )
       ) {
         nameRelationship = Object.keys(NAME_RELATIONSHIPS).find(
