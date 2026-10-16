@@ -13,5 +13,15 @@ export function jevProceedThreshold(): number {
 }
 
 export function jevProceeds(probability: number | undefined): boolean {
-  return typeof probability === "number" && probability >= jevProceedThreshold();
+  return (
+    typeof probability === "number" && probability >= jevProceedThreshold()
+  );
+}
+
+export function jevChoiceConfidence(answer: {
+  choice: string;
+  confidence: number;
+  probabilities: Record<string, number>;
+}): number {
+  return Math.min(answer.confidence, answer.probabilities[answer.choice] ?? 0);
 }
