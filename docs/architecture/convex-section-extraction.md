@@ -17,7 +17,7 @@ specimen status. Per-candidate insured/carrier questions and one endorsement
 question replace the relationship cross-product. Code compares policy numbers
 and parsed periods; missing or ambiguous evidence keeps the relationship unknown.
 These relationships remain advisory. Jev reads pages as rendered 1280px JPEG images
-(quality 60), not as extracted text: intake sends the first six pages, and an
+(quality 60), not as extracted text: intake sends up to the first six pages (halving the leading sample on a payload-too-large response), and an
 upload can be rejected only when Jev saw every page. Sectioning sends every page
 (with its neighbours as context) in 5-page image batches; the text layer stays in code for
 form-number boundaries. A batch that exceeds cl-router's 16 MiB limit or Jev's
@@ -38,3 +38,20 @@ preserved. Unmatched page-only citations may receive presentation annotations;
 these annotations never enter the text citation index or upgrade grounding.
 Asset, rendering, and router failures leave original evidence intact. Image
 localization does not participate in promotion eligibility.
+
+Extraction decision hygiene keeps exact normalized labeled insured/carrier matches
+in code. When labeled policy-number parsing finds nothing, an advisory Choice
+selects among identifier candidates from the text, with a none option; number and
+period equality remain deterministic. Coverage scoping processes every ambiguous
+row in batches of 100. Section-kind choices contrast base forms, endorsements,
+form lists, item schedules and declarations; other means none of those types,
+while uncertain answers follow the confidence fallback.
+
+Citation localization preserves pdf.js line-position boxes without a model call.
+Remaining targets are grouped by page, rendered and staged once, and receive one
+presence Noul and Box pair per quote in a payload-splittable request. Confident
+coarse matches are cropped before refinement through `locateOnPdfPage`, reusing
+the crop as its page image. The current shared locator performs another presence
+and Box pass before its final zoom; accepting an optional coarse location there
+would eliminate that redundant pass. Cancellation and the phase deadline are
+checked before each batch and quote; in-flight requests are not interrupted.

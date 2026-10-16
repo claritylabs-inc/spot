@@ -15,8 +15,8 @@ import {
   extractPolicyPeriodFromSourceSpans,
   normalizePolicyDate,
 } from "./policyPeriodExtraction";
-import { clRouterDecide } from "./clRouterClient";
-import { jevProceeds } from "./jevThreshold";
+import { clRouterDecide, isClRouterPayloadTooLarge } from "./clRouterClient";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 import type { PdfPageText } from "./pdfText";
 
 export type PolicyIntakeDocumentClass =
@@ -248,13 +248,21 @@ export async function classifyPolicyIntake(args: {
       instructions:
         "Is `upload` primarily a standalone mid-term change document that endorses or amends an existing policy? A complete renewal policy or a forms list merely mentioning endorsements does not establish this.",
     };
+    const exactMatches = new Set<string>();
+    const labeledValue = (label: RegExp) => normalized(evidence.text.match(label)?.[1]);
+    const uploadInsured = labeledValue(/(?:^|\n)\s*(?:named insured|insured name)\s*:\s*([^\n]+)/i);
+    const uploadCarrier = labeledValue(/(?:^|\n)\s*(?:insurance company|insurer|carrier)\s*:\s*([^\n]+)/i);
     candidates.forEach((candidate, i) => {
-      if (candidate.namedInsured)
+      if (uploadInsured && uploadInsured === normalized(candidate.namedInsured))
+        exactMatches.add(`same_insured_${i}`);
+      if (uploadCarrier && uploadCarrier === normalized(candidate.carrier))
+        exactMatches.add(`same_program_${i}`);
+      if (candidate.namedInsured && !exactMatches.has(`same_insured_${i}`))
         questions[`same_insured_${i}`] = {
           type: "noul",
           instructions: `Does the policy in \`upload\` name the same insured as \`existingPolicies[${i}].namedInsured\`? Missing evidence is not a match.`,
         };
-      if (candidate.carrier)
+      if (candidate.carrier && !exactMatches.has(`same_program_${i}`))
         questions[`same_program_${i}`] = {
           type: "noul",
           instructions: `Does the insurance carrier named in \`upload\` match \`existingPolicies[${i}].carrier\`? Missing evidence is not a match.`,
@@ -262,11 +270,11 @@ export async function classifyPolicyIntake(args: {
     });
     // Candidates with no comparable fields carry no evidence either way.
     const comparable = candidates.flatMap((_, i) =>
-      `same_insured_${i}` in questions || `same_program_${i}` in questions
+      `same_insured_${i}` in questions || `same_program_${i}` in questions || exactMatches.has(`same_insured_${i}`) || exactMatches.has(`same_program_${i}`)
         ? [i]
         : [],
     );
-    const result = await clRouterDecide(
+    const decide = () => clRouterDecide(
       {
         orgId: String(args.orgId),
         task: "policy_extraction_intake",
@@ -291,7 +299,22 @@ export async function classifyPolicyIntake(args: {
       },
       { telemetry: args.ctx },
     );
+    let result;
+    for (;;) {
+      try {
+        result = await decide();
+        break;
+      } catch (error) {
+        if (!isClRouterPayloadTooLarge(error) || images.length <= 1) throw error;
+        images = images.slice(0, Math.ceil(images.length / 2));
+        // Remove unused assets too: aggregate bytes are checked before inference.
+        if (staged) staged.assets = Object.fromEntries(
+          staged.refs.slice(0, images.length).map((ref) => [ref, staged!.assets[ref]!]),
+        );
+      }
+    }
     const probability = (id: string) => {
+      if (exactMatches.has(id)) return 1;
       const answer = result.answers[id];
       return answer?.type === "noul" ? answer.noul : undefined;
     };
@@ -369,6 +392,38 @@ export async function classifyPolicyIntake(args: {
           ),
         ].map((match) => normalized(match[1])),
       );
+      if (!uploadNumbers.size) {
+        const numbers = [...new Set(
+          [...evidence.text.matchAll(/\b[A-Z0-9][A-Z0-9/-]{3,39}\b/gi)]
+            .map(([value]) => value)
+            .filter((value) => /\d/.test(value)),
+        )];
+        for (let offset = 0; offset < numbers.length; offset += 127) {
+          const batchNumbers = numbers.slice(offset, offset + 127);
+          const selection = await clRouterDecide({
+            orgId: String(args.orgId),
+            task: "policy_extraction_intake",
+            state: { text: evidence.text.slice(0, MAX_EVIDENCE_CHARS), numbers: batchNumbers },
+            questions: { policyNumber: {
+              type: "choice",
+              instructions: "Which candidate in `numbers` is the policy number of the uploaded policy in `text`?",
+              criteria: {
+                ...Object.fromEntries(batchNumbers.map((value, index) => [`number_${index}`, {
+                  what: `The policy identifier ${value} in \`numbers[${index}]\`.`,
+                  not_for: "Form numbers, dates, premiums, limits or account identifiers.",
+                }])),
+                none: "None of the candidates is the uploaded policy number.",
+              },
+            } },
+            trace: args.traceId ? { traceId: args.traceId } : undefined,
+          }, { telemetry: args.ctx });
+          const answer = selection.answers.policyNumber;
+          if (answer?.type === "choice" && jevProceeds(jevChoiceConfidence(answer))) {
+            const selected = batchNumbers[Number(answer.choice.replace("number_", ""))];
+            if (answer.choice.startsWith("number_") && selected) uploadNumbers.add(normalized(selected));
+          }
+        }
+      }
       const sameNumber =
         uploadNumbers.size === 1 &&
         uploadNumbers.has(normalized(candidate.policyNumber));
