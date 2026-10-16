@@ -55,6 +55,13 @@ export type PromptInjectionAudit = {
   failOpen: boolean;
 };
 
+export class PromptInjectionScreeningUnavailableError extends Error {
+  constructor() {
+    super("Security screening temporarily unavailable; retry delivery");
+    this.name = "PromptInjectionScreeningUnavailableError";
+  }
+}
+
 export type PromptInjectionClassification = {
   safe: boolean;
   audit: PromptInjectionAudit;
@@ -69,12 +76,13 @@ export function prefilterPromptInjection(input: string): string[] {
 export async function classifyPromptInjection(
   _ctx: ActionCtx,
   input: string,
+  source: "external" | "first_party",
   orgId?: Id<"organizations">,
 ): Promise<PromptInjectionClassification> {
   const prefilterRuleIds = prefilterPromptInjection(input);
 
   // Every input is screened; regex matches are audit signals, never a safety gate.
-  // Unavailable screening holds external instructions before action execution.
+  // First-party availability and external retry behavior are explicit at each ingress.
   try {
     const result = await clRouterDecide(
       {
@@ -120,12 +128,14 @@ export async function classifyPromptInjection(
     const injection = result.answers.is_injection;
     if (injection?.type !== "noul") {
       return {
-        safe: false,
-        audit: { prefilterRuleIds, classifierStatus: "invalid", failOpen: false },
+        safe: source === "first_party",
+        audit: { prefilterRuleIds, classifierStatus: "invalid", failOpen: source === "first_party" },
       };
     }
     // Safety is independent of how probability is divided among attack categories.
-    const safe = jevProceeds(1 - injection.noul);
+    const safe = source === "first_party"
+      ? !jevProceeds(injection.noul)
+      : jevProceeds(1 - injection.noul);
     return {
       safe,
       audit: {
@@ -142,15 +152,15 @@ export async function classifyPromptInjection(
     console.warn("[security] Prompt injection classifier failed", {
       prefilterRuleIds,
       classifierStatus: "failed",
-      failOpen: false,
+      failOpen: source === "first_party",
       errorType: error instanceof Error ? error.name : typeof error,
     });
     return {
-      safe: false,
+      safe: source === "first_party",
       audit: {
         prefilterRuleIds,
         classifierStatus: "failed",
-        failOpen: false,
+        failOpen: source === "first_party",
       },
     };
   }

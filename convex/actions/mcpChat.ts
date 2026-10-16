@@ -84,6 +84,7 @@ export const run = internalAction({
     const injectionCheck = await classifyPromptInjection(
       ctx,
       sanitizedMessage,
+      "first_party",
       args.orgId,
     );
     if (!injectionCheck.safe) {

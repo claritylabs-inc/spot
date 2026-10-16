@@ -41,6 +41,7 @@ import {
 } from "../lib/agentAttachmentContext";
 import {
   classifyPromptInjection,
+  PromptInjectionScreeningUnavailableError,
   collectAllowedRecipients,
   enforceInputLimits,
 } from "../lib/security";
@@ -743,8 +744,15 @@ export const processInbound = internalAction({
     const injectionCheck = await classifyPromptInjection(
       ctx,
       guardedInput,
+      "external",
       orgId,
     );
+    if (
+      injectionCheck.audit.classifierStatus === "failed" ||
+      injectionCheck.audit.classifierStatus === "invalid"
+    ) {
+      throw new PromptInjectionScreeningUnavailableError();
+    }
     if (!injectionCheck.safe) {
       console.warn("[security] Prompt injection blocked in inbound email", {
         audit: injectionCheck.audit,

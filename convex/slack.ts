@@ -1243,13 +1243,17 @@ export const getInboundEvent = internalQuery({
 });
 
 export const failEvents = internalMutation({
-  args: { eventIds: v.array(v.id("slackInboundEvents")), error: v.string() },
+  args: {
+    eventIds: v.array(v.id("slackInboundEvents")),
+    error: v.string(),
+    retryable: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
     for (const eventId of args.eventIds) {
       const event = await ctx.db.get(eventId);
       if (event?.status === "processing") {
-        const shouldRetry = event.attemptCount < 3;
+        const shouldRetry = args.retryable !== false && event.attemptCount < 3;
         const scheduledFor = shouldRetry
           ? dayjs()
               .add(
