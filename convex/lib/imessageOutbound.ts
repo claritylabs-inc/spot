@@ -3,7 +3,10 @@
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { getImessageWorkerUrl } from "./imessageConfig";
+import {
+  getImessageWorkerUrl,
+  isImessageWebhookTransportEnabled,
+} from "./imessageConfig";
 
 export type ImessageOutboundAttachment = {
   url: string;
@@ -118,29 +121,38 @@ export async function storedAttachmentsToImessageOutbound(
   return outbound;
 }
 
-export async function sendOutboundImessage(params: {
-  toPhone?: string;
-  chatGuid?: string;
-  message: string;
-  attachments?: ImessageOutboundAttachment[];
-  appCards?: ImessageOutboundAppCard[];
-  clientMessageId?: string;
-  logPrefix?: string;
-}): Promise<boolean> {
-  return (await sendOutboundImessageWithResult(params)).ok;
+export async function sendOutboundImessage(
+  ctx: ActionCtx,
+  params: {
+    toPhone?: string;
+    chatGuid?: string;
+    message: string;
+    attachments?: ImessageOutboundAttachment[];
+    appCards?: ImessageOutboundAppCard[];
+    clientMessageId?: string;
+    logPrefix?: string;
+  },
+): Promise<boolean> {
+  return (await sendOutboundImessageWithResult(ctx, params)).ok;
 }
 
-async function sendOutboundImessageWithResult(params: {
-  toPhone?: string;
-  chatGuid?: string;
-  message: string;
-  attachments?: ImessageOutboundAttachment[];
-  appCards?: ImessageOutboundAppCard[];
-  clientMessageId?: string;
-  logPrefix?: string;
-}): Promise<ImessageSendResult> {
+async function sendOutboundImessageWithResult(
+  ctx: ActionCtx,
+  params: {
+    toPhone?: string;
+    chatGuid?: string;
+    message: string;
+    attachments?: ImessageOutboundAttachment[];
+    appCards?: ImessageOutboundAppCard[];
+    clientMessageId?: string;
+    logPrefix?: string;
+  },
+): Promise<ImessageSendResult> {
+  const webhookTransport = isImessageWebhookTransportEnabled("customer");
   const workerUrl = getImessageWorkerUrl();
-  if (!workerUrl) return { ok: false, attachmentFailures: [] };
+  if (!webhookTransport && !workerUrl) {
+    return { ok: false, attachmentFailures: [] };
+  }
   if (!params.toPhone && !params.chatGuid) {
     return { ok: false, attachmentFailures: [] };
   }
@@ -156,6 +168,27 @@ async function sendOutboundImessageWithResult(params: {
           ? "Spot shared attachment(s)."
           : "");
   if (!message) return { ok: false, attachmentFailures: [] };
+
+  if (webhookTransport) {
+    const { sendImessageViaSpectrum } = await import("./imessageSpectrum");
+    const result = await sendImessageViaSpectrum(ctx, "customer", {
+      toPhone: params.toPhone,
+      chatGuid: params.chatGuid,
+      message,
+      clientMessageId: params.clientMessageId,
+      attachments,
+      appCards,
+    });
+    const prefix = params.logPrefix ?? "imessageOutbound";
+    if (!result.ok) {
+      console.warn(`[${prefix}] iMessage send failed: ${result.error}`);
+    } else if (result.attachmentFailures.length > 0) {
+      console.warn(`[${prefix}] iMessage attachment send failed`, {
+        attachmentFailures: result.attachmentFailures,
+      });
+    }
+    return { ok: result.ok, attachmentFailures: result.attachmentFailures };
+  }
 
   try {
     const res = await fetch(`${workerUrl}/send`, {
@@ -247,7 +280,7 @@ export async function sendIdempotentOutboundImessage(
   });
   if (!claim.claimed) return true;
 
-  const result = await sendOutboundImessageWithResult({
+  const result = await sendOutboundImessageWithResult(ctx, {
     toPhone: params.toPhone,
     chatGuid: params.chatGuid,
     message: params.message,

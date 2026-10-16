@@ -12,9 +12,10 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
 import {
-  getImessageWorkerUrl,
   getOperatorImessageContactPhone,
   isImessageInboundEnabled,
+  isImessageTransportConfigured,
+  isImessageWebhookTransportEnabled,
   isOperatorImessageInboundEnabled,
   isOperatorImessageTerminalEnabled,
 } from "./lib/imessageConfig";
@@ -39,6 +40,10 @@ import {
 } from "./lib/slackPayload";
 import { verifySlackRequest } from "./lib/slackSecurity";
 import { quoBrokerWebhook } from "./quoBrokerWebhook";
+import {
+  customerImessageWebhook,
+  operatorImessageWebhook,
+} from "./imessageWebhookHttp";
 import {
   operatorSlackConfirmationDecision,
   parseSlackInteraction,
@@ -476,6 +481,10 @@ http.route({
     const operatorSlack = getOperatorSlackConfig();
     const operatorImessageEnabled = isOperatorImessageInboundEnabled();
     const operatorImessageTerminalEnabled = isOperatorImessageTerminalEnabled();
+    const operatorImessageWebhook =
+      isImessageWebhookTransportEnabled("operator");
+    const operatorImessageTransportConfigured =
+      isImessageTransportConfigured("operator");
     const slackMode = getSlackMode();
     const slackHostInstallation =
       slackEnabled && slackMode === "slack"
@@ -503,16 +512,9 @@ http.route({
     const checks = {
       operatorAgentModelConfigured,
       imessageInboundEnabled: isImessageInboundEnabled(),
-      imessageWorkerUrlConfigured: Boolean(getImessageWorkerUrl()),
-      imessageWorkerSecretConfigured: Boolean(
-        process.env.IMESSAGE_WORKER_SECRET,
-      ),
-      operatorImessageWorkerUrlConfigured:
-        !operatorImessageEnabled ||
-        Boolean(process.env.OPERATOR_IMESSAGE_WORKER_URL),
-      operatorImessageWorkerSecretConfigured:
-        !operatorImessageEnabled ||
-        Boolean(process.env.OPERATOR_IMESSAGE_WORKER_SECRET),
+      imessageTransportConfigured: isImessageTransportConfigured("customer"),
+      operatorImessageTransportConfigured:
+        !operatorImessageEnabled || operatorImessageTransportConfigured,
       operatorImessageContactPhoneConfigured:
         !operatorImessageEnabled ||
         operatorImessageTerminalEnabled ||
@@ -563,12 +565,15 @@ http.route({
         operatorImessage: {
           inboundEnabled: operatorImessageEnabled,
           contactPhoneConfigured: Boolean(getOperatorImessageContactPhone()),
-          workerUrlConfigured: Boolean(
-            process.env.OPERATOR_IMESSAGE_WORKER_URL,
-          ),
-          workerSecretConfigured: Boolean(
-            process.env.OPERATOR_IMESSAGE_WORKER_SECRET,
-          ),
+          webhookTransport: operatorImessageWebhook,
+          // Read by the release health check; in webhook mode both report the
+          // Spectrum credentials instead of the retired worker wiring.
+          workerUrlConfigured: operatorImessageWebhook
+            ? operatorImessageTransportConfigured
+            : Boolean(process.env.OPERATOR_IMESSAGE_WORKER_URL),
+          workerSecretConfigured: operatorImessageWebhook
+            ? operatorImessageTransportConfigured
+            : Boolean(process.env.OPERATOR_IMESSAGE_WORKER_SECRET),
         },
         operatorSlack: {
           enabled: operatorSlack.enabled,
@@ -624,6 +629,20 @@ http.route({
     });
     return new Response("OK", { status: 200 });
   }),
+});
+
+// Photon Spectrum webhooks; inert until IMESSAGE_WEBHOOK_ENABLED /
+// OPERATOR_IMESSAGE_WEBHOOK_ENABLED replaces the Railway worker lanes.
+http.route({
+  path: "/imessage-webhook",
+  method: "POST",
+  handler: customerImessageWebhook,
+});
+
+http.route({
+  path: "/operator-imessage-webhook",
+  method: "POST",
+  handler: operatorImessageWebhook,
 });
 
 http.route({

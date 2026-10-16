@@ -67,6 +67,9 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "@rive-app/react-webgl2": "^4.27.2",
+    "@spectrum-ts/core": "5.0.0",
+    "@spectrum-ts/imessage": "5.0.0",
+    "@spectrum-ts/terminal": "5.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tiptap/extension-bubble-menu": "3.31.3",
     "@tiptap/extension-image": "3.31.3",
@@ -169,6 +172,17 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "ws": "8.21.0"
+    "ws": "8.21.0",
+    "@opentelemetry/api-logs": "0.219.0",
+    "@opentelemetry/context-async-hooks": "2.8.0",
+    "@opentelemetry/core": "2.8.0",
+    "@opentelemetry/exporter-logs-otlp-http": "0.219.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.219.0",
+    "@opentelemetry/otlp-exporter-base": "0.219.0",
+    "@opentelemetry/otlp-transformer": "0.219.0",
+    "@opentelemetry/resources": "2.8.0",
+    "@opentelemetry/sdk-logs": "0.219.0",
+    "@opentelemetry/sdk-metrics": "2.8.0",
+    "@opentelemetry/sdk-trace-base": "2.8.0"
   }
 }

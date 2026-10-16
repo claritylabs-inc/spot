@@ -4886,6 +4886,22 @@ export default defineSchema({
     .index("thread", ["threadId"])
     .index("message", ["threadMessageId"]),
 
+  // Spectrum webhook transport: inbound `message.id` dedupe and outbound
+  // `clientMessageId` claims that replaced the Railway worker's in-memory cache.
+  imessageTransportClaims: defineTable({
+    role: v.union(v.literal("customer"), v.literal("operator")),
+    kind: v.union(v.literal("webhook_message"), v.literal("send")),
+    key: v.string(),
+    status: v.union(
+      v.literal("accepted"),
+      v.literal("sending"),
+      v.literal("sent"),
+    ),
+    expiresAt: v.number(),
+  })
+    .index("role_kind_key", ["role", "kind", "key"])
+    .index("expiration", ["expiresAt"]),
+
   appCardAccessLinks: defineTable({
     orgId: v.id("organizations"),
     tokenHash: v.string(),
