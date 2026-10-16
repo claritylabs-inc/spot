@@ -467,6 +467,15 @@ async function listRequirementsVisibleToOrg(
         {
           title: source.title,
           sourceType: source.sourceType,
+          // Only the owning org's own PDF is linked; a vendor viewing a
+          // client's requirement never receives the client's file.
+          fileUrl:
+            source.fileId &&
+            source.orgId === orgId &&
+            (source.contentType?.includes("pdf") ||
+              source.fileName?.toLowerCase().endsWith(".pdf"))
+              ? ((await ctx.storage.getUrl(source.fileId)) ?? undefined)
+              : undefined,
           dealName: source.dealName,
           dealType: source.dealType,
           holder: holders[0]
@@ -603,7 +612,11 @@ export const listCertificateRequirementSources = query({
         }
         return {
           ...source,
-          internalNotes: await readRequirementNotes(ctx, source, access.accessType === "operator"),
+          internalNotes: await readRequirementNotes(
+            ctx,
+            source,
+            access.accessType === "operator",
+          ),
           holder,
           holders,
           requirementCount: sourceRequirements.length,
@@ -645,7 +658,14 @@ export const listRequirementSources = query({
       sources
         .filter((source) => !source.archivedAt)
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map((source) => enrichRequirementSource(ctx, source, requirements, access.accessType === "operator")),
+        .map((source) =>
+          enrichRequirementSource(
+            ctx,
+            source,
+            requirements,
+            access.accessType === "operator",
+          ),
+        ),
     );
   },
 });
@@ -708,7 +728,17 @@ export const upsertRequirement = mutation({
       if (!existing || existing.orgId !== args.orgId) {
         throw new Error("Requirement not found");
       }
-      await ctx.db.patch(requirementId, patch);
+      // A moved page or rewritten excerpt makes the stored highlight stale.
+      const sourceMoved =
+        existing.sourcePageStart !== patch.sourcePageStart ||
+        existing.sourceExcerpt !== patch.sourceExcerpt ||
+        existing.sourceDocumentId !== patch.sourceDocumentId;
+      await ctx.db.patch(requirementId, {
+        ...patch,
+        ...(sourceMoved
+          ? { sourceBbox: undefined, sourceVerification: undefined }
+          : {}),
+      });
     } else {
       requirementId = await ctx.db.insert("insuranceRequirements", {
         orgId: args.orgId,
@@ -788,7 +818,8 @@ export const updateRequirementSource = mutation({
       sourcePatch.certificateHolderIds = [
         certificateHolderId,
         ...(source.certificateHolderIds ?? []).filter(
-          (holderId) => holderId !== previousPrimary && holderId !== certificateHolderId,
+          (holderId) =>
+            holderId !== previousPrimary && holderId !== certificateHolderId,
         ),
       ];
     }
@@ -797,7 +828,13 @@ export const updateRequirementSource = mutation({
     if (args.dealType !== undefined)
       sourcePatch.dealType = cleanOptionalString(args.dealType);
     await ctx.db.patch(args.sourceDocumentId, sourcePatch);
-    if (args.internalNotes !== undefined) await saveRequirementNotes(ctx, { ...source, ...sourcePatch }, args.internalNotes, { actorUserId: access.userId });
+    if (args.internalNotes !== undefined)
+      await saveRequirementNotes(
+        ctx,
+        { ...source, ...sourcePatch },
+        args.internalNotes,
+        { actorUserId: access.userId },
+      );
     const requirements = await ctx.db
       .query("insuranceRequirements")
       .withIndex("organization_status", (q) =>
@@ -1538,7 +1575,10 @@ export const createRequirementSourceDocumentInternal = internalMutation({
     });
     if (args.internalNotes !== undefined) {
       const source = await ctx.db.get(sourceDocumentId);
-      if (source) await saveRequirementNotes(ctx, source, args.internalNotes, { actorUserId: args.userId });
+      if (source)
+        await saveRequirementNotes(ctx, source, args.internalNotes, {
+          actorUserId: args.userId,
+        });
     }
     return sourceDocumentId;
   },
@@ -1567,6 +1607,7 @@ export const createRequirementsInternal = internalMutation({
         sourceExcerpt: v.optional(v.string()),
         sourcePageStart: v.optional(v.number()),
         sourcePageEnd: v.optional(v.number()),
+        sourceVerification: v.optional(v.literal("unverified")),
       }),
     ),
   },
@@ -1597,6 +1638,7 @@ export const createRequirementsInternal = internalMutation({
             requirement.sourceExcerpt?.trim() || sanitized.requirementText,
           sourcePageStart: requirement.sourcePageStart,
           sourcePageEnd: requirement.sourcePageEnd,
+          sourceVerification: requirement.sourceVerification,
           status: "active",
           createdByUserId: args.userId,
           updatedByUserId: args.userId,
@@ -1616,6 +1658,65 @@ export const createRequirementsInternal = internalMutation({
       },
     );
     return ids;
+  },
+});
+
+export const getRequirementsForSourceLocationInternal = internalQuery({
+  args: {
+    sourceDocumentId: v.id("requirementSourceDocuments"),
+    requirementIds: v.array(v.id("insuranceRequirements")),
+  },
+  handler: async (ctx, args) => {
+    const source = await ctx.db.get(args.sourceDocumentId);
+    if (!source?.fileId) return null;
+    const requirements = [];
+    for (const requirementId of args.requirementIds) {
+      const requirement = await ctx.db.get(requirementId);
+      if (
+        !requirement ||
+        requirement.status !== "active" ||
+        requirement.sourceDocumentId !== source._id ||
+        requirement.sourceVerification === "unverified" ||
+        !requirement.sourceExcerpt ||
+        !requirement.sourcePageStart
+      )
+        continue;
+      requirements.push({
+        _id: requirement._id,
+        sourceExcerpt: requirement.sourceExcerpt,
+        sourcePageStart: requirement.sourcePageStart,
+      });
+    }
+    return { orgId: source.orgId, fileId: source.fileId, requirements };
+  },
+});
+
+export const setRequirementSourceBboxInternal = internalMutation({
+  args: {
+    requirementId: v.id("insuranceRequirements"),
+    sourcePageStart: v.number(),
+    sourceExcerpt: v.string(),
+    sourceBbox: v.object({
+      page: v.number(),
+      x: v.number(),
+      y: v.number(),
+      width: v.number(),
+      height: v.number(),
+      pageWidth: v.number(),
+      pageHeight: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const requirement = await ctx.db.get(args.requirementId);
+    // The requirement may have been edited while the locator ran.
+    if (
+      !requirement ||
+      requirement.sourcePageStart !== args.sourcePageStart ||
+      requirement.sourceExcerpt !== args.sourceExcerpt
+    )
+      return false;
+    await ctx.db.patch(args.requirementId, { sourceBbox: args.sourceBbox });
+    return true;
   },
 });
 

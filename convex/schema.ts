@@ -1740,6 +1740,21 @@ export default defineSchema({
     sourceExcerpt: v.optional(v.string()),
     sourcePageStart: v.optional(v.number()),
     sourcePageEnd: v.optional(v.number()),
+    // Excerpt read from a page image that Jev could not find on the page.
+    sourceVerification: v.optional(v.literal("unverified")),
+    // Where the excerpt sits on its PDF page: PDF points at scale 1, top-left
+    // origin, with the page size those points are measured against.
+    sourceBbox: v.optional(
+      v.object({
+        page: v.number(),
+        x: v.number(),
+        y: v.number(),
+        width: v.number(),
+        height: v.number(),
+        pageWidth: v.number(),
+        pageHeight: v.number(),
+      }),
+    ),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdByUserId: v.id("users"),
     updatedByUserId: v.id("users"),

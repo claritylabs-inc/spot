@@ -10,7 +10,15 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { generateObjectForOrg } from "../lib/models";
-import { extractPdfPlainText } from "../lib/pdfText";
+import { extractPdfText } from "../lib/pdfText";
+import { clRouterDecide } from "../lib/clRouterClient";
+import { jevProceeds } from "../lib/jevThreshold";
+import { locateOnPdfPage, stageJevImages } from "../lib/jevImages";
+import {
+  JEV_IMAGE_MAX_SIDE,
+  JEV_IMAGE_MIN_SIDE,
+  renderPdfPageImages,
+} from "../lib/pdfPageImages";
 import {
   REQUIREMENT_LIMIT_KINDS,
   REQUIREMENT_PROVISIONS,
@@ -216,9 +224,9 @@ function normalizeImportedRequirement(
     })),
     maxDeductible: requirement.maxDeductible
       ? {
-        amount: requirement.maxDeductible.amount,
-        label: optionalString(requirement.maxDeductible.label),
-      }
+          amount: requirement.maxDeductible.amount,
+          label: optionalString(requirement.maxDeductible.label),
+        }
       : undefined,
     coverageForm: requirement.coverageForm ?? undefined,
     retroactiveDateOnOrBefore: optionalString(
@@ -236,29 +244,112 @@ function isCheckableCoverageRequirement(
   requirement: ReturnType<typeof normalizeImportedRequirement>,
 ) {
   return Boolean(
-    requirement.lineOfBusiness &&
-      hasCheckableCoverageTerms(requirement),
+    requirement.lineOfBusiness && hasCheckableCoverageTerms(requirement),
   );
 }
 
-async function extractPdfRequirementText(
+/** A page (or uploaded photo) the model reads visually, sized for Jev's 280-1568px window. */
+export type RequirementSourceImage = {
+  /** 1-based page number; an uploaded image is page 1. */
+  page: number;
+  bytes: Uint8Array;
+  mediaType: "image/jpeg";
+};
+
+/** Everything the extraction needs: text, or page images when there is no text layer. */
+export type RequirementSourceMaterial = ExtractedFileText & {
+  /** Set only when the source must be read visually (scanned PDF or image upload). */
+  images?: RequirementSourceImage[];
+};
+
+export const MAX_REQUIREMENT_SOURCE_IMAGES = 8;
+/** A PDF text layer shorter than this per page is a scan with stray page numbers. */
+const MIN_PDF_TEXT_CHARS_PER_PAGE = 40;
+
+function isPdfSource(fileName?: string, contentType?: string) {
+  return (
+    (contentType ?? "").toLowerCase().includes("pdf") ||
+    (fileName ?? "").toLowerCase().endsWith(".pdf")
+  );
+}
+
+export function isRequirementImageSource(
+  fileName?: string,
+  contentType?: string,
+) {
+  const type = (contentType ?? "").toLowerCase();
+  return (
+    type === "image/png" ||
+    type === "image/jpeg" ||
+    type === "image/jpg" ||
+    /\.(png|jpe?g)$/i.test(fileName ?? "")
+  );
+}
+
+/** Re-encodes an uploaded photo as JPEG whose sides fit Jev's window (padding extreme aspect ratios). */
+export async function normalizeRequirementImage(
+  bytes: Uint8Array,
+): Promise<RequirementSourceImage> {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const image = await loadImage(Buffer.from(bytes));
+  const fit = JEV_IMAGE_MAX_SIDE / Math.max(image.width, image.height);
+  const floor = JEV_IMAGE_MIN_SIDE / Math.min(image.width, image.height);
+  const scale = Math.min(Math.max(Math.min(1, fit), floor), fit);
+  const drawWidth = Math.max(1, Math.round(image.width * scale));
+  const drawHeight = Math.max(1, Math.round(image.height * scale));
+  const clamp = (value: number) =>
+    Math.min(JEV_IMAGE_MAX_SIDE, Math.max(JEV_IMAGE_MIN_SIDE, value));
+  const canvas = createCanvas(clamp(drawWidth), clamp(drawHeight));
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, drawWidth, drawHeight);
+  return {
+    page: 1,
+    bytes: new Uint8Array(await canvas.encode("jpeg", 88)),
+    mediaType: "image/jpeg",
+  };
+}
+
+async function extractPdfRequirementMaterial(
   buffer: ArrayBuffer,
   fileName?: string,
-): Promise<ExtractedFileText> {
+): Promise<RequirementSourceMaterial | null> {
   const pdfBytes = new Uint8Array(buffer);
-  const parsedText = await extractPdfPlainText({
+  const parsed = await extractPdfText({
     pdfBytes,
     documentId: fileName || "requirement-document",
     sourceKind: "attachment",
-    maxChars: MAX_SOURCE_CHARS,
   });
-  if (!parsedText) {
-    throw new Error("Could not extract text from the requirement PDF");
+  const text = parsed.text.trim();
+  if (
+    !parsed.textLayerMissing &&
+    text.replace(/\s/g, "").length >=
+      MIN_PDF_TEXT_CHARS_PER_PAGE * Math.max(1, parsed.pageCount)
+  ) {
+    return {
+      text: truncateSource(text),
+      parserBackend: "pdfjs",
+      parsedAt: dayjs().valueOf(),
+    };
   }
+  const rendered = await renderPdfPageImages({
+    pdfBytes,
+    pages: Array.from(
+      { length: Math.min(parsed.pageCount, MAX_REQUIREMENT_SOURCE_IMAGES) },
+      (_, index) => index + 1,
+    ),
+  });
+  if (!rendered.length) return null;
   return {
-    text: parsedText,
+    text: "",
     parserBackend: "pdfjs",
     parsedAt: dayjs().valueOf(),
+    images: rendered.map(({ page, bytes, mediaType }) => ({
+      page,
+      bytes,
+      mediaType,
+    })),
   };
 }
 
@@ -279,7 +370,11 @@ export async function extractFileText({
   const lowerName = (fileName ?? "").toLowerCase();
   const type = (contentType ?? "").toLowerCase();
   if (type.includes("pdf") || lowerName.endsWith(".pdf")) {
-    return await extractPdfRequirementText(buffer, fileName);
+    const material = await extractPdfRequirementMaterial(buffer, fileName);
+    if (!material || material.images) {
+      throw new Error("Could not extract text from the requirement PDF");
+    }
+    return material;
   }
   if (type.includes("wordprocessingml") || lowerName.endsWith(".docx")) {
     return { text: await extractDocxText(buffer), parserBackend: "mammoth" };
@@ -301,6 +396,175 @@ export async function extractFileText({
   );
 }
 
+/**
+ * Like `extractFileText`, but a scanned PDF or a PNG/JPEG upload returns page
+ * images for the model to read instead of failing.
+ */
+export async function extractRequirementSource(args: {
+  buffer: ArrayBuffer;
+  fileName?: string;
+  contentType?: string;
+}): Promise<RequirementSourceMaterial> {
+  if (isRequirementImageSource(args.fileName, args.contentType)) {
+    return {
+      text: "",
+      images: [await normalizeRequirementImage(new Uint8Array(args.buffer))],
+    };
+  }
+  if (isPdfSource(args.fileName, args.contentType)) {
+    const material = await extractPdfRequirementMaterial(
+      args.buffer,
+      args.fileName,
+    );
+    if (!material) {
+      throw new Error("Could not read the requirement PDF");
+    }
+    return material;
+  }
+  return await extractFileText(args);
+}
+
+export const IMAGE_SOURCE_PLACEHOLDER =
+  "The source is the attached page image(s), labelled Page 1, Page 2, ... in order. Read them visually; copy sourceExcerpt exactly as printed and set source pages from the page labels.";
+
+/** Model input for extraction: prompt-only for text, labelled page images otherwise. */
+export function requirementExtractionInput(
+  prompt: string,
+  images: RequirementSourceImage[] | undefined,
+) {
+  if (!images?.length) return { prompt };
+  return {
+    messages: [
+      {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: prompt },
+          ...images.flatMap((image) => [
+            { type: "text" as const, text: `Page ${image.page}:` },
+            {
+              type: "image" as const,
+              image: image.bytes,
+              mediaType: image.mediaType,
+            },
+          ]),
+        ],
+      },
+    ],
+  };
+}
+
+export type ExcerptCheck = {
+  /** Index into the `excerpts` array passed in. */
+  index: number;
+  text: string;
+  /** Page the model named, if any. */
+  page?: number | null;
+};
+
+export type ExcerptVerdict = {
+  verified: boolean;
+  /** Page where the excerpt was seen; set only when verified. */
+  page?: number;
+};
+
+/**
+ * Verifies excerpts read from page images. One Jev request per page image, one
+ * presence Noul per excerpt, excerpts as structured state. An excerpt that
+ * names a page is checked only on that page; otherwise on every page. Code
+ * composes the verdict: verified when any checked page proceeds. A failed
+ * request leaves its excerpts unverified (fail closed).
+ */
+export async function verifyExcerptsOnPageImages(
+  ctx: ActionCtx,
+  args: {
+    orgId?: Id<"organizations">;
+    images: RequirementSourceImage[];
+    excerpts: ExcerptCheck[];
+    surface: string;
+    sessionKey: string;
+    traceId?: string;
+  },
+): Promise<Map<number, ExcerptVerdict>> {
+  const verdicts = new Map<number, ExcerptVerdict>(
+    args.excerpts.map((excerpt) => [excerpt.index, { verified: false }]),
+  );
+  const pageNumbers = new Set(args.images.map((image) => image.page));
+  await Promise.all(
+    args.images.map(async (image) => {
+      const checks = args.excerpts.filter((excerpt) =>
+        excerpt.page && pageNumbers.has(excerpt.page)
+          ? excerpt.page === image.page
+          : true,
+      );
+      if (!checks.length) return;
+      const staged = await stageJevImages(
+        ctx,
+        [
+          {
+            bytes: image.bytes,
+            mediaType: image.mediaType,
+            label: `page-${image.page}`,
+          },
+        ],
+        {
+          surface: args.surface,
+          sessionKey: args.sessionKey,
+          ...(args.orgId ? { orgId: args.orgId } : {}),
+        },
+      );
+      try {
+        const result = await clRouterDecide(
+          {
+            ...(args.orgId ? { orgId: String(args.orgId) } : {}),
+            task: "requirement_excerpt_verification",
+            ...(args.traceId ? { trace: { traceId: args.traceId } } : {}),
+            state: {
+              page: staged.refs[0],
+              page_number: image.page,
+              excerpts: Object.fromEntries(
+                checks.map((check) => [`e${check.index}`, check.text]),
+              ),
+            },
+            assets: staged.assets,
+            questions: Object.fromEntries(
+              checks.map((check) => [
+                `e${check.index}`,
+                {
+                  type: "noul" as const,
+                  instructions: {
+                    question: `Is the wording of \`excerpts.e${check.index}\` printed on page ${image.page}, shown in \`page\`?`,
+                    compare:
+                      "Allow differences in line breaks, spacing, and hyphenation only. The same words must appear; a similar topic or paraphrase does not count.",
+                  },
+                },
+              ]),
+            ),
+          },
+          { telemetry: ctx },
+        );
+        for (const check of checks) {
+          const answer = result.answers[`e${check.index}`];
+          if (answer?.type === "noul" && jevProceeds(answer.noul)) {
+            const current = verdicts.get(check.index);
+            if (!current?.verified) {
+              verdicts.set(check.index, { verified: true, page: image.page });
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "Requirement excerpt verification failed",
+          image.page,
+          error instanceof Error ? error.message : "Unknown error",
+        );
+      } finally {
+        await staged.cleanup();
+      }
+    }),
+  );
+  return verdicts;
+}
+
 export function buildPrompt({
   sourceText,
   existingRequirements,
@@ -313,18 +577,18 @@ export function buildPrompt({
   const existing = existingRequirements.length
     ? existingRequirements
         .map(
-          (requirement) => `- ${JSON.stringify({
-            scope: requirement.scope,
-            lineOfBusiness: requirement.lineOfBusiness,
-            title: requirement.title,
-            limits: requirement.limits,
-            maxDeductible: requirement.maxDeductible,
-            coverageForm: requirement.coverageForm,
-            retroactiveDateOnOrBefore:
-              requirement.retroactiveDateOnOrBefore,
-            provisions: requirement.provisions,
-            requiredForms: requirement.requiredForms,
-          })}`,
+          (requirement) =>
+            `- ${JSON.stringify({
+              scope: requirement.scope,
+              lineOfBusiness: requirement.lineOfBusiness,
+              title: requirement.title,
+              limits: requirement.limits,
+              maxDeductible: requirement.maxDeductible,
+              coverageForm: requirement.coverageForm,
+              retroactiveDateOnOrBefore: requirement.retroactiveDateOnOrBefore,
+              provisions: requirement.provisions,
+              requiredForms: requirement.requiredForms,
+            })}`,
         )
         .join("\n")
     : "None";
@@ -374,6 +638,67 @@ Source text:
 ${sourceText}`;
 }
 
+/**
+ * Excerpts read from page images are checked against the images. A verified
+ * excerpt may fill in its page; an unverified one stays on the requirement but
+ * is flagged so the UI marks it for review. Text-backed excerpts are exact
+ * substrings of the source and need no check.
+ */
+async function markUnverifiedImageExcerpts<
+  T extends {
+    sourceExcerpt: string;
+    sourcePageStart?: number;
+    sourcePageEnd?: number;
+  },
+>(
+  ctx: ActionCtx,
+  args: {
+    orgId: Id<"organizations">;
+    images: RequirementSourceImage[] | undefined;
+    sourceText: string;
+    runId: string;
+  },
+  requirements: T[],
+): Promise<Array<T & { sourceVerification?: "unverified" }>> {
+  if (!args.images?.length) return requirements;
+  const compact = (value: string) => value.replace(/\s+/g, " ").trim();
+  const text = compact(args.sourceText);
+  const pending = requirements.flatMap((requirement, index) =>
+    text && text.includes(compact(requirement.sourceExcerpt))
+      ? []
+      : [
+          {
+            index,
+            text: compact(requirement.sourceExcerpt),
+            page: requirement.sourcePageStart,
+          },
+        ],
+  );
+  if (!pending.length) return requirements;
+  const verdicts = await verifyExcerptsOnPageImages(ctx, {
+    orgId: args.orgId,
+    images: args.images,
+    excerpts: pending,
+    surface: "requirement_import",
+    sessionKey: args.runId,
+    traceId: args.runId,
+  });
+  return requirements.map((requirement, index) => {
+    const verdict = verdicts.get(index);
+    if (!verdict) return requirement;
+    if (!verdict.verified) {
+      return { ...requirement, sourceVerification: "unverified" as const };
+    }
+    return requirement.sourcePageStart
+      ? requirement
+      : {
+          ...requirement,
+          sourcePageStart: verdict.page,
+          sourcePageEnd: requirement.sourcePageEnd ?? verdict.page,
+        };
+  });
+}
+
 async function runRequirementImport(
   ctx: ActionCtx,
   args: {
@@ -382,7 +707,11 @@ async function runRequirementImport(
     fileId?: Id<"_storage">;
     fileName?: string;
     contentType?: string;
-    sourceType?: "lease_agreement" | "client_contract" | "vendor_requirements" | "other";
+    sourceType?:
+      | "lease_agreement"
+      | "client_contract"
+      | "vendor_requirements"
+      | "other";
     sourceName?: string;
     scope?: RequirementScope;
     holder?: RequirementSourceHolderInput;
@@ -398,15 +727,17 @@ async function runRequirementImport(
   sourceDocumentId: Id<"requirementSourceDocuments">;
 }> {
   const runId = crypto.randomUUID();
-  const sourceType = args.sourceType ?? inferRequirementSourceType(args.fileName);
+  const sourceType =
+    args.sourceType ?? inferRequirementSourceType(args.fileName);
   const scope = args.scope ?? "vendors";
   const sourceDocumentName =
     args.sourceName?.trim() ||
     args.fileName ||
     `${titlePrefix} ${dayjs().format("YYYY-MM-DD HH:mm")}`;
-  const trigger = titlePrefix === "Mailbox requirements"
-    ? "mailbox_import" as const
-    : "web_import" as const;
+  const trigger =
+    titlePrefix === "Mailbox requirements"
+      ? ("mailbox_import" as const)
+      : ("web_import" as const);
   await ctx.runMutation(internal.requirementExtractionRuns.start, {
     runId,
     orgId: args.orgId,
@@ -426,22 +757,27 @@ async function runRequirementImport(
         error: message,
       });
     } catch (telemetryError) {
-      console.warn("Failed to record requirement extraction error", telemetryError);
+      console.warn(
+        "Failed to record requirement extraction error",
+        telemetryError,
+      );
     }
   };
 
   let sourceText = args.pastedText?.trim() ?? "";
-  let fileExtraction: ExtractedFileText | undefined;
+  let fileExtraction: RequirementSourceMaterial | undefined;
   try {
     if (args.fileId) {
       const blob = await ctx.storage.get(args.fileId);
       if (!blob) throw new Error("Requirement document not found");
-      fileExtraction = await extractFileText({
+      fileExtraction = await extractRequirementSource({
         buffer: await blob.arrayBuffer(),
         fileName: args.fileName,
         contentType: args.contentType,
       });
-      sourceText = [sourceText, fileExtraction.text].filter(Boolean).join("\n\n");
+      sourceText = [sourceText, fileExtraction.text]
+        .filter(Boolean)
+        .join("\n\n");
     }
   } catch (error) {
     await failRun(error);
@@ -449,8 +785,11 @@ async function runRequirementImport(
   }
 
   sourceText = truncateSource(sourceText);
-  if (!sourceText) {
-    const error = new Error("Paste text or upload a requirement document first");
+  const sourceImages = fileExtraction?.images;
+  if (!sourceText && !sourceImages?.length) {
+    const error = new Error(
+      "Paste text or upload a requirement document first",
+    );
     await failRun(error);
     throw error;
   }
@@ -463,25 +802,34 @@ async function runRequirementImport(
   const abortSignal = AbortSignal.timeout(REQUIREMENT_EXTRACTION_TIMEOUT_MS);
   let result;
   try {
-    result = await generateObjectForOrg(ctx, args.orgId, "requirement_extraction", {
-      schema: RequirementImportSchema,
-      abortSignal,
-      maxOutputTokens: 3_000,
-      system:
-        "You convert contract, lease, certificate, and vendor insurance language into typed ACORD-25-style coverage requirements for Spot.",
-      prompt: buildPrompt({
-        sourceText,
-        existingRequirements: context.existingRequirements,
-        scope,
-      }),
-    }, {
-      taskKind: "requirement_extraction",
-      trace: {
-        traceId: runId,
-        channel: trigger === "mailbox_import" ? "mailbox" : "web",
-        phase: "extracting_requirements",
+    result = await generateObjectForOrg(
+      ctx,
+      args.orgId,
+      "requirement_extraction",
+      {
+        schema: RequirementImportSchema,
+        abortSignal,
+        maxOutputTokens: 3_000,
+        system:
+          "You convert contract, lease, certificate, and vendor insurance language into typed ACORD-25-style coverage requirements for Spot.",
+        ...requirementExtractionInput(
+          buildPrompt({
+            sourceText: sourceText || IMAGE_SOURCE_PLACEHOLDER,
+            existingRequirements: context.existingRequirements,
+            scope,
+          }),
+          sourceImages,
+        ),
       },
-    });
+      {
+        taskKind: "requirement_extraction",
+        trace: {
+          traceId: runId,
+          channel: trigger === "mailbox_import" ? "mailbox" : "web",
+          phase: "extracting_requirements",
+        },
+      },
+    );
   } catch (error) {
     await failRun(error);
     if (abortSignal.aborted) {
@@ -493,9 +841,18 @@ async function runRequirementImport(
   }
 
   const usage = result.totalUsage ?? result.usage;
-  const normalizedRequirements = result.object.requirements
-    .map((requirement) => normalizeImportedRequirement(requirement, scope))
-    .filter(isCheckableCoverageRequirement);
+  const normalizedRequirements = await markUnverifiedImageExcerpts(
+    ctx,
+    {
+      orgId: args.orgId,
+      images: sourceImages,
+      sourceText,
+      runId,
+    },
+    result.object.requirements
+      .map((requirement) => normalizeImportedRequirement(requirement, scope))
+      .filter(isCheckableCoverageRequirement),
+  );
   await ctx.runMutation(internal.requirementExtractionRuns.recordExtraction, {
     runId,
     extractedRequirementCount: result.object.requirements.length,
@@ -508,8 +865,12 @@ async function runRequirementImport(
     model: result.route.model,
     ...(result.routeSource ? { routeSource: result.routeSource } : {}),
     ...(result.transport ? { transport: result.transport } : {}),
-    ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
-    ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+    ...(usage.inputTokens === undefined
+      ? {}
+      : { inputTokens: usage.inputTokens }),
+    ...(usage.outputTokens === undefined
+      ? {}
+      : { outputTokens: usage.outputTokens }),
     ...(result.clRouter ? { costUsd: result.clRouter.costUsd } : {}),
   });
   // Do not leave a completed-looking source behind when extraction fails. A
@@ -559,6 +920,19 @@ async function runRequirementImport(
     throw error;
   }
 
+  if (
+    requirementIds.length &&
+    isPdfSource(args.fileName, args.contentType) &&
+    args.fileId
+  ) {
+    // Highlights are advisory and slow; they land after the import returns.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.complianceRequirements.locateRequirementSources,
+      { requirementIds, sourceDocumentId },
+    );
+  }
+
   await ctx.runMutation(internal.requirementExtractionRuns.complete, {
     runId,
     sourceDocumentId,
@@ -569,7 +943,11 @@ async function runRequirementImport(
     ),
   });
 
-  return { createdCount: requirementIds.length, requirementIds, sourceDocumentId };
+  return {
+    createdCount: requirementIds.length,
+    requirementIds,
+    sourceDocumentId,
+  };
 }
 
 function inferRequirementSourceType(fileName?: string) {
@@ -592,21 +970,25 @@ export const importRequirements = action({
     sourceType: v.optional(sourceDocumentTypeValidator),
     sourceName: v.optional(v.string()),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
-    holder: v.optional(v.object({
-      displayName: v.string(),
-      contactName: v.optional(v.string()),
-      email: v.optional(v.string()),
-      phone: v.optional(v.string()),
-      address: v.optional(v.object({
-        line1: v.optional(v.string()),
-        line2: v.optional(v.string()),
-        city: v.optional(v.string()),
-        state: v.optional(v.string()),
-        postalCode: v.optional(v.string()),
-        country: v.optional(v.string()),
-        formatted: v.optional(v.string()),
-      })),
-    })),
+    holder: v.optional(
+      v.object({
+        displayName: v.string(),
+        contactName: v.optional(v.string()),
+        email: v.optional(v.string()),
+        phone: v.optional(v.string()),
+        address: v.optional(
+          v.object({
+            line1: v.optional(v.string()),
+            line2: v.optional(v.string()),
+            city: v.optional(v.string()),
+            state: v.optional(v.string()),
+            postalCode: v.optional(v.string()),
+            country: v.optional(v.string()),
+            formatted: v.optional(v.string()),
+          }),
+        ),
+      }),
+    ),
     dealName: v.optional(v.string()),
     dealType: v.optional(v.string()),
     internalNotes: v.optional(v.string()),
@@ -643,21 +1025,25 @@ export const importRequirementsInternal = internalAction({
     sourceType: v.optional(sourceDocumentTypeValidator),
     sourceName: v.optional(v.string()),
     scope: v.optional(v.union(v.literal("vendors"), v.literal("own_org"))),
-    holder: v.optional(v.object({
-      displayName: v.string(),
-      contactName: v.optional(v.string()),
-      email: v.optional(v.string()),
-      phone: v.optional(v.string()),
-      address: v.optional(v.object({
-        line1: v.optional(v.string()),
-        line2: v.optional(v.string()),
-        city: v.optional(v.string()),
-        state: v.optional(v.string()),
-        postalCode: v.optional(v.string()),
-        country: v.optional(v.string()),
-        formatted: v.optional(v.string()),
-      })),
-    })),
+    holder: v.optional(
+      v.object({
+        displayName: v.string(),
+        contactName: v.optional(v.string()),
+        email: v.optional(v.string()),
+        phone: v.optional(v.string()),
+        address: v.optional(
+          v.object({
+            line1: v.optional(v.string()),
+            line2: v.optional(v.string()),
+            city: v.optional(v.string()),
+            state: v.optional(v.string()),
+            postalCode: v.optional(v.string()),
+            country: v.optional(v.string()),
+            formatted: v.optional(v.string()),
+          }),
+        ),
+      }),
+    ),
     dealName: v.optional(v.string()),
     dealType: v.optional(v.string()),
     internalNotes: v.optional(v.string()),
@@ -680,5 +1066,78 @@ export const importRequirementsInternal = internalAction({
       context,
       "Mailbox requirements",
     );
+  },
+});
+
+const LOCATE_CONCURRENCY = 3;
+
+/**
+ * Stores a PDF-point box for each requirement's source excerpt so the viewer
+ * can highlight the clause. A Box has no "not found" answer, so a box is kept
+ * only when the presence Noul and the box confidence both proceed. The box is
+ * display-only; no decision or write depends on it.
+ */
+export const locateRequirementSources = internalAction({
+  args: {
+    sourceDocumentId: v.id("requirementSourceDocuments"),
+    requirementIds: v.array(v.id("insuranceRequirements")),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    const located = await ctx.runQuery(
+      internal.compliance.getRequirementsForSourceLocationInternal,
+      args,
+    );
+    if (!located?.requirements.length) return null;
+    const blob = await ctx.storage.get(located.fileId);
+    if (!blob) return null;
+    const pdfBytes = new Uint8Array(await blob.arrayBuffer());
+    const sessionKey = String(args.sourceDocumentId);
+    const queue = [...located.requirements];
+    const worker = async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        try {
+          const location = await locateOnPdfPage(ctx, {
+            pdfBytes,
+            page: next.sourcePageStart,
+            target: {
+              description: "printed text passage",
+              text: next.sourceExcerpt.slice(0, 600),
+            },
+            orgId: located.orgId,
+            task: "requirement_excerpt_location",
+            surface: "requirement_source_highlight",
+            sessionKey,
+            traceId: sessionKey,
+          });
+          if (!location.bbox || !jevProceeds(location.confidence)) continue;
+          await ctx.runMutation(
+            internal.compliance.setRequirementSourceBboxInternal,
+            {
+              requirementId: next._id,
+              sourcePageStart: next.sourcePageStart,
+              sourceExcerpt: next.sourceExcerpt,
+              sourceBbox: {
+                ...location.bbox,
+                pageWidth: location.pageWidth,
+                pageHeight: location.pageHeight,
+              },
+            },
+          );
+        } catch (error) {
+          console.warn(
+            "Requirement source highlight failed",
+            String(next._id),
+            error instanceof Error ? error.message : "Unknown error",
+          );
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.min(LOCATE_CONCURRENCY, queue.length) },
+        worker,
+      ),
+    );
+    return null;
   },
 });
