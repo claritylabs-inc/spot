@@ -191,7 +191,7 @@ not rewrite committed agent skills and guidance; refresh those explicitly with
 - `npm run container:doctor` - verify local Apple `container` prerequisites and installation
 - `npm run container:system:start` - start or initialize Apple's local container service
 - `npm run container:build:workers` - build all Railway worker images locally with Apple's `container` CLI for `linux/amd64`
-- `npm run container:run:imessage-worker` / `npm run container:run:mailbox-scan-worker` - run a locally built worker image with the worker's `.env`
+- `npm run container:run:imessage-worker` - run a locally built worker image with the worker's `.env`
 
 ## Local Worker Containers
 
@@ -232,7 +232,7 @@ cp imessage-worker/.env.template imessage-worker/.env
 npm run container:run:imessage-worker
 ```
 
-Repeat with a local Slack environment file or an environment file copied from `mailbox-scan-worker/.env.template` for that service. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
+Repeat with a local Slack environment file for that service. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
 
 ## Environment
 

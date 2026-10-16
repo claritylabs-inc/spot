@@ -19,8 +19,8 @@ The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
 - Vercel: configure `NPM_TOKEN` on the Spot project for Production, Preview,
   and any Development environment that installs dependencies.
 - Railway: tenant/operator iMessage and Slack Docker builds install
-  only their worker manifests, which do not depend on UI. The mailbox scan
-  Dockerfile performs no npm install. These builds need no UI package token.
+  only their worker manifests, which do not depend on UI. These builds need no
+  UI package token.
   Keep each service rooted in its worker directory; a future root dependency
   install would require package authentication at build time.
 - Local development: provide `NPM_TOKEN` in the install process environment.
@@ -51,9 +51,8 @@ package versions. Deployment requires every validation job to pass. After
 validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
-2. waits for the exact commit's three established Railway contexts
-   (`imessage-worker`, `slack-worker`, and
-   `spot-mailbox-scan-worker`) plus `operator-imessage-worker` after its
+2. waits for the exact commit's two established Railway contexts
+   (`imessage-worker` and `slack-worker`) plus `operator-imessage-worker` after its
    production health URL variable is configured, to report
    success, including explicit `No deployment needed` watch-path results;
 3. runs the deployed Convex, iMessage, Slack, and cl-router

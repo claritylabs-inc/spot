@@ -86,9 +86,6 @@ jobs:
         working-directory: slack-worker
         run: npm ci --include=dev --no-audit --no-fund --loglevel=error && npm run build && npm test
 
-      - name: Syntax-check mailbox scan worker
-        run: node --check mailbox-scan-worker/src/index.js
-
   validate-packages:
     runs-on: ubuntu-latest
     strategy:
@@ -183,7 +180,6 @@ jobs:
             Spot - imessage-worker
             Spot - operator-imessage-worker
             Spot - slack-worker
-            Spot - spot-mailbox-scan-worker
 
       - name: Check deployed service compatibility
         run: node scripts/check-agent-deployment-health.mjs --env production
