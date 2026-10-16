@@ -128,8 +128,8 @@ export function validateRequirementAttachmentDecision<
     const attachment = candidates.get(fileId);
     if (
       !attachment ||
-      !jevProceeds(document.isRequirementsSource) ||
-      !jevProceeds(document.selectedByUser)
+      jevProceeds(1 - document.isRequirementsSource) ||
+      jevProceeds(1 - document.selectedByUser)
     )
       return [];
     selectedConfidence[fileId] = weakest([
@@ -140,7 +140,10 @@ export function validateRequirementAttachmentDecision<
   });
   const vendors = jevProceeds(raw.appliesToVendors);
   const ownOrg = jevProceeds(raw.appliesToOwnOrg);
-  const scope = vendors && ownOrg ? "mixed" : vendors ? "vendors" : "own_org";
+  const scope = vendors && ownOrg ? "mixed"
+    : vendors ? "vendors"
+    : ownOrg ? "own_org"
+    : raw.appliesToVendors > raw.appliesToOwnOrg ? "vendors" : "own_org";
   const scopeConfidence = weakest([
     vendors ? raw.appliesToVendors : 1 - raw.appliesToVendors,
     ownOrg ? raw.appliesToOwnOrg : 1 - raw.appliesToOwnOrg,
@@ -156,18 +159,18 @@ export function validateRequirementAttachmentDecision<
     ]),
   };
   if (
-    !jevProceeds(raw.wantsNewRequirements) ||
-    !jevProceeds(1 - raw.persistenceNegated) ||
+    jevProceeds(1 - raw.wantsNewRequirements) ||
+    jevProceeds(raw.persistenceNegated) ||
     selected.length === 0 ||
-    scope === "mixed" ||
-    (!vendors && !ownOrg) ||
-    !jevProceeds(scopeConfidence)
+    scope === "mixed"
   ) {
     return { authorization: "none", attachments: [], decision };
   }
 
   const autoAuthorized =
-    Boolean(raw.intentEvidence.trim()) && jevProceeds(decision.confidence);
+    Boolean(raw.intentEvidence.trim()) &&
+    (vendors || ownOrg) &&
+    jevProceeds(decision.confidence);
 
   return {
     authorization: autoAuthorized ? "auto" : "confirmation",
