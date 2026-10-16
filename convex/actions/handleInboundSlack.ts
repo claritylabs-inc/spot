@@ -25,12 +25,14 @@ import {
   slackChannelTitlePrefix,
 } from "../lib/slackThreadTitle";
 import {
+  createSlackThreadContextArtifact,
   MAX_SLACK_THREAD_CONTEXT_MESSAGES,
   type SlackThreadContextSnapshot,
 } from "../lib/slackThreadContext";
 import { decideSlackControlIntent } from "../lib/channelControls";
 import { operatorSlackConversationKey } from "../lib/operatorSlackConfig";
 import { slackWebApi } from "../lib/slackWebApi";
+import { classifyPromptInjection } from "../lib/security";
 
 const CHANNEL_NAME_TIMEOUT_MS = 3_000;
 const internalApi = internal as any;
@@ -262,6 +264,12 @@ async function processOperatorBatch(
       )) as OperatorChannelThreadResult;
       const threadId = channelThread.threadId;
       const content = operatorSlackContent(refreshedEvent);
+      const screening = await classifyPromptInjection(ctx, content);
+      if (!screening.safe) {
+        throw new Error(
+          "Slack instructions held for review: security screening did not pass",
+        );
+      }
       const confirmation = await handleOperatorChannelConfirmation(ctx, {
         operatorUserId,
         threadId,
@@ -414,7 +422,7 @@ async function fetchThreadContext(
       threadTs: event.threadTs,
       latestMessageTs: event.messageTs,
     });
-    return {
+    const snapshot = {
       messages: context.messages
         .slice(0, MAX_SLACK_THREAD_CONTEXT_MESSAGES)
         .map((message) => ({
@@ -429,6 +437,17 @@ async function fetchThreadContext(
         })),
       truncated: context.truncated,
     };
+    const artifact = createSlackThreadContextArtifact(snapshot);
+    if (artifact) {
+      const screening = await classifyPromptInjection(ctx, artifact.data.text);
+      if (!screening.safe) {
+        console.warn("[security] Slack thread context omitted", {
+          audit: screening.audit,
+        });
+        return undefined;
+      }
+    }
+    return snapshot;
   } catch (error) {
     console.warn("[slack] Thread context retrieval failed", error);
     return undefined;
@@ -551,6 +570,14 @@ export const processDebounced = internalAction({
       const slackThreadContext = authorized.at(-1)
         ? await fetchThreadContext(ctx, authorized.at(-1)!)
         : undefined;
+      for (const event of authorized) {
+        const screening = await classifyPromptInjection(ctx, event.content);
+        if (!screening.safe) {
+          throw new Error(
+            "Slack instructions held for review: security screening did not pass",
+          );
+        }
+      }
       await Promise.all(authorized.map((event) => fetchAttachment(ctx, event)));
       const controlIntents = await Promise.all(
         authorized
