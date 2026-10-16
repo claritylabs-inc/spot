@@ -31,8 +31,8 @@ const RequirementAttachmentDecisionSchema = z.object({
   wantsNewRequirements: z.number().min(0).max(1),
   /** `message` says not to save, import, or store the attachments. */
   persistenceNegated: z.number().min(0).max(1),
-  scope: z.enum(["vendors", "own_org", "mixed"]),
-  scopeConfidence: z.number().min(0).max(1),
+  appliesToVendors: z.number().min(0).max(1),
+  appliesToOwnOrg: z.number().min(0).max(1),
   intentEvidence: z.string().max(240),
   documents: z
     .array(
@@ -99,8 +99,9 @@ function supportedRequirementCandidate(attachment: AttachmentCandidate) {
   );
 }
 
-/** Above 0.5 is a "yes"; a Noul near 0.5 is unsure and never counts as one. */
-const isYes = (probability: number) => probability > 0.5;
+// Confidence summaries are audit values; every prerequisite is thresholded below.
+const weakest = (probabilities: number[]) =>
+  [...probabilities].sort((a, b) => a - b)[0] ?? 0;
 
 export function validateRequirementAttachmentDecision<
   T extends AttachmentCandidate,
@@ -127,31 +128,40 @@ export function validateRequirementAttachmentDecision<
     const attachment = candidates.get(fileId);
     if (
       !attachment ||
-      !isYes(document.isRequirementsSource) ||
-      !isYes(document.selectedByUser)
+      !jevProceeds(document.isRequirementsSource) ||
+      !jevProceeds(document.selectedByUser)
     )
       return [];
-    selectedConfidence[fileId] = Math.min(
+    selectedConfidence[fileId] = weakest([
       document.isRequirementsSource,
       document.selectedByUser,
-    );
+    ]);
     return [attachment];
   });
+  const vendors = jevProceeds(raw.appliesToVendors);
+  const ownOrg = jevProceeds(raw.appliesToOwnOrg);
+  const scope = vendors && ownOrg ? "mixed" : vendors ? "vendors" : "own_org";
+  const scopeConfidence = weakest([
+    vendors ? raw.appliesToVendors : 1 - raw.appliesToVendors,
+    ownOrg ? raw.appliesToOwnOrg : 1 - raw.appliesToOwnOrg,
+  ]);
   const decision: RequirementAttachmentDecision = {
     ...raw,
     selectedConfidence,
-    confidence: Math.min(
+    confidence: weakest([
       raw.wantsNewRequirements,
       1 - raw.persistenceNegated,
-      raw.scopeConfidence,
+      scopeConfidence,
       ...Object.values(selectedConfidence),
-    ),
+    ]),
   };
   if (
-    !isYes(raw.wantsNewRequirements) ||
-    isYes(raw.persistenceNegated) ||
+    !jevProceeds(raw.wantsNewRequirements) ||
+    !jevProceeds(1 - raw.persistenceNegated) ||
     selected.length === 0 ||
-    raw.scope === "mixed"
+    scope === "mixed" ||
+    (!vendors && !ownOrg) ||
+    !jevProceeds(scopeConfidence)
   ) {
     return { authorization: "none", attachments: [], decision };
   }
@@ -162,7 +172,7 @@ export function validateRequirementAttachmentDecision<
   return {
     authorization: autoAuthorized ? "auto" : "confirmation",
     attachments: selected,
-    scope: raw.scope,
+    scope,
     decision,
   };
 }
@@ -219,22 +229,18 @@ export async function decideRequirementAttachmentImport<
             focus: "Explicit refusals such as 'don't save this' or 'just read it'.",
           },
         },
-        scope: {
-          type: "choice",
-          instructions:
-            "Whose obligations are described by the insurance requirements the user wants taken from the attached files, according to `message`?",
-          criteria: {
-            vendors: {
-              what: "Requirements that vendors, contractors, suppliers, or tenants must satisfy.",
-              not_for: "Requirements the user's own organization must satisfy.",
-            },
-            own_org: {
-              what: "Requirements the user's own organization must satisfy.",
-              not_for: "Requirements placed on vendors, contractors, or tenants.",
-            },
-            mixed: {
-              what: "Both groups are named explicitly for the same files.",
-            },
+        applies_to_vendors: {
+          type: "noul",
+          instructions: {
+            question: "According to `message`, do the requirements requested from `attachments` apply to vendors, contractors, suppliers, or tenants?",
+            not_for: "Requirements applying only to the user's own organization.",
+          },
+        },
+        applies_to_own_org: {
+          type: "noul",
+          instructions: {
+            question: "According to `message`, do the requirements requested from `attachments` apply to the user's own organization?",
+            not_for: "Requirements applying only to vendors, contractors, suppliers, or tenants.",
           },
         },
         ...Object.fromEntries(
@@ -268,11 +274,13 @@ export async function decideRequirementAttachmentImport<
       const answer = result.answers[id];
       return answer?.type === "noul" ? answer.noul : undefined;
     };
-    const scope = result.answers.scope;
+    const appliesToVendors = noul("applies_to_vendors");
+    const appliesToOwnOrg = noul("applies_to_own_org");
     const wantsNewRequirements = noul("wants_new_requirements");
     const persistenceNegated = noul("persistence_negated");
     if (
-      scope?.type !== "choice" ||
+      appliesToVendors === undefined ||
+      appliesToOwnOrg === undefined ||
       wantsNewRequirements === undefined ||
       persistenceNegated === undefined
     ) {
@@ -282,11 +290,8 @@ export async function decideRequirementAttachmentImport<
       {
         wantsNewRequirements,
         persistenceNegated,
-        scope: scope.choice,
-        scopeConfidence: Math.min(
-          scope.confidence,
-          scope.probabilities[scope.choice] ?? 0,
-        ),
+        appliesToVendors,
+        appliesToOwnOrg,
         intentEvidence: args.messageText.slice(0, 240),
         documents: candidates.map((attachment, index) => ({
           fileId: String(attachment.fileId),
