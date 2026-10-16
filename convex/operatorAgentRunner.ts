@@ -220,7 +220,7 @@ export async function selectOperatorToolFamilies(
         ...(args.trace ? { trace: args.trace } : {}),
       },
       question: (_family, description) =>
-        `Does Spot's internal operator agent need tools for ${description} to handle the operator's request, given its recent tool activity?`,
+        `Does Spot's internal operator agent need tools for ${description} to handle \`request\`, given \`recentToolActivity\` when supplied?`,
     },
     options,
   );
