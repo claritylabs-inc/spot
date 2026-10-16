@@ -11,7 +11,7 @@ import {
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { clRouterDecide } from "./clRouterClient";
-import { jevProceeds } from "./jevThreshold";
+import { jevProceeds, jevChoiceConfidence } from "./jevThreshold";
 
 export type CoverageLike = Record<string, unknown>;
 
@@ -131,36 +131,51 @@ function textValue(value: unknown): string | undefined {
 
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((item): item is string =>
-    typeof item === "string" && item.trim().length > 0,
-  ))];
+  return [
+    ...new Set(
+      value.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      ),
+    ),
+  ];
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 
-function detailSpans(sourceSpans: CoverageSourceSpan[] | undefined): DetailSpan[] {
+function detailSpans(
+  sourceSpans: CoverageSourceSpan[] | undefined,
+): DetailSpan[] {
   if (!Array.isArray(sourceSpans)) return [];
   return sourceSpans.flatMap((span) => {
     const text = textValue(span.text);
-    const sourceUnit = textValue(span.sourceUnit) ?? textValue(span.metadata?.sourceUnit);
-    if (!text || sourceUnit === "page" || sourceUnit === "table_cell") return [];
-    return [{
-      id: textValue(span.id),
-      text,
-      pageStart: typeof span.pageStart === "number" ? span.pageStart : undefined,
-      pageEnd: typeof span.pageEnd === "number" ? span.pageEnd : undefined,
-      sourceUnit,
-    }];
+    const sourceUnit =
+      textValue(span.sourceUnit) ?? textValue(span.metadata?.sourceUnit);
+    if (!text || sourceUnit === "page" || sourceUnit === "table_cell")
+      return [];
+    return [
+      {
+        id: textValue(span.id),
+        text,
+        pageStart:
+          typeof span.pageStart === "number" ? span.pageStart : undefined,
+        pageEnd: typeof span.pageEnd === "number" ? span.pageEnd : undefined,
+        sourceUnit,
+      },
+    ];
   });
 }
 
 function pageText(sourceSpans: CoverageSourceSpan[] | undefined, page: number) {
-  const pageSpan = sourceSpans?.find((span) =>
-    span.sourceUnit === "page" && span.pageStart === page && typeof span.text === "string",
+  const pageSpan = sourceSpans?.find(
+    (span) =>
+      span.sourceUnit === "page" &&
+      span.pageStart === page &&
+      typeof span.text === "string",
   );
   return textValue(pageSpan?.text) ?? "";
 }
@@ -206,13 +221,15 @@ function formattedMoney(amount: number) {
 }
 
 function normalizedCoverageName(value: unknown) {
-  return textValue(value)
-    ?.toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/\b(?:endorsement|insurance)\b/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim() ?? "";
+  return (
+    textValue(value)
+      ?.toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/\b(?:endorsement|insurance)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() ?? ""
+  );
 }
 
 function coverageTokens(value: unknown) {
@@ -238,12 +255,16 @@ function coverageTermKey(term: Record<string, unknown>) {
 }
 
 function isPremiumTerm(term: Record<string, unknown>) {
-  return term.kind === "premium" || /\bpremium\b/i.test(textValue(term.label) ?? "");
+  return (
+    term.kind === "premium" || /\bpremium\b/i.test(textValue(term.label) ?? "")
+  );
 }
 
 function isExposureTerm(term: Record<string, unknown>) {
   return /\b(?:exposure|reporting values?|total (?:pd|stated) values?|vehicle pd values?|premium basis|rate)\b/i.test(
-    [textValue(term.label), textValue(term.appliesTo)].filter(Boolean).join(" "),
+    [textValue(term.label), textValue(term.appliesTo)]
+      .filter(Boolean)
+      .join(" "),
   );
 }
 
@@ -256,15 +277,26 @@ function coverageWithoutBilling(value: unknown): CoverageLike | undefined {
         .filter((term): term is Record<string, unknown> => Boolean(term))
         .filter((term) => !isPremiumTerm(term) && !isExposureTerm(term))
     : [];
-  const removedLimit = Array.isArray(record.limits) && record.limits.some((term) => {
-    const item = recordValue(term);
-    return item && (isPremiumTerm(item) || isExposureTerm(item)) && textValue(item.value) === textValue(record.limit);
-  });
+  const removedLimit =
+    Array.isArray(record.limits) &&
+    record.limits.some((term) => {
+      const item = recordValue(term);
+      return (
+        item &&
+        (isPremiumTerm(item) || isExposureTerm(item)) &&
+        textValue(item.value) === textValue(record.limit)
+      );
+    });
   const next = { ...record };
   delete next.premium;
-  if (removedLimit || /\b(?:exposure|reporting values?|total (?:pd|stated) values?|vehicle pd values?)\b/i.test(
-    [textValue(record.limit), textValue(record.originalContent)].filter(Boolean).join(" "),
-  )) {
+  if (
+    removedLimit ||
+    /\b(?:exposure|reporting values?|total (?:pd|stated) values?|vehicle pd values?)\b/i.test(
+      [textValue(record.limit), textValue(record.originalContent)]
+        .filter(Boolean)
+        .join(" "),
+    )
+  ) {
     delete next.limit;
   }
   if (limits.length > 0) next.limits = limits;
@@ -288,15 +320,26 @@ function coverageMatchScore(left: CoverageLike, right: CoverageLike) {
   if (leftName.includes(rightName) || rightName.includes(leftName)) return 80;
   const leftTokens = new Set(coverageTokens(left.name));
   const rightTokens = new Set(coverageTokens(right.name));
-  const overlap = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const overlap = [...leftTokens].filter((token) =>
+    rightTokens.has(token),
+  ).length;
   if (overlap === 0) return 0;
-  const sameLob = textValue(left.lineOfBusiness) && left.lineOfBusiness === right.lineOfBusiness;
+  const sameLob =
+    textValue(left.lineOfBusiness) &&
+    left.lineOfBusiness === right.lineOfBusiness;
   return overlap * 10 + (sameLob ? 8 : 0);
 }
 
-function mergeCoveragePair(primary: CoverageLike, supplement: CoverageLike): CoverageLike {
-  const primaryTerms = Array.isArray(primary.limits) ? primary.limits.map(recordValue).filter(Boolean) : [];
-  const supplementTerms = Array.isArray(supplement.limits) ? supplement.limits.map(recordValue).filter(Boolean) : [];
+function mergeCoveragePair(
+  primary: CoverageLike,
+  supplement: CoverageLike,
+): CoverageLike {
+  const primaryTerms = Array.isArray(primary.limits)
+    ? primary.limits.map(recordValue).filter(Boolean)
+    : [];
+  const supplementTerms = Array.isArray(supplement.limits)
+    ? supplement.limits.map(recordValue).filter(Boolean)
+    : [];
   const limits: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   for (const term of [...primaryTerms, ...supplementTerms]) {
@@ -312,21 +355,30 @@ function mergeCoveragePair(primary: CoverageLike, supplement: CoverageLike): Cov
     ...supplement,
     ...primary,
     name: textValue(primary.name) ?? textValue(supplement.name) ?? "Coverage",
-    lineOfBusiness: textValue(primary.lineOfBusiness) ?? textValue(supplement.lineOfBusiness),
+    lineOfBusiness:
+      textValue(primary.lineOfBusiness) ?? textValue(supplement.lineOfBusiness),
     limit: primaryLimit ?? supplementLimit,
-    deductible: textValue(primary.deductible) ?? textValue(supplement.deductible),
+    deductible:
+      textValue(primary.deductible) ?? textValue(supplement.deductible),
     limits,
     sourceNodeIds: sourceIds(primary.sourceNodeIds, supplement.sourceNodeIds),
     sourceSpanIds: sourceIds(primary.sourceSpanIds, supplement.sourceSpanIds),
   };
 }
 
-export function mergeCoverageRows(primary: unknown, supplement: unknown): CoverageLike[] {
+export function mergeCoverageRows(
+  primary: unknown,
+  supplement: unknown,
+): CoverageLike[] {
   const rows = Array.isArray(primary)
-    ? primary.map(coverageWithoutBilling).filter((row): row is CoverageLike => Boolean(row))
+    ? primary
+        .map(coverageWithoutBilling)
+        .filter((row): row is CoverageLike => Boolean(row))
     : [];
   const additions = Array.isArray(supplement)
-    ? supplement.map(coverageWithoutBilling).filter((row): row is CoverageLike => Boolean(row))
+    ? supplement
+        .map(coverageWithoutBilling)
+        .filter((row): row is CoverageLike => Boolean(row))
     : [];
   for (const addition of additions) {
     let bestIndex = -1;
@@ -351,7 +403,8 @@ function termKind(label: string): string {
   if (/\bdeductible\b/i.test(label)) return "deductible";
   if (/\bretention\b/i.test(label)) return "retention";
   if (/\baggregate\b/i.test(label)) return "aggregate_limit";
-  if (/\bper\s+(?:occurrence|accident)\b|\beach occurrence\b/i.test(label)) return "each_occurrence_limit";
+  if (/\bper\s+(?:occurrence|accident)\b|\beach occurrence\b/i.test(label))
+    return "each_occurrence_limit";
   if (/\bper claim\b|\beach claim\b/i.test(label)) return "each_claim_limit";
   if (/\bper loss\b|\beach loss\b/i.test(label)) return "each_loss_limit";
   if (/\bsub-?limit\b/i.test(label)) return "sublimit";
@@ -383,7 +436,12 @@ function coverageTerm(
   const label = cleanTermLabel(labelInput);
   const value = cleanTermValue(valueInput);
   if (!label || !value) return undefined;
-  if (!moneyValue(value) && !/\b(?:actual cash value|included|statutory|scheduled|as stated)\b/i.test(value)) {
+  if (
+    !moneyValue(value) &&
+    !/\b(?:actual cash value|included|statutory|scheduled|as stated)\b/i.test(
+      value,
+    )
+  ) {
     return undefined;
   }
   const money = moneyValue(value);
@@ -398,7 +456,10 @@ function coverageTerm(
   };
 }
 
-function pageCoverageLob(pageHeading: string, existingCoverages: CoverageLike[]) {
+function pageCoverageLob(
+  pageHeading: string,
+  existingCoverages: CoverageLike[],
+) {
   const heading = { name: pageHeading };
   let best: CoverageLike | undefined;
   let bestScore = 0;
@@ -426,7 +487,9 @@ function extractMainDeclarationCoverages(
 ): CoverageLike[] {
   const coverages: CoverageLike[] = [];
   for (const [page, spans] of pages) {
-    const headingIndex = spans.findIndex((span) => Boolean(mainCoverageHeading(span.text)));
+    const headingIndex = spans.findIndex((span) =>
+      Boolean(mainCoverageHeading(span.text)),
+    );
     if (headingIndex < 0) continue;
     const headingSpan = spans[headingIndex]!;
     const name = mainCoverageHeading(headingSpan.text)!;
@@ -434,8 +497,17 @@ function extractMainDeclarationCoverages(
     let pendingLabel: string | undefined;
     for (let index = headingIndex + 1; index < spans.length; index += 1) {
       const span = spans[index]!;
-      if (/^(?:[IVXLCDM]+\.?\s+).+\b(?:PREMIUM|OPTIONAL COVERAGE|ADDITIONAL COVERAGE)\b/i.test(span.text)) break;
-      if (/\b(?:covered autos?\s*\/|excluded commodities|excluded operations|unscheduled autos?)\b/i.test(span.text)) {
+      if (
+        /^(?:[IVXLCDM]+\.?\s+).+\b(?:PREMIUM|OPTIONAL COVERAGE|ADDITIONAL COVERAGE)\b/i.test(
+          span.text,
+        )
+      )
+        break;
+      if (
+        /\b(?:covered autos?\s*\/|excluded commodities|excluded operations|unscheduled autos?)\b/i.test(
+          span.text,
+        )
+      ) {
         pendingLabel = undefined;
         continue;
       }
@@ -459,7 +531,9 @@ function extractMainDeclarationCoverages(
         next &&
         !next.text.includes(":") &&
         !moneyValue(value) &&
-        /\b(?:scheduled|actual cash value|subject to maximum)\b/i.test(`${value} ${next.text}`)
+        /\b(?:scheduled|actual cash value|subject to maximum)\b/i.test(
+          `${value} ${next.text}`,
+        )
       ) {
         value = `${value} ${next.text}`;
         if (next.id) ids.push(next.id);
@@ -470,7 +544,11 @@ function extractMainDeclarationCoverages(
         appliesTo = label.replace(/^\(|\)$/g, "");
         label = pendingLabel;
       }
-      if (/^deductible$/i.test(label) && next && /\bper\s+['"]?occurrence/i.test(next.text)) {
+      if (
+        /^deductible$/i.test(label) &&
+        next &&
+        /\bper\s+['"]?occurrence/i.test(next.text)
+      ) {
         label = "Deductible per Occurrence";
         if (next.id) ids.push(next.id);
         index += 1;
@@ -480,7 +558,9 @@ function extractMainDeclarationCoverages(
       pendingLabel = undefined;
     }
     if (terms.length === 0) continue;
-    const primaryLimit = terms.find((term) => term.kind !== "deductible" && term.kind !== "retention");
+    const primaryLimit = terms.find(
+      (term) => term.kind !== "deductible" && term.kind !== "retention",
+    );
     const deductible = terms.find((term) => term.kind === "deductible");
     coverages.push({
       name,
@@ -500,7 +580,9 @@ function extractMainDeclarationCoverages(
 }
 
 function sectionHeading(text: string) {
-  const match = text.match(/^(?:[IVXLCDM]+\.?\s+)?((?:OPTIONAL|ADDITIONAL) COVERAGES?(?: ENDORSEMENTS?)?)(?:\s*-\s*(.+))?$/i);
+  const match = text.match(
+    /^(?:[IVXLCDM]+\.?\s+)?((?:OPTIONAL|ADDITIONAL) COVERAGES?(?: ENDORSEMENTS?)?)(?:\s*-\s*(.+))?$/i,
+  );
   if (!match) return undefined;
   return {
     label: normalizeWhitespace(match[1] ?? ""),
@@ -510,7 +592,8 @@ function sectionHeading(text: string) {
 
 function coverageNamesWithAmounts(text: string) {
   const matches: Array<{ name: string; value: string }> = [];
-  const pattern = /([A-Za-z][A-Za-z0-9/&()'" -]{2,120}?\bCoverage(?: Endorsement)?(?:\s*\([^)]{1,80}\))?)\s*:\s*(?:Limit\s*:\s*)?((?:\b(?:CAD|USD)\s*)?\$\s*\d[\d,]*(?:\.\d{1,2})?)/gi;
+  const pattern =
+    /([A-Za-z][A-Za-z0-9/&()'" -]{2,120}?\bCoverage(?: Endorsement)?(?:\s*\([^)]{1,80}\))?)\s*:\s*(?:Limit\s*:\s*)?((?:\b(?:CAD|USD)\s*)?\$\s*\d[\d,]*(?:\.\d{1,2})?)/gi;
   for (const match of text.matchAll(pattern)) {
     const name = normalizeWhitespace(match[1] ?? "")
       .replace(/^(?:[A-Z]|\d+)[.)]\s*/i, "")
@@ -532,30 +615,47 @@ function extractNamedCoverageSections(
       .map((span) => mainCoverageHeading(span.text))
       .find((heading): heading is string => Boolean(heading));
     const nearestDeclaration = existingCoverages
-      .filter((coverage) => typeof coverage.pageNumber === "number" && coverage.pageNumber <= page)
-      .sort((left, right) => Number(right.pageNumber) - Number(left.pageNumber))[0];
+      .filter(
+        (coverage) =>
+          typeof coverage.pageNumber === "number" &&
+          coverage.pageNumber <= page,
+      )
+      .sort(
+        (left, right) => Number(right.pageNumber) - Number(left.pageNumber),
+      )[0];
     const pageLineOfBusiness = pageHeading
       ? pageCoverageLob(pageHeading, existingCoverages)
       : textValue(nearestDeclaration?.lineOfBusiness);
     let activeSection: ReturnType<typeof sectionHeading>;
-    let pending: {
-      name: string;
-      lineOfBusiness?: string;
-      headingSpan: DetailSpan;
-      evidence: DetailSpan[];
-    } | undefined;
+    let pending:
+      | {
+          name: string;
+          lineOfBusiness?: string;
+          headingSpan: DetailSpan;
+          evidence: DetailSpan[];
+        }
+      | undefined;
     const flushPending = () => {
       if (!pending) return;
       const evidenceText = pending.evidence.map((span) => span.text).join(" ");
-      const declined = /\b(?:decline|declined|not included|not covered|excluded)\b/i.test(evidenceText);
+      const declined =
+        /\b(?:decline|declined|not included|not covered|excluded)\b/i.test(
+          evidenceText,
+        );
       const terms = pending.evidence.flatMap((span) => {
         const parts = span.text.match(/^(.+?):\s*(.+)$/);
         if (!parts) return [];
-        const term = coverageTerm(parts[1] ?? "Limit", parts[2] ?? "", span.id ? [span.id] : []);
+        const term = coverageTerm(
+          parts[1] ?? "Limit",
+          parts[2] ?? "",
+          span.id ? [span.id] : [],
+        );
         return term ? [term] : [];
       });
       if (!declined && terms.length > 0) {
-        const primary = terms.find((term) => term.kind !== "deductible" && term.kind !== "retention");
+        const primary = terms.find(
+          (term) => term.kind !== "deductible" && term.kind !== "retention",
+        );
         const deductible = terms.find((term) => term.kind === "deductible");
         coverages.push({
           name: pending.name,
@@ -582,7 +682,10 @@ function extractNamedCoverageSections(
         continue;
       }
       if (!activeSection) continue;
-      if (/^[IVXLCDM]+\.?\s+[A-Z]/.test(span.text) && !/\bCOVERAGE\b/i.test(span.text)) {
+      if (
+        /^[IVXLCDM]+\.?\s+[A-Z]/.test(span.text) &&
+        !/\bCOVERAGE\b/i.test(span.text)
+      ) {
         flushPending();
         activeSection = undefined;
         continue;
@@ -591,12 +694,19 @@ function extractNamedCoverageSections(
       const direct = coverageNamesWithAmounts(span.text);
       if (direct.length > 0) {
         flushPending();
-        const lineOfBusiness = pageLineOfBusiness ?? pageCoverageLob(span.text, existingCoverages);
+        const lineOfBusiness =
+          pageLineOfBusiness ?? pageCoverageLob(span.text, existingCoverages);
         for (const item of direct) {
-          const label = activeSection.scope && /\bper\s+['"]?occurrence/i.test(activeSection.scope)
-            ? "Per Occurrence Limit"
-            : "Limit";
-          const term = coverageTerm(label, item.value, span.id ? [span.id] : []);
+          const label =
+            activeSection.scope &&
+            /\bper\s+['"]?occurrence/i.test(activeSection.scope)
+              ? "Per Occurrence Limit"
+              : "Limit";
+          const term = coverageTerm(
+            label,
+            item.value,
+            span.id ? [span.id] : [],
+          );
           if (!term) continue;
           coverages.push({
             name: item.name,
@@ -611,13 +721,16 @@ function extractNamedCoverageSections(
         continue;
       }
 
-      const pendingHeading = span.text.match(/^(?:[A-Z]|\d+)[.)]\s*(.+?\bCoverage(?: Endorsement)?)\s*:\s*$/i);
+      const pendingHeading = span.text.match(
+        /^(?:[A-Z]|\d+)[.)]\s*(.+?\bCoverage(?: Endorsement)?)\s*:\s*$/i,
+      );
       if (pendingHeading) {
         flushPending();
         const name = normalizeWhitespace(pendingHeading[1] ?? "");
         pending = {
           name,
-          lineOfBusiness: pageLineOfBusiness ?? pageCoverageLob(name, existingCoverages),
+          lineOfBusiness:
+            pageLineOfBusiness ?? pageCoverageLob(name, existingCoverages),
           headingSpan: span,
           evidence: [],
         };
@@ -633,15 +746,21 @@ function extractNamedCoverageSections(
 function scheduleKind(name: string): CoverageSchedule["kind"] {
   if (/\b(?:auto|vehicle|trailer)\b/i.test(name)) return "vehicle";
   if (/\bproperty\b/i.test(name)) return "property";
-  if (/\b(?:location|premises|building|statement of values)\b/i.test(name)) return "location";
+  if (/\b(?:location|premises|building|statement of values)\b/i.test(name))
+    return "location";
   return "other";
 }
 
 function scheduleHeading(text: string) {
-  if (/\b(?:forms? and endorsements?|schedule of forms)\b/i.test(text)) return undefined;
+  if (/\b(?:forms? and endorsements?|schedule of forms)\b/i.test(text))
+    return undefined;
   if (
-    /^(?:covered\s+)?(?:auto|vehicle|trailer|property|location|premises|building).*\bschedule\b/i.test(text) ||
-    /^schedule of (?:vehicles|locations|property|premises|buildings)\b/i.test(text) ||
+    /^(?:covered\s+)?(?:auto|vehicle|trailer|property|location|premises|building).*\bschedule\b/i.test(
+      text,
+    ) ||
+    /^schedule of (?:vehicles|locations|property|premises|buildings)\b/i.test(
+      text,
+    ) ||
     /^statement of values\b/i.test(text)
   ) {
     return text;
@@ -654,8 +773,13 @@ function scheduleValues(description: string): CoverageScheduleValue[] {
   for (const part of description.split("|")) {
     const match = normalizeWhitespace(part).match(/^([^:]{1,60}):\s*(.+)$/);
     if (!match) continue;
-    const label = normalizeWhitespace(match[1] ?? "").replace(/^\d+[.)]\s*/, "");
-    const value = normalizeWhitespace(match[2] ?? "").replace(/\b(?:VEHICLE|TRAILER) SCHEDULE\b/gi, "").trim();
+    const label = normalizeWhitespace(match[1] ?? "").replace(
+      /^\d+[.)]\s*/,
+      "",
+    );
+    const value = normalizeWhitespace(match[2] ?? "")
+      .replace(/\b(?:VEHICLE|TRAILER) SCHEDULE\b/gi, "")
+      .trim();
     if (!label || !value) continue;
     values.push({ label, value });
   }
@@ -668,20 +792,33 @@ function extractCoverageSchedules(
 ): CoverageSchedule[] {
   const schedules: CoverageSchedule[] = [];
   for (const [page, spans] of pages) {
-    const headingSpan = spans.find((span) => Boolean(scheduleHeading(span.text)));
+    const headingSpan = spans.find((span) =>
+      Boolean(scheduleHeading(span.text)),
+    );
     const name = headingSpan ? scheduleHeading(headingSpan.text) : undefined;
     if (!headingSpan || !name) continue;
-    const pageCorpus = pageText(sourceSpans, page) || spans.map((span) => span.text).join(" ");
-    if (!/\b(?:covered under this policy|coverage active|stated amount|location|premises|property)\b/i.test(pageCorpus)) {
+    const pageCorpus =
+      pageText(sourceSpans, page) || spans.map((span) => span.text).join(" ");
+    if (
+      !/\b(?:covered under this policy|coverage active|stated amount|location|premises|property)\b/i.test(
+        pageCorpus,
+      )
+    ) {
       continue;
     }
-    const evidenceSpans = spans.filter((span) =>
-      span !== headingSpan &&
-      !/\b(?:please read it carefully|all other terms|page \d+ of \d+)\b/i.test(span.text),
+    const evidenceSpans = spans.filter(
+      (span) =>
+        span !== headingSpan &&
+        !/\b(?:please read it carefully|all other terms|page \d+ of \d+)\b/i.test(
+          span.text,
+        ),
     );
-    const rowSpans = evidenceSpans.filter((span) =>
-      /(?:^|\s)\d+[.)]\s+|\|/.test(span.text) &&
-      /\b(?:VIN|address|location|building|premises|limit|value|coverage|status|deductible)\b/i.test(span.text),
+    const rowSpans = evidenceSpans.filter(
+      (span) =>
+        /(?:^|\s)\d+[.)]\s+|\|/.test(span.text) &&
+        /\b(?:VIN|address|location|building|premises|limit|value|coverage|status|deductible)\b/i.test(
+          span.text,
+        ),
     );
     const joined = rowSpans
       .map((span) => span.text)
@@ -699,7 +836,9 @@ function extractCoverageSchedules(
         label: `${scheduleKind(name) === "vehicle" ? "Scheduled vehicle" : "Scheduled item"} ${number}`,
         ...(values.length === 0 ? { description } : {}),
         values,
-        sourceSpanIds: sourceIds(rowSpans.map((span) => span.id).filter(Boolean)),
+        sourceSpanIds: sourceIds(
+          rowSpans.map((span) => span.id).filter(Boolean),
+        ),
       });
     }
     if (items.length === 0) {
@@ -714,7 +853,9 @@ function extractCoverageSchedules(
       }
     }
     if (items.length === 0) continue;
-    const exclusion = pageCorpus.match(/\b(Unscheduled\s+(?:autos?|vehicles?|trailers?|property|locations?)[^.]{0,140}\bexcluded\.)/i)?.[1];
+    const exclusion = pageCorpus.match(
+      /\b(Unscheduled\s+(?:autos?|vehicles?|trailers?|property|locations?)[^.]{0,140}\bexcluded\.)/i,
+    )?.[1];
     schedules.push({
       name,
       kind: scheduleKind(name),
@@ -743,14 +884,16 @@ function premiumRowsFromCoverages(coverages: unknown): Array<{
     const name = textValue(record?.name);
     const money = moneyValue(textValue(record?.premium));
     if (!name || !money) return [];
-    return [{
-      line: name,
-      amount: money.value,
-      amountValue: money.amount,
-      ...(stringList(record?.sourceSpanIds).length > 0
-        ? { sourceSpanIds: stringList(record?.sourceSpanIds) }
-        : {}),
-    }];
+    return [
+      {
+        line: name,
+        amount: money.value,
+        amountValue: money.amount,
+        ...(stringList(record?.sourceSpanIds).length > 0
+          ? { sourceSpanIds: stringList(record?.sourceSpanIds) }
+          : {}),
+      },
+    ];
   });
 }
 
@@ -762,7 +905,11 @@ function premiumRowsFromSource(spans: DetailSpan[]) {
     sourceSpanIds: string[];
   }> = [];
   for (const span of spans) {
-    if (!/\bPREMIUM\b/i.test(span.text) || /\b(?:TOTAL|FEE|TAX|PREMIUM\s*&\s*FEES)\b/i.test(span.text)) continue;
+    if (
+      !/\bPREMIUM\b/i.test(span.text) ||
+      /\b(?:TOTAL|FEE|TAX|PREMIUM\s*&\s*FEES)\b/i.test(span.text)
+    )
+      continue;
     for (const segment of span.text.split("|").slice(1)) {
       const match = segment.match(/^\s*([^:]{2,120}):\s*(.+)$/);
       const money = moneyValue(match?.[2]);
@@ -779,15 +926,21 @@ function premiumRowsFromSource(spans: DetailSpan[]) {
   return rows;
 }
 
-function totalPayableFromSource(spans: DetailSpan[]): (MoneyValue & { sourceSpanIds: string[] }) | undefined {
-  const candidates: Array<MoneyValue & { sourceSpanIds: string[]; score: number }> = [];
+function totalPayableFromSource(
+  spans: DetailSpan[],
+): (MoneyValue & { sourceSpanIds: string[] }) | undefined {
+  const candidates: Array<
+    MoneyValue & { sourceSpanIds: string[]; score: number }
+  > = [];
   for (const span of spans) {
     if (!/\bTOTAL\s+(?:PREMIUM|COST|PAYABLE|DUE)\b/i.test(span.text)) continue;
     const values = moneyValues(span.text);
     for (const money of values) {
       let score = money.amount;
-      if (/\bWITH\s+FEES?\s*(?:&|AND)\s*TAX(?:ES)?\b/i.test(span.text)) score += 1_000_000_000;
-      if (/^TOTAL\s+(?:PREMIUM|COST|PAYABLE|DUE)\s*:/i.test(span.text)) score += 500_000_000;
+      if (/\bWITH\s+FEES?\s*(?:&|AND)\s*TAX(?:ES)?\b/i.test(span.text))
+        score += 1_000_000_000;
+      if (/^TOTAL\s+(?:PREMIUM|COST|PAYABLE|DUE)\s*:/i.test(span.text))
+        score += 500_000_000;
       if (values.length === 1) score += 100_000_000;
       candidates.push({
         ...money,
@@ -800,10 +953,11 @@ function totalPayableFromSource(spans: DetailSpan[]): (MoneyValue & { sourceSpan
 }
 
 function feeRowsFromSource(spans: DetailSpan[]) {
-  const preferred = spans.filter((span) =>
-    /\bFEE\b/i.test(span.text) &&
-    !/\b(?:TOTAL FEE|included in|Other Fee:\s*\$?0)\b/i.test(span.text) &&
-    (span.sourceUnit === "table_row" || moneyValues(span.text).length > 1),
+  const preferred = spans.filter(
+    (span) =>
+      /\bFEE\b/i.test(span.text) &&
+      !/\b(?:TOTAL FEE|included in|Other Fee:\s*\$?0)\b/i.test(span.text) &&
+      (span.sourceUnit === "table_row" || moneyValues(span.text).length > 1),
   );
   const rows: Array<{
     name: string;
@@ -813,7 +967,9 @@ function feeRowsFromSource(spans: DetailSpan[]) {
     sourceSpanIds: string[];
   }> = [];
   for (const span of preferred) {
-    const label = textValue(span.text.match(/(?:^|:\s*)([A-Za-z][A-Za-z ]{0,50}Fee)\b/i)?.[1]);
+    const label = textValue(
+      span.text.match(/(?:^|:\s*)([A-Za-z][A-Za-z ]{0,50}Fee)\b/i)?.[1],
+    );
     const values = moneyValues(span.text).filter((money) => money.amount > 0);
     if (!label || values.length === 0) continue;
     const amount = values.reduce((sum, money) => sum + money.amount, 0);
@@ -825,7 +981,7 @@ function feeRowsFromSource(spans: DetailSpan[]) {
       sourceSpanIds: span.id ? [span.id] : [],
     });
   }
-  const byName = new Map<string, typeof rows[number]>();
+  const byName = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
     const key = row.name.toLowerCase();
     const current = byName.get(key);
@@ -840,16 +996,20 @@ function applyFinancialSeparation(
   spans: DetailSpan[],
 ) {
   const fromCoverages = premiumRowsFromCoverages(rawCoverages);
-  const premiumBreakdown = fromCoverages.length > 0 ? fromCoverages : premiumRowsFromSource(spans);
+  const premiumBreakdown =
+    fromCoverages.length > 0 ? fromCoverages : premiumRowsFromSource(spans);
   if (premiumBreakdown.length === 0) return fields;
-  const premiumAmount = premiumBreakdown.reduce((sum, row) => sum + row.amountValue, 0);
+  const premiumAmount = premiumBreakdown.reduce(
+    (sum, row) => sum + row.amountValue,
+    0,
+  );
   const totalPayable = totalPayableFromSource(spans);
   const currentPremium = moneyValue(textValue(fields.premium));
-  const total = totalPayable ?? (
-    currentPremium && currentPremium.amount > premiumAmount
+  const total =
+    totalPayable ??
+    (currentPremium && currentPremium.amount > premiumAmount
       ? { ...currentPremium, sourceSpanIds: [] }
-      : undefined
-  );
+      : undefined);
   const next = {
     ...fields,
     premium: formattedMoney(premiumAmount),
@@ -859,7 +1019,8 @@ function applyFinancialSeparation(
   if (!total || total.amount + 0.005 < premiumAmount) return next;
   const fees = feeRowsFromSource(spans);
   const feeAmount = fees.reduce((sum, row) => sum + row.amountValue, 0);
-  const taxAmount = Math.round((total.amount - premiumAmount - feeAmount) * 100) / 100;
+  const taxAmount =
+    Math.round((total.amount - premiumAmount - feeAmount) * 100) / 100;
   const taxesAndFees: Array<Record<string, unknown>> = [...fees];
   if (taxAmount > 0.005) {
     taxesAndFees.push({
@@ -867,7 +1028,8 @@ function applyFinancialSeparation(
       amount: formattedMoney(taxAmount),
       amountValue: taxAmount,
       type: "tax",
-      description: "Calculated from total payable less premium and extracted fees.",
+      description:
+        "Calculated from total payable less premium and extracted fees.",
       sourceSpanIds: sourceIds(
         total.sourceSpanIds,
         premiumBreakdown.flatMap((row) => row.sourceSpanIds ?? []),
@@ -895,26 +1057,37 @@ function declarationScopedFields(
   const spans = detailSpans(sourceSpans);
   const pages = spansByPage(spans);
   const existingCoverages = Array.isArray(fields.coverages)
-    ? fields.coverages.map(recordValue).filter((row): row is CoverageLike => Boolean(row))
+    ? fields.coverages
+        .map(recordValue)
+        .filter((row): row is CoverageLike => Boolean(row))
     : [];
   // Declaration rows borrow a line of business from name-matched existing rows
   // only on the rule-based path; the classifier path assigns lines itself.
   const lineReference = inferLinesOfBusiness ? existingCoverages : [];
-  const mainDeclarationCoverages = extractMainDeclarationCoverages(pages, lineReference);
+  const mainDeclarationCoverages = extractMainDeclarationCoverages(
+    pages,
+    lineReference,
+  );
   const declarationCoverages = [
     ...mainDeclarationCoverages,
     ...extractNamedCoverageSections(
       pages,
-      inferLinesOfBusiness ? [...existingCoverages, ...mainDeclarationCoverages] : [],
+      inferLinesOfBusiness
+        ? [...existingCoverages, ...mainDeclarationCoverages]
+        : [],
     ),
   ];
   const coverages = mergeCoverageRows(existingCoverages, declarationCoverages);
   const schedules = extractCoverageSchedules(sourceSpans, pages);
-  return applyFinancialSeparation({
-    ...fields,
-    coverages,
-    ...(schedules.length > 0 ? { coverageSchedules: schedules } : {}),
-  }, fields.coverages, spans);
+  return applyFinancialSeparation(
+    {
+      ...fields,
+      coverages,
+      ...(schedules.length > 0 ? { coverageSchedules: schedules } : {}),
+    },
+    fields.coverages,
+    spans,
+  );
 }
 
 export function applyCoverageDeclarationScoping({
@@ -952,20 +1125,26 @@ function coverageLineReviewQuestion(
   nowMs: number,
 ): CoverageReviewQuestion {
   const coverageName = textValue(coverage.name) ?? "Coverage";
-  const options = candidates.map((code): CoverageReviewOption => ({
-    id: `line:${code}`,
-    value: code,
-    label: lobLabel(code),
-    coverage: { ...coverage, lineOfBusiness: code },
-    sourceSpanIds: stringList(coverage.sourceSpanIds),
-  }));
-  const recommendedOption = options.find((option) => option.value === recommended);
+  const options = candidates.map(
+    (code): CoverageReviewOption => ({
+      id: `line:${code}`,
+      value: code,
+      label: lobLabel(code),
+      coverage: { ...coverage, lineOfBusiness: code },
+      sourceSpanIds: stringList(coverage.sourceSpanIds),
+    }),
+  );
+  const recommendedOption = options.find(
+    (option) => option.value === recommended,
+  );
   return {
     id: `coverage_line_of_business:${index}:${normalizedCoverageName(coverageName) || "coverage"}`,
     kind: "coverage_line_of_business",
     status: "open",
     coverageName,
-    ...(textValue(coverage.limit) ? { currentValue: textValue(coverage.limit) } : {}),
+    ...(textValue(coverage.limit)
+      ? { currentValue: textValue(coverage.limit) }
+      : {}),
     ...(recommendedOption
       ? {
           recommendedOptionId: recommendedOption.id,
@@ -973,7 +1152,8 @@ function coverageLineReviewQuestion(
         }
       : {}),
     question: `Which line of business does ${coverageName} belong to?`,
-    reason: "This coverage appears on a multi-line policy without a clear line of business.",
+    reason:
+      "This coverage appears on a multi-line policy without a clear line of business.",
     options,
     sourceSpanIds: stringList(coverage.sourceSpanIds),
     createdAt: nowMs,
@@ -999,32 +1179,51 @@ export async function scopeCoveragesWithClassifier(params: {
   changed: boolean;
   classifiedCount: number;
 }> {
-  const scoped = declarationScopedFields(params.fields, params.sourceSpans, false);
-  const coverages = (scoped.coverages as CoverageLike[]).map((coverage) => ({ ...coverage }));
-  const policyLines = normalizeOperationalLinesOfBusiness(params.fields.linesOfBusiness)
-    .filter((code) => code !== "UN");
+  const scoped = declarationScopedFields(
+    params.fields,
+    params.sourceSpans,
+    false,
+  );
+  const coverages = (scoped.coverages as CoverageLike[]).map((coverage) => ({
+    ...coverage,
+  }));
+  const policyLines = normalizeOperationalLinesOfBusiness(
+    params.fields.linesOfBusiness,
+  ).filter((code) => code !== "UN");
   const rowLines = coverages.map((coverage) =>
     inferLineOfBusinessForOperationalCoverage(
       coverage as OperationalCoverageLine,
       policyLines,
-    )
+    ),
   );
-  const knownLines = [...new Set([
-    ...policyLines,
-    ...rowLines.filter((code): code is NonNullable<typeof code> => Boolean(code)),
-  ])];
-  const pending: Array<{ index: number; key: string; candidates: string[] }> = [];
+  const knownLines = [
+    ...new Set([
+      ...policyLines,
+      ...rowLines.filter((code): code is NonNullable<typeof code> =>
+        Boolean(code),
+      ),
+    ]),
+  ];
+  const pending: Array<{ index: number; key: string; candidates: string[] }> =
+    [];
   coverages.forEach((coverage, index) => {
     const line = rowLines[index];
     if (line) {
       coverage.lineOfBusiness = line;
       return;
     }
-    const candidates = [...new Set([
-      ...inferLinesOfBusinessFromOperationalCoverages([coverage as OperationalCoverageLine]),
-      ...knownLines,
-    ])].filter((code) => code !== "UN");
-    if (candidates.length >= 2 && pending.length < MAX_COVERAGE_SCOPE_QUESTIONS) {
+    const candidates = [
+      ...new Set([
+        ...inferLinesOfBusinessFromOperationalCoverages([
+          coverage as OperationalCoverageLine,
+        ]),
+        ...knownLines,
+      ]),
+    ].filter((code) => code !== "UN");
+    if (
+      candidates.length >= 2 &&
+      pending.length < MAX_COVERAGE_SCOPE_QUESTIONS
+    ) {
       pending.push({ index, key: `coverage_${index}`, candidates });
     }
   });
@@ -1037,53 +1236,88 @@ export async function scopeCoveragesWithClassifier(params: {
   let classifiedCount = 0;
   if (pending.length > 0) {
     try {
-      const result = await clRouterDecide({
-        orgId: String(params.orgId),
-        task: "policy_extraction_coverage_scope",
-        state: {
-          policyLinesOfBusiness: knownLines.map((code) => ({ code, label: lobLabel(code) })),
-          coverages: Object.fromEntries(pending.map(({ index, key }) => {
-            const coverage = coverages[index]!;
-            const coverageCode = resolveAcordCoverageCode(coverage.coverageCode, coverage.name);
-            return [key, {
-              name: textValue(coverage.name) ?? "Coverage",
-              ...(coverageCode ? { acordCoverageCode: coverageCode } : {}),
-              ...Object.fromEntries(
-                ["limit", "deductible", "formNumber", "sectionRef", "originalContent"]
-                  .flatMap((field) => {
-                    const value = textValue(coverage[field]);
-                    return value ? [[field, value.slice(0, 300)]] : [];
-                  }),
-              ),
-              ...(typeof coverage.pageNumber === "number" ? { pageNumber: coverage.pageNumber } : {}),
-            }];
-          })),
-        },
-        questions: Object.fromEntries(pending.map(({ key, candidates }) => [key, {
-          type: "choice" as const,
-          instructions: `Which line of business on this policy does coverage ${key} belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
-          criteria: {
-            ...Object.fromEntries(candidates.map((code) => [code, lobLabel(code)])),
-            none: "None of the listed lines of business.",
+      const result = await clRouterDecide(
+        {
+          orgId: String(params.orgId),
+          task: "policy_extraction_coverage_scope",
+          state: {
+            policyLinesOfBusiness: knownLines.map((code) => ({
+              code,
+              label: lobLabel(code),
+            })),
+            coverages: Object.fromEntries(
+              pending.map(({ index, key }) => {
+                const coverage = coverages[index]!;
+                const coverageCode = resolveAcordCoverageCode(
+                  coverage.coverageCode,
+                  coverage.name,
+                );
+                return [
+                  key,
+                  {
+                    name: textValue(coverage.name) ?? "Coverage",
+                    ...(coverageCode
+                      ? { acordCoverageCode: coverageCode }
+                      : {}),
+                    ...Object.fromEntries(
+                      [
+                        "limit",
+                        "deductible",
+                        "formNumber",
+                        "sectionRef",
+                        "originalContent",
+                      ].flatMap((field) => {
+                        const value = textValue(coverage[field]);
+                        return value ? [[field, value.slice(0, 300)]] : [];
+                      }),
+                    ),
+                    ...(typeof coverage.pageNumber === "number"
+                      ? { pageNumber: coverage.pageNumber }
+                      : {}),
+                  },
+                ];
+              }),
+            ),
           },
-        }])),
-        trace: params.traceId ? { traceId: params.traceId } : undefined,
-      }, { telemetry: params.ctx });
+          questions: Object.fromEntries(
+            pending.map(({ key, candidates }) => [
+              key,
+              {
+                type: "choice" as const,
+                instructions: `Which line of business on this policy does \`coverages.${key}\` belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
+                criteria: {
+                  ...Object.fromEntries(
+                    candidates.map((code) => [
+                      code,
+                      {
+                        label: lobLabel(code),
+                        what: `Coverage for ${lobLabel(code)} supported by this row’s name, form, section or ACORD code; not merely another line present on the policy.`,
+                      },
+                    ]),
+                  ),
+                  none: "None of the listed lines of business.",
+                },
+              },
+            ]),
+          ),
+          trace: params.traceId ? { traceId: params.traceId } : undefined,
+        },
+        { telemetry: params.ctx },
+      );
       for (const { index, key, candidates } of pending) {
         const answer = result.answers[key];
         if (answer?.type !== "choice") continue;
-        const confidence = Math.min(
-          answer.confidence,
-          answer.probabilities[answer.choice] ?? 0,
-        );
+        const confidence = jevChoiceConfidence(answer);
         if (!jevProceeds(confidence)) {
-          review.questions.push(coverageLineReviewQuestion(
-            coverages[index]!,
-            index,
-            candidates,
-            answer.choice,
-            params.nowMs,
-          ));
+          review.questions.push(
+            coverageLineReviewQuestion(
+              coverages[index]!,
+              index,
+              candidates,
+              answer.choice,
+              params.nowMs,
+            ),
+          );
         } else if (candidates.includes(answer.choice)) {
           coverages[index]!.lineOfBusiness = answer.choice;
           classifiedCount += 1;
@@ -1110,7 +1344,9 @@ export async function scopeCoveragesWithClassifier(params: {
           extractionReview: {
             ...review,
             questions: [
-              ...(Array.isArray(existingReview?.questions) ? existingReview.questions : []),
+              ...(Array.isArray(existingReview?.questions)
+                ? existingReview.questions
+                : []),
               ...review.questions,
             ],
           },

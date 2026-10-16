@@ -35,11 +35,56 @@ export const RELEVANCE_CRITERIA = [
 ];
 
 const QUERY_STOP_WORDS = new Set([
-  "a", "am", "an", "and", "any", "are", "can", "could", "did", "do", "does",
-  "for", "from", "has", "have", "how", "i", "in", "is", "it", "me", "my", "of",
-  "on", "or", "our", "please", "policies", "policy", "show", "tell", "that",
-  "the", "there", "this", "to", "us", "we", "what", "whats", "when", "where",
-  "which", "who", "why", "will", "with", "would", "you", "your",
+  "a",
+  "am",
+  "an",
+  "and",
+  "any",
+  "are",
+  "can",
+  "could",
+  "did",
+  "do",
+  "does",
+  "for",
+  "from",
+  "has",
+  "have",
+  "how",
+  "i",
+  "in",
+  "is",
+  "it",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "our",
+  "please",
+  "policies",
+  "policy",
+  "show",
+  "tell",
+  "that",
+  "the",
+  "there",
+  "this",
+  "to",
+  "us",
+  "we",
+  "what",
+  "whats",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "will",
+  "with",
+  "would",
+  "you",
+  "your",
 ]);
 
 const QUERY_SYNONYMS: Record<string, string[]> = {
@@ -197,7 +242,9 @@ function spanCandidateText(
       span.sourceUnit === "line"
         ? lineContext(
             span,
-            span.parentSpanId ? parentTextBySpanId.get(span.parentSpanId) : undefined,
+            span.parentSpanId
+              ? parentTextBySpanId.get(span.parentSpanId)
+              : undefined,
           )
         : focusedText(span.text, queryTerms),
     );
@@ -230,7 +277,10 @@ export function buildPolicySearchCandidates(
       title: node.title,
       kind: node.kind,
       path: node.path || undefined,
-      text: truncate(node.textExcerpt || node.description, CANDIDATE_TEXT_CHARS),
+      text: truncate(
+        node.textExcerpt || node.description,
+        CANDIDATE_TEXT_CHARS,
+      ),
       pageStart: node.pageStart,
       pageEnd: node.pageEnd,
       sourceSpanIds: [...node.sourceSpanIds],
@@ -241,7 +291,8 @@ export function buildPolicySearchCandidates(
     candidates.push(candidate);
     for (const spanId of node.sourceSpanIds) {
       const spanKey = `${node.policyId}:${spanId}`;
-      if (!nodeCandidateBySpan.has(spanKey)) nodeCandidateBySpan.set(spanKey, candidate);
+      if (!nodeCandidateBySpan.has(spanKey))
+        nodeCandidateBySpan.set(spanKey, candidate);
     }
   });
 
@@ -327,10 +378,9 @@ export function selectRankedResults(
   const relevant = ordered.filter(
     (candidate) => candidate.relevance >= MIN_RELEVANCE,
   );
-  return (relevant.length > 0 ? relevant : ordered.slice(0, FALLBACK_RESULT_COUNT)).slice(
-    0,
-    maxResults,
-  );
+  return (
+    relevant.length > 0 ? relevant : ordered.slice(0, FALLBACK_RESULT_COUNT)
+  ).slice(0, maxResults);
 }
 
 export async function rankPolicySearchCandidates(
@@ -350,7 +400,7 @@ export async function rankPolicySearchCandidates(
   candidates.forEach((_, index) => {
     questions[`passage_${index}`] = {
       type: "score",
-      instructions: `How well does passage passage_${index} in state.passages answer state.question? Judge only the passage text.`,
+      instructions: `How well does \`passages[${index}].text\` answer \`question\`? Judge only the passage text.`,
       criteria: RELEVANCE_CRITERIA,
     };
   });
@@ -382,7 +432,10 @@ export async function rankPolicySearchCandidates(
         relevance: answer?.type === "score" ? answer.score : 0,
       };
     });
-    return { results: selectRankedResults(scored, args.maxResults), ranking: "jev" };
+    return {
+      results: selectRankedResults(scored, args.maxResults),
+      ranking: "jev",
+    };
   } catch {
     return { results: candidates.slice(0, args.maxResults), ranking: "search" };
   }
