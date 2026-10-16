@@ -125,8 +125,10 @@ const DIGEST_FOOT_LINES = 4;
 const DIGEST_LINE_MAX_CHARS = 70;
 const DIGEST_MAX_CHARS = 1200;
 
-const JEV_BATCH_PAGES = 6;
+const JEV_BATCH_PAGES = 25;
 // Leave two asset slots for adjacent scanned context pages.
+const JEV_IMAGE_BATCH_PAGES = 6;
+const MAX_IMAGE_PAGES = 48;
 const JEV_BATCH_CONCURRENCY = 4;
 
 function isPolicySectionKind(value: unknown): value is PolicySectionKind {
@@ -304,10 +306,49 @@ async function classifyRemainingPages(params: {
 }): Promise<void> {
   const { ctx, orgId, pageCount, remaining, getDigest, labels, traceId } =
     params;
+  const hasText = (page: number) => {
+    const digest = getDigest(page);
+    return digest.headLines.length > 0 || digest.footLines.length > 0;
+  };
+  const imagePagesAllowed = new Set(
+    params.pdfBytes
+      ? [...new Set(remaining.flatMap((page) => [page - 1, page, page + 1]))]
+          .filter((page) => page >= 1 && page <= pageCount && !hasText(page))
+          .sort((a, b) => a - b)
+          .slice(0, MAX_IMAGE_PAGES)
+      : [],
+  );
+  const usesImages = (page: number) =>
+    [page - 1, page, page + 1].some((candidate) =>
+      imagePagesAllowed.has(candidate),
+    );
   const batches: number[][] = [];
-  for (let i = 0; i < remaining.length; i += JEV_BATCH_PAGES) {
-    batches.push(remaining.slice(i, i + JEV_BATCH_PAGES));
+  let batch: number[] = [];
+  let imageBatch = false;
+  for (const page of remaining) {
+    if (!hasText(page) && !imagePagesAllowed.has(page)) {
+      labels[page - 1] = {
+        page,
+        kind: "other",
+        startsNewDocument: page === 1,
+        confidence: 0,
+        source: "fallback",
+      };
+      continue;
+    }
+    const needsImages = usesImages(page);
+    if (
+      batch.length &&
+      (needsImages !== imageBatch ||
+        batch.length >= (imageBatch ? JEV_IMAGE_BATCH_PAGES : JEV_BATCH_PAGES))
+    ) {
+      batches.push(batch);
+      batch = [];
+    }
+    imageBatch = needsImages;
+    batch.push(page);
   }
+  if (batch.length) batches.push(batch);
 
   await runBounded(batches, JEV_BATCH_CONCURRENCY, async (batchPages) => {
     const first = batchPages[0];
@@ -343,26 +384,35 @@ async function classifyRemainingPages(params: {
     try {
       // Adjacent text context has no asset cost. Bound image batches separately.
       const imagePages = statePages
-        .filter((page) => !page.headLines.length && !page.footLines.length)
+        .filter((page) => imagePagesAllowed.has(page.page))
         .sort((a, b) => Number(a.contextOnly) - Number(b.contextOnly))
         .slice(0, 8);
-      const images =
-        params.pdfBytes && imagePages.length
-          ? await renderPdfPageImages({
-              pdfBytes: params.pdfBytes,
-              pages: imagePages.map((page) => page.page),
-              maxSide: 1024,
-            })
-          : [];
-      if (images.length)
-        staged = await stageJevImages(ctx, images.map(pdfPageJevImage), {
-          orgId,
-          surface: "policy-sectioning",
-          sessionKey: traceId ?? crypto.randomUUID(),
-        });
-      const imageRefs = new Map(
-        images.map((image, i) => [image.page, staged!.refs[i]]),
-      );
+      const imageRefs = new Map<number, string>();
+      try {
+        const images =
+          params.pdfBytes && imagePages.length
+            ? await renderPdfPageImages({
+                pdfBytes: params.pdfBytes,
+                pages: imagePages.map((page) => page.page),
+                maxSide: 1024,
+              })
+            : [];
+        if (images.length) {
+          staged = await stageJevImages(ctx, images.map(pdfPageJevImage), {
+            orgId,
+            surface: "policy-sectioning",
+            sessionKey: traceId ?? crypto.randomUUID(),
+          });
+          images.forEach((image, i) =>
+            imageRefs.set(image.page, staged!.refs[i]),
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "Section images unavailable; using text evidence",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       const result = await clRouterDecide(
         {
           orgId: String(orgId),
