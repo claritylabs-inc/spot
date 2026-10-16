@@ -68,6 +68,7 @@ const AUTOMATION_THUMBNAIL_MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const AUTOMATION_THUMBNAIL_MIN_IMAGE_BYTES = 15 * 1024;
 const AUTOMATION_THUMBNAILS_PER_EMAIL = 2;
 const AUTOMATION_THUMBNAILS_PER_SCAN = 24;
+const AUTOMATION_THUMBNAIL_MAX_FAILURES = 3;
 const AUTOMATION_THUMBNAIL_MAX_SIDE = 1024;
 const AUTOMATION_THUMBNAIL_FILENAME_HINT =
   /polic|declar|dec[-_ ]?page|binder|endors|certific|coi|acord|lease|contract|agreement|requirement|insur|schedule/i;
@@ -507,6 +508,7 @@ async function loadMessageThumbnails(
   try {
     await withClient(account, async (client) => {
       let remaining = AUTOMATION_THUMBNAILS_PER_SCAN;
+      let failures = 0;
       let openMailbox: string | undefined;
       for (const { message, candidates } of planned) {
         const ref = parseMessageRef(message.emailRef);
@@ -563,6 +565,9 @@ async function loadMessageThumbnails(
               uid: ref.uid,
               error: errorMessage(error),
             });
+            // Stop early when the connection or renderer keeps failing.
+            failures += 1;
+            if (failures >= AUTOMATION_THUMBNAIL_MAX_FAILURES) return;
           }
         }
       }
@@ -754,16 +759,25 @@ async function judgeBatch(
       image: thumbnail.image,
     })),
   );
-  if (images.length > 0) {
-    const staged = await stageJevImages(
-      ctx,
-      images.map((entry) => entry.image),
-      {
-        orgId: account.orgId,
-        surface: "connected_email_scan",
-        sessionKey: String(account._id),
-      },
-    );
+  const staged =
+    images.length > 0
+      ? await stageJevImages(
+          ctx,
+          images.map((entry) => entry.image),
+          {
+            orgId: account.orgId,
+            surface: "connected_email_scan",
+            sessionKey: String(account._id),
+          },
+        ).catch((error) => {
+          console.warn(
+            "[connectedEmailScan.classify] Image staging failed; classifying text-only",
+            { accountId: account._id, error: errorMessage(error) },
+          );
+          return null;
+        })
+      : null;
+  if (staged) {
     try {
       const refs = new Map(images.map((entry, i) => [entry.key, staged.refs[i]]));
       const assets: Record<string, DecisionAsset> = staged.assets;
