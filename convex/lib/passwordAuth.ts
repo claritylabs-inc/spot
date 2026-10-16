@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+
 export const PASSWORD_PROVIDER_ID = "password";
 /** A session this young counts as a fresh proof of email ownership (or password). */
 export const RECENT_SIGN_IN_MS = 10 * 60 * 1000;
@@ -33,8 +35,10 @@ export function assertNewPassword(password: unknown, email: string): asserts pas
     password.length > MAX_PASSWORD_LENGTH ||
     password.trim().toLowerCase() === email
   ) {
-    throw new Error(
-      `Choose a password of ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters that is not your email.`,
-    );
+    throw new ConvexError({
+      category: "authentication",
+      code: "PASSWORD_INVALID",
+      message: `Choose a password of ${MIN_PASSWORD_LENGTH}-${MAX_PASSWORD_LENGTH} characters that is not your email.`,
+    });
   }
 }
