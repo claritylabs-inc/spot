@@ -13,7 +13,9 @@ import type { PolicySection, PolicySectionKind } from "../policySectioning";
 import type { DocumentSourceNode, SourceSpanLike } from "../sourceTree";
 import { citationPageCandidates } from "./prompts";
 import {
+  ENDORSEMENT_JUDGMENT_FALLBACK,
   SECTION_OUTPUT_SCHEMAS,
+  type EndorsementJudgment,
   type CitedValue,
   type DeclarationsSectionOutput,
   type SectionCitation,
@@ -399,6 +401,8 @@ export function mergeSectionResults(args: {
   results: SectionResult[];
   sourceSpans: SourceSpanLike[];
   sourceTree: DocumentSourceNode[];
+  /** Jev's endorsement type/support decisions; undecided endorsements fall back to review. */
+  endorsementJudgments?: Map<unknown, EndorsementJudgment>;
 }): MergedSectionExtraction {
   const resolver = createEvidenceResolver(args.sourceSpans, args.sourceTree);
   let uncitedFactCount = 0;
@@ -794,9 +798,12 @@ export function mergeSectionResults(args: {
       const summary = clean(endorsement.summary);
       const evidence = summary ? cited(endorsement.citations, section) : undefined;
       if (!summary || !evidence) continue;
+      const judgment =
+        args.endorsementJudgments?.get(endorsement) ??
+        ENDORSEMENT_JUDGMENT_FALLBACK;
       endorsementSupport.push({
-        kind: endorsement.endorsementType,
-        status: endorsement.supportStatus,
+        kind: judgment.endorsementType,
+        status: judgment.supportStatus,
         summary,
         sourceNodeIds: evidence.sourceNodeIds,
         sourceSpanIds: evidence.sourceSpanIds,
@@ -806,7 +813,7 @@ export function mergeSectionResults(args: {
           formNumber: clean(endorsement.formNumber) ?? endorsementNumber ?? "",
           editionDate: clean(endorsement.editionDate),
           title: clean(endorsement.title) ?? summary,
-          endorsementType: endorsement.endorsementType,
+          endorsementType: judgment.endorsementType,
           effectiveDate: sourceValue(endorsement.effectiveDate, section)?.value,
           affectedCoverageParts: endorsement.coverageChanges.map(
             (change) => `${change.action}: ${change.coverage.name}`,

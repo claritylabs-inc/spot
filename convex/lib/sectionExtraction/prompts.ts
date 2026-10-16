@@ -44,7 +44,7 @@ ${LINE_OF_BUSINESS_RULE}`,
 ${COVERAGE_RULE}
 
 ${LINE_OF_BUSINESS_RULE}`,
-  endorsement: `This section contains one or more endorsements. Return one entry per endorsement with its form number, edition date, title, endorsement number, endorsement type, and a one-sentence summary of what it changes. Set supportStatus to supported when it grants or broadens coverage (for example additional insured, waiver of subrogation, or primary and noncontributory), excluded when it removes or excludes coverage, and requires_review otherwise. Extract its effective date and structured changes:
+  endorsement: `This section contains one or more endorsements. Return one entry per endorsement with its form number, edition date, title, endorsement number, and a one-sentence summary of what it changes. Do not classify the endorsement or judge whether it grants or removes coverage. Extract its effective date and structured changes:
 - coverageChanges: coverages it adds, removes, or modifies, with the new limits and deductibles as printed.
 - partyChanges: additional insureds, additional named insureds, loss payees, mortgage holders, or certificate holders it adds or removes, with the scope of their status when printed.
 - dateChanges: policy dates it changes.
