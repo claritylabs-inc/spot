@@ -62,18 +62,7 @@ async function activeLeaseExpiry(
     const expiry = checkpoint.lease?.expiresAt ?? 0;
     return checkpoint.lease?.id === job.leaseId && expiry > now ? expiry : null;
   }
-  const previews = await ctx.db
-    .query("policyExtractionPreviewQueue")
-    .withIndex("policy", (q) => q.eq("policyId", policyId))
-    .order("desc")
-    .take(20);
-  const row = previews.find(
-    (item) =>
-      item.status === "leased" &&
-      item.leaseId === job.leaseId &&
-      (item.leaseExpiresAt ?? 0) > now,
-  );
-  return row?.leaseExpiresAt ?? null;
+  return null;
 }
 
 export const registerActionAsset = internalMutation({

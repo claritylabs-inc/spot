@@ -179,7 +179,6 @@ export async function commitValidatedOperatorPolicyImport(
     mode: "combined" | "separate";
     mergedFileId?: Id<"_storage">;
     mergedFileName?: string;
-    workspaceScanImportId?: Id<"operatorWorkspaceScanImports">;
   },
 ) {
   const files = args.files;
@@ -226,7 +225,6 @@ export async function commitValidatedOperatorPolicyImport(
       : group[0].fileName;
     const hashes = group.map((file) => file.fileSha256);
     const indexed = await findIndexedPolicyDuplicate(ctx, args.orgId, hashes);
-    if (args.workspaceScanImportId && !indexed.complete) throw new Error("Policy content discovery is incomplete");
     let duplicate: Id<"policies"> | undefined = indexed.policyId ?? undefined;
     if (!indexed.complete) for await (const policy of ctx.db
       .query("policies")
@@ -275,7 +273,6 @@ export async function commitValidatedOperatorPolicyImport(
         policyFileId,
         orgId: args.orgId,
         userId: args.operatorUserId,
-        workspaceScanImportId: args.workspaceScanImportId,
       },
     );
     results.push({ policyId, fileName, status: "queued" });

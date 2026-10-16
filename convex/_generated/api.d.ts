@@ -91,7 +91,6 @@ import type * as connectedEmailAutomation from "../connectedEmailAutomation.js";
 import type * as connectedOrgs from "../connectedOrgs.js";
 import type * as crons from "../crons.js";
 import type * as declarationFacts from "../declarationFacts.js";
-import type * as deprecatedTableCleanup from "../deprecatedTableCleanup.js";
 import type * as devClear from "../devClear.js";
 import type * as emailDeliveryAttempts from "../emailDeliveryAttempts.js";
 import type * as emailDraftReviewLinks from "../emailDraftReviewLinks.js";
@@ -209,7 +208,6 @@ import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js
 import type * as lib_googleWorkspace from "../lib/googleWorkspace.js";
 import type * as lib_googleWorkspaceCredentials from "../lib/googleWorkspaceCredentials.js";
 import type * as lib_googleWorkspaceProvider from "../lib/googleWorkspaceProvider.js";
-import type * as lib_googleWorkspaceScanSchema from "../lib/googleWorkspaceScanSchema.js";
 import type * as lib_googleWorkspaceTools from "../lib/googleWorkspaceTools.js";
 import type * as lib_googleWorkspaceValidators from "../lib/googleWorkspaceValidators.js";
 import type * as lib_googleWorkspaceVerification from "../lib/googleWorkspaceVerification.js";
@@ -316,7 +314,6 @@ import type * as lib_routerAssetSignature from "../lib/routerAssetSignature.js";
 import type * as lib_routerCapabilities from "../lib/routerCapabilities.js";
 import type * as lib_routerJobClient from "../lib/routerJobClient.js";
 import type * as lib_routerJobFailure from "../lib/routerJobFailure.js";
-import type * as lib_scanReconciliationSchema from "../lib/scanReconciliationSchema.js";
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
 import type * as lib_searchTokenizer from "../lib/searchTokenizer.js";
 import type * as lib_sectionExtraction_merge from "../lib/sectionExtraction/merge.js";
@@ -516,7 +513,6 @@ declare const fullApi: ApiFromModules<{
   connectedOrgs: typeof connectedOrgs;
   crons: typeof crons;
   declarationFacts: typeof declarationFacts;
-  deprecatedTableCleanup: typeof deprecatedTableCleanup;
   devClear: typeof devClear;
   emailDeliveryAttempts: typeof emailDeliveryAttempts;
   emailDraftReviewLinks: typeof emailDraftReviewLinks;
@@ -634,7 +630,6 @@ declare const fullApi: ApiFromModules<{
   "lib/googleWorkspace": typeof lib_googleWorkspace;
   "lib/googleWorkspaceCredentials": typeof lib_googleWorkspaceCredentials;
   "lib/googleWorkspaceProvider": typeof lib_googleWorkspaceProvider;
-  "lib/googleWorkspaceScanSchema": typeof lib_googleWorkspaceScanSchema;
   "lib/googleWorkspaceTools": typeof lib_googleWorkspaceTools;
   "lib/googleWorkspaceValidators": typeof lib_googleWorkspaceValidators;
   "lib/googleWorkspaceVerification": typeof lib_googleWorkspaceVerification;
@@ -741,7 +736,6 @@ declare const fullApi: ApiFromModules<{
   "lib/routerCapabilities": typeof lib_routerCapabilities;
   "lib/routerJobClient": typeof lib_routerJobClient;
   "lib/routerJobFailure": typeof lib_routerJobFailure;
-  "lib/scanReconciliationSchema": typeof lib_scanReconciliationSchema;
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
   "lib/searchTokenizer": typeof lib_searchTokenizer;
   "lib/sectionExtraction/merge": typeof lib_sectionExtraction_merge;
