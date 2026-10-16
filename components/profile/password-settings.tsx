@@ -40,7 +40,7 @@ export function PasswordSettings() {
       setEditing(false);
       setNewPassword("");
       setCurrentPassword("");
-      setMessage("Password saved. You can still sign in with an email code.");
+      setMessage("Password saved. Other devices have been signed out. You can still sign in with an email code.");
     } catch (err) {
       setError(getUserFacingErrorMessage(err, "Could not save your password. Try signing in again with an email code."));
     } finally {
