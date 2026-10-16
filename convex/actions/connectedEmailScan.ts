@@ -72,7 +72,6 @@ const AUTOMATION_THUMBNAIL_MIN_IMAGE_BYTES = 15 * 1024;
 const AUTOMATION_THUMBNAILS_PER_EMAIL = 2;
 const AUTOMATION_THUMBNAILS_PER_SCAN = 24;
 const AUTOMATION_THUMBNAIL_MAX_FAILURES = 3;
-const AUTOMATION_THUMBNAIL_MAX_SIDE = 1024;
 const AUTOMATION_THUMBNAIL_FILENAME_HINT =
   /polic|declar|dec[-_ ]?page|binder|endors|certific|coi|acord|lease|contract|agreement|requirement|insur|schedule/i;
 const AUTOMATION_HISTORY_SUBJECT_TERMS = [
@@ -538,8 +537,7 @@ async function loadMessageThumbnails(
               const [page] = await renderPdfPageImages({
                 pdfBytes: bytes,
                 pages: [1],
-                maxSide: AUTOMATION_THUMBNAIL_MAX_SIDE,
-              });
+                              });
               if (page) image = pdfPageJevImage(page);
             } else if (await imageWithinJevLimits(bytes)) {
               image = {

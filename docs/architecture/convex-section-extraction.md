@@ -16,10 +16,10 @@ For intake, separate Jev Nouls establish insurance content, bound terms, and
 specimen status. Per-candidate insured/carrier questions and one endorsement
 question replace the relationship cross-product. Code compares policy numbers
 and parsed periods; missing or ambiguous evidence keeps the relationship unknown.
-These relationships remain advisory. Jev reads pages as rendered 1024px images,
-not as extracted text: intake sends the first six pages, and an upload can be
-rejected only when Jev saw every page. Sectioning sends every page (with its
-neighbours as context) in 8-page image batches; the text layer stays in code for
+These relationships remain advisory. Jev reads pages as rendered 1280px JPEG images
+(quality 60), not as extracted text: intake sends the first six pages, and an
+upload can be rejected only when Jev saw every page. Sectioning sends every page
+(with its neighbours as context) in 5-page image batches; the text layer stays in code for
 form-number boundaries. A batch that exceeds cl-router's 16 MiB limit or Jev's
 context (about six full-size pages) is reported as too large and halved. If
 rendering or staging fails, decisions fall back to the text digest. Every question

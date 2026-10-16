@@ -240,7 +240,8 @@ export async function locateOnPdfPage(
     if (!jevProceeds(present) || boxAnswer?.type !== "box") {
       return { ...unlocated, present };
     }
-    coarse = boxAnswer.box;
+    // The page image may be margin-trimmed; map its box back to page fractions.
+    coarse = mapFromRegion(boxAnswer.box, pageImage.region);
   } finally {
     await full.cleanup();
   }

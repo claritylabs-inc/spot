@@ -17,6 +17,8 @@ import { locateOnPdfPage, stageJevImages } from "../lib/jevImages";
 import {
   JEV_IMAGE_MAX_SIDE,
   JEV_IMAGE_MIN_SIDE,
+  JEV_PAGE_MAX_SIDE,
+  JPEG_QUALITY,
   renderPdfPageImages,
   type PdfPageImage,
 } from "../lib/pdfPageImages";
@@ -293,7 +295,7 @@ export async function normalizeRequirementImage(
 ): Promise<RequirementSourceImage> {
   const { createCanvas, loadImage } = await import("@napi-rs/canvas");
   const image = await loadImage(Buffer.from(bytes));
-  const fit = JEV_IMAGE_MAX_SIDE / Math.max(image.width, image.height);
+  const fit = JEV_PAGE_MAX_SIDE / Math.max(image.width, image.height);
   const floor = JEV_IMAGE_MIN_SIDE / Math.min(image.width, image.height);
   const scale = Math.min(Math.max(Math.min(1, fit), floor), fit);
   const drawWidth = Math.max(1, Math.round(image.width * scale));
@@ -307,7 +309,7 @@ export async function normalizeRequirementImage(
   context.drawImage(image, 0, 0, drawWidth, drawHeight);
   return {
     page: 1,
-    bytes: new Uint8Array(await canvas.encode("jpeg", 88)),
+    bytes: new Uint8Array(await canvas.encode("jpeg", JPEG_QUALITY)),
     mediaType: "image/jpeg",
   };
 }

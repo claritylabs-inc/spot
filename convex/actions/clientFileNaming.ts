@@ -21,10 +21,11 @@ import { generateObjectForOrg } from "../lib/models";
 import {
   JEV_IMAGE_MAX_SIDE,
   JEV_IMAGE_MIN_SIDE,
+  JEV_PAGE_MAX_SIDE,
+  JPEG_QUALITY,
   renderPdfPageImages,
 } from "../lib/pdfPageImages";
 
-const CATEGORY_THUMBNAIL_MAX_SIDE = 1024;
 const CATEGORY_THUMBNAIL_MAX_FILE_BYTES = 15 * 1024 * 1024;
 const CATEGORY_TEXT_EXCERPT_CHARS = 3_000;
 // Same categories as procurement file items, plus `other` when none fits.
@@ -74,7 +75,7 @@ async function clientImageJevImage(
   const source = await loadImage(Buffer.from(bytes));
   const scale = Math.min(
     1,
-    CATEGORY_THUMBNAIL_MAX_SIDE / Math.max(source.width, source.height),
+    JEV_PAGE_MAX_SIDE / Math.max(source.width, source.height),
   );
   const width = Math.round(source.width * scale);
   const height = Math.round(source.height * scale);
@@ -86,7 +87,7 @@ async function clientImageJevImage(
   context.fillRect(0, 0, width, height);
   context.drawImage(source, 0, 0, width, height);
   return {
-    bytes: new Uint8Array(await canvas.encode("jpeg", 88)),
+    bytes: new Uint8Array(await canvas.encode("jpeg", JPEG_QUALITY)),
     mediaType: "image/jpeg",
     label: mediaType === "image/png" ? "upload-png" : "upload-jpeg",
   };
@@ -123,8 +124,7 @@ async function clientFileFirstPageImage(
     const [page] = await renderPdfPageImages({
       pdfBytes: bytes,
       pages: [1],
-      maxSide: CATEGORY_THUMBNAIL_MAX_SIDE,
-    });
+          });
     return page ? pdfPageJevImage(page) : null;
   }
   return await clientImageJevImage(

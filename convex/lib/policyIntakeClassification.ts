@@ -57,7 +57,7 @@ export type PolicyIntakeDecision = {
 };
 
 const MAX_EVIDENCE_CHARS = 60_000;
-/** Leading pages Jev sees as images (about 2.5k tokens each at 1024px). */
+/** Leading pages Jev sees as images (about 3.8k tokens each at 1280px). */
 const INTAKE_IMAGE_PAGES = 6;
 const MAX_RELATIONSHIP_CANDIDATES = 20;
 
@@ -212,7 +212,6 @@ export async function classifyPolicyIntake(args: {
         images = await renderPdfPageImages({
           pdfBytes: args.pdfBytes,
           pages: leadingPages,
-          maxSide: 1024,
         });
         if (images.length) {
           staged = await stageJevImages(args.ctx, images.map(pdfPageJevImage), {
