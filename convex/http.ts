@@ -519,6 +519,9 @@ http.route({
         emailDeliveryMode: getEmailDeliveryMode(),
         clientPortalUrl: getClientPortalUrl(),
         authSiteUrl: getAuthSiteUrl(),
+        imessage: {
+          webhookTransport: isImessageWebhookTransportEnabled("customer"),
+        },
         operatorImessage: {
           inboundEnabled: operatorImessageEnabled,
           contactPhoneConfigured: Boolean(getOperatorImessageContactPhone()),

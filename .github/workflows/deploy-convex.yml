@@ -169,21 +169,12 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Wait for Railway services
-        run: node scripts/wait-for-railway-statuses.mjs
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          RAILWAY_STATUS_CONTEXTS: |
-            Spot - imessage-worker
-            Spot - operator-imessage-worker
-
       - name: Check deployed service compatibility
         run: node scripts/check-agent-deployment-health.mjs --env production
         env:
           AGENT_HEALTH_ATTEMPTS: 30
           AGENT_HEALTH_RETRY_DELAY_MS: 10000
           SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL: ${{ vars.SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL }}
-          SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL: ${{ vars.SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL }}
 
       - name: Verify release is still the branch head
         env:

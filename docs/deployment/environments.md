@@ -51,13 +51,9 @@ package versions. Deployment requires every validation job to pass. After
 validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
-2. waits for the exact commit's two established Railway contexts
-   (`imessage-worker`) plus `operator-imessage-worker` after its
-   production health URL variable is configured, to report
-   success, including explicit `No deployment needed` watch-path results;
-3. runs the deployed Convex, iMessage, Slack, and cl-router
-   compatibility audit; and
-4. verifies the commit is still the branch head before emitting
+2. verifies Convex configuration, both iMessage webhook transports, Slack,
+   and cl-router health; and
+3. verifies the commit is still the branch head before emitting
    `release-ready-production`.
 
 Vercel may build the production candidate in parallel, but the Spot Vercel
@@ -69,18 +65,15 @@ blocks `deployment-alias`, and allows 1,800 seconds for the full release
 workflow. Vercel then assigns every production alias, including
 `app.spot.insure`, only after the release job succeeds. Changing the job name
 requires updating the Vercel project check in the same rollout. A failed or
-timed-out Convex deploy, Railway status, compatibility audit, or stale-head
+timed-out Convex deploy, compatibility audit, or stale-head
 check leaves the candidate unpromoted; use Vercel's explicit force-promotion
 control only for an incident-approved bypass.
 
-Railway Git autodeploy and every provisioned service-local watch path must remain
-enabled. Unchanged workers satisfy the barrier with Railway's no-op status, and
-the mailbox cron's Railway deployment status is its release signal because it
-has no persistent HTTP process. Do not enable Railway **Wait for CI** for these
-services: the release job itself waits for Railway and that setting would create
-a cycle. Push-time health checks do not prove release readiness because they can
-observe the previous healthy processes; the compatibility audit therefore runs
-only after Convex and Railway are ready.
+Production iMessage runs through Photon webhooks in Convex. The retained
+Railway iMessage services are stopped with Git autodeploy disabled for rollback;
+release readiness no longer waits for their status contexts or HTTP health.
+The mailbox scan runs on the Convex cron and Slack uses the Convex Web API
+transport. The compatibility audit runs after the Convex deployment.
 `agent-safeguards.yml` exposes the same production audit only as a manual
 diagnostic; it has no recurring, push, or pull-request trigger.
 
@@ -309,7 +302,9 @@ prefers `SPOT_IMESSAGE_CONTACT_PHONE` before the public Spot value. Both paths
 temporarily fall back to the corresponding legacy `GLASS_*` variables until the
 Spot values have been verified on every production target.
 
-Internal operator iMessage uses a separate Photon project and isolated route on the
+The following Railway configuration is retained for rollback. Production uses
+the webhook transport described below. The operator worker uses a separate
+Photon project and isolated route on the
 `operator-imessage-worker` Railway service
 (`21ab337b-1f74-4cac-8654-fba5187c35a3`). Its production base URL is
 `https://operator-imessage-worker-production.up.railway.app`. It reuses the
@@ -347,19 +342,15 @@ service's `OPERATOR_IMESSAGE_WORKER_URL`. Production must keep
 `OPERATOR_IMESSAGE_TERMINAL_ENABLED` unset or false. Publish the service health
 URL through the GitHub Actions variable
 `SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL`.
-Before merging the rollout, configure both production GitHub Actions variables
-and set the Railway service's `OPERATOR_IMESSAGE_ENABLED=true`. Every `main`
-release then requires the exact-commit `Spot - operator-imessage-worker`
-status, sets Convex `OPERATOR_SLACK_ENABLED=true` and
-`OPERATOR_IMESSAGE_ENABLED=true`, clears the terminal-mode flag, and requires
-the operator worker health contract, contact number, and fail-closed Convex
-wiring before production promotion.
+Every `main` release sets Convex `OPERATOR_SLACK_ENABLED=true` and
+`OPERATOR_IMESSAGE_ENABLED=true`, clears the terminal-mode flag, and verifies
+the contact number and Convex transport configuration before promotion.
 
-Both iMessage lanes can instead run on Photon Spectrum webhooks handled in
-Convex, behind the per-role flags `IMESSAGE_WEBHOOK_ENABLED` and
-`OPERATOR_IMESSAGE_WEBHOOK_ENABLED` (off by default). Credentials, the
-cutover and rollback runbook, and what to delete afterwards are in
-[iMessage over Spectrum webhooks](./imessage-webhooks.md).
+Both production iMessage lanes run on Photon Spectrum webhooks in Convex with
+`IMESSAGE_WEBHOOK_ENABLED=true` and `OPERATOR_IMESSAGE_WEBHOOK_ENABLED=true`.
+The release audit requires both webhook flags; local terminal development keeps
+its worker health checks. Credentials, cutover, rollback, and final worker
+removal are documented in [iMessage over Spectrum webhooks](./imessage-webhooks.md).
 
 Slack environment/app setup and the client-owned policy-delivery migration are
 documented in [Slack privileged service channel](./slack.md). Production owns

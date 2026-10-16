@@ -1,11 +1,10 @@
 # iMessage over Spectrum webhooks
 
-Customer and operator iMessage can run entirely in Convex: Photon Spectrum
-POSTs each inbound message to a Convex HTTP route, and Convex sends replies and
-proactive messages through `spectrum-ts` in Node actions. The path is gated per
-role and **off by default**; until it is enabled, the Railway `imessage-worker`
-and `operator-imessage-worker` services stay the live transport and nothing in
-this document changes production behavior.
+Production customer and operator iMessage run in Convex: Photon Spectrum POSTs
+inbound messages to the role's HTTP route, and Convex sends replies through
+`spectrum-ts` Node actions. Both webhook flags are enabled in production.
+The Railway services are stopped with Git autodeploy disabled and retained for
+rollback. Local terminal development still uses the worker harness.
 
 References: Photon **Stable** docs (Spectrum) — [Webhooks](https://photon.codes/docs/webhooks/overview),
 [Events](https://photon.codes/docs/webhooks/events),
@@ -175,11 +174,8 @@ Once both roles have run on webhooks for an agreed soak period:
   `OPERATOR_IMESSAGE_WEBHOOK_ENABLED` flags (make webhooks unconditional).
 - Convex env `IMESSAGE_WORKER_URL`, `IMESSAGE_WORKER_SECRET`,
   `OPERATOR_IMESSAGE_WORKER_URL`, `OPERATOR_IMESSAGE_WORKER_SECRET`.
-- Release wiring: the two iMessage contexts in `RAILWAY_STATUS_CONTEXTS`
-  (`.github/workflows/deploy-convex.yml`), the iMessage worker build in
-  `validate-workers` and `ci.yml`, `imessageWorkerHealthUrl` and the
-  `operatorImessage` Railway fields in `config/deployments.json`, the worker
-  health checks in `scripts/check-agent-deployment-health.mjs`, the
+- Remaining worker wiring: the iMessage worker build in `validate-workers` and
+  `ci.yml`, the `operatorImessage` Railway metadata in `config/deployments.json`, the
   `SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL` variable, the
   `operatorImessage.workerUrlConfigured`/`workerSecretConfigured` compatibility
   fields in `/agent-health`, and the `container:*:imessage-worker` scripts.
