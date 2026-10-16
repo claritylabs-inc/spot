@@ -2,10 +2,7 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import type { PolicySection } from "../policySectioning";
 import {
-  buildDeclarationsSummary,
-  buildSectionPrompt,
   citationPageCandidates,
-  sectionPageInstructions,
 } from "./prompts";
 import { SECTION_OUTPUT_SCHEMAS, type DeclarationsSectionOutput } from "./schemas";
 
@@ -61,52 +58,6 @@ const declarations: DeclarationsSectionOutput = {
     },
   ],
 };
-
-describe("section prompts", () => {
-  test("state the slice's original pages and page offset", () => {
-    const instructions = sectionPageInstructions(section({}), 20);
-
-    expect(instructions).toContain("original pages 5-8 of a 20-page document");
-    expect(instructions).toContain("Page 1 of the attached PDF is original page 5");
-    expect(instructions).toContain("add 4 to a page number");
-    expect(instructions).toContain("original page number from 5 to 8");
-    expect(sectionPageInstructions(section({ pageStart: 3, pageEnd: 3 }), 9))
-      .toContain("original page 3 of a 9-page document");
-  });
-
-  test("give declarations the carrier guidance and other sections the declarations context", () => {
-    const summary = buildDeclarationsSummary([declarations]);
-    const declarationsPrompt = buildSectionPrompt({
-      section: section({ sectionId: "declarations-1-2", kind: "declarations", pageStart: 1, pageEnd: 2 }),
-      pageCount: 20,
-    });
-    const endorsementPrompt = buildSectionPrompt({
-      section: section({ formNumber: "CG 20 10", title: "Additional Insured" }),
-      pageCount: 20,
-      declarationsSummary: summary,
-    });
-
-    expect(declarationsPrompt.prompt).toContain("Carrier identity rules");
-    expect(declarationsPrompt.prompt).toContain("ACORD LOBCd");
-    expect(declarationsPrompt.prompt).not.toContain("Policy context from the declarations");
-    expect(endorsementPrompt.prompt).toContain('form CG 20 10, "Additional Insured"');
-    expect(endorsementPrompt.prompt).toContain("- Policy number: GL-100");
-    expect(endorsementPrompt.system).toContain("citations");
-  });
-
-  test("summarize declarations compactly", () => {
-    expect(buildDeclarationsSummary([declarations])).toBe([
-      "- Policy number: GL-100",
-      "- Named insured: Acme Corp",
-      "- Carrier: Example Insurance Company",
-      "- Policy period: 01/01/2026 to 01/01/2027",
-      "- Lines of business: CGL",
-      "- Coverages: General Liability: $1,000,000",
-      "- Forms: CG 00 01",
-    ].join("\n"));
-    expect(buildDeclarationsSummary([])).toBeUndefined();
-  });
-});
 
 describe("citation page conversion", () => {
   test("keeps original pages and converts slice-relative pages", () => {

@@ -970,3 +970,24 @@ Message/upload persistence passes independently; no router allowlist was changed
 Not run: Edge, browser-store review, a visible desktop run, live model-generated
 certificates/email approvals and production HTTPS authentication. Those are not
 claimed by this workflow.
+
+### Test suite pruning — October 16, 2026
+
+Keep isolated coverage for authorization and tenant isolation, exact approvals,
+webhook authenticity, replay/idempotency, leases and cancellation, stale writes,
+immutable evidence, bounded inputs, extraction grounding, and irreversible sends.
+A small test count is not a reason to remove a distinct failure boundary.
+
+Removed ordinary UI/state/formatting suites: app-shell route presentation,
+user-facing error formatting, dock state/shortcuts/provider, page suggestions,
+history grouping, operator context links, usage-summary presentation, mutable
+operator page context, generated thread titles, and Slack installation scope-list
+mirrors. These belong in browser workflow QA rather than mocked UI or adapter
+assertions. Also removed prompt-wording assertions from section extraction and
+supplementary extraction; citation page conversion and output validation remain.
+
+Retained dock storage user/surface isolation, cache-key isolation, autosave race
+coverage, upload sharing boundaries, grounded presentation/navigation checks,
+and model fail-closed/replay protections. Their behavior is difficult to prove
+reliably with a happy-path browser run. No replacement tests were added. This
+cleanup changes no production behavior and does not claim a new browser QA run.
