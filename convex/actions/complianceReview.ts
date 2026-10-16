@@ -251,7 +251,9 @@ export const recheckOwnRequirement = action({
     let status: ComplianceReviewResult["status"] = matchedPolicies.length
       ? activePolicies.length
         ? "met"
-        : "expired"
+        : uncertain
+          ? "unverified"
+          : "expired"
       : uncertain
         ? "unverified"
         : "not_met";

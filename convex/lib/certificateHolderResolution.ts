@@ -465,10 +465,3 @@ export function buildHolderIdentityReviewState<T>(args: {
     ),
   };
 }
-
-export function buildHolderIdentityReviewPrompt<T>(args: {
-  requested: CertificateHolderIdentity;
-  candidates: CertificateHolderResolutionCandidate<T>[];
-}): string {
-  return JSON.stringify(buildHolderIdentityReviewState(args));
-}

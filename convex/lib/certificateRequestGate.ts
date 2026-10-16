@@ -154,7 +154,11 @@ export type CertificateEndorsementRequest = {
 export function inferCertificateEndorsements(
   params: CertificateEndorsementRequest,
 ): CertificateEndorsementKind[] {
-  const text = [params.requestText, ...(params.requestedEndorsements ?? [])]
+  const text = [
+    params.certificateHolder,
+    params.requestText,
+    ...(params.requestedEndorsements ?? []),
+  ]
     .filter(Boolean)
     .join("\n");
   const kinds = new Set<CertificateEndorsementKind>(
