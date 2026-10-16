@@ -9,7 +9,7 @@ import {
   resolveCitationWithIndex,
   type ResolvedCitation,
 } from "./citationResolver";
-import { locateOnPdfPage, pdfPageJevImage, stageJevImages } from "./jevImages";
+import { boxToPdfBbox, pdfPageJevImage, stageJevImages } from "./jevImages";
 import { jevProceeds } from "./jevThreshold";
 import { clRouterDecide, runWithPayloadSplitting } from "./clRouterClient";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
@@ -151,17 +151,41 @@ export async function localizePolicyCitations(args: {
                 bottom: Math.min(1, region.top + box.box.bottom * (region.bottom - region.top) + 0.06),
               },
             });
-            const [location] = await runWithPayloadSplitting([quote], async () => locateOnPdfPage(args.ctx, {
-              pdfBytes: args.pdfBytes, page, pageImage: crop, target: { quote },
-              orgId: args.orgId, task: "policy_citation_localization",
-              surface: "policy-citations", sessionKey: args.policyId, traceId: args.traceId,
-            }));
-            if (
-              !location.bbox ||
-              !jevProceeds(location.present) ||
-              !jevProceeds(location.confidence)
-            )
-              continue;
+            const zoomed = await stageJevImages(args.ctx, [pdfPageJevImage(crop)], {
+              orgId: args.orgId, surface: "policy-citations", sessionKey: args.policyId,
+            });
+            let location;
+            try {
+              const refined = await clRouterDecide({
+                orgId: String(args.orgId), task: "policy_citation_localization",
+                state: { crop: zoomed.refs[0], target: { quote } },
+                assets: zoomed.assets,
+                questions: {
+                  present: { type: "noul", instructions: "Does `crop` show the quoted text in `target.quote`?" },
+                  box: { type: "box", instructions: "The quoted text in `target.quote` on `crop`." },
+                },
+                trace: args.traceId ? { traceId: args.traceId } : undefined,
+              }, { telemetry: args.ctx });
+              const present = refined.answers.present;
+              const answer = refined.answers.box;
+              if (present?.type !== "noul" || !jevProceeds(present.noul) ||
+                  answer?.type !== "box" || !jevProceeds(answer.confidence)) continue;
+              const region = crop.region;
+              const clamp = (value: number) => Math.max(0, Math.min(1, value));
+              location = {
+                bbox: boxToPdfBbox({
+                  left: clamp(region.left + answer.box.left * (region.right - region.left)),
+                  right: clamp(region.left + answer.box.right * (region.right - region.left)),
+                  top: clamp(region.top + answer.box.top * (region.bottom - region.top)),
+                  bottom: clamp(region.top + answer.box.bottom * (region.bottom - region.top)),
+                }, page, crop.pageWidth, crop.pageHeight),
+                pageWidth: crop.pageWidth,
+                pageHeight: crop.pageHeight,
+                confidence: answer.confidence,
+              };
+            } finally {
+              await zoomed.cleanup();
+            }
             // A Box locates presentation evidence; it cannot make an unmatched quote
             // into a grounded fact. Keep page_only annotations separate from text.
             const destinations =
