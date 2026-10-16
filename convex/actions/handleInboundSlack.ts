@@ -32,7 +32,10 @@ import {
 import { decideSlackControlIntent } from "../lib/channelControls";
 import { operatorSlackConversationKey } from "../lib/operatorSlackConfig";
 import { slackWebApi } from "../lib/slackWebApi";
-import { classifyPromptInjection } from "../lib/security";
+import {
+  classifyPromptInjection,
+  PromptInjectionScreeningUnavailableError,
+} from "../lib/security";
 
 const CHANNEL_NAME_TIMEOUT_MS = 3_000;
 const internalApi = internal as any;
@@ -206,16 +209,48 @@ async function updateOperatorSlackConfirmation(
   });
 }
 
+async function screenSlackEvents(
+  ctx: ActionCtx,
+  events: Array<Doc<"slackInboundEvents">>,
+): Promise<Set<Id<"slackInboundEvents">>> {
+  const results = await Promise.all(
+    events.map(async (event) => ({
+      event,
+      screening: await classifyPromptInjection(ctx, event.content, "external"),
+    })),
+  );
+  const unsafe = results.filter(({ screening }) =>
+    !screening.safe && screening.audit.classifierStatus === "unsafe",
+  );
+  if (unsafe.length) {
+    await ctx.runMutation(internalApi.slack.failEvents, {
+      eventIds: unsafe.map(({ event }) => event._id),
+      error: "Security screening rejected unsafe Slack instructions",
+      retryable: false,
+    });
+  }
+  if (results.some(({ screening }) =>
+    screening.audit.classifierStatus === "failed" ||
+    screening.audit.classifierStatus === "invalid",
+  )) {
+    throw new PromptInjectionScreeningUnavailableError();
+  }
+  return new Set(results.filter(({ screening }) => screening.safe)
+    .map(({ event }) => event._id));
+}
+
 async function processOperatorBatch(
   ctx: ActionCtx,
   batch: Array<Doc<"slackInboundEvents">>,
 ) {
   const eventIds = batch.map(({ _id }) => _id);
   await Promise.all(batch.map((event) => enrichActor(ctx, event)));
-  const authorized = (await ctx.runMutation(
+  const authorizedBatch = (await ctx.runMutation(
     internalApi.operatorSlack.authorizeBatch,
     { eventIds },
   )) as OperatorAuthorizedEvent[];
+  const safeEventIds = await screenSlackEvents(ctx, authorizedBatch.map(({ event }) => event));
+  const authorized = authorizedBatch.filter(({ event }) => safeEventIds.has(event._id));
   const pendingActivity = new Map(
     authorized.map(({ event }) => [event._id, event] as const),
   );
@@ -264,12 +299,6 @@ async function processOperatorBatch(
       )) as OperatorChannelThreadResult;
       const threadId = channelThread.threadId;
       const content = operatorSlackContent(refreshedEvent);
-      const screening = await classifyPromptInjection(ctx, content);
-      if (!screening.safe) {
-        throw new Error(
-          "Slack instructions held for review: security screening did not pass",
-        );
-      }
       const confirmation = await handleOperatorChannelConfirmation(ctx, {
         operatorUserId,
         threadId,
@@ -439,7 +468,7 @@ async function fetchThreadContext(
     };
     const artifact = createSlackThreadContextArtifact(snapshot);
     if (artifact) {
-      const screening = await classifyPromptInjection(ctx, artifact.data.text);
+      const screening = await classifyPromptInjection(ctx, artifact.data.text, "external");
       if (!screening.safe) {
         console.warn("[security] Slack thread context omitted", {
           audit: screening.audit,
@@ -562,22 +591,16 @@ export const processDebounced = internalAction({
           enrichActor(ctx, event),
         ),
       );
-      const authorized = (await ctx.runMutation(
+      const authorizedBatch = (await ctx.runMutation(
         internalApi.slack.authorizeBatch,
         { eventIds },
       )) as Array<Doc<"slackInboundEvents">>;
+      const safeEventIds = await screenSlackEvents(ctx, authorizedBatch);
+      const authorized = authorizedBatch.filter((event) => safeEventIds.has(event._id));
       if (authorized.length === 0) return;
       const slackThreadContext = authorized.at(-1)
         ? await fetchThreadContext(ctx, authorized.at(-1)!)
         : undefined;
-      for (const event of authorized) {
-        const screening = await classifyPromptInjection(ctx, event.content);
-        if (!screening.safe) {
-          throw new Error(
-            "Slack instructions held for review: security screening did not pass",
-          );
-        }
-      }
       await Promise.all(authorized.map((event) => fetchAttachment(ctx, event)));
       const controlIntents = await Promise.all(
         authorized

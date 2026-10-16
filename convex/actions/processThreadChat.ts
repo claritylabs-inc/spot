@@ -244,11 +244,13 @@ export const run = internalAction({
           id: args.userMessageId,
         },
       );
-      if (userMsgForGuard?.content) {
+      // Slack ingress already screens before preparing/claiming the agent response.
+      if (surface !== "slack" && userMsgForGuard?.content) {
         const sanitizedContent = enforceInputLimits(userMsgForGuard.content);
         const injectionCheck = await classifyPromptInjection(
           ctx,
           sanitizedContent,
+          "first_party",
           args.orgId,
         );
         if (!injectionCheck.safe) {

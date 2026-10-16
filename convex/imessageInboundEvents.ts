@@ -27,6 +27,16 @@ export const claim = internalMutation({
       .withIndex("event", (q) => q.eq("eventKey", args.eventKey))
       .first();
 
+    if (existing?.status === "error" &&
+        existing.error === "security_screening_unavailable") {
+      await ctx.db.patch(existing._id, {
+        status: "processing",
+        error: undefined,
+        privacyContextPending: args.isGroup === true ? undefined : true,
+        updatedAt: dayjs().valueOf(),
+      });
+      return { duplicate: false, status: "processing" as const };
+    }
     if (existing) {
       return {
         duplicate: true,

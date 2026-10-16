@@ -359,8 +359,22 @@ export const processInbound = internalAction({
       const injectionCheck = await classifyPromptInjection(
         ctx,
         inboundMessageText,
+        "external",
         orgId,
       );
+      if (
+        injectionCheck.audit.classifierStatus === "failed" ||
+        injectionCheck.audit.classifierStatus === "invalid"
+      ) {
+        await ctx.runMutation(internal.imessageInboundEvents.fail, {
+          eventKey,
+          error: "security_screening_unavailable",
+        });
+        return {
+          response: "Temporarily unavailable, please try again shortly.",
+          chatGuid,
+        };
+      }
       if (!injectionCheck.safe) {
         console.warn("[security] iMessage prompt injection blocked", {
           audit: injectionCheck.audit,
