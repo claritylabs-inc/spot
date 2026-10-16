@@ -1740,6 +1740,7 @@ export default defineSchema({
     sourceExcerpt: v.optional(v.string()),
     sourcePageStart: v.optional(v.number()),
     sourcePageEnd: v.optional(v.number()),
+    classificationReview: v.optional(v.literal(true)),
     // Excerpt read from a page image that Jev could not find on the page.
     sourceVerification: v.optional(v.literal("unverified")),
     // Where the excerpt sits on its PDF page: PDF points at scale 1, top-left

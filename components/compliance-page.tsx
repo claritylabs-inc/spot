@@ -247,6 +247,7 @@ type Requirement = {
   sourcePageStart?: number;
   sourcePageEnd?: number;
   sourceVerification?: "unverified";
+  classificationReview?: true;
   sourceBbox?: {
     page: number;
     x: number;
@@ -1124,6 +1125,12 @@ function RequirementDrawer({
                   </>
                 }
               />
+              {requirement.classificationReview ? (
+                <DrawerDetail
+                  label="Classification"
+                  value="Needs review: type/scope uncertain"
+                />
+              ) : null}
               {requirement.sourceVerification === "unverified" ? (
                 <DrawerDetail
                   label="Source check"

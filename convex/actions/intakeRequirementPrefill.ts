@@ -94,12 +94,14 @@ export const extract = internalAction({
       );
       const result = mergeRequirementChunkResults(chunkResults);
       const requirements = await judgeRequirementFields(
-        ctx, result.object.requirements,
+        ctx,
+        result.object.requirements,
         { traceId: String(intakeFileId), defaultScope: "own_org" },
       );
-      const exactExcerpt = (excerpt: string) =>
-        Boolean(excerpt.trim()) && text.includes(excerpt);
       const compact = (value: string) => value.trim().replace(/\s+/g, " ");
+      const sourceText = compact(text);
+      const exactExcerpt = (excerpt: string) =>
+        Boolean(compact(excerpt)) && sourceText.includes(compact(excerpt));
       // Excerpts read from images are checked against the page images; text
       // excerpts must be exact substrings of the extracted text.
       const imageVerdicts = images?.length
@@ -108,7 +110,7 @@ export const extract = internalAction({
             excerpts: requirements.flatMap(
               (requirement, index) =>
                 lines[requirement.lineOfBusiness ?? ""] &&
-                requirement.scope === "own_org" &&
+                requirement.scope !== "vendors" &&
                 !exactExcerpt(requirement.sourceExcerpt) &&
                 compact(requirement.sourceExcerpt)
                   ? [
@@ -131,9 +133,7 @@ export const extract = internalAction({
         requirement,
       ] of requirements.entries()) {
         const coverage = lines[requirement.lineOfBusiness ?? ""];
-        if (
-          !coverage || requirement.scope !== "own_org" || requirement.sourceVerification
-        ) continue;
+        if (!coverage || requirement.scope === "vendors") continue;
         // Reuse grounded requirements, never contract instructions or unsupported lines.
         const excerpt = compact(requirement.sourceExcerpt);
         if (!excerpt) continue;
