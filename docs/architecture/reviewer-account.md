@@ -25,7 +25,12 @@ Authentication
   it would leave a second sign-in path and, because provisioning fails closed on
   a foreign auth account, let anyone lock the reviewer out. `createOrUpdateUser`
   therefore rejects the reviewer email for every provider except
-  `review-password`.
+  `review-password`, and for that provider rejects `emailVerified` and any link
+  via email or phone to an existing user. `sendVerificationRequest` also refuses
+  to send to the address.
+- Session creation for the reviewer user is checked for every provider through
+  `beforeSessionCreation`, and the collision check rejects any auth account from
+  another provider that reaches the reviewer user.
 - Sign-in re-checks the identity on every attempt, before the password: it must
   still be a `customer` user with no operator profile, service-account flag or
   intake restriction, a `member` of exactly the one active demo `client`
@@ -80,7 +85,7 @@ Internal functions in `convex/reviewerAccounts.ts` (none are public):
 | --- | --- | --- | --- |
 | `reviewerAccounts:provision` | internalAction | `{password: string}` (24-256 chars) | `{status: "created" \| "exists", email, userId, orgId}` |
 | `reviewerAccounts:rotatePassword` | internalAction | `{password: string}` (24-256 chars) | `{status: "rotated", email, userId}` |
-| `reviewerAccounts:status` | internalQuery | `{}` | `{provisioned: false}` or `{provisioned: true, email, userId, orgId, sessions}` |
+| `reviewerAccounts:status` | internalQuery | `{}` | `{provisioned: false}` or `{provisioned: true, email, userId, orgId, sessions, signInRateLimited}` (read only; there is no unlock) |
 | `reviewerAccounts:prepare` | internalQuery | `{}` | `{kind: "create"}` or `{kind: "exists", userId}`; throws on any collision |
 | `reviewerAccounts:assertSignIn` | internalQuery | `{}` | `{userId}`; throws otherwise |
 | `reviewerAccounts:ensureWorkspace` | internalMutation | `{userId}` | `{orgId}` |
@@ -102,6 +107,26 @@ job. Existing authorization is unchanged: the reviewer sees only that org.
 Sign-in page: `/login/review` (optional `?next=/path`). It posts to the existing
 `/api/auth` route and needs no change to `AuthGuard` or the shell, which already
 treat `/login/*` as public and shell-less.
+
+## Required edits in `convex/orgs.ts` (manager-owned)
+
+Invitations can otherwise give the reviewer a
+membership in a foreign tenant. `assertNotReviewerUser` and `isReviewerEmail`
+come from `./lib/reviewerAuth`:
+
+```ts
+// invite, after the isBootstrapOperatorEmail check
+if (isReviewerEmail(email)) throw new Error("This address cannot be invited");
+
+// acceptInvitation, after assertCustomerUser(ctx, userId)
+await assertNotReviewerUser(ctx, userId);
+```
+
+`createClientOrg` and vendor-invitation org creation already refuse users who
+belong to an organization, and the reviewer is a `member`, so neither applies.
+Without the two edits above sign-in still fails closed once a foreign membership
+exists, but a reviewer already signed in could acquire one. Existing sessions are
+not revoked on drift; rotation revokes them.
 
 ## Operating it
 
