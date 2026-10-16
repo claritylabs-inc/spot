@@ -99,7 +99,7 @@ async function findExistingHolder(
   );
 }
 
-/** Holder sharing the email whose name differs, for an action to ask Jev about. */
+/** Up to 5 holders sharing the email whose names differ, for an action to ask Jev about. */
 export const findEmailNameConflictInternal = internalQuery({
   args: {
     orgId: v.id("organizations"),
@@ -118,15 +118,18 @@ export const findEmailNameConflictInternal = internalQuery({
       .collect();
     if (byEmail.some((holder) => holder.normalizedName === normalizedName))
       return null;
-    const holder = byEmail[0];
-    return holder ? { holderId: holder._id, displayName: holder.displayName } : null;
+    return byEmail.slice(0, 5).map((holder) => ({
+      holderId: holder._id,
+      displayName: holder.displayName,
+    }));
   },
 });
 
 /**
- * Same email, different name: asks Jev whether the saved holder is the same
- * organization. Returns its id only when Jev is confident; otherwise (or on a
- * router failure) the upsert treats the request as a new holder.
+ * Same email, different name: asks Jev, in one request, whether each saved
+ * holder is the same organization. Returns an id only when exactly one is
+ * confidently the same; otherwise (or on a router failure) the upsert treats
+ * the request as a new holder.
  */
 export async function confirmEmailHolderSameOrganization(
   ctx: ActionCtx,
@@ -134,11 +137,11 @@ export async function confirmEmailHolderSameOrganization(
 ): Promise<Id<"certificateHolders"> | undefined> {
   const name = args.displayName.trim();
   if (!name || !args.email) return undefined;
-  const conflict = (await ctx.runQuery(
+  const conflicts = (await ctx.runQuery(
     internal.certificateHolders.findEmailNameConflictInternal,
     { orgId: args.orgId, displayName: name, email: args.email },
-  )) as { holderId: Id<"certificateHolders">; displayName: string } | null;
-  if (!conflict) return undefined;
+  )) as Array<{ holderId: Id<"certificateHolders">; displayName: string }>;
+  if (conflicts.length === 0) return undefined;
   try {
     const result = await clRouterDecide(
       {
@@ -146,22 +149,25 @@ export async function confirmEmailHolderSameOrganization(
         task: "certificate_holder_resolution",
         state: {
           requested: { name },
-          candidate: { name: conflict.displayName },
+          candidates: conflicts.map((conflict) => ({ name: conflict.displayName })),
         },
-        questions: {
-          same_organization: {
-            type: "noul",
-            instructions:
-              "Is `candidate.name` the same organization as `requested.name`? A different legal entity, branch, or unrelated company sharing an inbox is not the same.",
-          },
-        },
+        questions: Object.fromEntries(
+          conflicts.map((_, index) => [
+            `candidate_${index}`,
+            {
+              type: "noul" as const,
+              instructions: `Is \`candidates[${index}].name\` the same organization as \`requested.name\`? A different legal entity, branch, or unrelated company sharing an inbox is not the same.`,
+            },
+          ]),
+        ),
       },
       { telemetry: ctx },
     );
-    const answer = result.answers.same_organization;
-    return answer?.type === "noul" && jevProceeds(answer.noul)
-      ? conflict.holderId
-      : undefined;
+    const matches = conflicts.filter((_, index) => {
+      const answer = result.answers[`candidate_${index}`];
+      return answer?.type === "noul" && jevProceeds(answer.noul);
+    });
+    return matches.length === 1 ? matches[0].holderId : undefined;
   } catch (error) {
     console.warn("[certificateHolders] holder name comparison failed", {
       error: error instanceof Error ? error.message : String(error),

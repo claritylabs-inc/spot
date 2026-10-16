@@ -149,8 +149,9 @@ export type CertificateEndorsementRequest = {
   requestText?: string;
   requestedEndorsements?: string[];
   /**
-   * Kinds Jev decided (`decideCertificateEndorsements`). When present they are
-   * the answer: regex hits are only candidates and never add a kind.
+   * Kinds decided by `decideCertificateEndorsements`. When present they are
+   * the answer. Free-text regex hits are candidates that Jev must confidently
+   * reject to drop; they never add a kind on their own.
    */
   detectedEndorsements?: CertificateEndorsementKind[];
 };
@@ -211,11 +212,12 @@ const ENDORSEMENT_ASKS: Record<CertificateEndorsementKind, string> = {
 };
 
 /**
- * Regex hits are only candidates ("Named Insured: ACME" on a plain COI form is
- * a mention, not a request), so Jev decides every kind in one batch with the
- * same ask-versus-mention question, which also catches paraphrases the regex
- * misses. A router failure falls back to the regex candidates, which is the
- * stricter, previous behavior.
+ * Explicit `requestedEndorsements` are always kept. A free-text regex hit
+ * ("Named Insured: ACME" on a plain COI form may be a mention, not a request)
+ * is dropped only when Jev confidently says it is not asked for; a missing or
+ * uncertain answer keeps it, which holds issuance. A kind the regex missed is
+ * added only when Jev confidently says it is asked for. A router failure falls
+ * back to the regex candidates, the stricter, previous behavior.
  */
 export async function decideCertificateEndorsements(
   ctx: Pick<ActionCtx, "runMutation">,
@@ -255,8 +257,17 @@ export async function decideCertificateEndorsements(
       },
       { telemetry: ctx },
     );
+    const explicit = new Set(
+      (params.requestedEndorsements ?? [])
+        .map(normalizeKind)
+        .filter((kind): kind is CertificateEndorsementKind => Boolean(kind)),
+    );
     return kinds.filter((kind) => {
+      if (explicit.has(kind)) return true;
       const answer = result.answers[kind];
+      if (candidates.includes(kind)) {
+        return !(answer?.type === "noul" && jevProceeds(1 - answer.noul));
+      }
       return answer?.type === "noul" && jevProceeds(answer.noul);
     });
   } catch (error) {
