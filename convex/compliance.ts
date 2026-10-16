@@ -1247,6 +1247,9 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         },
       ),
       policies: activePolicies.map((policy) => ({
+        deterministicCheck: assessRequirementCompliance(requirement, [policy], {
+          expectedInsuredName: org?.name,
+        }),
         _id: policy._id,
         carrier: policy.carrier || policy.security,
         policyNumber: policy.policyNumber,
