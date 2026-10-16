@@ -89,7 +89,7 @@ async function computePage(
       for (let pass = 0; pass < 2; pass += 1) {
         const selected =
           answers.coverage ??
-          (previous?.inputHash === plan.inputHash
+          (!args.force && previous?.inputHash === plan.inputHash
             ? previous.answers.coverage
             : undefined);
         const selectedIndex =
@@ -153,6 +153,7 @@ async function computePage(
       inputHash: plan.inputHash,
       answers,
       ...(error ? { error } : {}),
+      ...(args.force ? { force: true } : {}),
     });
     if (abortSignal.aborted) {
       for (const remaining of context.policies.slice(index + 1))

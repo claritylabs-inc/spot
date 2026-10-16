@@ -290,7 +290,7 @@ function policyText(policy: Doc<"policies">) {
       policy.security,
       policy.generalAgent?.agencyName,
       policy.broker,
-      complianceInsuredName(policy),
+      policy.insuredName,
       // Structured fields must be flattened to their text; joining the objects
       // directly produced "[object Object]" and hid every form and endorsement.
       ...(policy.formInventory ?? []).flatMap((form) => [
@@ -482,6 +482,7 @@ export function complianceJudgmentPlan(
     };
   }
   for (const [index, provision] of (requirement.provisions ?? []).entries()) {
+    if (!isRequirementProvision(provision)) continue;
     if (
       isRequirementProvision(provision) &&
       policyHasProvision(policy, provision)
@@ -556,6 +557,7 @@ function coverageAmountForKind(
   requiredKind: RequirementLimitKind,
   judgments: Record<string, string | boolean>,
   coverageIndex: number,
+  legacy = false,
 ) {
   const candidates: Array<{
     kind?: RequirementLimitKind;
@@ -565,12 +567,13 @@ function coverageAmountForKind(
   }> = [];
   if (coverage.limitAmount !== undefined) {
     candidates.push({
-      kind:
-        normalizeLimitKind(coverage.limitType ?? coverage.limit) ??
-        semanticLimitKind(judgments[`limit_${coverageIndex}_0`]) ??
-        (judgments[`limit_${coverageIndex}_0`] === undefined
-          ? legacyLimitKind(coverage.limitType ?? coverage.limit)
-          : undefined),
+      kind: legacy
+        ? legacyLimitKind(coverage.limitType ?? coverage.limit)
+        : (normalizeLimitKind(coverage.limitType ?? coverage.limit) ??
+          semanticLimitKind(judgments[`limit_${coverageIndex}_0`]) ??
+          (judgments[`limit_${coverageIndex}_0`] === undefined
+            ? legacyLimitKind(coverage.limitType ?? coverage.limit)
+            : undefined)),
       heuristic:
         !normalizeLimitKind(coverage.limitType ?? coverage.limit) &&
         judgments[`limit_${coverageIndex}_0`] === undefined,
@@ -580,12 +583,13 @@ function coverageAmountForKind(
   }
   for (const [index, limit] of (coverage.limits ?? []).entries()) {
     candidates.push({
-      kind:
-        normalizeLimitKind(limit.kind ?? limit.label ?? limit.appliesTo) ??
-        semanticLimitKind(judgments[`limit_${coverageIndex}_${index + 1}`]) ??
-        (judgments[`limit_${coverageIndex}_${index + 1}`] === undefined
-          ? legacyLimitKind(limit.kind ?? limit.label ?? limit.appliesTo)
-          : undefined),
+      kind: legacy
+        ? legacyLimitKind(limit.kind ?? limit.label ?? limit.appliesTo)
+        : (normalizeLimitKind(limit.kind ?? limit.label ?? limit.appliesTo) ??
+          semanticLimitKind(judgments[`limit_${coverageIndex}_${index + 1}`]) ??
+          (judgments[`limit_${coverageIndex}_${index + 1}`] === undefined
+            ? legacyLimitKind(limit.kind ?? limit.label ?? limit.appliesTo)
+            : undefined)),
       heuristic:
         !normalizeLimitKind(limit.kind ?? limit.label ?? limit.appliesTo) &&
         judgments[`limit_${coverageIndex}_${index + 1}`] === undefined,
@@ -603,7 +607,7 @@ function coverageAmountForKind(
     requiredKind === "other" &&
     candidates.length === 1 &&
     candidates[0]?.amount !== undefined &&
-    (candidates[0].kind !== undefined || candidates[0].heuristic)
+    (legacy || candidates[0].kind !== undefined || candidates[0].heuristic)
   )
     return { ...candidates[0], heuristic: true };
   return undefined;
@@ -613,6 +617,7 @@ function bestCoverageForRequirement(
   policy: Doc<"policies">,
   requirement: Doc<"insuranceRequirements">,
   judgments: Record<string, string | boolean> = {},
+  legacy = false,
 ) {
   const selected = judgments.coverage;
   if (selected === "none") return undefined;
@@ -623,12 +628,13 @@ function bestCoverageForRequirement(
   let best: NonNullable<Doc<"policies">["coverages"]>[number] | undefined;
   let bestScore = 0;
   for (const coverage of policy.coverages ?? []) {
-    const score =
-      exactCoverageScore(coverage, requiredCode) ||
-      legacyCoverageMatchScore(
-        coverage,
-        requiredCode === "UN" ? undefined : requiredCode,
-      );
+    const score = legacy
+      ? legacyCoverageMatchScore(coverage, requiredCode)
+      : exactCoverageScore(coverage, requiredCode) ||
+        legacyCoverageMatchScore(
+          coverage,
+          requiredCode === "UN" ? undefined : requiredCode,
+        );
     if (score === 0) continue;
     if (!best || score > bestScore) {
       best = coverage;
@@ -648,13 +654,16 @@ function matchedPolicySummary(args: {
   coverage?: NonNullable<Doc<"policies">["coverages"]>[number];
   amount?: number;
   expectedInsuredName?: string;
+  legacy?: boolean;
 }) {
   const dataStage = policyDataStage(args.policy);
   return {
     _id: args.policy._id,
     carrier: args.policy.carrier || args.policy.security,
     policyNumber: args.policy.policyNumber,
-    insuredName: complianceInsuredName(args.policy),
+    insuredName: args.legacy
+      ? args.policy.insuredName
+      : complianceInsuredName(args.policy),
     expectedInsuredName: args.expectedInsuredName,
     expirationDate: args.policy.expirationDate,
     dataStage,
@@ -758,10 +767,19 @@ export function latestSavedReview(
   checks: ManualCheck[],
   policies: Doc<"policies">[],
   now = dayjs().valueOf(),
-  latestJudgedAt = 0,
+  judgmentsByPolicy: ReadonlyMap<
+    Id<"policies">,
+    StoredComplianceJudgment | undefined
+  > = new Map(),
 ) {
   return checks
-    .filter((check) => check.checkedAt >= latestJudgedAt)
+    .filter(
+      (check) =>
+        !check.matchedPolicyIds.some(
+          (policyId) =>
+            (judgmentsByPolicy.get(policyId)?.judgedAt ?? 0) > check.checkedAt,
+        ),
+    )
     .filter((check) => savedReviewIsCurrent(requirement, check, now, policies))
     .sort((a, b) => b.checkedAt - a.checkedAt)[0];
 }
@@ -787,28 +805,29 @@ export function assessRequirementCompliance(
   const storedByPolicy = new Map(
     (options?.judgments ?? []).map((entry) => [entry.policyId, entry]),
   );
+  const includePreviewPolicies = options?.includePreviewPolicies !== false;
+  const readablePolicies = policies.filter((policy) =>
+    policyReadableForCompliance(policy, includePreviewPolicies),
+  );
   const judgmentsByPolicy = new Map(
-    policies.map((policy) => {
+    readablePolicies.flatMap((policy) => {
+      const stored = storedByPolicy.get(policy._id);
+      if (!stored) return [];
       const inputHash = complianceJudgmentInputHash(
         requirement,
         policy,
         insuredNames,
       );
-      const stored = storedByPolicy.get(policy._id);
-      const judgment = stored?.inputHash === inputHash ? stored : undefined;
-      return [policy._id, judgment] as const;
+      const judgment = stored.inputHash === inputHash ? stored : undefined;
+      return [[policy._id, judgment] as const];
     }),
-  );
-  const latestJudgedAt = Math.max(
-    0,
-    ...[...judgmentsByPolicy.values()].map((entry) => entry?.judgedAt ?? 0),
   );
   const savedReview = latestSavedReview(
     requirement,
     options?.existingChecks ?? [],
     policies,
     now,
-    latestJudgedAt,
+    judgmentsByPolicy,
   );
   if (savedReview) {
     return {
@@ -836,33 +855,38 @@ export function assessRequirementCompliance(
     };
   }
 
-  const includePreviewPolicies = options?.includePreviewPolicies !== false;
-  const candidates = policies
-    .filter((policy) =>
-      policyReadableForCompliance(policy, includePreviewPolicies),
-    )
+  const candidates = readablePolicies
     .map((policy) => {
       const judgments = judgmentsByPolicy.get(policy._id)?.answers ?? {};
+      const jevBacked = storedByPolicy.has(policy._id);
       return {
+        jevBacked,
         policy,
         judgments,
-        coverage: bestCoverageForRequirement(policy, requirement, judgments),
+        coverage: bestCoverageForRequirement(
+          policy,
+          requirement,
+          judgments,
+          !jevBacked,
+        ),
         expiration: parseDate(policy.expirationDate),
       };
     })
-    .filter(({ policy, judgments, coverage }) =>
-      judgments.coverage === "none"
-        ? false
-        : coverageLobMatches(requirement, policy) ||
-          !!(
-            coverage &&
-            exactCoverageScore(
-              coverage,
-              normalizeRequirementLineOfBusiness(requirement.lineOfBusiness),
-            )
-          ) ||
-          (typeof judgments.coverage === "string" &&
-            /^c\d+$/.test(judgments.coverage)),
+    .filter(({ policy, judgments, coverage, jevBacked }) =>
+      !jevBacked
+        ? coverageLobMatches(requirement, policy)
+        : judgments.coverage === "none"
+          ? false
+          : coverageLobMatches(requirement, policy) ||
+            !!(
+              coverage &&
+              exactCoverageScore(
+                coverage,
+                normalizeRequirementLineOfBusiness(requirement.lineOfBusiness),
+              )
+            ) ||
+            (typeof judgments.coverage === "string" &&
+              /^c\d+$/.test(judgments.coverage)),
     )
     .sort(
       (a, b) =>
@@ -893,6 +917,7 @@ export function assessRequirementCompliance(
     requirement.lineOfBusiness,
   );
   if (
+    active.jevBacked &&
     requirement.lineOfBusiness &&
     requirement.lineOfBusiness !== "UN" &&
     active.coverage &&
@@ -911,13 +936,18 @@ export function assessRequirementCompliance(
           requiredKind,
           judgments,
           active.policy.coverages?.indexOf(active.coverage) ?? -1,
+          !active.jevBacked,
         )
       : undefined;
     if (!matched || matched.amount === undefined) {
       reasons.push(`limit_unverifiable:${requiredKind}`);
       continue;
     }
-    if (matched.heuristic && matched.amount >= required.amount)
+    if (
+      active.jevBacked &&
+      matched.heuristic &&
+      matched.amount >= required.amount
+    )
       reasons.push(`limit_kind_unverifiable:${requiredKind}`);
     bestDetectedAmount =
       bestDetectedAmount === undefined
@@ -964,19 +994,27 @@ export function assessRequirementCompliance(
   for (const [index, rawProvision] of (
     requirement.provisions ?? []
   ).entries()) {
+    if (!isRequirementProvision(rawProvision)) continue;
+    if (!active.jevBacked) {
+      if (!legacyHasProvision(active.policy, rawProvision))
+        reasons.push(`provision_missing:${rawProvision}`);
+      continue;
+    }
     if (
-      !(
-        isRequirementProvision(rawProvision) &&
-        policyHasProvision(active.policy, rawProvision)
-      ) &&
+      !policyHasProvision(active.policy, rawProvision) &&
       judgments[`provision_${index}`] !== true
     ) {
       reasons.push(
-        `provision_${judgments[`provision_${index}`] === false || !legacyHasProvision(active.policy, rawProvision as RequirementProvision) ? "missing" : "unverifiable"}:${rawProvision}`,
+        `provision_${judgments[`provision_${index}`] === false || !legacyHasProvision(active.policy, rawProvision) ? "missing" : "unverifiable"}:${rawProvision}`,
       );
     }
   }
   for (const [index, form] of (requirement.requiredForms ?? []).entries()) {
+    if (!active.jevBacked) {
+      if (!legacyHasRequiredForm(active.policy, form))
+        reasons.push(`required_form_missing:${form}`);
+      continue;
+    }
     if (
       !policyHasRequiredForm(active.policy, form) &&
       judgments[`form_${index}`] !== true
@@ -990,12 +1028,15 @@ export function assessRequirementCompliance(
     active.expiration >= now &&
     insuredNames.length > 0 &&
     !insuredNames.some((name) =>
-      insuredNameMatches(complianceInsuredName(active.policy), name),
+      active.jevBacked
+        ? insuredNameMatches(complianceInsuredName(active.policy), name)
+        : legacyInsuredNameMatches(active.policy.insuredName, name),
     ) &&
     judgments.insured !== true
   ) {
     reasons.push(
-      judgments.insured === false ||
+      !active.jevBacked ||
+        judgments.insured === false ||
         !insuredNames.some((name) =>
           legacyInsuredNameMatches(complianceInsuredName(active.policy), name),
         )
@@ -1029,6 +1070,7 @@ export function assessRequirementCompliance(
     coverage: active.coverage,
     amount: bestDetectedAmount,
     expectedInsuredName: insuredNames[0],
+    legacy: !active.jevBacked,
   });
   const matchedSummary =
     status === "met"
