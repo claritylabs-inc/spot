@@ -67,7 +67,9 @@ import {
   decideAdditionalInsuredTreatment,
   type AdditionalInsuredClass,
   type NamedAdditionalInsuredCandidate,
+  type NamedAdditionalInsuredStatus,
 } from "../lib/additionalInsuredDecisions";
+import { decideNamedInsuredEquivalences } from "../lib/insuredNameDecisions";
 import { decideEndorsementJudgments } from "../lib/endorsementDecisions";
 import { buildDeclarationsSummary } from "../lib/sectionExtraction/prompts";
 import {
@@ -694,6 +696,8 @@ async function persistEvidenceAndPromote(
   ctx: ActionCtx,
   args: {
     policyId: string;
+    orgId: Id<"organizations">;
+    traceId?: string;
     sourceSpans: SourceSpanLike[];
     sourceNodes: DocumentSourceNode[];
     fields: Record<string, unknown>;
@@ -702,9 +706,24 @@ async function persistEvidenceAndPromote(
   },
 ) {
   const extractorVersion = SECTION_EXTRACTOR_VERSION;
-  const ledger = buildPromotionEvidenceLedger({
+  const ledgerInput = {
     sourceSpans: args.sourceSpans,
     sourceTree: args.sourceNodes,
+  };
+  const namedInsuredEquivalentKeys = await decideNamedInsuredEquivalences(ctx, {
+    orgId: args.orgId,
+    traceId: args.traceId,
+    policyId: args.policyId,
+    ledger: buildPromotionEvidenceLedger(ledgerInput),
+    declaredNamedInsured: (
+      args.fields.operationalProfile as
+        | { namedInsured?: { value?: string } }
+        | undefined
+    )?.namedInsured?.value,
+  });
+  const ledger = buildPromotionEvidenceLedger({
+    ...ledgerInput,
+    namedInsuredEquivalentKeys,
   });
   const spanIdsOnPages = (pageStart: number, pageEnd: number) =>
     args.sourceSpans.flatMap((span) => {
@@ -869,14 +888,6 @@ const namedAdditionalInsuredCandidateSchema = z.object({
   sourceSpanIds: z.array(z.string()),
 });
 
-const namedAdditionalInsuredSchema = namedAdditionalInsuredCandidateSchema.extend({
-  status: z.enum([
-    "scheduled_by_endorsement",
-    "automatic_class",
-    "review_required",
-  ]),
-});
-
 /** What generation extracts; Jev sorts classes and sets named-insured status afterwards. */
 const additionalInsuredExtractionSchema = z.object({
   classes: z.array(additionalInsuredEligibilityTermSchema).max(28),
@@ -886,20 +897,16 @@ const additionalInsuredExtractionSchema = z.object({
   additionalInsureds: z.array(namedAdditionalInsuredCandidateSchema).max(60),
 });
 
-const additionalInsuredEligibilitySchema = z.object({
-  withoutEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(28),
-  requiresEndorsement: z.array(additionalInsuredEligibilityTermSchema).max(28),
-  reviewRequired: z.array(additionalInsuredEligibilityTermSchema).max(28),
-  scheduledAdditionalInsureds: z
-    .array(scheduledAdditionalInsuredSchema)
-    .max(40),
-  additionalInsureds: z.array(namedAdditionalInsuredSchema).max(60),
-  overallSummary: z.string(),
-});
-
-type AdditionalInsuredEligibility = z.infer<
-  typeof additionalInsuredEligibilitySchema
->;
+type AdditionalInsuredEligibility = {
+  withoutEndorsement: Array<z.infer<typeof additionalInsuredEligibilityTermSchema>>;
+  requiresEndorsement: Array<z.infer<typeof additionalInsuredEligibilityTermSchema>>;
+  reviewRequired: Array<z.infer<typeof additionalInsuredEligibilityTermSchema>>;
+  scheduledAdditionalInsureds: Array<z.infer<typeof scheduledAdditionalInsuredSchema>>;
+  additionalInsureds: Array<
+    NamedAdditionalInsuredCandidate & { status: NamedAdditionalInsuredStatus }
+  >;
+  overallSummary: string;
+};
 
 type OperationalProfileWithEligibility = PolicyOperationalProfile & {
   additionalInsuredEligibility?: AdditionalInsuredEligibility;
@@ -2213,6 +2220,8 @@ export function makePhases(
       };
       await persistEvidenceAndPromote(convexCtx, {
         policyId,
+        orgId,
+        traceId: state.traceId,
         sourceSpans,
         sourceNodes,
         fields: finalFields,
