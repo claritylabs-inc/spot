@@ -1,7 +1,9 @@
+"use node";
+
 import { imessage } from "@spectrum-ts/imessage";
 import { terminal } from "@spectrum-ts/terminal";
-import type { ImessageAttachment } from "./convex.js";
-import type { InboundAttachmentContent } from "./attachmentPolicy.js";
+import type { ImessageAttachment } from "./convex";
+import type { InboundAttachmentContent } from "./attachmentPolicy";
 
 export function isInboundTransportMessage(
   transport: "terminal" | "imessage",

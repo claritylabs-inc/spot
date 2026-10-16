@@ -4,6 +4,10 @@ import {
   notificationSourceRefValidator,
 } from "./lib/notificationTypes";
 import { readRequirementNotes, saveRequirementNotes } from "./certificateNotes";
+import {
+  computeComplianceJudgmentsRef,
+  loadComplianceJudgments,
+} from "./complianceJudgments";
 import { v } from "convex/values";
 import dayjs from "dayjs";
 import {
@@ -351,7 +355,13 @@ async function assessForSubject(
     requirement._id,
     subjectOrgId,
   );
+  const judgments = await loadComplianceJudgments(
+    ctx,
+    requirement._id,
+    subjectOrgId,
+  );
   const result = assessRequirementCompliance(requirement, policies, {
+    judgments,
     expectedInsuredName: subjectOrg?.name,
     includePreviewPolicies: options?.includePreviewPolicies,
     existingChecks: checks,
@@ -761,6 +771,10 @@ export const upsertRequirement = mutation({
       `${args.requirementId ? "Updated" : "Added"} compliance requirement ${sanitized.title}`,
       { requirementId },
     );
+    await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+      requirementId,
+      subjectOrgId: args.orgId,
+    });
     return requirementId;
   },
 });
@@ -1267,6 +1281,11 @@ export const getManualComplianceReviewContextInternal = internalQuery({
     const activePolicies = policies.filter((policy) =>
       policyReadableForCompliance(policy, true),
     );
+    const judgments = await loadComplianceJudgments(
+      ctx,
+      requirement._id,
+      args.orgId,
+    );
     return {
       org: org
         ? {
@@ -1280,12 +1299,10 @@ export const getManualComplianceReviewContextInternal = internalQuery({
         activePolicies,
         {
           expectedInsuredName: org?.name,
+          judgments,
         },
       ),
       policies: activePolicies.map((policy) => ({
-        deterministicCheck: assessRequirementCompliance(requirement, [policy], {
-          expectedInsuredName: org?.name,
-        }),
         _id: policy._id,
         carrier: policy.carrier || policy.security,
         policyNumber: policy.policyNumber,
@@ -1318,16 +1335,11 @@ export const getManualComplianceReviewContextInternal = internalQuery({
   },
 });
 
-export const saveManualComplianceReviewInternal = internalMutation({
+export const finishComplianceRecheckInternal = internalMutation({
   args: {
     orgId: v.id("organizations"),
     requirementId: v.id("insuranceRequirements"),
     userId: v.id("users"),
-    status: complianceCheckStatusValidator,
-    matchedPolicyIds: v.array(v.id("policies")),
-    expiresAt: v.optional(v.string()),
-    daysUntilExpiration: v.optional(v.number()),
-    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const access = await requireAdminWriteActor(
@@ -1337,30 +1349,24 @@ export const saveManualComplianceReviewInternal = internalMutation({
       "Admin role required",
     );
     const requirement = await ctx.db.get(args.requirementId);
-    if (!requirement || requirement.orgId !== args.orgId) {
+    if (
+      !requirement ||
+      requirement.orgId !== args.orgId ||
+      requirement.status !== "active"
+    )
       throw new Error("Requirement not found");
-    }
-    const checkId = await ctx.db.insert("complianceChecks", {
-      orgId: args.orgId,
-      requirementId: args.requirementId,
-      subjectOrgId: args.orgId,
-      status: args.status,
-      reasons: args.status === "met" ? [] : ["agent_review"],
-      matchedPolicyIds: args.matchedPolicyIds,
-      matchedSummary: args.notes?.trim() || undefined,
-      expiresAt: args.expiresAt,
-      checkedAt: dayjs().valueOf(),
-      checkedBy: "agent",
-      checkedByUserId: args.userId,
-    });
+    const [org, policies] = await Promise.all([
+      ctx.db.get(args.orgId),
+      listPoliciesForOrg(ctx, args.orgId),
+    ]);
     await writeComplianceOperatorAudit(
       ctx,
       access,
       args.orgId,
       `Rechecked compliance requirement ${requirement.title}`,
-      { requirementId: args.requirementId, checkId },
+      { requirementId: requirement._id },
     );
-    return checkId;
+    return assessForSubject(ctx, requirement, policies, args.orgId, org);
   },
 });
 
@@ -1417,6 +1423,10 @@ export const upsertRequirementInternal = internalMutation({
       `Added compliance requirement ${sanitized.title}`,
       { requirementId },
     );
+    await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+      requirementId,
+      subjectOrgId: args.orgId,
+    });
     return requirementId;
   },
 });
@@ -1606,6 +1616,7 @@ export const createRequirementsInternal = internalMutation({
         sourceExcerpt: v.optional(v.string()),
         sourcePageStart: v.optional(v.number()),
         sourcePageEnd: v.optional(v.number()),
+        classificationReview: v.optional(v.literal(true)),
         sourceVerification: v.optional(v.literal("unverified")),
       }),
     ),
@@ -1637,6 +1648,7 @@ export const createRequirementsInternal = internalMutation({
             requirement.sourceExcerpt?.trim() || sanitized.requirementText,
           sourcePageStart: requirement.sourcePageStart,
           sourcePageEnd: requirement.sourcePageEnd,
+          classificationReview: requirement.classificationReview,
           sourceVerification: requirement.sourceVerification,
           status: "active",
           createdByUserId: args.userId,
@@ -1656,6 +1668,11 @@ export const createRequirementsInternal = internalMutation({
         sourceDocumentId: args.sourceDocumentId,
       },
     );
+    for (const requirementId of ids)
+      await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+        requirementId,
+        subjectOrgId: args.orgId,
+      });
     return ids;
   },
 });

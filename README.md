@@ -71,7 +71,7 @@ Then open `http://localhost:8080`.
 New Conductor worktrees use `.conductor/settings.toml` and get a native Convex
 deployment and database that belong only to that worktree. Workspace setup:
 
-1. Installs Node 24 and the root and worker dependencies.
+1. Installs Node 24 and the root dependencies.
 2. Reads the copied cloud-dev selection from `.env.local`, imports that
    deployment's environment variables when Convex credentials are available,
    and replaces the worktree's Convex URLs with loopback URLs. A credential-free
@@ -91,12 +91,9 @@ deployment and database that belong only to that worktree. Workspace setup:
    client ownership, and no policy-upload provenance. Setup generates a synthetic
    Example Risk icon and imports Cove's favicon into local Convex file storage.
    Existing Montgomery Risk fixtures are renamed in place during setup. The configured
-   `IMESSAGE_TERMINAL_FROM_PHONE` is assigned to the Example Risk admin so
-   Spectrum starts in an org-scoped broker context. Setup then compiles the
-   workers. Local macOS setup also starts Apple `container` and builds
-   worktree-tagged Linux/amd64 worker images for the remaining Railway workers
-   (imessage, mailbox-scan); cloud setup uses the compiled workers
-   directly.
+   broker terminal phone is assigned to the Example Risk admin so
+   Spectrum starts in an org-scoped broker context. Set
+`CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE` to override the default broker phone.
 
 When credentials are available, the imported environment includes integration
 and router configuration but filters every AI and retrieval provider credential;
@@ -132,21 +129,14 @@ full captured email bodies remain in `convex.log`. The separate **Email
 deliveries** Run template opens the same capture stream in a dedicated terminal
 when desired.
 
-Spectrum is optional and reserves `$CONDUCTOR_PORT + 2`. Start its interactive
-TUI in a separate terminal with `npm run conductor:spectrum`, or use the
-**Spectrum terminal** Run template. It starts as the Example Risk admin. Use
-`/whoami` to inspect the current sender, `/as broker` for Example Risk,
-`/as client` for Cove, and `/as public` for an unlinked sender that receives no tenant data.
-`/as +<E.164 phone>` can test an explicit local identity; the following message
-uses the newly selected sender.
 Conductor runs are concurrent: each local worktree reserves one port namespace
-from its unique `CONDUCTOR_PORT` (`+0` web, `+2` Spectrum, `+3/+4` Convex), and the app/workers wait for that exact local instance before
+from its unique `CONDUCTOR_PORT` (`+0` web, `+3/+4` Convex), and the app/workers wait for that exact local instance before
 starting. Cloud workspaces use the same offsets from port 8080 because
 `CONDUCTOR_PORT` is not set there. Explicit Convex ports avoid a Convex CLI
 collision edge case where automatic fallback can select the same port for its
 client and HTTP services.
 
-The checked-in `.worktreeinclude` copies `.env.local` and worker-local env files
+The checked-in `.worktreeinclude` copies `.env.local`
 from the repository root. The copied root `.env.local` must initially select a
 cloud dev deployment. Local workspaces use the signed-in Convex CLI to import
 its environment. Cloud workspaces without a Convex credential skip that import
@@ -155,10 +145,9 @@ other router-backed flows remain unavailable. For full cloud-workspace parity,
 add a deployment-scoped key for the selected dev deployment as
 `CONDUCTOR_CONVEX_SOURCE_DEPLOY_KEY` in the Conductor Cloud Computer environment
 before creating a fresh workspace. A matching standard `CONVEX_DEPLOY_KEY` is
-also accepted. Keep
-`imessage-worker/.env.local` configured with a local test user's E.164
-`IMESSAGE_TERMINAL_FROM_PHONE`; setup assigns that number to the seeded broker
-admin and generates distinct client/public terminal aliases. Generated runtime
+also accepted. Optionally set
+`CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE` to a local test user's E.164 number;
+setup assigns it to the seeded broker admin. Generated runtime
 files and unique local worker secrets stay under gitignored `.context/` and
 `.convex/`.
 
@@ -179,58 +168,12 @@ not rewrite committed agent skills and guidance; refresh those explicitly with
 - `npm run conductor:setup:cloud` - Conductor Cloud entry point; generates the
   gitignored env files a cloud sandbox cannot copy, then runs `conductor:setup`
 - `npm run conductor:dev` - start Spot, Convex, and email capture
-- `npm run conductor:spectrum` - open the optional Spectrum iMessage TUI in a separate terminal
 - `npm run conductor:emails` - show captured local email deliveries and OTPs in a dedicated terminal
 - `npm run lint` - ESLint
 - `npm test` - run tests
 - `npx tsc --noEmit` - Next.js TypeScript check
 - `npx convex typecheck` - Convex type check
 - `npx convex deploy --yes` - deploy Convex functions to prod
-- `npm run container:doctor` - verify local Apple `container` prerequisites and installation
-- `npm run container:system:start` - start or initialize Apple's local container service
-- `npm run container:build:workers` - build all Railway worker images locally with Apple's `container` CLI for `linux/amd64`
-- `npm run container:run:imessage-worker` - run a locally built worker image with the worker's `.env`
-
-## Local Worker Containers
-
-Production Railway worker services are Dockerfile-backed. Local worker image tests should use the same Dockerfiles through Apple's `container` CLI on Apple silicon Macs so local builds exercise the production container path.
-
-Deployment environment policy is documented in [docs/deployment/environments.md](docs/deployment/environments.md). `main` is production, shared cloud dev is the deployed integration lane, and local worktrees use local containers instead of shared Railway workers.
-
-Prerequisites:
-
-- Apple silicon Mac
-- macOS 26 or newer
-- Apple `container` installed from the signed package at <https://github.com/apple/container/releases/latest>
-
-Install or verify the CLI:
-
-```bash
-curl -fL -o /tmp/container-installer-signed.pkg \
-  https://github.com/apple/container/releases/download/1.0.0/container-1.0.0-installer-signed.pkg
-spctl --assess --type install -vv /tmp/container-installer-signed.pkg
-pkgutil --check-signature /tmp/container-installer-signed.pkg
-sudo installer -pkg /tmp/container-installer-signed.pkg -target /
-npm run container:doctor
-npm run container:system:start
-```
-
-The first `container system start` may prompt to install Apple's recommended Kata Linux kernel. In a non-interactive shell, run `yes | container system start`.
-
-Build all worker images:
-
-```bash
-npm run container:build:workers
-```
-
-Run one worker image locally:
-
-```bash
-cp imessage-worker/.env.template imessage-worker/.env
-npm run container:run:imessage-worker
-```
-
-Repeat with a local environment file for the operator iMessage service. The build scripts target `linux/amd64` and the run scripts use `--arch amd64`; this is intentional because production Railway runs Linux containers.
 
 ## Environment
 

@@ -12,28 +12,25 @@ import {
 import { imessage, nativeContactCard } from "@spectrum-ts/imessage";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
-// The transport's pure modules stay in imessage-worker/src until the Railway
-// services are deleted: those services build only their own directory, so the
-// modules cannot move into convex/ while the worker remains the rollback path.
 import {
   isVoiceMemoContent,
   normalizeAttachmentMimeType,
   readInboundAttachmentWith,
   type InboundAttachmentContent,
-} from "../../imessage-worker/src/attachmentPolicy";
-import { resolveContactCardPhone } from "../../imessage-worker/src/contactCard";
+} from "./imessageTransport/attachmentPolicy";
+import { resolveContactCardPhone } from "./imessageTransport/contactCard";
 import type {
   ImessageAppCard,
   ImessageAttachment,
   ImessageDeliveryFailure,
   ImessageResponseAttachment,
-} from "../../imessage-worker/src/convex";
-import type { InboundRecoveryClient } from "../../imessage-worker/src/inboundNormalization";
-import { imessagePlainText } from "../../imessage-worker/src/outboundText";
+} from "./imessageTransport/convex";
+import type { InboundRecoveryClient } from "./imessageTransport/inboundNormalization";
+import { imessagePlainText } from "./imessageTransport/outboundText";
 import {
   deliverImessageResponse,
   splitImessageResponse,
-} from "../../imessage-worker/src/responseDelivery";
+} from "./imessageTransport/responseDelivery";
 import {
   getSpectrumCredentials,
   type ImessageChannelRole,

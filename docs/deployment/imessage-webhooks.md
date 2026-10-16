@@ -27,12 +27,9 @@ outbound `clientMessageId` claims (ten minutes, matching the worker's in-memory
 cache). Expired rows are pruned in small batches on each claim. The existing
 `imessageInboundEvents` and `imessageOutboundSends` idempotency is unchanged.
 
-The worker's pure modules (`inboundNormalization`, `attachmentPolicy`,
+The transport's pure modules (`inboundNormalization`, `attachmentPolicy`,
 `responseDelivery`, `outboundText`, `contactCard`, and the `convex.ts` contract
-types) are imported from `imessage-worker/src` rather than copied. Railway
-builds each worker from its own directory, so the modules cannot move into
-`convex/` while the worker is the rollback path; they move with the deletion
-below.
+types) live in `convex/lib/imessageTransport/`.
 
 ### Old to new mapping
 
@@ -65,9 +62,7 @@ below.
 | `SPOT_IMESSAGE_CONTACT_PHONE` | customer | Phone on the vCard fallback when the native contact card fails (worker parity). |
 
 Terminal lanes (`IMESSAGE_TERMINAL_ENABLED`, `OPERATOR_IMESSAGE_TERMINAL_ENABLED`)
-ignore these flags: local and shared-dev development keep using the terminal
-harness (`npm run conductor:spectrum`, `npm run conductor:operator-spectrum`)
-and the worker URLs it registers.
+ignore these flags.
 
 ## Cutover runbook (per role)
 
@@ -158,15 +153,6 @@ change). The production HTTP actions origin is `https://actions.spot.insure`.
 
 Once both roles have run on webhooks for an agreed soak period:
 
-- `imessage-worker/Dockerfile`, `.dockerignore`, `railway.json`,
-  `railway.operator.json`, `src/index.ts` (the live Photon transport), and the
-  Railway services `imessage-worker` and `operator-imessage-worker`.
-- Move `imessage-worker/src/{inboundNormalization,attachmentPolicy,voiceAttachment,responseDelivery,outboundText,contactCard}.ts`
-  and the `convex.ts` types into `convex/lib/imessageTransport/` and update the
-  imports in `convex/lib/imessageSpectrum.ts` and `convex/actions/imessageWebhook.ts`.
-  Keep the terminal harness as a local-only script importing from there, or
-  replace it with a script that signs fixtures and POSTs them to the webhook
-  routes.
 - Routes `/imessage-inbound`, `/operator-imessage-inbound`,
   `/imessage-delivery-events`, `/operator-imessage-delivery-events`; the worker
   branches in `lib/imessageOutbound.ts`, `createOutboundImessageGroup.ts`, and
@@ -174,9 +160,8 @@ Once both roles have run on webhooks for an agreed soak period:
   `OPERATOR_IMESSAGE_WEBHOOK_ENABLED` flags (make webhooks unconditional).
 - Convex env `IMESSAGE_WORKER_URL`, `IMESSAGE_WORKER_SECRET`,
   `OPERATOR_IMESSAGE_WORKER_URL`, `OPERATOR_IMESSAGE_WORKER_SECRET`.
-- Remaining worker wiring: the iMessage worker build in `validate-workers` and
-  `ci.yml`, the `operatorImessage` Railway metadata in `config/deployments.json`, the
+- Remaining worker wiring: the
   `SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL` variable, the
   `operatorImessage.workerUrlConfigured`/`workerSecretConfigured` compatibility
-  fields in `/agent-health`, and the `container:*:imessage-worker` scripts.
+  fields in `/agent-health`.
 - The operator Railway section of [environments](./environments.md).

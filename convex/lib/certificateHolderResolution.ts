@@ -216,6 +216,22 @@ function nameOverlap(left: string, right: string) {
   return overlap / Math.min(leftTokens.size, rightTokens.size);
 }
 
+/** Explicit postal codes (ZIP+4 aware) or units that disagree: a deterministic "different location". */
+export function certificateHolderLocationsDiffer(
+  left?: NormalizedCertificateHolderAddress,
+  right?: NormalizedCertificateHolderAddress,
+) {
+  if (!left || !right) return false;
+  const zip = (value?: string) => value?.match(/^\d{5}/)?.[0] ?? value;
+  const postalDiffers = Boolean(
+    left.postalCode &&
+      right.postalCode &&
+      zip(left.postalCode) !== zip(right.postalCode),
+  );
+  const unitDiffers = Boolean(left.unit && right.unit && left.unit !== right.unit);
+  return postalDiffers || unitDiffers;
+}
+
 type AddressComparison = "same" | "different" | "one_missing" | "both_missing" | "ambiguous";
 
 export function compareCertificateHolderAddresses(
@@ -232,18 +248,13 @@ export function compareCertificateHolderAddresses(
       if (!left.unit || !right.unit) return "ambiguous";
       if (left.unit !== right.unit) return "different";
     }
-    if (left.postalCode && right.postalCode && left.postalCode !== right.postalCode) return "different";
+    if (certificateHolderLocationsDiffer(left, right)) return "different";
     if (left.city && right.city && left.city !== right.city) return "different";
     if (left.state && right.state && left.state !== right.state) return "different";
     return "same";
   }
 
-  if (left.postalCode && right.postalCode && left.postalCode !== right.postalCode) {
-    return "different";
-  }
-  if (left.unit && right.unit && left.unit !== right.unit) {
-    return "different";
-  }
+  if (certificateHolderLocationsDiffer(left, right)) return "different";
   return "ambiguous";
 }
 
@@ -411,11 +422,20 @@ export function resolveDeterministicCertificateHolder<T>(
     compareCertificateHolderIdentities(requested, candidate.identity).verdict === "ambiguous",
   );
   if (ambiguous.length > 0) {
+    // Addresses present on both sides but not comparable in code go to Jev's
+    // location review first; a missing address leaves nothing for Jev to read.
+    const reviewable = ambiguous.every(
+      (candidate) =>
+        compareCertificateHolderAddresses(
+          requested.normalizedAddress,
+          candidate.identity.normalizedAddress,
+        ) === "ambiguous",
+    );
     return {
-      verdict: "ambiguous",
+      verdict: reviewable ? "needs_model" : "ambiguous",
       confidence: "moderate",
       reason: "Holder name matches but address identity is ambiguous.",
-      candidates: ambiguous,
+      candidates: reviewable ? ambiguous.slice(0, 5) : ambiguous,
     };
   }
 

@@ -25,12 +25,17 @@ import {
   slackChannelTitlePrefix,
 } from "../lib/slackThreadTitle";
 import {
+  createSlackThreadContextArtifact,
   MAX_SLACK_THREAD_CONTEXT_MESSAGES,
   type SlackThreadContextSnapshot,
 } from "../lib/slackThreadContext";
 import { decideSlackControlIntent } from "../lib/channelControls";
 import { operatorSlackConversationKey } from "../lib/operatorSlackConfig";
 import { slackWebApi } from "../lib/slackWebApi";
+import {
+  classifyPromptInjection,
+  PromptInjectionScreeningUnavailableError,
+} from "../lib/security";
 
 const CHANNEL_NAME_TIMEOUT_MS = 3_000;
 const internalApi = internal as any;
@@ -204,16 +209,48 @@ async function updateOperatorSlackConfirmation(
   });
 }
 
+async function screenSlackEvents(
+  ctx: ActionCtx,
+  events: Array<Doc<"slackInboundEvents">>,
+): Promise<Set<Id<"slackInboundEvents">>> {
+  const results = await Promise.all(
+    events.map(async (event) => ({
+      event,
+      screening: await classifyPromptInjection(ctx, event.content, "external"),
+    })),
+  );
+  const unsafe = results.filter(({ screening }) =>
+    !screening.safe && screening.audit.classifierStatus === "unsafe",
+  );
+  if (unsafe.length) {
+    await ctx.runMutation(internalApi.slack.failEvents, {
+      eventIds: unsafe.map(({ event }) => event._id),
+      error: "Security screening rejected unsafe Slack instructions",
+      retryable: false,
+    });
+  }
+  if (results.some(({ screening }) =>
+    screening.audit.classifierStatus === "failed" ||
+    screening.audit.classifierStatus === "invalid",
+  )) {
+    throw new PromptInjectionScreeningUnavailableError();
+  }
+  return new Set(results.filter(({ screening }) => screening.safe)
+    .map(({ event }) => event._id));
+}
+
 async function processOperatorBatch(
   ctx: ActionCtx,
   batch: Array<Doc<"slackInboundEvents">>,
 ) {
   const eventIds = batch.map(({ _id }) => _id);
   await Promise.all(batch.map((event) => enrichActor(ctx, event)));
-  const authorized = (await ctx.runMutation(
+  const authorizedBatch = (await ctx.runMutation(
     internalApi.operatorSlack.authorizeBatch,
     { eventIds },
   )) as OperatorAuthorizedEvent[];
+  const safeEventIds = await screenSlackEvents(ctx, authorizedBatch.map(({ event }) => event));
+  const authorized = authorizedBatch.filter(({ event }) => safeEventIds.has(event._id));
   const pendingActivity = new Map(
     authorized.map(({ event }) => [event._id, event] as const),
   );
@@ -414,7 +451,7 @@ async function fetchThreadContext(
       threadTs: event.threadTs,
       latestMessageTs: event.messageTs,
     });
-    return {
+    const snapshot = {
       messages: context.messages
         .slice(0, MAX_SLACK_THREAD_CONTEXT_MESSAGES)
         .map((message) => ({
@@ -429,6 +466,17 @@ async function fetchThreadContext(
         })),
       truncated: context.truncated,
     };
+    const artifact = createSlackThreadContextArtifact(snapshot);
+    if (artifact) {
+      const screening = await classifyPromptInjection(ctx, artifact.data.text, "external");
+      if (!screening.safe) {
+        console.warn("[security] Slack thread context omitted", {
+          audit: screening.audit,
+        });
+        return undefined;
+      }
+    }
+    return snapshot;
   } catch (error) {
     console.warn("[slack] Thread context retrieval failed", error);
     return undefined;
@@ -543,10 +591,12 @@ export const processDebounced = internalAction({
           enrichActor(ctx, event),
         ),
       );
-      const authorized = (await ctx.runMutation(
+      const authorizedBatch = (await ctx.runMutation(
         internalApi.slack.authorizeBatch,
         { eventIds },
       )) as Array<Doc<"slackInboundEvents">>;
+      const safeEventIds = await screenSlackEvents(ctx, authorizedBatch);
+      const authorized = authorizedBatch.filter((event) => safeEventIds.has(event._id));
       if (authorized.length === 0) return;
       const slackThreadContext = authorized.at(-1)
         ? await fetchThreadContext(ctx, authorized.at(-1)!)

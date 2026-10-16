@@ -99,12 +99,18 @@ export async function decideReplyThreading(
             type: "choice",
             instructions:
               "Which message in `recent_messages` is `reply` primarily answering?",
-            criteria: Object.fromEntries(
-              keys.map((key) => [
-                key,
-                { what: `The message in \`recent_messages.${key}\`.` },
-              ]),
-            ),
+            criteria: {
+              ...Object.fromEntries(
+                keys.map((key) => [
+                  key,
+                  {
+                    what: `The message in \`recent_messages.${key}\`.`,
+                    not_for: "A different earlier message, or the latest `incoming_message`.",
+                  },
+                ]),
+              ),
+              none: "No single earlier message is being answered.",
+            },
           },
         },
         executionBudgetMs: DECISION_BUDGET_MS,
@@ -116,7 +122,8 @@ export async function decideReplyThreading(
     if (helps?.type !== "noul" || target?.type !== "choice") {
       return { mode: "default" };
     }
-    if (!jevProceeds(1 - helps.noul)) return { mode: "plain" };
+    // Confident "no": send a plain reply. Unsure: keep the default behavior.
+    if (jevProceeds(1 - helps.noul)) return { mode: "plain" };
     if (!jevProceeds(helps.noul)) return { mode: "default" };
     if (!jevProceeds(jevChoiceConfidence(target))) return { mode: "default" };
     const index = keys.indexOf(target.choice);

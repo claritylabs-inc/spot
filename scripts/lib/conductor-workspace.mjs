@@ -160,36 +160,6 @@ export function parseEnvFile(filePath) {
   return parseEnvText(readFileSync(filePath, "utf8"));
 }
 
-/**
- * Local workspaces copy `imessage-worker/.env.local` from the developer checkout
- * through `.worktreeinclude`, but a fresh or incomplete source checkout may not
- * have one. Cloud workspaces have no checkout to copy from at all. Both cases
- * materialize the terminal-safe template instead of failing setup. The template
- * already carries local-safe terminal defaults, so only an operator-provided
- * broker phone is worth overriding.
- *
- * @param {{ envPath?: string; templatePath?: string; phone?: string }} [options]
- * @returns {boolean} true when a new file was written
- */
-export function ensureImessageEnvFile({
-  envPath = path.join(repoRoot, "imessage-worker", ".env.local"),
-  templatePath = path.join(repoRoot, "imessage-worker", ".env.template"),
-  phone,
-} = {}) {
-  if (existsSync(envPath)) return false;
-  const override = phone?.trim();
-  const template = readFileSync(templatePath, "utf8");
-  const contents = override
-    ? template.replace(
-        /^IMESSAGE_TERMINAL_FROM_PHONE=.*$/m,
-        `IMESSAGE_TERMINAL_FROM_PHONE=${override}`,
-      )
-    : template;
-  writeFileSync(envPath, contents, { mode: 0o600 });
-  chmodSync(envPath, 0o600);
-  return true;
-}
-
 const convexSelectionKeys = new Set([
   "CONVEX_DEPLOYMENT",
   "CONVEX_SELF_HOSTED_ADMIN_KEY",
@@ -454,44 +424,6 @@ export function workspaceSlug(workspacePath = repoRoot) {
       .replace(/[^a-z0-9_.-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "workspace"
   );
-}
-
-export function conductorImageTag(workerName, workspacePath = repoRoot) {
-  return `spot-${workerName}:conductor-${workspaceSlug(workspacePath)}`;
-}
-
-export function conductorImageTags(workspacePath = repoRoot) {
-  return [
-    "imessage-worker",
-  ].map((workerName) => conductorImageTag(workerName, workspacePath));
-}
-
-export function conductorContainerName(
-  workerName,
-  port,
-  workspacePath = repoRoot,
-) {
-  return `spot-${workerName}-${workspaceSlug(workspacePath)}-${port}`;
-}
-
-export function conductorContainerNamesOnPort(containers, workerName, port) {
-  const prefixes = [`spot-${workerName}-`, `glass-${workerName}-`];
-  const suffix = `-${port}`;
-  const names = new Set();
-
-  for (const container of containers) {
-    for (const name of [container?.id, container?.configuration?.id]) {
-      if (
-        typeof name === "string" &&
-        prefixes.some((prefix) => name.startsWith(prefix)) &&
-        name.endsWith(suffix)
-      ) {
-        names.add(name);
-      }
-    }
-  }
-
-  return [...names];
 }
 
 export function localConvexUrls() {

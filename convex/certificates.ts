@@ -26,11 +26,13 @@ import {
   decideCertificateEndorsements,
   inferCertificateEndorsements,
   isEvidenceGatedOnly,
+  rankCertificateGateEvidenceWithJev,
   type CertificateEndorsementKind,
   type CertificateGateEvidence,
   type CertificateGateEvidenceItem,
   type CertificateGateVerdict,
 } from "./lib/certificateRequestGate";
+import { confirmEmailHolderSameOrganization } from "./certificateHolders";
 import { buildEndorsementRequestEmail } from "./lib/certificateBrokerEmail";
 import { summarizeEndorsementEvidence } from "./lib/certificateEndorsements";
 import {
@@ -200,7 +202,12 @@ export async function evaluateCertificateRequestGateWithJev(params: {
   if (requiredChanges.length === 0) {
     return { status: "allowed", requiredChanges, evidence: [] };
   }
-  const evidencePacket = buildCertificateGateEvidencePacket(params);
+  const evidencePacket = await rankCertificateGateEvidenceWithJev(params.ctx, {
+    orgId: params.orgId,
+    items: buildCertificateGateEvidencePacket(params),
+    requiredChanges,
+    traceId: params.traceId,
+  });
   const citedEvidence = evidencePacket.filter(
     (item) => item.sourceSpanIds?.length,
   );
@@ -835,7 +842,7 @@ async function reviewHolderIdentityWithModel(args: {
         args.requested.normalizedAddress,
         candidate.identity.normalizedAddress,
       );
-      if (address === "one_missing") continue;
+      if (address === "one_missing" || address === "different") continue;
       if (candidate.identity.normalizedName !== args.requested.normalizedName) {
         questions[`${key}_name`] = {
           type: "noul",
@@ -845,7 +852,7 @@ async function reviewHolderIdentityWithModel(args: {
       if (address === "ambiguous") {
         questions[`${key}_address`] = {
           type: "noul",
-          instructions: `Is \`candidates.${key}.address\` the same location as \`requested.address\`?`,
+          instructions: `Is \`candidates.${key}.address\` the same location as \`requested.address\`? A different suite, unit, or postal code is a different location.`,
         };
       }
     }
@@ -1536,11 +1543,16 @@ export const generateForOrg = internalAction({
       generationTarget?.certificate._id ??
       matchedIssuedCandidate?.data.policyCertificateId;
     if (!holderId || !policyCertificateId) {
+      const confirmedEmailHolderId = await confirmEmailHolderSameOrganization(
+        ctx,
+        { orgId: args.orgId, displayName: holderName, email: holderEmail },
+      );
       holderId = (await ctx.runMutation(
         (internal as any).certificateHolders.upsertInternal,
         {
           orgId: args.orgId,
           displayName: holderName,
+          confirmedEmailHolderId,
           contactName: holderContactName,
           email: holderEmail,
           phone: holderPhone,

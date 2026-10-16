@@ -4,8 +4,9 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { confirmEmailHolderSameOrganization } from "../certificateHolders";
 import type { Id } from "../_generated/dataModel";
-import { generateCoiPdf, policyToCoiData } from "../lib/coiGenerator";
+import { generateCoiPdfWithLayout, policyToCoiData } from "../lib/coiGenerator";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { clRouterDecide } from "../lib/clRouterClient";
 import { pdfPageJevImage, stageJevImages } from "../lib/jevImages";
@@ -72,12 +73,13 @@ type CoiLayoutCheck = {
   question: DecisionQuestion;
 };
 
-function coiLayoutChecks(): Record<string, CoiLayoutCheck> {
+/** Visual overlap is the only check Jev keeps once field fit is measured in code. */
+function coiLayoutChecks(fieldsMeasured: boolean): Record<string, CoiLayoutCheck> {
   const noul = (question: string, inspect: string): DecisionQuestion => ({
     type: "noul",
     instructions: { question, inspect },
   });
-  return {
+  const checks: Record<string, CoiLayoutCheck> = {
     holder_visible: {
       defectWhenYes: false,
       finding: "Certificate holder name is not fully visible in its block.",
@@ -119,6 +121,8 @@ function coiLayoutChecks(): Record<string, CoiLayoutCheck> {
       ),
     },
   };
+  if (!fieldsMeasured) return checks;
+  return { text_overlap: checks.text_overlap };
 }
 
 type CoiLayoutQa = {
@@ -141,9 +145,12 @@ async function qaGeneratedCoi(
     policyId: Id<"policies">;
     pdf: Uint8Array;
     coi: { holder: string; insured: string; description: string };
+    /** When true, text fit is already measured in code and only overlap needs Jev. */
+    fieldsMeasured: boolean;
+    measuredFindings: string[];
   },
 ): Promise<CoiLayoutQa> {
-  const checks = coiLayoutChecks();
+  const checks = coiLayoutChecks(args.fieldsMeasured);
   try {
     const [page] = await renderPdfPageImages({ pdfBytes: args.pdf, pages: [1] });
     if (!page) throw new Error("Generated certificate has no first page");
@@ -186,7 +193,7 @@ async function qaGeneratedCoi(
         }),
       ]);
       const answers: Record<string, number> = {};
-      const findings: string[] = [];
+      const findings: string[] = [...args.measuredFindings];
       for (const [key, check] of Object.entries(checks)) {
         const answer = judged.answers[key];
         if (answer?.type !== "noul") continue;
@@ -204,7 +211,7 @@ async function qaGeneratedCoi(
   } catch (error) {
     return {
       status: "unavailable",
-      findings: [],
+      findings: args.measuredFindings,
       answers: {},
       error: error instanceof Error ? error.message : String(error),
     };
@@ -242,11 +249,21 @@ async function ensureCertificateLifecycleContext(
     createdByUserId?: Id<"users">;
   },
 ) {
+  const holderDisplayName =
+    args.certificateHolderName?.trim() || firstCertificateHolderLine(args.certificateHolder);
+  const confirmedEmailHolderId = args.certificateHolderId
+    ? undefined
+    : await confirmEmailHolderSameOrganization(ctx, {
+        orgId: args.orgId,
+        displayName: holderDisplayName,
+        email: args.holderEmail,
+      });
   const holderId = args.certificateHolderId ?? await ctx.runMutation(
     (internal as any).certificateHolders.upsertInternal,
     {
       orgId: args.orgId,
-      displayName: args.certificateHolderName?.trim() || firstCertificateHolderLine(args.certificateHolder),
+      displayName: holderDisplayName,
+      confirmedEmailHolderId,
       contactName: args.holderContactName,
       email: args.holderEmail,
       phone: args.holderPhone,
@@ -362,6 +379,10 @@ export const layoutQa = internalAction({
     holder: v.string(),
     insured: v.string(),
     description: v.string(),
+    /** Field fit was measured in code at render time (see `CoiLayoutReport`). */
+    fieldsMeasured: v.optional(v.boolean()),
+    measuredFindings: v.optional(v.array(v.string())),
+    movedToRemarks: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args): Promise<null> => {
     const blob = await ctx.storage.get(args.fileId);
@@ -375,11 +396,14 @@ export const layoutQa = internalAction({
         insured: args.insured,
         description: args.description,
       },
+      fieldsMeasured: args.fieldsMeasured ?? false,
+      measuredFindings: args.measuredFindings ?? [],
     });
     if (result.status !== "passed") {
       console.warn("[generateCoi] Certificate layout QA", {
         policyId: args.policyId,
         certificateId: args.certificateId,
+        movedToRemarks: args.movedToRemarks ?? [],
         ...result,
       });
     }
@@ -498,7 +522,7 @@ export const run = internalAction({
         ...coiData,
         description: finalDescriptionOfOperations,
       };
-      const pdfBuffer = await generateCoiPdf(coiData);
+      const { pdf: pdfBuffer, layout } = await generateCoiPdfWithLayout(coiData);
 
       // Store in Convex file storage
       // Copy to a plain ArrayBuffer to satisfy strict Blob typing
@@ -577,6 +601,9 @@ export const run = internalAction({
         holder: firstCertificateHolderLine(coiData.certificateHolder),
         insured: coiData.insuredName,
         description: coiData.description ?? "",
+        fieldsMeasured: layout.measured,
+        measuredFindings: layout.findings,
+        movedToRemarks: layout.movedToRemarks,
       });
 
       return {

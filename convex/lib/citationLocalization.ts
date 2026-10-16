@@ -9,9 +9,11 @@ import {
   resolveCitationWithIndex,
   type ResolvedCitation,
 } from "./citationResolver";
-import { locateOnPdfPage } from "./jevImages";
+import { boxToPdfBbox, pdfPageJevImage, stageJevImages } from "./jevImages";
 import { jevProceeds } from "./jevThreshold";
-import { renderPdfPageImages } from "./pdfPageImages";
+import { clRouterDecide, runWithPayloadSplitting } from "./clRouterClient";
+import type { DecisionQuestion } from "../../contracts/cl-router/policy";
+import { renderPdfPageImages, renderPdfPageRegion } from "./pdfPageImages";
 import type { SourceSpanLike } from "./sourceTree";
 import type { SectionResult } from "./sectionExtraction/merge";
 import { citationPageCandidates } from "./sectionExtraction/prompts";
@@ -68,9 +70,10 @@ export async function localizePolicyCitations(args: {
     (a, b) =>
       Number(b.kind === "declarations") - Number(a.kind === "declarations"),
   );
-  for (const { section, output } of results) {
+  const pending = new Map<number, Array<{ quote: string; resolved: ResolvedCitation; targets: SourceSpanLike[] }>>();
+  collect: for (const { section, output } of results) {
     for (const citation of citationsIn(output)) {
-      if (attempted >= MAX_LOCALIZED_CITATIONS) return finish("target cap");
+      if (attempted >= MAX_LOCALIZED_CITATIONS) break collect;
       if (dayjs().valueOf() >= deadlineMs) return finish("time budget");
       const quote = citation.quote.trim();
       if (!quote) continue;
@@ -96,77 +99,143 @@ export async function localizePolicyCitations(args: {
         return span && !span.bbox?.length ? [span] : [];
       });
       if (resolved.match !== "page_only" && !targets.length) continue;
-      if (await args.isCancelled?.()) return finish("cancelled");
-      if (dayjs().valueOf() >= deadlineMs) return finish("time budget");
       attempted += 1;
+      const pageTargets = pending.get(page) ?? [];
+      pageTargets.push({ quote, resolved, targets });
+      pending.set(page, pageTargets);
+    }
+  }
+  for (const [page, pageTargets] of pending) {
+    if (await args.isCancelled?.()) return finish("cancelled");
+    if (dayjs().valueOf() >= deadlineMs) return finish("time budget");
+    try {
+      const [pageImage] = await renderPdfPageImages({ pdfBytes: args.pdfBytes, pages: [page] });
+      if (!pageImage) continue;
+      const staged = await stageJevImages(args.ctx, [pdfPageJevImage(pageImage)], {
+        orgId: args.orgId, surface: "policy-citations", sessionKey: args.policyId,
+      });
       try {
-        const [pageImage] = await renderPdfPageImages({
-          pdfBytes: args.pdfBytes,
-          pages: [page],
+        const batches = await runWithPayloadSplitting(pageTargets, async (batch) => {
+          if (await args.isCancelled?.()) return;
+          if (dayjs().valueOf() >= deadlineMs) return;
+          const questions: Record<string, DecisionQuestion> = {};
+          batch.forEach((_, i) => {
+            questions[`present_${i}`] = { type: "noul", instructions: `Does \`page\` show the quoted text in \`targets[${i}].quote\`?` };
+            questions[`box_${i}`] = { type: "box", instructions: `The quoted text in \`targets[${i}].quote\` on \`page\`.` };
+          });
+          const coarse = await clRouterDecide({
+            orgId: String(args.orgId), task: "policy_citation_localization",
+            state: { page: staged.refs[0], targets: batch.map(({ quote }) => ({ quote })) },
+            assets: staged.assets, questions,
+            trace: args.traceId ? { traceId: args.traceId } : undefined,
+          }, { telemetry: args.ctx });
+          return { batch, coarse };
         });
-        const location = await locateOnPdfPage(args.ctx, {
-          pdfBytes: args.pdfBytes,
-          page,
-          pageImage,
-          target: { quote },
-          orgId: args.orgId,
-          task: "policy_citation_localization",
-          surface: "policy-citations",
-          sessionKey: args.policyId,
-          traceId: args.traceId,
-        });
-        if (
-          !location.bbox ||
-          !jevProceeds(location.present) ||
-          !jevProceeds(location.confidence)
-        )
-          continue;
-        // A Box locates presentation evidence; it cannot make an unmatched quote
-        // into a grounded fact. Keep page_only annotations separate from text.
-        const destinations =
-          resolved.match === "page_only"
-            ? [
-                {
-                  id: `${args.policyId}:citation-box:${page}:${attempted}`,
-                  documentId: args.policyId,
-                  sourceKind: "policy_pdf",
-                  kind: "pdf_text",
-                  sourceUnit: "citation_annotation",
-                  pageStart: page,
-                  pageEnd: page,
-                  text: "",
-                  metadata: {
-                    citationQuote: quote,
-                    citationMatch: "page_only",
-                  },
-                } satisfies SourceSpanLike,
-              ]
-            : targets;
-        for (const span of destinations) {
-          const next: SourceSpanLike = {
-            ...span,
-            bbox: [location.bbox],
-            metadata: {
-              ...span.metadata,
-              bboxCoordinateWidth: location.pageWidth,
-              bboxCoordinateHeight: location.pageHeight,
-              bboxSource: "jev_box",
-              bboxConfidence: location.confidence,
-            },
-          };
-          const index = spans.indexOf(span);
-          if (index < 0) spans.push(next);
-          else spans[index] = next;
-          spansById.set(next.id ?? next.spanId ?? "", next);
+        for (const entry of batches) {
+          if (!entry) continue;
+          const { batch, coarse } = entry;
+          for (const [i, { quote, resolved, targets }] of batch.entries()) {
+            if (await args.isCancelled?.()) return finish("cancelled");
+            if (dayjs().valueOf() >= deadlineMs) return finish("time budget");
+            const presence = coarse.answers[`present_${i}`];
+            const box = coarse.answers[`box_${i}`];
+            if (presence?.type !== "noul" || !jevProceeds(presence.noul) ||
+                box?.type !== "box" || !jevProceeds(box.confidence)) continue;
+            const region = pageImage.region;
+            const crop = await renderPdfPageRegion({
+              pdfBytes: args.pdfBytes, page,
+              region: {
+                left: Math.max(0, region.left + box.box.left * (region.right - region.left) - 0.06),
+                right: Math.min(1, region.left + box.box.right * (region.right - region.left) + 0.06),
+                top: Math.max(0, region.top + box.box.top * (region.bottom - region.top) - 0.06),
+                bottom: Math.min(1, region.top + box.box.bottom * (region.bottom - region.top) + 0.06),
+              },
+            });
+            const zoomed = await stageJevImages(args.ctx, [pdfPageJevImage(crop)], {
+              orgId: args.orgId, surface: "policy-citations", sessionKey: args.policyId,
+            });
+            let location;
+            try {
+              const refined = await clRouterDecide({
+                orgId: String(args.orgId), task: "policy_citation_localization",
+                state: { crop: zoomed.refs[0], target: { quote } },
+                assets: zoomed.assets,
+                questions: {
+                  present: { type: "noul", instructions: "Does `crop` show the quoted text in `target.quote`?" },
+                  box: { type: "box", instructions: "The quoted text in `target.quote` on `crop`." },
+                },
+                trace: args.traceId ? { traceId: args.traceId } : undefined,
+              }, { telemetry: args.ctx });
+              const present = refined.answers.present;
+              const answer = refined.answers.box;
+              if (present?.type !== "noul" || !jevProceeds(present.noul) ||
+                  answer?.type !== "box" || !jevProceeds(answer.confidence)) continue;
+              const region = crop.region;
+              const clamp = (value: number) => Math.max(0, Math.min(1, value));
+              location = {
+                bbox: boxToPdfBbox({
+                  left: clamp(region.left + answer.box.left * (region.right - region.left)),
+                  right: clamp(region.left + answer.box.right * (region.right - region.left)),
+                  top: clamp(region.top + answer.box.top * (region.bottom - region.top)),
+                  bottom: clamp(region.top + answer.box.bottom * (region.bottom - region.top)),
+                }, page, crop.pageWidth, crop.pageHeight),
+                pageWidth: crop.pageWidth,
+                pageHeight: crop.pageHeight,
+                confidence: answer.confidence,
+              };
+            } finally {
+              await zoomed.cleanup();
+            }
+            // A Box locates presentation evidence; it cannot make an unmatched quote
+            // into a grounded fact. Keep page_only annotations separate from text.
+            const destinations =
+              resolved.match === "page_only"
+                ? [
+                    {
+                      id: `${args.policyId}:citation-box:${page}:${spans.length}`,
+                      documentId: args.policyId,
+                      sourceKind: "policy_pdf",
+                      kind: "pdf_text",
+                      sourceUnit: "citation_annotation",
+                      pageStart: page,
+                      pageEnd: page,
+                      text: "",
+                      metadata: {
+                        citationQuote: quote,
+                        citationMatch: "page_only",
+                      },
+                    } satisfies SourceSpanLike,
+                  ]
+                : targets;
+            for (const span of destinations) {
+              const next: SourceSpanLike = {
+                ...span,
+                bbox: [location.bbox],
+                metadata: {
+                  ...span.metadata,
+                  bboxCoordinateWidth: location.pageWidth,
+                  bboxCoordinateHeight: location.pageHeight,
+                  bboxSource: "jev_box",
+                  bboxConfidence: location.confidence,
+                },
+              };
+              const index = spans.indexOf(span);
+              if (index < 0) spans.push(next);
+              else spans[index] = next;
+              spansById.set(next.id ?? next.spanId ?? "", next);
+            }
+            localized += 1;
+          }
         }
-        localized += 1;
-      } catch (error) {
-        await args.log?.(
-          `Citation localization unavailable on page ${page}; retaining page evidence (${error instanceof Error ? error.message : String(error)}).`,
-        );
-        // Infrastructure failure affects subsequent images too; avoid 40 failed calls.
-        return finish("localization unavailable");
+      } finally {
+        await staged.cleanup();
       }
+    } catch (error) {
+      await args.log?.(
+        `Citation localization unavailable on page ${page}; retaining page evidence (${error instanceof Error ? error.message : String(error)}).`,
+      );
+      // Infrastructure failure affects subsequent images too; avoid 40 failed calls.
+      return finish("localization unavailable");
     }
   }
   return finish();

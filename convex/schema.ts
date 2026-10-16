@@ -1622,6 +1622,7 @@ export default defineSchema({
     costUsd: v.optional(v.union(v.number(), v.null())),
     extractedRequirementCount: v.optional(v.number()),
     checkableRequirementCount: v.optional(v.number()),
+    droppedClassificationRequirementCount: v.optional(v.number()),
     extractedHolderCount: v.optional(v.number()),
     createdRequirementCount: v.optional(v.number()),
     duplicateRequirementCount: v.optional(v.number()),
@@ -1740,6 +1741,7 @@ export default defineSchema({
     sourceExcerpt: v.optional(v.string()),
     sourcePageStart: v.optional(v.number()),
     sourcePageEnd: v.optional(v.number()),
+    classificationReview: v.optional(v.literal(true)),
     // Excerpt read from a page image that Jev could not find on the page.
     sourceVerification: v.optional(v.literal("unverified")),
     // Where the excerpt sits on its PDF page: PDF points at scale 1, top-left
@@ -1764,6 +1766,21 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("organization_status", ["orgId", "status"])
     .index("status_scope", ["status", "scope"]),
+
+  complianceJudgments: defineTable({
+    requirementId: v.id("insuranceRequirements"),
+    subjectOrgId: v.id("organizations"),
+    policyId: v.id("policies"),
+    inputHash: v.string(),
+    answers: v.record(v.string(), v.union(v.string(), v.boolean())),
+    judgedAt: v.number(),
+    error: v.optional(v.string()),
+    errorAt: v.optional(v.number()),
+  }).index("requirement_subject_policy", [
+    "requirementId",
+    "subjectOrgId",
+    "policyId",
+  ]),
 
   complianceChecks: defineTable({
     orgId: v.id("organizations"),

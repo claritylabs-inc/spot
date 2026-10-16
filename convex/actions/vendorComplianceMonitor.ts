@@ -1,5 +1,9 @@
 "use node";
 
+import {
+  computeComplianceJudgmentsRef,
+  findMissingRequirementJudgmentsRef,
+} from "../complianceJudgments";
 import dayjs from "dayjs";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -218,6 +222,7 @@ export const run = internalAction({
       {},
     )) as Id<"organizations">[];
 
+    let remainingJudgmentRequirements = 50;
     let checkedVendors = 0;
     let notificationCount = 0;
     let draftCount = 0;
@@ -227,6 +232,23 @@ export const run = internalAction({
         internal.compliance.listVendorComplianceInternal,
         { clientOrgId, includePreviewPolicies: false },
       );
+      for (const row of complianceRows) {
+        if (!row.vendorOrg || remainingJudgmentRequirements <= 0) continue;
+        const missingRequirementIds = await ctx.runQuery(
+          findMissingRequirementJudgmentsRef,
+          {
+            ownerOrgId: clientOrgId,
+            subjectOrgId: row.vendorOrg._id,
+            limit: remainingJudgmentRequirements,
+          },
+        );
+        for (const requirementId of missingRequirementIds)
+          await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
+            requirementId,
+            subjectOrgId: row.vendorOrg._id,
+          });
+        remainingJudgmentRequirements -= missingRequirementIds.length;
+      }
       const rows = serializeMonitorRows(complianceRows);
       checkedVendors += rows.length;
       if (rows.length === 0) continue;

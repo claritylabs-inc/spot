@@ -1,4 +1,8 @@
+import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
 import type { SourceSpanLike } from "./sourceTree";
+
+dayjs.extend(customParseFormat);
 
 type PromotionSourceNode = {
   id: string;
@@ -71,6 +75,11 @@ export type PromotionEvidenceLedger = {
     status: "observed" | "not_observed";
     candidates: PromotionEvidenceCandidate[];
     ambiguous: boolean;
+    /**
+     * Groups of `promotionComparisonKey` values Jev judged to name the same
+     * insured, decided in an action before the ledger is built.
+     */
+    equivalentKeys?: string[][];
   }>;
   coverageRegions: {
     status: "observed" | "not_observed";
@@ -130,7 +139,7 @@ const FIELD_PATTERNS: Record<PromotionEvidenceField, RegExp[]> = {
     /\binsured\s+name\s*[:#-]?\s*([^\n|;]{2,160})/i,
   ],
   carrier: [
-    /\b(?:carrier|insurer|insurance\s+company|company\s+name)\s*[:#-]?\s*([^\n|;]{2,180})/i,
+    /\b(?:carrier|insurer|insurance\s+company)\s*[:#-]?\s*([^\n|;]{2,180})/i,
   ],
   effective_date: [
     /\b(?:policy\s+)?effective\s+date(?:\s*\/\s*time)?\s*[:#-]?\s*([^\n|;]{4,80})/i,
@@ -145,10 +154,19 @@ const FIELD_PATTERNS: Record<PromotionEvidenceField, RegExp[]> = {
 const LABEL_ONLY: Record<PromotionEvidenceField, RegExp> = {
   policy_number: /^\s*policy\s*(?:number|no\.?|#)\s*[:#-]?\s*$/i,
   named_insured: /^\s*(?:first\s+)?named\s+insured(?:\s+name)?\s*[:#-]?\s*$/i,
-  carrier: /^\s*(?:carrier|insurer|insurance\s+company|company\s+name)\s*[:#-]?\s*$/i,
+  carrier: /^\s*(?:carrier|insurer|insurance\s+company)\s*[:#-]?\s*$/i,
   effective_date: /^\s*(?:policy\s+)?effective\s+date(?:\s*\/\s*time)?\s*[:#-]?\s*$/i,
   expiration_date: /^\s*(?:policy\s+)?(?:expiration|expiry)\s+date(?:\s*\/\s*time)?\s*[:#-]?\s*$/i,
 };
+
+/**
+ * "Company name" labels the carrier on declarations but also the party in
+ * additional-insured and certificate-holder schedules, so it only counts as a
+ * carrier label outside those schedules.
+ */
+const COMPANY_NAME_PATTERN = /\bcompany\s+name\s*[:#-]?\s*([^\n|;]{2,180})/i;
+const COMPANY_NAME_LABEL_ONLY = /^\s*company\s+name\s*[:#-]?\s*$/i;
+const PARTY_SCHEDULE_CONTEXT = /\b(?:additional\s+insured|certificate\s+holder|loss\s+payee|mortgagee|mortgage\s+holder|lienholder|interested\s+part(?:y|ies)|schedule\s+of\s+(?:named|additional))/i;
 
 const COVERAGE_PATTERN = /\b(?:coverage|coverages|covered|limit(?:s)?\s+of\s+(?:insurance|liability)|deductible|retention|insuring\s+agreement|schedule\s+of|vehicle\s+schedule|auto\s+schedule|property\s+schedule|location\s+schedule|coverage\s+part|premium\s+schedule)\b/i;
 
@@ -249,6 +267,78 @@ function normalizedValue(field: PromotionEvidenceField, value: string) {
   return cleaned.toLowerCase();
 }
 
+const DATE_TOKENS = [
+  /\b\d{4}-\d{1,2}-\d{1,2}\b/,
+  /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/i,
+  /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+\d{4}\b/i,
+];
+
+const DATE_FORMATS = [
+  "YYYY-MM-DD",
+  "MM/DD/YYYY",
+  "MM/DD/YY",
+  "MM-DD-YYYY",
+  "MM-DD-YY",
+  "MMMM DD, YYYY",
+  "MMM DD, YYYY",
+  "DD MMMM YYYY",
+  "DD MMM YYYY",
+  "YYYY-M-D",
+  "M/D/YYYY",
+  "M/D/YY",
+  "M-D-YYYY",
+  "M-D-YY",
+  "MMMM D, YYYY",
+  "MMMM D YYYY",
+  "MMM D, YYYY",
+  "MMM D YYYY",
+  "D MMMM YYYY",
+  "D MMM YYYY",
+  "D MMMM, YYYY",
+  "D MMM, YYYY",
+];
+
+function calendarDateKey(value: string): string | undefined {
+  for (const pattern of DATE_TOKENS) {
+    const token = pattern.exec(value)?.[0]
+      ?.replace(/(\d)(?:st|nd|rd|th)\b/gi, "$1")
+      .replace(/\./g, "")
+      .replace(/\s+/g, " ");
+    if (!token) continue;
+    const parsed = dayjs(token, DATE_FORMATS, "en", true);
+    if (parsed.isValid()) return parsed.format("YYYY-MM-DD");
+  }
+  return undefined;
+}
+
+function nameKey(value: string): string {
+  return clean(value)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/**
+ * Key two candidates share when they agree after code-level normalization:
+ * calendar dates compare as dates, policy numbers ignore spacing and
+ * punctuation, names ignore case and punctuation. Names that still differ go
+ * to Jev before promotion.
+ */
+export function promotionComparisonKey(
+  field: PromotionEvidenceField,
+  value: string,
+): string {
+  if (field === "policy_number") {
+    return clean(value).replace(/[^\p{L}\p{N}]+/gu, "").toUpperCase();
+  }
+  if (field === "effective_date" || field === "expiration_date") {
+    return calendarDateKey(value) ?? clean(value).toUpperCase();
+  }
+  return nameKey(value);
+}
+
 function plausible(field: PromotionEvidenceField, value: string) {
   const cleaned = clean(value);
   if (!cleaned || cleaned.length > 180) return false;
@@ -312,9 +402,19 @@ function fieldCandidates(
     const key = `${candidate.normalizedValue}\u0000${candidate.sourceSpanIds.join(",")}`;
     if (!byKey.has(key)) byKey.set(key, candidate);
   };
+  const outsidePartySchedule = (item: (typeof projected)[number]) =>
+    !item.nodes.some((node) =>
+      PARTY_SCHEDULE_CONTEXT.test(
+        [node.title, node.description, node.path].filter(Boolean).join(" "),
+      ));
+  const patterns =
+    field === "carrier"
+      ? [...FIELD_PATTERNS.carrier, COMPANY_NAME_PATTERN]
+      : FIELD_PATTERNS[field];
   for (const projection of projected) {
     if (projection.nodes.length === 0) continue;
-    for (const pattern of FIELD_PATTERNS[field]) {
+    for (const pattern of patterns) {
+      if (pattern === COMPANY_NAME_PATTERN && !outsidePartySchedule(projection)) continue;
       const match = pattern.exec(projection.span.text);
       if (match?.[1]) addCandidate(match[1], [projection]);
     }
@@ -323,7 +423,12 @@ function fieldCandidates(
     const label = projected[index]!;
     const value = projected[index + 1]!;
     if (label.nodes.length === 0 || value.nodes.length === 0) continue;
-    if (!LABEL_ONLY[field].test(label.span.text)) continue;
+    const companyNameLabel =
+      field === "carrier" &&
+      COMPANY_NAME_LABEL_ONLY.test(label.span.text) &&
+      outsidePartySchedule(label) &&
+      outsidePartySchedule(value);
+    if (!LABEL_ONLY[field].test(label.span.text) && !companyNameLabel) continue;
     const labelPage = spanPageStart(label.span);
     const valuePage = spanPageStart(value.span);
     if (labelPage !== undefined && valuePage !== undefined && labelPage !== valuePage) continue;
@@ -345,10 +450,53 @@ function fieldCandidates(
     || compareText(left.sourceSpanIds.join(","), right.sourceSpanIds.join(",")));
 }
 
+/** Distinct comparison keys among candidates, merged through equivalent groups. */
+function distinctCandidateCount(
+  field: PromotionEvidenceField,
+  candidates: readonly PromotionEvidenceCandidate[],
+  equivalentKeys: readonly string[][] = [],
+): number {
+  const parent = new Map<string, string>();
+  const find = (key: string): string => {
+    const next = parent.get(key);
+    if (next === undefined || next === key) return key;
+    const root = find(next);
+    parent.set(key, root);
+    return root;
+  };
+  for (const group of equivalentKeys) {
+    for (const key of group.slice(1)) parent.set(find(key), find(group[0]!));
+  }
+  return new Set(
+    candidates.map((candidate) =>
+      find(promotionComparisonKey(field, candidate.value))),
+  ).size;
+}
+
+/** Distinct named-insured candidates (one value each) that code could not merge. */
+export function namedInsuredCandidatesNeedingDecision(
+  ledger: PromotionEvidenceLedger,
+): Array<{ key: string; value: string; page?: number }> {
+  const byKey = new Map<string, { key: string; value: string; page?: number }>();
+  for (const candidate of ledger.fields.named_insured.candidates) {
+    const key = promotionComparisonKey("named_insured", candidate.value);
+    if (key && !byKey.has(key)) {
+      byKey.set(key, {
+        key,
+        value: candidate.value,
+        ...(candidate.pageStart === undefined ? {} : { page: candidate.pageStart }),
+      });
+    }
+  }
+  return byKey.size > 1 ? [...byKey.values()] : [];
+}
+
 export function buildPromotionEvidenceLedger(args: {
   sourceSpans: readonly SourceSpanLike[];
   sourceTree: readonly PromotionSourceNode[];
   processedSourceSpanIds?: readonly string[];
+  /** Named-insured comparison-key groups Jev judged to be the same insured. */
+  namedInsuredEquivalentKeys?: readonly string[][];
 }): PromotionEvidenceLedger {
   const projected = projections(args.sourceSpans, args.sourceTree);
   const eligibleSourceSpanIds = projected.map((item) => item.id);
@@ -363,10 +511,14 @@ export function buildPromotionEvidenceLedger(args: {
     (["policy_number", "named_insured", "carrier", "effective_date", "expiration_date"] as const)
       .map((field) => {
         const candidates = fieldCandidates(field, projected);
+        const equivalentKeys = field === "named_insured"
+          ? args.namedInsuredEquivalentKeys?.map((group) => [...group])
+          : undefined;
         return [field, {
           status: candidates.length ? "observed" as const : "not_observed" as const,
           candidates,
-          ambiguous: new Set(candidates.map((candidate) => candidate.normalizedValue)).size > 1,
+          ambiguous: distinctCandidateCount(field, candidates, equivalentKeys) > 1,
+          ...(equivalentKeys?.length ? { equivalentKeys } : {}),
         }];
       }),
   ) as PromotionEvidenceLedger["fields"];

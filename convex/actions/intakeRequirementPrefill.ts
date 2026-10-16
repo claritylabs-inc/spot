@@ -4,6 +4,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { generateObjectForPublicTask } from "../lib/models";
 import {
+  judgeRequirementFields,
   IMAGE_SOURCE_PLACEHOLDER,
   RequirementImportSchema,
   buildPrompt,
@@ -92,25 +93,33 @@ export const extract = internalAction({
           ),
       );
       const result = mergeRequirementChunkResults(chunkResults);
+      const requirements = await judgeRequirementFields(
+        ctx,
+        result.object.requirements,
+        { traceId: String(intakeFileId), defaultScope: "own_org" },
+      );
       const compact = (value: string) => value.trim().replace(/\s+/g, " ");
+      const sourceText = compact(text);
+      const exactExcerpt = (excerpt: string) =>
+        Boolean(compact(excerpt)) && sourceText.includes(compact(excerpt));
       // Excerpts read from images are checked against the page images; text
       // excerpts must be exact substrings of the extracted text.
       const imageVerdicts = images?.length
         ? await verifyExcerptsOnPageImages(ctx, {
             images,
-            excerpts: result.object.requirements.flatMap(
-              (requirement, index) =>
-                lines[requirement.lineOfBusiness ?? ""] &&
-                requirement.scope !== "vendors" &&
-                compact(requirement.sourceExcerpt)
-                  ? [
-                      {
-                        index,
-                        text: compact(requirement.sourceExcerpt),
-                        page: requirement.sourcePageStart,
-                      },
-                    ]
-                  : [],
+            excerpts: requirements.flatMap((requirement, index) =>
+              lines[requirement.lineOfBusiness ?? ""] &&
+              requirement.scope !== "vendors" &&
+              !exactExcerpt(requirement.sourceExcerpt) &&
+              compact(requirement.sourceExcerpt)
+                ? [
+                    {
+                      index,
+                      text: compact(requirement.sourceExcerpt),
+                      page: requirement.sourcePageStart,
+                    },
+                  ]
+                : [],
             ),
             surface: "intake_requirement_prefill",
             sessionKey: String(intakeFileId),
@@ -118,20 +127,17 @@ export const extract = internalAction({
           })
         : undefined;
       const coverages = new Map<CoverageId, CoverageRequest>();
-      for (const [
-        requirementIndex,
-        requirement,
-      ] of result.object.requirements.entries()) {
+      for (const [requirementIndex, requirement] of requirements.entries()) {
         const coverage = lines[requirement.lineOfBusiness ?? ""];
         if (!coverage || requirement.scope === "vendors") continue;
         // Reuse grounded requirements, never contract instructions or unsupported lines.
         const excerpt = compact(requirement.sourceExcerpt);
         if (!excerpt) continue;
-        if (imageVerdicts) {
-          if (!imageVerdicts.get(requirementIndex)?.verified) continue;
-        } else if (!compact(text).includes(excerpt)) {
+        if (
+          !exactExcerpt(requirement.sourceExcerpt) &&
+          !imageVerdicts?.get(requirementIndex)?.verified
+        )
           continue;
-        }
         const row = coverages.get(coverage) ?? newCoverage(coverage);
         for (const limit of requirement.limits ?? []) {
           let key = limitKeys[limit.kind];

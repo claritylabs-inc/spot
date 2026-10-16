@@ -31,10 +31,14 @@ export type RequestedEmailAttachment = {
 export const MULTIPLE_COI_SINGLE_RECIPIENT_WARNING =
   "This draft contains multiple COIs for one recipient. Confirm the exact recipient and attachment list before sending.";
 
+/**
+ * Fallback for attachments without a `kind`. `\b` treats `_` as a word
+ * character, so "ACME_COI.pdf" needs explicit alphanumeric boundaries.
+ */
 export function isCoiAttachmentFilename(
   filename: string | undefined,
 ): boolean {
-  return /\b(coi|certificate[-_\s]?of[-_\s]?insurance)\b/i.test(
+  return /(?<![a-z0-9])(coi|certificate[-_\s]?of[-_\s]?insurance)(?![a-z0-9])/i.test(
     filename ?? "",
   );
 }

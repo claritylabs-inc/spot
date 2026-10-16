@@ -2,7 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import type { EnsureM4a } from "../../imessage-worker/src/attachmentPolicy";
+import type { EnsureM4a } from "./imessageTransport/attachmentPolicy";
 
 const M4A_MIME_TYPES = new Set([
   "audio/mp4",

@@ -38,7 +38,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            imessage-worker/package-lock.json
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund --loglevel=error
@@ -67,21 +66,6 @@ jobs:
       - name: Build
         if: matrix.check == 'build'
         run: npm run build
-
-  validate-workers:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Build iMessage worker
-        working-directory: imessage-worker
-        run: npm ci --include=dev --no-audit --no-fund --loglevel=error && npm run build
-
 
   validate-packages:
     runs-on: ubuntu-latest
@@ -115,7 +99,6 @@ jobs:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs:
       - validate-root
-      - validate-workers
       - validate-packages
     steps:
       - uses: actions/checkout@v7
