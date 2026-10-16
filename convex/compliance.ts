@@ -697,7 +697,6 @@ export const upsertRequirement = mutation({
     sourceExcerpt: v.optional(v.string()),
     sourcePageStart: v.optional(v.number()),
     sourcePageEnd: v.optional(v.number()),
-    classificationReview: v.optional(v.literal(true)),
   },
   handler: async (ctx, args) => {
     const access = await requireOrgAdminWrite(
@@ -726,7 +725,6 @@ export const upsertRequirement = mutation({
       sourceExcerpt: args.sourceExcerpt?.trim() || undefined,
       sourcePageStart: args.sourcePageStart,
       sourcePageEnd: args.sourcePageEnd,
-      classificationReview: args.classificationReview,
       updatedByUserId: access.userId,
       updatedAt: now,
     };
@@ -1387,7 +1385,6 @@ export const upsertRequirementInternal = internalMutation({
     sourceExcerpt: v.optional(v.string()),
     sourcePageStart: v.optional(v.number()),
     sourcePageEnd: v.optional(v.number()),
-    classificationReview: v.optional(v.literal(true)),
   },
   handler: async (ctx, args) => {
     const access = await requireAdminWriteActor(
@@ -1407,7 +1404,6 @@ export const upsertRequirementInternal = internalMutation({
       sourceExcerpt: args.sourceExcerpt?.trim() || undefined,
       sourcePageStart: args.sourcePageStart,
       sourcePageEnd: args.sourcePageEnd,
-      classificationReview: args.classificationReview,
       status: "active",
       createdByUserId: args.userId,
       updatedByUserId: args.userId,

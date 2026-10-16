@@ -107,20 +107,19 @@ export const extract = internalAction({
       const imageVerdicts = images?.length
         ? await verifyExcerptsOnPageImages(ctx, {
             images,
-            excerpts: requirements.flatMap(
-              (requirement, index) =>
-                lines[requirement.lineOfBusiness ?? ""] &&
-                requirement.scope !== "vendors" &&
-                !exactExcerpt(requirement.sourceExcerpt) &&
-                compact(requirement.sourceExcerpt)
-                  ? [
-                      {
-                        index,
-                        text: compact(requirement.sourceExcerpt),
-                        page: requirement.sourcePageStart,
-                      },
-                    ]
-                  : [],
+            excerpts: requirements.flatMap((requirement, index) =>
+              lines[requirement.lineOfBusiness ?? ""] &&
+              requirement.scope !== "vendors" &&
+              !exactExcerpt(requirement.sourceExcerpt) &&
+              compact(requirement.sourceExcerpt)
+                ? [
+                    {
+                      index,
+                      text: compact(requirement.sourceExcerpt),
+                      page: requirement.sourcePageStart,
+                    },
+                  ]
+                : [],
             ),
             surface: "intake_requirement_prefill",
             sessionKey: String(intakeFileId),
@@ -128,10 +127,7 @@ export const extract = internalAction({
           })
         : undefined;
       const coverages = new Map<CoverageId, CoverageRequest>();
-      for (const [
-        requirementIndex,
-        requirement,
-      ] of requirements.entries()) {
+      for (const [requirementIndex, requirement] of requirements.entries()) {
         const coverage = lines[requirement.lineOfBusiness ?? ""];
         if (!coverage || requirement.scope === "vendors") continue;
         // Reuse grounded requirements, never contract instructions or unsupported lines.
@@ -140,7 +136,8 @@ export const extract = internalAction({
         if (
           !exactExcerpt(requirement.sourceExcerpt) &&
           !imageVerdicts?.get(requirementIndex)?.verified
-        ) continue;
+        )
+          continue;
         const row = coverages.get(coverage) ?? newCoverage(coverage);
         for (const limit of requirement.limits ?? []) {
           let key = limitKeys[limit.kind];
