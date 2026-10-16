@@ -829,12 +829,49 @@ const ACORD_25_COVERAGE_NOTICE =
  * Returns a Buffer.
  */
 export async function generateCoiPdf(data: CoiData): Promise<Buffer> {
+  return (await generateCoiPdfWithLayout(data)).pdf;
+}
+
+/**
+ * Text-fit measurements taken while filling the form. `measured` is false for
+ * forms whose fields are not measured here.
+ */
+export type CoiLayoutReport = {
+  measured: boolean;
+  /** Fields whose text did not fit their box and moved to the remarks schedule. */
+  movedToRemarks: Array<"holder" | "description">;
+  /** Defects found by measurement, as reviewer-facing sentences. */
+  findings: string[];
+};
+
+/** True when a single unbroken word is wider than the box, so it wraps mid-word. */
+function hasWordWiderThan(
+  doc: PDFKit.PDFDocument,
+  value: string | undefined,
+  width: number,
+  fontSize: number,
+): boolean {
+  if (!value) return false;
+  doc.font("Helvetica").fontSize(fontSize);
+  return value
+    .split(/\s+/)
+    .some((word) => word && doc.widthOfString(word) > width);
+}
+
+export async function generateCoiPdfWithLayout(
+  data: CoiData,
+): Promise<{ pdf: Buffer; layout: CoiLayoutReport }> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     const doc = new PDFDocument({ size: "LETTER", margin: 0, autoFirstPage: true });
+    const layout: CoiLayoutReport = {
+      measured: false,
+      movedToRemarks: [],
+      findings: [],
+    };
 
     doc.on("data", (c: Buffer) => chunks.push(c));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("end", () => resolve({ pdf: Buffer.concat(chunks), layout }));
     doc.on("error", reject);
 
     let y = 24;
@@ -843,6 +880,7 @@ export async function generateCoiPdf(data: CoiData): Promise<Buffer> {
       doc.end();
       return;
     }
+    layout.measured = true;
 
     const dateStr = dayjs().format("YYYY/MM/DD");
 
@@ -872,6 +910,9 @@ export async function generateCoiPdf(data: CoiData): Promise<Buffer> {
       minHeight: 58,
       fontSize: FS_VALUE,
     });
+    if (hasWordWiderThan(doc, data.insuredName, W - 10, FS_VALUE)) {
+      layout.findings.push("Insured name has a word wider than its box.");
+    }
     drawInfoBox(doc, M, y, W, insuredH, "INSURED'S FULL NAME AND MAILING ADDRESS", insuredText);
     y += insuredH + 10;
 
@@ -896,6 +937,10 @@ export async function generateCoiPdf(data: CoiData): Promise<Buffer> {
       fontSize: FS_VALUE,
     }) > descMaxH;
     const descH = descMaxH;
+    if (descOverflows) layout.movedToRemarks.push("description");
+    else if (hasWordWiderThan(doc, descText, W - 10, FS_VALUE)) {
+      layout.findings.push("Description of operations has a word wider than its box.");
+    }
     drawInfoBox(
       doc,
       M,
@@ -915,6 +960,10 @@ export async function generateCoiPdf(data: CoiData): Promise<Buffer> {
       fontSize: FS_VALUE,
     });
     const holderOverflows = holderRequiredH > HOLDER_BOX_MAX_HEIGHT;
+    if (holderOverflows) layout.movedToRemarks.push("holder");
+    else if (hasWordWiderThan(doc, data.certificateHolder, bottomW - 10, FS_VALUE)) {
+      layout.findings.push("Certificate holder has a word wider than its box.");
+    }
     const cancelRequiredH = infoBoxHeight(doc, cancelText, W - bottomW, {
       minHeight: 54,
       fontSize: FS_VALUE,
