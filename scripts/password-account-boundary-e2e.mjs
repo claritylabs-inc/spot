@@ -7,6 +7,7 @@
 // status or change the password; concurrent changes leave exactly one live password;
 // concurrent first-time sets leave one account row, one winner and no duplicate user.
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import {
@@ -80,3 +81,6 @@ assert.equal(rows("users").length, usersBefore, "no duplicate user");
 assert.equal([await signIn(email2, q1), await signIn(email2, q2)].filter(Boolean).length, 1);
 console.log("PASS concurrent first-time sets: one account row, one winner, no duplicate user");
 console.log("PASS all 4");
+
+mkdirSync(".context/qa/password", { recursive: true });
+writeFileSync(".context/qa/password/boundary-results.json", JSON.stringify({ passed: 4, cases: ["status expiry", "revoked token", "concurrent changes", "concurrent first sets"] }, null, 2));

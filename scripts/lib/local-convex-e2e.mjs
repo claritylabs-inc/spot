@@ -6,7 +6,7 @@
 // Helpers only read tables and call functions; nothing deletes data.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { consumeLocalEmailCaptures } from "../watch-conductor-email-captures.mjs";
 
@@ -22,12 +22,15 @@ for (const name of Object.keys(env)) {
   if (name.startsWith("CONVEX_") || name.startsWith("CONDUCTOR_CONVEX")) delete env[name];
 }
 
-const cli = (...args) =>
-  execFileSync(
+const cli = (...args) => {
+  const result = spawnSync(
     "./node_modules/.bin/convex",
     [...args, "--url", convexUrl, "--admin-key", local.adminKey],
     { encoding: "utf8", env },
   );
+  assert.equal(result.status, 0, "Local Convex command failed (arguments omitted to protect credentials)");
+  return result.stdout;
+};
 
 /** Runs an internal or public function on the local backend. */
 export const run = (fn, args = {}) => cli("run", fn, JSON.stringify(args));
