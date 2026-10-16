@@ -13,7 +13,6 @@ import { getAuthSiteUrl } from "./lib/domains";
 import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 import { generateOtpCode } from "./lib/otp";
 
-
 const rateLimiter = new RateLimiter(components.rateLimiter, {
   codeEmailPerMinute: { kind: "token bucket", rate: 1, period: MINUTE },
   codeEmailPerHour: { kind: "token bucket", rate: 5, period: HOUR },

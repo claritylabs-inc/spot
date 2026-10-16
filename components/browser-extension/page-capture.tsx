@@ -105,7 +105,10 @@ export function PageCaptureProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const requestCapture = useCallback(() => {
-    if (!bridgeSession.current) return;
+    if (!bridgeSession.current || window.parent === window) {
+      setCaptureStatus("Open Spot from the extension sidebar to share a page.");
+      return;
+    }
     setCaptureStatus("");
     window.parent.postMessage({ type: "spot:capture-request", version: BROWSER_EXTENSION_READY.version, sessionId: bridgeSession.current }, BROWSER_EXTENSION_ORIGIN);
   }, []);

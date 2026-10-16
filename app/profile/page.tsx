@@ -386,7 +386,7 @@ export default function ProfilePage() {
 
           <FadeIn when={true} staggerIndex={2} duration={0.6}>
             <PasswordSettings />
-          <OperationalPanel className="mt-4">
+            <OperationalPanel className="mt-4">
               <OperationalPanelHeader
                 title="Proactive conversations"
                 className="px-5 py-3.5"
