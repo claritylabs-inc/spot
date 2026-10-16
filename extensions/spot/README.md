@@ -8,6 +8,7 @@ existing web app. The extension only adds an explicit **Use this page** button.
 
 ```bash
 npm run extension:build                 # production: https://app.spot.insure
+npm run extension:build -- --store      # store upload: omits the development key
 npm run extension:build -- --local      # http://localhost:<workspace web port>
 npm run extension:build -- --origin http://localhost:8080
 ```
@@ -15,7 +16,10 @@ npm run extension:build -- --origin http://localhost:8080
 Output goes to `extensions/spot/dist` (overwritten on every build, not committed).
 The build fixes the extension ID from the public `key` in
 `config/browser-extension.json` and fails if the key does not produce the
-configured ID.
+configured ID. The public key comes from the Chrome Web Store package page for
+`ioghpiffchcecdfkekjdgkgakemgfdhi`. Store builds omit `key`, which the store
+rejects on upload. Zip the contents of `dist`, with `manifest.json` at the root.
+Never load the keyless store build unpacked: use the default build for that.
 Local builds grant access to all ports on localhost and must not be distributed.
 
 ## Load it
@@ -69,7 +73,9 @@ shadow DOM, canvases and PDFs is not captured.
   **Use this page** stays disabled until then.
 - Captures carry that session ID and a `captureId`. The app acknowledges receipt;
   stale-session messages are rejected. Logout/unmount disables capture.
-- Not done: Chrome Web Store or Edge Add-ons submission or review. An Edge
+- Chrome Web Store item: `ioghpiffchcecdfkekjdgkgakemgfdhi`. Its current review
+  and publication status is shown in the developer dashboard. Edge Add-ons
+  submission remains separate. An Edge
   listing may be assigned a different extension ID, which the app's allowed
   origin would need to include.
 

@@ -1,6 +1,7 @@
 // Builds the static Spot browser extension into extensions/spot/dist.
 //
 //   npm run extension:build                       production app origin
+//   npm run extension:build -- --store           Chrome Web Store upload (no key)
 //   npm run extension:build -- --local            http://localhost:<workspace web port>
 //   npm run extension:build -- --origin http://localhost:8080
 //
@@ -60,11 +61,15 @@ if (computedId !== config.extensionId) {
 }
 
 const origin = appOrigin();
+const storeBuild = process.argv.includes("--store");
+if (storeBuild && origin.origin !== config.appOrigin) {
+  throw new Error("Store builds must use the production app origin");
+}
 const manifest = JSON.parse(
   readFileSync(path.join(sourceDir, "manifest.template.json"), "utf8"),
 );
 const iconSizes = [16, 32, 48, 128];
-manifest.key = config.key;
+if (!storeBuild) manifest.key = config.key;
 // Match patterns take no port: http://localhost/* covers every localhost port.
 manifest.host_permissions = [`${origin.protocol}//${origin.hostname}/*`];
 manifest.content_security_policy = {
@@ -97,4 +102,4 @@ writeFileSync(
 
 console.log(`Built Spot extension for ${origin.origin}${config.path}`);
 console.log(`Extension ID ${computedId}`);
-console.log(`Load unpacked from ${path.relative(repoRoot, outDir)}`);
+console.log(`${storeBuild ? "Package for store upload" : "Load unpacked from"} ${path.relative(repoRoot, outDir)}`);

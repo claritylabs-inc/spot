@@ -1,8 +1,8 @@
 {
   "appOrigin": "https://app.spot.insure",
   "path": "/extension",
-  "extensionId": "akehiiagpjnaifccilicaefmhedhhbng",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwIY5q5+RJcWHslaP3ewidRrEGgw+67nzlhI0z5v+VVTKvoNGeTbnjqOM2tPVRci3wCzmnSZxLZFzTHK2z7Nyq/VkDv3Qm4vbsF3RxNwSeJ/s4JpyEhWP2ThkhmWZCFEfAoqfKs5v2pqXoEIpzWk15q5spFAmvAxX9qZ474Rbxk/n/N9+JtTGmxz1nAwWTeXeE0wapLjzO+oSWH3Sw8Cz7U5ZDcoXF2lbvUdll+Q7xCMuE9BZrHqNbKDg/RPcs+kXq2gSxCjgDaLpGsALoqFJALDgW/T0iZWSXMy5tJrW16GGB7pXM+JwUeiRfUB9t7Zn1ICIfkynKCjqPOZnmv9QpwIDAQAB",
+  "extensionId": "ioghpiffchcecdfkekjdgkgakemgfdhi",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxEm4f677udGzHq7Ii8p/bt5hmEgvNjC0stO/+1WBR98sh5V7TdrCHG1/JAuG6zcbNz2ek1RKz6wPCquCm7gt40wE6oDckVGf1rvBubCA98McMgvy+e4rNxxoFjY4nupATOxtUD91Ozpb1Ra3aGBaZrimfOafHUcJEOJUFkk86ZCFUdYCUi4BtvsZZ3AVCvmOR7YSqQ8s6nWQ5ZZu66WQ+l5KnKUGKgyJj2YiElA2/bP/J0p2S0fcoBv+HoTXG2WJjp59+cNJtwnSp318a5ZFhcGIiXKjZSvAOmSEw9pVQgbn5wwHfU1gMK9+y1LyHXiV/Qnt8XlQ0zd6lAal+GdhuQIDAQAB",
   "protocolVersion": 1,
   "maxTextLength": 20000,
   "maxTitleLength": 300,
