@@ -973,21 +973,21 @@ claimed by this workflow.
 
 ### Test suite pruning — October 16, 2026
 
-Keep isolated coverage for authorization and tenant isolation, exact approvals,
-webhook authenticity, replay/idempotency, leases and cancellation, stale writes,
-immutable evidence, bounded inputs, extraction grounding, and irreversible sends.
-A small test count is not a reason to remove a distinct failure boundary.
+At the user's request, removed 108 of the original 119 isolated unit-test files
+(91%), including mocked action/adapter tests, UI/state mirrors, formatting and
+prompt assertions. Removed the snapshot owned by a deleted catalog suite.
+The classification is implementation-based: isolated suites do not instantiate
+`convexTest`; the filename alone does not establish integration coverage.
 
-Removed ordinary UI/state/formatting suites: app-shell route presentation,
-user-facing error formatting, dock state/shortcuts/provider, page suggestions,
-history grouping, operator context links, usage-summary presentation, mutable
-operator page context, generated thread titles, and Slack installation scope-list
-mirrors. These belong in browser workflow QA rather than mocked UI or adapter
-assertions. Also removed prompt-wording assertions from section extraction and
-supplementary extraction; citation page conversion and output validation remain.
+Retained 11 isolated suites for the central router transport/capability contract,
+Jev threshold, email send authorization and executor, full-body DKIM/operator
+email authentication, API/MCP authorization, website SSRF/allocation bounds,
+extraction promotion, citation resolution, and untrusted presentation validation.
+The real Convex mutation/query integration suites, worker integration tests and
+opt-in model evals remain. This preserves cross-system authorization, revisions,
+submission, exact approval, leases, cancellation, replay and delivery checks.
 
-Retained dock storage user/surface isolation, cache-key isolation, autosave race
-coverage, upload sharing boundaries, grounded presentation/navigation checks,
-and model fail-closed/replay protections. Their behavior is difficult to prove
-reliably with a happy-path browser run. No replacement tests were added. This
-cleanup changes no production behavior and does not claim a new browser QA run.
+No production code or replacement tests were added. Removed ordinary UI flows
+belong in browser workflow QA; this cleanup does not claim a new browser QA run.
+The previous 1,110-test baseline remains historical evidence, not the current
+suite count. The final retained suite and CI are rerun before merging.
