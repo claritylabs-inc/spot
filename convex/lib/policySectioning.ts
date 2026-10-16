@@ -16,7 +16,7 @@ import {
 } from "./clRouterClient";
 import { pdfPageJevImage, stageJevImages } from "./jevImages";
 import { renderPdfPageImages } from "./pdfPageImages";
-import { jevProceeds } from "./jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 
 
@@ -259,15 +259,15 @@ function pageKindQuestion(page: number): DecisionQuestion {
     type: "choice",
     instructions: `Classify \`pages.page_${page}\` (original PDF page ${page}) by its predominant content, using its page image (or its text digest when no image is supplied).`,
     criteria: {
-      declarations: "The policy declarations page: named insured, policy period, premium, limits summary.",
-      schedule: "A schedule listing locations, vehicles, drivers, classifications, or other scheduled items.",
-      forms_list: "A list of forms and endorsements attached to the policy (a 'Forms and Endorsements' schedule).",
-      coverage_form: "Base policy coverage form wording defining insuring agreements, exclusions, conditions, and definitions.",
-      endorsement: "An endorsement that changes or modifies the policy's coverage form.",
+      declarations: { what: "Policy identity, named insured, period, premium and limits summary.", not_for: "An itemized location, vehicle, driver or classification schedule." },
+      schedule: { what: "An itemized list of locations, vehicles, drivers or classifications.", not_for: "Policy declarations or a list of attached forms and endorsements." },
+      forms_list: { what: "A list of attached form numbers and endorsement titles.", not_for: "The actual form wording or an item schedule." },
+      coverage_form: { what: "Base policy insuring agreements, exclusions, conditions and definitions.", not_for: "An endorsement changing base wording or a forms list." },
+      endorsement: { what: "Wording that changes or modifies a base coverage form.", not_for: "The base coverage form itself or a list merely naming endorsements." },
       application: "An insurance application or supplemental application questionnaire.",
       invoice: "A premium invoice, billing statement, or payment notice.",
       notice: "A regulatory or informational notice, disclosure, or policyholder notification.",
-      other: "None of the above, or insufficient evidence to classify confidently.",
+      other: "None of the listed content types.",
     },
   };
 }
@@ -443,10 +443,7 @@ async function classifyRemainingPages(params: {
         const boundaryAnswer = result.answers[`boundary_${page}`];
         const confidence =
           kindAnswer?.type === "choice"
-            ? Math.min(
-                kindAnswer.confidence,
-                kindAnswer.probabilities[kindAnswer.choice] ?? 0,
-              )
+            ? jevChoiceConfidence(kindAnswer)
             : 0;
         const kind =
           kindAnswer?.type === "choice" &&

@@ -7,7 +7,7 @@ import { scopeCoveragesWithClassifier } from "./coverageScoping";
 import { insuranceDocToPolicy } from "./documentMapping";
 import { applyPolicyPeriodFallback } from "./policyPeriodExtraction";
 import { clRouterDecide } from "./clRouterClient";
-import { jevProceeds } from "./jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "./jevThreshold";
 
 type SourceSpanLike = {
   text?: string;
@@ -677,7 +677,7 @@ async function normalizeOrgNamesWithClassifier(
     for (const item of pending) {
       const answer = result.answers[item.question];
       if (answer?.type !== "choice") continue;
-      const confidence = Math.min(answer.confidence, answer.probabilities[answer.choice] ?? 0);
+      const confidence = jevChoiceConfidence(answer);
       const spelling = item.candidates[Number(answer.choice.replace("spelling_", ""))];
       if (!jevProceeds(confidence) || answer.choice === "keep_extracted" || !spelling) {
         continue;

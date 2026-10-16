@@ -1024,7 +1024,7 @@ export async function scopeCoveragesWithClassifier(params: {
       ...inferLinesOfBusinessFromOperationalCoverages([coverage as OperationalCoverageLine]),
       ...knownLines,
     ])].filter((code) => code !== "UN");
-    if (candidates.length >= 2 && pending.length < MAX_COVERAGE_SCOPE_QUESTIONS) {
+    if (candidates.length >= 2) {
       pending.push({ index, key: `coverage_${index}`, candidates });
     }
   });
@@ -1037,53 +1037,56 @@ export async function scopeCoveragesWithClassifier(params: {
   let classifiedCount = 0;
   if (pending.length > 0) {
     try {
-      const result = await clRouterDecide({
-        orgId: String(params.orgId),
-        task: "policy_extraction_coverage_scope",
-        state: {
-          policyLinesOfBusiness: knownLines.map((code) => ({ code, label: lobLabel(code) })),
-          coverages: Object.fromEntries(pending.map(({ index, key }) => {
-            const coverage = coverages[index]!;
-            const coverageCode = resolveAcordCoverageCode(coverage.coverageCode, coverage.name);
-            return [key, {
-              name: textValue(coverage.name) ?? "Coverage",
-              ...(coverageCode ? { acordCoverageCode: coverageCode } : {}),
-              ...Object.fromEntries(
-                ["limit", "deductible", "formNumber", "sectionRef", "originalContent"]
-                  .flatMap((field) => {
-                    const value = textValue(coverage[field]);
-                    return value ? [[field, value.slice(0, 300)]] : [];
-                  }),
-              ),
-              ...(typeof coverage.pageNumber === "number" ? { pageNumber: coverage.pageNumber } : {}),
-            }];
-          })),
-        },
-        questions: Object.fromEntries(pending.map(({ key, candidates }) => [key, {
-          type: "choice" as const,
-          instructions: `Which line of business on this policy does \`coverages.${key}\` belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
-          criteria: {
-            ...Object.fromEntries(candidates.map((code) => [code, { label: lobLabel(code), what: `Coverage for ${lobLabel(code)} supported by this row’s name, form, section or ACORD code; not merely another line present on the policy.` }])),
-            none: "None of the listed lines of business.",
+      for (let offset = 0; offset < pending.length; offset += MAX_COVERAGE_SCOPE_QUESTIONS) {
+        const batch = pending.slice(offset, offset + MAX_COVERAGE_SCOPE_QUESTIONS);
+        const result = await clRouterDecide({
+          orgId: String(params.orgId),
+          task: "policy_extraction_coverage_scope",
+          state: {
+            policyLinesOfBusiness: knownLines.map((code) => ({ code, label: lobLabel(code) })),
+            coverages: Object.fromEntries(batch.map(({ index, key }) => {
+              const coverage = coverages[index]!;
+              const coverageCode = resolveAcordCoverageCode(coverage.coverageCode, coverage.name);
+              return [key, {
+                name: textValue(coverage.name) ?? "Coverage",
+                ...(coverageCode ? { acordCoverageCode: coverageCode } : {}),
+                ...Object.fromEntries(
+                  ["limit", "deductible", "formNumber", "sectionRef", "originalContent"]
+                    .flatMap((field) => {
+                      const value = textValue(coverage[field]);
+                      return value ? [[field, value.slice(0, 300)]] : [];
+                    }),
+                ),
+                ...(typeof coverage.pageNumber === "number" ? { pageNumber: coverage.pageNumber } : {}),
+              }];
+            })),
           },
-        }])),
-        trace: params.traceId ? { traceId: params.traceId } : undefined,
-      }, { telemetry: params.ctx });
-      for (const { index, key, candidates } of pending) {
-        const answer = result.answers[key];
-        if (answer?.type !== "choice") continue;
-        const confidence = jevChoiceConfidence(answer);
-        if (!jevProceeds(confidence)) {
-          review.questions.push(coverageLineReviewQuestion(
-            coverages[index]!,
-            index,
-            candidates,
-            answer.choice,
-            params.nowMs,
-          ));
-        } else if (candidates.includes(answer.choice)) {
-          coverages[index]!.lineOfBusiness = answer.choice;
-          classifiedCount += 1;
+          questions: Object.fromEntries(batch.map(({ key, candidates }) => [key, {
+            type: "choice" as const,
+            instructions: `Which line of business on this policy does \`coverages.${key}\` belong to? Use the coverage name, form, section, and ACORD coverage code. Choose none when it belongs to none of the listed lines.`,
+            criteria: {
+              ...Object.fromEntries(candidates.map((code) => [code, { label: lobLabel(code), what: `Coverage for ${lobLabel(code)} supported by this row’s name, form, section or ACORD code; not merely another line present on the policy.` }])),
+              none: "None of the listed lines of business.",
+            },
+          }])),
+          trace: params.traceId ? { traceId: params.traceId } : undefined,
+        }, { telemetry: params.ctx });
+        for (const { index, key, candidates } of batch) {
+          const answer = result.answers[key];
+          if (answer?.type !== "choice") continue;
+          const confidence = jevChoiceConfidence(answer);
+          if (!jevProceeds(confidence)) {
+            review.questions.push(coverageLineReviewQuestion(
+              coverages[index]!,
+              index,
+              candidates,
+              answer.choice,
+              params.nowMs,
+            ));
+          } else if (candidates.includes(answer.choice)) {
+            coverages[index]!.lineOfBusiness = answer.choice;
+            classifiedCount += 1;
+          }
         }
       }
     } catch {
