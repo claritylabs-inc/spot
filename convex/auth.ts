@@ -1,6 +1,7 @@
 import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
+import { Password } from "@convex-dev/auth/providers/Password";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
@@ -11,6 +12,11 @@ import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
 import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 import { generateOtpCode } from "./lib/otp";
+import {
+  REVIEW_PROVIDER_ID,
+  isReviewerEmail,
+  reviewerSignInProfile,
+} from "./lib/reviewerAuth";
 
 const rateLimiter = new RateLimiter(components.rateLimiter, {
   codeEmailPerMinute: { kind: "token bucket", rate: 1, period: MINUTE },
@@ -68,13 +74,48 @@ const ResendOTP = Email({
   sendVerificationRequest: sendVerificationRequest as any,
 });
 
+// Library Password provider limited to one identity. Its authorize is wrapped so
+// every sign-in re-checks that the identity is still the ordinary demo member.
+function reviewerPassword() {
+  const provider = Password({
+    id: REVIEW_PROVIDER_ID,
+    profile: reviewerSignInProfile,
+  });
+  type Options = { authorize: (params: any, ctx: any) => Promise<unknown> };
+  const options = (provider as unknown as { options: Options }).options;
+  return {
+    ...provider,
+    options: {
+      ...options,
+      authorize: async (params: unknown, ctx: any) => {
+        // Reject other flows and identities, then a drifted account, before the
+        // password is checked.
+        reviewerSignInProfile(params as Record<string, unknown>);
+        const allowed = await ctx.runQuery(internal.reviewerAccounts.assertSignIn, {});
+        const result = (await options.authorize(params, ctx)) as { userId: unknown } | null;
+        if (result && result.userId !== allowed.userId) throw new Error("Invalid credentials");
+        return result;
+      },
+    },
+  };
+}
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [ResendOTP, ConvexCredentials({
+  providers: [ResendOTP, reviewerPassword(), ConvexCredentials({
     id: "intake",
     authorize: async (credentials, ctx) => {
       if (typeof credentials.token !== "string") return null;
       return ctx.runMutation(internal.requestIntake.claimNewSession, { token: credentials.token });
     },
   })],
-  callbacks: { createOrUpdateUser: createOrUpdateEmailUser },
+  callbacks: {
+    // Requesting an email code creates and links an auth account before any code
+    // is sent. Only the reviewer provider may hold the reviewer identity.
+    createOrUpdateUser: (ctx, args) => {
+      if (isReviewerEmail(args.profile.email) && args.provider.id !== REVIEW_PROVIDER_ID) {
+        throw new Error("Use the reviewer sign-in");
+      }
+      return createOrUpdateEmailUser(ctx, args);
+    },
+  },
 });
