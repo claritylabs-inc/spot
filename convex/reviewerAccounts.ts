@@ -13,37 +13,108 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { replacePolicyDeclarationFacts } from "./declarationFacts";
+import { PASSWORD_PROVIDER_ID } from "./lib/passwordAuth";
 import {
+  LEGACY_REVIEW_PROVIDER_ID,
   REVIEW_EMAIL,
   REVIEW_ORG_NAME,
   REVIEW_ORG_SLUG,
-  REVIEW_PROVIDER_ID,
   REVIEW_USER_NAME,
-  assertReviewerMayHaveSession,
   assertReviewerPassword,
-  collision,
-  inspectReviewer,
-  type ReviewerState,
 } from "./lib/reviewerAuth";
 
-type PrepareResult = ReviewerState;
+type PrepareResult = { kind: "create" } | { kind: "exists"; userId: Id<"users"> };
+
+function collision(reason: string): never {
+  throw new Error(`Reviewer account collision: ${reason}`);
+}
+
+/**
+ * Seeding safety only, not a runtime gate: never seed into, or create over, an
+ * account or organization that is not the reviewer's own.
+ */
+async function inspect(ctx: QueryCtx): Promise<PrepareResult> {
+  const users = await ctx.db
+    .query("users")
+    .withIndex("email", (q) => q.eq("email", REVIEW_EMAIL))
+    .take(2);
+  if (users.length > 1) collision("several users share the email");
+  const user = users[0];
+  const org = await ctx.db
+    .query("organizations")
+    .withIndex("slug", (q) => q.eq("slug", REVIEW_ORG_SLUG))
+    .first();
+  const accounts = [];
+  for (const provider of [PASSWORD_PROVIDER_ID, LEGACY_REVIEW_PROVIDER_ID, "resend-otp", "intake"]) {
+    const account = await ctx.db
+      .query("authAccounts")
+      .withIndex("providerAndAccountId", (q) =>
+        q.eq("provider", provider).eq("providerAccountId", REVIEW_EMAIL),
+      )
+      .first();
+    if (account) accounts.push(account);
+  }
+  if (!user) {
+    if (accounts.length || org) collision("an orphan account or organization exists");
+    return { kind: "create" };
+  }
+  const profile = await ctx.db
+    .query("operatorProfiles")
+    .withIndex("user", (q) => q.eq("userId", user._id))
+    .first();
+  const credential = accounts.find(
+    (account) =>
+      account.provider === PASSWORD_PROVIDER_ID ||
+      account.provider === LEGACY_REVIEW_PROVIDER_ID,
+  );
+  if (
+    user.accountKind !== "customer" ||
+    profile ||
+    credential?.userId !== user._id ||
+    accounts.some((account) => account.userId !== user._id)
+  ) {
+    collision("the email belongs to an account that is not the reviewer's");
+  }
+  if (org) {
+    const members = await ctx.db
+      .query("orgMemberships")
+      .withIndex("organization", (q) => q.eq("orgId", org._id))
+      .take(50);
+    if (members.length > 0 && !members.some((member) => member.userId === user._id)) {
+      collision("the demo organization belongs to other users");
+    }
+  }
+  return { kind: "exists", userId: user._id };
+}
 
 export const prepare = internalQuery({
   args: {},
-  handler: async (ctx): Promise<PrepareResult> => inspectReviewer(ctx),
+  handler: async (ctx): Promise<PrepareResult> => inspect(ctx),
 });
 
 /**
- * Checked on every reviewer sign-in: the identity must still be the ordinary
- * member of the one active demo organization, whatever else has changed since
- * provisioning. Any drift (operator, service flag, outside membership) denies.
+ * One-time move of the reviewer credential from `review-password` to the
+ * standard `password` provider. The scrypt hash is kept; idempotent.
  */
-export const assertSignIn = internalQuery({
+export const migrateToPasswordProvider = internalMutation({
   args: {},
-  handler: async (ctx): Promise<{ userId: Id<"users"> }> =>
-    assertReviewerMayHaveSession(ctx),
+  handler: async (ctx): Promise<{ status: "migrated" | "already" | "none" }> => {
+    const find = (provider: string) =>
+      ctx.db
+        .query("authAccounts")
+        .withIndex("providerAndAccountId", (q) =>
+          q.eq("provider", provider).eq("providerAccountId", REVIEW_EMAIL),
+        )
+        .first();
+    const [legacy, current] = [await find(LEGACY_REVIEW_PROVIDER_ID), await find(PASSWORD_PROVIDER_ID)];
+    if (!legacy) return { status: current ? "already" : "none" };
+    if (current) collision("both a legacy and a password credential exist");
+    await ctx.db.patch(legacy._id, { provider: PASSWORD_PROVIDER_ID });
+    return { status: "migrated" };
+  },
 });
 
 const DEMO_ADDRESS = {
@@ -84,11 +155,16 @@ const DEMO_POLICIES = [
 export const ensureWorkspace = internalMutation({
   args: { userId: v.id("users") },
   handler: async (ctx: MutationCtx, args) => {
-    const state = await inspectReviewer(ctx);
+    const state = await inspect(ctx);
     if (state.kind !== "exists" || state.userId !== args.userId) {
       collision("the user is not the provisioned reviewer");
     }
     const now = dayjs().valueOf();
+    // The account is an ordinary verified customer; an admin provisioned it.
+    const reviewer = await ctx.db.get(args.userId);
+    if (reviewer && !reviewer.emailVerificationTime) {
+      await ctx.db.patch(args.userId, { emailVerificationTime: now });
+    }
     let org = await ctx.db
       .query("organizations")
       .withIndex("slug", (q) => q.eq("slug", REVIEW_ORG_SLUG))
@@ -169,7 +245,7 @@ export const ensureWorkspace = internalMutation({
 export const status = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const state = await inspectReviewer(ctx);
+    const state = await inspect(ctx);
     if (state.kind === "create") return { provisioned: false as const };
     const org = await ctx.db
       .query("organizations")
@@ -182,7 +258,7 @@ export const status = internalQuery({
     const account = await ctx.db
       .query("authAccounts")
       .withIndex("providerAndAccountId", (q) =>
-        q.eq("provider", REVIEW_PROVIDER_ID).eq("providerAccountId", REVIEW_EMAIL),
+        q.eq("provider", PASSWORD_PROVIDER_ID).eq("providerAccountId", REVIEW_EMAIL),
       )
       .unique();
     const limit = account
@@ -227,6 +303,7 @@ export const provision = internalAction({
     orgId: Id<"organizations">;
   }> => {
     assertReviewerPassword(args.password);
+    await ctx.runMutation(internal.reviewerAccounts.migrateToPasswordProvider, {});
     const state: PrepareResult = await ctx.runQuery(
       internal.reviewerAccounts.prepare,
       {},
@@ -234,7 +311,7 @@ export const provision = internalAction({
     let userId: Id<"users">;
     if (state.kind === "create") {
       const created = await createAccount(ctx, {
-        provider: REVIEW_PROVIDER_ID,
+        provider: PASSWORD_PROVIDER_ID,
         account: { id: REVIEW_EMAIL, secret: args.password },
         profile: {
           email: REVIEW_EMAIL,
@@ -273,13 +350,14 @@ export const rotatePassword = internalAction({
     args,
   ): Promise<{ status: "rotated"; email: string; userId: Id<"users"> }> => {
     assertReviewerPassword(args.password);
-    // Revocation must remain available even when the workspace has drifted.
+    await ctx.runMutation(internal.reviewerAccounts.migrateToPasswordProvider, {});
+    // Revocation must remain available whatever the account has become.
     const { account } = await retrieveAccount(ctx, {
-      provider: REVIEW_PROVIDER_ID,
+      provider: PASSWORD_PROVIDER_ID,
       account: { id: REVIEW_EMAIL },
     });
     await modifyAccountCredentials(ctx, {
-      provider: REVIEW_PROVIDER_ID,
+      provider: PASSWORD_PROVIDER_ID,
       account: { id: REVIEW_EMAIL, secret: args.password },
     });
     await invalidateSessions(ctx, { userId: account.userId });
